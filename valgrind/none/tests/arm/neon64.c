@@ -63,7 +63,7 @@ const unsigned int mem[] = {
       ); \
   fflush(stdout); \
   printf("%s, #" #imm " :: Qd 0x%08x 0x%08x\n", \
-      instruction, out[1], out[0]); \
+         instruction, out[1], out[0]);          \
 } \
 { \
    unsigned int out[2];   \
@@ -79,8 +79,8 @@ const unsigned int mem[] = {
 	 : #QD, "%2", "memory" \
 	 ); \
    fflush(stdout); \
-   printf("%s, #" #imm " :: Qd 0x%08x 0x%08x\n", \
-	 instruction, out[1], out[0]); \
+   printf("%s, #" #imm " :: Qd 0x%08x 0x%08x\n",        \
+          instruction, out[1], out[0]);                 \
 }
 
 #define TESTINSN_un(instruction, QD, QM, QMtype, QMval) \
@@ -97,8 +97,8 @@ const unsigned int mem[] = {
       : #QD, #QM, "memory" \
       ); \
   fflush(stdout); \
-  printf("%s :: Qd 0x%08x 0x%08x  Qm (" #QMtype ")0x%08x\n", \
-      instruction, out[1], out[0], QMval); \
+  printf("%s :: Qd 0x%08x 0x%08x  Qm (" #QMtype ")0x%08x\n",    \
+         instruction, out[1], out[0], QMval);                   \
 } \
 { \
    unsigned int out[2]; \
@@ -116,8 +116,8 @@ const unsigned int mem[] = {
 	 : #QD, #QM, "%2", "memory" \
 	 ); \
    fflush(stdout); \
-   printf("%s :: Qd 0x%08x 0x%08x  Qm (" #QMtype ")0x%08x\n", \
-	 instruction, out[1], out[0], QMval ); \
+   printf("%s :: Qd 0x%08x 0x%08x  Qm (" #QMtype ")0x%08x\n",   \
+          instruction, out[1], out[0], QMval );                 \
 }
 
 #define TESTINSN_un_q(instruction, QD, QM, QMtype, QMval) \
@@ -140,7 +140,7 @@ const unsigned int mem[] = {
       ); \
   fflush(stdout); \
   printf("%s :: Qd 0x%08x 0x%08x  Qm (" #QMtype ")0x%08x  fpscr %08x\n", \
-      instruction, out[1], out[0], QMval, fpscr); \
+         instruction, out[1], out[0], QMval, fpscr);                    \
 } \
 { \
    unsigned int out[2]; \
@@ -163,7 +163,7 @@ const unsigned int mem[] = {
 	 ); \
    fflush(stdout); \
    printf("%s :: Qd 0x%08x 0x%08x  Qm (" #QMtype ")0x%08x  fpscr %08x\n", \
-	 instruction, out[1], out[0], QMval, fpscr); \
+          instruction, out[1], out[0], QMval, fpscr);                   \
 }
 
 #define TESTINSN_core_to_scalar(instruction, QD, QM, QMval) \
@@ -181,7 +181,7 @@ const unsigned int mem[] = {
       ); \
   fflush(stdout); \
   printf("%s :: Qd 0x%08x 0x%08x  Qm 0x%08x\n", \
-      instruction, out[1], out[0], QMval); \
+         instruction, out[1], out[0], QMval);   \
 }
 
 #define TESTINSN_scalar_to_core(instruction, QD, QM, QMtype, QMval) \
@@ -198,8 +198,8 @@ const unsigned int mem[] = {
       : #QD, #QM, "memory" \
       ); \
   fflush(stdout); \
-  printf("%s :: Rd 0x%08x  Qm (" #QMtype ")0x%08x\n", \
-      instruction, out[0], QMval); \
+  printf("%s :: Rd 0x%08x  Qm (" #QMtype ")0x%08x\n",   \
+         instruction, out[0], QMval);                   \
 }
 
 #define TESTINSN_VLDn(instruction, QD1, QD2, QD3, QD4) \
@@ -280,9 +280,9 @@ const unsigned int mem[] = {
 	 ); \
    fflush(stdout); \
    printf("%s :: Result 0x%08x 0x%08x 0x%08x 0x%08x "   \
-	 "0x%08x 0x%08x 0x%08x 0x%08x  delta %d\n", \
+          "0x%08x 0x%08x 0x%08x 0x%08x  delta %d\n",            \
           instruction, out[0], out[1], out[2], out[3], out[4],  \
-	 out[5], out[6], out[7], (int)out[8]-(int)mem); \
+          out[5], out[6], out[7], (int)out[8]-(int)mem);        \
 }
 
 #define TESTINSN_VSTn_WB(instruction, QD1, QD2, QD3, QD4) \
@@ -306,9 +306,9 @@ const unsigned int mem[] = {
 	 ); \
    fflush(stdout); \
    printf("%s :: Result 0x%08x 0x%08x 0x%08x 0x%08x "   \
-	 "0x%08x 0x%08x 0x%08x 0x%08x  delta %d\n", \
+          "0x%08x 0x%08x 0x%08x 0x%08x  delta %d\n",            \
           instruction, out[0], out[1], out[2], out[3], out[4],  \
-	 out[5], out[6], out[7], (int)out[8]-(int)out); \
+          out[5], out[6], out[7], (int)out[8]-(int)out);        \
 }
 
 #define TESTINSN_VLDn_RI(instruction, QD1, QD2, QD3, QD4, RM, RMval) \
@@ -337,9 +337,9 @@ const unsigned int mem[] = {
 	 ); \
    fflush(stdout); \
    printf("%s :: Result 0x%08x 0x%08x 0x%08x 0x%08x "   \
-	 "0x%08x 0x%08x 0x%08x 0x%08x  delta %d\n", \
+          "0x%08x 0x%08x 0x%08x 0x%08x  delta %d\n",            \
           instruction, out[0], out[1], out[2], out[3], out[4],  \
-	 out[5], out[6], out[7], (int)out[8]-(int)addr); \
+          out[5], out[6], out[7], (int)out[8]-(int)addr);       \
 }
 
 
@@ -365,9 +365,9 @@ const unsigned int mem[] = {
 	 ); \
    fflush(stdout); \
    printf("%s :: Result 0x%08x 0x%08x 0x%08x 0x%08x "   \
-	 "0x%08x 0x%08x 0x%08x 0x%08x  delta %d\n", \
+          "0x%08x 0x%08x 0x%08x 0x%08x  delta %d\n",            \
           instruction, out[0], out[1], out[2], out[3], out[4],  \
-	 out[5], out[6], out[7], (int)out[8]-(int)out); \
+          out[5], out[6], out[7], (int)out[8]-(int)out);        \
 }
 
 #define TESTINSN_bin(instruction, QD, QM, QMtype, QMval, QN, QNtype, QNval) \
@@ -385,9 +385,9 @@ const unsigned int mem[] = {
       : #QD, #QM, #QN, "memory" \
       ); \
   fflush(stdout); \
-  printf("%s :: Qd 0x%08x 0x%08x  Qm (" #QMtype ")0x%08x" \
-      "  Qn (" #QNtype ")0x%08x\n", \
-      instruction, out[1], out[0], QMval, QNval); \
+  printf("%s :: Qd 0x%08x 0x%08x  Qm (" #QMtype ")0x%08x"       \
+         "  Qn (" #QNtype ")0x%08x\n",                          \
+         instruction, out[1], out[0], QMval, QNval);            \
 } \
 { \
    unsigned int out[2]; \
@@ -405,9 +405,9 @@ const unsigned int mem[] = {
 	 : #QD, #QM, #QN, "memory" \
 	 ); \
    fflush(stdout); \
-   printf("%s :: Qd 0x%08x 0x%08x  Qm (" #QMtype ")0x%08x" \
-	 "  Qn (" #QNtype ")0x%08x\n", \
-	 instruction, out[1], out[0], QMval, QNval); \
+   printf("%s :: Qd 0x%08x 0x%08x  Qm (" #QMtype ")0x%08x"      \
+          "  Qn (" #QNtype ")0x%08x\n",                         \
+          instruction, out[1], out[0], QMval, QNval);           \
 }
 
 #define TESTINSN_bin_f(instruction, QD, QM, QMtype, QMval, QN, QNtype, QNval) \
@@ -425,9 +425,9 @@ const unsigned int mem[] = {
       : #QD, #QM, #QN, "memory" \
       ); \
   fflush(stdout); \
-  printf("%s :: Qd 0x%08x 0x%08x  Qm (" #QMtype ")0x%08x" \
-      "  Qn (" #QNtype ")0x%08x\n", \
-      instruction, out[1], out[0], QMval, QNval); \
+  printf("%s :: Qd 0x%08x 0x%08x  Qm (" #QMtype ")0x%08x"       \
+         "  Qn (" #QNtype ")0x%08x\n",                          \
+         instruction, out[1], out[0], QMval, QNval);            \
 } \
 { \
      unsigned int out[2]; \
@@ -445,9 +445,9 @@ const unsigned int mem[] = {
 	         : #QD, #QM, #QN, "memory" \
 	         ); \
      fflush(stdout); \
-     printf("%s :: Qd 0x%08x 0x%08x  Qm (" #QMtype ")0x%08x" \
-	         "  Qn (" #QNtype ")0x%08x\n", \
-	         instruction, out[1], out[0], QMval, QNval); \
+     printf("%s :: Qd 0x%08x 0x%08x  Qm (" #QMtype ")0x%08x"    \
+            "  Qn (" #QNtype ")0x%08x\n",                       \
+            instruction, out[1], out[0], QMval, QNval);         \
 }
 
 #define TESTINSN_tbl(instruction, QD, QM, QMtype, QMval, QN1, QN1type, QN1val, \
@@ -470,12 +470,12 @@ const unsigned int mem[] = {
       : #QD, #QM, #QN1, #QN2, #QN3, #QN4, "memory" \
       ); \
   fflush(stdout); \
-  printf("%s :: Qd 0x%08x 0x%08x  Qm (" #QMtype ")0x%08x" \
-      "  Qn1 (" #QN1type ")0x%08x" \
-      "  Qn2 (" #QN2type ")0x%08x" \
-      "  Qn3 (" #QN3type ")0x%08x" \
-      "  Qn4 (" #QN4type ")0x%08x\n", \
-      instruction, out[1], out[0], QMval, QN1val, QN2val, QN3val, QN4val); \
+  printf("%s :: Qd 0x%08x 0x%08x  Qm (" #QMtype ")0x%08x"       \
+         "  Qn1 (" #QN1type ")0x%08x"                           \
+         "  Qn2 (" #QN2type ")0x%08x"                           \
+         "  Qn3 (" #QN3type ")0x%08x"                                   \
+         "  Qn4 (" #QN4type ")0x%08x\n",                                \
+         instruction, out[1], out[0], QMval, QN1val, QN2val, QN3val, QN4val); \
 } \
 { \
    unsigned int out[2]; \
@@ -497,12 +497,12 @@ const unsigned int mem[] = {
 	 : #QD, #QM, #QN1, #QN2, #QN3, #QN4, "memory" \
 	 ); \
    fflush(stdout); \
-   printf("%s :: Qd 0x%08x 0x%08x  Qm (" #QMtype ")0x%08x" \
-	 "  Qn1 (" #QN1type ")0x%08x" \
-	 "  Qn2 (" #QN2type ")0x%08x" \
-	 "  Qn3 (" #QN3type ")0x%08x" \
-	 "  Qn4 (" #QN4type ")0x%08x\n", \
-	 instruction, out[1], out[0], QMval, QN1val, QN2val, QN3val, QN4val); \
+   printf("%s :: Qd 0x%08x 0x%08x  Qm (" #QMtype ")0x%08x"      \
+          "  Qn1 (" #QN1type ")0x%08x"                          \
+          "  Qn2 (" #QN2type ")0x%08x"                          \
+          "  Qn3 (" #QN3type ")0x%08x"                          \
+          "  Qn4 (" #QN4type ")0x%08x\n",                               \
+          instruction, out[1], out[0], QMval, QN1val, QN2val, QN3val, QN4val); \
 }
 
 #define TESTINSN_tbl_1(instruction, QD, QM, QMtype, QMval, QN1, QN1type, QN1val) \
@@ -541,9 +541,9 @@ const unsigned int mem[] = {
       : #QD, #QM, #QN, "memory", "r4" \
       ); \
   fflush(stdout); \
-  printf("%s :: Qd 0x%08x 0x%08x  Qm (" #QMtype ")0x%08x" \
-      "  Qn (" #QNtype ")0x%08x  fpscr: %08x\n", \
-      instruction, out[1], out[0], QMval, QNval, fpscr); \
+  printf("%s :: Qd 0x%08x 0x%08x  Qm (" #QMtype ")0x%08x"       \
+         "  Qn (" #QNtype ")0x%08x  fpscr: %08x\n",             \
+         instruction, out[1], out[0], QMval, QNval, fpscr);     \
 } \
 { \
      unsigned int out[2]; \
@@ -566,9 +566,9 @@ const unsigned int mem[] = {
 	         : #QD, #QM, #QN, "memory", "r4" \
 	         ); \
      fflush(stdout); \
-     printf("%s :: Qd 0x%08x 0x%08x  Qm (" #QMtype ")0x%08x" \
-	         "  Qn (" #QNtype ")0x%08x  fpscr: %08x\n", \
-	         instruction, out[1], out[0], QMval, QNval, fpscr); \
+     printf("%s :: Qd 0x%08x 0x%08x  Qm (" #QMtype ")0x%08x"    \
+            "  Qn (" #QNtype ")0x%08x  fpscr: %08x\n",              \
+            instruction, out[1], out[0], QMval, QNval, fpscr);      \
 }
 
 #define TESTINSN_dual(instruction, QM, QMtype, QMval, QN, QNtype, QNval) \
@@ -590,8 +590,8 @@ const unsigned int mem[] = {
 	 ); \
    fflush(stdout); \
    printf("%s :: Qm 0x%08x 0x%08x  Qn 0x%08x 0x%08x  Qm (" #QMtype ")0x%08x" \
-	 "  Qn (" #QNtype ")0x%08x\n", \
-	 instruction, out1[1], out1[0], out2[1], out2[0], QMval, QNval); \
+          "  Qn (" #QNtype ")0x%08x\n",                                 \
+          instruction, out1[1], out1[0], out2[1], out2[0], QMval, QNval); \
 } \
 { \
      unsigned int out1[2]; \
@@ -611,8 +611,8 @@ const unsigned int mem[] = {
 	         ); \
      fflush(stdout); \
      printf("%s :: Qm 0x%08x 0x%08x  Qn 0x%08x 0x%08x  Qm (" #QMtype ")0x%08x" \
-	         "  Qn (" #QNtype ")0x%08x\n", \
-	         instruction, out1[1], out1[0], out2[1], out2[0], QMval, QNval); \
+            "  Qn (" #QNtype ")0x%08x\n",                               \
+            instruction, out1[1], out1[0], out2[1], out2[0], QMval, QNval); \
 }
 
 #if 0
@@ -630,8 +630,8 @@ const unsigned int mem[] = {
       : #QD, #QM, "memory" \
       ); \
   fflush(stdout); \
-  printf("%s, #" #imm " :: Qd 0x%08x 0x%08x  Qm (" #QMtype ")0x%08x", \
-      instruction, out[1], out[0], QMval); \
+  printf("%s, #" #imm " :: Qd 0x%08x 0x%08x  Qm (" #QMtype ")0x%08x",   \
+         instruction, out[1], out[0], QMval);                           \
 }
 #endif
 

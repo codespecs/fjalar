@@ -91,20 +91,23 @@ extern Int    VG_(rename) ( const HChar* old_name, const HChar* new_name );
 extern Int    VG_(unlink) ( const HChar* file_name );
 extern SysRes VG_(mkdir)  ( const HChar* path_name, Int mode );
 
-extern Int    VG_(poll) (struct vki_pollfd *fds, Int nfds, Int timeout);
+extern SysRes VG_(poll) (struct vki_pollfd *fds, Int nfds, Int timeout);
 
-extern Int    VG_(readlink)( const HChar* path, HChar* buf, UInt bufsize );
-extern Int    VG_(getdents)( Int fd, struct vki_dirent *dirp, UInt count );
+extern SSizeT VG_(readlink)( const HChar* path, HChar* buf, SizeT bufsiz);
 
-extern const HChar*  VG_(basename)( const HChar* path );
-extern const HChar*  VG_(dirname) ( const HChar* path );
+#if defined(VGO_linux)
+extern Int    VG_(getdents64)( Int fd, struct vki_dirent64 *dirp, UInt count );
+#endif
+
+extern const HChar* VG_(basename)( const HChar* path );
+extern const HChar* VG_(dirname) ( const HChar* path );
 
 /* Return the name of a directory for temporary files. */
 extern const HChar* VG_(tmpdir)(void);
 
-/* Copy the working directory at startup into buf[0 .. size-1], or return
-   False if buf is too small. */
-extern Bool VG_(get_startup_wd) ( HChar* buf, SizeT size );
+/* Return the working directory at startup. The returned string is
+   persistent. */
+extern const HChar *VG_(get_startup_wd) ( void );
 
 #endif   // __PUB_TOOL_LIBCFILE_H
 

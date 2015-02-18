@@ -466,7 +466,7 @@ void* new_block ( ThreadId tid, void* p, SizeT req_szB, SizeT req_alignB,
          return NULL;
       }
       if (is_zeroed) VG_(memset)(p, 0, req_szB);
-      actual_szB = VG_(malloc_usable_size)(p);
+      actual_szB = VG_(cli_malloc_usable_size)(p);
       tl_assert(actual_szB >= req_szB);
       /* slop_szB = actual_szB - req_szB; */
    } else {
@@ -671,11 +671,10 @@ static void* dh_realloc ( ThreadId tid, void* p_old, SizeT new_szB )
 
 static SizeT dh_malloc_usable_size ( ThreadId tid, void* p )
 {                                                            
-   tl_assert(0);
-//zz   HP_Chunk* hc = VG_(HT_lookup)( malloc_list, (UWord)p );
-//zz
-//zz   return ( hc ? hc->req_szB + hc->slop_szB : 0 );
+   Block* bk = find_Block_containing( (Addr)p );
+   return bk ? bk->req_szB : 0;
 }                                                            
+
 
 //------------------------------------------------------------//
 //--- memory references                                    ---//
@@ -872,9 +871,9 @@ void addMemEvent(IRSB* sbOut, Bool isWrite, Int szB, IRExpr* addr,
 static
 IRSB* dh_instrument ( VgCallbackClosure* closure,
                       IRSB* sbIn,
-                      VexGuestLayout* layout,
-                      VexGuestExtents* vge,
-                      VexArchInfo* archinfo_host,
+                      const VexGuestLayout* layout,
+                      const VexGuestExtents* vge,
+                      const VexArchInfo* archinfo_host,
                       IRType gWordTy, IRType hWordTy )
 {
    Int   i, n = 0;
@@ -1094,7 +1093,7 @@ static void show_N_div_100( /*OUT*/HChar* buf, ULong n )
 
 static void show_APInfo ( APInfo* api )
 {
-   HChar bufA[80];
+   HChar bufA[80];   // large enough
    VG_(memset)(bufA, 0, sizeof(bufA));
    if (api->tot_blocks > 0) {
       show_N_div_100( bufA, ((ULong)api->tot_bytes * 100ULL)
@@ -1121,7 +1120,7 @@ static void show_APInfo ( APInfo* api )
       ULong aad_frac_10k
          = g_guest_instrs_executed == 0
            ? 0 : (10000ULL * aad) / g_guest_instrs_executed;
-      HChar buf[16];
+      HChar buf[80];  // large enough
       show_N_div_100(buf, aad_frac_10k);
       VG_(umsg)("deaths:      %'llu, at avg age %'llu "
                 "(%s%% of prog lifetime)\n",
@@ -1130,7 +1129,7 @@ static void show_APInfo ( APInfo* api )
       VG_(umsg)("deaths:      none (none of these blocks were freed)\n");
    }
 
-   HChar bufR[80], bufW[80];
+   HChar bufR[80], bufW[80];   // large enough
    VG_(memset)(bufR, 0, sizeof(bufR));
    VG_(memset)(bufW, 0, sizeof(bufW));
    if (api->tot_bytes > 0) {

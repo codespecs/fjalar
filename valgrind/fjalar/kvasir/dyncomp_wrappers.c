@@ -148,6 +148,7 @@ void *I_WRAP_SONAME_FNNAME_ZU(libstdcZpZpZa, _ZNSolsEt)
     return result;
 }
 
+// (comment added 2006)  
 /* XXX Should support float, double, long double, and long long too,
    but I'm not confident how to pass them through CALL_FN safely, nor
    be 64-bit clean. */

@@ -40,30 +40,34 @@
 /* Get the file/function/line number of the instruction at address
    'a'.  For these four, if debug info for the address is found, it
    copies the info into the buffer/UInt and returns True.  If not, it
-   returns False and nothing is copied.  VG_(get_fnname) always
+   returns False.  VG_(get_fnname) always
    demangles C++ function names.  VG_(get_fnname_w_offset) is the
    same, except it appends "+N" to symbol names to indicate offsets.  */
-extern Bool VG_(get_filename) ( Addr a, HChar* filename, Int n_filename );
-extern Bool VG_(get_fnname)   ( Addr a, HChar* fnname,   Int n_fnname   );
+extern Bool VG_(get_filename) ( Addr a, const HChar** filename );
+extern Bool VG_(get_fnname)   ( Addr a, const HChar** fnname );
 extern Bool VG_(get_linenum)  ( Addr a, UInt* linenum );
 extern Bool VG_(get_fnname_w_offset)
-                              ( Addr a, HChar* fnname,   Int n_fnname   );
+                              ( Addr a, const HChar** fnname );
 
 /* This one is the most general.  It gives filename, line number and
    optionally directory name.  filename and linenum may not be NULL.
    dirname may be NULL, meaning that the caller does not want
    directory name info, in which case dirname_available must also be
-   NULL.  If dirname is non-null, directory info is written to it, if
+   NULL.  If dirname is non-null, directory info is written to *dirname, if
    it is available; if not available, '\0' is written to the first
    byte.  In either case *dirname_available is set to indicate whether
    or not directory information was available.
+
+   The character strings returned in *filename and *dirname are not
+   persistent. They will be freed when the DebugInfo they belong to
+   is discarded.
 
    Returned value indicates whether any filename/line info could be
    found. */
 extern Bool VG_(get_filename_linenum)
                               ( Addr a, 
-                                /*OUT*/HChar* filename, Int n_filename,
-                                /*OUT*/HChar* dirname,  Int n_dirname,
+                                /*OUT*/const HChar** filename,
+                                /*OUT*/const HChar** dirname,
                                 /*OUT*/Bool* dirname_available,
                                 /*OUT*/UInt* linenum );
 
@@ -74,7 +78,7 @@ extern Bool VG_(get_filename_linenum)
    a particular function.  Nb: if an executable/shared object is stripped
    of its symbols, this function will not be able to recognise function
    entry points within it. */
-extern Bool VG_(get_fnname_if_entry) ( Addr a, HChar* fnname, Int n_fnname );
+extern Bool VG_(get_fnname_if_entry) ( Addr a, const HChar** fnname );
 
 typedef
    enum {
@@ -84,7 +88,7 @@ typedef
    } Vg_FnNameKind;           //   Such names are often filtered.
 
 /* Indicates what kind of fnname it is. */
-extern Vg_FnNameKind VG_(get_fnname_kind) ( HChar* name );
+extern Vg_FnNameKind VG_(get_fnname_kind) ( const HChar* name );
 
 /* Like VG_(get_fnname_kind), but takes a code address. */
 extern Vg_FnNameKind VG_(get_fnname_kind_from_IP) ( Addr ip );
@@ -94,7 +98,7 @@ extern Vg_FnNameKind VG_(get_fnname_kind_from_IP) ( Addr ip );
    which is guaranteed to be zero terminated.  Also data_addr's offset
    from the symbol start is put into *offset. */
 extern Bool VG_(get_datasym_and_offset)( Addr data_addr,
-                                         /*OUT*/HChar* dname, Int n_dname,
+                                         /*OUT*/const HChar** dname,
                                          /*OUT*/PtrdiffT* offset );
 
 /* Try to form some description of DATA_ADDR by looking at the DWARF3
@@ -118,16 +122,47 @@ Bool VG_(get_data_description)(
 
 /* Succeeds if the address is within a shared object or the main executable.
    It doesn't matter if debug info is present or not. */
-extern Bool VG_(get_objname)  ( Addr a, HChar* objname, Int n_objname );
+extern Bool VG_(get_objname)  ( Addr a, const HChar** objname );
 
-/* Puts into 'buf' info about the code address %eip:  the address, function
+
+/* Cursor allowing to describe inlined function calls at an IP,
+   by doing successive calls to VG_(describe_IP). */
+typedef  struct _InlIPCursor InlIPCursor;
+
+/* Returns info about the code address %eip:  the address, function
    name (if known) and filename/line number (if known), like this:
 
       0x4001BF05: realloc (vg_replace_malloc.c:339)
 
-   'n_buf' gives length of 'buf'.  Returns 'buf'.
+   eip can possibly corresponds to inlined function call(s).
+   To describe eip and the inlined function calls, the following must
+   be done:
+       InlIPCursor *iipc = VG_(new_IIPC)(eip);
+       do {
+          buf = VG_(describe_IP)(eip, iipc);
+          ... use buf ...
+       } while (VG_(next_IIPC)(iipc));
+       VG_(delete_IIPC)(iipc);
+
+   To only describe eip, without the inlined calls at eip, give a NULL iipc:
+       buf = VG_(describe_IP)(eip, NULL);   
+
+   Note, that the returned string is allocated in a static buffer local to
+   VG_(describe_IP). That buffer will be overwritten with every invocation.
+   Therefore, callers need to possibly stash away the string.
 */
-extern HChar* VG_(describe_IP)(Addr eip, HChar* buf, Int n_buf);
+extern const HChar* VG_(describe_IP)(Addr eip, const InlIPCursor* iipc);
+
+/* Builds a IIPC (Inlined IP Cursor) to describe eip and all the inlined calls
+   at eip. Such a cursor must be deleted after use using VG_(delete_IIPC). */
+extern InlIPCursor* VG_(new_IIPC)(Addr eip);
+/* Move the cursor to the next call to describe.
+   Returns True if there are still calls to describe.
+   False if nothing to describe anymore. */
+extern Bool VG_(next_IIPC)(InlIPCursor *iipc);
+/* Free all memory associated with iipc. */
+extern void VG_(delete_IIPC)(InlIPCursor *iipc);
+
 
 
 /* Get an XArray of StackBlock which describe the stack (auto) blocks
@@ -207,24 +242,6 @@ PtrdiffT      VG_(DebugInfo_get_text_bias)   ( const DebugInfo *di );
    of the list stays constant. */
 const DebugInfo* VG_(next_DebugInfo)    ( const DebugInfo *di );
 
-/* Functions for traversing all the symbols in a DebugInfo.  _howmany
-   tells how many symbol table entries there are.  _getidx retrieves
-   the n'th entry, for n in 0 .. _howmany-1.  You may not modify the
-   function names thereby acquired; if you want to do so, first strdup
-   them.  The primary name is returned in *pri_name, and *sec_names is
-   set either to NULL or to a NULL terminated vector containing
-   pointers to the secondary names. */
-Int  VG_(DebugInfo_syms_howmany) ( const DebugInfo *di );
-void VG_(DebugInfo_syms_getidx)  ( const DebugInfo *di, 
-                                   Int idx,
-                                   /*OUT*/Addr*   avma,
-                                   /*OUT*/Addr*   tocptr,
-                                   /*OUT*/UInt*   size,
-                                   /*OUT*/HChar**  pri_name,
-                                   /*OUT*/HChar*** sec_names,
-                                   /*OUT*/Bool*   isText,
-                                   /*OUT*/Bool*   isIFunc );
-
 /* A simple enumeration to describe the 'kind' of various kinds of
    segments that arise from the mapping of object files. */
 typedef
@@ -245,11 +262,10 @@ typedef
 const HChar* VG_(pp_SectKind)( VgSectKind kind );
 
 /* Given an address 'a', make a guess of which section of which object
-   it comes from.  If name is non-NULL, then the last n_name-1
-   characters of the object's name is put in name[0 .. n_name-2], and
-   name[n_name-1] is set to zero (guaranteed zero terminated). */
-VgSectKind VG_(DebugInfo_sect_kind)( /*OUT*/HChar* name, SizeT n_name, 
-                                     Addr a);
+   it comes from.  If name is non-NULL, then the object's name is put
+   into *name. The returned name is persistent as long as the debuginfo
+   it belongs to isn't discarded. */
+VgSectKind VG_(DebugInfo_sect_kind)( /*OUT*/const HChar** name, Addr a);
 
 
 #endif   // __PUB_TOOL_DEBUGINFO_H

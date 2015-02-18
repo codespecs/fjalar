@@ -56,15 +56,25 @@
 #  define VG_ELF_MACHINE      EM_PPC
 #  define VG_ELF_CLASS        ELFCLASS32
 #  undef  VG_PLAT_USES_PPCTOC
-#elif defined(VGP_ppc64_linux)
+#elif defined(VGP_ppc64be_linux)
 #  define VG_ELF_DATA2XXX     ELFDATA2MSB
 #  define VG_ELF_MACHINE      EM_PPC64
 #  define VG_ELF_CLASS        ELFCLASS64
 #  define VG_PLAT_USES_PPCTOC 1
+#elif defined(VGP_ppc64le_linux)
+#  define VG_ELF_DATA2XXX     ELFDATA2LSB
+#  define VG_ELF_MACHINE      EM_PPC64
+#  define VG_ELF_CLASS        ELFCLASS64
+#  undef VG_PLAT_USES_PPCTOC
 #elif defined(VGP_arm_linux)
 #  define VG_ELF_DATA2XXX     ELFDATA2LSB
 #  define VG_ELF_MACHINE      EM_ARM
 #  define VG_ELF_CLASS        ELFCLASS32
+#  undef  VG_PLAT_USES_PPCTOC
+#elif defined(VGP_arm64_linux)
+#  define VG_ELF_DATA2XXX     ELFDATA2LSB
+#  define VG_ELF_MACHINE      EM_AARCH64
+#  define VG_ELF_CLASS        ELFCLASS64
 #  undef  VG_PLAT_USES_PPCTOC
 #elif defined(VGO_darwin)
 #  undef  VG_ELF_DATA2XXX
@@ -128,7 +138,7 @@
 #  define VG_FRAME_PTR        guest_GPR1   // No frame ptr for PPC
 #  define VG_INT_RET_REG      guest_GPR3
 #  define VG_INT_RET2_REG     guest_GPR4
-#elif defined(VGA_ppc64)
+#elif defined(VGA_ppc64be) || defined(VGA_ppc64le)
 #  define VG_INSTR_PTR        guest_CIA
 #  define VG_STACK_PTR        guest_GPR1
 #  define VG_FRAME_PTR        guest_GPR1   // No frame ptr for PPC
@@ -138,6 +148,10 @@
 #  define VG_INSTR_PTR        guest_R15T
 #  define VG_STACK_PTR        guest_R13
 #  define VG_FRAME_PTR        guest_R11
+#elif defined(VGA_arm64)
+#  define VG_INSTR_PTR        guest_PC
+#  define VG_STACK_PTR        guest_XSP
+#  define VG_FRAME_PTR        guest_X29   // FIXME: is this right?
 #elif defined(VGA_s390x)
 #  define VG_INSTR_PTR        guest_IA
 #  define VG_STACK_PTR        guest_SP
@@ -240,7 +254,7 @@ extern Bool VG_(machine_get_cache_info)( VexArchInfo * );
 extern void VG_(machine_ppc32_set_clszB)( Int );
 #endif
 
-#if defined(VGA_ppc64)
+#if defined(VGA_ppc64be) || defined(VGA_ppc64le)
 extern void VG_(machine_ppc64_set_clszB)( Int );
 #endif
 
@@ -272,7 +286,7 @@ extern UInt VG_(machine_ppc32_has_VMX);
 /* PPC64: set to 1 if Altivec instructions are supported in
    user-space, else 0.  Is referenced from assembly code, so do not
    change from a 64-bit int. */
-#if defined(VGA_ppc64)
+#if defined(VGA_ppc64be) || defined(VGA_ppc64le)
 extern ULong VG_(machine_ppc64_has_VMX);
 #endif
 

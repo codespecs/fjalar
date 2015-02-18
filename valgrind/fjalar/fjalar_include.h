@@ -221,6 +221,7 @@ struct _AggregateType {
   // A list of classes that are the superclasses of this class
   // Every elt is a Superclass* so this is like List<Superclass>
   // (Only non-null if there is at least 1 superclass)
+  // (comment added 2006)
   // TODO: We never free the dynamically-allocated Superclass entries,
   //       but that shouldn't really matter in practice - oh well...
   SimpleList* /* <Superclass> */ superclassList;

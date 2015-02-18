@@ -8,11 +8,11 @@
 #  This file is part of Callgrind, a cache-simulator and call graph
 #  tracer built on Valgrind.
 #
-#  Copyright (C) 2003 Josef Weidendorfer
+#  Copyright (C) 2003-2013 Josef Weidendorfer
 #     Josef.Weidendorfer@gmx.de
 #
 #  This file is based heavily on cg_annotate, part of Valgrind.
-#  Copyright (C) 2002 Nicholas Nethercote
+#  Copyright (C) 2002-2013 Nicholas Nethercote
 #     njn@valgrind.org
 #
 #  This program is free software; you can redistribute it and/or
@@ -543,8 +543,8 @@ sub read_input_file()
 		$call_CCs{$curr_name,$curr_cname} = [];
 		$call_counter{$curr_name,$curr_cname} = 0;
 	      }
-		add_array_a_to_b($CC, $call_CCs{$curr_name,$curr_cname});
-		$call_counter{$curr_name,$curr_cname} += $curr_call_counter;
+	      add_array_a_to_b($CC, $call_CCs{$curr_name,$curr_cname});
+	      $call_counter{$curr_name,$curr_cname} += $curr_call_counter;
 
 	      my $tmp = $called_from_line->{$curr_file,$curr_line_num};
 	      if (!defined $tmp) {
@@ -557,8 +557,8 @@ sub read_input_file()
 		$call_CCs{$curr_name,$curr_cname,$curr_line_num} = [];
 		$call_counter{$curr_name,$curr_cname,$curr_line_num} = 0;
 	      }
-	        add_array_a_to_b($CC, $call_CCs{$curr_name,$curr_cname,$curr_line_num});
-	        $call_counter{$curr_name,$curr_cname,$curr_line_num} += $curr_call_counter;
+	      add_array_a_to_b($CC, $call_CCs{$curr_name,$curr_cname,$curr_line_num});
+	      $call_counter{$curr_name,$curr_cname,$curr_line_num} += $curr_call_counter;
 
 	      $curr_call_counter = 0;
 

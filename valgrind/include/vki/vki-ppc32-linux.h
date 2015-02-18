@@ -63,8 +63,8 @@ typedef struct {
 
 /* PAGE_SHIFT determines the page size, unfortunately
    page size might vary between 32-bit and 64-bit ppc kernels */
-extern unsigned long VKI_PAGE_SHIFT;
-extern unsigned long VKI_PAGE_SIZE;
+extern UWord VKI_PAGE_SHIFT;
+extern UWord VKI_PAGE_SIZE;
 #define VKI_MAX_PAGE_SHIFT	16
 #define VKI_MAX_PAGE_SIZE	(1UL << VKI_MAX_PAGE_SHIFT)
 
@@ -341,6 +341,10 @@ struct vki_sigcontext {
 #define VKI_F_SETOWN_EX		15
 #define VKI_F_GETOWN_EX		16
 
+#define VKI_F_OFD_GETLK		36
+#define VKI_F_OFD_SETLK		37
+#define VKI_F_OFD_SETLKW	38
+
 #define VKI_F_OWNER_TID		0
 #define VKI_F_OWNER_PID		1
 #define VKI_F_OWNER_PGRP	2
@@ -380,6 +384,7 @@ struct vki_f_owner_ex {
 
 #define VKI_SIOCSPGRP		0x8902
 #define VKI_SIOCGPGRP		0x8904
+#define VKI_SIOCATMARK		0x8905
 #define VKI_SIOCGSTAMP		0x8906          /* Get stamp (timeval) */
 #define VKI_SIOCGSTAMPNS	0x8907          /* Get stamp (timespec) */
 
@@ -632,7 +637,7 @@ struct vki_termios {
 //# define VKI_TIOCPKT_NOSTOP		16
 //# define VKI_TIOCPKT_DOSTOP		32
 
-//#define VKI_TIOCNOTTY		0x5422
+#define VKI_TIOCNOTTY		0x5422
 //#define VKI_TIOCSETD		0x5423
 //#define VKI_TIOCGETD		0x5424
 #define VKI_TCSBRKP		0x5425  /* Needed for POSIX tcsendbreak() */
@@ -920,6 +925,13 @@ struct vki_shminfo64 {
    unsigned long	__unused3;
    unsigned long	__unused4;
 };
+
+//----------------------------------------------------------------------
+// From linux-2.6.8.1/include/asm-generic/errno.h
+//----------------------------------------------------------------------
+
+#define	VKI_ENOSYS       38  /* Function not implemented */
+#define	VKI_EOVERFLOW    75  /* Value too large for defined data type */
 
 //.. //----------------------------------------------------------------------
 //.. // DRM ioctls

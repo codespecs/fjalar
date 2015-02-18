@@ -492,7 +492,7 @@ VG_(disp_cp_evcheck_fail):
         li      7,0
         b       postamble
 
-
+        
 .size VG_(disp_run_translations), .-VG_(disp_run_translations)
 
 /* Let the linker know we don't need an executable stack */

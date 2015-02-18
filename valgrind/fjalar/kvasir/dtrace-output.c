@@ -418,6 +418,7 @@ static char printDtraceSingleVar(VariableEntry* var,
   if (isHashcode) {
     // Be careful of what to print depending on whether the
     // variable is a static array:
+    // (comment added 2005)  
     // TODO: What about a pointer to a static array?
     //       var->isStaticArray says that the base variable is a
     //       static array after all dereferences are done.
@@ -616,6 +617,7 @@ static char printDtraceSequence(VariableEntry* var,
           // well as the tags of the first initialized address and the
           // current address because we are observing everything as a
           // sequence
+          // (comment added 2005)  
           // TODO: This may cause unnecessarily large comparability
           // sets - watch out!
           if (kvasir_with_dyncomp && firstInitElt) {
@@ -784,6 +786,7 @@ void printDtraceBaseValueSequence(DeclaredType decType,
     limit = min(limit, fjalar_array_length_limit);
   }
 
+  // (comment added 2005)  
   // TODO: Add support for bit-level precision here
 
   // Don't support printing of these types:

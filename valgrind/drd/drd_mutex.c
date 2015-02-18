@@ -76,10 +76,28 @@ void DRD_(mutex_initialize)(struct mutex_info* const p,
       = (void(*)(DrdClientobj*, DrdThreadId))mutex_delete_thread;
    p->mutex_type          = mutex_type;
    p->recursion_count     = 0;
+   p->ignore_ordering     = False;
    p->owner               = DRD_INVALID_THREADID;
    p->last_locked_segment = 0;
    p->acquiry_time_ms     = 0;
    p->acquired_at         = 0;
+}
+
+void DRD_(mutex_ignore_ordering)(const Addr mutex)
+{
+   struct mutex_info* p = DRD_(mutex_get)(mutex);
+
+   if (s_trace_mutex)
+      DRD_(trace_msg)("[%d] mutex_ignore_ordering %s 0x%lx",
+                      DRD_(thread_get_running_tid)(),
+                      p ? DRD_(mutex_type_name)(p->mutex_type) : "(?)",
+                      mutex);
+
+   if (p) {
+      p->ignore_ordering = True;
+   } else {
+      DRD_(not_a_mutex)(mutex);
+   }
 }
 
 /** Deallocate the memory that was allocated by mutex_initialize(). */
@@ -89,10 +107,10 @@ static void mutex_cleanup(struct mutex_info* p)
 
    if (s_trace_mutex)
       DRD_(trace_msg)("[%d] mutex_destroy   %s 0x%lx rc %d owner %d",
-                   DRD_(thread_get_running_tid)(),
+                      DRD_(thread_get_running_tid)(),
                       DRD_(mutex_get_typename)(p), p->a1,
-                   p ? p->recursion_count : -1,
-                   p ? p->owner : DRD_INVALID_THREADID);
+                      p ? p->recursion_count : -1,
+                      p ? p->owner : DRD_INVALID_THREADID);
 
    if (mutex_is_locked(p))
    {
@@ -147,7 +165,7 @@ DRD_(mutex_get_or_allocate)(const Addr mutex, const MutexT mutex_type)
    if (p)
    {
       if (mutex_type == mutex_type_unknown || p->mutex_type == mutex_type)
-      return p;
+	 return p;
       else
       {
 	 wrong_mutex_type(mutex);
@@ -180,9 +198,9 @@ DRD_(mutex_init)(const Addr mutex, const MutexT mutex_type)
 
    if (s_trace_mutex)
       DRD_(trace_msg)("[%d] mutex_init      %s 0x%lx",
-                   DRD_(thread_get_running_tid)(),
-                   DRD_(mutex_type_name)(mutex_type),
-                   mutex);
+                      DRD_(thread_get_running_tid)(),
+                      DRD_(mutex_type_name)(mutex_type),
+                      mutex);
 
    if (mutex_type == mutex_type_invalid_mutex)
    {
@@ -241,11 +259,11 @@ void DRD_(mutex_pre_lock)(const Addr mutex, MutexT mutex_type,
 
    if (s_trace_mutex)
       DRD_(trace_msg)("[%d] %s %s 0x%lx rc %d owner %d",
-                   DRD_(thread_get_running_tid)(),
-                   trylock ? "pre_mutex_lock " : "mutex_trylock  ",
-                   p ? DRD_(mutex_get_typename)(p) : "(?)",
+                      DRD_(thread_get_running_tid)(),
+                      trylock ? "pre_mutex_lock " : "mutex_trylock  ",
+                      p ? DRD_(mutex_get_typename)(p) : "(?)",
                       mutex, p ? p->recursion_count : -1,
-                   p ? p->owner : DRD_INVALID_THREADID);
+                      p ? p->owner : DRD_INVALID_THREADID);
 
    if (p == 0)
    {
@@ -291,28 +309,29 @@ void DRD_(mutex_post_lock)(const Addr mutex, const Bool took_lock,
 
    if (s_trace_mutex)
       DRD_(trace_msg)("[%d] %s %s 0x%lx rc %d owner %d%s",
-                   drd_tid,
-                   post_cond_wait ? "cond_post_wait " : "post_mutex_lock",
-                   p ? DRD_(mutex_get_typename)(p) : "(?)",
+                      drd_tid,
+                      post_cond_wait ? "cond_post_wait " : "post_mutex_lock",
+                      p ? DRD_(mutex_get_typename)(p) : "(?)",
                       mutex, p ? p->recursion_count : 0,
-                   p ? p->owner : VG_INVALID_THREADID,
-                   took_lock ? "" : " (locking failed)");
+                      p ? p->owner : VG_INVALID_THREADID,
+                      took_lock ? "" : " (locking failed)");
 
    if (! p || ! took_lock)
       return;
 
    if (p->recursion_count == 0) {
-      if (p->owner != drd_tid && p->owner != DRD_INVALID_THREADID)
-      {
-         tl_assert(p->last_locked_segment);
+      if (!p->ignore_ordering) {
+         if (p->owner != drd_tid && p->owner != DRD_INVALID_THREADID) {
+            tl_assert(p->last_locked_segment);
 
-         DRD_(thread_new_segment_and_combine_vc)(drd_tid,
-                                                 p->last_locked_segment);
+            DRD_(thread_new_segment_and_combine_vc)(drd_tid,
+                                                    p->last_locked_segment);
+         } else {
+            DRD_(thread_new_segment)(drd_tid);
+         }
+
+         s_mutex_segment_creation_count++;
       }
-      else
-         DRD_(thread_new_segment)(drd_tid);
-
-      s_mutex_segment_creation_count++;
 
       p->owner           = drd_tid;
       p->acquiry_time_ms = VG_(read_millisecond_timer)();
@@ -426,7 +445,8 @@ void DRD_(mutex_unlock)(const Addr mutex, MutexT mutex_type)
       /* this mutex is locked again.                                        */
 
       DRD_(thread_get_latest_segment)(&p->last_locked_segment, drd_tid);
-      DRD_(thread_new_segment)(drd_tid);
+      if (!p->ignore_ordering)
+         DRD_(thread_new_segment)(drd_tid);
       p->acquired_at = 0;
       s_mutex_segment_creation_count++;
    }
@@ -468,6 +488,8 @@ const HChar* DRD_(mutex_type_name)(const MutexT mt)
       return "mutex";
    case mutex_type_spinlock:
       return "spinlock";
+   case mutex_type_cxa_guard:
+      return "cxa_guard";
    }
    tl_assert(0);
    return "?";

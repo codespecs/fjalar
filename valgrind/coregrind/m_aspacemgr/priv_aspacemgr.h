@@ -47,6 +47,8 @@
                                  // VG_IS_PAGE_ALIGNED
                                  // VG_PGROUNDDN, VG_PGROUNDUP
 
+#include "pub_core_libcassert.h" // VG_(exit_now)
+
 #include "pub_core_syscall.h"    // VG_(do_syscallN)
                                  // VG_(mk_SysRes_Error)
                                  // VG_(mk_SysRes_Success)
@@ -75,7 +77,7 @@ extern void   ML_(am_assert_fail) ( const HChar* expr,
                                     const HChar* fn );
 
 #define aspacem_assert(expr)                              \
-  ((void) ((expr) ? 0 :                                   \
+  ((void) (LIKELY(expr) ? 0 :                             \
            (ML_(am_assert_fail)(#expr,                    \
                                 __FILE__, __LINE__,       \
                                 __PRETTY_FUNCTION__))))
@@ -108,7 +110,7 @@ extern SysRes ML_(am_do_relocate_nooverlap_mapping_NO_NOTIFY)(
 extern SysRes ML_(am_open)  ( const HChar* pathname, Int flags, Int mode );
 extern void   ML_(am_close) ( Int fd );
 extern Int    ML_(am_read)  ( Int fd, void* buf, Int count);
-extern Int    ML_(am_readlink) ( HChar* path, HChar* buf, UInt bufsiz );
+extern Int    ML_(am_readlink) ( const HChar* path, HChar* buf, UInt bufsiz );
 extern Int    ML_(am_fcntl) ( Int fd, Int cmd, Addr arg );
 
 /* Get the dev, inode and mode info for a file descriptor, if

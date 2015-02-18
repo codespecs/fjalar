@@ -158,7 +158,7 @@ VG_(disp_cp_xindir):
         ldr  r2, [r1, #0]
         add  r2, r2, #1
         str  r2, [r1, #0]
-
+        
         /* try a fast lookup in the translation cache */
         // r0 = next guest, r1,r2,r3,r4 scratch
         movw r1, #VG_TT_FAST_MASK       // r1 = VG_TT_FAST_MASK

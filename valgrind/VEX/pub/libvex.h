@@ -51,10 +51,11 @@
 
 typedef
    enum {
-      VexArch_INVALID,
+      VexArch_INVALID=0x400,
       VexArchX86,
       VexArchAMD64,
       VexArchARM,
+      VexArchARM64,
       VexArchPPC32,
       VexArchPPC64,
       VexArchS390X,
@@ -62,6 +63,16 @@ typedef
       VexArchMIPS64
    }
    VexArch;
+
+
+/* Information about endianness. */
+typedef
+   enum {
+      VexEndness_INVALID=0x600, /* unknown endianness */
+      VexEndnessLE,             /* little endian */
+      VexEndnessBE              /* big endian */
+   }
+   VexEndness;
 
 
 /* For a given architecture, these specify extra capabilities beyond
@@ -172,6 +183,9 @@ typedef
 /* Get an ARM architecure level from HWCAPS */
 #define VEX_ARM_ARCHLEVEL(x) ((x) & 0x3f)
 
+/* ARM64: baseline capability is AArch64 v8. */
+/* (no definitions since no variants so far) */
+
 /* MIPS baseline capability */
 /* Assigned Company values for bits 23:16 of the PRId Register
    (CP0 register 15, select 0).  As of the MIPS32 and MIPS64 specs from
@@ -196,10 +210,15 @@ typedef
 #define VEX_PRID_IMP_34K        0x9500
 #define VEX_PRID_IMP_74K        0x9700
 
+/* CPU has FPU and 32 dbl. prec. FP registers */
+#define VEX_PRID_CPU_32FPR      0x00000040
+
 /* Get MIPS Company ID from HWCAPS */
 #define VEX_MIPS_COMP_ID(x) ((x) & 0x00FF0000)
 /* Get MIPS Processor ID from HWCAPS */
-#define VEX_MIPS_PROC_ID(x) ((x) & 0x0000FFFF)
+#define VEX_MIPS_PROC_ID(x) ((x) & 0x0000FF00)
+/* Get MIPS Revision from HWCAPS */
+#define VEX_MIPS_REV(x) ((x) & 0x000000FF)
 /* Check if the processor supports DSP ASE Rev 2. */
 #define VEX_MIPS_PROC_DSP2(x) ((VEX_MIPS_COMP_ID(x) == VEX_PRID_COMP_MIPS) && \
                                (VEX_MIPS_PROC_ID(x) == VEX_PRID_IMP_74K))
@@ -211,11 +230,13 @@ typedef
 /* These return statically allocated strings. */
 
 extern const HChar* LibVEX_ppVexArch    ( VexArch );
+extern const HChar* LibVEX_ppVexEndness ( VexEndness endness );
 extern const HChar* LibVEX_ppVexHwCaps  ( VexArch, UInt );
+
 
 /* The various kinds of caches */
 typedef enum {
-   DATA_CACHE,
+   DATA_CACHE=0x500,
    INSN_CACHE,
    UNIFIED_CACHE
 } VexCacheKind;
@@ -260,15 +281,21 @@ typedef struct {
 
 typedef
    struct {
-      /* The following two fields are mandatory. */
+      /* The following three fields are mandatory. */
       UInt hwcaps;
+      VexEndness   endness;
       VexCacheInfo hwcache_info;
       /* PPC32/PPC64 only: size of instruction cache line */
       Int ppc_icache_line_szB;
       /* PPC32/PPC64 only: sizes zeroed by the dcbz/dcbzl instructions
-       * (bug#135264) */
+         (bug#135264) */
       UInt ppc_dcbz_szB;
       UInt ppc_dcbzl_szB; /* 0 means unsupported (SIGILL) */
+      /* ARM64: I- and D- minimum line sizes in log2(bytes), as
+         obtained from ctr_el0.DminLine and .IminLine.  For example, a
+         line size of 64 bytes would be encoded here as 6. */
+      UInt arm64_dMinLine_lg2_szB;
+      UInt arm64_iMinLine_lg2_szB;
    }
    VexArchInfo;
 
@@ -286,8 +313,6 @@ void LibVEX_default_VexArchInfo ( /*OUT*/VexArchInfo* vai );
    guest_stack_redzone_size
       guest is ppc32-linux                ==> 0
       guest is ppc64-linux                ==> 288
-      guest is ppc32-aix5                 ==> 220
-      guest is ppc64-aix5                 ==> unknown
       guest is amd64-linux                ==> 128
       guest is other                      ==> inapplicable
 
@@ -304,32 +329,16 @@ void LibVEX_default_VexArchInfo ( /*OUT*/VexArchInfo* vai );
    guest_ppc_zap_RZ_at_blr
       guest is ppc64-linux                ==> True
       guest is ppc32-linux                ==> False
-      guest is ppc64-aix5                 ==> unknown
-      guest is ppc32-aix5                 ==> False
       guest is other                      ==> inapplicable
 
    guest_ppc_zap_RZ_at_bl
       guest is ppc64-linux                ==> const True
       guest is ppc32-linux                ==> const False
-      guest is ppc64-aix5                 ==> unknown
-      guest is ppc32-aix5                 ==> True except for calls to
-                                              millicode, $SAVEFn, $RESTFn
-      guest is other                      ==> inapplicable
-
-   guest_ppc_sc_continues_at_LR:
-      guest is ppc32-aix5  or ppc64-aix5  ==> True
-      guest is ppc32-linux or ppc64-linux ==> False
       guest is other                      ==> inapplicable
 
    host_ppc_calls_use_fndescrs:
       host is ppc32-linux                 ==> False
       host is ppc64-linux                 ==> True
-      host is ppc32-aix5 or ppc64-aix5    ==> True
-      host is other                       ==> inapplicable
-
-   host_ppc32_regalign_int64_args:
-      host is ppc32-linux                 ==> True
-      host is ppc32-aix5                  ==> False
       host is other                       ==> inapplicable
 */
 
@@ -359,20 +368,10 @@ typedef
          is assumed equivalent to a fn which always returns False. */
       Bool (*guest_ppc_zap_RZ_at_bl)(Addr64);
 
-      /* PPC32/PPC64 GUESTS only: where does the kernel resume after
-         'sc'?  False => Linux style, at the next insn.  True => AIX
-         style, at the address stated in the link register. */
-      Bool guest_ppc_sc_continues_at_LR;
-
       /* PPC32/PPC64 HOSTS only: does '&f' give us a pointer to a
          function descriptor on the host, or to the function code
          itself?  True => descriptor, False => code. */
       Bool host_ppc_calls_use_fndescrs;
-
-      /* PPC32 HOSTS only: when generating code to pass a 64-bit value
-         (actual parameter) in a pair of regs, should we skip an arg
-         reg if it is even-numbered?  True => yes, False => no. */
-      Bool host_ppc32_regalign_int64_args;
    }
    VexAbiInfo;
 
@@ -402,7 +401,7 @@ void LibVEX_default_VexAbiInfo ( /*OUT*/VexAbiInfo* vbi );
    points.
 
    VexRegUpdAllregsAtEachInsn : all registers up to date at each instruction. */
-typedef enum { VexRegUpdSpAtMemAccess,
+typedef enum { VexRegUpdSpAtMemAccess=0x700,
                VexRegUpdUnwindregsAtMemAccess,
                VexRegUpdAllregsAtMemAccess,
                VexRegUpdAllregsAtEachInsn } VexRegisterUpdates;
@@ -453,50 +452,8 @@ void LibVEX_default_VexControl ( /*OUT*/ VexControl* vcon );
    You can only call it inside an instrumentation or optimisation
    callback that you have previously specified in a call to
    LibVEX_Translate.  The storage allocated will only stay alive until
-   translation of the current basic block is complete.
- */
-extern HChar* private_LibVEX_alloc_first;
-extern HChar* private_LibVEX_alloc_curr;
-extern HChar* private_LibVEX_alloc_last;
-extern void   private_LibVEX_alloc_OOM(void) __attribute__((noreturn));
-
-static inline void* LibVEX_Alloc ( Int nbytes )
-{
-   struct align {
-      char c;
-      union {
-         char c;
-         short s;
-         int i;
-         long l;
-         long long ll;
-         float f;
-         double d;
-         /* long double is currently not used and would increase alignment
-            unnecessarily. */
-         /* long double ld; */
-         void *pto;
-         void (*ptf)(void);
-      } x;
-   };
-
-#if 0
-  /* Nasty debugging hack, do not use. */
-  return malloc(nbytes);
-#else
-   HChar* curr;
-   HChar* next;
-   Int    ALIGN;
-   ALIGN  = offsetof(struct align,x) - 1;
-   nbytes = (nbytes + ALIGN) & ~ALIGN;
-   curr   = private_LibVEX_alloc_curr;
-   next   = curr + nbytes;
-   if (next >= private_LibVEX_alloc_last)
-      private_LibVEX_alloc_OOM();
-   private_LibVEX_alloc_curr = next;
-   return curr;
-#endif
-}
+   translation of the current basic block is complete. */
+extern void* LibVEX_Alloc ( Int nbytes );
 
 /* Show Vex allocation statistics. */
 extern void LibVEX_ShowAllocStats ( void );
@@ -516,7 +473,7 @@ extern void LibVEX_ShowAllocStats ( void );
 typedef
    struct {
       /* Total size of the guest state, in bytes.  Must be
-         8-aligned. */
+         16-aligned. */
       Int total_sizeB;
       /* Whereabouts is the stack pointer? */
       Int offset_SP;
@@ -629,11 +586,8 @@ extern void LibVEX_Init (
    /* debug paranoia level */
    Int debuglevel,
 
-   /* Are we supporting valgrind checking? */
-   Bool valgrind_support,
-
    /* Control ... */
-   /*READONLY*/VexControl* vcon
+   const VexControl* vcon
 );
 
 
@@ -645,7 +599,7 @@ extern void LibVEX_Init (
 typedef
    struct {
       /* overall status */
-      enum { VexTransOK,
+      enum { VexTransOK=0x800,
              VexTransAccessFail, VexTransOutputFull } status;
       /* The number of extents that have a self-check (0 to 3) */
       UInt n_sc_extents;
@@ -695,7 +649,7 @@ typedef
 
       /* IN: the block to translate, and its guest address. */
       /* where are the actual bytes in the host's address space? */
-      UChar*  guest_bytes;
+      const UChar*  guest_bytes;
       /* where do the bytes really come from in the guest's aspace?
          This is the post-redirection guest address.  Not that Vex
          understands anything about redirection; that is all done on
@@ -719,15 +673,15 @@ typedef
 	 NULL. */
       IRSB*   (*instrument1) ( /*callback_opaque*/void*,
                                IRSB*,
-                               VexGuestLayout*,
-                               VexGuestExtents*,
-                               VexArchInfo*,
+                               const VexGuestLayout*, 
+                               const VexGuestExtents*,
+                               const VexArchInfo*,
                                IRType gWordTy, IRType hWordTy );
       IRSB*   (*instrument2) ( /*callback_opaque*/void*,
                                IRSB*,
-                               VexGuestLayout*,
-                               VexGuestExtents*,
-                               VexArchInfo*,
+                               const VexGuestLayout*, 
+                               const VexGuestExtents*,
+                               const VexArchInfo*,
                                IRType gWordTy, IRType hWordTy );
 
       IRSB* (*finaltidy) ( IRSB* );
@@ -738,7 +692,7 @@ typedef
          that the i'th extent needs a check.  Since there can be at most
          3 extents, the returned values must be between 0 and 7. */
       UInt (*needs_self_check)( /*callback_opaque*/void*,
-                                VexGuestExtents* );
+                                const VexGuestExtents* );
 
       /* IN: optionally, a callback which allows the caller to add its
          own IR preamble following the self-check and any other
@@ -796,10 +750,10 @@ typedef
 
          FIXME: update this comment
       */
-      void* disp_cp_chain_me_to_slowEP;
-      void* disp_cp_chain_me_to_fastEP;
-      void* disp_cp_xindir;
-      void* disp_cp_xassisted;
+      const void* disp_cp_chain_me_to_slowEP;
+      const void* disp_cp_chain_me_to_fastEP;
+      const void* disp_cp_xindir;
+      const void* disp_cp_xassisted;
    }
    VexTranslateArgs;
 
@@ -841,9 +795,10 @@ typedef
    disp_cp_chain_me_EXPECTED. */
 extern
 VexInvalRange LibVEX_Chain ( VexArch arch_host,
+                             VexEndness  endhess_host,
                              void*   place_to_chain,
-                             void*   disp_cp_chain_me_EXPECTED,
-                             void*   place_to_jump_to );
+                             const void* disp_cp_chain_me_EXPECTED,
+                             const void* place_to_jump_to );
 
 /* Undo an XDirect jump located at place_to_unchain, so it is
    converted back into a call to disp_cp_chain_me.  It is expected
@@ -851,24 +806,27 @@ VexInvalRange LibVEX_Chain ( VexArch arch_host,
    the address specified by place_to_jump_to_EXPECTED. */
 extern
 VexInvalRange LibVEX_UnChain ( VexArch arch_host,
+                               VexEndness  endness_host,
                                void*   place_to_unchain,
-                               void*   place_to_jump_to_EXPECTED,
-                               void*   disp_cp_chain_me );
+                               const void* place_to_jump_to_EXPECTED,
+                               const void* disp_cp_chain_me );
 
 /* Returns a constant -- the size of the event check that is put at
    the start of every translation.  This makes it possible to
    calculate the fast entry point address if the slow entry point
    address is known (the usual case), or vice versa. */
 extern
-Int LibVEX_evCheckSzB ( VexArch arch_host );
+Int LibVEX_evCheckSzB ( VexArch    arch_host,
+                        VexEndness endness_host );
 
 
 /* Patch the counter location into an existing ProfInc point.  The
    specified point is checked to make sure it is plausible. */
 extern
 VexInvalRange LibVEX_PatchProfInc ( VexArch arch_host,
+                                    VexEndness   endness_host,
                                     void*   place_to_patch,
-                                    ULong*  location_of_counter );
+                                    const ULong* location_of_counter );
 
 
 /*-------------------------------------------------------*/
@@ -956,13 +914,25 @@ extern void LibVEX_InitIRI ( const IRICB * );
    ~~~~~
    Same as ppc32.
 
+   arm32
+   ~~~~~
+   r8 is GSP.
+
+   arm64
+   ~~~~~
+   r21 is GSP.
+
    ALL GUEST ARCHITECTURES
    ~~~~~~~~~~~~~~~~~~~~~~~
-   The guest state must contain two pseudo-registers, guest_TISTART
-   and guest_TILEN.  These are used to pass the address of areas of
-   guest code, translations of which are to be invalidated, back to
-   the despatcher.  Both pseudo-regs must have size equal to the guest
-   word size.
+   The guest state must contain two pseudo-registers, guest_CMSTART
+   and guest_CMLEN.  These are used to specify guest address ranges,
+   either of code to be invalidated, when used in conjunction with
+   Ijk_InvalICache, or of d-cache ranges to be flushed, when used in
+   conjunction with Ijk_FlushDCache.  In such cases, the two _CM
+   pseudo-regs should be filled in by the IR, and then an exit with
+   one of the two abovementioned Ijk_ kinds should happen, so that the
+   dispatcher can action them.  Both pseudo-regs must have size equal
+   to the guest word size.
 
    The architecture must a third pseudo-register, guest_NRADDR, also
    guest-word-sized.  This is used to record the unredirected guest

@@ -45,9 +45,6 @@
 //     - "start/stop logging" (eg. quickly skip boring bits)
 // - Add ability to draw multiple graphs, eg. heap-only, stack-only, total.
 //   Give each graph a title.  (try to do it generically!)
-// - allow truncation of long fnnames if the exact line number is
-//   identified?  [hmm, could make getting the name of alloc-fns more
-//   difficult] [could dump full names to file, truncate in ms_print]
 // - make --show-below-main=no work
 // - Options like --alloc-fn='operator new(unsigned, std::nothrow_t const&)'
 //   don't work in a .valgrindrc file or in $VALGRIND_OPTS. 
@@ -226,12 +223,6 @@ Number of snapshots: 50
       VG_(dmsg)("Massif: " format, ##args); \
    }
 
-// Used for printing stats when clo_stats == True.
-#define STATS(format, args...) \
-   if (VG_(clo_stats)) { \
-      VG_(dmsg)("Massif: " format, ##args); \
-   }
-
 //------------------------------------------------------------//
 //--- Statistics                                           ---//
 //------------------------------------------------------------//
@@ -361,7 +352,7 @@ static void init_ignore_fns(void)
 }
 
 // Determines if the named function is a member of the XArray.
-static Bool is_member_fn(XArray* fns, const HChar* fnname)
+static Bool is_member_fn(const XArray* fns, const HChar* fnname)
 {
    HChar** fn_ptr;
    Int i;
@@ -397,7 +388,7 @@ static const HChar* TimeUnit_to_string(TimeUnit time_unit)
    }
 }
 
-static Bool clo_heap            = True;
+static Bool   clo_heap            = True;
    // clo_heap_admin is deliberately a word-sized type.  At one point it was
    // a UInt, but this caused problems on 64-bit machines when it was
    // multiplied by a small negative number and then promoted to a
@@ -422,8 +413,8 @@ static Bool ms_process_cmd_line_option(const HChar* arg)
    // Remember the arg for later use.
    VG_(addToXA)(args_for_massif, &arg);
 
-        if VG_BOOL_CLO(arg, "--heap",   clo_heap)   {}
-   else if VG_BINT_CLO(arg, "--heap-admin", clo_heap_admin, 0, 1024) {}
+        if VG_BOOL_CLO(arg, "--heap",           clo_heap)   {}
+   else if VG_BINT_CLO(arg, "--heap-admin",     clo_heap_admin, 0, 1024) {}
 
    else if VG_BOOL_CLO(arg, "--stacks",         clo_stacks) {}
 
@@ -431,10 +422,10 @@ static Bool ms_process_cmd_line_option(const HChar* arg)
 
    else if VG_BINT_CLO(arg, "--depth",          clo_depth, 1, MAX_DEPTH) {}
 
-   else if VG_STR_CLO(arg, "--alloc-fn", tmp_str) {
+   else if VG_STR_CLO(arg, "--alloc-fn",        tmp_str) {
       VG_(addToXA)(alloc_fns, &tmp_str);
    }
-   else if VG_STR_CLO(arg, "--ignore-fn", tmp_str) {
+   else if VG_STR_CLO(arg, "--ignore-fn",       tmp_str) {
       VG_(addToXA)(ignore_fns, &tmp_str);
    }
 
@@ -815,17 +806,12 @@ static void sanity_check_SXTree(SXPt* sxpt)
 #define MAX_OVERESTIMATE   50
 #define MAX_IPS            (MAX_DEPTH + MAX_OVERESTIMATE)
 
-// This is used for various buffers which can hold function names/IP
-// description.  Some C++ names can get really long so 1024 isn't big
-// enough.
-#define BUF_LEN   2048
-
 // Determine if the given IP belongs to a function that should be ignored.
 static Bool fn_should_be_ignored(Addr ip)
 {
-   static HChar buf[BUF_LEN];
+   const HChar *buf;
    return
-      ( VG_(get_fnname)(ip, buf, BUF_LEN) && is_member_fn(ignore_fns, buf)
+      ( VG_(get_fnname)(ip, &buf) && is_member_fn(ignore_fns, buf)
       ? True : False );
 }
 
@@ -838,7 +824,6 @@ static Bool fn_should_be_ignored(Addr ip)
 static
 Int get_IPs( ThreadId tid, Bool exclude_first_entry, Addr ips[])
 {
-   static HChar buf[BUF_LEN];
    Int n_ips, i, n_alloc_fns_removed;
    Int overestimate;
    Bool redo;
@@ -877,7 +862,8 @@ Int get_IPs( ThreadId tid, Bool exclude_first_entry, Addr ips[])
       // because VG_(get_fnname) is expensive.
       n_alloc_fns_removed = ( exclude_first_entry ? 1 : 0 );
       for (i = n_alloc_fns_removed; i < n_ips; i++) {
-         if (VG_(get_fnname)(ips[i], buf, BUF_LEN)) {
+         const HChar *buf;
+         if (VG_(get_fnname)(ips[i], &buf)) {
             if (is_member_fn(alloc_fns, buf)) {
                n_alloc_fns_removed++;
             } else {
@@ -1205,7 +1191,7 @@ static UInt cull_snapshots(void)
       tl_assert(-1 != min_j);    // Check we found a minimum.
       min_snapshot = & snapshots[ min_j ];
       if (VG_(clo_verbosity) > 1) {
-         HChar buf[64];
+         HChar buf[64];   // large enough
          VG_(snprintf)(buf, 64, " %3d (t-span = %lld)", i, min_timespan);
          VERB_snapshot(2, buf, min_j);
       }
@@ -1318,7 +1304,7 @@ take_snapshot(Snapshot* snapshot, SnapshotKind kind, Time my_time,
 {
    tl_assert(!is_snapshot_in_use(snapshot));
    if (!clo_pages_as_heap) {
-   tl_assert(have_started_executing_code);
+      tl_assert(have_started_executing_code);
    }
 
    // Heap and heap admin.
@@ -1491,7 +1477,7 @@ typedef
    }
    HP_Chunk;
 
-static VgHashTable malloc_list  = NULL;   // HP_Chunks
+static VgHashTable *malloc_list  = NULL;   // HP_Chunks
 
 static void update_alloc_stats(SSizeT szB_delta)
 {
@@ -1542,7 +1528,7 @@ void* record_block( ThreadId tid, void* p, SizeT req_szB, SizeT slop_szB,
 
          // Maybe take a snapshot.
          if (maybe_snapshot) {
-         maybe_take_snapshot(Normal, "  alloc");
+            maybe_take_snapshot(Normal, "  alloc");
          }
 
       } else {
@@ -1573,7 +1559,7 @@ void* alloc_and_record_block ( ThreadId tid, SizeT req_szB, SizeT req_alignB,
       return NULL;
    }
    if (is_zeroed) VG_(memset)(p, 0, req_szB);
-   actual_szB = VG_(malloc_usable_size)(p);
+   actual_szB = VG_(cli_malloc_usable_size)(p);
    tl_assert(actual_szB >= req_szB);
    slop_szB = actual_szB - req_szB;
 
@@ -1602,7 +1588,7 @@ void unrecord_block ( void* p, Bool maybe_snapshot )
 
          // Maybe take a peak snapshot, since it's a deallocation.
          if (maybe_snapshot) {
-         maybe_take_snapshot(Peak, "de-PEAK");
+            maybe_take_snapshot(Peak, "de-PEAK");
          }
 
          // Update heap stats.
@@ -1613,7 +1599,7 @@ void unrecord_block ( void* p, Bool maybe_snapshot )
 
          // Maybe take a snapshot.
          if (maybe_snapshot) {
-         maybe_take_snapshot(Normal, "dealloc");
+            maybe_take_snapshot(Normal, "dealloc");
          }
 
       } else {
@@ -1688,7 +1674,7 @@ void* realloc_block ( ThreadId tid, void* p_old, SizeT new_req_szB )
       }
       VG_(memcpy)(p_new, p_old, old_req_szB + old_slop_szB);
       VG_(cli_free)(p_old);
-      new_actual_szB = VG_(malloc_usable_size)(p_new);
+      new_actual_szB = VG_(cli_malloc_usable_size)(p_new);
       tl_assert(new_actual_szB >= new_req_szB);
       new_slop_szB = new_actual_szB - new_req_szB;
    }
@@ -2093,9 +2079,9 @@ static IRSB* ms_instrument2( IRSB* sbIn )
 static
 IRSB* ms_instrument ( VgCallbackClosure* closure,
                       IRSB* sbIn,
-                      VexGuestLayout* layout,
-                      VexGuestExtents* vge,
-                      VexArchInfo* archinfo_host,
+                      const VexGuestLayout* layout,
+                      const VexGuestExtents* vge,
+                      const VexArchInfo* archinfo_host,
                       IRType gWordTy, IRType hWordTy )
 {
    if (! have_started_executing_code) {
@@ -2117,15 +2103,7 @@ IRSB* ms_instrument ( VgCallbackClosure* closure,
 //--- Writing snapshots                                    ---//
 //------------------------------------------------------------//
 
-HChar FP_buf[BUF_LEN];
-
-// XXX: implement f{,n}printf in m_libcprint.c eventually, and use it here.
-// Then change Cachegrind to use it too.
-#define FP(format, args...) ({ \
-   VG_(snprintf)(FP_buf, BUF_LEN, format, ##args); \
-   FP_buf[BUF_LEN-1] = '\0';  /* Make sure the string is terminated. */ \
-   VG_(write)(fd, (void*)FP_buf, VG_(strlen)(FP_buf)); \
-})
+#define FP(format, args...) ({ VG_(fprintf)(fp, format, ##args); })
 
 // Nb: uses a static buffer, each call trashes the last string returned.
 static const HChar* make_perc(double x)
@@ -2139,9 +2117,9 @@ static const HChar* make_perc(double x)
    return mbuf;
 }
 
-static void pp_snapshot_SXPt(Int fd, SXPt* sxpt, Int depth, HChar* depth_str,
-                            Int depth_str_len,
-                            SizeT snapshot_heap_szB, SizeT snapshot_total_szB)
+static void pp_snapshot_SXPt(VgFile *fp, SXPt* sxpt, Int depth,
+                             HChar* depth_str, Int depth_str_len,
+                             SizeT snapshot_heap_szB, SizeT snapshot_total_szB)
 {
    Int   i, j, n_insig_children_sxpts;
    SXPt* child = NULL;
@@ -2149,15 +2127,14 @@ static void pp_snapshot_SXPt(Int fd, SXPt* sxpt, Int depth, HChar* depth_str,
    // Used for printing function names.  Is made static to keep it out
    // of the stack frame -- this function is recursive.  Obviously this
    // now means its contents are trashed across the recursive call.
-   static HChar ip_desc_array[BUF_LEN];
-   const HChar* ip_desc = ip_desc_array;
+   const HChar* ip_desc;
 
    switch (sxpt->tag) {
     case SigSXPt:
       // Print the SXPt itself.
       if (0 == depth) {
          if (clo_heap) {
-         ip_desc =
+            ip_desc = 
                ( clo_pages_as_heap
                ? "(page allocation syscalls) mmap/mremap/brk, --alloc-fns, etc."
                : "(heap allocation functions) malloc/new/new[], --alloc-fns, etc."
@@ -2165,7 +2142,7 @@ static void pp_snapshot_SXPt(Int fd, SXPt* sxpt, Int depth, HChar* depth_str,
          } else {
             // XXX: --alloc-fns?
 
-            // Nick thinks this case cannot happen. ip_desc_array would be
+            // Nick thinks this case cannot happen. ip_desc would be
             // conceptually uninitialised here. Therefore:
             tl_assert2(0, "pp_snapshot_SXPt: unexpected");
          }
@@ -2180,7 +2157,7 @@ static void pp_snapshot_SXPt(Int fd, SXPt* sxpt, Int depth, HChar* depth_str,
          }
 
          // We need the -1 to get the line number right, But I'm not sure why.
-         ip_desc = VG_(describe_IP)(sxpt->Sig.ip-1, ip_desc_array, BUF_LEN);
+         ip_desc = VG_(describe_IP)(sxpt->Sig.ip-1, NULL);
       }
       
       // Do the non-ip_desc part first...
@@ -2201,25 +2178,13 @@ static void pp_snapshot_SXPt(Int fd, SXPt* sxpt, Int depth, HChar* depth_str,
             }
          }
       }
-      // Nb: We treat this specially (ie. we don't use FP) so that if the
-      // ip_desc is too long (eg. due to a long C++ function name), it'll
-      // get truncated, but the '\n' is still there so its a valid file.
-      // (At one point we were truncating without adding the '\n', which
-      // caused bug #155929.)
-      //
-      // Also, we account for the length of the address in ip_desc when
-      // truncating.  (The longest address we could have is 18 chars:  "0x"
-      // plus 16 address digits.)  This ensures that the truncated function
-      // name always has the same length, which makes truncation
-      // deterministic and thus makes testing easier.
-      tl_assert(j <= 18);
-      VG_(snprintf)(FP_buf, BUF_LEN, "%s\n", ip_desc);
-      FP_buf[BUF_LEN-18+j-5] = '.';    // "..." at the end make the
-      FP_buf[BUF_LEN-18+j-4] = '.';    //   truncation more obvious.
-      FP_buf[BUF_LEN-18+j-3] = '.';
-      FP_buf[BUF_LEN-18+j-2] = '\n';   // The last char is '\n'.
-      FP_buf[BUF_LEN-18+j-1] = '\0';   // The string is terminated.
-      VG_(write)(fd, (void*)FP_buf, VG_(strlen)(FP_buf));
+      // It used to be that ip_desc was truncated at the end.
+      // But there does not seem to be a good reason for that. Besides,
+      // the string was truncated at the right, which is less than ideal.
+      // Truncation at the beginning of the string would have been preferable.
+      // Think several nested namespaces in C++....
+      // Anyhow, we spit out the full-length string now.
+      FP("%s\n", ip_desc);
 
       // Indent.
       tl_assert(depth+1 < depth_str_len-1);    // -1 for end NUL char
@@ -2243,10 +2208,10 @@ static void pp_snapshot_SXPt(Int fd, SXPt* sxpt, Int depth, HChar* depth_str,
          if (InsigSXPt == child->tag)
             n_insig_children_sxpts++;
 
-         // Ok, print the child.  NB: contents of ip_desc_array will be
+         // Ok, print the child.  NB: contents of ip_desc will be
          // trashed by this recursive call.  Doesn't matter currently,
          // but worth noting.
-         pp_snapshot_SXPt(fd, child, depth+1, depth_str, depth_str_len,
+         pp_snapshot_SXPt(fp, child, depth+1, depth_str, depth_str_len,
             snapshot_heap_szB, snapshot_total_szB);
       }
 
@@ -2271,7 +2236,7 @@ static void pp_snapshot_SXPt(Int fd, SXPt* sxpt, Int depth, HChar* depth_str,
    }
 }
 
-static void pp_snapshot(Int fd, Snapshot* snapshot, Int snapshot_n)
+static void pp_snapshot(VgFile *fp, Snapshot* snapshot, Int snapshot_n)
 {
    sanity_check_snapshot(snapshot);
 
@@ -2293,7 +2258,7 @@ static void pp_snapshot(Int fd, Snapshot* snapshot, Int snapshot_n)
       depth_str[0] = '\0';   // Initialise depth_str to "".
 
       FP("heap_tree=%s\n", ( Peak == snapshot->kind ? "peak" : "detailed" ));
-      pp_snapshot_SXPt(fd, snapshot->alloc_sxpt, 0, depth_str,
+      pp_snapshot_SXPt(fp, snapshot->alloc_sxpt, 0, depth_str,
                        depth_str_len, snapshot->heap_szB,
                        snapshot_total_szB);
 
@@ -2308,19 +2273,17 @@ static void write_snapshots_to_file(const HChar* massif_out_file,
                                     Snapshot snapshots_array[], 
                                     Int nr_elements)
 {
-   Int i, fd;
-   SysRes sres;
+   Int i;
+   VgFile *fp;
 
-   sres = VG_(open)(massif_out_file, VKI_O_CREAT|VKI_O_TRUNC|VKI_O_WRONLY,
-                                     VKI_S_IRUSR|VKI_S_IWUSR);
-   if (sr_isError(sres)) {
+   fp = VG_(fopen)(massif_out_file, VKI_O_CREAT|VKI_O_TRUNC|VKI_O_WRONLY,
+                                    VKI_S_IRUSR|VKI_S_IWUSR);
+   if (fp == NULL) {
       // If the file can't be opened for whatever reason (conflict
       // between multiple cachegrinded processes?), give up now.
       VG_(umsg)("error: can't open output file '%s'\n", massif_out_file );
       VG_(umsg)("       ... so profiling results will be missing.\n");
       return;
-   } else {
-      fd = sr_Res(sres);
    }
 
    // Print massif-specific options that were used.
@@ -2337,15 +2300,10 @@ static void write_snapshots_to_file(const HChar* massif_out_file,
 
    // Print "cmd:" line.
    FP("cmd: ");
-   if (VG_(args_the_exename)) {
-      FP("%s", VG_(args_the_exename));
-      for (i = 0; i < VG_(sizeXA)( VG_(args_for_client) ); i++) {
-         HChar* arg = * (HChar**) VG_(indexXA)( VG_(args_for_client), i );
-         if (arg)
-            FP(" %s", arg);
-      }
-   } else {
-      FP(" ???");
+   FP("%s", VG_(args_the_exename));
+   for (i = 0; i < VG_(sizeXA)( VG_(args_for_client) ); i++) {
+      HChar* arg = * (HChar**) VG_(indexXA)( VG_(args_for_client), i );
+      FP(" %s", arg);
    }
    FP("\n");
 
@@ -2353,9 +2311,9 @@ static void write_snapshots_to_file(const HChar* massif_out_file,
 
    for (i = 0; i < nr_elements; i++) {
       Snapshot* snapshot = & snapshots_array[i];
-      pp_snapshot(fd, snapshot, i);     // Detailed snapshot!
+      pp_snapshot(fp, snapshot, i);     // Detailed snapshot!
    }
-   VG_(close) (fd);
+   VG_(fclose) (fp);
 }
 
 static void write_snapshots_array_to_file(void)
@@ -2395,7 +2353,7 @@ static void handle_snapshot_monitor_command (const HChar *filename,
 static Bool handle_gdb_monitor_command (ThreadId tid, HChar *req)
 {
    HChar* wcmd;
-   HChar s[VG_(strlen(req))]; /* copy for strtok_r */
+   HChar s[VG_(strlen(req)) + 1]; /* copy for strtok_r */
    HChar *ssaveptr;
 
    VG_(strcpy) (s, req);
@@ -2428,17 +2386,11 @@ static Bool handle_gdb_monitor_command (ThreadId tid, HChar *req)
    }
 }
 
-//------------------------------------------------------------//
-//--- Finalisation                                         ---//
-//------------------------------------------------------------//
-
-static void ms_fini(Int exit_status)
+static void ms_print_stats (void)
 {
-   // Output.
-   write_snapshots_array_to_file();
+#define STATS(format, args...) \
+      VG_(dmsg)("Massif: " format, ##args)
 
-   // Stats
-   tl_assert(n_xpts > 0);  // always have alloc_xpt
    STATS("heap allocs:           %u\n", n_heap_allocs);
    STATS("heap reallocs:         %u\n", n_heap_reallocs);
    STATS("heap frees:            %u\n", n_heap_frees);
@@ -2461,6 +2413,23 @@ static void ms_fini(Int exit_status)
    STATS("peak snapshots:        %u\n", n_peak_snapshots);
    STATS("cullings:              %u\n", n_cullings);
    STATS("XCon redos:            %u\n", n_XCon_redos);
+#undef STATS
+}
+
+//------------------------------------------------------------//
+//--- Finalisation                                         ---//
+//------------------------------------------------------------//
+
+static void ms_fini(Int exit_status)
+{
+   // Output.
+   write_snapshots_array_to_file();
+
+   // Stats
+   tl_assert(n_xpts > 0);  // always have alloc_xpt
+
+   if (VG_(clo_stats))
+      ms_print_stats();
 }
 
 
@@ -2594,6 +2563,7 @@ static void ms_pre_clo_init(void)
    VG_(needs_client_requests)     (ms_handle_client_request);
    VG_(needs_sanity_checks)       (ms_cheap_sanity_check,
                                    ms_expensive_sanity_check);
+   VG_(needs_print_stats)         (ms_print_stats);
    VG_(needs_malloc_replacement)  (ms_malloc,
                                    ms___builtin_new,
                                    ms___builtin_vec_new,

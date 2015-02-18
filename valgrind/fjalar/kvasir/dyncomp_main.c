@@ -187,8 +187,8 @@ static __inline__ UInt grab_fresh_tag(void) {
   totalNumTagsAssigned++;
   if (dyncomp_print_trace_all) {
     Addr tid = VG_(get_IP)(VG_(get_running_tid)());
-    HChar eip_info[256];
-    VG_(describe_IP)(tid, eip_info, sizeof(eip_info));
+    const HChar *eip_info;
+    eip_info = VG_(describe_IP)(tid, NULL);
     DYNCOMP_TPRINTF("[Dyncomp] Creating fresh tag %d at %s\n", tag, eip_info);
   }
   return tag;
@@ -276,13 +276,13 @@ UInt val_uf_tag_union(UInt tag1, UInt tag2) {
   if (!IS_ZERO_TAG(tag1) && !IS_SECONDARY_UF_NULL(tag1) &&
       !IS_ZERO_TAG(tag2) && !IS_SECONDARY_UF_NULL(tag2)) {
     Addr eip = VG_(get_IP)(VG_(get_running_tid)());
-    HChar eip_info[256];
+    const HChar *eip_info;
     uf_object* tag1_obj, *tag2_obj;
     uf_object* leader;
     tag1_obj = GET_UF_OBJECT_PTR(tag1);
     tag2_obj = GET_UF_OBJECT_PTR(tag2);
     leader = uf_union(tag1_obj, tag2_obj);
-    VG_(describe_IP)(eip, eip_info, sizeof(eip_info));
+    eip_info = VG_(describe_IP)(eip, NULL);
 
     DYNCOMP_TPRINTF("[Dyncomp-v1] Merging %u with %u to get %u at %s\n",
                     tag1, tag2, leader->tag, eip_info);
@@ -611,8 +611,8 @@ UInt tag2_is_new ( UInt tag1, UInt tag2 ) {
 VG_REGPARM(2)
 UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
   Addr eip = VG_(get_IP)(VG_(get_running_tid)());
-  HChar eip_info[256];
-  VG_(describe_IP)(eip, eip_info, sizeof(eip_info));
+  const HChar *eip_info;
+  eip_info = VG_(describe_IP)(eip, NULL);
 
   if (dyncomp_profile_tags) {
     mergeTagsCount++;
@@ -678,6 +678,7 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
     mergeTagsReturn0Count++;
   }
 
+  // (comment added 2006)  
   // TODO: What do we do about WEAK_FRESH_TAG???
 
   if (IS_ZERO_TAG(tag1) ||

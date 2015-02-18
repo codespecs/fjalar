@@ -161,7 +161,8 @@
 /*------------------------------------------------------------*/
 
 #define TRACE_D3(format, args...) \
-   if (td3) { VG_(printf)(format, ## args); }
+   if (UNLIKELY(td3)) { VG_(printf)(format, ## args); }
+#define TD3 (UNLIKELY(td3))
 
 #define D3_INVALID_CUOFF  ((UWord)(-1UL))
 #define D3_FAKEVOID_CUOFF ((UWord)(-2UL))
@@ -175,7 +176,7 @@ typedef
    }
    Cursor;
 
-static inline Bool is_sane_Cursor ( Cursor* c ) {
+static inline Bool is_sane_Cursor ( const Cursor* c ) {
    if (!c)                return False;
    if (!c->barf)          return False;
    if (!c->barfstr)       return False;
@@ -203,12 +204,12 @@ static void init_Cursor ( /*OUT*/Cursor* c,
    vg_assert(is_sane_Cursor(c));
 }
 
-static Bool is_at_end_Cursor ( Cursor* c ) {
+static Bool is_at_end_Cursor ( const Cursor* c ) {
    vg_assert(is_sane_Cursor(c));
    return c->sli_next >= c->sli.ioff + c->sli.szB;
 }
 
-static inline ULong get_position_of_Cursor ( Cursor* c ) {
+static inline ULong get_position_of_Cursor ( const Cursor* c ) {
    vg_assert(is_sane_Cursor(c));
    return c->sli_next - c->sli.ioff;
 }
@@ -216,8 +217,12 @@ static inline void set_position_of_Cursor ( Cursor* c, ULong pos ) {
    c->sli_next = c->sli.ioff + pos;
    vg_assert(is_sane_Cursor(c));
 }
+static inline void advance_position_of_Cursor ( Cursor* c, ULong delta ) {
+   c->sli_next += delta;
+   vg_assert(is_sane_Cursor(c));
+}
 
-static /*signed*/Long get_remaining_length_Cursor ( Cursor* c ) {
+static /*signed*/Long get_remaining_length_Cursor ( const Cursor* c ) {
    vg_assert(is_sane_Cursor(c));
    return c->sli.ioff + c->sli.szB - c->sli_next;
 }
@@ -227,7 +232,7 @@ static /*signed*/Long get_remaining_length_Cursor ( Cursor* c ) {
 //   return &c->region_start_img[ c->region_next ];
 //}
 
-static DiCursor get_DiCursor_from_Cursor ( Cursor* c ) {
+static DiCursor get_DiCursor_from_Cursor ( const Cursor* c ) {
    return mk_DiCursor(c->sli.img, c->sli_next);
 }
 
@@ -318,7 +323,7 @@ static Long get_SLEB128 ( Cursor* c ) {
    ML_(addStr), since (w.r.t. image overruns) the process of advancing
    past the terminating zero will already have "vetted" the string. */
 static DiCursor get_AsciiZ ( Cursor* c ) {
-   UChar  uc;
+   UChar uc;
    DiCursor res = get_DiCursor_from_Cursor(c);
    do { uc = get_UChar(c); } while (uc != 0);
    return res;
@@ -326,13 +331,13 @@ static DiCursor get_AsciiZ ( Cursor* c ) {
 
 static ULong peek_ULEB128 ( Cursor* c ) {
    DiOffT here = c->sli_next;
-   ULong r = get_ULEB128( c );
+   ULong  r    = get_ULEB128( c );
    c->sli_next = here;
    return r;
 }
 static UChar peek_UChar ( Cursor* c ) {
    DiOffT here = c->sli_next;
-   UChar r = get_UChar( c );
+   UChar  r    = get_UChar( c );
    c->sli_next = here;
    return r;
 }
@@ -377,7 +382,39 @@ static ULong get_Initial_Length ( /*OUT*/Bool* is64,
 /*---                                                      ---*/
 /*------------------------------------------------------------*/
 
-#define N_ABBV_CACHE 32
+typedef
+   struct _name_form {
+      ULong at_name;  // Dwarf Attribute name
+      ULong at_form;  // Dwarf Attribute form
+      UInt  skip_szB; // Nr of bytes skippable from here ...
+      UInt  next_nf;  // ... to reach this attr/form index in the g_abbv.nf
+   } name_form;
+/* skip_szB and next_nf are used to optimise the skipping of uninteresting DIEs.
+   Each name_form maintains how many (fixed) nr of bytes can be skipped from
+   the beginning of this form till the next attr/form to look at.
+   The next form to look can be:
+       an 'interesting' attr/form to read while skipping a DIE
+          (currently, this is only DW_AT_sibling)
+   or
+       a variable length form which must be read to be skipped.
+   For a variable length form, the skip_szB will be equal to VARSZ_FORM.
+
+   Note: this technique could also be used to speed up the parsing
+   of DIEs : for each parser kind, we could have the nr of bytes
+   to skip to directly reach the interesting form(s) for the parser. */
+
+typedef
+   struct _g_abbv {
+      struct _g_abbv *next; // read/write by hash table.
+      UWord  abbv_code;     // key, read by hash table
+      ULong  atag;
+      ULong  has_children;
+      name_form nf[0];
+      /* Variable-length array of name/form pairs, terminated
+         by a 0/0 pair.
+         The skip_szB/next_nf allows to skip efficiently a DIE
+         described by this g_abbv; */
+    } g_abbv;
 
 /* Holds information that is constant through the parsing of a
    Compilation Unit.  This is basically plumbed through to
@@ -429,11 +466,8 @@ typedef
       UWord  alt_cuOff_bias;
       /* --- Needed so we can add stuff to the string table. --- */
       struct _DebugInfo* di;
-      /* --- a cache for set_abbv_Cursor --- */
-      /* abbv_code == (ULong)-1 for an unused entry. */
-      struct { ULong abbv_code; UWord posn; } saC_cache[N_ABBV_CACHE];
-      UWord saC_cache_queries;
-      UWord saC_cache_misses;
+      /* --- a hash table of g_abbv (i.e. parsed abbreviations) --- */
+      VgHashTable *ht_abbvs;
 
       /* True if this came from .debug_types; otherwise it came from
          .debug_info.  */
@@ -446,7 +480,7 @@ typedef
 
       /* Signatured type hash; computed once and then shared by all
          CUs.  */
-      VgHashTable signature_types;
+      VgHashTable *signature_types;
 
       /* True if this came from alternate .debug_info; otherwise
          it came from normal .debug_info or .debug_types.  */
@@ -461,7 +495,7 @@ typedef
    a contiguous whole, so that DIEs coming from .debug_types are numbered
    starting at the end of .debug_info and DIEs coming from alternate
    .debug_info are numbered starting at the end of .debug_types.  */
-static UWord cook_die( CUConst* cc, UWord die )
+static UWord cook_die( const CUConst* cc, UWord die )
 {
    if (cc->is_type_unit)
       die += cc->types_cuOff_bias;
@@ -474,7 +508,7 @@ static UWord cook_die( CUConst* cc, UWord die )
    DW_FORM_ref_sig8 reference are already cooked.  Also, handle
    DW_FORM_GNU_ref_alt from within primary .debug_info or .debug_types
    as reference to alternate .debug_info.  */
-static UWord cook_die_using_form( CUConst *cc, UWord die, DW_FORM form)
+static UWord cook_die_using_form( const CUConst *cc, UWord die, DW_FORM form)
 {
    if (form == DW_FORM_ref_sig8)
       return die;
@@ -486,7 +520,7 @@ static UWord cook_die_using_form( CUConst *cc, UWord die, DW_FORM form)
 /* Return the uncooked offset of DIE and set *TYPE_FLAG to true if the DIE
    came from the .debug_types section and *ALT_FLAG to true if the DIE
    came from alternate .debug_info section.  */
-static UWord uncook_die( CUConst *cc, UWord die, /*OUT*/Bool *type_flag,
+static UWord uncook_die( const CUConst *cc, UWord die, /*OUT*/Bool *type_flag,
                          Bool *alt_flag )
 {
    *alt_flag = False;
@@ -551,7 +585,7 @@ static UWord uncook_die( CUConst *cc, UWord die, /*OUT*/Bool *type_flag,
 
 
 /* Apply a text bias to a GX. */
-static void bias_GX ( /*MOD*/GExpr* gx, struct _DebugInfo* di )
+static void bias_GX ( /*MOD*/GExpr* gx, const DebugInfo* di )
 {
    UShort nbytes;
    UChar* p = &gx->payload[0];
@@ -598,7 +632,6 @@ static GExpr* make_singleton_GX ( DiCursor block, ULong nbytes )
 
    gx = ML_(dinfo_zalloc)( "di.readdwarf3.msGX.1", 
                            sizeof(GExpr) + bytesReqd );
-   vg_assert(gx);
 
    p = pstart = &gx->payload[0];
 
@@ -618,7 +651,7 @@ static GExpr* make_singleton_GX ( DiCursor block, ULong nbytes )
 }
 
 __attribute__((noinline))
-static GExpr* make_general_GX ( CUConst* cc,
+static GExpr* make_general_GX ( const CUConst* cc,
                                 Bool     td3,
                                 ULong    debug_loc_offset,
                                 Addr     svma_of_referencing_CU )
@@ -713,7 +746,6 @@ static GExpr* make_general_GX ( CUConst* cc,
    vg_assert(nbytes >= 1);
 
    gx = ML_(dinfo_zalloc)( "di.readdwarf3.mgGX.2", sizeof(GExpr) + nbytes );
-   vg_assert(gx);
    VG_(memcpy)( &gx->payload[0], (UChar*)VG_(indexXA)(xa,0), nbytes );
    vg_assert( &gx->payload[nbytes] 
               == ((UChar*)gx) + sizeof(GExpr) + nbytes );
@@ -742,10 +774,11 @@ typedef
 
 /* Generate an arbitrary structural total ordering on
    XArray* of AddrRange. */
-static Word cmp__XArrays_of_AddrRange ( XArray* rngs1, XArray* rngs2 )
+static Word cmp__XArrays_of_AddrRange ( const XArray* rngs1,
+                                        const XArray* rngs2 )
 {
    Word n1, n2, i;
-   tl_assert(rngs1 && rngs2);
+   vg_assert(rngs1 && rngs2);
    n1 = VG_(sizeXA)( rngs1 );  
    n2 = VG_(sizeXA)( rngs2 );
    if (n1 < n2) return -1;
@@ -798,10 +831,10 @@ static XArray* unitary_range_list ( Addr aMin, Addr aMax )
    caller must deallocate it. */
 __attribute__((noinline))
 static XArray* /* of AddrRange */
-       get_range_list ( CUConst* cc,
-                        Bool     td3,
-                        UWord    debug_ranges_offset,
-                        Addr     svma_of_referencing_CU )
+get_range_list ( const CUConst* cc,
+                 Bool     td3,
+                 UWord    debug_ranges_offset,
+                 Addr     svma_of_referencing_CU )
 {
    Addr      base;
    Cursor    ranges;
@@ -852,6 +885,117 @@ static XArray* /* of AddrRange */
    return xa;
 }
 
+#define VARSZ_FORM 0xffffffff
+static UInt get_Form_szB (const CUConst* cc, DW_FORM form );
+
+/* Initialises the hash table of abbreviations.
+   We do a single scan of the abbv slice to parse and
+   build all abbreviations, for the following reasons:
+     * all or most abbreviations will be needed in any case
+       (at least for var-info reading).
+     * re-reading each time an abbreviation causes a lot of calls
+       to get_ULEB128.
+     * a CU should not have many abbreviations. */
+static void init_ht_abbvs (CUConst* cc,
+                           Bool td3)
+{
+   Cursor c;
+   g_abbv *ta; // temporary abbreviation, reallocated if needed.
+   UInt ta_nf_maxE; // max nr of pairs in ta.nf[], doubled when reallocated.
+   UInt ta_nf_n;    // nr of pairs in ta->nf that are initialised.
+   g_abbv *ht_ta; // abbv to insert in hash table.
+   Int i;
+
+   #define SZ_G_ABBV(_nf_szE) (sizeof(g_abbv) + _nf_szE * sizeof(name_form))
+
+   ta_nf_maxE = 10; // starting with enough for 9 pairs+terminating pair.
+   ta = ML_(dinfo_zalloc) ("di.readdwarf3.ht_ta_nf", SZ_G_ABBV(ta_nf_maxE));
+   cc->ht_abbvs = VG_(HT_construct) ("di.readdwarf3.ht_abbvs");
+
+   init_Cursor( &c, cc->debug_abbv, 0, cc->barf,
+               "Overrun whilst parsing .debug_abbrev section(2)" );
+   while (True) {
+      ta->abbv_code = get_ULEB128( &c );
+      if (ta->abbv_code == 0) break; /* end of the table */
+
+      ta->atag = get_ULEB128( &c );
+      ta->has_children = get_UChar( &c );
+      ta_nf_n = 0;
+      while (True) {
+         if (ta_nf_n >= ta_nf_maxE) {
+            g_abbv *old_ta = ta;
+            ta = ML_(dinfo_zalloc) ("di.readdwarf3.ht_ta_nf",
+                                    SZ_G_ABBV(2 * ta_nf_maxE));
+            ta_nf_maxE = 2 * ta_nf_maxE;
+            VG_(memcpy) (ta, old_ta, SZ_G_ABBV(ta_nf_n));
+            ML_(dinfo_free) (old_ta);
+         }
+         ta->nf[ta_nf_n].at_name = get_ULEB128( &c );
+         ta->nf[ta_nf_n].at_form = get_ULEB128( &c );
+         if (ta->nf[ta_nf_n].at_name == 0 && ta->nf[ta_nf_n].at_form == 0) {
+            ta_nf_n++;
+            break; 
+         }
+        ta_nf_n++;
+      }
+
+      // Initialises the skip_szB/next_nf elements : an element at position
+      // i must contain the sum of its own size + the sizes of all elements
+      // following i till either the next variable size element, the next
+      // sibling element or the end of the DIE.
+      ta->nf[ta_nf_n - 1].skip_szB = 0;
+      ta->nf[ta_nf_n - 1].next_nf = 0;
+      for (i = ta_nf_n - 2; i >= 0; i--) {
+         const UInt form_szB = get_Form_szB (cc, (DW_FORM)ta->nf[i].at_form);
+          
+         if (ta->nf[i+1].at_name == DW_AT_sibling
+             || ta->nf[i+1].skip_szB == VARSZ_FORM) {
+            ta->nf[i].skip_szB = form_szB;
+            ta->nf[i].next_nf  = i+1;
+         } else if (form_szB == VARSZ_FORM) {
+            ta->nf[i].skip_szB = form_szB;
+            ta->nf[i].next_nf  = i+1;
+         } else {
+            ta->nf[i].skip_szB = ta->nf[i+1].skip_szB + form_szB;
+            ta->nf[i].next_nf  = ta->nf[i+1].next_nf;
+         }
+      }
+
+      ht_ta = ML_(dinfo_zalloc) ("di.readdwarf3.ht_ta", SZ_G_ABBV(ta_nf_n));
+      VG_(memcpy) (ht_ta, ta, SZ_G_ABBV(ta_nf_n));
+      VG_(HT_add_node) ( cc->ht_abbvs, ht_ta );
+      if (TD3) {
+         TRACE_D3("  Adding abbv_code %llu TAG  %s [%s] nf %d ",
+                  (ULong) ht_ta->abbv_code, ML_(pp_DW_TAG)(ht_ta->atag),
+                  ML_(pp_DW_children)(ht_ta->has_children),
+                  ta_nf_n);
+         TRACE_D3("  ");
+         for (i = 0; i < ta_nf_n; i++)
+            TRACE_D3("[%u,%u] ", ta->nf[i].skip_szB, ta->nf[i].next_nf);
+         TRACE_D3("\n");
+      }
+   }
+
+   ML_(dinfo_free) (ta);
+   #undef SZ_G_ABBV
+}
+
+static g_abbv* get_abbv (const CUConst* cc, ULong abbv_code)
+{
+   g_abbv *abbv;
+
+   abbv = VG_(HT_lookup) (cc->ht_abbvs, abbv_code);
+   if (!abbv)
+      cc->barf ("abbv_code not found in ht_abbvs table");
+   return abbv;
+}
+
+/* Free the memory allocated in CUConst. */
+static void clear_CUConst (CUConst* cc)
+{
+   VG_(HT_destruct) ( cc->ht_abbvs, ML_(dinfo_free));
+   cc->ht_abbvs = NULL;
+}
 
 /* Parse the Compilation Unit header indicated at 'c' and 
    initialise 'cc' accordingly. */
@@ -865,7 +1009,6 @@ void parse_CU_Header ( /*OUT*/CUConst* cc,
 {
    UChar  address_size;
    ULong  debug_abbrev_offset;
-   Int    i;
 
    VG_(memset)(cc, 0, sizeof(*cc));
    vg_assert(c && c->barf);
@@ -923,105 +1066,7 @@ void parse_CU_Header ( /*OUT*/CUConst* cc,
    cc->debug_abbv.ioff += debug_abbrev_offset;
    cc->debug_abbv.szB  -= debug_abbrev_offset;
 
-   /* and empty out the set_abbv_Cursor cache */
-   if (0) VG_(printf)("XXXXXX initialise set_abbv_Cursor cache\n");
-   for (i = 0; i < N_ABBV_CACHE; i++) {
-      cc->saC_cache[i].abbv_code = (ULong)-1; /* unused */
-      cc->saC_cache[i].posn = 0;
-   }
-   cc->saC_cache_queries = 0;
-   cc->saC_cache_misses = 0;
-}
-
-
-/* Set up 'c' so it is ready to parse the abbv table entry code
-   'abbv_code' for this compilation unit.  */
-static __attribute__((noinline))
-void set_abbv_Cursor ( /*OUT*/Cursor* c, Bool td3,
-                       CUConst* cc, ULong abbv_code )
-{
-   Int   i;
-   ULong acode;
-
-   if (abbv_code == 0)
-      cc->barf("set_abbv_Cursor: abbv_code == 0" );
-
-   /* (ULong)-1 is used to represent an empty cache slot.  So we can't
-      allow it.  In any case no valid DWARF3 should make a reference
-      to a negative abbreviation code.  [at least, they always seem to
-      be numbered upwards from zero as far as I have seen] */
-   vg_assert(abbv_code != (ULong)-1);
-
-   /* First search the cache. */
-   if (0) VG_(printf)("XXXXXX search set_abbv_Cursor cache\n");
-   cc->saC_cache_queries++;
-   for (i = 0; i < N_ABBV_CACHE; i++) {
-      /* No need to test the cached abbv_codes for -1 (empty), since
-         we just asserted that abbv_code is not -1. */
-      if (LIKELY(cc->saC_cache[i].abbv_code == abbv_code)) {
-         /* Found it.  Set up the parser using the cached position,
-            and move this cache entry to the front. */
-        if (0) VG_(printf)("XXXXXX found in set_abbv_Cursor cache\n");
-         init_Cursor( c, cc->debug_abbv, cc->saC_cache[i].posn, 
-                     cc->barf,
-                     "Overrun whilst parsing .debug_abbrev section(1)" );
-        if (i > 0) {
-           ULong t_abbv_code = cc->saC_cache[i].abbv_code;
-           UWord t_posn = cc->saC_cache[i].posn;
-           while (i > 0) {
-              cc->saC_cache[i] = cc->saC_cache[i-1];
-              i--;
-           }
-            cc->saC_cache[0].abbv_code = t_abbv_code;
-            cc->saC_cache[0].posn      = t_posn;
-        }
-        return;
-     }
-   }
-
-   /* No.  It's not in the cache.  We have to search through
-      .debug_abbrev, of course taking care to update the cache
-      when done. */
-
-   cc->saC_cache_misses++;
-   init_Cursor( c, cc->debug_abbv, 0, cc->barf,
-               "Overrun whilst parsing .debug_abbrev section(2)" );
-
-   /* Now iterate though the table until we find the requested
-      entry. */
-   while (True) {
-      //ULong atag;
-      //UInt  has_children;
-      acode = get_ULEB128( c );
-      if (acode == 0) break; /* end of the table */
-      if (acode == abbv_code) break; /* found it */
-      /*atag         = */ get_ULEB128( c );
-      /*has_children = */ get_UChar( c );
-      //TRACE_D3("   %llu      %s    [%s]\n", 
-      //         acode, pp_DW_TAG(atag), pp_DW_children(has_children));
-      while (True) {
-         ULong at_name = get_ULEB128( c );
-         ULong at_form = get_ULEB128( c );
-         if (at_name == 0 && at_form == 0) break;
-         //TRACE_D3("    %18s %s\n", 
-         //         pp_DW_AT(at_name), pp_DW_FORM(at_form));
-      }
-   }
-
-   if (acode == 0) {
-      /* Not found.  This is fatal. */
-      cc->barf("set_abbv_Cursor: abbv_code not found");
-   }
-
-   /* Otherwise, 'c' is now set correctly to parse the relevant entry,
-      starting from the abbreviation entry's tag.  So just cache
-      the result, and return. */
-   for (i = N_ABBV_CACHE-1; i > N_ABBV_CACHE/2; i--) {
-      cc->saC_cache[i] = cc->saC_cache[i-1];
-   }
-   if (0) VG_(printf)("XXXXXX update set_abbv_Cursor cache\n");
-   cc->saC_cache[N_ABBV_CACHE/2].abbv_code = abbv_code;
-   cc->saC_cache[N_ABBV_CACHE/2].posn = get_position_of_Cursor(c);
+   init_ht_abbvs(cc, td3);
 }
 
 /* This represents a single signatured type.  It maps a type signature
@@ -1037,7 +1082,7 @@ typedef
    D3SignatureType;
 
 /* Record a signatured type in the hash table.  */
-static void record_signatured_type ( VgHashTable tab,
+static void record_signatured_type ( VgHashTable *tab,
                                      ULong type_signature,
                                      UWord die )
 {
@@ -1052,7 +1097,7 @@ static void record_signatured_type ( VgHashTable tab,
 /* Given a type signature hash table and a type signature, return the
    cooked DIE offset of the type.  If the type cannot be found, call
    BARF.  */
-static UWord lookup_signatured_type ( VgHashTable tab,
+static UWord lookup_signatured_type ( const VgHashTable *tab,
                                       ULong type_signature,
                                       void (*barf)( const HChar* ) __attribute__((noreturn)) )
 {
@@ -1086,10 +1131,13 @@ typedef
    at a DiCursor.*/
 static
 void get_Form_contents ( /*OUT*/FormContents* cts,
-                         CUConst* cc, Cursor* c,
+                         const CUConst* cc, Cursor* c,
                          Bool td3, DW_FORM form )
 {
    VG_(bzero_inline)(cts, sizeof(*cts));
+   // !!! keep switch in sync with get_Form_szB. The nr of characters read below
+   // must be computed similarly in get_Form_szB.
+   // The consistency is verified in trace_DIE.
    switch (form) {
       case DW_FORM_data1:
          cts->u.val = (ULong)(UChar)get_UChar(c);
@@ -1187,7 +1235,7 @@ void get_Form_contents ( /*OUT*/FormContents* cts,
             not just the first byte of it. */
          DiCursor str
             = ML_(cur_plus)( ML_(cur_from_sli)(cc->escn_debug_str), uw );
-         if (td3) {
+         if (TD3) {
             HChar* tmp = ML_(cur_read_strdup)(str, "di.getFC.1");
             TRACE_D3("(indirect string, offset: 0x%lx): %s", uw, tmp);
             ML_(dinfo_free)(tmp);
@@ -1198,7 +1246,7 @@ void get_Form_contents ( /*OUT*/FormContents* cts,
       }
       case DW_FORM_string: {
          DiCursor str = get_AsciiZ(c);
-         if (td3) {
+         if (TD3) {
             HChar* tmp = ML_(cur_read_strdup)(str, "di.getFC.2");
             TRACE_D3("%s", tmp);
             ML_(dinfo_free)(tmp);
@@ -1210,40 +1258,40 @@ void get_Form_contents ( /*OUT*/FormContents* cts,
          break;
       }
       case DW_FORM_ref1: {
-         UChar  u8 = get_UChar(c);
-         UWord res = cc->cu_start_offset + (UWord)u8;
+         UChar u8   = get_UChar(c);
+         UWord res  = cc->cu_start_offset + (UWord)u8;
          cts->u.val = (ULong)res;
          cts->szB   = sizeof(UWord);
          TRACE_D3("<%lx>", res);
          break;
       }
       case DW_FORM_ref2: {
-         UShort  u16 = get_UShort(c);
-         UWord res = cc->cu_start_offset + (UWord)u16;
+         UShort u16 = get_UShort(c);
+         UWord  res = cc->cu_start_offset + (UWord)u16;
          cts->u.val = (ULong)res;
          cts->szB   = sizeof(UWord);
          TRACE_D3("<%lx>", res);
          break;
       }
       case DW_FORM_ref4: {
-         UInt  u32 = get_UInt(c);
-         UWord res = cc->cu_start_offset + (UWord)u32;
+         UInt  u32  = get_UInt(c);
+         UWord res  = cc->cu_start_offset + (UWord)u32;
          cts->u.val = (ULong)res;
          cts->szB   = sizeof(UWord);
          TRACE_D3("<%lx>", res);
          break;
       }
       case DW_FORM_ref8: {
-         ULong  u64 = get_ULong(c);
-         UWord res = cc->cu_start_offset + (UWord)u64;
+         ULong u64  = get_ULong(c);
+         UWord res  = cc->cu_start_offset + (UWord)u64;
          cts->u.val = (ULong)res;
          cts->szB   = sizeof(UWord);
          TRACE_D3("<%lx>", res);
          break;
       }
       case DW_FORM_ref_udata: {
-         ULong  u64 = get_ULEB128(c);
-         UWord res = cc->cu_start_offset + (UWord)u64;
+         ULong u64  = get_ULEB128(c);
+         UWord res  = cc->cu_start_offset + (UWord)u64;
          cts->u.val = (ULong)res;
          cts->szB   = sizeof(UWord);
          TRACE_D3("<%lx>", res);
@@ -1262,8 +1310,8 @@ void get_Form_contents ( /*OUT*/FormContents* cts,
          cts->szB   = 1;
          break;
       case DW_FORM_block1: {
-         ULong  u64b;
-         ULong  u64 = (ULong)get_UChar(c);
+         ULong    u64b;
+         ULong    u64   = (ULong)get_UChar(c);
          DiCursor block = get_DiCursor_from_Cursor(c);
          TRACE_D3("%llu byte block: ", u64);
          for (u64b = u64; u64b > 0; u64b--) {
@@ -1275,8 +1323,8 @@ void get_Form_contents ( /*OUT*/FormContents* cts,
          break;
       }
       case DW_FORM_block2: {
-         ULong  u64b;
-         ULong  u64 = (ULong)get_UShort(c);
+         ULong    u64b;
+         ULong    u64   = (ULong)get_UShort(c);
          DiCursor block = get_DiCursor_from_Cursor(c);
          TRACE_D3("%llu byte block: ", u64);
          for (u64b = u64; u64b > 0; u64b--) {
@@ -1288,8 +1336,8 @@ void get_Form_contents ( /*OUT*/FormContents* cts,
          break;
       }
       case DW_FORM_block4: {
-         ULong  u64b;
-         ULong  u64 = (ULong)get_UInt(c);
+         ULong    u64b;
+         ULong    u64   = (ULong)get_UInt(c);
          DiCursor block = get_DiCursor_from_Cursor(c);
          TRACE_D3("%llu byte block: ", u64);
          for (u64b = u64; u64b > 0; u64b--) {
@@ -1302,8 +1350,8 @@ void get_Form_contents ( /*OUT*/FormContents* cts,
       }
       case DW_FORM_exprloc:
       case DW_FORM_block: {
-         ULong  u64b;
-         ULong  u64 = (ULong)get_ULEB128(c);
+         ULong    u64b;
+         ULong    u64   = (ULong)get_ULEB128(c);
          DiCursor block = get_DiCursor_from_Cursor(c);
          TRACE_D3("%llu byte block: ", u64);
          for (u64b = u64; u64b > 0; u64b--) {
@@ -1324,11 +1372,29 @@ void get_Form_contents ( /*OUT*/FormContents* cts,
             TRACE_D3("%x ", (UInt)u8);
             work >>= 8;
          }
-         /* Due to the way that the hash table is constructed, the
-            resulting DIE offset here is already "cooked".  See
-            cook_die_using_form.  */
-         cts->u.val = lookup_signatured_type (cc->signature_types, signature,
-                                        c->barf);
+
+         /* cc->signature_types is only built/initialised when
+            VG_(clo_read_var_info) is set. In this case,
+            the DW_FORM_ref_sig8 can be looked up.
+            But we can also arrive here when only reading inline info
+            and VG_(clo_trace_symtab) is set. In such a case,
+            we cannot lookup the DW_FORM_ref_sig8, we rather assign
+            a dummy value. This is a kludge, but otherwise,
+            the 'dwarf inline info reader' tracing would have to
+            do type processing/reading. It is better to avoid
+            adding significant 'real' processing only due to tracing. */
+         if (VG_(clo_read_var_info)) {
+            /* Due to the way that the hash table is constructed, the
+               resulting DIE offset here is already "cooked".  See
+               cook_die_using_form.  */
+            cts->u.val = lookup_signatured_type (cc->signature_types, signature,
+                                                 c->barf);
+         } else {
+            vg_assert (td3);
+            vg_assert (VG_(clo_read_inline_info));
+            TRACE_D3("<not dereferencing signature type>");
+            cts->u.val = 0; /* Assign a dummy/rubbish value */
+         }
          cts->szB   = sizeof(UWord);
          break;
       }
@@ -1342,11 +1408,13 @@ void get_Form_contents ( /*OUT*/FormContents* cts,
          TRACE_D3("0x%lx", (UWord)cts->u.val);
          if (0) VG_(printf)("DW_FORM_GNU_ref_alt 0x%lx\n", (UWord)cts->u.val);
          if (/* the following is surely impossible, but ... */
-             !ML_(sli_is_valid)(cc->escn_debug_info_alt)
-             || cts->u.val >= (ULong)cc->escn_debug_info_alt.szB) {
+             !ML_(sli_is_valid)(cc->escn_debug_info_alt))
+            cc->barf("get_Form_contents: DW_FORM_GNU_ref_addr used, "
+                     "but no alternate .debug_info");
+         else if (cts->u.val >= (ULong)cc->escn_debug_info_alt.szB) {
             /* Hmm.  Offset is nonsensical for this object's .debug_info
                section.  Be safe and reject it. */
-            cc->barf("get_Form_contents: DW_FORM_ref_addr points "
+            cc->barf("get_Form_contents: DW_FORM_GNU_ref_addr points "
                      "outside alternate .debug_info");
          }
          break;
@@ -1354,15 +1422,17 @@ void get_Form_contents ( /*OUT*/FormContents* cts,
       case DW_FORM_GNU_strp_alt: {
          /* this is an offset into alternate .debug_str */
          SizeT uw = (UWord)get_Dwarfish_UWord( c, cc->is_dw64 );
-         if (!ML_(sli_is_valid)(cc->escn_debug_str_alt)
-             || uw >= cc->escn_debug_str_alt.szB)
+         if (!ML_(sli_is_valid)(cc->escn_debug_str_alt))
+            cc->barf("get_Form_contents: DW_FORM_GNU_strp_alt used, "
+                     "but no alternate .debug_str");
+         else if (uw >= cc->escn_debug_str_alt.szB)
             cc->barf("get_Form_contents: DW_FORM_GNU_strp_alt "
                      "points outside alternate .debug_str");
          /* FIXME: check the entire string lies inside debug_str,
             not just the first byte of it. */
          DiCursor str
             = ML_(cur_plus)( ML_(cur_from_sli)(cc->escn_debug_str_alt), uw);
-         if (td3) {
+         if (TD3) {
             HChar* tmp = ML_(cur_read_strdup)(str, "di.getFC.3");
             TRACE_D3("(indirect alt string, offset: 0x%lx): %s", uw, tmp);
             ML_(dinfo_free)(tmp);
@@ -1380,6 +1450,119 @@ void get_Form_contents ( /*OUT*/FormContents* cts,
    }
 }
 
+static inline UInt sizeof_Dwarfish_UWord (Bool is_dw64)
+{
+   if (is_dw64)
+      return sizeof(ULong);
+   else
+      return sizeof(UInt);
+}
+
+#define VARSZ_FORM 0xffffffff
+/* If the form is a fixed length form, return the nr of bytes for this form.
+   If the form is a variable length form, return VARSZ_FORM. */
+static
+UInt get_Form_szB (const CUConst* cc, DW_FORM form )
+{
+   // !!! keep switch in sync with get_Form_contents : the nr of bytes
+   // read from a cursor by get_Form_contents must be returned by
+   // the below switch.
+   // The consistency is verified in trace_DIE.
+   switch (form) {
+      case DW_FORM_data1: return 1;
+      case DW_FORM_data2: return 2;
+      case DW_FORM_data4: return 4;
+      case DW_FORM_data8: return 8;
+      case DW_FORM_sec_offset:
+         if (cc->is_dw64)
+            return 8;
+         else
+            return 4;
+      case DW_FORM_sdata:
+         return VARSZ_FORM;
+      case DW_FORM_udata:
+         return VARSZ_FORM;
+      case DW_FORM_addr: // See hack in get_Form_contents
+         return sizeof(UWord);
+      case DW_FORM_ref_addr: // See hack in get_Form_contents
+         if (cc->version == 2)
+            return sizeof(UWord);
+         else 
+            return sizeof_Dwarfish_UWord (cc->is_dw64);
+      case DW_FORM_strp:
+         return sizeof_Dwarfish_UWord (cc->is_dw64);
+      case DW_FORM_string: 
+         return VARSZ_FORM;
+      case DW_FORM_ref1:
+         return 1;
+      case DW_FORM_ref2:
+         return 2;
+      case DW_FORM_ref4:
+         return 4;
+      case DW_FORM_ref8:
+         return 8;
+      case DW_FORM_ref_udata:
+         return VARSZ_FORM;
+      case DW_FORM_flag: 
+         return 1;
+      case DW_FORM_flag_present:
+         return 0; // !!! special case, no data.
+      case DW_FORM_block1:
+         return VARSZ_FORM;
+      case DW_FORM_block2:
+         return VARSZ_FORM;
+      case DW_FORM_block4:
+         return VARSZ_FORM;
+      case DW_FORM_exprloc:
+      case DW_FORM_block:
+         return VARSZ_FORM;
+      case DW_FORM_ref_sig8:
+         return 8;
+      case DW_FORM_indirect:
+         return VARSZ_FORM;
+      case DW_FORM_GNU_ref_alt:
+         return sizeof_Dwarfish_UWord(cc->is_dw64);
+      case DW_FORM_GNU_strp_alt:
+         return sizeof_Dwarfish_UWord(cc->is_dw64);
+      default:
+         VG_(printf)(
+            "get_Form_szB: unhandled %d (%s)\n",
+            form, ML_(pp_DW_FORM)(form));
+         cc->barf("get_Form_contents: unhandled DW_FORM");
+   }
+}
+
+/* Skip a DIE as described by abbv.
+   If the DIE has a sibling, *sibling is set to the skipped DIE sibling value. */
+static
+void skip_DIE (UWord  *sibling,
+               Cursor* c_die,
+               const g_abbv *abbv,
+               const CUConst* cc)
+{
+   UInt nf_i;
+   FormContents cts;
+   nf_i = 0;
+   while (True) {
+      if (abbv->nf[nf_i].at_name == DW_AT_sibling) {
+         get_Form_contents( &cts, cc, c_die, False /*td3*/,
+                            (DW_FORM)abbv->nf[nf_i].at_form );
+         if ( cts.szB > 0 ) 
+            *sibling = cts.u.val;
+         nf_i++;
+      } else if (abbv->nf[nf_i].skip_szB == VARSZ_FORM) {
+         get_Form_contents( &cts, cc, c_die, False /*td3*/,
+                            (DW_FORM)abbv->nf[nf_i].at_form );
+         nf_i++;
+      } else {
+         advance_position_of_Cursor (c_die, (ULong)abbv->nf[nf_i].skip_szB);
+         nf_i = abbv->nf[nf_i].next_nf;
+      }
+      if (nf_i == 0)
+         break;
+   }
+}
+
 
 /*------------------------------------------------------------*/
 /*---                                                      ---*/
@@ -1389,7 +1572,7 @@ void get_Form_contents ( /*OUT*/FormContents* cts,
 
 typedef
    struct _TempVar {
-      HChar*  name; /* in DebugInfo's .strchunks */
+      const HChar*  name; /* in DebugInfo's .strpool */
       /* Represent ranges economically.  nRanges is the number of
          ranges.  Cases:
          0: .rngOneMin .rngOneMax .manyRanges are all zero
@@ -1412,7 +1595,7 @@ typedef
       GExpr*  gexpr; /* for this variable */
       GExpr*  fbGX;  /* to find the frame base of the enclosing fn, if
                         any */
-      HChar*  fName; /* declaring file name, or NULL */
+      UInt    fndn_ix; /* declaring file/dirname index in fndnpool, or 0 */
       Int     fLine; /* declaring file line number, or zero */
       /* offset in .debug_info, so that abstract instances can be
          found to satisfy references from concrete instances. */
@@ -1448,13 +1631,14 @@ typedef
       Bool    isFunc[N_D3_VAR_STACK]; /* from DW_AT_subprogram? */
       GExpr*  fbGX[N_D3_VAR_STACK];   /* if isFunc, contains the FB
                                          expr, else NULL */
-      /* The file name table.  Is a mapping from integer index to the
-         (permanent) copy of the string in in DebugInfo's .strchunks. */
-      XArray* /* of UChar* */ filenameTable;
+      /* The fndn_ix file name/dirname table.  Is a mapping from dwarf
+         integer index to the index in di->fndnpool. */
+      XArray* /* of UInt* */ fndn_ix_Table;
    }
    D3VarParser;
 
-static void varstack_show ( D3VarParser* parser, const HChar* str ) {
+static void varstack_show ( const D3VarParser* parser, const HChar* str )
+{
    Word i, j;
    VG_(printf)("  varstack (%s) {\n", str);
    for (i = 0; i <= parser->sp; i++) {
@@ -1508,7 +1692,7 @@ void varstack_preen ( D3VarParser* parser, Bool td3, Int level )
       varstack_show( parser, "after preen" );
 }
 
-static void varstack_push ( CUConst* cc,
+static void varstack_push ( const CUConst* cc,
                             D3VarParser* parser,
                             Bool td3,
                             XArray* ranges, Int level,
@@ -1539,7 +1723,7 @@ static void varstack_push ( CUConst* cc,
    parser->level[parser->sp]  = level;
    parser->isFunc[parser->sp] = isFunc;
    parser->fbGX[parser->sp]   = fbGX;
-   if (td3)
+   if (TD3)
       varstack_show( parser, "after push" );
 }
 
@@ -1549,7 +1733,7 @@ static void varstack_push ( CUConst* cc,
    in both cases bundle the expression or location list into a
    so-called GExpr (guarded expression). */
 __attribute__((noinline))
-static GExpr* get_GX ( CUConst* cc, Bool td3, const FormContents* cts )
+static GExpr* get_GX ( const CUConst* cc, Bool td3, const FormContents* cts )
 {
    GExpr* gexpr = NULL;
    if (cts->szB < 0) {
@@ -1571,10 +1755,93 @@ static GExpr* get_GX ( CUConst* cc, Bool td3, const FormContents* cts )
    return gexpr;
 }
 
+/* Returns an xarray* of directory names (indexed by the dwarf dirname
+   integer).
+   If 'compdir' is NULL, entry [0] will be set to "."
+   otherwise entry [0] is set to compdir.
+   Entry [0] basically means "the current directory of the compilation",
+   whatever that means, according to the DWARF3 spec.
+   FIXME??? readdwarf3.c/readdwarf.c have a lot of duplicated code */
+static
+XArray* read_dirname_xa (DebugInfo* di, const HChar *compdir,
+                         Cursor *c,
+                         Bool td3 )
+{
+   XArray*        dirname_xa;   /* xarray of HChar* dirname */
+   const HChar*   dirname;
+   UInt           compdir_len = 0;
+
+   dirname_xa = VG_(newXA) (ML_(dinfo_zalloc), "di.rdxa.1", ML_(dinfo_free),
+                            sizeof(HChar*) );
+
+   if (compdir == NULL) {
+      dirname = ".";
+      compdir_len = 0;
+   } else {
+      dirname = compdir;
+      compdir_len = VG_(strlen)(compdir);
+   }
+   VG_(addToXA) (dirname_xa, &dirname);
+
+   TRACE_D3(" The Directory Table%s\n", 
+            peek_UChar(c) == 0 ? " is empty." : ":" );
+
+   while (peek_UChar(c) != 0) {
+
+#     define NBUF 4096
+      static HChar buf[NBUF];
+      DiCursor cur = get_AsciiZ(c);
+      HChar* data_str = ML_(cur_read_strdup)( cur, "dirname_xa.1" );
+      TRACE_D3("  %s\n", data_str);
+
+      /* If data_str[0] is '/', then 'data' is an absolute path and we
+         don't mess with it.  Otherwise, if we can, construct the
+         path 'compdir' ++ "/" ++ 'data'. */
+
+      if (data_str[0] != '/' 
+          /* not an absolute path */
+          && compdir
+          /* actually got something sensible for compdir */
+          && compdir_len
+             + VG_(strlen)(data_str) + 5/*paranoia*/ < NBUF
+          /* it's short enough to concatenate */) 
+      {
+         buf[0] = 0;
+         VG_(strcat)(buf, compdir);
+         VG_(strcat)(buf, "/");
+         VG_(strcat)(buf, data_str);
+         vg_assert(VG_(strlen)(buf) < NBUF);
+         dirname = ML_(addStr)(di,buf,-1);
+         VG_(addToXA) (dirname_xa, &dirname);
+         if (0) VG_(printf)("rel path  %s\n", buf);
+      } else {
+         /* just use 'data'. */
+         dirname = ML_(addStr)(di,data_str,-1);
+         VG_(addToXA) (dirname_xa, &dirname);
+         if (0) VG_(printf)("abs path  %s\n", data_str);
+      }
+
+      ML_(dinfo_free)(data_str);
+
+#     undef NBUF
+   }
+
+   TRACE_D3 ("\n");
+
+   if (get_UChar (c) != 0) {
+      ML_(symerr)(NULL, True,
+                  "could not get NUL at end of DWARF directory table");
+      VG_(deleteXA)(dirname_xa);
+      return NULL;
+   }
+
+   return dirname_xa;
+}
 
 static 
-void read_filename_table( /*MOD*/D3VarParser* parser,
-                          CUConst* cc, ULong debug_line_offset,
+void read_filename_table( /*MOD*/XArray* /* of UInt* */ fndn_ix_Table,
+                          const HChar* compdir,
+                          const CUConst* cc, ULong debug_line_offset,
                           Bool td3 )
 {
    Bool   is_dw64;
@@ -1582,9 +1849,13 @@ void read_filename_table( /*MOD*/D3VarParser* parser,
    Word   i;
    UShort version;
    UChar  opcode_base;
-   HChar* str;
+   const HChar* str;
+   XArray* dirname_xa;   /* xarray of HChar* dirname */
+   ULong  dir_xa_ix;     /* Index in dirname_xa, as read from dwarf info. */
+   const HChar* dirname;
+   UInt   fndn_ix;
 
-   vg_assert(parser && cc && cc->barf);
+   vg_assert(fndn_ix_Table && cc && cc->barf);
    if (!ML_(sli_is_valid)(cc->escn_debug_line)
        || cc->escn_debug_line.szB <= debug_line_offset) {
       cc->barf("read_filename_table: .debug_line is missing?");
@@ -1594,8 +1865,8 @@ void read_filename_table( /*MOD*/D3VarParser* parser,
                 "Overrun whilst reading .debug_line section(1)" );
 
    /* unit_length = */
-      get_Initial_Length( &is_dw64, &c,
-           "read_filename_table: invalid initial-length field" );
+   get_Initial_Length( &is_dw64, &c,
+                       "read_filename_table: invalid initial-length field" );
    version = get_UShort( &c );
    if (version != 2 && version != 3 && version != 4)
      cc->barf("read_filename_table: Only DWARF version 2, 3 and 4 line info "
@@ -1612,32 +1883,159 @@ void read_filename_table( /*MOD*/D3VarParser* parser,
    for (i = 1; i < (Word)opcode_base; i++)
      (void)get_UChar( &c );
 
-   /* skip over the directory names table */
-   while (peek_UChar(&c) != 0) {
-     (void)get_AsciiZ(&c);
-   }
-   (void)get_UChar(&c); /* skip terminating zero */
+   dirname_xa = read_dirname_xa(cc->di, compdir, &c, td3);
 
    /* Read and record the file names table */
-   vg_assert(parser->filenameTable);
-   vg_assert( VG_(sizeXA)( parser->filenameTable ) == 0 );
+   vg_assert( VG_(sizeXA)( fndn_ix_Table ) == 0 );
    /* Add a dummy index-zero entry.  DWARF3 numbers its files
       from 1, for some reason. */
-   str = ML_(addStr)( cc->di, "<unknown_file>", -1 );
-   VG_(addToXA)( parser->filenameTable, &str );
+   fndn_ix = ML_(addFnDn) ( cc->di, "<unknown_file>", NULL );
+   VG_(addToXA)( fndn_ix_Table, &fndn_ix );
    while (peek_UChar(&c) != 0) {
       DiCursor cur = get_AsciiZ(&c);
       str = ML_(addStrFromCursor)( cc->di, cur );
-      TRACE_D3("  read_filename_table: %ld %s\n",
-               VG_(sizeXA)(parser->filenameTable), str);
-      VG_(addToXA)( parser->filenameTable, &str );
-      (void)get_ULEB128( &c ); /* skip directory index # */
+      dir_xa_ix = get_ULEB128( &c );
+      if (dirname_xa != NULL 
+          && dir_xa_ix >= 0 && dir_xa_ix < VG_(sizeXA) (dirname_xa))
+         dirname = *(HChar**)VG_(indexXA) ( dirname_xa, dir_xa_ix );
+      else
+         dirname = NULL;
+      fndn_ix = ML_(addFnDn)( cc->di, str, dirname);
+      TRACE_D3("  read_filename_table: %ld fndn_ix %d %s %s\n",
+               VG_(sizeXA)(fndn_ix_Table), fndn_ix, 
+               dirname, str);
+      VG_(addToXA)( fndn_ix_Table, &fndn_ix );
       (void)get_ULEB128( &c ); /* skip last mod time */
       (void)get_ULEB128( &c ); /* file size */
    }
    /* We're done!  The rest of it is not interesting. */
+   if (dirname_xa != NULL)
+      VG_(deleteXA)(dirname_xa);
 }
 
+/* setup_cu_svma to be called when a cu is found at level 0,
+   to establish the cu_svma. */
+static void setup_cu_svma(CUConst* cc, Bool have_lo, Addr ip_lo, Bool td3)
+{
+   Addr cu_svma;
+   /* We have potentially more than one type of parser parsing the
+      dwarf information. At least currently, each parser establishes
+      the cu_svma. So, in case cu_svma_known, we check that the same
+      result is obtained by the 2nd parsing of the cu.
+
+      Alternatively, we could reset cu_svma_known after each parsing
+      and then check that we only see a single DW_TAG_compile_unit DIE
+      at level 0, DWARF3 only allows exactly one top level DIE per
+      CU. */
+
+   if (have_lo)
+      cu_svma = ip_lo;
+   else {
+      /* Now, it may be that this DIE doesn't tell us the CU's
+         SVMA, by way of not having a DW_AT_low_pc.  That's OK --
+         the CU doesn't *have* to have its SVMA specified.
+         
+         But as per last para D3 spec sec 3.1.1 ("Normal and
+         Partial Compilation Unit Entries", "If the base address
+         (viz, the SVMA) is undefined, then any DWARF entry of
+         structure defined interms of the base address of that
+         compilation unit is not valid.".  So that means, if whilst
+         processing the children of this top level DIE (or their
+         children, etc) we see a DW_AT_range, and cu_svma_known is
+         False, then the DIE that contains it is (per the spec)
+         invalid, and we can legitimately stop and complain. */
+      /* .. whereas The Reality is, simply assume the SVMA is zero
+         if it isn't specified. */
+      cu_svma = 0;
+   }
+
+   if (cc->cu_svma_known) {
+      vg_assert (cu_svma == cc->cu_svma);
+   } else {
+      cc->cu_svma_known = True;
+      cc->cu_svma = cu_svma;
+      if (0)
+         TRACE_D3("setup_cu_svma: acquire CU_SVMA of %p\n", (void*) cc->cu_svma);
+   }
+}
+
+static void trace_DIE(
+   DW_TAG dtag,
+   UWord posn,
+   Int level,
+   UWord saved_die_c_offset,
+   const g_abbv *abbv,
+   const CUConst* cc)
+{
+   Cursor c;
+   FormContents cts;
+   UWord sibling = 0;
+   UInt nf_i;
+   Bool  debug_types_flag;
+   Bool  alt_flag;
+   Cursor check_skip;
+   UWord check_sibling = 0;
+
+   posn = uncook_die( cc, posn, &debug_types_flag, &alt_flag );
+   init_Cursor (&c, 
+                debug_types_flag ? cc->escn_debug_types :
+                alt_flag ? cc->escn_debug_info_alt : cc->escn_debug_info,
+                saved_die_c_offset, cc->barf, 
+                "Overrun trace_DIE");
+   check_skip = c;
+   VG_(printf)(" <%d><%lx>: Abbrev Number: %llu (%s)%s%s\n",
+               level, posn, (ULong) abbv->abbv_code, ML_(pp_DW_TAG)( dtag ),
+               debug_types_flag ? " (in .debug_types)" : "",
+               alt_flag ? " (in alternate .debug_info)" : "");
+   nf_i = 0;
+   while (True) {
+      DW_AT   attr = (DW_AT)  abbv->nf[nf_i].at_name;
+      DW_FORM form = (DW_FORM)abbv->nf[nf_i].at_form;
+      nf_i++;
+      if (attr == 0 && form == 0) break;
+      VG_(printf)("     %18s: ", ML_(pp_DW_AT)(attr));
+      /* Get the form contents, so as to print them */
+      get_Form_contents( &cts, cc, &c, True, form );
+      if (attr == DW_AT_sibling && cts.szB > 0) {
+         sibling = cts.u.val;
+      }
+      VG_(printf)("\t\n");
+   }
+
+   /* Verify that skipping a DIE gives the same displacement as
+      tracing (i.e. reading) a DIE. If there is an inconsistency in
+      the nr of bytes read by get_Form_contents and get_Form_szB, this
+      should be detected by the below. Using --trace-symtab=yes
+      --read-var-info=yes will ensure all DIEs are systematically
+      verified. */
+   skip_DIE (&check_sibling, &check_skip, abbv, cc);
+   vg_assert (check_sibling == sibling);
+   vg_assert (get_position_of_Cursor (&check_skip) 
+              == get_position_of_Cursor (&c));
+}
+
+__attribute__((noreturn))
+static void dump_bad_die_and_barf(
+   const HChar *whichparser,
+   DW_TAG dtag,
+   UWord posn,
+   Int level,
+   Cursor* c_die,
+   UWord saved_die_c_offset,
+   const g_abbv *abbv,
+   const CUConst* cc)
+{
+   trace_DIE (dtag, posn, level, saved_die_c_offset, abbv, cc);
+   VG_(printf)("%s:\n", whichparser);
+   cc->barf("confused by the above DIE");
+}
+
+__attribute__((noinline))
+static void bad_DIE_confusion(int linenr)
+{
+   VG_(printf)("\nparse DIE(readdwarf3.c:%d): confused by:\n", linenr);
+}
+#define goto_bad_DIE do {bad_DIE_confusion(__LINE__); goto bad_DIE;} while (0)
 
 __attribute__((noinline))
 static void parse_var_DIE (
@@ -1649,17 +2047,15 @@ static void parse_var_DIE (
    UWord posn,
    Int level,
    Cursor* c_die,
-   Cursor* c_abbv,
+   const g_abbv *abbv,
    CUConst* cc,
    Bool td3
 )
 {
    FormContents cts;
+   UInt nf_i;
 
    UWord saved_die_c_offset  = get_position_of_Cursor( c_die );
-   UWord saved_abbv_c_offset = get_position_of_Cursor( c_abbv );
-   Bool  debug_types_flag;
-   Bool  alt_flag;
 
    varstack_preen( parser, td3, level-1 );
 
@@ -1673,9 +2069,12 @@ static void parse_var_DIE (
       Addr ip_lo    = 0;
       Addr ip_hi1   = 0;
       Addr rangeoff = 0;
+      const HChar *compdir = NULL;
+      nf_i = 0;
       while (True) {
-         DW_AT   attr = (DW_AT)  get_ULEB128( c_abbv );
-         DW_FORM form = (DW_FORM)get_ULEB128( c_abbv );
+         DW_AT   attr = (DW_AT)  abbv->nf[nf_i].at_name;
+         DW_FORM form = (DW_FORM)abbv->nf[nf_i].at_form;
+         nf_i++;
          if (attr == 0 && form == 0) break;
          get_Form_contents( &cts, cc, c_die, False/*td3*/, form );
          if (attr == DW_AT_low_pc && cts.szB > 0) {
@@ -1692,55 +2091,44 @@ static void parse_var_DIE (
             rangeoff   = cts.u.val;
             have_range = True;
          }
+         if (attr == DW_AT_comp_dir) {
+            if (cts.szB >= 0)
+               cc->barf("parse_var_DIE compdir: expecting indirect string");
+            HChar *str = ML_(cur_read_strdup)( cts.u.cur,
+                                               "parse_var_DIE.compdir" );
+            compdir = ML_(addStr)(cc->di, str, -1);
+            ML_(dinfo_free) (str);
+         }
          if (attr == DW_AT_stmt_list && cts.szB > 0) {
-            read_filename_table( parser, cc, cts.u.val, td3 );
+            read_filename_table( parser->fndn_ix_Table, compdir,
+                                 cc, cts.u.val, td3 );
          }
       }
       if (have_lo && have_hi1 && hiIsRelative)
          ip_hi1 += ip_lo;
+
       /* Now, does this give us an opportunity to find this
          CU's svma? */
-#if 0
-      if (level == 0 && have_lo) {
-         vg_assert(!cc->cu_svma_known); /* if this fails, it must be
-         because we've already seen a DW_TAG_compile_unit DIE at level
-         0.  But that can't happen, because DWARF3 only allows exactly
-         one top level DIE per CU. */
-         cc->cu_svma_known = True;
-         cc->cu_svma = ip_lo;
-         if (1)
-            TRACE_D3("BBBBAAAA acquire CU_SVMA of %p\n", cc->cu_svma);
-         /* Now, it may be that this DIE doesn't tell us the CU's
-            SVMA, by way of not having a DW_AT_low_pc.  That's OK --
-            the CU doesn't *have* to have its SVMA specified.
+      if (level == 0)
+         setup_cu_svma(cc, have_lo, ip_lo, td3);
 
-            But as per last para D3 spec sec 3.1.1 ("Normal and
-            Partial Compilation Unit Entries", "If the base address
-            (viz, the SVMA) is undefined, then any DWARF entry of
-            structure defined interms of the base address of that
-            compilation unit is not valid.".  So that means, if whilst
-            processing the children of this top level DIE (or their
-            children, etc) we see a DW_AT_range, and cu_svma_known is
-            False, then the DIE that contains it is (per the spec)
-            invalid, and we can legitimately stop and complain. */
-      }
-#else
-      /* .. whereas The Reality is, simply assume the SVMA is zero
-         if it isn't specified. */
-      if (level == 0) {
-         vg_assert(!cc->cu_svma_known);
-         cc->cu_svma_known = True;
-         if (have_lo)
-            cc->cu_svma = ip_lo;
-         else
-            cc->cu_svma = 0;
-      }
-#endif
       /* Do we have something that looks sane? */
       if (have_lo && have_hi1 && (!have_range)) {
          if (ip_lo < ip_hi1)
             varstack_push( cc, parser, td3, 
                            unitary_range_list(ip_lo, ip_hi1 - 1),
+                           level,
+                           False/*isFunc*/, NULL/*fbGX*/ );
+         else if (ip_lo == 0 && ip_hi1 == 0)
+            /* CU has no code, presumably?
+               Such situations have been encountered for code
+               compiled with -ffunction-sections -fdata-sections
+               and linked with --gc-sections. Completely
+               eliminated CU gives such 0 lo/hi pc. Similarly
+               to a CU which has no lo/hi/range pc, we push
+               an empty range list. */
+            varstack_push( cc, parser, td3,
+                           empty_range_list(),
                            level,
                            False/*isFunc*/, NULL/*fbGX*/ );
       } else
@@ -1770,7 +2158,7 @@ static void parse_var_DIE (
       } else {
          if (0) VG_(printf)("I got hlo %d hhi1 %d hrange %d\n",
                             (Int)have_lo, (Int)have_hi1, (Int)have_range);
-         goto bad_DIE;
+         goto_bad_DIE;
       }
    }
 
@@ -1784,9 +2172,11 @@ static void parse_var_DIE (
       Addr   rangeoff   = 0;
       Bool   isFunc     = dtag == DW_TAG_subprogram;
       GExpr* fbGX       = NULL;
+      nf_i = 0;
       while (True) {
-         DW_AT   attr = (DW_AT)  get_ULEB128( c_abbv );
-         DW_FORM form = (DW_FORM)get_ULEB128( c_abbv );
+         DW_AT   attr = (DW_AT)  abbv->nf[nf_i].at_name;
+         DW_FORM form = (DW_FORM)abbv->nf[nf_i].at_form;
+         nf_i++;
          if (attr == 0 && form == 0) break;
          get_Form_contents( &cts, cc, c_die, False/*td3*/, form );
          if (attr == DW_AT_low_pc && cts.szB > 0) {
@@ -1856,21 +2246,23 @@ static void parse_var_DIE (
          */
          /* Ignore (seems safe than pushing a single byte range) */
       } else
-         goto bad_DIE;
+         goto_bad_DIE;
    }
 
    if (dtag == DW_TAG_variable || dtag == DW_TAG_formal_parameter) {
-      HChar* name        = NULL;
+      const  HChar* name = NULL;
       UWord  typeR       = D3_INVALID_CUOFF;
       Bool   global      = False;
       GExpr* gexpr       = NULL;
       Int    n_attrs     = 0;
       UWord  abs_ori     = (UWord)D3_INVALID_CUOFF;
       Int    lineNo      = 0;
-      HChar* fileName    = NULL;
+      UInt   fndn_ix     = 0;
+      nf_i = 0;
       while (True) {
-         DW_AT   attr = (DW_AT)  get_ULEB128( c_abbv );
-         DW_FORM form = (DW_FORM)get_ULEB128( c_abbv );
+         DW_AT   attr = (DW_AT)  abbv->nf[nf_i].at_name;
+         DW_FORM form = (DW_FORM)abbv->nf[nf_i].at_form;
+         nf_i++;
          if (attr == 0 && form == 0) break;
          get_Form_contents( &cts, cc, c_die, False/*td3*/, form );
          n_attrs++;
@@ -1901,12 +2293,11 @@ static void parse_var_DIE (
          if (attr == DW_AT_decl_file && cts.szB > 0) {
             Int ftabIx = (Int)cts.u.val;
             if (ftabIx >= 1
-                && ftabIx < VG_(sizeXA)( parser->filenameTable )) {
-               fileName = *(HChar**)
-                          VG_(indexXA)( parser->filenameTable, ftabIx );
-               vg_assert(fileName);
+                && ftabIx < VG_(sizeXA)( parser->fndn_ix_Table )) {
+               fndn_ix = *(UInt*)VG_(indexXA)( parser->fndn_ix_Table, ftabIx );
             }
-            if (0) VG_(printf)("XXX filename = %s\n", fileName);
+            if (0) VG_(printf)("XXX filename fndn_ix = %d %s\n", fndn_ix,
+                               ML_(fndn_ix2filename) (cc->di, fndn_ix));
          }
       }
       if (!global && dtag == DW_TAG_variable && level == 1) {
@@ -1922,7 +2313,7 @@ static void parse_var_DIE (
          (1) has location and type    -> completed
          (2) has type only            -> is an abstract instance
          (3) has location and abs_ori -> is a concrete instance
-         Name, filename and line number are all optional frills.
+         Name, fndn_ix and line number are all optional frills.
       */
       if ( /* 1 */ (gexpr && typeR != D3_INVALID_CUOFF) 
            /* 2 */ || (typeR != D3_INVALID_CUOFF)
@@ -1935,7 +2326,7 @@ static void parse_var_DIE (
             stack. */
          GExpr*   fbGX = NULL;
          Word     i, nRanges;
-         XArray*  /* of AddrRange */ xa;
+         const XArray*  /* of AddrRange */ xa;
          TempVar* tv;
          /* Stack can't be empty; we put a dummy entry on it for the
             entire address range before starting with the DIEs for
@@ -1969,7 +2360,7 @@ static void parse_var_DIE (
                      "warning: parse_var_DIE: non-global variable "
                      "outside DW_TAG_subprogram\n");
                }
-               /* goto bad_DIE; */
+               /* goto_bad_DIE; */
                /* This seems to happen a lot.  Just ignore it -- if,
                   when we come to evaluation of the location (guarded)
                   expression, it requires a frame base value, and
@@ -1994,7 +2385,7 @@ static void parse_var_DIE (
          tv->typeR  = typeR;
          tv->gexpr  = gexpr;
          tv->fbGX   = fbGX;
-         tv->fName  = fileName;
+         tv->fndn_ix= fndn_ix;
          tv->fLine  = lineNo;
          tv->dioff  = posn;
          tv->absOri = abs_ori;
@@ -2017,8 +2408,8 @@ static void parse_var_DIE (
             UWord keyW, valW;
             if (VG_(lookupFM)( rangestree, &keyW, &valW, (UWord)xa )) {
                XArray* old = (XArray*)keyW;
-               tl_assert(valW == 0);
-               tl_assert(old != xa);
+               vg_assert(valW == 0);
+               vg_assert(old != xa);
                tv->rngMany = old;
             } else {
                XArray* cloned = VG_(cloneXA)( "di.readdwarf3.pvD.2", xa );
@@ -2121,29 +2512,323 @@ static void parse_var_DIE (
    return;
 
   bad_DIE:
-   set_position_of_Cursor( c_die,  saved_die_c_offset );
-   set_position_of_Cursor( c_abbv, saved_abbv_c_offset );
-   VG_(printf)("\nparse_var_DIE: confused by:\n");
-   posn = uncook_die( cc, posn, &debug_types_flag, &alt_flag );
-   VG_(printf)(" <%d><%lx>: %s", level, posn, ML_(pp_DW_TAG)( dtag ) );
-   if (debug_types_flag) {
-      VG_(printf)(" (in .debug_types)");
+   dump_bad_die_and_barf("parse_var_DIE", dtag, posn, level,
+                         c_die, saved_die_c_offset,
+                         abbv,
+                         cc);
+   /*NOTREACHED*/
+}
+
+typedef
+   struct {
+      /* The fndn_ix file name/dirname table.  Is a mapping from dwarf
+         integer index to the index in di->fndnpool. */
+      XArray* /* of UInt* */ fndn_ix_Table;
+      UWord sibling; // sibling of the last read DIE (if it has a sibling).
    }
-   else if (alt_flag) {
-      VG_(printf)(" (in alternate .debug_info)");
+   D3InlParser;
+
+/* Return the function name corresponding to absori.
+
+   absori is a 'cooked' reference to a DIE, i.e. absori can be either
+   in cc->escn_debug_info or in cc->escn_debug_info_alt.
+   get_inlFnName will uncook absori. 
+
+   The returned value is a (permanent) string in DebugInfo's .strchunks.
+
+   LIMITATION: absori must point in the CU of cc. If absori points
+   in another CU, returns "UnknownInlinedFun".
+
+   Here are the problems to retrieve the fun name if absori is in
+   another CU:  the DIE reading code cannot properly extract data from
+   another CU, as the abbv code retrieved in the other CU cannot be
+   translated in an abbreviation. Reading data from the alternate debug
+   info also gives problems as the string reference is also in the alternate
+   file, but when reading the alt DIE, the string form is a 'local' string,
+   but cannot be read in the current CU, but must be read in the alt CU.
+   See bug 338803 comment#3 and attachment for a failed attempt to handle
+   these problems (failed because with the patch, only one alt abbrev hash
+   table is kept, while we must handle all abbreviations in all CUs
+   referenced by an absori (being a reference to an alt CU, or a previous
+   or following CU). */
+static const HChar* get_inlFnName (Int absori, const CUConst* cc, Bool td3)
+{
+   Cursor c;
+   const g_abbv *abbv;
+   ULong  atag, abbv_code;
+   UInt   has_children;
+   UWord  posn;
+   Bool type_flag, alt_flag;
+   const HChar *ret = NULL;
+   FormContents cts;
+   UInt nf_i;
+
+   posn = uncook_die( cc, absori, &type_flag, &alt_flag);
+   if (type_flag)
+      cc->barf("get_inlFnName: uncooked absori in type debug info");
+
+   /* LIMITATION: check we are in the same CU.
+      If not, return unknown inlined function name. */
+   /* if crossing between alt debug info<>normal info
+          or posn not in the cu range,
+      then it is in another CU. */
+   if (alt_flag != cc->is_alt_info
+       || posn < cc->cu_start_offset
+       || posn >= cc->cu_start_offset + cc->unit_length) {
+      static Bool reported = False;
+      if (!reported && VG_(clo_verbosity) > 1) {
+         VG_(message)(Vg_DebugMsg,
+                      "Warning: cross-CU LIMITATION: some inlined fn names\n"
+                      "might be shown as UnknownInlinedFun\n");
+         reported = True;
+      }
+      TRACE_D3(" <get_inlFnName><%lx>: cross-CU LIMITATION", posn);
+      return ML_(addStr)(cc->di, "UnknownInlinedFun", -1);
    }
-   VG_(printf)("\n");
+
+   init_Cursor (&c, cc->escn_debug_info, posn, cc->barf, 
+                "Overrun get_inlFnName absori");
+
+   abbv_code = get_ULEB128( &c );
+   abbv      = get_abbv ( cc, abbv_code);
+   atag      = abbv->atag;
+   TRACE_D3(" <get_inlFnName><%lx>: Abbrev Number: %llu (%s)\n",
+            posn, abbv_code, ML_(pp_DW_TAG)( atag ) );
+
+   if (atag == 0)
+      cc->barf("get_inlFnName: invalid zero tag on DIE");
+
+   has_children = abbv->has_children;
+   if (has_children != DW_children_no && has_children != DW_children_yes)
+      cc->barf("get_inlFnName: invalid has_children value");
+
+   if (atag != DW_TAG_subprogram)
+      cc->barf("get_inlFnName: absori not a subprogram");
+
+   nf_i = 0;
    while (True) {
-      DW_AT   attr = (DW_AT)  get_ULEB128( c_abbv );
-      DW_FORM form = (DW_FORM)get_ULEB128( c_abbv );
+      DW_AT   attr = (DW_AT)  abbv->nf[nf_i].at_name;
+      DW_FORM form = (DW_FORM)abbv->nf[nf_i].at_form;
+      nf_i++;
       if (attr == 0 && form == 0) break;
-      VG_(printf)("     %18s: ", ML_(pp_DW_AT)(attr));
-      /* Get the form contents, so as to print them */
-      get_Form_contents( &cts, cc, c_die, True, form );
-      VG_(printf)("\t\n");
+      get_Form_contents( &cts, cc, &c, False/*td3*/, form );
+      if (attr == DW_AT_name) {
+         HChar *fnname;
+         if (cts.szB >= 0)
+            cc->barf("get_inlFnName: expecting indirect string");
+         fnname = ML_(cur_read_strdup)( cts.u.cur,
+                                        "get_inlFnName.1" );
+         ret = ML_(addStr)(cc->di, fnname, -1);
+         ML_(dinfo_free) (fnname);
+         break; /* Name found, get out of the loop, as this has priority over
+                 DW_AT_specification. */
+      }
+      if (attr == DW_AT_specification) {
+         UWord cdie;
+
+         if (cts.szB == 0)
+            cc->barf("get_inlFnName: AT specification missing");
+
+         /* The recursive call to get_inlFnName will uncook its arg.
+            So, we need to cook it here, so as to reference the
+            correct section (e.g. the alt info). */
+         cdie = cook_die_using_form(cc, (UWord)cts.u.val, form);
+
+         /* hoping that there is no loop */
+         ret = get_inlFnName (cdie, cc, td3);
+         /* Unclear if having both DW_AT_specification and DW_AT_name is
+            possible but in any case, we do not break here. 
+            If we find later on a DW_AT_name, it will override the name found
+            in the DW_AT_specification.*/
+      }
    }
-   VG_(printf)("\n");
-   cc->barf("parse_var_DIE: confused by the above DIE");
+
+   if (ret)
+      return ret;
+   else {
+      TRACE_D3("AbsOriFnNameNotFound");
+      return ML_(addStr)(cc->di, "AbsOriFnNameNotFound", -1);
+   }
+}
+
+/* Returns True if the (possibly) childrens of the current DIE are interesting
+   to parse. Returns False otherwise.
+   If the current DIE has a sibling, the non interesting children can
+   maybe be skipped (if the DIE has a DW_AT_sibling).  */
+__attribute__((noinline))
+static Bool parse_inl_DIE (
+   /*MOD*/D3InlParser* parser,
+   DW_TAG dtag,
+   UWord posn,
+   Int level,
+   Cursor* c_die,
+   const g_abbv *abbv,
+   CUConst* cc,
+   Bool td3
+)
+{
+   FormContents cts;
+   UInt nf_i;
+
+   UWord saved_die_c_offset  = get_position_of_Cursor( c_die );
+
+   /* Get info about DW_TAG_compile_unit and DW_TAG_partial_unit 'which
+      in theory could also contain inlined fn calls).  */
+   if (dtag == DW_TAG_compile_unit || dtag == DW_TAG_partial_unit) {
+      Bool have_lo    = False;
+      Addr ip_lo    = 0;
+      const HChar *compdir = NULL;
+
+      nf_i = 0;
+      while (True) {
+         DW_AT   attr = (DW_AT)  abbv->nf[nf_i].at_name;
+         DW_FORM form = (DW_FORM)abbv->nf[nf_i].at_form;
+         nf_i++;
+         if (attr == 0 && form == 0) break;
+         get_Form_contents( &cts, cc, c_die, False/*td3*/, form );
+         if (attr == DW_AT_low_pc && cts.szB > 0) {
+            ip_lo   = cts.u.val;
+            have_lo = True;
+         }
+         if (attr == DW_AT_comp_dir) {
+            if (cts.szB >= 0)
+               cc->barf("parse_inl_DIE compdir: expecting indirect string");
+            HChar *str = ML_(cur_read_strdup)( cts.u.cur,
+                                               "parse_inl_DIE.compdir" );
+            compdir = ML_(addStr)(cc->di, str, -1);
+            ML_(dinfo_free) (str);
+         }
+         if (attr == DW_AT_stmt_list && cts.szB > 0) {
+            read_filename_table( parser->fndn_ix_Table, compdir,
+                                 cc, cts.u.val, td3 );
+         }
+         if (attr == DW_AT_sibling && cts.szB > 0) {
+            parser->sibling = cts.u.val;
+         }
+      }
+      if (level == 0)
+         setup_cu_svma (cc, have_lo, ip_lo, td3);
+   }
+
+   if (dtag == DW_TAG_inlined_subroutine) {
+      Bool   have_lo    = False;
+      Bool   have_hi1   = False;
+      Bool   have_range = False;
+      Bool   hiIsRelative = False;
+      Addr   ip_lo      = 0;
+      Addr   ip_hi1     = 0;
+      Addr   rangeoff   = 0;
+      UInt   caller_fndn_ix = 0;
+      Int caller_lineno = 0;
+      Int inlinedfn_abstract_origin = 0;
+
+      nf_i = 0;
+      while (True) {
+         DW_AT   attr = (DW_AT)  abbv->nf[nf_i].at_name;
+         DW_FORM form = (DW_FORM)abbv->nf[nf_i].at_form;
+         nf_i++;
+         if (attr == 0 && form == 0) break;
+         get_Form_contents( &cts, cc, c_die, False/*td3*/, form );
+         if (attr == DW_AT_call_file && cts.szB > 0) {
+            Int ftabIx = (Int)cts.u.val;
+            if (ftabIx >= 1
+                && ftabIx < VG_(sizeXA)( parser->fndn_ix_Table )) {
+               caller_fndn_ix = *(UInt*)
+                          VG_(indexXA)( parser->fndn_ix_Table, ftabIx );
+            }
+            if (0) VG_(printf)("XXX caller_fndn_ix = %d %s\n", caller_fndn_ix,
+                               ML_(fndn_ix2filename) (cc->di, caller_fndn_ix));
+         }  
+         if (attr == DW_AT_call_line && cts.szB > 0) {
+            caller_lineno = cts.u.val;
+         }  
+
+         if (attr == DW_AT_abstract_origin  && cts.szB > 0) {
+            inlinedfn_abstract_origin
+               = cook_die_using_form (cc, (UWord)cts.u.val, form);
+         }
+
+         if (attr == DW_AT_low_pc && cts.szB > 0) {
+            ip_lo   = cts.u.val;
+            have_lo = True;
+         }
+         if (attr == DW_AT_high_pc && cts.szB > 0) {
+            ip_hi1   = cts.u.val;
+            have_hi1 = True;
+            if (form != DW_FORM_addr)
+               hiIsRelative = True;
+         }
+         if (attr == DW_AT_ranges && cts.szB > 0) {
+            rangeoff   = cts.u.val;
+            have_range = True;
+         }
+         if (attr == DW_AT_sibling && cts.szB > 0) {
+            parser->sibling = cts.u.val;
+         }
+      }
+      if (have_lo && have_hi1 && hiIsRelative)
+         ip_hi1 += ip_lo;
+      /* Do we have something that looks sane? */
+      if (dtag == DW_TAG_inlined_subroutine
+          && (!have_lo) && (!have_hi1) && (!have_range)) {
+         /* Seems strange. How can an inlined subroutine have
+            no code ? */
+         goto_bad_DIE;
+      } else
+      if (have_lo && have_hi1 && (!have_range)) {
+         /* This inlined call is just a single address range. */
+         if (ip_lo < ip_hi1) {
+            /* Apply text debug biasing */
+            ip_lo += cc->di->text_debug_bias;
+            ip_hi1 += cc->di->text_debug_bias;
+            ML_(addInlInfo) (cc->di,
+                             ip_lo, ip_hi1, 
+                             get_inlFnName (inlinedfn_abstract_origin, cc, td3),
+                             caller_fndn_ix,
+                             caller_lineno, level);
+         }
+      } else if (have_range) {
+         /* This inlined call is several address ranges. */
+         XArray *ranges;
+         Word j;
+         const HChar *inlfnname =
+            get_inlFnName (inlinedfn_abstract_origin, cc, td3);
+
+         /* Ranges are biased for the inline info using the same logic
+            as what is used for biasing ranges for the var info, for which
+            ranges are read using cc->cu_svma (see parse_var_DIE).
+            Then text_debug_bias is added when a (non global) var
+            is recorded (see just before the call to ML_(addVar)) */
+         ranges = get_range_list( cc, td3,
+                                  rangeoff, cc->cu_svma );
+         for (j = 0; j < VG_(sizeXA)( ranges ); j++) {
+            AddrRange* range = (AddrRange*) VG_(indexXA)( ranges, j );
+            ML_(addInlInfo) (cc->di,
+                             range->aMin   + cc->di->text_debug_bias,
+                             range->aMax+1 + cc->di->text_debug_bias,
+                             // aMax+1 as range has its last bound included
+                             // while ML_(addInlInfo) expects last bound not
+                             // included.
+                             inlfnname,
+                             caller_fndn_ix,
+                             caller_lineno, level);
+         }
+         VG_(deleteXA)( ranges );
+      } else
+         goto_bad_DIE;
+   }
+
+   // Only recursively parse the (possible) children for the DIE which
+   // might maybe contain a DW_TAG_inlined_subroutine:
+   return dtag == DW_TAG_lexical_block || dtag == DW_TAG_subprogram
+      || dtag == DW_TAG_inlined_subroutine
+      || dtag == DW_TAG_compile_unit || dtag == DW_TAG_partial_unit;
+
+  bad_DIE:
+   dump_bad_die_and_barf("parse_inl_DIE", dtag, posn, level,
+                         c_die, saved_die_c_offset,
+                         abbv,
+                         cc);
    /*NOTREACHED*/
 }
 
@@ -2178,7 +2863,8 @@ typedef
    }
    D3TypeParser;
 
-static void typestack_show ( D3TypeParser* parser, const HChar* str ) {
+static void typestack_show ( const D3TypeParser* parser, const HChar* str )
+{
    Word i;
    VG_(printf)("  typestack (%s) {\n", str);
    for (i = 0; i <= parser->sp; i++) {
@@ -2213,15 +2899,17 @@ void typestack_preen ( D3TypeParser* parser, Bool td3, Int level )
       typestack_show( parser, "after preen" );
 }
 
-static Bool typestack_is_empty ( D3TypeParser* parser ) {
+static Bool typestack_is_empty ( const D3TypeParser* parser )
+{
    vg_assert(parser->sp >= -1 && parser->sp < N_D3_TYPE_STACK);
    return parser->sp == -1;
 }
 
-static void typestack_push ( CUConst* cc,
+static void typestack_push ( const CUConst* cc,
                              D3TypeParser* parser,
                              Bool td3,
-                             TyEnt* parentE, Int level ) {
+                             TyEnt* parentE, Int level )
+{
    if (0)
    TRACE_D3("BBBBAAAA typestack_push[newsp=%d]: %d  %05lx\n",
             parser->sp+1, level, parentE->cuOff);
@@ -2245,12 +2933,12 @@ static void typestack_push ( CUConst* cc,
    vg_assert(parentE->cuOff != D3_INVALID_CUOFF);
    parser->qparentE[parser->sp] = *parentE;
    parser->qlevel[parser->sp]  = level;
-   if (td3)
+   if (TD3)
       typestack_show( parser, "after push" );
 }
 
 /* True if the subrange type being parsed gives the bounds of an array. */
-static Bool subrange_type_denotes_array_bounds ( D3TypeParser* parser,
+static Bool subrange_type_denotes_array_bounds ( const D3TypeParser* parser,
                                                  DW_TAG dtag ) {
    vg_assert(dtag == DW_TAG_subrange_type);
    /* For most languages, a subrange_type dtag always gives the 
@@ -2269,8 +2957,8 @@ static Bool subrange_type_denotes_array_bounds ( D3TypeParser* parser,
 /* Parse a type-related DIE.  'parser' holds the current parser state.
    'admin' is where the completed types are dumped.  'dtag' is the tag
    for this DIE.  'c_die' points to the start of the data fields (FORM
-   stuff) for the DIE.  c_abbv points to the start of the (name,form)
-   pairs which describe the DIE.
+   stuff) for the DIE.  abbv is the parsed abbreviation which describe
+   the DIE.
 
    We may find the DIE uninteresting, in which case we should ignore
    it.
@@ -2300,20 +2988,18 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
                              UWord posn,
                              Int level,
                              Cursor* c_die,
-                             Cursor* c_abbv,
-                             CUConst* cc,
+                             const g_abbv *abbv,
+                             const CUConst* cc,
                              Bool td3 )
 {
    FormContents cts;
+   UInt nf_i;
    TyEnt typeE;
    TyEnt atomE;
    TyEnt fieldE;
    TyEnt boundE;
-   Bool  debug_types_flag;
-   Bool  alt_flag;
 
    UWord saved_die_c_offset  = get_position_of_Cursor( c_die );
-   UWord saved_abbv_c_offset = get_position_of_Cursor( c_abbv );
 
    VG_(memset)( &typeE,  0xAA, sizeof(typeE) );
    VG_(memset)( &atomE,  0xAA, sizeof(atomE) );
@@ -2331,15 +3017,17 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
       /* See if we can find DW_AT_language, since it is important for
          establishing array bounds (see DW_TAG_subrange_type below in
          this fn) */
+      nf_i = 0;
       while (True) {
-         DW_AT   attr = (DW_AT)  get_ULEB128( c_abbv );
-         DW_FORM form = (DW_FORM)get_ULEB128( c_abbv );
+         DW_AT   attr = (DW_AT)  abbv->nf[nf_i].at_name;
+         DW_FORM form = (DW_FORM)abbv->nf[nf_i].at_form;
+         nf_i++;
          if (attr == 0 && form == 0) break;
          get_Form_contents( &cts, cc, c_die, False/*td3*/, form );
          if (attr != DW_AT_language)
             continue;
          if (cts.szB <= 0)
-           goto bad_DIE;
+           goto_bad_DIE;
          switch (cts.u.val) {
             case DW_LANG_C89: case DW_LANG_C:
             case DW_LANG_C_plus_plus: case DW_LANG_ObjC:
@@ -2359,7 +3047,7 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
             case DW_LANG_Mips_Assembler:
                parser->language = '?'; break;
             default:
-               goto bad_DIE;
+               goto_bad_DIE;
          }
       }
    }
@@ -2369,9 +3057,11 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
       VG_(memset)(&typeE, 0, sizeof(typeE));
       typeE.cuOff = D3_INVALID_CUOFF;
       typeE.tag   = Te_TyBase;
+      nf_i = 0;
       while (True) {
-         DW_AT   attr = (DW_AT)  get_ULEB128( c_abbv );
-         DW_FORM form = (DW_FORM)get_ULEB128( c_abbv );
+         DW_AT   attr = (DW_AT)  abbv->nf[nf_i].at_name;
+         DW_FORM form = (DW_FORM)abbv->nf[nf_i].at_form;
+         nf_i++;
          if (attr == 0 && form == 0) break;
          get_Form_contents( &cts, cc, c_die, False/*td3*/, form );
          if (attr == DW_AT_name && cts.szB < 0) {
@@ -2397,7 +3087,7 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
                case DW_ATE_complex_float:
                   typeE.Te.TyBase.enc = 'C'; break;
                default:
-                  goto bad_DIE;
+                  goto_bad_DIE;
             }
          }
       }
@@ -2420,7 +3110,7 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
               && typeE.Te.TyBase.enc != 'S' 
               && typeE.Te.TyBase.enc != 'F'
               && typeE.Te.TyBase.enc != 'C'))
-         goto bad_DIE;
+         goto_bad_DIE;
       /* Last minute hack: if we see this
          <1><515>: DW_TAG_base_type
              DW_AT_byte_size   : 0
@@ -2478,9 +3168,11 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
          same size as that on the machine.  gcc appears to give a size
          whereas icc9 doesn't. */
       typeE.Te.TyPorR.szB = sizeof(UWord);
+      nf_i = 0;
       while (True) {
-         DW_AT   attr = (DW_AT)  get_ULEB128( c_abbv );
-         DW_FORM form = (DW_FORM)get_ULEB128( c_abbv );
+         DW_AT   attr = (DW_AT)  abbv->nf[nf_i].at_name;
+         DW_FORM form = (DW_FORM)abbv->nf[nf_i].at_form;
+         nf_i++;
          if (attr == 0 && form == 0) break;
          get_Form_contents( &cts, cc, c_die, False/*td3*/, form );
          if (attr == DW_AT_byte_size && cts.szB > 0) {
@@ -2493,7 +3185,7 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
       }
       /* Do we have something that looks sane? */
       if (typeE.Te.TyPorR.szB != sizeof(UWord))
-         goto bad_DIE;
+         goto_bad_DIE;
       else
          goto acquire_Type;
    }
@@ -2508,9 +3200,11 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
          = VG_(newXA)( ML_(dinfo_zalloc), "di.readdwarf3.ptD.enum_type.1", 
                        ML_(dinfo_free),
                        sizeof(UWord) );
+      nf_i=0;
       while (True) {
-         DW_AT   attr = (DW_AT)  get_ULEB128( c_abbv );
-         DW_FORM form = (DW_FORM)get_ULEB128( c_abbv );
+         DW_AT   attr = (DW_AT)  abbv->nf[nf_i].at_name;
+         DW_FORM form = (DW_FORM)abbv->nf[nf_i].at_form;
+         nf_i++;
          if (attr == 0 && form == 0) break;
          get_Form_contents( &cts, cc, c_die, False/*td3*/, form );
          if (attr == DW_AT_name && cts.szB < 0) {
@@ -2545,8 +3239,8 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
              that will put such an enumeration_type into a .debug_types
              unit which should only contain complete types.) */
           && (parser->language != 'A' && !is_decl)) {
-         goto bad_DIE;
-         }
+         goto_bad_DIE;
+      }
 
       /* On't stack! */
       typestack_push( cc, parser, td3, &typeE, level );
@@ -2587,9 +3281,11 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
       VG_(memset)( &atomE, 0, sizeof(atomE) );
       atomE.cuOff = posn;
       atomE.tag   = Te_Atom;
+      nf_i = 0;
       while (True) {
-         DW_AT   attr = (DW_AT)  get_ULEB128( c_abbv );
-         DW_FORM form = (DW_FORM)get_ULEB128( c_abbv );
+         DW_AT   attr = (DW_AT)  abbv->nf[nf_i].at_name;
+         DW_FORM form = (DW_FORM)abbv->nf[nf_i].at_form;
+         nf_i++;
          if (attr == 0 && form == 0) break;
          get_Form_contents( &cts, cc, c_die, False/*td3*/, form );
          if (attr == DW_AT_name && cts.szB < 0) {
@@ -2604,13 +3300,13 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
       }
       /* Do we have something that looks sane? */
       if (atomE.Te.Atom.name == NULL)
-         goto bad_DIE;
+         goto_bad_DIE;
       /* Do we have a plausible parent? */
-      if (typestack_is_empty(parser)) goto bad_DIE;
+      if (typestack_is_empty(parser)) goto_bad_DIE;
       vg_assert(ML_(TyEnt__is_type)(&parser->qparentE[parser->sp]));
       vg_assert(parser->qparentE[parser->sp].cuOff != D3_INVALID_CUOFF);
-      if (level != parser->qlevel[parser->sp]+1) goto bad_DIE;
-      if (parser->qparentE[parser->sp].tag != Te_TyEnum) goto bad_DIE;
+      if (level != parser->qlevel[parser->sp]+1) goto_bad_DIE;
+      if (parser->qparentE[parser->sp].tag != Te_TyEnum) goto_bad_DIE;
       /* Record this child in the parent */
       vg_assert(parser->qparentE[parser->sp].Te.TyEnum.atomRs);
       VG_(addToXA)( parser->qparentE[parser->sp].Te.TyEnum.atomRs,
@@ -2632,6 +3328,7 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
       typeE.cuOff = posn;
       typeE.tag   = Te_TyStOrUn;
       typeE.Te.TyStOrUn.name = NULL;
+      typeE.Te.TyStOrUn.typeR = D3_INVALID_CUOFF;
       typeE.Te.TyStOrUn.fieldRs
          = VG_(newXA)( ML_(dinfo_zalloc), "di.readdwarf3.pTD.struct_type.1", 
                        ML_(dinfo_free),
@@ -2639,9 +3336,11 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
       typeE.Te.TyStOrUn.complete = True;
       typeE.Te.TyStOrUn.isStruct = dtag == DW_TAG_structure_type 
                                    || dtag == DW_TAG_class_type;
+      nf_i = 0;
       while (True) {
-         DW_AT   attr = (DW_AT)  get_ULEB128( c_abbv );
-         DW_FORM form = (DW_FORM)get_ULEB128( c_abbv );
+         DW_AT   attr = (DW_AT)  abbv->nf[nf_i].at_name;
+         DW_FORM form = (DW_FORM)abbv->nf[nf_i].at_form;
+         nf_i++;
          if (attr == 0 && form == 0) break;
          get_Form_contents( &cts, cc, c_die, False/*td3*/, form );
          if (attr == DW_AT_name && cts.szB < 0) {
@@ -2658,6 +3357,13 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
          }
          if (attr == DW_AT_specification && cts.szB > 0 && cts.u.val > 0) {
             is_spec = True;
+         }
+         if (attr == DW_AT_signature && form == DW_FORM_ref_sig8
+             && cts.szB > 0) {
+            have_szB = True;
+            typeE.Te.TyStOrUn.szB = 8;
+            typeE.Te.TyStOrUn.typeR
+               = cook_die_using_form( cc, (UWord)cts.u.val, form );
          }
       }
       /* Do we have something that looks sane? */
@@ -2685,16 +3391,25 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
       }
       if ((!is_decl) /* && (!is_spec) */) {
          /* this is the common, ordinary case */
-         if ((!have_szB) /* we must know the size */
-             /* But the name can be present, or not */)
-            goto bad_DIE;
+         /* The name can be present, or not */
+         if (!have_szB) { 
+            /* We must know the size.
+               But in Ada, record with discriminants might have no size.
+               But in C, VLA in the middle of a struct (gcc extension)
+               might have no size.
+               Instead, some GNAT dwarf extensions and/or dwarf entries
+               allow to calculate the struct size at runtime.
+               We cannot do that (yet?) so, the temporary kludge is to use
+               a small size. */
+            typeE.Te.TyStOrUn.szB = 1;
+         }
          /* On't stack! */
          typestack_push( cc, parser, td3, &typeE, level );
          goto acquire_Type;
       }
       else {
          /* don't know how to handle any other variants just now */
-         goto bad_DIE;
+         goto_bad_DIE;
       }
    }
 
@@ -2708,9 +3423,11 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
       fieldE.cuOff = posn;
       fieldE.tag   = Te_Field;
       fieldE.Te.Field.typeR = D3_INVALID_CUOFF;
+      nf_i = 0;
       while (True) {
-         DW_AT   attr = (DW_AT)  get_ULEB128( c_abbv );
-         DW_FORM form = (DW_FORM)get_ULEB128( c_abbv );
+         DW_AT   attr = (DW_AT)  abbv->nf[nf_i].at_name;
+         DW_FORM form = (DW_FORM)abbv->nf[nf_i].at_form;
+         nf_i++;
          if (attr == 0 && form == 0) break;
          get_Form_contents( &cts, cc, c_die, False/*td3*/, form );
          if (attr == DW_AT_name && cts.szB < 0) {
@@ -2739,11 +3456,11 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
          }
       }
       /* Do we have a plausible parent? */
-      if (typestack_is_empty(parser)) goto bad_DIE;
+      if (typestack_is_empty(parser)) goto_bad_DIE;
       vg_assert(ML_(TyEnt__is_type)(&parser->qparentE[parser->sp]));
       vg_assert(parser->qparentE[parser->sp].cuOff != D3_INVALID_CUOFF);
-      if (level != parser->qlevel[parser->sp]+1) goto bad_DIE;
-      if (parser->qparentE[parser->sp].tag != Te_TyStOrUn) goto bad_DIE;
+      if (level != parser->qlevel[parser->sp]+1) goto_bad_DIE;
+      if (parser->qparentE[parser->sp].tag != Te_TyStOrUn) goto_bad_DIE;
       /* Do we have something that looks sane?  If this a member of a
          struct, we must have a location expression; but if a member
          of a union that is irrelevant (D3 spec sec 5.6.6).  We ought
@@ -2756,9 +3473,8 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
          fieldE.Te.Field.name
             = ML_(dinfo_strdup)( "di.readdwarf3.ptD.member.3",
                                  "<anon_field>" );
-      vg_assert(fieldE.Te.Field.name);
       if (fieldE.Te.Field.typeR == D3_INVALID_CUOFF)
-         goto bad_DIE;
+         goto_bad_DIE;
       if (fieldE.Te.Field.nLoc) {
          if (!parent_is_struct) {
             /* If this is a union type, pretend we haven't seen the data
@@ -2794,9 +3510,11 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
          = VG_(newXA)( ML_(dinfo_zalloc), "di.readdwarf3.ptD.array_type.1",
                        ML_(dinfo_free),
                        sizeof(UWord) );
+      nf_i = 0;
       while (True) {
-         DW_AT   attr = (DW_AT)  get_ULEB128( c_abbv );
-         DW_FORM form = (DW_FORM)get_ULEB128( c_abbv );
+         DW_AT   attr = (DW_AT)  abbv->nf[nf_i].at_name;
+         DW_FORM form = (DW_FORM)abbv->nf[nf_i].at_form;
+         nf_i++;
          if (attr == 0 && form == 0) break;
          get_Form_contents( &cts, cc, c_die, False/*td3*/, form );
          if (attr == DW_AT_type && cts.szB > 0) {
@@ -2805,7 +3523,7 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
          }
       }
       if (typeE.Te.TyArray.typeR == D3_INVALID_CUOFF)
-         goto bad_DIE;
+         goto_bad_DIE;
       /* On't stack! */
       typestack_push( cc, parser, td3, &typeE, level );
       goto acquire_Type;
@@ -2832,9 +3550,11 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
       VG_(memset)( &boundE, 0, sizeof(boundE) );
       boundE.cuOff = D3_INVALID_CUOFF;
       boundE.tag   = Te_Bound;
+      nf_i = 0;
       while (True) {
-         DW_AT   attr = (DW_AT)  get_ULEB128( c_abbv );
-         DW_FORM form = (DW_FORM)get_ULEB128( c_abbv );
+         DW_AT   attr = (DW_AT)  abbv->nf[nf_i].at_name;
+         DW_FORM form = (DW_FORM)abbv->nf[nf_i].at_form;
+         nf_i++;
          if (attr == 0 && form == 0) break;
          get_Form_contents( &cts, cc, c_die, False/*td3*/, form );
          if (attr == DW_AT_lower_bound && cts.szB > 0) {
@@ -2855,11 +3575,11 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
          (not being used to describe the bounds of a containing array
          type) */
       /* Do we have a plausible parent? */
-      if (typestack_is_empty(parser)) goto bad_DIE;
+      if (typestack_is_empty(parser)) goto_bad_DIE;
       vg_assert(ML_(TyEnt__is_type)(&parser->qparentE[parser->sp]));
       vg_assert(parser->qparentE[parser->sp].cuOff != D3_INVALID_CUOFF);
-      if (level != parser->qlevel[parser->sp]+1) goto bad_DIE;
-      if (parser->qparentE[parser->sp].tag != Te_TyArray) goto bad_DIE;
+      if (level != parser->qlevel[parser->sp]+1) goto_bad_DIE;
+      if (parser->qparentE[parser->sp].tag != Te_TyArray) goto_bad_DIE;
 
       /* Figure out if we have a definite range or not */
       if (have_lower && have_upper && (!have_count)) {
@@ -2887,7 +3607,7 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
          boundE.Te.Bound.boundU = 0;
       } else {
          /* FIXME: handle more cases */
-         goto bad_DIE;
+         goto_bad_DIE;
       }
 
       /* Record this bound in the parent */
@@ -2911,9 +3631,11 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
       typeE.tag   = Te_TyTyDef;
       typeE.Te.TyTyDef.name = NULL;
       typeE.Te.TyTyDef.typeR = D3_INVALID_CUOFF;
+      nf_i = 0;
       while (True) {
-         DW_AT   attr = (DW_AT)  get_ULEB128( c_abbv );
-         DW_FORM form = (DW_FORM)get_ULEB128( c_abbv );
+         DW_AT   attr = (DW_AT)  abbv->nf[nf_i].at_name;
+         DW_FORM form = (DW_FORM)abbv->nf[nf_i].at_form;
+         nf_i++;
          if (attr == 0 && form == 0) break;
          get_Form_contents( &cts, cc, c_die, False/*td3*/, form );
          if (attr == DW_AT_name && cts.szB < 0) {
@@ -2926,19 +3648,17 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
                = cook_die_using_form( cc, (UWord)cts.u.val, form );
          }
       }
-      /* Do we have something that looks sane? */
-      if (/* must have a name */
-          typeE.Te.TyTyDef.name == NULL
-          /* However gcc gnat Ada generates minimal typedef
-             such as the below => accept no name for Ada.
-             <6><91cc>: DW_TAG_typedef
-                DW_AT_abstract_ori: <9066>
-          */
-          && parser->language != 'A'
-          /* but the referred-to type can be absent */)
-         goto bad_DIE;
-      else
-         goto acquire_Type;
+      /* Do we have something that looks sane?
+         gcc gnat Ada generates minimal typedef
+         such as the below
+         <6><91cc>: DW_TAG_typedef
+            DW_AT_abstract_ori: <9066>
+         g++ for OMP can generate artificial functions that have
+         parameters that refer to pointers to unnamed typedefs.
+         See https://bugs.kde.org/show_bug.cgi?id=273475
+         So we cannot require a name for a DW_TAG_typedef.
+      */
+      goto acquire_Type;
    }
 
    if (dtag == DW_TAG_subroutine_type) {
@@ -2950,18 +3670,22 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
       goto acquire_Type;
    }
 
-   if (dtag == DW_TAG_volatile_type || dtag == DW_TAG_const_type) {
+   if (dtag == DW_TAG_volatile_type || dtag == DW_TAG_const_type
+       || dtag == DW_TAG_restrict_type) {
       Int have_ty = 0;
       VG_(memset)(&typeE, 0, sizeof(typeE));
       typeE.cuOff = D3_INVALID_CUOFF;
       typeE.tag   = Te_TyQual;
       typeE.Te.TyQual.qual
-         = dtag == DW_TAG_volatile_type ? 'V' : 'C';
+         = (dtag == DW_TAG_volatile_type ? 'V'
+            : (dtag == DW_TAG_const_type ? 'C' : 'R'));
       /* target type defaults to 'void' */
       typeE.Te.TyQual.typeR = D3_FAKEVOID_CUOFF;
+      nf_i = 0;
       while (True) {
-         DW_AT   attr = (DW_AT)  get_ULEB128( c_abbv );
-         DW_FORM form = (DW_FORM)get_ULEB128( c_abbv );
+         DW_AT   attr = (DW_AT)  abbv->nf[nf_i].at_name;
+         DW_FORM form = (DW_FORM)abbv->nf[nf_i].at_form;
+         nf_i++;
          if (attr == 0 && form == 0) break;
          get_Form_contents( &cts, cc, c_die, False/*td3*/, form );
          if (attr == DW_AT_type && cts.szB > 0) {
@@ -2976,7 +3700,7 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
       if (have_ty == 1 || have_ty == 0)
          goto acquire_Type;
       else
-         goto bad_DIE;
+         goto_bad_DIE;
    }
 
    /*
@@ -3043,28 +3767,10 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
    /*NOTREACHED*/
 
   bad_DIE:
-   set_position_of_Cursor( c_die,  saved_die_c_offset );
-   set_position_of_Cursor( c_abbv, saved_abbv_c_offset );
-   VG_(printf)("\nparse_type_DIE: confused by:\n");
-   posn = uncook_die( cc, posn, &debug_types_flag, &alt_flag );
-   VG_(printf)(" <%d><%lx>: %s", level, posn, ML_(pp_DW_TAG)( dtag ) );
-   if (debug_types_flag) {
-      VG_(printf)(" (in .debug_types)");
-   } else if (alt_flag) {
-      VG_(printf)(" (in alternate .debug_info)");
-   }
-   VG_(printf)("\n");
-   while (True) {
-      DW_AT   attr = (DW_AT)  get_ULEB128( c_abbv );
-      DW_FORM form = (DW_FORM)get_ULEB128( c_abbv );
-      if (attr == 0 && form == 0) break;
-      VG_(printf)("     %18s: ", ML_(pp_DW_AT)(attr));
-      /* Get the form contents, so as to print them */
-      get_Form_contents( &cts, cc, c_die, True, form );
-      VG_(printf)("\t\n");
-   }
-   VG_(printf)("\n");
-   cc->barf("parse_type_DIE: confused by the above DIE");
+   dump_bad_die_and_barf("parse_type_DIE", dtag, posn, level,
+                         c_die, saved_die_c_offset,
+                         abbv,
+                         cc);
    /*NOTREACHED*/
 }
 
@@ -3076,7 +3782,7 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
 /*------------------------------------------------------------*/
 
 static UWord chase_cuOff ( Bool* changed,
-                           XArray* /* of TyEnt */ ents,
+                           const XArray* /* of TyEnt */ ents,
                            TyEntIndexCache* ents_cache,
                            UWord cuOff )
 {
@@ -3102,7 +3808,7 @@ static UWord chase_cuOff ( Bool* changed,
 
 static
 void chase_cuOffs_in_XArray ( Bool* changed,
-                              XArray* /* of TyEnt */ ents,
+                              const XArray* /* of TyEnt */ ents,
                               TyEntIndexCache* ents_cache,
                               /*MOD*/XArray* /* of UWord */ cuOffs )
 {
@@ -3118,7 +3824,7 @@ void chase_cuOffs_in_XArray ( Bool* changed,
    *changed = b2;
 }
 
-static Bool TyEnt__subst_R_fields ( XArray* /* of TyEnt */ ents,
+static Bool TyEnt__subst_R_fields ( const XArray* /* of TyEnt */ ents,
                                     TyEntIndexCache* ents_cache,
                                     /*MOD*/TyEnt* te )
 {
@@ -3411,140 +4117,148 @@ static void read_DIE (
    /*MOD*/XArray* /* of GExpr* */ gexprs,
    /*MOD*/D3TypeParser* typarser,
    /*MOD*/D3VarParser* varparser,
+   /*MOD*/D3InlParser* inlparser,
    Cursor* c, Bool td3, CUConst* cc, Int level
 )
 {
-   Cursor abbv;
+   const g_abbv *abbv;
    ULong  atag, abbv_code;
    UWord  posn;
    UInt   has_children;
-   UWord  start_die_c_offset, start_abbv_c_offset;
-   UWord  after_die_c_offset, after_abbv_c_offset;
+   UWord  start_die_c_offset;
+   UWord  after_die_c_offset;
+   // If the DIE we will parse has a sibling and the parser(s) are
+   // all indicating that parse_children is not necessary, then
+   // we will skip the children by jumping to the sibling of this DIE
+   // (if it has a sibling).
+   UWord  sibling = 0;
+   Bool   parse_children = False;
 
    /* --- Deal with this DIE --- */
    posn      = cook_die( cc, get_position_of_Cursor( c ) );
    abbv_code = get_ULEB128( c );
-   set_abbv_Cursor( &abbv, td3, cc, abbv_code );
-   atag      = get_ULEB128( &abbv );
-   TRACE_D3("\n");
-   TRACE_D3(" <%d><%lx>: Abbrev Number: %llu (%s)\n",
-            level, posn, abbv_code, ML_(pp_DW_TAG)( atag ) );
+   abbv = get_abbv(cc, abbv_code);
+   atag      = abbv->atag;
+
+   if (TD3) {
+      TRACE_D3("\n");
+      trace_DIE ((DW_TAG)atag, posn, level,
+                 get_position_of_Cursor( c ), abbv, cc);
+   }
 
    if (atag == 0)
       cc->barf("read_DIE: invalid zero tag on DIE");
 
-   has_children = get_UChar( &abbv );
+   has_children = abbv->has_children;
    if (has_children != DW_children_no && has_children != DW_children_yes)
       cc->barf("read_DIE: invalid has_children value");
 
    /* We're set up to look at the fields of this DIE.  Hand it off to
       any parser(s) that want to see it.  Since they will in general
-      advance both the DIE and abbrev cursors, remember their current
-      settings so that we can then back up and do one final pass over
-      the DIE, to print out its contents. */
-
+      advance the DIE cursor, remember the current settings so that we
+      can then back up. . */
    start_die_c_offset  = get_position_of_Cursor( c );
-   start_abbv_c_offset = get_position_of_Cursor( &abbv );
+   after_die_c_offset  = 0; // set to c position if a parser has read the DIE.
 
-   while (True) {
-      FormContents cts;
-      ULong at_name = get_ULEB128( &abbv );
-      ULong at_form = get_ULEB128( &abbv );
-      if (at_name == 0 && at_form == 0) break;
-      TRACE_D3("     %18s: ", ML_(pp_DW_AT)(at_name));
-      /* Get the form contents, but ignore them; the only purpose is
-         to print them, if td3 is True */
-      get_Form_contents( &cts, cc, c, td3, (DW_FORM)at_form );
-      TRACE_D3("\t");
-      TRACE_D3("\n");
+   if (VG_(clo_read_var_info)) {
+      parse_type_DIE( tyents,
+                      typarser,
+                      (DW_TAG)atag,
+                      posn,
+                      level,
+                      c,     /* DIE cursor */
+                      abbv,  /* abbrev */
+                      cc,
+                      td3 );
+      if (get_position_of_Cursor( c ) != start_die_c_offset) {
+         after_die_c_offset = get_position_of_Cursor( c );
+         set_position_of_Cursor( c, start_die_c_offset );
+      }
+
+      parse_var_DIE( rangestree,
+                     tempvars,
+                     gexprs,
+                     varparser,
+                     (DW_TAG)atag,
+                     posn,
+                     level,
+                     c,     /* DIE cursor */
+                     abbv,  /* abbrev */
+                     cc,
+                     td3 );
+      if (get_position_of_Cursor( c ) != start_die_c_offset) {
+         after_die_c_offset = get_position_of_Cursor( c );
+         set_position_of_Cursor( c, start_die_c_offset );
+      }
+
+      parse_children = True;
+      // type and var parsers do not have logic to skip childrens and establish
+      // the value of sibling.
    }
 
-   after_die_c_offset  = get_position_of_Cursor( c );
-   after_abbv_c_offset = get_position_of_Cursor( &abbv );
-
-   set_position_of_Cursor( c,     start_die_c_offset );
-   set_position_of_Cursor( &abbv, start_abbv_c_offset );
-
-   parse_type_DIE( tyents,
-                   typarser,
-                   (DW_TAG)atag,
-                   posn,
-                   level,
-                   c,     /* DIE cursor */
-                   &abbv, /* abbrev cursor */
-                   cc,
-                   td3 );
-
-   set_position_of_Cursor( c,     start_die_c_offset );
-   set_position_of_Cursor( &abbv, start_abbv_c_offset );
-
-   parse_var_DIE( rangestree,
-                  tempvars,
-                  gexprs,
-                  varparser,
-                  (DW_TAG)atag,
-                  posn,
-                  level,
-                  c,     /* DIE cursor */
-                  &abbv, /* abbrev cursor */
-                  cc,
-                  td3 );
-
-   set_position_of_Cursor( c,     after_die_c_offset );
-   set_position_of_Cursor( &abbv, after_abbv_c_offset );
-
-   /* --- Now recurse into its children, if any --- */
-   if (has_children == DW_children_yes) {
-      if (0) TRACE_D3("BEGIN children of level %d\n", level);
-      while (True) {
-         atag = peek_ULEB128( c );
-         if (atag == 0) break;
-         read_DIE( rangestree, tyents, tempvars, gexprs,
-                   typarser, varparser,
-                   c, td3, cc, level+1 );
+   if (VG_(clo_read_inline_info)) {
+      inlparser->sibling = 0;
+      parse_children = 
+         parse_inl_DIE( inlparser,
+                        (DW_TAG)atag,
+                        posn,
+                        level,
+                        c,     /* DIE cursor */
+                        abbv, /* abbrev */
+                        cc,
+                        td3 )
+         || parse_children;
+      if (get_position_of_Cursor( c ) != start_die_c_offset) {
+         after_die_c_offset = get_position_of_Cursor( c );
+         // Last parser, no need to reset the cursor to start_die_c_offset.
       }
-      /* Now we need to eat the terminating zero */
-      atag = get_ULEB128( c );
-      vg_assert(atag == 0);
-      if (0) TRACE_D3("END children of level %d\n", level);
+      if (sibling == 0)
+         sibling = inlparser->sibling;
+      vg_assert (inlparser->sibling == 0 || inlparser->sibling == sibling);
+   }
+
+   if (after_die_c_offset > 0) {
+      // DIE was read by a parser above, so we know where the DIE ends.
+      set_position_of_Cursor( c, after_die_c_offset );
+   } else {
+      /* No parser has parsed this DIE. So, we need to skip the DIE,
+         in order to read the next DIE.
+         At the same time, establish sibling value if the DIE has one. */
+      TRACE_D3("    uninteresting DIE -> skipping ...\n");
+      skip_DIE (&sibling, c, abbv, cc);
+   }
+
+   /* --- Now recurse into its children, if any 
+      and the parsing of the children is requested by a parser --- */
+   if (has_children == DW_children_yes) {
+      if (parse_children || sibling == 0) {
+         if (0) TRACE_D3("BEGIN children of level %d\n", level);
+         while (True) {
+            atag = peek_ULEB128( c );
+            if (atag == 0) break;
+            read_DIE( rangestree, tyents, tempvars, gexprs,
+                      typarser, varparser, inlparser,
+                      c, td3, cc, level+1 );
+         }
+         /* Now we need to eat the terminating zero */
+         atag = get_ULEB128( c );
+         vg_assert(atag == 0);
+         if (0) TRACE_D3("END children of level %d\n", level);
+      } else {
+         // We can skip the childrens, by jumping to the sibling
+         TRACE_D3("    SKIPPING DIE's children,"
+                  "jumping to sibling <%d><%lx>\n",
+                  level, sibling);
+         set_position_of_Cursor( c, sibling );
+      }
    }
 
 }
 
-
-static
-void new_dwarf3_reader_wrk ( 
-   struct _DebugInfo* di,
-   __attribute__((noreturn)) void (*barf)( const HChar* ),
-   DiSlice escn_debug_info,      DiSlice escn_debug_types,
-   DiSlice escn_debug_abbv,      DiSlice escn_debug_line,
-   DiSlice escn_debug_str,       DiSlice escn_debug_ranges,
-   DiSlice escn_debug_loc,       DiSlice escn_debug_info_alt,
-   DiSlice escn_debug_abbv_alt,  DiSlice escn_debug_line_alt,
-   DiSlice escn_debug_str_alt
-)
+static void trace_debug_loc (const DebugInfo* di,
+                             __attribute__((noreturn)) void (*barf)( const HChar* ),
+                             DiSlice escn_debug_loc)
 {
-   XArray* /* of TyEnt */     tyents;
-   XArray* /* of TyEnt */     tyents_to_keep;
-   XArray* /* of GExpr* */    gexprs;
-   XArray* /* of TempVar* */  tempvars;
-   WordFM* /* of (XArray* of AddrRange, void) */ rangestree;
-   TyEntIndexCache* tyents_cache = NULL;
-   TyEntIndexCache* tyents_to_keep_cache = NULL;
-   TempVar *varp, *varp2;
-   GExpr* gexpr;
-   Cursor abbv; /* for showing .debug_abbrev */
-   Cursor info; /* primary cursor for parsing .debug_info */
-   Cursor ranges; /* for showing .debug_ranges */
-   D3TypeParser typarser;
-   D3VarParser varparser;
-   Addr  dr_base;
-   UWord dr_offset;
-   Word  i, j, n;
-   Bool td3 = di->trace_symtab;
-   XArray* /* of TempVar* */ dioff_lookup_tab;
-   Int pass;
-   VgHashTable signature_types;
 #if 0
    /* This doesn't work properly because it assumes all entries are
       packed end to end, with no holes.  But that doesn't always
@@ -3554,55 +4268,68 @@ void new_dwarf3_reader_wrk (
    Addr  dl_base;
    UWord dl_offset;
    Cursor loc; /* for showing .debug_loc */
+   Bool td3 = di->trace_symtab;
+
    TRACE_SYMTAB("\n");
    TRACE_SYMTAB("\n------ The contents of .debug_loc ------\n");
    TRACE_SYMTAB("    Offset   Begin    End      Expression\n");
-   init_Cursor( &loc, debug_loc_img, 
-                debug_loc_sz, 0, barf, 
-                "Overrun whilst reading .debug_loc section(1)" );
-   dl_base = 0;
-   dl_offset = 0;
-   while (True) {
-      UWord  w1, w2;
-      UWord  len;
-      if (is_at_end_Cursor( &loc ))
-         break;
+   if (ML_(sli_is_valid)(escn_debug_loc)) {
+      init_Cursor( &loc, escn_debug_loc, 0, barf, 
+                   "Overrun whilst reading .debug_loc section(1)" );
+      dl_base = 0;
+      dl_offset = 0;
+      while (True) {
+         UWord  w1, w2;
+         UWord  len;
+         if (is_at_end_Cursor( &loc ))
+            break;
 
-      /* Read a (host-)word pair.  This is something of a hack since
-         the word size to read is really dictated by the ELF file;
-         however, we assume we're reading a file with the same
-         word-sizeness as the host.  Reasonably enough. */
-      w1 = get_UWord( &loc );
-      w2 = get_UWord( &loc );
+         /* Read a (host-)word pair.  This is something of a hack since
+            the word size to read is really dictated by the ELF file;
+            however, we assume we're reading a file with the same
+            word-sizeness as the host.  Reasonably enough. */
+         w1 = get_UWord( &loc );
+         w2 = get_UWord( &loc );
 
-      if (w1 == 0 && w2 == 0) {
-         /* end of list.  reset 'base' */
-         TRACE_D3("    %08lx <End of list>\n", dl_offset);
-         dl_base = 0;
-         dl_offset = get_position_of_Cursor( &loc );
-         continue;
+         if (w1 == 0 && w2 == 0) {
+            /* end of list.  reset 'base' */
+            TRACE_D3("    %08lx <End of list>\n", dl_offset);
+            dl_base = 0;
+            dl_offset = get_position_of_Cursor( &loc );
+            continue;
+         }
+
+         if (w1 == -1UL) {
+            /* new value for 'base' */
+            TRACE_D3("    %08lx %16lx %08lx (base address)\n",
+                     dl_offset, w1, w2);
+            dl_base = w2;
+            continue;
+         }
+
+         /* else a location expression follows */
+         TRACE_D3("    %08lx %08lx %08lx ",
+                  dl_offset, w1 + dl_base, w2 + dl_base);
+         len = (UWord)get_UShort( &loc );
+         while (len > 0) {
+            UChar byte = get_UChar( &loc );
+            TRACE_D3("%02x", (UInt)byte);
+            len--;
+         }
+         TRACE_SYMTAB("\n");
       }
-
-      if (w1 == -1UL) {
-         /* new value for 'base' */
-         TRACE_D3("    %08lx %16lx %08lx (base address)\n",
-                  dl_offset, w1, w2);
-         dl_base = w2;
-         continue;
-      }
-
-      /* else a location expression follows */
-      TRACE_D3("    %08lx %08lx %08lx ",
-               dl_offset, w1 + dl_base, w2 + dl_base);
-      len = (UWord)get_UShort( &loc );
-      while (len > 0) {
-         UChar byte = get_UChar( &loc );
-         TRACE_D3("%02x", (UInt)byte);
-         len--;
-      }
-      TRACE_SYMTAB("\n");
    }
 #endif
+}
+
+static void trace_debug_ranges (const DebugInfo* di,
+                                __attribute__((noreturn)) void (*barf)( const HChar* ),
+                                DiSlice escn_debug_ranges)
+{
+   Cursor ranges; /* for showing .debug_ranges */
+   Addr  dr_base;
+   UWord dr_offset;
+   Bool td3 = di->trace_symtab;
 
    /* Display .debug_ranges */
    TRACE_SYMTAB("\n");
@@ -3610,43 +4337,51 @@ void new_dwarf3_reader_wrk (
    TRACE_SYMTAB("    Offset   Begin    End\n");
    if (ML_(sli_is_valid)(escn_debug_ranges)) {
       init_Cursor( &ranges, escn_debug_ranges, 0, barf, 
-                "Overrun whilst reading .debug_ranges section(1)" );
-   dr_base = 0;
-   dr_offset = 0;
-   while (True) {
-      UWord  w1, w2;
+                   "Overrun whilst reading .debug_ranges section(1)" );
+      dr_base = 0;
+      dr_offset = 0;
+      while (True) {
+         UWord  w1, w2;
 
-      if (is_at_end_Cursor( &ranges ))
-         break;
+         if (is_at_end_Cursor( &ranges ))
+            break;
 
-      /* Read a (host-)word pair.  This is something of a hack since
-         the word size to read is really dictated by the ELF file;
-         however, we assume we're reading a file with the same
-         word-sizeness as the host.  Reasonably enough. */
-      w1 = get_UWord( &ranges );
-      w2 = get_UWord( &ranges );
+         /* Read a (host-)word pair.  This is something of a hack since
+            the word size to read is really dictated by the ELF file;
+            however, we assume we're reading a file with the same
+            word-sizeness as the host.  Reasonably enough. */
+         w1 = get_UWord( &ranges );
+         w2 = get_UWord( &ranges );
 
-      if (w1 == 0 && w2 == 0) {
-         /* end of list.  reset 'base' */
-         TRACE_D3("    %08lx <End of list>\n", dr_offset);
-         dr_base = 0;
-         dr_offset = get_position_of_Cursor( &ranges );
-         continue;
+         if (w1 == 0 && w2 == 0) {
+            /* end of list.  reset 'base' */
+            TRACE_D3("    %08lx <End of list>\n", dr_offset);
+            dr_base = 0;
+            dr_offset = get_position_of_Cursor( &ranges );
+            continue;
+         }
+
+         if (w1 == -1UL) {
+            /* new value for 'base' */
+            TRACE_D3("    %08lx %16lx %08lx (base address)\n",
+                     dr_offset, w1, w2);
+            dr_base = w2;
+            continue;
+         }
+
+         /* else a range [w1+base, w2+base) is denoted */
+         TRACE_D3("    %08lx %08lx %08lx\n",
+                  dr_offset, w1 + dr_base, w2 + dr_base);
       }
-
-      if (w1 == -1UL) {
-         /* new value for 'base' */
-         TRACE_D3("    %08lx %16lx %08lx (base address)\n",
-                  dr_offset, w1, w2);
-         dr_base = w2;
-         continue;
-      }
-
-      /* else a range [w1+base, w2+base) is denoted */
-      TRACE_D3("    %08lx %08lx %08lx\n",
-               dr_offset, w1 + dr_base, w2 + dr_base);
    }
-   }
+}
+
+static void trace_debug_abbrev (const DebugInfo* di,
+                                __attribute__((noreturn)) void (*barf)( const HChar* ),
+                                DiSlice escn_debug_abbv)
+{
+   Cursor abbv; /* for showing .debug_abbrev */
+   Bool td3 = di->trace_symtab;
 
    /* Display .debug_abbrev */
    TRACE_SYMTAB("\n");
@@ -3654,101 +4389,146 @@ void new_dwarf3_reader_wrk (
    if (ML_(sli_is_valid)(escn_debug_abbv)) {
       init_Cursor( &abbv, escn_debug_abbv, 0, barf, 
                    "Overrun whilst reading .debug_abbrev section" );
-   while (True) {
-      if (is_at_end_Cursor( &abbv ))
-         break;
-      /* Read one abbreviation table */
-      TRACE_D3("  Number TAG\n");
       while (True) {
-         ULong atag;
-         UInt  has_children;
-         ULong acode = get_ULEB128( &abbv );
-         if (acode == 0) break; /* end of the table */
-         atag = get_ULEB128( &abbv );
-         has_children = get_UChar( &abbv );
-         TRACE_D3("   %llu      %s    [%s]\n", 
-                  acode, ML_(pp_DW_TAG)(atag),
-                         ML_(pp_DW_children)(has_children));
+         if (is_at_end_Cursor( &abbv ))
+            break;
+         /* Read one abbreviation table */
+         TRACE_D3("  Number TAG\n");
          while (True) {
-            ULong at_name = get_ULEB128( &abbv );
-            ULong at_form = get_ULEB128( &abbv );
-            if (at_name == 0 && at_form == 0) break;
-            TRACE_D3("    %18s %s\n", 
-                     ML_(pp_DW_AT)(at_name), ML_(pp_DW_FORM)(at_form));
+            ULong atag;
+            UInt  has_children;
+            ULong acode = get_ULEB128( &abbv );
+            if (acode == 0) break; /* end of the table */
+            atag = get_ULEB128( &abbv );
+            has_children = get_UChar( &abbv );
+            TRACE_D3("   %llu      %s    [%s]\n", 
+                     acode, ML_(pp_DW_TAG)(atag),
+                            ML_(pp_DW_children)(has_children));
+            while (True) {
+               ULong at_name = get_ULEB128( &abbv );
+               ULong at_form = get_ULEB128( &abbv );
+               if (at_name == 0 && at_form == 0) break;
+               TRACE_D3("    %18s %s\n", 
+                        ML_(pp_DW_AT)(at_name), ML_(pp_DW_FORM)(at_form));
+            }
          }
       }
    }
-   }
-   TRACE_SYMTAB("\n");
+}
 
-   /* We'll park the harvested type information in here.  Also create
-      a fake "void" entry with offset D3_FAKEVOID_CUOFF, so we always
-      have at least one type entry to refer to.  D3_FAKEVOID_CUOFF is
-      huge and presumably will not occur in any valid DWARF3 file --
-      it would need to have a .debug_info section 4GB long for that to
-      happen.  These type entries end up in the DebugInfo. */
-   tyents = VG_(newXA)( ML_(dinfo_zalloc), 
-                        "di.readdwarf3.ndrw.1 (TyEnt temp array)",
-                        ML_(dinfo_free), sizeof(TyEnt) );
-   { TyEnt tyent;
-     VG_(memset)(&tyent, 0, sizeof(tyent));
-     tyent.tag   = Te_TyVoid;
-     tyent.cuOff = D3_FAKEVOID_CUOFF;
-     tyent.Te.TyVoid.isFake = True;
-     VG_(addToXA)( tyents, &tyent );
-   }
-   { TyEnt tyent;
-     VG_(memset)(&tyent, 0, sizeof(tyent));
-     tyent.tag   = Te_UNKNOWN;
-     tyent.cuOff = D3_INVALID_CUOFF;
-     VG_(addToXA)( tyents, &tyent );
-   }
+static
+void new_dwarf3_reader_wrk ( 
+   DebugInfo* di,
+   __attribute__((noreturn)) void (*barf)( const HChar* ),
+   DiSlice escn_debug_info,      DiSlice escn_debug_types,
+   DiSlice escn_debug_abbv,      DiSlice escn_debug_line,
+   DiSlice escn_debug_str,       DiSlice escn_debug_ranges,
+   DiSlice escn_debug_loc,       DiSlice escn_debug_info_alt,
+   DiSlice escn_debug_abbv_alt,  DiSlice escn_debug_line_alt,
+   DiSlice escn_debug_str_alt
+)
+{
+   XArray* /* of TyEnt */     tyents = NULL;
+   XArray* /* of TyEnt */     tyents_to_keep = NULL;
+   XArray* /* of GExpr* */    gexprs = NULL;
+   XArray* /* of TempVar* */  tempvars = NULL;
+   WordFM* /* of (XArray* of AddrRange, void) */ rangestree = NULL;
+   TyEntIndexCache* tyents_cache = NULL;
+   TyEntIndexCache* tyents_to_keep_cache = NULL;
+   TempVar *varp, *varp2;
+   GExpr* gexpr;
+   Cursor info; /* primary cursor for parsing .debug_info */
+   D3TypeParser typarser;
+   D3VarParser varparser;
+   D3InlParser inlparser;
+   Word  i, j, n;
+   Bool td3 = di->trace_symtab;
+   XArray* /* of TempVar* */ dioff_lookup_tab;
+   Int pass;
+   VgHashTable *signature_types = NULL;
 
-   /* This is a tree used to unique-ify the range lists that are
-      manufactured by parse_var_DIE.  References to the keys in the
-      tree wind up in .rngMany fields in TempVars.  We'll need to
-      delete this tree, and the XArrays attached to it, at the end of
-      this function. */
-   rangestree = VG_(newFM)( ML_(dinfo_zalloc),
-                            "di.readdwarf3.ndrw.2 (rangestree)",
-                            ML_(dinfo_free),
-                            (Word(*)(UWord,UWord))cmp__XArrays_of_AddrRange );
-
-   /* List of variables we're accumulating.  These don't end up in the
-      DebugInfo; instead their contents are handed to ML_(addVar) and
-      the list elements are then deleted. */
-   tempvars = VG_(newXA)( ML_(dinfo_zalloc),
-                          "di.readdwarf3.ndrw.3 (TempVar*s array)",
-                          ML_(dinfo_free), 
-                          sizeof(TempVar*) );
-
-   /* List of GExprs we're accumulating.  These wind up in the
-      DebugInfo. */
-   gexprs = VG_(newXA)( ML_(dinfo_zalloc), "di.readdwarf3.ndrw.4",
-                        ML_(dinfo_free), sizeof(GExpr*) );
-
-   /* We need a D3TypeParser to keep track of partially constructed
-      types.  It'll be discarded as soon as we've completed the CU,
-      since the resulting information is tipped in to 'tyents' as it
-      is generated. */
-   VG_(memset)( &typarser, 0, sizeof(typarser) );
-   typarser.sp = -1;
-   typarser.language = '?';
-   for (i = 0; i < N_D3_TYPE_STACK; i++) {
-      typarser.qparentE[i].tag   = Te_EMPTY;
-      typarser.qparentE[i].cuOff = D3_INVALID_CUOFF;
+   /* Display/trace various information, if requested. */
+   if (TD3) {
+      trace_debug_loc    (di, barf, escn_debug_loc);
+      trace_debug_ranges (di, barf, escn_debug_ranges);
+      trace_debug_abbrev (di, barf, escn_debug_abbv);
+      TRACE_SYMTAB("\n");
    }
 
+   /* Zero out all parsers. Parsers will really be initialised
+      according to VG_(clo_read_*_info). */
    VG_(memset)( &varparser, 0, sizeof(varparser) );
-   varparser.sp = -1;
+   VG_(memset)( &inlparser, 0, sizeof(inlparser) );
+   VG_(memset)( &typarser, 0, sizeof(typarser) );
 
-   signature_types = VG_(HT_construct) ("signature_types");
-   
+   if (VG_(clo_read_var_info)) {
+      /* We'll park the harvested type information in here.  Also create
+         a fake "void" entry with offset D3_FAKEVOID_CUOFF, so we always
+         have at least one type entry to refer to.  D3_FAKEVOID_CUOFF is
+         huge and presumably will not occur in any valid DWARF3 file --
+         it would need to have a .debug_info section 4GB long for that to
+         happen.  These type entries end up in the DebugInfo. */
+      tyents = VG_(newXA)( ML_(dinfo_zalloc), 
+                           "di.readdwarf3.ndrw.1 (TyEnt temp array)",
+                           ML_(dinfo_free), sizeof(TyEnt) );
+      { TyEnt tyent;
+        VG_(memset)(&tyent, 0, sizeof(tyent));
+        tyent.tag   = Te_TyVoid;
+        tyent.cuOff = D3_FAKEVOID_CUOFF;
+        tyent.Te.TyVoid.isFake = True;
+        VG_(addToXA)( tyents, &tyent );
+      }
+      { TyEnt tyent;
+        VG_(memset)(&tyent, 0, sizeof(tyent));
+        tyent.tag   = Te_UNKNOWN;
+        tyent.cuOff = D3_INVALID_CUOFF;
+        VG_(addToXA)( tyents, &tyent );
+      }
+
+      /* This is a tree used to unique-ify the range lists that are
+         manufactured by parse_var_DIE.  References to the keys in the
+         tree wind up in .rngMany fields in TempVars.  We'll need to
+         delete this tree, and the XArrays attached to it, at the end of
+         this function. */
+      rangestree = VG_(newFM)( ML_(dinfo_zalloc),
+                               "di.readdwarf3.ndrw.2 (rangestree)",
+                               ML_(dinfo_free),
+                               (Word(*)(UWord,UWord))cmp__XArrays_of_AddrRange );
+
+      /* List of variables we're accumulating.  These don't end up in the
+         DebugInfo; instead their contents are handed to ML_(addVar) and
+         the list elements are then deleted. */
+      tempvars = VG_(newXA)( ML_(dinfo_zalloc),
+                             "di.readdwarf3.ndrw.3 (TempVar*s array)",
+                             ML_(dinfo_free), 
+                             sizeof(TempVar*) );
+
+      /* List of GExprs we're accumulating.  These wind up in the
+         DebugInfo. */
+      gexprs = VG_(newXA)( ML_(dinfo_zalloc), "di.readdwarf3.ndrw.4",
+                           ML_(dinfo_free), sizeof(GExpr*) );
+
+      /* We need a D3TypeParser to keep track of partially constructed
+         types.  It'll be discarded as soon as we've completed the CU,
+         since the resulting information is tipped in to 'tyents' as it
+         is generated. */
+      typarser.sp = -1;
+      typarser.language = '?';
+      for (i = 0; i < N_D3_TYPE_STACK; i++) {
+         typarser.qparentE[i].tag   = Te_EMPTY;
+         typarser.qparentE[i].cuOff = D3_INVALID_CUOFF;
+      }
+
+      varparser.sp = -1;
+
+      signature_types = VG_(HT_construct) ("signature_types");
+   }
+
    /* Do an initial pass to scan the .debug_types section, if any, and
       fill in the signatured types hash table.  This lets us handle
       mapping from a type signature to a (cooked) DIE offset directly
       in get_Form_contents.  */
-   if (ML_(sli_is_valid)(escn_debug_types)) {
+   if (VG_(clo_read_var_info) && ML_(sli_is_valid)(escn_debug_types)) {
       init_Cursor( &info, escn_debug_types, 0, barf,
                    "Overrun whilst reading .debug_types section" );
       TRACE_D3("\n------ Collecting signatures from "
@@ -3761,8 +4541,7 @@ void new_dwarf3_reader_wrk (
          cu_start_offset = get_position_of_Cursor( &info );
          TRACE_D3("\n");
          TRACE_D3("  Compilation Unit @ offset 0x%lx:\n", cu_start_offset);
-         /* parse_CU_header initialises the CU's set_abbv_Cursor cache
-            (saC_cache) */
+         /* parse_CU_header initialises the CU's abbv hash table.  */
          parse_CU_Header( &cc, td3, &info, escn_debug_abbv, True, False );
 
          /* Needed by cook_die.  */
@@ -3777,8 +4556,10 @@ void new_dwarf3_reader_wrk (
          cu_offset_now = (cu_start_offset + cc.unit_length
                           + (cc.is_dw64 ? 12 : 4));
 
-         if (cu_offset_now >= escn_debug_types.szB)
+         if (cu_offset_now >= escn_debug_types.szB) {
+            clear_CUConst ( &cc);
             break;
+         }
 
          set_position_of_Cursor ( &info, cu_offset_now );
       }
@@ -3815,10 +4596,12 @@ void new_dwarf3_reader_wrk (
                       "Overrun whilst reading .debug_info section" );
          section_size = escn_debug_info.szB;
 
-   TRACE_D3("\n------ Parsing .debug_info section ------\n");
+         TRACE_D3("\n------ Parsing .debug_info section ------\n");
       } else {
          if (!ML_(sli_is_valid)(escn_debug_types))
             continue;
+         if (!VG_(clo_read_var_info))
+            continue; // Types not needed when only reading inline info.
          init_Cursor( &info, escn_debug_types, 0, barf,
                       "Overrun whilst reading .debug_types section" );
          section_size = escn_debug_types.szB;
@@ -3826,58 +4609,59 @@ void new_dwarf3_reader_wrk (
          TRACE_D3("\n------ Parsing .debug_types section ------\n");
       }
 
-   while (True) {
+      while (True) {
          ULong   cu_start_offset, cu_offset_now;
-      CUConst cc;
-      /* It may be that the stated size of this CU is larger than the
-         amount of stuff actually in it.  icc9 seems to generate CUs
-         thusly.  We use these variables to figure out if this is
-         indeed the case, and if so how many bytes we need to skip to
-         get to the start of the next CU.  Not skipping those bytes
-         causes us to misidentify the start of the next CU, and it all
-         goes badly wrong after that (not surprisingly). */
-      UWord cu_size_including_IniLen, cu_amount_used;
+         CUConst cc;
+         /* It may be that the stated size of this CU is larger than the
+            amount of stuff actually in it.  icc9 seems to generate CUs
+            thusly.  We use these variables to figure out if this is
+            indeed the case, and if so how many bytes we need to skip to
+            get to the start of the next CU.  Not skipping those bytes
+            causes us to misidentify the start of the next CU, and it all
+            goes badly wrong after that (not surprisingly). */
+         UWord cu_size_including_IniLen, cu_amount_used;
 
-      /* It seems icc9 finishes the DIE info before debug_info_sz
-         bytes have been used up.  So be flexible, and declare the
-         sequence complete if there is not enough remaining bytes to
-         hold even the smallest conceivable CU header.  (11 bytes I
-         reckon). */
-      /* JRS 23Jan09: I suspect this is no longer necessary now that
-         the code below contains a 'while (cu_amount_used <
-         cu_size_including_IniLen ...'  style loop, which skips over
-         any leftover bytes at the end of a CU in the case where the
-         CU's stated size is larger than its actual size (as
-         determined by reading all its DIEs).  However, for prudence,
-         I'll leave the following test in place.  I can't see that a
-         CU header can be smaller than 11 bytes, so I don't think
-         there's any harm possible through the test -- it just adds
-         robustness. */
-      Word avail = get_remaining_length_Cursor( &info );
-      if (avail < 11) {
-         if (avail > 0)
-            TRACE_D3("new_dwarf3_reader_wrk: warning: "
-                     "%ld unused bytes after end of DIEs\n", avail);
-         break;
-      }
+         /* It seems icc9 finishes the DIE info before debug_info_sz
+            bytes have been used up.  So be flexible, and declare the
+            sequence complete if there is not enough remaining bytes to
+            hold even the smallest conceivable CU header.  (11 bytes I
+            reckon). */
+         /* JRS 23Jan09: I suspect this is no longer necessary now that
+            the code below contains a 'while (cu_amount_used <
+            cu_size_including_IniLen ...'  style loop, which skips over
+            any leftover bytes at the end of a CU in the case where the
+            CU's stated size is larger than its actual size (as
+            determined by reading all its DIEs).  However, for prudence,
+            I'll leave the following test in place.  I can't see that a
+            CU header can be smaller than 11 bytes, so I don't think
+            there's any harm possible through the test -- it just adds
+            robustness. */
+         Word avail = get_remaining_length_Cursor( &info );
+         if (avail < 11) {
+            if (avail > 0)
+               TRACE_D3("new_dwarf3_reader_wrk: warning: "
+                        "%ld unused bytes after end of DIEs\n", avail);
+            break;
+         }
 
-      /* Check the varparser's stack is in a sane state. */
-      vg_assert(varparser.sp == -1);
-      for (i = 0; i < N_D3_VAR_STACK; i++) {
-         vg_assert(varparser.ranges[i] == NULL);
-         vg_assert(varparser.level[i] == 0);
-      }
-      for (i = 0; i < N_D3_TYPE_STACK; i++) {
-         vg_assert(typarser.qparentE[i].cuOff == D3_INVALID_CUOFF);
-         vg_assert(typarser.qparentE[i].tag   == Te_EMPTY);
-         vg_assert(typarser.qlevel[i] == 0);
-      }
+         if (VG_(clo_read_var_info)) {
+            /* Check the varparser's stack is in a sane state. */
+            vg_assert(varparser.sp == -1);
+            for (i = 0; i < N_D3_VAR_STACK; i++) {
+               vg_assert(varparser.ranges[i] == NULL);
+               vg_assert(varparser.level[i] == 0);
+            }
+            for (i = 0; i < N_D3_TYPE_STACK; i++) {
+               vg_assert(typarser.qparentE[i].cuOff == D3_INVALID_CUOFF);
+               vg_assert(typarser.qparentE[i].tag   == Te_EMPTY);
+               vg_assert(typarser.qlevel[i] == 0);
+            }
+         }
 
-      cu_start_offset = get_position_of_Cursor( &info );
-      TRACE_D3("\n");
+         cu_start_offset = get_position_of_Cursor( &info );
+         TRACE_D3("\n");
          TRACE_D3("  Compilation Unit @ offset 0x%llx:\n", cu_start_offset);
-      /* parse_CU_header initialises the CU's set_abbv_Cursor cache
-         (saC_cache) */
+         /* parse_CU_header initialises the CU's hashtable of abbvs ht_abbvs */
          if (pass == 0) {
             parse_CU_Header( &cc, td3, &info, escn_debug_abbv_alt,
                              False, True );
@@ -3898,91 +4682,108 @@ void new_dwarf3_reader_wrk (
          cc.escn_debug_str_alt  = escn_debug_str_alt;
          cc.types_cuOff_bias    = escn_debug_info.szB;
          cc.alt_cuOff_bias      = escn_debug_info.szB + escn_debug_types.szB;
-      cc.cu_start_offset  = cu_start_offset;
-      cc.di = di;
-      /* The CU's svma can be deduced by looking at the AT_low_pc
-         value in the top level TAG_compile_unit, which is the topmost
-         DIE.  We'll leave it for the 'varparser' to acquire that info
-         and fill it in -- since it is the only party to want to know
-         it. */
-      cc.cu_svma_known = False;
-      cc.cu_svma       = 0;
+         cc.cu_start_offset     = cu_start_offset;
+         cc.di = di;
+         /* The CU's svma can be deduced by looking at the AT_low_pc
+            value in the top level TAG_compile_unit, which is the topmost
+            DIE.  We'll leave it for the 'varparser' to acquire that info
+            and fill it in -- since it is the only party to want to know
+            it. */
+         cc.cu_svma_known = False;
+         cc.cu_svma       = 0;
 
-         cc.signature_types = signature_types;
+         if (VG_(clo_read_var_info)) {
+            cc.signature_types = signature_types;
 
-      /* Create a fake outermost-level range covering the entire
-         address range.  So we always have *something* to catch all
-         variable declarations. */
-      varstack_push( &cc, &varparser, td3, 
-                     unitary_range_list(0UL, ~0UL),
-                     -1, False/*isFunc*/, NULL/*fbGX*/ );
+            /* Create a fake outermost-level range covering the entire
+               address range.  So we always have *something* to catch all
+               variable declarations. */
+            varstack_push( &cc, &varparser, td3, 
+                           unitary_range_list(0UL, ~0UL),
+                           -1, False/*isFunc*/, NULL/*fbGX*/ );
 
-      /* And set up the file name table.  When we come across the top
-         level DIE for this CU (which is what the next call to
-         read_DIE should process) we will copy all the file names out
-         of the .debug_line img area and use this table to look up the
-         copies when we later see filename numbers in DW_TAG_variables
-         etc. */
-      vg_assert(!varparser.filenameTable );
-      varparser.filenameTable 
-         = VG_(newXA)( ML_(dinfo_zalloc), "di.readdwarf3.ndrw.5",
-                       ML_(dinfo_free),
-                       sizeof(UChar*) );
-      vg_assert(varparser.filenameTable);
+            /* And set up the fndn_ix_Table.  When we come across the top
+               level DIE for this CU (which is what the next call to
+               read_DIE should process) we will copy all the file names out
+               of the .debug_line img area and use this table to look up the
+               copies when we later see filename numbers in DW_TAG_variables
+               etc. */
+            vg_assert(!varparser.fndn_ix_Table );
+            varparser.fndn_ix_Table 
+               = VG_(newXA)( ML_(dinfo_zalloc), "di.readdwarf3.ndrw.5var",
+                             ML_(dinfo_free),
+                             sizeof(UInt) );
+         }
 
-      /* Now read the one-and-only top-level DIE for this CU. */
-      vg_assert(varparser.sp == 0);
-      read_DIE( rangestree,
-                tyents, tempvars, gexprs,
-                &typarser, &varparser,
-                &info, td3, &cc, 0 );
+         if (VG_(clo_read_inline_info)) {
+            /* fndn_ix_Table for the inlined call parser */
+            vg_assert(!inlparser.fndn_ix_Table );
+            inlparser.fndn_ix_Table 
+               = VG_(newXA)( ML_(dinfo_zalloc), "di.readdwarf3.ndrw.5inl",
+                             ML_(dinfo_free),
+                             sizeof(UInt) );
+         }
 
-      cu_offset_now = get_position_of_Cursor( &info );
+         /* Now read the one-and-only top-level DIE for this CU. */
+         vg_assert(!VG_(clo_read_var_info) || varparser.sp == 0);
+         read_DIE( rangestree,
+                   tyents, tempvars, gexprs,
+                   &typarser, &varparser, &inlparser,
+                   &info, td3, &cc, 0 );
+
+         cu_offset_now = get_position_of_Cursor( &info );
 
          if (0) VG_(printf)("Travelled: %llu  size %llu\n",
-                         cu_offset_now - cc.cu_start_offset,
-                         cc.unit_length + (cc.is_dw64 ? 12 : 4));
+                            cu_offset_now - cc.cu_start_offset,
+                            cc.unit_length + (cc.is_dw64 ? 12 : 4));
 
-      /* How big the CU claims it is .. */
-      cu_size_including_IniLen = cc.unit_length + (cc.is_dw64 ? 12 : 4);
-      /* .. vs how big we have found it to be */
-      cu_amount_used = cu_offset_now - cc.cu_start_offset;
+         /* How big the CU claims it is .. */
+         cu_size_including_IniLen = cc.unit_length + (cc.is_dw64 ? 12 : 4);
+         /* .. vs how big we have found it to be */
+         cu_amount_used = cu_offset_now - cc.cu_start_offset;
 
          if (1) TRACE_D3("offset now %lld, d-i-size %lld\n",
                          cu_offset_now, section_size);
          if (cu_offset_now > section_size)
-         barf("toplevel DIEs beyond end of CU");
+            barf("toplevel DIEs beyond end of CU");
 
-      /* If the CU is bigger than it claims to be, we've got a serious
-         problem. */
-      if (cu_amount_used > cu_size_including_IniLen)
-         barf("CU's actual size appears to be larger than it claims it is");
+         /* If the CU is bigger than it claims to be, we've got a serious
+            problem. */
+         if (cu_amount_used > cu_size_including_IniLen)
+            barf("CU's actual size appears to be larger than it claims it is");
 
-      /* If the CU is smaller than it claims to be, we need to skip some
-         bytes.  Loop updates cu_offset_new and cu_amount_used. */
-      while (cu_amount_used < cu_size_including_IniLen
-             && get_remaining_length_Cursor( &info ) > 0) {
-         if (0) VG_(printf)("SKIP\n");
-         (void)get_UChar( &info );
-         cu_offset_now = get_position_of_Cursor( &info );
-         cu_amount_used = cu_offset_now - cc.cu_start_offset;
-      }
+         /* If the CU is smaller than it claims to be, we need to skip some
+            bytes.  Loop updates cu_offset_new and cu_amount_used. */
+         while (cu_amount_used < cu_size_including_IniLen
+                && get_remaining_length_Cursor( &info ) > 0) {
+            if (0) VG_(printf)("SKIP\n");
+            (void)get_UChar( &info );
+            cu_offset_now = get_position_of_Cursor( &info );
+            cu_amount_used = cu_offset_now - cc.cu_start_offset;
+         }
 
-      /* Preen to level -2.  DIEs have level >= 0 so -2 cannot occur
-         anywhere else at all.  Our fake the-entire-address-space
-         range is at level -1, so preening to -2 should completely
-         empty the stack out. */
-      TRACE_D3("\n");
-      varstack_preen( &varparser, td3, -2 );
-      /* Similarly, empty the type stack out. */
-      typestack_preen( &typarser, td3, -2 );
+         if (VG_(clo_read_var_info)) {
+            /* Preen to level -2.  DIEs have level >= 0 so -2 cannot occur
+               anywhere else at all.  Our fake the-entire-address-space
+               range is at level -1, so preening to -2 should completely
+               empty the stack out. */
+            TRACE_D3("\n");
+            varstack_preen( &varparser, td3, -2 );
+            /* Similarly, empty the type stack out. */
+            typestack_preen( &typarser, td3, -2 );
+         }
 
-      TRACE_D3("set_abbv_Cursor cache: %lu queries, %lu misses\n",
-               cc.saC_cache_queries, cc.saC_cache_misses);
-
-      vg_assert(varparser.filenameTable );
-      VG_(deleteXA)( varparser.filenameTable );
-      varparser.filenameTable = NULL;
+         if (VG_(clo_read_var_info)) {
+            vg_assert(varparser.fndn_ix_Table );
+            VG_(deleteXA)( varparser.fndn_ix_Table );
+            varparser.fndn_ix_Table = NULL;
+         }
+         if (VG_(clo_read_inline_info)) {
+            vg_assert(inlparser.fndn_ix_Table );
+            VG_(deleteXA)( inlparser.fndn_ix_Table );
+            inlparser.fndn_ix_Table = NULL;
+         }
+         clear_CUConst(&cc);
 
          if (cu_offset_now == section_size)
             break;
@@ -3990,328 +4791,331 @@ void new_dwarf3_reader_wrk (
       }
    }
 
-   /* From here on we're post-processing the stuff we got
-      out of the .debug_info section. */
-   if (td3) {
-      TRACE_D3("\n");
-      ML_(pp_TyEnts)(tyents, "Initial type entity (TyEnt) array");
-      TRACE_D3("\n");
-      TRACE_D3("------ Compressing type entries ------\n");
-   }
 
-   tyents_cache = ML_(dinfo_zalloc)( "di.readdwarf3.ndrw.6",
-                                     sizeof(TyEntIndexCache) );
-   ML_(TyEntIndexCache__invalidate)( tyents_cache );
-   dedup_types( td3, tyents, tyents_cache );
-   if (td3) {
-      TRACE_D3("\n");
-      ML_(pp_TyEnts)(tyents, "After type entity (TyEnt) compression");
-   }
-
-   TRACE_D3("\n");
-   TRACE_D3("------ Resolving the types of variables ------\n" );
-   resolve_variable_types( barf, tyents, tyents_cache, tempvars );
-
-   /* Copy all the non-INDIR tyents into a new table.  For large
-      .so's, about 90% of the tyents will by now have been resolved to
-      INDIRs, and we no longer need them, and so don't need to store
-      them. */
-   tyents_to_keep
-      = VG_(newXA)( ML_(dinfo_zalloc), 
-                    "di.readdwarf3.ndrw.7 (TyEnt to-keep array)",
-                    ML_(dinfo_free), sizeof(TyEnt) );
-   n = VG_(sizeXA)( tyents );
-   for (i = 0; i < n; i++) {
-      TyEnt* ent = VG_(indexXA)( tyents, i );
-      if (ent->tag != Te_INDIR)
-         VG_(addToXA)( tyents_to_keep, ent );
-   }
-
-   VG_(deleteXA)( tyents );
-   tyents = NULL;
-   ML_(dinfo_free)( tyents_cache );
-   tyents_cache = NULL;
-
-   /* Sort tyents_to_keep so we can lookup in it.  A complete (if
-      minor) waste of time, since tyents itself is sorted, but
-      necessary since VG_(lookupXA) refuses to cooperate if we
-      don't. */
-   VG_(setCmpFnXA)( tyents_to_keep, (XACmpFn_t) ML_(TyEnt__cmp_by_cuOff_only) );
-   VG_(sortXA)( tyents_to_keep );
-
-   /* Enable cacheing on tyents_to_keep */
-   tyents_to_keep_cache
-      = ML_(dinfo_zalloc)( "di.readdwarf3.ndrw.8",
-                           sizeof(TyEntIndexCache) );
-   ML_(TyEntIndexCache__invalidate)( tyents_to_keep_cache );
-
-   /* And record the tyents in the DebugInfo.  We do this before
-      starting to hand variables to ML_(addVar), since if ML_(addVar)
-      wants to do debug printing (of the types of said vars) then it
-      will need the tyents.*/
-   vg_assert(!di->admin_tyents);
-   di->admin_tyents = tyents_to_keep;
-
-   /* Bias all the location expressions. */
-   TRACE_D3("\n");
-   TRACE_D3("------ Biasing the location expressions ------\n" );
-
-   n = VG_(sizeXA)( gexprs );
-   for (i = 0; i < n; i++) {
-      gexpr = *(GExpr**)VG_(indexXA)( gexprs, i );
-      bias_GX( gexpr, di );
-   }
-
-   TRACE_D3("\n");
-   TRACE_D3("------ Acquired the following variables: ------\n\n");
-
-   /* Park (pointers to) all the vars in an XArray, so we can look up
-      abstract origins quickly.  The array is sorted (hence, looked-up
-      by) the .dioff fields.  Since the .dioffs should be in strictly
-      ascending order, there is no need to sort the array after
-      construction.  The ascendingness is however asserted for. */
-   dioff_lookup_tab
-      = VG_(newXA)( ML_(dinfo_zalloc), "di.readdwarf3.ndrw.9",
-                    ML_(dinfo_free), 
-                    sizeof(TempVar*) );
-   vg_assert(dioff_lookup_tab);
-
-   n = VG_(sizeXA)( tempvars );
-   Word first_primary_var = 0;
-   for (first_primary_var = 0;
-        escn_debug_info_alt.szB/*really?*/ && first_primary_var < n;
-        first_primary_var++) {
-      varp = *(TempVar**)VG_(indexXA)( tempvars, first_primary_var );
-      if (varp->dioff < escn_debug_info.szB + escn_debug_types.szB)
-         break;
-   }
-   for (i = 0; i < n; i++) {
-      varp = *(TempVar**)VG_(indexXA)( tempvars, (i + first_primary_var) % n );
-      if (i > first_primary_var) {
-         varp2 = *(TempVar**)VG_(indexXA)( tempvars,
-                                           (i + first_primary_var - 1) % n );
-         /* why should this hold?  Only, I think, because we've
-            constructed the array by reading .debug_info sequentially,
-            and so the array .dioff fields should reflect that, and be
-            strictly ascending. */
-         vg_assert(varp2->dioff < varp->dioff);
+   if (VG_(clo_read_var_info)) {
+      /* From here on we're post-processing the stuff we got
+         out of the .debug_info section. */
+      if (TD3) {
+         TRACE_D3("\n");
+         ML_(pp_TyEnts)(tyents, "Initial type entity (TyEnt) array");
+         TRACE_D3("\n");
+         TRACE_D3("------ Compressing type entries ------\n");
       }
-      VG_(addToXA)( dioff_lookup_tab, &varp );
-   }
-   VG_(setCmpFnXA)( dioff_lookup_tab, cmp_TempVar_by_dioff );
-   VG_(sortXA)( dioff_lookup_tab ); /* POINTLESS; FIXME: rm */
 
-   /* Now visit each var.  Collect up as much info as possible for
-      each var and hand it to ML_(addVar). */
-   n = VG_(sizeXA)( tempvars );
-   for (j = 0; j < n; j++) {
-      TyEnt* ent;
-      varp = *(TempVar**)VG_(indexXA)( tempvars, j );
+      tyents_cache = ML_(dinfo_zalloc)( "di.readdwarf3.ndrw.6",
+                                        sizeof(TyEntIndexCache) );
+      ML_(TyEntIndexCache__invalidate)( tyents_cache );
+      dedup_types( td3, tyents, tyents_cache );
+      if (TD3) {
+         TRACE_D3("\n");
+         ML_(pp_TyEnts)(tyents, "After type entity (TyEnt) compression");
+      }
 
-      /* Possibly show .. */
-      if (td3) {
-         VG_(printf)("<%lx> addVar: level %d: %s :: ",
-                     varp->dioff,
-                     varp->level,
-                     varp->name ? varp->name : "<anon_var>" );
-         if (varp->typeR) {
-            ML_(pp_TyEnt_C_ishly)( tyents_to_keep, varp->typeR );
-         } else {
-            VG_(printf)("NULL");
+      TRACE_D3("\n");
+      TRACE_D3("------ Resolving the types of variables ------\n" );
+      resolve_variable_types( barf, tyents, tyents_cache, tempvars );
+
+      /* Copy all the non-INDIR tyents into a new table.  For large
+         .so's, about 90% of the tyents will by now have been resolved to
+         INDIRs, and we no longer need them, and so don't need to store
+         them. */
+      tyents_to_keep
+         = VG_(newXA)( ML_(dinfo_zalloc), 
+                       "di.readdwarf3.ndrw.7 (TyEnt to-keep array)",
+                       ML_(dinfo_free), sizeof(TyEnt) );
+      n = VG_(sizeXA)( tyents );
+      for (i = 0; i < n; i++) {
+         TyEnt* ent = VG_(indexXA)( tyents, i );
+         if (ent->tag != Te_INDIR)
+            VG_(addToXA)( tyents_to_keep, ent );
+      }
+
+      VG_(deleteXA)( tyents );
+      tyents = NULL;
+      ML_(dinfo_free)( tyents_cache );
+      tyents_cache = NULL;
+
+      /* Sort tyents_to_keep so we can lookup in it.  A complete (if
+         minor) waste of time, since tyents itself is sorted, but
+         necessary since VG_(lookupXA) refuses to cooperate if we
+         don't. */
+      VG_(setCmpFnXA)( tyents_to_keep, (XACmpFn_t) ML_(TyEnt__cmp_by_cuOff_only) );
+      VG_(sortXA)( tyents_to_keep );
+
+      /* Enable cacheing on tyents_to_keep */
+      tyents_to_keep_cache
+         = ML_(dinfo_zalloc)( "di.readdwarf3.ndrw.8",
+                              sizeof(TyEntIndexCache) );
+      ML_(TyEntIndexCache__invalidate)( tyents_to_keep_cache );
+
+      /* And record the tyents in the DebugInfo.  We do this before
+         starting to hand variables to ML_(addVar), since if ML_(addVar)
+         wants to do debug printing (of the types of said vars) then it
+         will need the tyents.*/
+      vg_assert(!di->admin_tyents);
+      di->admin_tyents = tyents_to_keep;
+
+      /* Bias all the location expressions. */
+      TRACE_D3("\n");
+      TRACE_D3("------ Biasing the location expressions ------\n" );
+
+      n = VG_(sizeXA)( gexprs );
+      for (i = 0; i < n; i++) {
+         gexpr = *(GExpr**)VG_(indexXA)( gexprs, i );
+         bias_GX( gexpr, di );
+      }
+
+      TRACE_D3("\n");
+      TRACE_D3("------ Acquired the following variables: ------\n\n");
+
+      /* Park (pointers to) all the vars in an XArray, so we can look up
+         abstract origins quickly.  The array is sorted (hence, looked-up
+         by) the .dioff fields.  Since the .dioffs should be in strictly
+         ascending order, there is no need to sort the array after
+         construction.  The ascendingness is however asserted for. */
+      dioff_lookup_tab
+         = VG_(newXA)( ML_(dinfo_zalloc), "di.readdwarf3.ndrw.9",
+                       ML_(dinfo_free), 
+                       sizeof(TempVar*) );
+
+      n = VG_(sizeXA)( tempvars );
+      Word first_primary_var = 0;
+      for (first_primary_var = 0;
+           escn_debug_info_alt.szB/*really?*/ && first_primary_var < n;
+           first_primary_var++) {
+         varp = *(TempVar**)VG_(indexXA)( tempvars, first_primary_var );
+         if (varp->dioff < escn_debug_info.szB + escn_debug_types.szB)
+            break;
+      }
+      for (i = 0; i < n; i++) {
+         varp = *(TempVar**)VG_(indexXA)( tempvars, (i + first_primary_var) % n );
+         if (i > first_primary_var) {
+            varp2 = *(TempVar**)VG_(indexXA)( tempvars,
+                                              (i + first_primary_var - 1) % n );
+            /* why should this hold?  Only, I think, because we've
+               constructed the array by reading .debug_info sequentially,
+               and so the array .dioff fields should reflect that, and be
+               strictly ascending. */
+            vg_assert(varp2->dioff < varp->dioff);
          }
-         VG_(printf)("\n  Loc=");
-         if (varp->gexpr) {
-            ML_(pp_GX)(varp->gexpr);
-         } else {
-            VG_(printf)("NULL");
-         }
-         VG_(printf)("\n");
-         if (varp->fbGX) {
-            VG_(printf)("  FrB=");
-            ML_(pp_GX)( varp->fbGX );
+         VG_(addToXA)( dioff_lookup_tab, &varp );
+      }
+      VG_(setCmpFnXA)( dioff_lookup_tab, cmp_TempVar_by_dioff );
+      VG_(sortXA)( dioff_lookup_tab ); /* POINTLESS; FIXME: rm */
+
+      /* Now visit each var.  Collect up as much info as possible for
+         each var and hand it to ML_(addVar). */
+      n = VG_(sizeXA)( tempvars );
+      for (j = 0; j < n; j++) {
+         TyEnt* ent;
+         varp = *(TempVar**)VG_(indexXA)( tempvars, j );
+
+         /* Possibly show .. */
+         if (TD3) {
+            VG_(printf)("<%lx> addVar: level %d: %s :: ",
+                        varp->dioff,
+                        varp->level,
+                        varp->name ? varp->name : "<anon_var>" );
+            if (varp->typeR) {
+               ML_(pp_TyEnt_C_ishly)( tyents_to_keep, varp->typeR );
+            } else {
+               VG_(printf)("NULL");
+            }
+            VG_(printf)("\n  Loc=");
+            if (varp->gexpr) {
+               ML_(pp_GX)(varp->gexpr);
+            } else {
+               VG_(printf)("NULL");
+            }
             VG_(printf)("\n");
-         } else {
-            VG_(printf)("  FrB=none\n");
+            if (varp->fbGX) {
+               VG_(printf)("  FrB=");
+               ML_(pp_GX)( varp->fbGX );
+               VG_(printf)("\n");
+            } else {
+               VG_(printf)("  FrB=none\n");
+            }
+            VG_(printf)("  declared at: %d %s:%d\n",
+                        varp->fndn_ix,
+                        ML_(fndn_ix2filename) (di, varp->fndn_ix),
+                        varp->fLine );
+            if (varp->absOri != (UWord)D3_INVALID_CUOFF)
+               VG_(printf)("  abstract origin: <%lx>\n", varp->absOri);
          }
-         VG_(printf)("  declared at: %s:%d\n",
-                     varp->fName ? varp->fName : "NULL",
-                     varp->fLine );
-         if (varp->absOri != (UWord)D3_INVALID_CUOFF)
-            VG_(printf)("  abstract origin: <%lx>\n", varp->absOri);
-      }
 
-      /* Skip variables which have no location.  These must be
-         abstract instances; they are useless as-is since with no
-         location they have no specified memory location.  They will
-         presumably be referred to via the absOri fields of other
-         variables. */
-      if (!varp->gexpr) {
-         TRACE_D3("  SKIP (no location)\n\n");
-         continue;
-      }
-
-      /* So it has a location, at least.  If it refers to some other
-         entry through its absOri field, pull in further info through
-         that. */
-      if (varp->absOri != (UWord)D3_INVALID_CUOFF) {
-         Bool found;
-         Word ixFirst, ixLast;
-         TempVar key;
-         TempVar* keyp = &key;
-         TempVar *varAI;
-         VG_(memset)(&key, 0, sizeof(key)); /* not necessary */
-         key.dioff = varp->absOri; /* this is what we want to find */
-         found = VG_(lookupXA)( dioff_lookup_tab, &keyp,
-                                &ixFirst, &ixLast );
-         if (!found) {
-            /* barf("DW_AT_abstract_origin can't be resolved"); */
-            TRACE_D3("  SKIP (DW_AT_abstract_origin can't be resolved)\n\n");
+         /* Skip variables which have no location.  These must be
+            abstract instances; they are useless as-is since with no
+            location they have no specified memory location.  They will
+            presumably be referred to via the absOri fields of other
+            variables. */
+         if (!varp->gexpr) {
+            TRACE_D3("  SKIP (no location)\n\n");
             continue;
          }
-         /* If the following fails, there is more than one entry with
-            the same dioff.  Which can't happen. */
-         vg_assert(ixFirst == ixLast);
-         varAI = *(TempVar**)VG_(indexXA)( dioff_lookup_tab, ixFirst );
-         /* stay sane */
-         vg_assert(varAI);
-         vg_assert(varAI->dioff == varp->absOri);
 
-         /* Copy what useful info we can. */
-         if (varAI->typeR && !varp->typeR)
-            varp->typeR = varAI->typeR;
-         if (varAI->name && !varp->name)
-            varp->name = varAI->name;
-         if (varAI->fName && !varp->fName)
-            varp->fName = varAI->fName;
-         if (varAI->fLine > 0 && varp->fLine == 0)
-            varp->fLine = varAI->fLine;
-      }
+         /* So it has a location, at least.  If it refers to some other
+            entry through its absOri field, pull in further info through
+            that. */
+         if (varp->absOri != (UWord)D3_INVALID_CUOFF) {
+            Bool found;
+            Word ixFirst, ixLast;
+            TempVar key;
+            TempVar* keyp = &key;
+            TempVar *varAI;
+            VG_(memset)(&key, 0, sizeof(key)); /* not necessary */
+            key.dioff = varp->absOri; /* this is what we want to find */
+            found = VG_(lookupXA)( dioff_lookup_tab, &keyp,
+                                   &ixFirst, &ixLast );
+            if (!found) {
+               /* barf("DW_AT_abstract_origin can't be resolved"); */
+               TRACE_D3("  SKIP (DW_AT_abstract_origin can't be resolved)\n\n");
+               continue;
+            }
+            /* If the following fails, there is more than one entry with
+               the same dioff.  Which can't happen. */
+            vg_assert(ixFirst == ixLast);
+            varAI = *(TempVar**)VG_(indexXA)( dioff_lookup_tab, ixFirst );
+            /* stay sane */
+            vg_assert(varAI);
+            vg_assert(varAI->dioff == varp->absOri);
 
-      /* Give it a name if it doesn't have one. */
-      if (!varp->name)
-         varp->name = ML_(addStr)( di, "<anon_var>", -1 );
+            /* Copy what useful info we can. */
+            if (varAI->typeR && !varp->typeR)
+               varp->typeR = varAI->typeR;
+            if (varAI->name && !varp->name)
+               varp->name = varAI->name;
+            if (varAI->fndn_ix && !varp->fndn_ix)
+               varp->fndn_ix = varAI->fndn_ix;
+            if (varAI->fLine > 0 && varp->fLine == 0)
+               varp->fLine = varAI->fLine;
+         }
 
-      /* So now does it have enough info to be useful? */
-      /* NOTE: re typeR: this is a hack.  If typeR is Te_UNKNOWN then
-         the type didn't get resolved.  Really, in that case
-         something's broken earlier on, and should be fixed, rather
-         than just skipping the variable. */
-      ent = ML_(TyEnts__index_by_cuOff)( tyents_to_keep,
-                                         tyents_to_keep_cache, 
-                                         varp->typeR );
-      /* The next two assertions should be guaranteed by 
-         our previous call to resolve_variable_types. */
-      vg_assert(ent);
-      vg_assert(ML_(TyEnt__is_type)(ent) || ent->tag == Te_UNKNOWN);
+         /* Give it a name if it doesn't have one. */
+         if (!varp->name)
+            varp->name = ML_(addStr)( di, "<anon_var>", -1 );
 
-      if (ent->tag == Te_UNKNOWN) continue;
+         /* So now does it have enough info to be useful? */
+         /* NOTE: re typeR: this is a hack.  If typeR is Te_UNKNOWN then
+            the type didn't get resolved.  Really, in that case
+            something's broken earlier on, and should be fixed, rather
+            than just skipping the variable. */
+         ent = ML_(TyEnts__index_by_cuOff)( tyents_to_keep,
+                                            tyents_to_keep_cache, 
+                                            varp->typeR );
+         /* The next two assertions should be guaranteed by 
+            our previous call to resolve_variable_types. */
+         vg_assert(ent);
+         vg_assert(ML_(TyEnt__is_type)(ent) || ent->tag == Te_UNKNOWN);
 
-      vg_assert(varp->gexpr);
-      vg_assert(varp->name);
-      vg_assert(varp->typeR);
-      vg_assert(varp->level >= 0);
+         if (ent->tag == Te_UNKNOWN) continue;
 
-      /* Ok.  So we're going to keep it.  Call ML_(addVar) once for
-         each address range in which the variable exists. */
-      TRACE_D3("  ACQUIRE for range(s) ");
-      { AddrRange  oneRange;
-        AddrRange* varPcRanges;
-        Word       nVarPcRanges;
-        /* Set up to iterate over address ranges, however
-           represented. */
-        if (varp->nRanges == 0 || varp->nRanges == 1) {
-           vg_assert(!varp->rngMany);
-           if (varp->nRanges == 0) {
+         vg_assert(varp->gexpr);
+         vg_assert(varp->name);
+         vg_assert(varp->typeR);
+         vg_assert(varp->level >= 0);
+
+         /* Ok.  So we're going to keep it.  Call ML_(addVar) once for
+            each address range in which the variable exists. */
+         TRACE_D3("  ACQUIRE for range(s) ");
+         { AddrRange  oneRange;
+           AddrRange* varPcRanges;
+           Word       nVarPcRanges;
+           /* Set up to iterate over address ranges, however
+              represented. */
+           if (varp->nRanges == 0 || varp->nRanges == 1) {
+              vg_assert(!varp->rngMany);
+              if (varp->nRanges == 0) {
+                 vg_assert(varp->rngOneMin == 0);
+                 vg_assert(varp->rngOneMax == 0);
+              }
+              nVarPcRanges = varp->nRanges;
+              oneRange.aMin = varp->rngOneMin;
+              oneRange.aMax = varp->rngOneMax;
+              varPcRanges = &oneRange;
+           } else {
+              vg_assert(varp->rngMany);
               vg_assert(varp->rngOneMin == 0);
               vg_assert(varp->rngOneMax == 0);
+              nVarPcRanges = VG_(sizeXA)(varp->rngMany);
+              vg_assert(nVarPcRanges >= 2);
+              vg_assert(nVarPcRanges == (Word)varp->nRanges);
+              varPcRanges = VG_(indexXA)(varp->rngMany, 0);
            }
-           nVarPcRanges = varp->nRanges;
-           oneRange.aMin = varp->rngOneMin;
-           oneRange.aMax = varp->rngOneMax;
-           varPcRanges = &oneRange;
-        } else {
-           vg_assert(varp->rngMany);
-           vg_assert(varp->rngOneMin == 0);
-           vg_assert(varp->rngOneMax == 0);
-           nVarPcRanges = VG_(sizeXA)(varp->rngMany);
-           vg_assert(nVarPcRanges >= 2);
-           vg_assert(nVarPcRanges == (Word)varp->nRanges);
-           varPcRanges = VG_(indexXA)(varp->rngMany, 0);
-        }
-        if (varp->level == 0)
-           vg_assert( nVarPcRanges == 1 );
-        /* and iterate */
-        for (i = 0; i < nVarPcRanges; i++) {
-           Addr pcMin = varPcRanges[i].aMin;
-           Addr pcMax = varPcRanges[i].aMax;
-           vg_assert(pcMin <= pcMax);
-           /* Level 0 is the global address range.  So at level 0 we
-              don't want to bias pcMin/pcMax; but at all other levels
-              we do since those are derived from svmas in the Dwarf
-              we're reading.  Be paranoid ... */
-           if (varp->level == 0) {
-              vg_assert(pcMin == (Addr)0);
-              vg_assert(pcMax == ~(Addr)0);
-           } else {
-              /* vg_assert(pcMin > (Addr)0);
-                 No .. we can legitimately expect to see ranges like 
-                 0x0-0x11D (pre-biasing, of course). */
-              vg_assert(pcMax < ~(Addr)0);
+           if (varp->level == 0)
+              vg_assert( nVarPcRanges == 1 );
+           /* and iterate */
+           for (i = 0; i < nVarPcRanges; i++) {
+              Addr pcMin = varPcRanges[i].aMin;
+              Addr pcMax = varPcRanges[i].aMax;
+              vg_assert(pcMin <= pcMax);
+              /* Level 0 is the global address range.  So at level 0 we
+                 don't want to bias pcMin/pcMax; but at all other levels
+                 we do since those are derived from svmas in the Dwarf
+                 we're reading.  Be paranoid ... */
+              if (varp->level == 0) {
+                 vg_assert(pcMin == (Addr)0);
+                 vg_assert(pcMax == ~(Addr)0);
+              } else {
+                 /* vg_assert(pcMin > (Addr)0);
+                    No .. we can legitimately expect to see ranges like 
+                    0x0-0x11D (pre-biasing, of course). */
+                 vg_assert(pcMax < ~(Addr)0);
+              }
+
+              /* Apply text biasing, for non-global variables. */
+              if (varp->level > 0) {
+                 pcMin += di->text_debug_bias;
+                 pcMax += di->text_debug_bias;
+              } 
+
+              if (i > 0 && (i%2) == 0) 
+                 TRACE_D3("\n                       ");
+              TRACE_D3("[%#lx,%#lx] ", pcMin, pcMax );
+
+              ML_(addVar)(
+                 di, varp->level, 
+                     pcMin, pcMax,
+                     varp->name,  varp->typeR,
+                     varp->gexpr, varp->fbGX,
+                     varp->fndn_ix, varp->fLine, td3 
+              );
            }
+         }
 
-           /* Apply text biasing, for non-global variables. */
-           if (varp->level > 0) {
-              pcMin += di->text_debug_bias;
-              pcMax += di->text_debug_bias;
-           } 
-
-           if (i > 0 && (i%2) == 0) 
-              TRACE_D3("\n                       ");
-           TRACE_D3("[%#lx,%#lx] ", pcMin, pcMax );
-
-           ML_(addVar)(
-              di, varp->level, 
-                  pcMin, pcMax,
-                  varp->name,  varp->typeR,
-                  varp->gexpr, varp->fbGX,
-                  varp->fName, varp->fLine, td3 
-           );
-        }
+         TRACE_D3("\n\n");
+         /* and move on to the next var */
       }
 
-      TRACE_D3("\n\n");
-      /* and move on to the next var */
+      /* Now free all the TempVars */
+      n = VG_(sizeXA)( tempvars );
+      for (i = 0; i < n; i++) {
+         varp = *(TempVar**)VG_(indexXA)( tempvars, i );
+         ML_(dinfo_free)(varp);
+      }
+      VG_(deleteXA)( tempvars );
+      tempvars = NULL;
+
+      /* and the temp lookup table */
+      VG_(deleteXA)( dioff_lookup_tab );
+
+      /* and the ranges tree.  Note that we need to also free the XArrays
+         which constitute the keys, hence pass VG_(deleteXA) as a
+         key-finalizer. */
+      VG_(deleteFM)( rangestree, (void(*)(UWord))VG_(deleteXA), NULL );
+
+      /* and the tyents_to_keep cache */
+      ML_(dinfo_free)( tyents_to_keep_cache );
+      tyents_to_keep_cache = NULL;
+
+      vg_assert( varparser.fndn_ix_Table == NULL );
+
+      /* And the signatured type hash.  */
+      VG_(HT_destruct) ( signature_types, ML_(dinfo_free) );
+
+      /* record the GExprs in di so they can be freed later */
+      vg_assert(!di->admin_gexprs);
+      di->admin_gexprs = gexprs;
    }
-
-   /* Now free all the TempVars */
-   n = VG_(sizeXA)( tempvars );
-   for (i = 0; i < n; i++) {
-      varp = *(TempVar**)VG_(indexXA)( tempvars, i );
-      ML_(dinfo_free)(varp);
-   }
-   VG_(deleteXA)( tempvars );
-   tempvars = NULL;
-
-   /* and the temp lookup table */
-   VG_(deleteXA)( dioff_lookup_tab );
-
-   /* and the ranges tree.  Note that we need to also free the XArrays
-      which constitute the keys, hence pass VG_(deleteXA) as a
-      key-finalizer. */
-   VG_(deleteFM)( rangestree, (void(*)(UWord))VG_(deleteXA), NULL );
-
-   /* and the tyents_to_keep cache */
-   ML_(dinfo_free)( tyents_to_keep_cache );
-   tyents_to_keep_cache = NULL;
-
-   vg_assert( varparser.filenameTable == NULL );
-
-   /* And the signatured type hash.  */
-   VG_(HT_destruct) ( signature_types, ML_(dinfo_free) );
-
-   /* record the GExprs in di so they can be freed later */
-   vg_assert(!di->admin_gexprs);
-   di->admin_gexprs = gexprs;
 }
 
 
@@ -4321,7 +5125,7 @@ void new_dwarf3_reader_wrk (
 /*---                                                      ---*/
 /*------------------------------------------------------------*/
 
-static Bool    d3rd_jmpbuf_valid  = False;
+static Bool               d3rd_jmpbuf_valid  = False;
 static const HChar*       d3rd_jmpbuf_reason = NULL;
 static VG_MINIMAL_JMP_BUF(d3rd_jmpbuf);
 
@@ -4336,7 +5140,7 @@ static __attribute__((noreturn)) void barf ( const HChar* reason ) {
 
 void 
 ML_(new_dwarf3_reader) (
-   struct _DebugInfo* di,
+   DebugInfo* di,
    DiSlice escn_debug_info,      DiSlice escn_debug_types,
    DiSlice escn_debug_abbv,      DiSlice escn_debug_line,
    DiSlice escn_debug_str,       DiSlice escn_debug_ranges,

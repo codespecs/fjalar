@@ -7,7 +7,7 @@
 #  This file is part of Massif, a Valgrind tool for profiling memory
 #  usage of programs.
 #
-#  Copyright (C) 2007-2007 Nicholas Nethercote
+#  Copyright (C) 2007-2013 Nicholas Nethercote
 #     njn@valgrind.org
 #
 #  This program is free software; you can redistribute it and/or
@@ -51,8 +51,13 @@ my $graph_y = 20;
 # Input file name
 my $input_file = undef;
 
+# Where to create tmp files. See also function VG_(tmpdir) in m_libcfile.c.
+my $tmp_dir = $ENV{"TMPDIR"};
+$tmp_dir = "@VG_TMPDIR@" if (! $tmp_dir);
+$tmp_dir = "/tmp" if (! $tmp_dir);
+
 # Tmp file name.
-my $tmp_file = "ms_print.tmp.$$";
+my $tmp_file = "$tmp_dir/ms_print.tmp.$$";
 
 # Version number.
 my $version = "@VERSION@";
@@ -71,7 +76,7 @@ usage: ms_print [options] massif-out-file
     --x=<4..1000>         graph width, in columns [72]
     --y=<4..1000>         graph height, in rows [20]
 
-  ms_print is Copyright (C) 2007-2007 Nicholas Nethercote.
+  ms_print is Copyright (C) 2007-2013 Nicholas Nethercote.
   and licensed under the GNU General Public License, version 2.
   Bug reports, feedback, admiration, abuse, etc, to: njn\@valgrind.org.
                                                 
@@ -390,7 +395,7 @@ sub read_input_file()
     # Print snapshot list header to $tmp_file.
     #-------------------------------------------------------------------------
     open(TMPFILE, "> $tmp_file") 
-         || die "Cannot open $tmp_file for reading\n";
+         || die "Cannot open $tmp_file for writing\n";
 
     my $time_column = sprintf("%14s", "time($time_unit)");
     my $column_format = "%3s %14s %16s %16s %13s %12s\n";

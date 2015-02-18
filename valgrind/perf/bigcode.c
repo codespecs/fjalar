@@ -50,7 +50,7 @@ int main(int argc, char* argv[])
       // Mode 2: lots of code
       const int mul = atoi(argv[1]);
       if (mul == 0)
-      n_fns  = N_LOOPS;
+         n_fns = N_LOOPS;
       else
          n_fns = N_LOOPS * mul;
       n_reps = 1;
@@ -68,7 +68,7 @@ int main(int argc, char* argv[])
    for (i = 0; i < n_fns; i++) {
       memcpy(&a[FN_SIZE*i], f, FN_SIZE);
    }
-   
+
 #if defined(__mips__)
    syscall(__NR_cacheflush, a, FN_SIZE * n_fns, ICACHE);
 #endif

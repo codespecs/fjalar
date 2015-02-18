@@ -86,6 +86,7 @@ static IRAtom* assignNew_DC ( DCEnv* dce, IRType ty, IRExpr* e ) {
    return mkexpr(t);
 }
 
+// (comment added 2006)  
 // TODO: Is this the correct behavior for our purposes? - pgbovine
 //       Not really - smcc
 /* Set the annotations on a dirty helper to indicate that the stack
@@ -178,6 +179,7 @@ IRExpr* shadow_GET_DC ( DCEnv* dce, Int offset, IRType ty )
    // Return a special tag for a GET call into SP or FP,
    // in order to avoid tons of false mergings of relative address
    // literals derived from arithmetic with the stack pointer
+   // (comment added 2006)  
    /* XXX This won't do the right thing if your code uses %ebp for
       some purpose other than the frame pointer. Let's hope that
       doesn't happen too often in unoptimized code. The only better
@@ -258,6 +260,7 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
             /* merge the tags of first and current arguments */
             cur = expr2tags_DC(dce, exprvec[i]);
 
+            // (comment added 2006)  
             // TODO: Why is this dirty rather than clean? - pgbovine
             //       Because it has side effects? - smcc
             datatag = newTemp(dce->mce, Ity_Word, DC);
@@ -491,8 +494,8 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
       case Iop_SignificanceRoundD128:
 
 // Unimplemented - ARM only
-      case Iop_Extract64:
-      case Iop_ExtractV128:
+      case Iop_Slice64:
+      case Iop_SliceV128:
       case Iop_SetElem8x8:
       case Iop_SetElem16x4:
       case Iop_SetElem32x2:
@@ -570,6 +573,7 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_MullS8: case Iop_MullS16: case Iop_MullS32: case Iop_MullS64:
    case Iop_MullU8: case Iop_MullU16: case Iop_MullU32: case Iop_MullU64:
       /* Division */
+      // (comment added 2005)  
       /* TODO: clarify semantics wrt rounding, negative values, whatever */
    case Iop_DivU32:   // :: I32,I32 -> I32 (simple div, no mod)
    case Iop_DivS32:   // ditto, signed
@@ -642,7 +646,7 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_MulHi16Ux4:        case Iop_MulHi16Sx4:
    case Iop_QDMulHi16Sx4:      case Iop_QDMulHi32Sx2:
    case Iop_QRDMulHi16Sx4:     case Iop_QRDMulHi32Sx2:
-   case Iop_QDMulLong16Sx4:    case Iop_QDMulLong32Sx2:
+   case Iop_QDMull16Sx4:       case Iop_QDMull32Sx2:
    case Iop_PolynomialMul8x8:  case Iop_PolynomialMull8x8:
 
       if (!dyncomp_dataflow_comparisons_mode && !dyncomp_units_mode) {
@@ -1078,14 +1082,14 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_ShlN8x8:  case Iop_ShlN16x4: case Iop_ShlN32x2:
    case Iop_ShrN8x8:  case Iop_ShrN16x4: case Iop_ShrN32x2:
 
-   case Iop_QShlN16Sx4:
-   case Iop_QShlN16x4:
-   case Iop_QShlN32Sx2:
-   case Iop_QShlN32x2: 
-   case Iop_QShlN64Sx1:
-   case Iop_QShlN64x1:
-   case Iop_QShlN8Sx8: 
-   case Iop_QShlN8x8:  
+   //case Iop_QShlN16Sx4:
+   //case Iop_QShlN16x4:
+   //case Iop_QShlN32Sx2:
+   //case Iop_QShlN32x2: 
+   //case Iop_QShlN64Sx1:
+   //case Iop_QShlN64x1:
+   //case Iop_QShlN8Sx8: 
+   //case Iop_QShlN8x8:  
 
    case Iop_Perm8x8:  
 
@@ -1122,10 +1126,10 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_QShl8x16:   case Iop_QShl16x8:
    case Iop_QShl32x4:   case Iop_QShl64x2:
 
-   case Iop_QShlN8x16:  case Iop_QShlN16x8:
-   case Iop_QShlN32x4:  case Iop_QShlN64x2:
-   case Iop_QShlN8Sx16: case Iop_QShlN16Sx8:
-   case Iop_QShlN32Sx4: case Iop_QShlN64Sx2:
+   //case Iop_QShlN8x16:  case Iop_QShlN16x8:
+   //case Iop_QShlN32x4:  case Iop_QShlN64x2:
+   //case Iop_QShlN8Sx16: case Iop_QShlN16Sx8:
+   //case Iop_QShlN32Sx4: case Iop_QShlN64Sx2:
 
       // From the looks of the spec., we want to return the tag
       // of the first argument
@@ -1319,24 +1323,24 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_QSal32x2:                    // only used by arm
    case Iop_QSal64x1:                    // only used by arm
    case Iop_QSal8x8:                     // only used by arm
-   case Iop_QSalN16x4:                   // only used by arm
-   case Iop_QSalN16x8:                   // only used by arm
-   case Iop_QSalN32x2:                   // only used by arm
-   case Iop_QSalN32x4:                   // only used by arm
-   case Iop_QSalN64x1:                   // only used by arm
-   case Iop_QSalN64x2:                   // only used by arm
-   case Iop_QSalN8x16:                   // only used by arm
-   case Iop_QSalN8x8:                    // only used by arm
+   //case Iop_QSalN16x4:                   // only used by arm
+   //case Iop_QSalN16x8:                   // only used by arm
+   //case Iop_QSalN32x2:                   // only used by arm
+   //case Iop_QSalN32x4:                   // only used by arm
+   //case Iop_QSalN64x1:                   // only used by arm
+   //case Iop_QSalN64x2:                   // only used by arm
+   //case Iop_QSalN8x16:                   // only used by arm
+   //case Iop_QSalN8x8:                    // only used by arm
    case Iop_QShl16x4:                    // only used by arm
    case Iop_QShl32x2:                    // only used by arm
    case Iop_QShl64x1:                    // only used by arm
    case Iop_QShl8x8:                     // only used by arm
    case Iop_QSub32S:                     // only used by arm
-   case Iop_Recps32Fx2:                  // only used by arm
-   case Iop_Recps32Fx4:                  // only used by arm
+   //case Iop_Recps32Fx2:                  // only used by arm
+   //case Iop_Recps32Fx4:                  // only used by arm
    case Iop_Rol64x2:                     // only used by ppc
-   case Iop_Rsqrts32Fx2:                 // only used by arm
-   case Iop_Rsqrts32Fx4:                 // only used by arm
+   //case Iop_Rsqrts32Fx2:                 // only used by arm
+   //case Iop_Rsqrts32Fx4:                 // only used by arm
    case Iop_Sad8Ux4:                     // only used by arm
    case Iop_SHA256:                      // only used by ppc
    case Iop_SHA512:                      // only used by ppc
@@ -1383,6 +1387,7 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       // argument.  For &MC_(helperc_MERGE_TAGS_RETURN_0), simply
       // return 0:
 
+      // (comment added 2006)  
       // TODO: This doesn't happen THAT often, so there must be a
       // better way to tell whether we can make this optimization
       // without simply checking whether the atoms are consts
@@ -1800,6 +1805,7 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
          //         stmt( dce->bb, IRStmt_Dirty(di) );
          //         return mkexpr(datatag);
 
+         // (comment added 2005)  
          // pgbovine TODO: Is this merge tags really necessary or too
          // premature?  We should aim to do all of the merging on the
          // language level if somebody really reads this as a 128-bit
@@ -2093,6 +2099,7 @@ void do_shadow_STle_DC ( DCEnv* dce,
 
    if (ty == Ity_V128) {
       IRAtom *eight = tyAddr==Ity_I32 ? mkU32(8) : mkU64(8);
+      // (comment added 2006)  
       /* XXX this branch assumes little-endianness, and would need to
 	 be fixed for a PPC port. */
 

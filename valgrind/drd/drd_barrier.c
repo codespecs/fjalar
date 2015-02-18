@@ -41,7 +41,7 @@
 struct barrier_thread_info
 {
    UWord       tid;           // A DrdThreadId declared as UWord because
-   // this member variable is the key of an OSet.
+                              // this member variable is the key of an OSet.
    Segment*    sg;            // Segment of the last pthread_barrier() call
                               // by thread tid.
    Segment*    post_wait_sg;  // Segment created after *_barrier_wait() finished
@@ -83,9 +83,9 @@ static
 void DRD_(barrier_thread_initialize)(struct barrier_thread_info* const p,
                                      const DrdThreadId tid)
 {
-   p->tid            = tid;
+   p->tid             = tid;
    p->sg              = NULL;
-   p->post_wait_sg   = 0;
+   p->post_wait_sg    = 0;
    p->wait_call_ctxt  = 0;
    p->thread_finished = False;
 }
@@ -132,7 +132,7 @@ void DRD_(barrier_initialize)(struct barrier_info* const p,
              >= sizeof(DrdThreadId));
    for (i = 0; i < 2; i++) {
       p->oset[i] = VG_(OSetGen_Create)(0, 0, VG_(malloc), "drd.barrier.bi.1",
-                                 VG_(free));
+                                       VG_(free));
    }
 }
 
@@ -168,11 +168,11 @@ static void barrier_cleanup(struct barrier_info* p)
       for ( ; (q = VG_(OSetGen_Next)(oset)) != 0; ) {
          if (q->post_wait_sg && !DRD_(vc_lte)(&q->post_wait_sg->vc,
                                               &latest_sg->vc))
-      {
-         barrier_report_wait_delete_race(p, q);
+         {
+            barrier_report_wait_delete_race(p, q);
+         }
+         DRD_(barrier_thread_destroy)(q);
       }
-      DRD_(barrier_thread_destroy)(q);
-   }
    }
 
    for (i = 0; i < 2; i++) {
@@ -260,14 +260,14 @@ void DRD_(barrier_init)(const Addr barrier,
    if (s_trace_barrier) {
       if (reinitialization)
          DRD_(trace_msg)("[%d] barrier_reinit    %s 0x%lx count %ld -> %ld",
-                      DRD_(thread_get_running_tid)(),
+                         DRD_(thread_get_running_tid)(),
                          barrier_get_typename(p), barrier, p->count, count);
       else
          DRD_(trace_msg)("[%d] barrier_init      %s 0x%lx",
-                      DRD_(thread_get_running_tid)(),
-                      barrier_get_typename(p),
-                      barrier);
-      }
+                         DRD_(thread_get_running_tid)(),
+                         barrier_get_typename(p),
+                         barrier);
+   }
 
    if (reinitialization && p->count != count)
    {
@@ -294,7 +294,7 @@ void DRD_(barrier_destroy)(const Addr barrier, const BarrierT barrier_type)
 
    if (s_trace_barrier)
       DRD_(trace_msg)("[%d] barrier_destroy   %s 0x%lx",
-                   DRD_(thread_get_running_tid)(),
+                      DRD_(thread_get_running_tid)(),
                       barrier_get_typename(p), barrier);
 
    if (p == 0)
@@ -344,7 +344,7 @@ void DRD_(barrier_pre_wait)(const DrdThreadId tid, const Addr barrier,
       VG_(maybe_record_error)(VG_(get_running_tid)(),
                               BarrierErr,
                               VG_(get_IP)(VG_(get_running_tid)()),
-                   "Please verify whether gcc has been configured"
+                              "Please verify whether gcc has been configured"
                               " with option --disable-linux-futex. See also"
                               " the section about OpenMP in the DRD manual.",
                               &bei);
@@ -353,7 +353,7 @@ void DRD_(barrier_pre_wait)(const DrdThreadId tid, const Addr barrier,
 
    if (s_trace_barrier)
       DRD_(trace_msg)("[%d] barrier_pre_wait  %s 0x%lx iteration %ld",
-                   DRD_(thread_get_running_tid)(),
+                      DRD_(thread_get_running_tid)(),
                       barrier_get_typename(p), barrier, p->pre_iteration);
 
    /* Clean up nodes associated with finished threads. */
@@ -416,7 +416,7 @@ void DRD_(barrier_post_wait)(const DrdThreadId tid, const Addr barrier,
       DRD_(trace_msg)("[%d] barrier_post_wait %s 0x%lx iteration %ld%s",
                       tid, p ? barrier_get_typename(p) : "(?)",
                       barrier, p ? p->post_iteration : -1,
-                   serializing ? " (serializing)" : "");
+                      serializing ? " (serializing)" : "");
 
    /*
     * If p == 0, this means that the barrier has been destroyed after
@@ -508,7 +508,7 @@ static void barrier_delete_thread(struct barrier_info* const p,
 
    for (i = 0; i < 2; i++) {
       q = VG_(OSetGen_Lookup)(p->oset[i], &word_tid);
-   if (q)
+      if (q)
          q->thread_finished = True;
    }
 }

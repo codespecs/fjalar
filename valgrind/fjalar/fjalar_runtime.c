@@ -219,6 +219,7 @@ returnArrayVariableWithAddr(VarList* varList,
       if (potentialVar->locationType == FP_OFFSET_LOCATION) {
         potentialVarBaseAddr = e->FP + potentialVar->byteOffset;
       } else {  
+        // (comment added 2014)  
         // Potential bug!  We are ignoring other locationTypes
         // and just assuming it is ESP.  This is the only case
         // we've seen (i386 only) so far.  (markro)
@@ -541,6 +542,7 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
   //  else if (baseAddr &&
   //           (targetVar->varType->repType == var->varType->repType)) {
 
+  // (comment added 2005)  
   // TODO: Hmmmm, what are we gonna do without repTypes???  I need to
   // investigate this 'if' condition more carefully later:
   else if (baseAddr) {
@@ -610,6 +612,7 @@ Bool addressIsAllocatedOrInitialized(Addr addressInQuestion,
   // it's technically still valid at the moment we exit because
   // nothing else has had time to touch it yet
 
+  // (comment added 2005)  
   // TODO: The problem with this is that, although everything in this range
   //       should be allocate (A-bits), not everything in this range is
   //       initialized (V-bits) but we are ASSUMING that it is!!!

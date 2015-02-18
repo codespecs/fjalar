@@ -38,6 +38,27 @@
 #define VKI_XEN_SYSCTL_scheduler_op                  19
 #define VKI_XEN_SYSCTL_coverage_op                   20
 
+struct vki_xen_sysctl_readconsole {
+    /* IN */
+    vki_uint8_t clear;
+    vki_uint8_t incremental;
+
+    vki_uint8_t pad0, pad1;
+
+    /*
+     * IN:  Start index for consumption if @incremental.
+     * OUT: End index after consuming from the console.
+     */
+    vki_uint32_t index;
+    VKI_XEN_GUEST_HANDLE_64(char) buffer; /* IN */
+
+    /*
+     * IN:  size of buffer.
+     * OUT: bytes written into buffer.
+     */
+    vki_uint32_t count;
+};
+
 struct vki_xen_sysctl_getdomaininfolist_00000008 {
     /* IN variables. */
     vki_xen_domid_t           first_domain;
@@ -52,6 +73,15 @@ struct vki_xen_sysctl_getdomaininfolist_00000009 {
     vki_xen_domid_t           first_domain;
     vki_uint32_t              max_domains;
     VKI_XEN_GUEST_HANDLE_64(vki_xen_domctl_getdomaininfo_00000008_t) buffer;
+    /* OUT variables. */
+    vki_uint32_t              num_domains;
+};
+
+struct vki_xen_sysctl_getdomaininfolist_0000000a {
+    /* IN variables. */
+    vki_xen_domid_t           first_domain;
+    vki_uint32_t              max_domains;
+    VKI_XEN_GUEST_HANDLE_64(vki_xen_domctl_getdomaininfo_00000009_t) buffer;
     /* OUT variables. */
     vki_uint32_t              num_domains;
 };
@@ -72,6 +102,12 @@ struct vki_xen_sysctl_cpupool_op {
     vki_uint32_t cpu;         /* IN: AR             */
     vki_uint32_t n_dom;       /*            OUT: I  */
     struct vki_xenctl_bitmap cpumap; /*     OUT: IF */
+};
+
+struct vki_xen_sysctl_debug_keys {
+    /* IN variables. */
+    VKI_XEN_GUEST_HANDLE_64(char) keys;
+    vki_uint32_t nr_keys;
 };
 
 struct vki_xen_sysctl_topologyinfo {
@@ -129,7 +165,7 @@ struct vki_xen_sysctl {
     vki_uint32_t cmd;
     vki_uint32_t interface_version; /* XEN_SYSCTL_INTERFACE_VERSION */
     union {
-        //struct vki_xen_sysctl_readconsole       readconsole;
+        struct vki_xen_sysctl_readconsole       readconsole;
         //struct vki_xen_sysctl_tbuf_op           tbuf_op;
         struct vki_xen_sysctl_physinfo_00000008 physinfo_00000008;
         struct vki_xen_sysctl_physinfo_0000000a physinfo_0000000a;
@@ -139,7 +175,8 @@ struct vki_xen_sysctl {
         //struct vki_xen_sysctl_perfc_op          perfc_op;
         struct vki_xen_sysctl_getdomaininfolist_00000008 getdomaininfolist_00000008;
         struct vki_xen_sysctl_getdomaininfolist_00000009 getdomaininfolist_00000009;
-        //struct vki_xen_sysctl_debug_keys        debug_keys;
+        struct vki_xen_sysctl_getdomaininfolist_0000000a getdomaininfolist_0000000a;
+        struct vki_xen_sysctl_debug_keys        debug_keys;
         //struct vki_xen_sysctl_getcpuinfo        getcpuinfo;
         //struct vki_xen_sysctl_availheap         availheap;
         //struct vki_xen_sysctl_get_pmstat        get_pmstat;

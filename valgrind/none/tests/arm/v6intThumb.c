@@ -5,7 +5,7 @@
 
 #include <stdio.h>
 
-static int gen_cvin(cvin)
+static int gen_cvin(int cvin)
 {
   int r = ((cvin & 2) ? (1<<29) : 0) | ((cvin & 1) ? (1<<28) : 0);
   r |= (1 << 31) | (1 << 30);
@@ -218,6 +218,123 @@ static int gen_cvin(cvin)
 		); \
 }
 
+// Tests misaligned access via PC+$#imm
+#define TESTINSTPCMISALIGNED(instruction, RD, label, cvin) \
+{ \
+    unsigned int out; \
+    unsigned int cpsr; \
+    __asm__ volatile(\
+      ".align 4;" \
+      "msr cpsr_f, %2;" \
+      "mov " #RD ", #0;" \
+      ".align 2;" \
+      ".thumb;" \
+      ".syntax unified;" \
+      "nop;" \
+      instruction ";" \
+      "b .Lend" #label ";" \
+      ".align 4;" \
+      #label ": " \
+      ".word 0x8191881b;" \
+      ".word 0x18fe9c93;" \
+      ".word 0x00000000;" \
+      ".word 0x00000000;" \
+      ".Lend" #label ":" \
+      "mov %0, " #RD ";" \
+      "mrs %1, cpsr;" \
+      : "=&r" (out), "=&r" (cpsr) \
+      : "r" (gen_cvin(cvin)) \
+      : #RD, "cc", "memory" \
+    ); \
+    printf("%s :: rd 0x%08x, cpsr 0x%08x %c%c%c%c\n", \
+          instruction, out, \
+		cpsr & 0xffff0000, \
+		((1<<31) & cpsr) ? 'N' : ' ', \
+		((1<<30) & cpsr) ? 'Z' : ' ', \
+		((1<<29) & cpsr) ? 'C' : ' ', \
+		((1<<28) & cpsr) ? 'V' : ' ' \
+		); \
+}
+
+// this one uses d0, s0 and s2 (hardcoded)
+#define TESTINSTPCMISALIGNED_DWORDOUT(instruction, label, cvin, extratrash) \
+{ \
+    unsigned int out; \
+    unsigned int out2; \
+    unsigned int cpsr; \
+    __asm__ volatile(\
+      ".align 4;" \
+      "msr cpsr_f, %3;" \
+      ".align 2;" \
+      ".thumb;" \
+      ".syntax unified;" \
+      "nop;" \
+      instruction ";" \
+      "b .Lend" #label ";" \
+      ".align 4;" \
+      #label ": " \
+      ".word 0x8191881b;" \
+      ".word 0x18fe9c93;" \
+      ".word 0x00000000;" \
+      ".word 0x00000000;" \
+      ".Lend" #label ":" \
+      "vmov %0, s0;" \
+      "vmov %1, s1;" \
+      "mrs %2, cpsr;" \
+      : "=&r" (out), "=&r" (out2), "=&r" (cpsr) \
+      : "r" (gen_cvin(cvin)) \
+      : "cc", "memory", "s0", "s1", extratrash \
+    ); \
+    printf("%s :: s0 0x%08x s1 0x%08x, cpsr 0x%08x %c%c%c%c\n", \
+        instruction, out, out2, \
+		cpsr & 0xffff0000, \
+		((1<<31) & cpsr) ? 'N' : ' ', \
+		((1<<30) & cpsr) ? 'Z' : ' ', \
+		((1<<29) & cpsr) ? 'C' : ' ', \
+		((1<<28) & cpsr) ? 'V' : ' ' \
+		); \
+}
+
+#define TESTINSTPCMISALIGNED_2OUT(instruction, RD, RD2, label, cvin) \
+{ \
+    unsigned int out; \
+    unsigned int out2; \
+    unsigned int cpsr; \
+    __asm__ volatile(\
+      ".align 4;" \
+      "msr cpsr_f, %3;" \
+      "mov " #RD ", #0;" \
+      "mov " #RD2 ", #0;" \
+      ".align 2;" \
+      ".thumb;" \
+      ".syntax unified;" \
+      "nop;" \
+      instruction ";" \
+      "b .Lend" #label ";" \
+      ".align 4;" \
+      #label ": " \
+      ".word 0x8191881b;" \
+      ".word 0x18fe9c93;" \
+      ".word 0x00000000;" \
+      ".word 0x00000000;" \
+      ".Lend" #label ":" \
+      "mov %0, " #RD ";" \
+      "mov %1, " #RD2 ";" \
+      "mrs %2, cpsr;" \
+      : "=&r" (out), "=&r" (out2), "=&r" (cpsr) \
+      : "r" (gen_cvin(cvin)) \
+      : #RD, #RD2, "cc", "memory" \
+    ); \
+    printf("%s :: rd 0x%08x rd2 0x%08x, cpsr 0x%08x %c%c%c%c\n", \
+        instruction, out, out2, \
+		cpsr & 0xffff0000, \
+		((1<<31) & cpsr) ? 'N' : ' ', \
+		((1<<30) & cpsr) ? 'Z' : ' ', \
+		((1<<29) & cpsr) ? 'C' : ' ', \
+		((1<<28) & cpsr) ? 'V' : ' ' \
+		); \
+}
+
 /* helpers */
 #define NOCARRY { int cv = 0; {
 #define TESTCARRY { int cv = 0; for (cv = 0; cv < 4; cv++) {
@@ -227,6 +344,57 @@ static int gen_cvin(cvin)
 ////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////
+
+__attribute__((noinline))
+void test_ldr_pc(void) {
+    // special case of ldr PC, [rN, +imm?]
+    printf("tests for instructions modifying pc (ldr pc, add pc)\n");
+    {    
+        unsigned int out; 
+        unsigned int cpsr;
+        unsigned char tmpbuff[512]; // we use tmpbuff+432
+        int cvin = 0; 
+
+        __asm__ volatile(
+            ".thumb;\n"
+            ".syntax unified                  ;\n"
+            "msr  cpsr_f, %3                  ;\n"
+            "mov  r9, %2                      ;\n"
+            "movw r2, #:lower16:.ldrwpclabel1 ;\n"
+            "movt r2, #:upper16:.ldrwpclabel1 ;\n"
+            "mov  r0, #1                      ;\n"
+            "orr  r2, r0                      ;\n" // set thumb bit to 1
+            "str  r2, [r9, +#432]             ;\n"
+            "bl   .ldrwpclabel_continue       ;\n"
+            ".align 4                         ;\n"
+            ".ldrwpclabel1:                   \n"
+            "mov  r1, #42                     ;\n" // expected output value
+            "bl   .ldrwpclabel_end            ;\n"
+            ".ldrwpclabel_continue:           \n"
+            "ldr.w pc, [r9, +#432]            ;\n"
+            "mov  r1, #0                      ;\n" // should never get here
+            ".ldrwpclabel_end:                \n"
+            "mov  %0, r1                      ;\n"
+            "mrs  %1, cpsr                    ;\n"
+            : "=r"(out), "=r"(cpsr)
+            : "r"(tmpbuff), "r"(gen_cvin(cvin))
+            : "r9", "r2", "r0", "r1", "cc", "memory"
+        );
+
+        // print
+        printf("ldr.w pc, [r9, +#432] :: r1 0x%08x c:v-in %d, "
+               "cpsr 0x%08x %c%c%c%c\n",        \
+            out, \
+            cvin, \
+            cpsr & 0xffff0000, \
+            ((1<<31) & cpsr) ? 'N' : ' ', \
+            ((1<<30) & cpsr) ? 'Z' : ' ', \
+            ((1<<29) & cpsr) ? 'C' : ' ', \
+            ((1<<28) & cpsr) ? 'V' : ' ' \
+            ); \
+
+    }    
+}
 
 static int old_main(void)
 {
@@ -457,6 +625,31 @@ static int old_main(void)
 	TESTINST2("asrs r0, r1, #18", 0x00010000, r0, r1, cv);
 	TESTCARRYEND
 
+    printf("literal access [PC+#imm]\n");
+    NOCARRY
+    // this should result in r1=0
+    TESTINSTPCMISALIGNED("adr.w r1, label_magic_adrw; and r1, r1, #0x3",
+                        r1, label_magic_adrw, cv);
+    // omitting LDC/LDC2
+    TESTINSTPCMISALIGNED("ldr r1, label_magic_ldr",
+                         r1, label_magic_ldr, cv);
+    TESTINSTPCMISALIGNED("ldrb r1, label_magic_ldrb",
+                         r1, label_magic_ldrb, cv);
+    TESTINSTPCMISALIGNED_2OUT("ldrd r0, r1, label_magic_ldrd",
+                              r0, r1, label_magic_ldrd, cv);
+    TESTINSTPCMISALIGNED("ldrh r1, label_magic_ldrh",
+                         r1, label_magic_ldrh, cv);
+    TESTINSTPCMISALIGNED("ldrsb r1, label_magic_ldrsb",
+                         r1, label_magic_ldrsb, cv);
+    TESTINSTPCMISALIGNED("ldrsh r1, label_magic_ldrsh",
+                         r1, label_magic_ldrsh, cv);
+    // omitting PLD/PLI
+    TESTINSTPCMISALIGNED_DWORDOUT("vldr d0, label_magic_vldr",
+                                  label_magic_vldr, cv, "d0");
+
+    TESTCARRYEND
+
+    test_ldr_pc();
 #if 0
 	printf("ROR\n");
 	TESTCARRY

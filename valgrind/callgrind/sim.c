@@ -76,7 +76,7 @@ typedef struct {
    int          line_size_bits;
    int          tag_shift;
    UWord        tag_mask;
-   HChar        desc_line[128];
+   HChar        desc_line[128];    // large enough
    UWord*       tags;
 
   /* for cache use */
@@ -951,7 +951,7 @@ static CacheModelResult update##_##L##_use(cache_t2* cache, int idx, \
     CLG_DEBUG(2, "   collect: %d, use_base %p\n", \
 	     CLG_(current_state).collect, loaded->use_base);	     \
                                                                      \
-    if (CLG_(current_state).collect && loaded->use_base) {            \
+    if (CLG_(current_state).collect && loaded->use_base) {           \
       (loaded->use_base)[off_##L##_AcCost] += 1000 / use->count;     \
       (loaded->use_base)[off_##L##_SpLoss] += c;                     \
                                                                      \
@@ -965,8 +965,8 @@ static CacheModelResult update##_##L##_use(cache_t2* cache, int idx, \
   use->mask  = mask;                                                 \
   loaded->memline = memline;                                         \
   loaded->iaddr   = CLG_(bb_base) + current_ii->instr_offset;        \
-  loaded->use_base = (CLG_(current_state).nonskipped) ?               \
-    CLG_(current_state).nonskipped->skipped :                         \
+  loaded->use_base = (CLG_(current_state).nonskipped) ?              \
+    CLG_(current_state).nonskipped->skipped :                        \
     CLG_(cost_base) + current_ii->cost_offset;                       \
                                                                      \
   if (memline == 0) return LL_Hit;                                   \
@@ -1318,7 +1318,7 @@ static void cachesim_post_clo_init(void)
                                       &clo_I1_cache,
                                       &clo_D1_cache,
                                       &clo_LL_cache);
-  
+
   I1.name = "I1";
   D1.name = "D1";
   LL.name = "LL";
@@ -1434,12 +1434,11 @@ void cachesim_clear(void)
 }
 
 
-static void cachesim_getdesc(HChar* buf)
+static void cachesim_dump_desc(VgFile *fp)
 {
-  Int p;
-  p = VG_(sprintf)(buf, "\ndesc: I1 cache: %s\n", I1.desc_line);
-  p += VG_(sprintf)(buf+p, "desc: D1 cache: %s\n", D1.desc_line);
-  VG_(sprintf)(buf+p, "desc: LL cache: %s\n", LL.desc_line);
+  VG_(fprintf)(fp, "\ndesc: I1 cache: %s\n", I1.desc_line);
+  VG_(fprintf)(fp, "desc: D1 cache: %s\n", D1.desc_line);
+  VG_(fprintf)(fp, "desc: LL cache: %s\n", LL.desc_line);
 }
 
 static
@@ -1479,8 +1478,8 @@ static Bool cachesim_parse_opt(const HChar* arg)
                                    &clo_D1_cache,
                                    &clo_LL_cache)) {}
 
-  else
-    return False;
+   else
+     return False;
 
   return True;
 }
@@ -1693,7 +1692,7 @@ void CLG_(init_eventsets)()
         CLG_(register_event_group4)(EG_DR, "Dr", "D1mr", "DLmr", "DLdmr");
         CLG_(register_event_group4)(EG_DW, "Dw", "D1mw", "DLmw", "DLdmw");
     }
-    
+
     if (CLG_(clo).simulate_branch) {
         CLG_(register_event_group2)(EG_BC, "Bc", "Bcm");
         CLG_(register_event_group2)(EG_BI, "Bi", "Bim");
@@ -1717,20 +1716,20 @@ void CLG_(init_eventsets)()
     CLG_(sets).full = CLG_(add_event_group) (CLG_(sets).full, EG_BUS);
     CLG_(sets).full = CLG_(add_event_group2)(CLG_(sets).full, EG_ALLOC, EG_SYS);
 
-  CLG_DEBUGIF(1) {
-    CLG_DEBUG(1, "EventSets:\n");
+    CLG_DEBUGIF(1) {
+	CLG_DEBUG(1, "EventSets:\n");
 	CLG_(print_eventset)(-2, CLG_(sets).base);
 	CLG_(print_eventset)(-2, CLG_(sets).full);
-  }
+    }
 
-  /* Not-existing events are silently ignored */
+    /* Not-existing events are silently ignored */
     CLG_(dumpmap) = CLG_(get_eventmapping)(CLG_(sets).full);
-  CLG_(append_event)(CLG_(dumpmap), "Ir");
-  CLG_(append_event)(CLG_(dumpmap), "Dr");
-  CLG_(append_event)(CLG_(dumpmap), "Dw");
-  CLG_(append_event)(CLG_(dumpmap), "I1mr");
-  CLG_(append_event)(CLG_(dumpmap), "D1mr");
-  CLG_(append_event)(CLG_(dumpmap), "D1mw");
+    CLG_(append_event)(CLG_(dumpmap), "Ir");
+    CLG_(append_event)(CLG_(dumpmap), "Dr");
+    CLG_(append_event)(CLG_(dumpmap), "Dw");
+    CLG_(append_event)(CLG_(dumpmap), "I1mr");
+    CLG_(append_event)(CLG_(dumpmap), "D1mr");
+    CLG_(append_event)(CLG_(dumpmap), "D1mw");
     CLG_(append_event)(CLG_(dumpmap), "ILmr");
     CLG_(append_event)(CLG_(dumpmap), "DLmr");
     CLG_(append_event)(CLG_(dumpmap), "DLmw");
@@ -1741,15 +1740,15 @@ void CLG_(init_eventsets)()
     CLG_(append_event)(CLG_(dumpmap), "Bcm");
     CLG_(append_event)(CLG_(dumpmap), "Bi");
     CLG_(append_event)(CLG_(dumpmap), "Bim");
-  CLG_(append_event)(CLG_(dumpmap), "AcCost1");
-  CLG_(append_event)(CLG_(dumpmap), "SpLoss1");
-  CLG_(append_event)(CLG_(dumpmap), "AcCost2");
-  CLG_(append_event)(CLG_(dumpmap), "SpLoss2");
+    CLG_(append_event)(CLG_(dumpmap), "AcCost1");
+    CLG_(append_event)(CLG_(dumpmap), "SpLoss1");
+    CLG_(append_event)(CLG_(dumpmap), "AcCost2");
+    CLG_(append_event)(CLG_(dumpmap), "SpLoss2");
     CLG_(append_event)(CLG_(dumpmap), "Ge");
-  CLG_(append_event)(CLG_(dumpmap), "allocCount");
-  CLG_(append_event)(CLG_(dumpmap), "allocSize");
-  CLG_(append_event)(CLG_(dumpmap), "sysCount");
-  CLG_(append_event)(CLG_(dumpmap), "sysTime");
+    CLG_(append_event)(CLG_(dumpmap), "allocCount");
+    CLG_(append_event)(CLG_(dumpmap), "allocSize");
+    CLG_(append_event)(CLG_(dumpmap), "sysCount");
+    CLG_(append_event)(CLG_(dumpmap), "sysTime");
 }
 
 
@@ -1757,7 +1756,7 @@ void CLG_(init_eventsets)()
 static void cachesim_add_icost(SimCost cost, BBCC* bbcc,
 			       InstrInfo* ii, ULong exe_count)
 {
-  if (!CLG_(clo).simulate_cache)
+    if (!CLG_(clo).simulate_cache)
 	cost[ fullOffset(EG_IR) ] += exe_count;
 
     if (ii->eventset)
@@ -1781,7 +1780,7 @@ struct cachesim_if CLG_(cachesim) = {
   .parse_opt     = cachesim_parse_opt,
   .post_clo_init = cachesim_post_clo_init,
   .clear         = cachesim_clear,
-  .getdesc       = cachesim_getdesc,
+  .dump_desc     = cachesim_dump_desc,
   .printstat     = cachesim_printstat,
   .add_icost     = cachesim_add_icost,
   .finish        = cachesim_finish,

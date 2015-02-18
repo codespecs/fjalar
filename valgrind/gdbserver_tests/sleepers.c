@@ -8,11 +8,11 @@
 #include <sys/types.h>
 #include <sys/syscall.h>
 #include <sched.h>
-
+#include <signal.h>
 static int loops = 15; // each thread+main will do this amount of loop
 static int sleepms = 1000; // in each loop, will sleep "sleepms" milliseconds
 static int burn = 0; // after each sleep, will burn cpu in a tight 'burn' loop 
-
+static void setup_sigusr_handler(void); // sigusr1 and 2 sigaction setup.
 
 static pid_t gettid()
 {
@@ -71,7 +71,7 @@ static void *sleeper_or_burner(void *v)
 {
    int i = 0;
    struct spec* s = (struct spec*)v;
-
+   int ret;
    fprintf(stderr, "%s ready to sleep and/or burn\n", s->name);
    fflush (stderr);
    signal_ready();
@@ -81,7 +81,10 @@ static void *sleeper_or_burner(void *v)
       if (sleepms > 0 && s->sleep) {
          t[s->t].tv_sec = sleepms / 1000;
          t[s->t].tv_usec = (sleepms % 1000) * 1000;
-         select (0, NULL, NULL, NULL, &t[s->t]);
+         ret = select (0, NULL, NULL, NULL, &t[s->t]);
+         /* We only expect a timeout result from the above. */
+         if (ret != 0)
+            perror("unexpected result from select");
       }
       if (burn > 0 && s->burn)
          do_burn();
@@ -133,7 +136,7 @@ int main (int argc, char *argv[])
   struct spec b, l, p, m;
   char *some_mem __attribute__((unused)) = malloc(100);
   setaffinity();
-
+  setup_sigusr_handler();
   if (argc > 1)
      loops = atoi(argv[1]);
 
@@ -194,3 +197,24 @@ int main (int argc, char *argv[])
 
   return 0;
 }
+
+static int sigusr1_received = 0;
+static void sigusr1_handler(int signr)
+{
+   sigusr1_received++;
+}
+static void setup_sigusr_handler(void)
+{
+   struct sigaction sa;
+   sa.sa_handler = sigusr1_handler;
+   sigemptyset(&sa.sa_mask);
+   sa.sa_flags = 0;
+
+   if (sigaction (SIGUSR1, &sa, NULL) != 0)
+      perror("sigaction SIGUSR1");
+
+   sa.sa_handler = SIG_IGN;
+   if (sigaction (SIGUSR2, &sa, NULL) != 0)
+      perror("sigaction SIGUSR2");
+}
+

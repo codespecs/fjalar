@@ -44,10 +44,14 @@ extern Int VG_(safe_fd) ( Int oldfd );
 extern Int VG_(fcntl)   ( Int fd, Int cmd, Addr arg );
 
 /* Convert an fd into a filename */
-extern Bool VG_(resolve_filename) ( Int fd, HChar* buf, Int n_buf );
+extern Bool VG_(resolve_filename) ( Int fd, const HChar** buf );
 
 /* Return the size of a file, or -1 in case of error */
 extern Long VG_(fsize) ( Int fd );
+
+/* Lookup an extended attribute for a file */
+extern SysRes VG_(getxattr) ( const HChar* file_name, const HChar* attr_name,
+                              Addr attr_value, SizeT attr_value_len );
 
 /* Is the file a directory? */
 extern Bool VG_(is_dir) ( const HChar* f );
@@ -91,10 +95,10 @@ extern SysRes VG_(pread) ( Int fd, void* buf, Int count, OffT offset );
 extern SizeT VG_(mkstemp_fullname_bufsz) ( SizeT part_of_name_len );
 
 /* Create and open (-rw------) a tmp file name incorporating said arg.
-   Returns -1 on failure, else the fd of the file.  If fullname is
-   non-NULL, the file's name is written into it.  The number of bytes
-   written is equal to VG_(mkstemp_fullname_bufsz)(part_of_name). */
-extern Int VG_(mkstemp) ( HChar* part_of_name, /*OUT*/HChar* fullname );
+   Returns -1 on failure, else the fd of the file.  The file name is
+   written to the memory pointed to be fullname. The number of bytes written
+   is equal to VG_(mkstemp_fullname_bufsz)(VG_(strlen)(part_of_name)). */
+extern Int VG_(mkstemp) ( const HChar* part_of_name, /*OUT*/HChar* fullname );
 
 /* Record the process' working directory at startup.  Is intended to
    be called exactly once, at startup, before the working directory

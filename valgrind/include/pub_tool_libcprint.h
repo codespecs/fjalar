@@ -37,6 +37,18 @@
    Formatting functions
    ------------------------------------------------------------------ */
 
+/* The formatting functions supports a subset (and 2 extensions) of
+   the 'printf' format.
+   The extensions are:
+     %pS : print a string (like %s) but escaping chars for XML safety.
+     %ps : with --xml=no, synonym for %s, with --xml=yes, synonym of %pS.
+
+   Note: these extensions do not cause the compiler to barf with PRINTF_CHECK
+   as for the classical printf, %p requires a pointer, which must also
+   be provided for the %ps and %pS extensions. The s/S following %p
+   are understood by PRINTF_CHECK as characters to output.
+*/
+
 extern UInt VG_(sprintf)  ( HChar* buf, const HChar* format, ... )
                           PRINTF_CHECK(2, 3);
 
@@ -94,6 +106,21 @@ extern UInt VG_(printf_xml)  ( const HChar *format, ... )
 extern UInt VG_(vprintf_xml) ( const HChar *format, va_list vargs )
                              PRINTF_CHECK(1, 0);
 
+typedef struct _VgFile VgFile;
+
+extern VgFile *VG_(fopen)    ( const HChar *name, Int flags, Int mode );
+extern void    VG_(fclose)   ( VgFile *fp );
+extern UInt    VG_(fprintf)  ( VgFile *fp, const HChar *format, ... )
+                               PRINTF_CHECK(2, 3);
+extern UInt    VG_(vfprintf) ( VgFile *fp, const HChar *format, va_list vargs )
+                               PRINTF_CHECK(2, 0);
+
+/* Do a printf-style operation on either the XML 
+   or normal output channel
+   or gdb output channel, depending on the setting of VG_(clo_xml)
+   and the state of VG_(log_output_sink). */
+extern UInt VG_(emit) ( const HChar* format, ... ) PRINTF_CHECK(1, 2);
+
 /* Yet another, totally general, version of vprintf, which hands all
    output bytes to CHAR_SINK, passing it OPAQUE as the second arg. */
 extern void VG_(vcbprintf)( void(*char_sink)(HChar, void* opaque),
@@ -101,10 +128,10 @@ extern void VG_(vcbprintf)( void(*char_sink)(HChar, void* opaque),
                             const HChar* format, va_list vargs );
 
 extern UInt VG_(message)( VgMsgKind kind, const HChar* format, ... )
-  PRINTF_CHECK(2, 3);
+   PRINTF_CHECK(2, 3);
 
 extern UInt VG_(vmessage)( VgMsgKind kind, const HChar* format, va_list vargs )
-  PRINTF_CHECK(2, 0);
+   PRINTF_CHECK(2, 0);
 
 // Short-cuts for VG_(message)().
 

@@ -53,8 +53,6 @@ valgrind/docs/print
 # Ignore generated test drivers
 .dirstamp
 .in_place
-auxprogs/valgrind-di-server
-auxprogs/valgrind-listener
 cachegrind/cachegrind_annotate
 cachegrind/cg_annotate
 cachegrind/cg_diff
@@ -78,6 +76,7 @@ drd/tests/annotate_ignore_rw
 drd/tests/annotate_ignore_write
 drd/tests/annotate_publish_hg
 drd/tests/annotate_rwlock
+drd/tests/annotate_sem
 drd/tests/annotate_smart_pointer
 drd/tests/annotate_smart_pointer2
 drd/tests/annotate_static
@@ -92,6 +91,7 @@ drd/tests/fp_race
 drd/tests/free_is_write
 drd/tests/hold_lock
 drd/tests/linuxthreads_det
+drd/tests/local_static
 drd/tests/matinv
 drd/tests/memory_allocation
 drd/tests/monitor_example
@@ -125,9 +125,11 @@ drd/tests/sem_as_mutex
 drd/tests/sem_open
 drd/tests/sem_wait
 drd/tests/sigalrm
+drd/tests/std_atomic
 drd/tests/std_list
 drd/tests/std_string
 drd/tests/std_thread
+drd/tests/std_thread2
 drd/tests/threaded-fork
 drd/tests/thread_name
 drd/tests/trylock
@@ -172,6 +174,7 @@ helgrind/tests/bar_bad
 helgrind/tests/bar_trivial
 helgrind/tests/cond_init_destroy
 helgrind/tests/cond_timedwait_invalid
+helgrind/tests/cond_timedwait_test
 helgrind/tests/free_is_write
 helgrind/tests/hg01_all_ok
 helgrind/tests/hg02_deadlock
@@ -208,6 +211,7 @@ helgrind/tests/tc21_pthonce
 helgrind/tests/tc22_exit_w_lock
 helgrind/tests/tc23_bogus_condwait
 helgrind/tests/tc24_nonzero_sem
+helgrind/tests/tls_threads
 massif/ms_print
 massif/tests/alloc-fns
 massif/tests/basic
@@ -258,6 +262,7 @@ memcheck/tests/badrw
 memcheck/tests/big_blocks_freed_list
 memcheck/tests/brk2
 memcheck/tests/buflen_check
+memcheck/tests/bug155125
 memcheck/tests/bug287260
 memcheck/tests/calloc-overflow
 memcheck/tests/client-msg
@@ -269,6 +274,8 @@ memcheck/tests/custom_alloc
 memcheck/tests/custom-overlap
 memcheck/tests/deep-backtrace
 memcheck/tests/deep_templates
+memcheck/tests/demangle
+memcheck/tests/descr_belowsp
 memcheck/tests/describe-block
 memcheck/tests/doublefree
 memcheck/tests/dw4
@@ -278,6 +285,7 @@ memcheck/tests/err_disable1
 memcheck/tests/err_disable2
 memcheck/tests/err_disable3
 memcheck/tests/err_disable4
+memcheck/tests/err_disable_arange1
 memcheck/tests/erringfds
 memcheck/tests/error_counts
 memcheck/tests/errs1
@@ -290,6 +298,8 @@ memcheck/tests/fwrite
 memcheck/tests/holey_buffer_too_small
 memcheck/tests/inits
 memcheck/tests/inline
+memcheck/tests/inlinfo
+memcheck/tests/inltemplate
 memcheck/tests/leak-0
 memcheck/tests/leak-cases
 memcheck/tests/leak_cpp_interior
@@ -302,6 +312,7 @@ memcheck/tests/linux/brk
 memcheck/tests/linux/capget
 memcheck/tests/linux/getregset
 memcheck/tests/linux/getregset.stderr.exp
+memcheck/tests/linux/ioctl-tiocsig
 memcheck/tests/linux/lsframe1
 memcheck/tests/linux/lsframe2
 memcheck/tests/linux/proc-auxv
@@ -387,6 +398,7 @@ memcheck/tests/varinfo3
 memcheck/tests/varinfo4
 memcheck/tests/varinfo5
 memcheck/tests/varinfo6
+memcheck/tests/varinforestrict
 memcheck/tests/vbit-test/vbit-test
 memcheck/tests/vcpu_fbench
 memcheck/tests/vcpu_fnfns
@@ -458,6 +470,7 @@ none/tests/amd64/smc1
 none/tests/amd64/sse4-64
 none/tests/amd64/ssse3_misaligned
 none/tests/amd64/tm1
+none/tests/amd64/x87trigOOR
 none/tests/amd64/xacq_xrel
 none/tests/amd64/xadd
 none/tests/ansi
@@ -487,6 +500,7 @@ none/tests/fork
 none/tests/fucomip
 none/tests/gxx304
 none/tests/ifunc
+none/tests/ioctl_moans
 none/tests/linux/blockfault
 none/tests/linux/mremap
 none/tests/linux/mremap2
@@ -551,12 +565,16 @@ perf/sarp
 perf/tinycc
 perf/vg_perf
 tests/arch_test
+tests/is_ppc64_BE
 tests/mips_features
 tests/os_test
+tests/power_insn_available
 tests/s390x_features
 tests/true
 tests/vg_regtest
 tests/x86_amd64_features
+valgrind-di-server
+valgrind-listener
 *-x86-linux
 *-amd64-linux
 
@@ -576,30 +594,4 @@ valgrind/fjalar/rundoxy
 # Ignore shell scripts for compiling fjalar
 valgrind/fjalar/*.sh
 
-# 
-# # Documentation
-# doc/developer.aux
-# doc/developer.cp
-# doc/developer.cps
-# doc/developer.dvi
-# doc/developer.fn
-# doc/developer.fns
-# doc/developer.html
-# doc/developer.info
-# doc/developer.ky
-# doc/developer.log
-# doc/developer.pdf
-# doc/developer.pg
-# doc/developer.ps
-# doc/developer.toc
-# doc/developer.tp
-# doc/developer.vr
-# doc/developer_manual_html
-# doc/images/dfepl-flow.eps
-# doc/images/dfepl-flow.jpg
-# doc/invariants-doc.texinfo
-# 
-# 
 # syntax: regexp
-# ^tests/.*\.spinfo-static\.diff$
-# ^tests/.*\.txt-trace$

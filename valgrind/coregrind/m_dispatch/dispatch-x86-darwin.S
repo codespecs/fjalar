@@ -63,7 +63,7 @@ VG_(disp_run_translations):
 	/* 12(%esp) holds host_addr */
 
         /* The preamble */
-	
+
         /* Save integer registers, since this is a pseudo-function. */
         pushl   %eax
 	pushl	%ebx
@@ -97,7 +97,7 @@ VG_(disp_run_translations):
 L1:
 	/* set dir flag to known value */
 	cld
-	
+
 	/* Set up the guest state pointer */
 	movl	28+8(%esp), %ebp
 
@@ -159,7 +159,7 @@ remove_frame:
 	popl	%ebx
 	popl	%eax
 	ret	
-
+        
 /*----------------------------------------------------*/
 /*--- Continuation points                          ---*/
 /*----------------------------------------------------*/
@@ -200,7 +200,7 @@ VG_(disp_cp_xindir):
 
         /* stats only */
         addl    $1, VG_(stats__n_xindirs_32)
-
+        
         /* try a fast lookup in the translation cache */
         movl    %eax, %ebx                      /* next guest addr */
         andl    $VG_TT_FAST_MASK, %ebx          /* entry# */
@@ -238,7 +238,7 @@ VG_(disp_cp_evcheck_fail):
 
 
 #endif // defined(VGP_x86_darwin)
-			
+
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/
 /*--------------------------------------------------------------------*/

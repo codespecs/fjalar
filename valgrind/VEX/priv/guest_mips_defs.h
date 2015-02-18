@@ -37,7 +37,7 @@
 #include "guest_generic_bb_to_IR.h"  /* DisResult */
 
 /*---------------------------------------------------------*/
-/*--- mips to IR conversion                             ---*/
+/*---               mips to IR conversion               ---*/
 /*---------------------------------------------------------*/
 
 /* Convert one MIPS insn to IR. See the type DisOneInstrFn in bb_to_IR.h. */
@@ -45,13 +45,13 @@ extern DisResult disInstr_MIPS ( IRSB*        irbb,
                                  Bool         (*resteerOkFn) (void *, Addr64),
                                  Bool         resteerCisOk,
                                  void*        callback_opaque,
-                                 UChar*       guest_code,
+                                 const UChar* guest_code,
                                  Long         delta,
                                  Addr64       guest_IP,
                                  VexArch      guest_arch,
                                  VexArchInfo* archinfo,
                                  VexAbiInfo*  abiinfo,
-                                 Bool         host_bigendian,
+                                 VexEndness   host_endness,
                                  Bool         sigill_diag );
 
 /* Used by the optimiser to specialise calls to helpers. */
@@ -62,8 +62,8 @@ extern IRExpr *guest_mips32_spechelper ( const HChar * function_name,
 
 extern IRExpr *guest_mips64_spechelper ( const HChar * function_name,
                                          IRExpr ** args,
-                                       IRStmt ** precedingStmts,
-                                       Int n_precedingStmts);
+                                         IRStmt ** precedingStmts,
+                                         Int n_precedingStmts);
 
 /* Describes to the optimser which part of the guest state require
    precise memory exceptions.  This is logically part of the guest
@@ -76,7 +76,7 @@ extern VexGuestLayout mips32Guest_layout;
 extern VexGuestLayout mips64Guest_layout;
 
 /*---------------------------------------------------------*/
-/*--- mips guest helpers                                 ---*/
+/*---                mips guest helpers                 ---*/
 /*---------------------------------------------------------*/
 typedef enum {
    CEILWS=0, CEILWD,  CEILLS,  CEILLD,
@@ -85,7 +85,8 @@ typedef enum {
    TRUNCWS,  TRUNCWD, TRUNCLS, TRUNCLD,
    CVTDS,    CVTDW,   CVTSD,   CVTSW,
    CVTWS,    CVTWD,   CVTDL,   CVTLS,
-   CVTLD,    CVTSL
+   CVTLD,    CVTSL,   ADDS,    ADDD,
+   SUBS,     SUBD,    DIVS
 } flt_op;
 
 extern UInt mips32_dirtyhelper_mfc0 ( UInt rd, UInt sel );
@@ -98,28 +99,32 @@ extern UInt mips32_dirtyhelper_rdhwr ( UInt rt, UInt rd );
 extern ULong mips64_dirtyhelper_rdhwr ( ULong rt, ULong rd );
 #endif
 
-extern UInt mips_dirtyhelper_calculate_FCSR ( void* guest_state, UInt fs,
-                                              flt_op op );
+/* Calculate FCSR in fp32 mode. */
+extern UInt mips_dirtyhelper_calculate_FCSR_fp32 ( void* guest_state, UInt fs,
+                                                   UInt ft, flt_op op );
+/* Calculate FCSR in fp64 mode. */
+extern UInt mips_dirtyhelper_calculate_FCSR_fp64 ( void* guest_state, UInt fs,
+                                                   UInt ft, flt_op op );
 
 /*---------------------------------------------------------*/
-/*--- Condition code stuff                              ---*/
+/*---               Condition code stuff                ---*/
 /*---------------------------------------------------------*/
 
 typedef enum {
-   MIPSCondEQ = 0,      /* equal                         : Z=1 */
-   MIPSCondNE = 1,      /* not equal                     : Z=0 */
+   MIPSCondEQ = 0,   /* equal                         : Z=1 */
+   MIPSCondNE = 1,   /* not equal                     : Z=0 */
 
-   MIPSCondHS = 2,      /* >=u (higher or same)          : C=1 */
-   MIPSCondLO = 3,      /* <u  (lower)                   : C=0 */
+   MIPSCondHS = 2,   /* >=u (higher or same)          : C=1 */
+   MIPSCondLO = 3,   /* <u  (lower)                   : C=0 */
 
-   MIPSCondMI = 4,      /* minus (negative)              : N=1 */
-   MIPSCondPL = 5,      /* plus (zero or +ve)            : N=0 */
+   MIPSCondMI = 4,   /* minus (negative)              : N=1 */
+   MIPSCondPL = 5,   /* plus (zero or +ve)            : N=0 */
 
-   MIPSCondVS = 6,      /* overflow                      : V=1 */
-   MIPSCondVC = 7,      /* no overflow                   : V=0 */
+   MIPSCondVS = 6,   /* overflow                      : V=1 */
+   MIPSCondVC = 7,   /* no overflow                   : V=0 */
 
-   MIPSCondHI = 8,      /* >u   (higher)                 : C=1 && Z=0 */
-   MIPSCondLS = 9,      /* <=u  (lower or same)          : C=0 || Z=1 */
+   MIPSCondHI = 8,   /* >u   (higher)                 : C=1 && Z=0 */
+   MIPSCondLS = 9,   /* <=u  (lower or same)          : C=0 || Z=1 */
 
    MIPSCondGE = 10,  /* >=s (signed greater or equal) : N=V */
    MIPSCondLT = 11,  /* <s  (signed less than)        : N!=V */
@@ -128,7 +133,7 @@ typedef enum {
    MIPSCondLE = 13,  /* <=s (signed less or equal)    : Z=1 || N!=V */
 
    MIPSCondAL = 14,  /* always (unconditional)        : 1 */
-   MIPSCondNV = 15      /* never (unconditional):        : 0 */
+   MIPSCondNV = 15   /* never (unconditional):        : 0 */
 } MIPSCondcode;
 
 #endif            /* __VEX_GUEST_MIPS_DEFS_H */

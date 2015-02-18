@@ -7,7 +7,7 @@ EXTRA_DIST = \
 	block_size.stdout.exp block_size.stderr.exp block_size.vgtest \
 	branches.stdout.exp branches.stderr.exp branches.vgtest \
 	FPUarithmetic.stdout.exp FPUarithmetic.stdout.exp-mips32 \
-        FPUarithmetic.stderr.exp FPUarithmetic.vgtest \
+	FPUarithmetic.stderr.exp FPUarithmetic.vgtest \
 	LoadStore.stdout.exp LoadStore.stdout.exp-BE LoadStore.stderr.exp \
 	LoadStore.vgtest \
 	LoadStore1.stdout.exp LoadStore1.stdout.exp-LE LoadStore1.stderr.exp \
@@ -15,7 +15,7 @@ EXTRA_DIST = \
 	MemCpyTest.stdout.exp MemCpyTest.stderr.exp MemCpyTest.vgtest \
 	MIPS32int.stdout.exp-mips32-BE MIPS32int.stdout.exp-mips32r2-BE \
 	MIPS32int.stdout.exp-mips32-LE MIPS32int.stdout.exp-mips32r2-LE \
-        MIPS32int.stderr.exp MIPS32int.vgtest \
+	MIPS32int.stderr.exp MIPS32int.vgtest \
 	MoveIns.stdout.exp MoveIns.stdout.exp-BE MoveIns.stderr.exp MoveIns.vgtest \
 	round.stdout.exp round.stderr.exp round.vgtest \
 	vfp.stdout.exp-mips32-BE vfp.stdout.exp-mips32r2-BE \
@@ -30,7 +30,11 @@ EXTRA_DIST = \
 	mips32_dspr2.vgtest \
 	unaligned_load_store.stdout.exp-LE unaligned_load_store.stdout.exp-BE \
 	unaligned_load_store.stderr.exp unaligned_load_store.vgtest \
-	test_fcsr.stdout.exp test_fcsr.stderr.exp test_fcsr.vgtest
+	test_fcsr.stdout.exp test_fcsr.stderr.exp test_fcsr.vgtest \
+	test_math.stdout.exp test_math.stderr.exp test_math.vgtest \
+	round_fpu64.stdout.exp round_fpu64.stdout.exp-fpu32 \
+	round_fpu64.stderr.exp round_fpu64.vgtest \
+	fpu_branches.stdout.exp fpu_branches.stderr.exp fpu_branches.vgtest
 
 check_PROGRAMS = \
 	allexec \
@@ -49,7 +53,10 @@ check_PROGRAMS = \
 	mips32_dsp \
 	mips32_dspr2 \
 	unaligned_load_store \
-	test_fcsr
+	test_fcsr \
+	test_math \
+	round_fpu64 \
+	fpu_branches
 
 AM_CFLAGS    += @FLAG_M32@
 AM_CXXFLAGS  += @FLAG_M32@
@@ -57,3 +64,6 @@ AM_CCASFLAGS += @FLAG_M32@
 
 allexec_CFLAGS          = $(AM_CFLAGS) @FLAG_W_NO_NONNULL@
 bug320057_mips32_LDFLAGS = -lrt
+
+# C++ tests
+test_math_SOURCES          = test_math.cpp

@@ -94,7 +94,7 @@ static void barriers_and_races(const int nthread, const int iterations)
       fprintf(stderr, "Could not create thread #%d (of %d): %s\n",
               i, nthread, strerror(res));
       exit(1);
-  }
+    }
   }
 
   pthread_attr_destroy(&attr);

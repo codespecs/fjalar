@@ -197,6 +197,12 @@ enum {
 
    /* To notify the drd tool of a pthread_rwlock_init call. */
    VG_USERREQ__PRE_RWLOCK_INIT,
+   /* args: Addr rwlock */
+   /* To notify the drd tool of a pthread_rwlock_init call. */
+   VG_USERREQ__POST_RWLOCK_INIT,
+   /* args: Addr rwlock */
+   /* To notify the drd tool of a pthread_rwlock_destroy call. */
+   VG_USERREQ__PRE_RWLOCK_DESTROY,
    /* args: Addr rwlock, RwLockT */
    /* To notify the drd tool of a pthread_rwlock_destroy call. */
    VG_USERREQ__POST_RWLOCK_DESTROY,
@@ -234,6 +240,7 @@ typedef enum {
    mutex_type_errorcheck_mutex = 2,
    mutex_type_default_mutex    = 3,
    mutex_type_spinlock         = 4,
+   mutex_type_cxa_guard        = 5,
 } MutexT;
 
 /**

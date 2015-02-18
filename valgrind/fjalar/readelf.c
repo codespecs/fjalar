@@ -4431,6 +4431,7 @@ disassemble_section (Elf_Internal_Shdr * section, FILE * file)
   FJALAR_DPRINTF (_("\nAssembly dump of section %s\n"),
 	  SECTION_NAME (section));
 
+  // (comment added 2005)  
   /* XXX -- to be done --- XXX */
 
   return 1;

@@ -45,9 +45,9 @@
 // TODO: get rid of as many of these as possible.
 
 /* ***Initial*** lowest address of the stack segment of the main thread.
-   The main stack will grow if needed but VG_(clstk_base) will
+   The main stack will grow if needed but VG_(clstk_start_base) will
    not be changed according to the growth. */
-Addr  VG_(clstk_base)  = 0;
+Addr  VG_(clstk_start_base)  = 0;
 /* Initial highest address of the stack segment of the main thread. */
 Addr  VG_(clstk_end)   = 0;
 UWord VG_(clstk_id)    = 0;
@@ -107,6 +107,11 @@ Addr VG_(client___libc_freeres_wrapper) = 0;
    VG_(get_StackTrace) in m_stacktrace.c for further info. */
 Addr VG_(client__dl_sysinfo_int80) = 0;
 
+/* Address of the (internal) glibc nptl pthread stack cache size,
+   declared as:
+      static size_t stack_cache_actsize;
+   in nptl/allocatestack.c */
+SizeT* VG_(client__stack_cache_actsize__addr) = 0;
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

@@ -54,13 +54,13 @@ DisResult disInstr_X86 ( IRSB*        irbb,
                          Bool         (*resteerOkFn) ( void*, Addr64 ),
                          Bool         resteerCisOk,
                          void*        callback_opaque,
-                         UChar*       guest_code,
+                         const UChar* guest_code,
                          Long         delta,
                          Addr64       guest_IP,
                          VexArch      guest_arch,
                          VexArchInfo* archinfo,
                          VexAbiInfo*  abiinfo,
-                         Bool         host_bigendian,
+                         VexEndness   host_endness,
                          Bool         sigill_diag );
 
 /* Used by the optimiser to specialise calls to helpers. */

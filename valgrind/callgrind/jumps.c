@@ -28,15 +28,13 @@
 
 #include "global.h"
 
-#define N_JCC_INITIAL_ENTRIES  4437
-
 /*------------------------------------------------------------*/
 /*--- Jump Cost Center (JCC) operations, including Calls   ---*/
 /*------------------------------------------------------------*/
 
 #define N_JCC_INITIAL_ENTRIES  4437
 
-jcc_hash current_jccs;
+static jcc_hash current_jccs;
 
 void CLG_(init_jcc_hash)(jcc_hash* jccs)
 {
@@ -92,8 +90,6 @@ static void resize_jcc_table(void)
     new_size  = 2* current_jccs.size +3;
     new_table = (jCC**) CLG_MALLOC("cl.jumps.rjt.1",
                                    new_size * sizeof(jCC*));
- 
-    if (!new_table) return;
  
     for (i = 0; i < new_size; i++)
       new_table[i] = NULL;

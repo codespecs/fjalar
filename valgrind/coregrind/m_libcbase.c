@@ -29,7 +29,35 @@
 */
 
 #include "pub_core_basics.h"
+#include "pub_core_libcassert.h"    // VG_(exit_now)
+#include "pub_core_debuglog.h"      // VG_(debugLog)
 #include "pub_core_libcbase.h"
+
+
+/* ---------------------------------------------------------------------
+   Assert machinery for use in this file. vg_assert cannot be called
+   here due to cyclic dependencies.
+   ------------------------------------------------------------------ */
+#if 0
+#define libcbase_assert(expr)                             \
+  ((void) (LIKELY(expr) ? 0 :                             \
+           (ML_(libcbase_assert_fail)(#expr,              \
+                                __FILE__, __LINE__,       \
+                                __PRETTY_FUNCTION__))))
+
+static void ML_(libcbase_assert_fail)( const HChar *expr,
+                                       const HChar *file,
+                                       Int line, 
+                                       const HChar *fn )
+{
+   VG_(debugLog)(0, "libcbase", 
+                    "Valgrind: FATAL: assertion failed:\n");
+   VG_(debugLog)(0, "libcbase", "  %s\n", expr);
+   VG_(debugLog)(0, "libcbase", "  at %s:%d (%s)\n", file, line, fn);
+   VG_(debugLog)(0, "libcbase", "Exiting now.\n");
+   VG_(exit_now)(1);
+}
+#endif
 
 /* ---------------------------------------------------------------------
    HChar functions.
@@ -85,7 +113,8 @@ Long VG_(strtoll10) ( const HChar* str, HChar** endptr )
 
    if (!converted) str = str0;   // If nothing converted, endptr points to
    if (neg) n = -n;              //   the start of the string.
-   if (endptr) *endptr = (HChar *)str;    // Record first failing character.
+   if (endptr)
+      *endptr = CONST_CAST(HChar *,str); // Record first failing character.
    return n;
 }
 
@@ -110,7 +139,8 @@ ULong VG_(strtoull10) ( const HChar* str, HChar** endptr )
 
    if (!converted) str = str0;   // If nothing converted, endptr points to
    //   the start of the string.
-   if (endptr) *endptr = (HChar *)str;    // Record first failing character.
+   if (endptr)
+      *endptr = CONST_CAST(HChar *,str); // Record first failing character.
    return n;
 }
 
@@ -143,7 +173,8 @@ Long VG_(strtoll16) ( const HChar* str, HChar** endptr )
 
    if (!converted) str = str0;   // If nothing converted, endptr points to
    if (neg) n = -n;              //   the start of the string.
-   if (endptr) *endptr = (HChar *)str;    // Record first failing character.
+   if (endptr)
+      *endptr = CONST_CAST(HChar *,str); // Record first failing character.
    return n;
 }
 
@@ -176,7 +207,8 @@ ULong VG_(strtoull16) ( const HChar* str, HChar** endptr )
 
    if (!converted) str = str0;   // If nothing converted, endptr points to
    //   the start of the string.
-   if (endptr) *endptr = (HChar *)str;    // Record first failing character.
+   if (endptr)
+      *endptr = CONST_CAST(HChar *,str); // Record first failing character.
    return n;
 }
 
@@ -209,7 +241,8 @@ double VG_(strtod) ( const HChar* str, HChar** endptr )
 
    n += frac;
    if (neg) n = -n;
-   if (endptr) *endptr = (HChar *)str;    // Record first failing character.
+   if (endptr)
+      *endptr = CONST_CAST(HChar *,str); // Record first failing character.
    return n;
 }
 
@@ -265,7 +298,7 @@ HChar* VG_(strpbrk) ( const HChar* s, const HChar* accpt )
       a = accpt;
       while (*a)
          if (*a++ == *s)
-           return (HChar *)s;
+            return CONST_CAST(HChar *,s);
       s++;
    }
    return NULL;
@@ -277,20 +310,6 @@ HChar* VG_(strcpy) ( HChar* dest, const HChar* src )
    while (*src) *dest++ = *src++;
    *dest = 0;
    return dest_orig;
-}
-
-/* Copy bytes, not overrunning the end of dest and always ensuring
-   zero termination. */
-void VG_(strncpy_safely) ( HChar* dest, const HChar* src, SizeT ndest )
-{
-   SizeT i = 0;
-   while (True) {
-      dest[i] = 0;
-      if (src[i] == 0) return;
-      if (i >= ndest-1) return;
-      dest[i] = src[i];
-      i++;
-   }
 }
 
 HChar* VG_(strncpy) ( HChar* dest, const HChar* src, SizeT ndest )
@@ -379,7 +398,7 @@ HChar* VG_(strstr) ( const HChar* haystack, const HChar* needle )
       if (haystack[0] == 0) 
          return NULL;
       if (VG_(strncmp)(haystack, needle, n) == 0) 
-         return (HChar*)haystack;
+         return CONST_CAST(HChar *,haystack);
       haystack++;
    }
 }
@@ -394,7 +413,7 @@ HChar* VG_(strcasestr) ( const HChar* haystack, const HChar* needle )
       if (haystack[0] == 0) 
          return NULL;
       if (VG_(strncasecmp)(haystack, needle, n) == 0) 
-         return (HChar*)haystack;
+         return CONST_CAST(HChar *,haystack);
       haystack++;
    }
 }
@@ -402,7 +421,7 @@ HChar* VG_(strcasestr) ( const HChar* haystack, const HChar* needle )
 HChar* VG_(strchr) ( const HChar* s, HChar c )
 {
    while (True) {
-     if (*s == c) return (HChar *)s;
+      if (*s == c) return CONST_CAST(HChar *,s);
       if (*s == 0) return NULL;
       s++;
    }
@@ -412,7 +431,7 @@ HChar* VG_(strrchr) ( const HChar* s, HChar c )
 {
    Int n = VG_(strlen)(s);
    while (--n > 0) {
-     if (s[n] == c) return (HChar *)s + n;
+      if (s[n] == c) return CONST_CAST(HChar *,s) + n;
    }
    return NULL;
 }
@@ -496,6 +515,83 @@ Bool VG_(parse_Addr) ( const HChar** ppc, Addr* result )
    }
    if (used == 0)
       return False;
+   return True;
+}
+
+Bool VG_(parse_enum_set) ( const HChar *tokens,
+                           Bool  allow_all,
+                           const HChar *input,
+                           UInt *enum_set)
+{
+   const SizeT tokens_len = VG_(strlen)(tokens);
+   if (tokens_len > 1000) return False; /* "obviously invalid" */
+   HChar  tok_tokens[tokens_len+1];
+   HChar *tokens_saveptr;
+   HChar *token;
+   UInt token_nr = 0;
+   UInt all_set = 0;
+
+   const SizeT input_len = VG_(strlen)(input);
+   if (input_len > 1000) return False; /* "obviously invalid" */
+   HChar  tok_input[input_len+1];
+   HChar *input_saveptr;
+   HChar *input_word;
+   UInt word_nr = 0;
+   UInt known_words = 0;
+   Bool seen_all_kw = False;
+   Bool seen_none_kw = False;
+
+   *enum_set = 0;
+
+   VG_(strcpy) (tok_input, input);
+   for (input_word = VG_(strtok_r)(tok_input, ",", &input_saveptr);
+        input_word;
+        input_word = VG_(strtok_r)(NULL, ",", &input_saveptr)) {
+      word_nr++;
+      if (allow_all && 0 == VG_(strcmp)(input_word, "all")) {
+         seen_all_kw = True;
+         known_words++;
+      } else if (0 == VG_(strcmp)(input_word, "none")) {
+         seen_none_kw = True;
+         known_words++;
+      }
+
+      // Scan tokens + compute all_set. Do that even if all or none was
+      // recognised to have a correct value for all_set when exiting
+      // of the 'input' loop.
+      all_set = 0;
+      token_nr = 0;
+      VG_(strcpy) (tok_tokens, tokens);
+      for (token = VG_(strtok_r)(tok_tokens, ",", &tokens_saveptr);
+           token;
+           token = VG_(strtok_r)(NULL, ",", &tokens_saveptr)) {
+         if (0 != VG_(strcmp)(token, "-")) {
+            if (0 == VG_(strcmp)(input_word, token)) {
+               *enum_set |= 1 << token_nr;
+               known_words++;
+            }
+            all_set |= 1 << token_nr;
+         }
+         token_nr++;
+      }
+   }
+
+   if (known_words != word_nr)
+      return False; // One or more input_words not recognised.
+   if (seen_all_kw) {
+      if (seen_none_kw || *enum_set)
+         return False; // mixing all with either none or a specific value.
+      *enum_set = all_set;
+   } else if (seen_none_kw) {
+      if (seen_all_kw || *enum_set)
+         return False; // mixing none with either all or a specific value.
+      *enum_set = 0;
+   } else {
+      // seen neither all or none, we must see at least one value
+      if (*enum_set == 0)
+         return False;
+   }
+
    return True;
 }
 
@@ -838,10 +934,10 @@ void VG_(ssort)( void* base, SizeT nmemb, SizeT size,
 // is NULL, it uses its own seed, which starts at zero.  If pSeed is
 // non-NULL, it uses and updates whatever pSeed points at.
 
-static UInt seed = 0;
-
 UInt VG_(random)( /*MOD*/UInt* pSeed )
 {
+   static UInt seed = 0;
+
    if (pSeed == NULL) 
       pSeed = &seed;
 

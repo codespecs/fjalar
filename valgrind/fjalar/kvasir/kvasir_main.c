@@ -274,6 +274,7 @@ static void createDeclsAndDtraceFiles(const HChar* appname)
 // After:  *dirnamePtr = "../tests/IntTest/" *filenamePtr = "IntTest"
 // Postcondition - *dirname and *filename are malloc'ed - must be FREE'd!!!
 // Return 1 on success, 0 on failure
+// (comment added 2005)  
 // TODO: This can be replaced with calls to the glibc dirname() and basename() functions
 static char splitDirectoryAndFilename(const char* input, char** dirnamePtr, char** filenamePtr)
 {
@@ -625,6 +626,7 @@ void fjalar_tool_post_clo_init(void)
     VG_(exit)(0);
   }
 
+  // (comment added 2005)  
   // TODO: Re-factor this
   if (actually_output_separate_decls_dtrace && !dyncomp_without_dtrace) {
     openTheDtraceFile();
@@ -879,6 +881,7 @@ FunctionEntry* constructFunctionEntry() {
 // Destructors that should clean-up and then call VG_(free) on the
 // respective entries.
 //
+// (comment added 2006)  
 // TODO: These currently cause memory leaks because these classes have
 // pointer fields that refer to dynamically-allocated memory ...
 void destroyVariableEntry(VariableEntry* v) {

@@ -116,6 +116,7 @@ extern DrdThreadId    DRD_(g_drd_running_tid);
 extern ThreadInfo     DRD_(g_threadinfo)[DRD_N_THREADS];
 /** Conflict set for the currently running thread. */
 extern struct bitmap* DRD_(g_conflict_set);
+extern Bool           DRD_(verify_conflict_set);
 
 
 /* Function declarations. */
@@ -247,7 +248,7 @@ Bool DRD_(running_thread_inside_pthread_create)(void)
 }
 
 /**
- * Reports whether or not recording of memory loads is enabled for the 
+ * Reports whether or not recording of memory loads is enabled for the
  * currently running client thread.
  */
 static __inline__
@@ -263,7 +264,7 @@ Bool DRD_(running_thread_is_recording_loads)(void)
 }
 
 /**
- * Reports whether or not recording memory stores is enabled for the 
+ * Reports whether or not recording memory stores is enabled for the
  * currently running client thread.
  */
 static __inline__
@@ -295,7 +296,7 @@ void DRD_(thread_set_stack_min)(const DrdThreadId tid, const Addr stack_min)
    /* This function can be called after the thread has been created but */
    /* before drd_post_thread_create() has filled in stack_max.          */
    tl_assert(DRD_(g_threadinfo)[tid].stack_min
-             < DRD_(g_threadinfo)[tid].stack_max
+             <= DRD_(g_threadinfo)[tid].stack_max
              || DRD_(g_threadinfo)[tid].stack_max == 0);
 #endif
    if (UNLIKELY(stack_min < DRD_(g_threadinfo)[tid].stack_min_min))

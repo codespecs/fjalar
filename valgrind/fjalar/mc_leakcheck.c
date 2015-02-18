@@ -101,6 +101,7 @@
 // It's far from clear that this is the best possible categorisation;  it's
 // accreted over time without any central guiding principle.
 
+// (comment added 2009)  
 /*------------------------------------------------------------*/
 /*--- XXX: Thoughts for improvement.                       ---*/
 /*------------------------------------------------------------*/
@@ -608,6 +609,7 @@ static const HChar* pp_heuristic(LeakCheckHeuristic h)
    switch(h) {
    case LchNone:                return "none";
    case LchStdString:           return "stdstring";
+   case LchLength64:            return "length64";
    case LchNewArray:            return "newarray";
    case LchMultipleInheritance: return "multipleinheritance";
    default:                     return "???invalid heuristic???";
@@ -661,7 +663,7 @@ static Bool aligned_ptr_above_page0_is_vtable_addr(Addr ptr)
       if (pot_fn == 0)
          continue; // NULL fn pointer. Seems it can happen in vtable.
       seg = VG_(am_find_nsegment) (pot_fn);
-#if defined(VGA_ppc64)
+#if defined(VGA_ppc64be) || defined(VGA_ppc64le)
       // ppc64 use a thunk table. So, we have one more level of indirection
       // to follow.
       if (seg == NULL
@@ -684,6 +686,16 @@ static Bool aligned_ptr_above_page0_is_vtable_addr(Addr ptr)
    }
 
    return False;
+}
+
+// true if a is properly aligned and points to 64bits of valid memory
+static Bool is_valid_aligned_ULong ( Addr a )
+{
+   if (sizeof(Word) == 8)
+      return MC_(is_valid_aligned_word)(a);
+
+   return MC_(is_valid_aligned_word)(a)
+      && MC_(is_valid_aligned_word)(a + 4);
 }
 
 // If ch is heuristically reachable via an heuristic member of heur_set,
@@ -722,6 +734,23 @@ static LeakCheckHeuristic heuristic_reachedness (Addr ptr,
                // ??? or even a call to malloc ????
                return LchStdString;
             }
+         }
+      }
+   }
+
+   if (HiS(LchLength64, heur_set)) {
+      // Detects inner pointers that point at 64bit offset (8 bytes) into a
+      // block following the length of the remaining as 64bit number 
+      // (=total block size - 8).
+      // This is used e.g. by sqlite for tracking the total size of allocated
+      // memory.
+      // Note that on 64bit platforms, a block matching LchLength64 will
+      // also be matched by LchNewArray.
+      if ( ptr == ch->data + sizeof(ULong)
+          && is_valid_aligned_ULong(ch->data)) {
+         const ULong size = *((ULong*)ch->data);
+         if (size > 0 && (ch->szB - sizeof(ULong)) == size) {
+            return LchLength64;
          }
       }
    }
@@ -1072,7 +1101,7 @@ lc_scan_memory(Addr start, SizeT len, Bool is_prior_definite,
                MC_(pp_describe_addr) (ptr);
                   if (lc_is_a_chunk_ptr(addr, &ch_no, &ch, &ex) ) {
                      Int h;
-                     for (h = LchStdString; h <= LchMultipleInheritance; h++) {
+                     for (h = LchStdString; h < N_LEAK_CHECK_HEURISTICS; h++) {
                         if (heuristic_reachedness(addr, ch, ex, H2S(h)) == h) {
                            VG_(umsg)("block at %#lx considered reachable "
                                      "by ptr %#lx using %s heuristic\n",
@@ -1413,12 +1442,14 @@ static void print_results(ThreadId tid, LeakCheckParams* lcp)
    }
 
    if (VG_(clo_verbosity) > 0 && !VG_(clo_xml)) {
-      HChar d_bytes[20];
-      HChar d_blocks[20];
+      HChar d_bytes[31];
+      HChar d_blocks[31];
 #     define DBY(new,old) \
-      MC_(snprintf_delta) (d_bytes, 20, (new), (old), lcp->deltamode)
+      MC_(snprintf_delta) (d_bytes, sizeof(d_bytes), (new), (old), \
+                           lcp->deltamode)
 #     define DBL(new,old) \
-      MC_(snprintf_delta) (d_blocks, 20, (new), (old), lcp->deltamode)
+      MC_(snprintf_delta) (d_blocks, sizeof(d_blocks), (new), (old), \
+                           lcp->deltamode)
 
       VG_(umsg)("LEAK SUMMARY:\n");
       VG_(umsg)("   definitely lost: %'lu%s bytes in %'lu%s blocks\n",
@@ -1701,6 +1732,7 @@ void MC_(detect_memory_leaks) ( ThreadId tid, LeakCheckParams* lcp)
       tl_assert( lc_chunks[i]->data <= lc_chunks[i+1]->data);
    }
 
+   // (comment added 2009)  
    // Sanity check -- make sure they don't overlap.  The one exception is that
    // we allow a MALLOCLIKE block to sit entirely within a malloc() block.
    // This is for bug 100628.  If this occurs, we ignore the malloc() block

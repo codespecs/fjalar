@@ -141,15 +141,15 @@ void CLG_(print_eventset)(int s, EventSet* es)
     UInt mask;
     EventGroup* eg;
 
-  if (s<0) {
-    s = -s;
-    print_indent(s);
-  }
+    if (s<0) {
+	s = -s;
+	print_indent(s);
+    }
 
-  if (!es) {
-    VG_(printf)("(EventSet not set)\n");
-    return;
-  }
+    if (!es) {
+	VG_(printf)("(EventSet not set)\n");
+	return;
+    }
 
     VG_(printf)("EventSet %d (%d groups, size %d):",
 		es->mask, es->count, es->size);
@@ -167,8 +167,8 @@ void CLG_(print_eventset)(int s, EventSet* es)
 	for(j=1; j<eg->size; j++)
 	    VG_(printf)(" %s", eg->name[j]);
 	VG_(printf)(")");
-  }
-  VG_(printf)("\n");
+    }
+    VG_(printf)("\n");
 }
 
 
@@ -207,13 +207,13 @@ void CLG_(print_cost)(int s, EventSet* es, ULong* c)
 	for(j=0; j<eg->size; j++) {
 
 	    if (off>0) {
-      if (pos > 70) {
-	VG_(printf)(",\n");
-	print_indent(s+5);
-	pos = s+5;
-      }
-      else
-	pos += VG_(printf)(", ");
+		if (pos > 70) {
+		    VG_(printf)(",\n");
+		    print_indent(s+5);
+		    pos = s+5;
+		}
+		else
+		    pos += VG_(printf)(", ");
 	    }
 
 	    pos += VG_(printf)("%s %llu", eg->name[j], c[off++]);
@@ -373,8 +373,7 @@ void CLG_(print_bbcc_cost)(int s, BBCC* bbcc)
 /* dump out an address with source info if available */
 void CLG_(print_addr)(Addr addr)
 {
-    HChar fl_buf[FILENAME_LEN];
-    HChar fn_buf[FN_NAME_LEN];
+    const HChar *fn_buf, *fl_buf, *dir_buf;
     const HChar* obj_name;
     DebugInfo* di;
     UInt ln, i=0, opos=0;
@@ -384,7 +383,7 @@ void CLG_(print_addr)(Addr addr)
 	return;
     }
 
-    CLG_(get_debug_info)(addr, fl_buf, fn_buf, &ln, &di);
+    CLG_(get_debug_info)(addr, &dir_buf, &fl_buf, &fn_buf, &ln, &di);
 
     if (VG_(strcmp)(fn_buf,"???")==0)
 	VG_(printf)("%#lx", addr);
@@ -403,8 +402,12 @@ void CLG_(print_addr)(Addr addr)
       }
     }
 
-    if (ln>0)
-    	VG_(printf)(" (%s:%u)", fl_buf,ln);
+    if (ln>0) {
+       if (dir_buf[0])
+          VG_(printf)(" (%s/%s:%u)", dir_buf, fl_buf, ln);
+       else
+          VG_(printf)(" (%s:%u)", fl_buf, ln);
+    }
 }
 
 void CLG_(print_addr_ln)(Addr addr)

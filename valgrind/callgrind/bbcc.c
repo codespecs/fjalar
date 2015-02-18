@@ -201,8 +201,6 @@ static void resize_bbcc_hash(void)
     new_table = (BBCC**) CLG_MALLOC("cl.bbcc.rbh.1",
                                     new_size * sizeof(BBCC*));
  
-    if (!new_table) return;
- 
     for (i = 0; i < new_size; i++)
       new_table[i] = NULL;
  
@@ -338,13 +336,20 @@ void insert_bbcc_into_hash(BBCC* bbcc)
 	     current_bbccs.entries);
 }
 
-static const HChar* mangled_cxt(Context* cxt, int rec_index)
+/* String is returned in a dynamically allocated buffer. Caller is
+   responsible for free'ing it. */
+static HChar* mangled_cxt(const Context* cxt, Int rec_index)
 {
-    static HChar mangled[FN_NAME_LEN];
-    int i, p;
+    Int i, p;
 
-    if (!cxt) return "(no context)";
+    if (!cxt) return VG_(strdup)("cl.bbcc.mcxt", "(no context)");
 
+    /* Overestimate the number of bytes we need to hold the string. */
+    SizeT need = 20;   // rec_index + nul-terminator
+    for (i = 0; i < cxt->size; ++i)
+       need += VG_(strlen)(cxt->fn[i]->name) + 1;   // 1 for leading '
+
+    HChar *mangled = CLG_MALLOC("cl.bbcc.mcxt", need);
     p = VG_(sprintf)(mangled, "%s", cxt->fn[0]->name);
     if (rec_index >0)
 	p += VG_(sprintf)(mangled+p, "'%d", rec_index +1);
@@ -413,14 +418,16 @@ static BBCC* clone_bbcc(BBCC* orig, Context* cxt, Int rec_index)
     CLG_DEBUGIF(3)
       CLG_(print_bbcc)(-2, bbcc);
 
-    // FIXME: mangled_cxt returns a pointer to a static buffer that
-    // gets overwritten with each invocation. 
+    HChar *mangled_orig = mangled_cxt(orig->cxt, orig->rec_index);
+    HChar *mangled_bbcc = mangled_cxt(bbcc->cxt, bbcc->rec_index);
     CLG_DEBUG(2,"- clone_BBCC(%p, %d) for BB %#lx\n"
 		"   orig %s\n"
 		"   new  %s\n",
 	     orig, rec_index, bb_addr(orig->bb),
-	     mangled_cxt(orig->cxt, orig->rec_index),
-	     mangled_cxt(bbcc->cxt, bbcc->rec_index));
+             mangled_orig,
+             mangled_bbcc);
+    CLG_FREE(mangled_orig);
+    CLG_FREE(mangled_bbcc);
 
     CLG_(stat).bbcc_clones++;
  
@@ -579,7 +586,7 @@ void CLG_(setup_bbcc)(BB* bb)
    * if tid differs from the CLG_(current_tid).
    */
   if (UNLIKELY(tid != CLG_(current_tid)))
-  CLG_(switch_thread)(tid);
+     CLG_(switch_thread)(tid);
 #else
   CLG_ASSERT(VG_(get_running_tid)() == CLG_(current_tid));
 #endif
@@ -599,11 +606,11 @@ void CLG_(setup_bbcc)(BB* bb)
 	  last_bbcc->ecounter_sum++;
 	  last_bbcc->jmp[passed].ecounter++;
 	  if (!CLG_(clo).simulate_cache) {
-	      /* update Ir cost */
+	      /* update Ir cost */              
               UInt instr_count = last_bb->jmp[passed].instr+1;
               CLG_(current_state).cost[ fullOffset(EG_IR) ] += instr_count;
 	  }
-      }
+	}
 	else {
 	  /* do not increment exe counter of BBs in skipped functions, as it
 	   * would fool dumping code */
@@ -731,9 +738,9 @@ void CLG_(setup_bbcc)(BB* bb)
     case jk_Return: VG_(printf)("Return"); break;
     default:        tl_assert(0);
     }
-      VG_(printf)(" %08lx -> %08lx, SP %08lx\n",
-		  last_bb ? bb_jmpaddr(last_bb) : 0,
-		  bb_addr(bb), sp);
+    VG_(printf)(" %08lx -> %08lx, SP %08lx\n",
+		last_bb ? bb_jmpaddr(last_bb) : 0,
+		bb_addr(bb), sp);
   }
 
   /* Handle CALL/RET and update context to get correct BBCC */
@@ -885,6 +892,10 @@ void CLG_(setup_bbcc)(BB* bb)
   }
   
   CLG_(current_state).bbcc = bbcc;
+  /* Even though this will be set in instrumented code directly before
+   * side exits, it needs to be set to 0 here in case an exception
+   * happens in first instructions of the BB */
+  CLG_(current_state).jmps_passed = 0;
   // needed for log_* handlers called in this BB
   CLG_(bb_base)   = bb->obj->offset + bb->offset;
   CLG_(cost_base) = bbcc->cost;

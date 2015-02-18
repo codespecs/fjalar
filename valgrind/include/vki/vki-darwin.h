@@ -290,6 +290,9 @@ typedef uint32_t vki_u32;
 #define VKI_F_LOG2PHYS	F_LOG2PHYS
 #define VKI_F_GETPATH	F_GETPATH
 #define VKI_F_ADDSIGS	F_ADDSIGS
+#if DARWIN_VERS >= DARWIN_10_9
+# define VKI_F_ADDFILESIGS  F_ADDFILESIGS
+#endif
 #define VKI_F_FULLFSYNC	F_FULLFSYNC
 #define VKI_F_PATHPKG_CHECK	F_PATHPKG_CHECK
 #define VKI_F_FREEZE_FS	F_FREEZE_FS
@@ -786,6 +789,7 @@ typedef
 #include <sys/event.h>
 
 #define vki_kevent kevent
+#define vki_kevent64 kevent64_s
 
 
 #include <sys/ev.h>
@@ -829,9 +833,9 @@ struct ByteRangeLockPB2
 
 // Libc/pthreads/pthread.c
 
-#define VKI_WQOPS_QUEUE_ADD      1
-#define VKI_WQOPS_QUEUE_REMOVE   2
-#define VKI_WQOPS_THREAD_RETURN  4
+#define VKI_WQOPS_QUEUE_ADD          1
+#define VKI_WQOPS_QUEUE_REMOVE       2
+#define VKI_WQOPS_THREAD_RETURN      4
 #define VKI_WQOPS_THREAD_SETCONC     8
 #define VKI_WQOPS_QUEUE_NEWSPISUPP  16  /* check for newer SPI support */
 #define VKI_WQOPS_QUEUE_REQTHREADS  32  /* request number of threads of a prio */
@@ -1057,5 +1061,21 @@ struct ByteRangeLockPB2
 
 //#define vki_errno_t
 typedef int vki_errno_t;
+
+
+/* necp stuff.  This doesn't appear to exist in any user space include
+   file. */
+#if DARWIN_VERS == DARWIN_10_10
+struct vki_necp_aggregate_result {
+   vki_u_int32_t field1;
+   unsigned int  field2;
+   vki_u_int32_t field3;
+   vki_u_int32_t field4;
+   vki_uuid_t    field5;
+   u_int32_t     field6;
+   u_int32_t     field7;
+};
+#endif /* DARWIN_VERS == DARWIN_10_10 */
+
 
 #endif

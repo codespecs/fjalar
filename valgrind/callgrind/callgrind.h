@@ -82,7 +82,7 @@ typedef
    } Vg_CallgrindClientRequest;
 
 /* Dump current state of cost centers, and zero them afterwards */
-#define CALLGRIND_DUMP_STATS                                            \
+#define CALLGRIND_DUMP_STATS                                    \
   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DUMP_STATS,       \
                                   0, 0, 0, 0, 0)
 
@@ -90,12 +90,12 @@ typedef
    The argument is appended to a string stating the reason which triggered
    the dump. This string is written as a description field into the
    profile data dump. */
-#define CALLGRIND_DUMP_STATS_AT(pos_str)                                \
+#define CALLGRIND_DUMP_STATS_AT(pos_str)                        \
   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DUMP_STATS_AT,    \
                                   pos_str, 0, 0, 0, 0)
 
 /* Zero cost centers */
-#define CALLGRIND_ZERO_STATS                                            \
+#define CALLGRIND_ZERO_STATS                                    \
   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__ZERO_STATS,       \
                                   0, 0, 0, 0, 0)
 
@@ -103,7 +103,7 @@ typedef
    The collection state specifies whether the happening of events
    should be noted or if they are to be ignored. Events are noted
    by increment of counters in a cost center */
-#define CALLGRIND_TOGGLE_COLLECT                                        \
+#define CALLGRIND_TOGGLE_COLLECT                                \
   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__TOGGLE_COLLECT,   \
                                   0, 0, 0, 0, 0)
 
@@ -111,7 +111,7 @@ typedef
    When cache simulation is done, it will flush the simulated cache;
    this will lead to an artifical cache warmup phase afterwards with
    cache misses which would not have happened in reality. */
-#define CALLGRIND_START_INSTRUMENTATION                                 \
+#define CALLGRIND_START_INSTRUMENTATION                              \
   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__START_INSTRUMENTATION, \
                                   0, 0, 0, 0, 0)
 
@@ -122,7 +122,7 @@ typedef
    Use this to bypass Callgrind aggregation for uninteresting code parts.
    To start Callgrind in this mode to ignore the setup phase, use
    the option "--instr-atstart=no". */
-#define CALLGRIND_STOP_INSTRUMENTATION                                  \
+#define CALLGRIND_STOP_INSTRUMENTATION                               \
   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__STOP_INSTRUMENTATION,  \
                                   0, 0, 0, 0, 0)
 

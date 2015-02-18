@@ -67,6 +67,8 @@ EXTRA_DIST =                                        \
 	annotate_trace_memory_xml.stderr.exp-64bit  \
 	annotate_trace_memory_xml.stderr.exp-mips32 \
 	annotate_trace_memory_xml.vgtest	    \
+	annotate_sem.stderr.exp                     \
+	annotate_sem.vgtest                         \
 	annotate_static.stderr.exp	            \
 	annotate_static.vgtest		            \
 	atomic_var.stderr.exp			    \
@@ -91,10 +93,14 @@ EXTRA_DIST =                                        \
 	custom_alloc_fiw.stderr.exp		    \
 	custom_alloc_fiw.vgtest			    \
 	fp_race.stderr.exp                          \
+	fp_race.stderr.exp-mips32-be                \
+	fp_race.stderr.exp-mips32-le                \
 	fp_race.vgtest                              \
 	fp_race2.stderr.exp                         \
 	fp_race2.vgtest                             \
 	fp_race_xml.stderr.exp                      \
+	fp_race_xml.stderr.exp-mips32-be            \
+	fp_race_xml.stderr.exp-mips32-le            \
 	fp_race_xml.vgtest                          \
 	free_is_write.stderr.exp		    \
 	free_is_write.vgtest			    \
@@ -122,6 +128,8 @@ EXTRA_DIST =                                        \
 	linuxthreads_det.stdout.exp                 \
 	linuxthreads_det.stdout.exp-linuxthreads    \
 	linuxthreads_det.vgtest                     \
+	local_static.stderr.exp                     \
+	local_static.vgtest                         \
 	matinv.stderr.exp                           \
 	matinv.stdout.exp                           \
 	matinv.vgtest                               \
@@ -211,16 +219,24 @@ EXTRA_DIST =                                        \
 	rwlock_type_checking.stderr.exp	            \
 	rwlock_type_checking.vgtest                 \
 	sem_as_mutex.stderr.exp                     \
+	sem_as_mutex.stderr.exp-mips32-be           \
+	sem_as_mutex.stderr.exp-mips32-le           \
 	sem_as_mutex.vgtest                         \
 	sem_as_mutex2.stderr.exp                    \
 	sem_as_mutex2.vgtest                        \
 	sem_as_mutex3.stderr.exp                    \
+	sem_as_mutex3.stderr.exp-mips32-be          \
+	sem_as_mutex3.stderr.exp-mips32-le          \
 	sem_as_mutex3.vgtest                        \
 	sem_open.stderr.exp                         \
+	sem_open.stderr.exp-mips32-be               \
+	sem_open.stderr.exp-mips32-le               \
 	sem_open.vgtest                             \
 	sem_open2.stderr.exp                        \
 	sem_open2.vgtest                            \
 	sem_open3.stderr.exp                        \
+	sem_open3.stderr.exp-mips32-be              \
+	sem_open3.stderr.exp-mips32-le              \
 	sem_open3.vgtest                            \
 	sem_open_traced.stderr.exp                  \
 	sem_open_traced.vgtest                      \
@@ -230,12 +246,17 @@ EXTRA_DIST =                                        \
 	sigalrm.vgtest                              \
 	sigaltstack.stderr.exp                      \
 	sigaltstack.vgtest                          \
+	std_atomic.stderr.exp		  	    \
+	std_atomic.vgtest			            \
 	std_list.stderr.exp		  	    \
 	std_list.vgtest			            \
 	std_string.stderr.exp		  	    \
 	std_string.vgtest			    \
 	std_thread.stderr.exp		  	    \
 	std_thread.vgtest			    \
+	std_thread2.stderr.exp		  	    \
+	std_thread2.vgtest			    \
+	std_thread2.supp			    \
 	str_tester.stderr.exp		  	    \
 	str_tester.vgtest			    \
 	tc01_simple_race.stderr.exp                 \
@@ -301,6 +322,10 @@ EXTRA_DIST =                                        \
 	thread_name_xml.vgtest			    \
 	threaded-fork.stderr.exp		    \
 	threaded-fork.vgtest			    \
+	threaded-fork-vcs.stderr.exp		    \
+	threaded-fork-vcs.vgtest		    \
+	tls_threads.stderr.exp			    \
+	tls_threads.vgtest			    \
 	trylock.stderr.exp                          \
 	trylock.vgtest				    \
 	unit_bitmap.stderr.exp                      \
@@ -324,6 +349,7 @@ check_PROGRAMS =      \
   free_is_write	      \
   hold_lock           \
   linuxthreads_det    \
+  local_static        \
   memory_allocation   \
   monitor_example     \
   new_delete          \
@@ -361,6 +387,7 @@ if HAVE_BUILTIN_ATOMIC
 check_PROGRAMS +=        \
   annotate_barrier       \
   annotate_rwlock        \
+  annotate_sem           \
   atomic_var             \
   circular_buffer
 endif
@@ -376,9 +403,11 @@ endif
 if CXX_CAN_INCLUDE_THREAD_HEADER
 if HAVE_SHARED_POINTER_ANNOTATION
 check_PROGRAMS += \
+  std_atomic      \
   std_list        \
   std_string      \
-  std_thread
+  std_thread      \
+  std_thread2
 endif
 endif
 
@@ -439,6 +468,9 @@ annotate_smart_pointer_SOURCES = annotate_smart_pointer.cpp
 endif
 
 annotate_static_SOURCES     = annotate_static.cpp
+annotate_static_CXXFLAGS    = $(AM_CXXFLAGS) @FLAG_W_NO_UNUSED_FUNCTION@
+
+local_static_SOURCES        = local_static.cpp
 
 if HAVE_OPENMP
 omp_matinv_CFLAGS           = $(AM_CFLAGS) -fopenmp
@@ -458,13 +490,24 @@ if HAVE_PTHREAD_BARRIER
 matinv_LDADD                = $(LDADD) -lm
 endif
 
+std_atomic_SOURCES          = std_atomic.cpp
+std_atomic_CXXFLAGS         = $(AM_CXXFLAGS) -std=c++0x -Wno-sign-compare
+
 std_list_SOURCES            = std_list.cpp
 std_list_CXXFLAGS           = $(AM_CXXFLAGS) -std=c++0x -Wno-sign-compare
 
 std_string_SOURCES          = std_string.cpp
 std_string_CXXFLAGS         = $(AM_CXXFLAGS) -std=c++0x -Wno-sign-compare
 
+# Note: -Wl,--no-as-needed is a workaround for
+# https://bugs.launchpad.net/ubuntu/+source/gcc-defaults/+bug/1228201
+
 std_thread_SOURCES          = std_thread.cpp
 std_thread_CXXFLAGS         = $(AM_CXXFLAGS) -std=c++0x
+std_thread_LDFLAGS          = -Wl,--no-as-needed
+
+std_thread2_SOURCES          = std_thread2.cpp
+std_thread2_CXXFLAGS         = $(AM_CXXFLAGS) -std=c++0x
+std_thread2_LDFLAGS          = -Wl,--no-as-needed
 
 sem_wait_SOURCES            = sem_wait.cpp

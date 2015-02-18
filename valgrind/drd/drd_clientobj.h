@@ -68,6 +68,7 @@ struct mutex_info
    ExeContext*     first_observed_at;
    MutexT          mutex_type;      // pthread_mutex_t or pthread_spinlock_t.
    int             recursion_count; // 0 if free, >= 1 if locked.
+   Bool            ignore_ordering;
    DrdThreadId     owner;           // owner if locked, last owner if free.
    struct segment* last_locked_segment;
    ULong           acquiry_time_ms;
@@ -83,7 +84,7 @@ struct cond_info
    ExeContext* first_observed_at;
    int         waiter_count;
    Addr        mutex; // Client mutex specified in pthread_cond_wait() call, and
-   // null if no client threads are currently waiting on this cond.var.
+            // null if no client threads are currently waiting on this cond.var.
 };
 
 struct hb_info
