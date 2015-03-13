@@ -90,26 +90,28 @@ void handleDisambigFile() {
 // S          <-- disambig type
 static TraversalResult
 printDisambigAction(VariableEntry* var,
-		    const HChar* varName,
-		    VariableOrigin varOrigin,
-		    UInt numDereferences,
-		    UInt layersBeforeBase,
-		    Bool overrideIsInit,
-		    DisambigOverride disambigOverride,
-		    Bool isSequence,
-		    Addr pValue,
-		    Addr pValueGuest,
-		    Addr* pValueArray,
-		    Addr* pValueArrayGuest,
-		    UInt numElts,
-		    FunctionEntry* varFuncInfo,
-		    Bool isEnter) {
+                    const HChar* varName,
+                    VariableOrigin varOrigin,
+                    UInt numDereferences,
+                    UInt layersBeforeBase,
+                    Bool overrideIsInit,
+                    DisambigOverride disambigOverride,
+                    Bool isSequence,
+                    Addr pValue,
+                    Addr pValueGuest,
+                    Addr* pValueArray,
+                    Addr* pValueArrayGuest,
+                    UInt numElts,
+                    FunctionEntry* varFuncInfo,
+                    Bool isEnter) {
   /* silence unused variable warnings */
   (void)varOrigin; (void)numDereferences; (void)layersBeforeBase;
   (void)overrideIsInit; (void)disambigOverride; (void)isSequence;
   (void)pValue; (void)pValueArray; (void)numElts; (void)varFuncInfo;
   (void)isEnter; (void)pValueGuest; (void)pValueArrayGuest;
 
+
+  FJALAR_DPRINTF(" printDisambigAction: %s\n", varName);
 
   // If this is not a variable that's worthy of being outputted to the
   // .disambig file, then punt:
@@ -191,6 +193,8 @@ void generateDisambigFile() {
   FuncIterator* funcIt;
   TypeIterator* typeIt;
 
+  FJALAR_DPRINTF("\n=> generateDisambigFile: Start Processing\n");
+
   // Write entries for global variables:
   fputs(ENTRY_DELIMETER, disambig_fp);
   fputs("\n", disambig_fp);
@@ -201,8 +205,10 @@ void generateDisambigFile() {
                      0,
                      0,
                      0,
-		     0,
+                     0,
                      &printDisambigAction);
+
+  FJALAR_DPRINTF("=> generateDisambigFile: Finished Globals\n\n");
 
   fputs("\n", disambig_fp);
 
@@ -232,20 +238,22 @@ void generateDisambigFile() {
                          cur_entry,
                          0,
                          0,
-			 0,
+                         0,
                          &printDisambigAction);
 
       visitVariableGroup(FUNCTION_RETURN_VAR,
                          cur_entry,
                          0,
                          0,
-			 0,
+                         0,
                          &printDisambigAction);
 
       fputs("\n", disambig_fp);
     }
   }
   deleteFuncIterator(funcIt);
+
+  FJALAR_DPRINTF("=> generateDisambigFile: Finished Functions\n\n");
 
   // Write entries for every struct/class in TypesTable, with the
   // type's name prefixed by 'usertype.':
@@ -267,8 +275,9 @@ void generateDisambigFile() {
 
     fputs("\n", disambig_fp);
   }
-
   deleteTypeIterator(typeIt);
+
+  FJALAR_DPRINTF("=> generateDisambigFile: Finished Types\n\n");
 }
 
 // Returns True if var should be output to .disambig:
@@ -279,7 +288,7 @@ static Bool shouldOutputVarToDisambig(VariableEntry* var) {
     return True;
   }
   else if ((D_UNSIGNED_CHAR == var->varType->decType) ||
-	   (D_CHAR == var->varType->decType)) {
+       (D_CHAR == var->varType->decType)) {
     return True;
   }
   else {
@@ -297,33 +306,33 @@ DisambigOverride returnDisambigOverride(VariableEntry* var) {
 
     if (disambig_letter) {
       if ((!IS_STRING(var) && (var->ptrLevels == 0)) ||
-	  (IS_STRING(var) && (var->ptrLevels == 1))) {
-	// 'C' denotes to print out as a one-character string
-	if (IS_STRING(var)) { // pointer to "char" or "unsigned char"
-	  if ('C' == disambig_letter) {
-	    FJALAR_DPRINTF("String C - %s\n\n", var->name);
-	    override = OVERRIDE_STRING_AS_ONE_CHAR_STRING;
-	  }
-	  else if ('A' == disambig_letter) {
-	    FJALAR_DPRINTF("String A - %s\n\n", var->name);
-	    override = OVERRIDE_STRING_AS_INT_ARRAY;
-	  }
-	  else if ('P' == disambig_letter) {
-	    FJALAR_DPRINTF("String P - %s\n\n", var->name);
-	    override = OVERRIDE_STRING_AS_ONE_INT;
-	  }
-	}
-	else if ((D_CHAR == var->varType->decType) ||  // "char" or "unsigned char" (or string of chars)
-		 (D_UNSIGNED_CHAR == var->varType->decType)) { // "char" or "unsigned char"
-	  if ('C' == disambig_letter) {
-	    FJALAR_DPRINTF("Char C - %s\n\n", var->name);
-	    override = OVERRIDE_CHAR_AS_STRING;
-	  }
-	}
+          (IS_STRING(var) && (var->ptrLevels == 1))) {
+        // 'C' denotes to print out as a one-character string
+        if (IS_STRING(var)) { // pointer to "char" or "unsigned char"
+          if ('C' == disambig_letter) {
+            FJALAR_DPRINTF("String C - %s\n\n", var->name);
+            override = OVERRIDE_STRING_AS_ONE_CHAR_STRING;
+          }
+          else if ('A' == disambig_letter) {
+            FJALAR_DPRINTF("String A - %s\n\n", var->name);
+            override = OVERRIDE_STRING_AS_INT_ARRAY;
+          }
+          else if ('P' == disambig_letter) {
+            FJALAR_DPRINTF("String P - %s\n\n", var->name);
+            override = OVERRIDE_STRING_AS_ONE_INT;
+          }
+        }
+        else if ((D_CHAR == var->varType->decType) ||  // "char" or "unsigned char" (or string of chars)
+                 (D_UNSIGNED_CHAR == var->varType->decType)) { // "char" or "unsigned char"
+          if ('C' == disambig_letter) {
+            FJALAR_DPRINTF("Char C - %s\n\n", var->name);
+            override = OVERRIDE_CHAR_AS_STRING;
+          }
+        }
       }
       // Ordinary pointer
       else if ('P' == disambig_letter) {
-	override = OVERRIDE_ARRAY_AS_POINTER;
+        override = OVERRIDE_ARRAY_AS_POINTER;
       }
     }
   }
@@ -359,6 +368,7 @@ static void processDisambigFile() {
 
   while (fgets(line, 200, disambig_fp)) {
     lineLen = VG_(strlen)(line);
+    // FJALAR_DPRINTF("input-line: %s length: %d\n", line, lineLen);
 
     // Blank lines only have a "\n" so skip them
     if (lineLen <= 1)
@@ -375,14 +385,14 @@ static void processDisambigFile() {
 
     if VG_STREQ(line, ENTRY_DELIMETER) {
       if (entryName) {
-	VG_(free)(entryName);
-	entryName = 0;
+        VG_(free)(entryName);
+        entryName = 0;
       }
 
       if (VarListArray) {
-	VG_(free)(VarListArray);
-	VarListArray = 0;
-	VarListArraySize = 0;
+        VG_(free)(VarListArray);
+        VarListArray = 0;
+        VarListArraySize = 0;
       }
 
       nextLineIsEntry = 1;
@@ -393,101 +403,101 @@ static void processDisambigFile() {
       //   2) "globals"
       //   3) A user-defined type (ie. struct) name - e.g. "usertype.fooStruct"
       if (nextLineIsEntry) {
-	char* marker = 0;
-	// 1) A function name
-	if ((marker = VG_(strstr)(line, FUNCTION_PREFIX))) {
+        char* marker = 0;
+        // 1) A function name
+        if ((marker = VG_(strstr)(line, FUNCTION_PREFIX))) {
           FunctionEntry* cur_entry = 0;
-	  FJALAR_DPRINTF("FUNCTION_PREFIX");
-	  type = FUNCTION;
-	  // Strip off the prefix by moving forward that many spots in the buffer:
-	  entryName = VG_(strdup)("disambig.c: processDisambigFile.0.1", &line[VG_(strlen)(FUNCTION_PREFIX)]);
+          FJALAR_DPRINTF("FUNCTION_PREFIX");
+          type = FUNCTION;
+          // Strip off the prefix by moving forward that many spots in the buffer:
+          entryName = VG_(strdup)("disambig.c: processDisambigFile.0.1", &line[VG_(strlen)(FUNCTION_PREFIX)]);
           //          printf("Function! %s\n", entryName);
 
-	  VarListArraySize = 1;
-	  VarListArray = (VarList**)VG_(calloc)("disambig.c: processDisambigFile.1",  VarListArraySize, sizeof(*VarListArray));
+          VarListArraySize = 1;
+          VarListArray = (VarList**)VG_(calloc)("disambig.c: processDisambigFile.1",  VarListArraySize, sizeof(*VarListArray));
 
-	  // Find the appropriate function by name:
+          // Find the appropriate function by name:
           cur_entry = getFunctionEntryFromFjalarName(entryName);
           if (cur_entry) {
             VarListArray[0] = &(cur_entry->formalParameters);
           }
-	}
-	// 2) "globals"
-	else if (VG_STREQ(line, GLOBAL_STRING)) {
-	  type = GLOBAL;
-	  FJALAR_DPRINTF("GLOBAL");
-	  VarListArraySize = 1;
-	  VarListArray = (VarList**)VG_(calloc)("disambig.c: processDisambigFile.2", VarListArraySize, sizeof(*VarListArray));
+        }
+        // 2) "globals"
+        else if (VG_STREQ(line, GLOBAL_STRING)) {
+          type = GLOBAL;
+          FJALAR_DPRINTF("GLOBAL");
+          VarListArraySize = 1;
+          VarListArray = (VarList**)VG_(calloc)("disambig.c: processDisambigFile.2", VarListArraySize, sizeof(*VarListArray));
 
-	  VarListArray[0] = &globalVars;
-	}
-	// 3) A user-defined type
-	//    (USERTYPE_PREFIX must be the prefix of the string)
-	else if (VG_(strstr)(line, USERTYPE_PREFIX) == (HChar *)line) {
-	  TypeIterator* typeIt;
+          VarListArray[0] = &globalVars;
+        }
+        // 3) A user-defined type
+        //    (USERTYPE_PREFIX must be the prefix of the string)
+        else if (VG_(strstr)(line, USERTYPE_PREFIX) == (HChar *)line) {
+          TypeIterator* typeIt;
           int i = 0;
-	  type = USERTYPE;
-	  FJALAR_DPRINTF("USERTYPE");
-	  // Strip off the prefix:
-	  entryName = VG_(strdup)("disambig.c: processDisambigFile.2.1", line + VG_(strlen)(USERTYPE_PREFIX));
+          type = USERTYPE;
+          FJALAR_DPRINTF("USERTYPE");
+          // Strip off the prefix:
+          entryName = VG_(strdup)("disambig.c: processDisambigFile.2.1", line + VG_(strlen)(USERTYPE_PREFIX));
 
-	  // Find ALL THE TypeEntry entries with the matching name
-	  // and throw their memberVarList entries in VarListArray
-	  // This is due to the fact that DWARF debugging info allows
-	  // multiple identical TypeEntry entries (with the same
-	  // name) to co-exist since struct DWARF entries are replicated
-	  // for every compilation unit which includes the struct's definition
+          // Find ALL THE TypeEntry entries with the matching name
+          // and throw their memberVarList entries in VarListArray
+          // This is due to the fact that DWARF debugging info allows
+          // multiple identical TypeEntry entries (with the same
+          // name) to co-exist since struct DWARF entries are replicated
+          // for every compilation unit which includes the struct's definition
 
-	  // Go through it TWICE - the first time we look up how many entries
-	  // there are so we can set the size for VarListArray
-	  // and the second time we actually fill up VarListArray
+          // Go through it TWICE - the first time we look up how many entries
+          // there are so we can set the size for VarListArray
+          // and the second time we actually fill up VarListArray
 
-	  VarListArraySize = 0;
+          VarListArraySize = 0;
 
-	  typeIt = newTypeIterator();
+          typeIt = newTypeIterator();
 
-	  while (hasNextType(typeIt)) {
-	    TypeEntry* cur_type = nextType(typeIt);
+          while (hasNextType(typeIt)) {
+            TypeEntry* cur_type = nextType(typeIt);
 
-	    if (cur_type->typeName &&
-		VG_STREQ(cur_type->typeName, entryName)) {
-	      FJALAR_DPRINTF(" FAKE [%s]\n", cur_type->typeName);
-	      VarListArraySize++;
-	    }
-	  }
+            if (cur_type->typeName &&
+                VG_STREQ(cur_type->typeName, entryName)) {
+              FJALAR_DPRINTF(" FAKE [%s]\n", cur_type->typeName);
+              VarListArraySize++;
+            }
+          }
 
-	  deleteTypeIterator(typeIt);
+          deleteTypeIterator(typeIt);
 
-	  VarListArray = (VarList**)VG_(calloc)("disambig.c: processDisambigFile.3", VarListArraySize, sizeof(*VarListArray));
+          VarListArray = (VarList**)VG_(calloc)("disambig.c: processDisambigFile.3", VarListArraySize, sizeof(*VarListArray));
 
-	  typeIt = newTypeIterator();
-	  i = 0;
+          typeIt = newTypeIterator();
+          i = 0;
 
-	  while (hasNextType(typeIt)) {
-	    TypeEntry* cur_type = nextType(typeIt);
+          while (hasNextType(typeIt)) {
+            TypeEntry* cur_type = nextType(typeIt);
 
             tl_assert(IS_AGGREGATE_TYPE(cur_type));
 
-	    if (cur_type->typeName &&
-		VG_STREQ(cur_type->typeName, entryName)) {
-	      FJALAR_DPRINTF(" REAL [%s]\n", cur_type->typeName);
-	      VarListArray[i] = cur_type->aggType->memberVarList;
-	      i++;
-	    }
-	  }
+            if (cur_type->typeName &&
+                VG_STREQ(cur_type->typeName, entryName)) {
+              FJALAR_DPRINTF(" REAL [%s]\n", cur_type->typeName);
+              VarListArray[i] = cur_type->aggType->memberVarList;
+              i++;
+            }
+          }
 
-	  deleteTypeIterator(typeIt);
-	}
+          deleteTypeIterator(typeIt);
+        }
 
-	FJALAR_DPRINTF(" ENTRY: %s\n", (entryName ? entryName : "<no name>"));
+        FJALAR_DPRINTF(" ENTRY: %s\n", (entryName ? entryName : "<no name>"));
       }
       // A line that doesn't immediately follow ENTRY_DELIMETER
       // The idea here is to find the correct VariableEntry entry and
       // modify its "disambig" field
       else {
-	VariableEntry* target = 0;
+        VariableEntry* target = 0;
 
-	char* varName = VG_(strdup)("disambig.c: processDisambigFile.3.1", line);
+        char* varName = VG_(strdup)("disambig.c: processDisambigFile.3.1", line);
         char* disambigLine = 0;
 
         char* firstToken = 0;
@@ -496,12 +506,12 @@ static void processDisambigFile() {
         char disambig_letter;
         char* coercion_type = 0;
 
-	// Eat up the next line
+        // Eat up the next line
         // There are two possibilities here:
         //   1.) It is just a single disambig letter (e.g., "A", "P")
         //   2.) It consists of a type coercion statement after the
         //   single disambig letter (e.g., "P foo_type")
-	fgets(line, 200, disambig_fp);
+        fgets(line, 200, disambig_fp);
         lineLen = VG_(strlen)(line);
         // Strip '\n' off the end of the line
         // NOTE: Only do this if the end of the line is a newline character.
@@ -522,7 +532,7 @@ static void processDisambigFile() {
 
         // The first token should always be the disambig letter
         tl_assert(VG_(strlen)(firstToken) == 1);
-	disambig_letter = *firstToken;
+        disambig_letter = *firstToken;
 
         //        printf(" var_name: %s\n", varName);
         //        printf("  disambig_letter: %c\n", disambig_letter);
@@ -533,28 +543,28 @@ static void processDisambigFile() {
           //          printf("  coercion_type: %s\n", coercion_type);
         }
 
-	if (VarListArraySize > 0) {
-	  int j;
-	  // Iterate through all VarList* entries in VarListArray
-	  for (j = 0; j < VarListArraySize; j++) {
-	    VarList* varList = VarListArray[j];
+        if (VarListArraySize > 0) {
+          int j;
+          // Iterate through all VarList* entries in VarListArray
+          for (j = 0; j < VarListArraySize; j++) {
+            VarList* varList = VarListArray[j];
 
-	    VarNode* i;
+            VarNode* i;
 
-	    for (i = varList->first; i != 0; i = i->next) {
-	      VariableEntry* var = i->var;
-	      if (VG_STREQ(varName, var->name)) {
-		target = var;
-		break;
-	      }
-	    }
+            for (i = varList->first; i != 0; i = i->next) {
+              VariableEntry* var = i->var;
+              if (VG_STREQ(varName, var->name)) {
+                target = var;
+                break;
+              }
+            }
 
-	    if (target) {
-	      switch (type) {
-	      case FUNCTION:
-	      case GLOBAL:
-	      case USERTYPE:
-		target->disambig = disambig_letter;
+            if (target) {
+              switch (type) {
+              case FUNCTION:
+              case GLOBAL:
+              case USERTYPE:
+                target->disambig = disambig_letter;
                 // Change the type of the variable to point to the one
                 // named by coercion_type:
                 if (coercion_type) {
@@ -565,16 +575,16 @@ static void processDisambigFile() {
                                 varName, coercion_type);
                   }
                 }
-		break;
-	      default:
-		break;
-	      }
+                break;
+              default:
+                break;
+              }
 
-	      FJALAR_DPRINTF("VarListArray[%d]: var:%s [%c]\n", j, target->name, target->disambig);
-	    }
-	  }
-	}
-	VG_(free)(varName);
+              FJALAR_DPRINTF("VarListArray[%d]: var:%s [%c]\n", j, target->name, target->disambig);
+            }
+          }
+        }
+        VG_(free)(varName);
         VG_(free)(disambigLine);
       }
 
