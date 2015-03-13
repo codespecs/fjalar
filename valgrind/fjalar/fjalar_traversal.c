@@ -265,9 +265,10 @@ void visitClassMembersNoValues(TypeEntry* class,
   // TODO: Make this less string based
   top = stringStackTop(&fullNameStack);
 
+  FJALAR_DPRINTF("visitClassMembersNoValues top: %p\n", (void *)top);
+
     //Need a proper enclosing variable name
-  if (!top ||
-      (top && VG_STREQ(top, DOT)) ||
+  if ((top && VG_STREQ(top, DOT)) ||
       (top && VG_STREQ(top, ZEROTH_ELT)) ||
       (top && VG_STREQ(top, ARROW))) {
     stringStackPop(&fullNameStack);
