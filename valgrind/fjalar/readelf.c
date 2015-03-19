@@ -1,5 +1,5 @@
 /* readelf.c -- display contents of an ELF format file
-   Copyright 1998-2013 Free Software Foundation, Inc.
+   Copyright (C) 1998-2014 Free Software Foundation, Inc.
 
    Originally developed by Eric Youngdale <eric@andante.jic.com>
    Modifications by Nick Clifton <nickc@redhat.com>
@@ -18,8 +18,8 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
-   02111-1307, USA.  */
+   Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston, MA
+   02110-1301, USA.  */
 
 /* readelf.c
 
@@ -207,7 +207,8 @@ get_data (PTR var, FILE * file, long offset, size_t size, const char * reason)
 
   if (fseek (file, offset, SEEK_SET))
     {
-      error (_("Unable to seek to 0x%lx for %s\n"), offset, reason);
+      if (reason)
+        error (_("Unable to seek to 0x%lx for %s\n"), offset, reason);
       return NULL;
     }
 
@@ -217,18 +218,20 @@ get_data (PTR var, FILE * file, long offset, size_t size, const char * reason)
       mvar = (PTR) VG_(malloc) ("readelf.c: get_data", size);
 
       if (mvar == NULL)
-	{
-	  error (_("Out of memory allocating %d bytes for %s\n"),
-		 size, reason);
-	  return NULL;
-	}
+        {
+          if (reason)
+        error (_("Out of memory allocating %d bytes for %s\n"),
+                 size, reason);
+          return NULL;
+        }
     }
 
   if (fread (mvar, size, 1, file) != 1)
     {
-      error (_("Unable to read in %d bytes of %s\n"), size, reason);
+      if (reason)
+        error (_("Unable to read in %d bytes of %s\n"), size, reason);
       if (mvar != var)
-	VG_(free) (mvar);
+        VG_(free) (mvar);
       return NULL;
     }
 
@@ -330,8 +333,6 @@ guess_is_rela (unsigned int e_machine)
     case EM_MIPS:
     case EM_MIPS_RS3_LE:
     case EM_CYGNUS_M32R:
-    case EM_OPENRISC:
-    case EM_OR32:
     case EM_SCORE:
     case EM_XGATE:
       return FALSE;
@@ -377,7 +378,9 @@ guess_is_rela (unsigned int e_machine)
     case EM_MSP430:
     case EM_MSP430_OLD:
     case EM_MT:
+    case EM_NDS32:
     case EM_NIOS32:
+    case EM_OR1K:
     case EM_PPC64:
     case EM_PPC:
     case EM_RL78:
@@ -433,8 +436,8 @@ int
 slurp_rela_relocs (FILE * file, unsigned long rel_offset, unsigned long rel_size,
                    Elf_Internal_Rela ** relasp, unsigned long * nrelasp)
 {
-  Elf_Internal_Rela *relas;
-  unsigned long nrelas;
+  Elf_Internal_Rela * relas;
+  size_t nrelas;
   unsigned int i;
 
   if (is_32bit_elf)
@@ -526,13 +529,13 @@ int
 slurp_rel_relocs (FILE * file, unsigned long rel_offset, unsigned long rel_size,
                   Elf_Internal_Rela ** relsp, unsigned long * nrelsp)
 {
-  Elf_Internal_Rela *rels;
-  unsigned long nrels;
+  Elf_Internal_Rela * rels;
+  size_t nrels;
   unsigned int i;
 
   if (is_32bit_elf)
     {
-      Elf32_External_Rel *erels;
+      Elf32_External_Rel * erels;
 
       erels = (Elf32_External_Rel *) get_data (NULL, file, rel_offset,
 					       rel_size, _("relocs"));
@@ -560,7 +563,7 @@ slurp_rel_relocs (FILE * file, unsigned long rel_offset, unsigned long rel_size,
     }
   else
     {
-      Elf64_External_Rel *erels;
+      Elf64_External_Rel * erels;
 
       erels = (Elf64_External_Rel *) get_data (NULL, file, rel_offset,
 					       rel_size, _("relocs"));
@@ -901,7 +904,7 @@ get_dynamic_type (unsigned long type)
 	       || (elf_header.e_machine == EM_PARISC
 		   && (type >= OLD_DT_LOOS) && (type <= OLD_DT_HIOS)))
 	{
-	  const char *result;
+	  const char * result;
 
 	  switch (elf_header.e_machine)
 	    {
@@ -1048,8 +1051,7 @@ get_machine_name (unsigned e_machine)
     case EM_S390:		return "IBM S/390";
     case EM_SCORE:		return "SUNPLUS S+Core";
     case EM_XSTORMY16:		return "Sanyo XStormy16 CPU core";
-    case EM_OPENRISC:
-    case EM_OR32:		return "OpenRISC";
+    case EM_OR1K:		return "OpenRISC 1000";
     case EM_ARC_A5:		return "ARC International ARCompact processor";
     case EM_CRX:		return "National Semiconductor CRX microprocessor";
     case EM_ADAPTEVA_EPIPHANY:	return "Adapteva EPIPHANY";
@@ -1200,7 +1202,7 @@ get_segment_type (unsigned long p_type)
     default:
       if ((p_type >= PT_LOPROC) && (p_type <= PT_HIPROC))
 	{
-	  const char *result;
+	  const char * result;
 
 	  switch (elf_header.e_machine)
 	    {
@@ -1216,7 +1218,7 @@ get_segment_type (unsigned long p_type)
 	}
       else if ((p_type >= PT_LOOS) && (p_type <= PT_HIOS))
 	{
-	  const char *result;
+	  const char * result;
 
 	  switch (elf_header.e_machine)
 	    {
@@ -1286,7 +1288,7 @@ get_section_type_name (unsigned int sh_type)
     default:
       if ((sh_type >= SHT_LOPROC) && (sh_type <= SHT_HIPROC))
 	{
-	  const char *result;
+	  const char * result;
 
 	  switch (elf_header.e_machine)
 	    {
@@ -1317,7 +1319,7 @@ get_section_type_name (unsigned int sh_type)
 	  if (result != NULL)
 	    return result;
 
-	sprintf (buff, "LOOS+%x", sh_type - SHT_LOOS);
+	  sprintf (buff, "LOOS+%x", sh_type - SHT_LOOS);
 	}
       else if ((sh_type >= SHT_LOUSER) && (sh_type <= SHT_HIUSER))
 	sprintf (buff, "LOUSER+%x", sh_type - SHT_LOUSER);
@@ -1484,21 +1486,31 @@ process_file_header (void)
   return 1;
 }
 
-
-static int
+static bfd_boolean
 get_32bit_program_headers (FILE * file, Elf_Internal_Phdr * pheaders)
 {
-  Elf32_External_Phdr *phdrs;
-  Elf32_External_Phdr *external;
-  Elf_Internal_Phdr *internal;
+  Elf32_External_Phdr * phdrs;
+  Elf32_External_Phdr * external;
+  Elf_Internal_Phdr *   internal;
   unsigned int i;
+  unsigned int size = elf_header.e_phentsize;
+  unsigned int num  = elf_header.e_phnum;
 
-  phdrs = ((Elf32_External_Phdr *)
-	   get_data (NULL, file, elf_header.e_phoff,
-		     elf_header.e_phentsize * elf_header.e_phnum,
-		     _("program headers")));
-  if (!phdrs)
-    return 0;
+  /* PR binutils/17531: Cope with unexpected section header sizes.  */
+  if (size == 0 || num == 0)
+    return FALSE;
+  if (size < sizeof * phdrs)
+    {
+      error (_("The e_phentsize field in the ELF header is less than the size of an ELF program header\n"));
+      return FALSE;
+    }
+  if (size > sizeof * phdrs)
+    warn (_("The e_phentsize field in the ELF header is larger than the size of an ELF program header\n"));
+
+  phdrs = (Elf32_External_Phdr *) get_data (NULL, file, elf_header.e_phoff,
+                                            size * num, _("program headers"));
+  if (phdrs == NULL)
+    return FALSE;
 
   for (i = 0, internal = pheaders, external = phdrs;
        i < elf_header.e_phnum;
@@ -1515,24 +1527,34 @@ get_32bit_program_headers (FILE * file, Elf_Internal_Phdr * pheaders)
     }
 
   VG_(free) (phdrs);
-
-  return 1;
+  return TRUE;
 }
 
-static int
+static bfd_boolean
 get_64bit_program_headers (FILE * file, Elf_Internal_Phdr * pheaders)
 {
-  Elf64_External_Phdr *phdrs;
-  Elf64_External_Phdr *external;
-  Elf_Internal_Phdr *internal;
+  Elf64_External_Phdr * phdrs;
+  Elf64_External_Phdr * external;
+  Elf_Internal_Phdr *   internal;
   unsigned int i;
+  unsigned int size = elf_header.e_phentsize;
+  unsigned int num  = elf_header.e_phnum;
 
-  phdrs = ((Elf64_External_Phdr *)
-	   get_data (NULL, file, elf_header.e_phoff,
-		     elf_header.e_phentsize * elf_header.e_phnum,
-		     _("program headers")));
+  /* PR binutils/17531: Cope with unexpected section header sizes.  */
+  if (size == 0 || num == 0)
+    return FALSE;
+  if (size < sizeof * phdrs)
+    {
+      error (_("The e_phentsize field in the ELF header is less than the size of an ELF program header\n"));
+      return FALSE;
+    }
+  if (size > sizeof * phdrs)
+    warn (_("The e_phentsize field in the ELF header is larger than the size of an ELF program header\n"));
+
+  phdrs = (Elf64_External_Phdr *) get_data (NULL, file, elf_header.e_phoff,
+                                            size * num, _("program headers"));
   if (!phdrs)
-    return 0;
+    return FALSE;
 
   for (i = 0, internal = pheaders, external = phdrs;
        i < elf_header.e_phnum;
@@ -1549,8 +1571,7 @@ get_64bit_program_headers (FILE * file, Elf_Internal_Phdr * pheaders)
     }
 
   VG_(free) (phdrs);
-
-  return 1;
+  return TRUE;
 }
 
 /* Returns 1 if the program headers were loaded.  */
@@ -1559,7 +1580,7 @@ static int
 process_program_headers (FILE * file)
 {
   Elf_Internal_Phdr *program_headers;
-  Elf_Internal_Phdr *segment;
+  Elf_Internal_Phdr * segment;
   unsigned int i;
 
   if (elf_header.e_phnum == 0)
@@ -1589,12 +1610,9 @@ process_program_headers (FILE * file)
       return 0;
     }
 
-  if (is_32bit_elf)
-    i = get_32bit_program_headers (file, program_headers);
-  else
-    i = get_64bit_program_headers (file, program_headers);
-
-  if (i == 0)
+ if (!(is_32bit_elf
+     ? get_32bit_program_headers (file, program_headers)
+     : get_64bit_program_headers (file, program_headers)))
     {
       VG_(free) (program_headers);
       return 0;
@@ -1708,6 +1726,9 @@ process_program_headers (FILE * file)
 	    }
 	}
 
+      if (do_segments)
+	putc ('\n', stdout);
+
       switch (segment->p_type)
 	{
 	case PT_LOAD:
@@ -1742,17 +1763,14 @@ process_program_headers (FILE * file)
 	      fgets(program_interpreter, 62, file);
 
 	      if (do_segments)
-	 FJALAR_DPRINTF (_("\n      [Requesting program interpreter: %s]"),
+	 FJALAR_DPRINTF (_("      [Requesting program interpreter: %s]\n"),
 		    program_interpreter);
 	    }
 	  break;
 	}
-
-      if (do_segments)
-	putc ('\n', stdout);
     }
 
-  if (loadaddr == -1)
+    if (loadaddr == -1)
     {
       /* Very strange.  */
       loadaddr = 0;
@@ -1768,7 +1786,7 @@ process_program_headers (FILE * file)
       for (i = 0; i < elf_header.e_phnum; i++)
 	{
 	  unsigned int j;
-	  Elf_Internal_Shdr *section;
+	  Elf_Internal_Shdr * section;
 
 	  segment = program_headers + i;
 	  section = section_headers;
@@ -1800,30 +1818,46 @@ process_program_headers (FILE * file)
 }
 
 
-static int
-get_32bit_section_headers (FILE * file, unsigned int num)
+static bfd_boolean
+get_32bit_section_headers (FILE * file, bfd_boolean probe)
 {
-  Elf32_External_Shdr *shdrs;
-  Elf_Internal_Shdr *internal;
+  Elf32_External_Shdr * shdrs;
+  Elf_Internal_Shdr *   internal;
   unsigned int i;
+  unsigned int size = elf_header.e_shentsize;
+  unsigned int num = probe ? 1 : elf_header.e_shnum;
 
-  shdrs = ((Elf32_External_Shdr *)
-	   get_data (NULL, file, elf_header.e_shoff,
-		     elf_header.e_shentsize * num,
-		     _("section headers")));
-  if (!shdrs)
-    return 0;
+  /* PR binutils/17531: Cope with unexpected section header sizes.  */
+  if (size == 0 || num == 0)
+    return FALSE;
+  if (size < sizeof * shdrs)
+    {
+      if (! probe)
+        error (_("The e_shentsize field in the ELF header is less than the size of an ELF section header\n"));
+      return FALSE;
+    }
+  if (!probe && size > sizeof * shdrs)
+    warn (_("The e_shentsize field in the ELF header is larger than the size of an ELF section header\n"));
 
+  shdrs = (Elf32_External_Shdr *) get_data (NULL, file, elf_header.e_shoff,
+                                            size * num,
+					    probe ? NULL : _("section headers"));
+  if (shdrs == NULL)
+    return FALSE;
+
+  if (section_headers != NULL)
+    VG_(free) (section_headers);
   section_headers = ((Elf_Internal_Shdr *)
-		     VG_(malloc) ("readelf.c: get_32b_sh", num * sizeof (Elf_Internal_Shdr)));
+                    VG_(malloc) ("readelf.c: get_32b_sh", num * sizeof (Elf_Internal_Shdr)));
 
   //  FJALAR_DPRINTF("Just allocated section_headers at 0x%x, size = %d * %d\n",
   //         section_headers, num, sizeof (Elf_Internal_Shdr)); // PG
 
   if (section_headers == NULL)
     {
-      error (_("Out of memory\n"));
-      return 0;
+      if (!probe)
+        error (_("Out of memory reading %u section headers\n"), num);
+      return FALSE;
     }
 
   for (i = 0, internal = section_headers;
@@ -1843,31 +1877,46 @@ get_32bit_section_headers (FILE * file, unsigned int num)
     }
 
   VG_(free) (shdrs);
-
-  return 1;
+  return TRUE;
 }
 
-static int
-get_64bit_section_headers (FILE * file, unsigned int num)
+static bfd_boolean
+get_64bit_section_headers (FILE * file, bfd_boolean probe)
 {
-  Elf64_External_Shdr *shdrs;
-  Elf_Internal_Shdr *internal;
+  Elf64_External_Shdr * shdrs;
+  Elf_Internal_Shdr *   internal;
   unsigned int i;
+  unsigned int size = elf_header.e_shentsize;
+  unsigned int num = probe ? 1 : elf_header.e_shnum;
 
-  shdrs = ((Elf64_External_Shdr *)
-	   get_data (NULL, file, elf_header.e_shoff,
-		     elf_header.e_shentsize * num,
-		     _("section headers")));
-  if (!shdrs)
-    return 0;
+  /* PR binutils/17531: Cope with unexpected section header sizes.  */
+  if (size == 0 || num == 0)
+    return FALSE;
+  if (size < sizeof * shdrs)
+    {
+      if (! probe)
+        error (_("The e_shentsize field in the ELF header is less than the size of an ELF section header\n"));
+      return FALSE;
+    }
+  if (! probe && size > sizeof * shdrs)
+    warn (_("The e_shentsize field in the ELF header is larger than the size of an ELF section header\n"));
 
+  shdrs = (Elf64_External_Shdr *) get_data (NULL, file, elf_header.e_shoff,
+                                            size * num,
+					    probe ? NULL : _("section headers"));
+  if (shdrs == NULL)
+    return FALSE;
+
+  if (section_headers != NULL)
+    VG_(free) (section_headers);
   section_headers = ((Elf_Internal_Shdr *)
-		     VG_(malloc) ("readelf.c: get_64b_sh", num * sizeof (Elf_Internal_Shdr)));
+                    VG_(malloc) ("readelf.c: get_64b_sh", num * sizeof (Elf_Internal_Shdr)));
 
   if (section_headers == NULL)
     {
-      error (_("Out of memory\n"));
-      return 0;
+      if (! probe)
+        error (_("Out of memory reading %u section headers\n"), num);
+      return FALSE;
     }
 
   for (i = 0, internal = section_headers;
@@ -1887,8 +1936,7 @@ get_64bit_section_headers (FILE * file, unsigned int num)
     }
 
   VG_(free) (shdrs);
-
-  return 1;
+  return TRUE;
 }
 
 Elf_Internal_Sym *
@@ -1901,11 +1949,10 @@ get_32bit_elf_symbols (FILE * file, Elf_Internal_Shdr * section)
   Elf_Internal_Sym *psym;
   unsigned int j;
 
-  esyms = ((Elf32_External_Sym *)
-	   get_data (NULL, file, section->sh_offset,
+  esyms = ((Elf32_External_Sym *) get_data (NULL, file, section->sh_offset,
 		     section->sh_size, _("symbols")));
-  if (!esyms)
-    return NULL;
+  if (esyms == NULL)
+    goto exit_point;
 
   shndx = NULL;
   if (symtab_shndx_hdr != NULL
@@ -1915,11 +1962,8 @@ get_32bit_elf_symbols (FILE * file, Elf_Internal_Shdr * section)
       shndx = ((Elf_External_Sym_Shndx *)
 	       get_data (NULL, file, symtab_shndx_hdr->sh_offset,
 			 symtab_shndx_hdr->sh_size, _("symtab shndx")));
-      if (!shndx)
-	{
-	  VG_(free) (esyms);
-	  return NULL;
-	}
+      if (shndx == NULL)
+	goto exit_point;
     }
 
   number = section->sh_size / section->sh_entsize;
@@ -1927,11 +1971,9 @@ get_32bit_elf_symbols (FILE * file, Elf_Internal_Shdr * section)
 
   if (isyms == NULL)
     {
-      error (_("Out of memory\n"));
-      if (shndx)
-	VG_(free) (shndx);
-      VG_(free) (esyms);
-      return NULL;
+      error (_("Out of memory reading %lu symbols\n"),
+	     (unsigned long) number);
+      goto exit_point;
     }
 
   for (j = 0, psym = isyms; j < number; j++, psym++)
@@ -1949,9 +1991,11 @@ get_32bit_elf_symbols (FILE * file, Elf_Internal_Shdr * section)
       psym->st_other = BYTE_GET (esyms[j].st_other);
     }
 
-  if (shndx)
-    VG_(free) (shndx);
-  VG_(free) (esyms);
+  exit_point:
+    if (shndx != NULL)
+      VG_(free) (shndx);
+    if (esyms != NULL)
+      VG_(free) (esyms);
 
   return isyms;
 }
@@ -1970,7 +2014,7 @@ get_64bit_elf_symbols (FILE * file, Elf_Internal_Shdr * section)
 	   get_data (NULL, file, section->sh_offset,
 		     section->sh_size, _("symbols")));
   if (!esyms)
-    return NULL;
+    goto exit_point;
 
   shndx = NULL;
   if (symtab_shndx_hdr != NULL
@@ -1980,11 +2024,8 @@ get_64bit_elf_symbols (FILE * file, Elf_Internal_Shdr * section)
       shndx = ((Elf_External_Sym_Shndx *)
 	       get_data (NULL, file, symtab_shndx_hdr->sh_offset,
 			 symtab_shndx_hdr->sh_size, _("symtab shndx")));
-      if (!shndx)
-	{
-	  VG_(free) (esyms);
-	  return NULL;
-	}
+      if (shndx == NULL)
+	goto exit_point;
     }
 
   number = section->sh_size / section->sh_entsize;
@@ -1992,11 +2033,9 @@ get_64bit_elf_symbols (FILE * file, Elf_Internal_Shdr * section)
 
   if (isyms == NULL)
     {
-      error (_("Out of memory\n"));
-      if (shndx)
-	VG_(free) (shndx);
-      VG_(free) (esyms);
-      return NULL;
+      error (_("Out of memory reading %lu symbols\n"),
+	     (unsigned long) number);
+      goto exit_point;
     }
 
   for (j = 0, psym = isyms; j < number; j++, psym++)
@@ -2016,10 +2055,11 @@ get_64bit_elf_symbols (FILE * file, Elf_Internal_Shdr * section)
       psym->st_size  = BYTE_GET (esyms[j].st_size);
     }
 
-  if (shndx)
-    VG_(free) (shndx);
-  VG_(free) (esyms);
-
+   exit_point:
+    if (shndx != NULL)
+      VG_(free) (shndx);
+    if (esyms != NULL)
+      VG_(free) (esyms);
   return isyms;
 }
 
@@ -2073,7 +2113,7 @@ get_elf_section_flags (bfd_vma sh_flags)
 static int
 process_section_headers (FILE * file)
 {
-  Elf_Internal_Shdr *section;
+  Elf_Internal_Shdr * section;
   unsigned int i;
 
   section_headers = NULL;
@@ -2088,14 +2128,14 @@ process_section_headers (FILE * file)
 
   if (do_sections && !do_header)
     FJALAR_DPRINTF (_("There are %d section headers, starting at offset 0x%lx:\n"),
-	    elf_header.e_shnum, (unsigned long) elf_header.e_shoff);
+            elf_header.e_shnum, (unsigned long) elf_header.e_shoff);
 
   if (is_32bit_elf)
     {
-      if (! get_32bit_section_headers (file, elf_header.e_shnum))
-	return 0;
+      if (! get_32bit_section_headers (file, FALSE))
+        return 0;
     }
-  else if (! get_64bit_section_headers (file, elf_header.e_shnum))
+  else if (! get_64bit_section_headers (file, FALSE))
     return 0;
 
   /* Read in the string table, so that we have names to display.  */
@@ -2332,7 +2372,7 @@ process_relocs (FILE * file)
   if (do_using_dynamic)
     {
       int is_rela;
-      const char *name;
+      const char * name;
       int has_dynamic_reloc;
       unsigned int i;
 
@@ -2378,7 +2418,7 @@ process_relocs (FILE * file)
     }
   else
     {
-      Elf_Internal_Shdr *section;
+      Elf_Internal_Shdr * section;
       unsigned long i;
       int found = 0;
 
@@ -2464,22 +2504,22 @@ struct absaddr
 
 struct ia64_unw_table_entry
   {
-	struct absaddr start;
-	struct absaddr end;
-	struct absaddr info;
+    struct absaddr start;
+    struct absaddr end;
+    struct absaddr info;
   };
 
 struct ia64_unw_aux_info
   {
     struct ia64_unw_table_entry *table;	/* Unwind table.  */
     unsigned long table_len;	/* Length of unwind table.  */
-    unsigned char *info;	/* Unwind info.  */
+    unsigned char * info;	/* Unwind info.  */
     unsigned long info_size;	/* Size of unwind info.  */
     bfd_vma info_addr;		/* starting address of unwind info.  */
     bfd_vma seg_base;		/* Starting address of segment.  */
-    Elf_Internal_Sym *symtab;	/* The symbol table.  */
+    Elf_Internal_Sym * symtab;	/* The symbol table.  */
     unsigned long nsyms;	/* Number of symbols.  */
-    char *strtab;		/* The string table.  */
+    char * strtab;		/* The string table.  */
     unsigned long strtab_size;	/* Size of string table.  */
   };
 
@@ -2500,7 +2540,6 @@ slurp_ia64_unwind_table (FILE * file, struct ia64_unw_aux_info * aux, Elf_Intern
   unsigned char *table, *tp;
   Elf_Internal_Sym *sym;
   const char *relname;
-  int result;
 
   /* First, find the starting address of the segment that includes
      this section: */
@@ -2508,31 +2547,28 @@ slurp_ia64_unwind_table (FILE * file, struct ia64_unw_aux_info * aux, Elf_Intern
   if (elf_header.e_phnum)
     {
       prog_hdrs = (Elf_Internal_Phdr *)
-	xmalloc (elf_header.e_phnum * sizeof (Elf_Internal_Phdr));
+        xmalloc (elf_header.e_phnum * sizeof (Elf_Internal_Phdr));
 
-      if (is_32bit_elf)
-	result = get_32bit_program_headers (file, prog_hdrs);
-      else
-	result = get_64bit_program_headers (file, prog_hdrs);
-
-      if (!result)
-	{
-	  VG_(free) (prog_hdrs);
-	  return 0;
-	}
+      if (!(is_32bit_elf
+        ? get_32bit_program_headers (file, prog_hdrs)
+        : get_64bit_program_headers (file, prog_hdrs)))
+      {
+        VG_(free) (prog_hdrs);
+        return 0;
+      }
 
       for (seg = prog_hdrs; seg < prog_hdrs + elf_header.e_phnum; ++seg)
-	{
-	  if (seg->p_type != PT_LOAD)
-	    continue;
+        {
+          if (seg->p_type != PT_LOAD)
+            continue;
 
-	  if (sec->sh_addr >= seg->p_vaddr
-	      && (sec->sh_addr + sec->sh_size <= seg->p_vaddr + seg->p_memsz))
-	    {
-	      aux->seg_base = seg->p_vaddr;
-	      break;
-	    }
-	}
+          if (sec->sh_addr >= seg->p_vaddr
+              && (sec->sh_addr + sec->sh_size <= seg->p_vaddr + seg->p_memsz))
+            {
+              aux->seg_base = seg->p_vaddr;
+              break;
+            }
+        }
 
       VG_(free) (prog_hdrs);
     }
@@ -2551,17 +2587,16 @@ slurp_ia64_unwind_table (FILE * file, struct ia64_unw_aux_info * aux, Elf_Intern
       tep->start.section = SHN_UNDEF;
       tep->end.section   = SHN_UNDEF;
       tep->info.section  = SHN_UNDEF;
-	  tep->start.offset = byte_get (tp, eh_addr_size); tp += eh_addr_size;
-	  tep->end.offset   = byte_get (tp, eh_addr_size); tp += eh_addr_size;
-	  tep->info.offset  = byte_get (tp, eh_addr_size); tp += eh_addr_size;
+      tep->start.offset = byte_get (tp, eh_addr_size); tp += eh_addr_size;
+      tep->end.offset   = byte_get (tp, eh_addr_size); tp += eh_addr_size;
+      tep->info.offset  = byte_get (tp, eh_addr_size); tp += eh_addr_size;
       tep->start.offset += aux->seg_base;
       tep->end.offset   += aux->seg_base;
       tep->info.offset  += aux->seg_base;
     }
   VG_(free) (table);
 
-  /* Third, apply any relocations to the unwind table: */
-
+  /* Third, apply any relocations to the unwind table:  */
   for (relsec = section_headers;
        relsec < section_headers + elf_header.e_shnum;
        ++relsec)
@@ -2663,7 +2698,12 @@ process_unwind (FILE * file)
 	  aux.symtab = GET_ELF_SYMBOLS (file, sec);
 
 	  strsec = SECTION_HEADER (sec->sh_link);
-	  aux.strtab_size = strsec->sh_size;
+	  if (aux.strtab != NULL)
+	    {
+	      error (_("Multiple auxillary string tables encountered\n"));
+          VG_(free) (aux.strtab);
+	    }
+      aux.strtab_size = strsec->sh_size;
 	  aux.strtab = (char *) get_data (NULL, file, strsec->sh_offset,
 					  aux.strtab_size, _("string table"));
 	}
@@ -2679,7 +2719,7 @@ process_unwind (FILE * file)
       const char *suffix;
       size_t len, len2;
 
-      for (i = unwstart, sec = section_headers + unwstart;
+      for (i = unwstart, sec = section_headers + unwstart, unwsec = NULL;
 	   i < elf_header.e_shnum; ++i, ++sec)
 	if (sec->sh_type == SHT_IA_64_UNWIND)
 	  {
@@ -2706,7 +2746,7 @@ process_unwind (FILE * file)
       else
 	{
 	  /* .IA_64.unwindFOO -> .IA_64.unwind_infoFOO
-	     .IA_64.unwind or BAR -> .IA_64.unwind_info */
+	     .IA_64.unwind or BAR -> .IA_64.unwind_info.  */
 	  len = sizeof (ELF_STRING_ia64_unwind) - 1;
 	  len2 = sizeof (ELF_STRING_ia64_unwind_info) - 1;
 	  suffix = "";
@@ -2819,6 +2859,7 @@ get_64bit_dynamic_section (FILE * file)
   Elf_Internal_Dyn *entry;
   bfd_size_type i;
 
+  /* Read in the data.  */
   edyn = (Elf64_External_Dyn *) get_data (NULL, file, dynamic_addr,
 					  dynamic_size, _("dynamic segment"));
   if (!edyn)
@@ -2841,6 +2882,7 @@ get_64bit_dynamic_section (FILE * file)
       return 0;
     }
 
+  /* Convert from external to internal formats.  */
   for (i = 0, entry = dynamic_section;
        i < dynamic_size;
        i++, entry++)
@@ -2999,7 +3041,11 @@ process_dynamic_section (FILE * file)
 	    {
 	      /* Note: these braces are necessary to avoid a syntax
 		 error from the SunOS4 C compiler.  */
-	      tl_assert (sizeof (Elf_External_Syminfo) == entry->d_un.d_val);
+	      /* PR binutils/17531: A corrupt file can trigger this test.
+		 So do not use an assert, instead generate an error message.  */
+	      if (sizeof (Elf_External_Syminfo) != entry->d_un.d_val)
+		error (_("Bad value (%d) for SYMINENT entry\n"),
+		       (int) entry->d_un.d_val);
 	    }
 	  else if (entry->d_tag == DT_SYMINSZ)
 	    syminsz = entry->d_un.d_val;
@@ -3489,7 +3535,7 @@ get_ver_flags (unsigned int flags)
 static int
 process_version_sections (FILE * file)
 {
-  Elf_Internal_Shdr *section;
+  Elf_Internal_Shdr * section;
   unsigned i;
   int found = 0;
 
@@ -3504,7 +3550,7 @@ process_version_sections (FILE * file)
 	{
 	case SHT_GNU_verdef:
 	  {
-	    Elf_External_Verdef *edefs;
+	    Elf_External_Verdef * edefs;
 	    unsigned int idx;
 	    unsigned int cnt;
 
@@ -3516,7 +3562,7 @@ process_version_sections (FILE * file)
 
 	    FJALAR_DPRINTF (_("  Addr: 0x"));
 	    printf_vma (section->sh_addr);
-	    FJALAR_DPRINTF (_("  Offset: %#08lx  Link: %lx (%s)\n"),
+	    FJALAR_DPRINTF (_("  Offset: %#08lx  Link: %lx (%s)"),
 		    (Word) section->sh_offset, (Word) section->sh_link,
 		    SECTION_NAME (SECTION_HEADER (section->sh_link)));
 
@@ -3529,10 +3575,10 @@ process_version_sections (FILE * file)
 
 	    for (idx = cnt = 0; cnt < section->sh_info; ++cnt)
 	      {
-		char *vstart;
-		Elf_External_Verdef *edef;
+		char * vstart;
+		Elf_External_Verdef * edef;
 		Elf_Internal_Verdef ent;
-		Elf_External_Verdaux *eaux;
+		Elf_External_Verdaux * eaux;
 		Elf_Internal_Verdaux aux;
 		int j;
 		int isum;
@@ -3596,7 +3642,7 @@ process_version_sections (FILE * file)
 
 	case SHT_GNU_verneed:
 	  {
-	    Elf_External_Verneed *eneed;
+	    Elf_External_Verneed * eneed;
 	    unsigned int idx;
 	    unsigned int cnt;
 
@@ -3648,7 +3694,7 @@ process_version_sections (FILE * file)
 
 		for (j = 0, isum = idx + ent.vn_aux; j < ent.vn_cnt; ++j)
 		  {
-		    Elf_External_Vernaux *eaux;
+		    Elf_External_Vernaux * eaux;
 		    Elf_Internal_Vernaux aux;
 
 		    eaux = (Elf_External_Vernaux *) vstart;
@@ -3682,14 +3728,14 @@ process_version_sections (FILE * file)
 
 	case SHT_GNU_versym:
 	  {
-	    Elf_Internal_Shdr *link_section;
-	    int total;
-	    int cnt;
-	    unsigned char *edata;
-	    unsigned short *data;
-	    char *strtab;
-	    Elf_Internal_Sym *symbols;
-	    Elf_Internal_Shdr *string_sec;
+	    Elf_Internal_Shdr * link_section;
+	    size_t total;
+	    unsigned int cnt;
+	    unsigned char * edata;
+	    unsigned short * data;
+	    char * strtab;
+	    Elf_Internal_Sym * symbols;
+	    Elf_Internal_Shdr * string_sec;
 
 	    link_section = SECTION_HEADER (section->sh_link);
 	    total = section->sh_size / section->sh_entsize;
@@ -3706,7 +3752,7 @@ process_version_sections (FILE * file)
 	    if (!strtab)
 	      break;
 
-	    FJALAR_DPRINTF (_("\nVersion symbols section '%s' contains %d entries:\n"),
+	    FJALAR_DPRINTF (_("\nVersion symbols section '%s' contains %lu entries:\n"),
 		    SECTION_NAME (section), total);
 
 	    FJALAR_DPRINTF (_(" Addr: "));
@@ -3944,11 +3990,11 @@ get_dynamic_data (FILE * file, unsigned int number)
 static int
 process_symbol_table (FILE * file)
 {
-  Elf_Internal_Shdr *section;
+  Elf_Internal_Shdr * section;
   unsigned char nb[4];
   unsigned char nc[4];
-  bfd_vma nbuckets = 0;
-  bfd_vma nchains = 0;
+  bfd_size_type nbuckets = 0;
+  bfd_size_type nchains = 0;
   bfd_vma * buckets = NULL;
   bfd_vma * chains = NULL;
 
@@ -3963,7 +4009,7 @@ process_symbol_table (FILE * file)
     {
       if (fseek (file, dynamic_info[DT_HASH] - loadaddr, SEEK_SET))
 	{
-	  error (_("Unable to seek to start of dynamic information"));
+	  error (_("Unable to seek to start of dynamic information\n"));
 	  return 0;
 	}
 
@@ -4035,9 +4081,9 @@ process_symbol_table (FILE * file)
 	   i++, section++)
 	{
 	  unsigned int si;
-	  char *strtab;
-	  Elf_Internal_Sym *symtab;
-	  Elf_Internal_Sym *psym;
+	  char * strtab;
+	  Elf_Internal_Sym * symtab;
+	  Elf_Internal_Sym * psym;
 
 	  //	  printf (_("'%s'\n"), SECTION_NAME (section));
 
@@ -4301,7 +4347,6 @@ process_symbol_table (FILE * file)
 
       FJALAR_DPRINTF (_("\nHistogram for bucket list length (total of %lu buckets):\n"),
 	      (unsigned long) nbuckets);
-      FJALAR_DPRINTF (_(" Length  Number     %% of total  Coverage\n"));
 
       lengths = (unsigned long *) VG_(calloc) ("readelf.c: process_symbol_table.1", nbuckets, sizeof (*lengths));
       if (lengths == NULL)
@@ -4309,7 +4354,9 @@ process_symbol_table (FILE * file)
 	  error (_("Out of memory"));
 	  return 0;
 	}
-      for (hn = 0; hn < nbuckets; ++hn)
+
+     FJALAR_DPRINTF (_(" Length  Number     %% of total  Coverage\n"));
+     for (hn = 0; hn < nbuckets; ++hn)
 	{
 	  if (! buckets[hn])
 	    continue;
@@ -4319,6 +4366,15 @@ process_symbol_table (FILE * file)
 	      ++nsyms;
 	      if (maxlength < ++lengths[hn])
 		++maxlength;
+
+	      /* PR binutils/17531: A corrupt binary could contain broken
+		 histogram data.  Do not go into an infinite loop trying
+		 to process it.  */
+	      if (chains[si] == si)
+		{
+		  error (_("histogram chain links to itself\n"));
+		  break;
+		}
 	    }
 	}
 
@@ -4432,7 +4488,7 @@ disassemble_section (Elf_Internal_Shdr * section, FILE * file)
 	  SECTION_NAME (section));
 
   // (comment added 2005)  
-  /* XXX -- to be done --- XXX */
+  /* FIXME: XXX -- to be done --- XXX */
 
   return 1;
 }
@@ -4994,12 +5050,9 @@ process_corefile_note_segments (FILE * file)
       return 0;
     }
 
-  if (is_32bit_elf)
-    i = get_32bit_program_headers (file, program_headers);
-  else
-    i = get_64bit_program_headers (file, program_headers);
-
-  if (i == 0)
+  if (!(is_32bit_elf
+     ? get_32bit_program_headers (file, program_headers)
+     : get_64bit_program_headers (file, program_headers)))
     {
       VG_(free) (program_headers);
       return 0;
@@ -5025,15 +5078,23 @@ process_note_sections (FILE * file)
 {
   Elf_Internal_Shdr * section;
   unsigned long i;
+  int n = 0;
   int res = 1;
 
   for (i = 0, section = section_headers;
        i < elf_header.e_shnum && section != NULL;
        i++, section++)
     if (section->sh_type == SHT_NOTE)
-      res &= process_corefile_note_segment (file,
+      {
+    res &= process_corefile_note_segment (file,
 					    (bfd_vma) section->sh_offset,
 					    (bfd_vma) section->sh_size);
+    n++;
+      } 
+
+  if (n == 0)
+    /* Try processing NOTE segments instead.  */
+    return process_corefile_note_segments (file);
 
   return res;
 }
@@ -5155,9 +5216,9 @@ get_file_header (FILE * file)
       /* There may be some extensions in the first section header.  Don't
 	 bomb if we can't read it.  */
       if (is_32bit_elf)
-	get_32bit_section_headers (file, 1);
+	get_32bit_section_headers (file, TRUE);
       else
-	get_64bit_section_headers (file, 1);
+	get_64bit_section_headers (file, TRUE);
     }
 
   return 1;
@@ -5202,7 +5263,7 @@ process_file (const char * file_name)
 
   if (! process_file_header ())
     {
-      //  FJALAR_DPRINTF("failed process_file_header()\n"); // PG
+      // FJALAR_DPRINTF("failed process_file_header()\n"); // PG
       fclose (file);
       return 1;
     }
