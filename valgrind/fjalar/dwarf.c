@@ -1,5 +1,5 @@
 /* dwarf.c -- display DWARF contents of a BFD binary file
-   Copyright 2005-2013 Free Software Foundation, Inc.
+   Copyright (C) 2005-2014 Free Software Foundation, Inc.
 
    This file is part of GNU Binutils.
 
@@ -164,13 +164,22 @@ size_of_encoded_value (int encoding)
 }
 
 static dwarf_vma
-get_encoded_value (unsigned char *data,
+get_encoded_value (unsigned char **pdata,
                    int encoding,
                    dwarf_vma section_addr,
-                   unsigned char *section_start)
+                   unsigned char *section_start,
+                   unsigned char * end)
 {
+  unsigned char * data = * pdata;
   int size = size_of_encoded_value (encoding);
   dwarf_vma val;
+
+  if (data + size >= end)
+    {
+      warn (_("Encoded value extends past end of section\n"));
+      * pdata = end;
+      return 0;
+    }
 
   if (encoding & DW_EH_PE_signed)
     val = byte_get_signed (data, size);
@@ -179,6 +188,8 @@ get_encoded_value (unsigned char *data,
 
   if ((encoding & 0x70) == DW_EH_PE_pcrel)
     val += section_addr + (data - section_start);
+
+  * pdata = data + size;
   return val;
 }
 
@@ -305,8 +316,8 @@ read_leb128 (unsigned char *data,
   if (length_return != NULL)
     *length_return = num_read;
 
-  if (sign && (shift < 8 * sizeof (long)) && (byte & 0x40))
-    result |= -1L << shift;
+  if (sign && (shift < 8 * sizeof (result)) && (byte & 0x40))
+    result |= (dwarf_vma) -1 << shift;
 
   return result;
 }
@@ -448,7 +459,7 @@ process_extended_line_op (unsigned char *data,
 
   if (len == 0 || data == end)
     {
-      warn (_("badly formed extended line op encountered!\n"));
+      warn (_("Badly formed extended line op encountered!\n"));
       return bytes_read;
     }
 
@@ -1605,24 +1616,45 @@ read_and_display_attr_value (unsigned long attribute,
     case DW_FORM_exprloc:
       uvalue = read_uleb128 (data, & bytes_read, end);
       block_start = data + bytes_read;
+      /* PR 17512: file: 008-103549-0.001:0.1.  */
+      if (block_start + uvalue > end)
+	{
+	  warn (_("Corrupt attribute block length: %lx\n"), (long) uvalue);
+	  uvalue = end - block_start;
+	}
       data = display_block (block_start, uvalue, ok_to_print, end);
       break;
 
     case DW_FORM_block1:
       uvalue = byte_get (data, 1);
       block_start = data + 1;
+      if (block_start + uvalue > end)
+	{
+	  warn (_("Corrupt attribute block length: %lx\n"), (long) uvalue);
+	  uvalue = end - block_start;
+	}
       data = display_block (block_start, uvalue, ok_to_print, end);
       break;
 
     case DW_FORM_block2:
       uvalue = byte_get (data, 2);
       block_start = data + 2;
+      if (block_start + uvalue > end)
+	{
+	  warn (_("Corrupt attribute block length: %lx\n"), (long) uvalue);
+	  uvalue = end - block_start;
+	}
       data = display_block (block_start, uvalue, ok_to_print, end);
       break;
 
     case DW_FORM_block4:
       uvalue = byte_get (data, 4);
       block_start = data + 4;
+      if (block_start + uvalue > end)
+	{
+	  warn (_("Corrupt attribute block length: %lx\n"), (long) uvalue);
+	  uvalue = end - block_start;
+	}
       data = display_block (block_start, uvalue, ok_to_print, end);
       break;
 
@@ -1675,7 +1707,7 @@ read_and_display_attr_value (unsigned long attribute,
 #if 0
 	      unsigned int lmax = debug_info_p->max_loc_offsets;
 	      unsigned int num = debug_info_p->num_loc_offsets;
-  
+
 	      if (lmax == 0 || num >= lmax)
 		{
 		  lmax += 1024;
@@ -1687,6 +1719,8 @@ read_and_display_attr_value (unsigned long attribute,
 				 lmax, sizeof (*debug_info_p->have_frame_base));
 		  debug_info_p->max_loc_offsets = lmax;
 		}
+	      if (this_set != NULL)
+	        uvalue += this_set->section_offsets [DW_SECT_LOC];
 	      debug_info_p->loc_offsets [num] = uvalue;
 	      debug_info_p->have_frame_base [num] = have_frame_base;
 #endif
@@ -1737,11 +1771,10 @@ read_and_display_attr_value (unsigned long attribute,
     }
 
   /* For some attributes we can display further information.  */
-    if (ok_to_print) {printf ("\t");}
-
   switch (attribute)
     {
     case DW_AT_inline:
+      if (ok_to_print) {printf ("\t");}
       switch (uvalue)
 	    {
 	    case DW_INL_not_inlined:
@@ -1764,6 +1797,7 @@ read_and_display_attr_value (unsigned long attribute,
       break;
 
     case DW_AT_language:
+      if (ok_to_print) {printf ("\t");}
       switch (uvalue)
 	    {
 	  /* Ordered by the numeric value of these constants.  */
@@ -1808,6 +1842,7 @@ read_and_display_attr_value (unsigned long attribute,
       break;
 
     case DW_AT_encoding:
+      if (ok_to_print) {printf ("\t");}
       switch (uvalue)
 	    {
 	    case DW_ATE_void:	    	if (ok_to_print) {printf ("(void)");} break;
@@ -1844,6 +1879,7 @@ read_and_display_attr_value (unsigned long attribute,
       break;
 
     case DW_AT_accessibility:
+      if (ok_to_print) {printf ("\t");}
       switch (uvalue)
 	    {
 	    case DW_ACCESS_public:
@@ -1865,6 +1901,7 @@ read_and_display_attr_value (unsigned long attribute,
       break;
 
     case DW_AT_visibility:
+      if (ok_to_print) {printf ("\t");}
       switch (uvalue)
 	    {
 	    case DW_VIS_local:		if (ok_to_print) printf ("(local)"); break;
@@ -1875,6 +1912,7 @@ read_and_display_attr_value (unsigned long attribute,
       break;
 
     case DW_AT_virtuality:
+      if (ok_to_print) {printf ("\t");}
       switch (uvalue)
 	    {
 	    case DW_VIRTUALITY_none:	if (ok_to_print) printf ("(none)"); break;
@@ -1885,6 +1923,7 @@ read_and_display_attr_value (unsigned long attribute,
       break;
 
     case DW_AT_identifier_case:
+      if (ok_to_print) {printf ("\t");}
       switch (uvalue)
 	    {
 	    case DW_ID_case_sensitive:	if (ok_to_print) printf ("(case_sensitive)"); break;
@@ -1896,6 +1935,7 @@ read_and_display_attr_value (unsigned long attribute,
       break;
 
     case DW_AT_calling_convention:
+      if (ok_to_print) {printf ("\t");}
       switch (uvalue)
 	    {
 	    case DW_CC_normal:	if (ok_to_print) printf ("(normal)"); break;
@@ -1911,6 +1951,7 @@ read_and_display_attr_value (unsigned long attribute,
       break;
 
     case DW_AT_ordering:
+      if (ok_to_print) {printf ("\t");}
       switch (uvalue)
 	    {
 	    case -1: if (ok_to_print) printf ("(undefined)"); break;
@@ -1956,7 +1997,7 @@ read_and_display_attr_value (unsigned long attribute,
     case DW_AT_lower_bound:
       if (block_start)
 	  {
-          if (ok_to_print) printf ("(");
+          if (ok_to_print) printf ("\t(");
 	      decode_location_expression (block_start, pointer_size, offset_size, dwarf_version,
                                     uvalue, cu_offset, pass2, ok_to_harvest, entry, 0);
           if (ok_to_print) printf (")");
@@ -2003,7 +2044,7 @@ case DW_AT_import:
       
 	          abbrev_number = read_uleb128 (section_begin + uvalue, NULL, end);
       
-	          printf (_("[Abbrev Number: %ld"), abbrev_number);
+	          printf (_("\t[Abbrev Number: %ld"), abbrev_number);
 	          /* Don't look up abbrev for DW_FORM_ref_addr, as it very often will
 	             use different abbrev table, and we don't track .debug_info chunks
 	             yet.  */
@@ -2311,7 +2352,7 @@ process_debug_info (Elf_Internal_Shdr *section, unsigned char *start, FILE *file
   //free_debug_loc ();
 
     if (num_units == 0) {
-	  error (_("No comp units in %s section ?"), SECTION_NAME(section));
+	  error (_("No comp units in %s section ?\n"), SECTION_NAME(section));
 	  return 0;
 	}
 
@@ -2319,7 +2360,7 @@ process_debug_info (Elf_Internal_Shdr *section, unsigned char *start, FILE *file
     debug_information = (debug_info *)
                         VG_(malloc) ("dwarf.c: process_debug_info", num_units * sizeof (* debug_information));
     if (debug_information == NULL) {
-	  error (_("Not enough memory for a debug info array of %u entries"), num_units);
+	  error (_("Not enough memory for a debug info array of %u entries\n"), num_units);
 	  return 0;
 	}
 
@@ -2450,7 +2491,13 @@ process_debug_info (Elf_Internal_Shdr *section, unsigned char *start, FILE *file
 
       compunit.cu_pointer_size = byte_get (hdrptr, 1);
       hdrptr += 1;
-
+      /* PR 17512: file: 001-108546-0.001:0.1.  */
+      if (compunit.cu_pointer_size < 2 || compunit.cu_pointer_size > 8)
+	{
+	  warn (_("Invalid pointer size (%d) in compunit header, using %d instead\n"),
+		compunit.cu_pointer_size, offset_size);
+	  compunit.cu_pointer_size = offset_size;
+	}
       tags = hdrptr;
       cu_offset = start - section_begin;
       start += compunit.cu_length + initial_length_size;
@@ -3431,6 +3478,13 @@ display_loc_list (Elf_Internal_Shdr *section,
   dwarf_vma begin;
   dwarf_vma end;
   unsigned short length;
+
+  if (pointer_size < 2 || pointer_size > 8)
+    {
+      warn (_("Invalid pointer size (%d) in debug info for entry %d\n"),
+        pointer_size, debug_info_entry);
+      return;
+    }
   
   while (1) {
       if (start + 2 * pointer_size > section_end) {
@@ -3682,8 +3736,9 @@ display_debug_aranges (Elf_Internal_Shdr *section, unsigned char *start, FILE *f
       printf (_("  Segment Size:             %d\n"), arange.ar_segment_size);
 
       address_size = arange.ar_pointer_size + arange.ar_segment_size;
-     
-      if (address_size == 0)
+
+      /* PR 17512: file: 001-108546-0.001:0.1.  */
+      if (address_size == 0 || address_size > 8)
 	  {
 	    error (_("Invalid address size in %s section!\n"), SECTION_NAME(section));
 	    break;
@@ -3777,6 +3832,14 @@ frame_need_space (Frame_Chunk *fc, unsigned int reg)
   fc->ncols = reg + 1;
   fc->col_type = (short int *) xrealloc (fc->col_type, fc->ncols * sizeof (short int));
   fc->col_offset = (int *) xrealloc (fc->col_offset, fc->ncols * sizeof (int));
+  /* PR 17512: file:002-10025-0.005.  */
+  if (fc->col_type == NULL || fc->col_offset == NULL)
+    {
+      error (_("Out of memory allocating %u columns in dwarf frame arrays\n"),
+         fc->ncols);
+      fc->ncols = 0;
+      return -1;
+    }
 
   while (prev < fc->ncols)
     {
@@ -3978,9 +4041,110 @@ frame_display_row (Frame_Chunk *fc, int *need_col_headers, int *max_regs)
       printf ("\n");
 }
 
-#define GET(VAR, N)	SAFE_BYTE_GET_AND_INC (VAR, start, N, end);
+#define GET(VAR, N)	SAFE_BYTE_GET_AND_INC (VAR, start, N, end)
 #define LEB()	read_uleb128 (start, & length_return, end); start += length_return
 #define SLEB()	read_sleb128 (start, & length_return, end); start += length_return
+
+static unsigned char *
+read_cie (unsigned char *start, unsigned char *end,
+	  Frame_Chunk **p_cie, int *p_version,
+	  unsigned long *p_aug_len, unsigned char **p_aug)
+{
+  int version;
+  Frame_Chunk *fc;
+  unsigned int length_return;
+  unsigned char *augmentation_data = NULL;
+  unsigned long augmentation_data_len = 0;
+
+  * p_cie = NULL;
+  /* PR 17512: file: 001-228113-0.004.  */
+  if (start >= end)
+    return end;
+
+  fc = (Frame_Chunk *) xmalloc (sizeof (Frame_Chunk));
+  VG_(memset) (fc, 0, sizeof (Frame_Chunk));
+
+  fc->col_type = (short int *) xmalloc (sizeof (short int));
+  fc->col_offset = (int *) xmalloc (sizeof (int));
+
+  version = *start++;
+
+  fc->augmentation = (char *) start;
+  /* PR 17512: file: 001-228113-0.004.
+     Skip past augmentation name, but avoid running off the end of the data.  */
+  while (start < end)
+    if (* start ++ == '\0')
+      break;
+  if (start == end)
+    {
+      warn (_("No terminator for augmentation name\n"));
+      return start;
+    }
+
+  if (VG_(strcmp) (fc->augmentation, "eh") == 0)
+    start += eh_addr_size;
+
+  if (version >= 4)
+    {
+      GET (fc->ptr_size, 1);
+      GET (fc->segment_size, 1);
+      eh_addr_size = fc->ptr_size;
+    }
+  else
+    {
+      fc->ptr_size = eh_addr_size;
+      fc->segment_size = 0;
+    }
+  fc->code_factor = LEB ();
+  fc->data_factor = SLEB ();
+  if (version == 1)
+    {
+      GET (fc->ra, 1);
+    }
+  else
+    {
+      fc->ra = LEB ();
+    }
+
+  if (fc->augmentation[0] == 'z')
+    {
+      augmentation_data_len = LEB ();
+      augmentation_data = start;
+      start += augmentation_data_len;
+    }
+
+  if (augmentation_data_len)
+    {
+      unsigned char *p, *q;
+      p = (unsigned char *) fc->augmentation + 1;
+      q = augmentation_data;
+
+      while (1)
+	{
+	  if (*p == 'L')
+	    q++;
+	  else if (*p == 'P')
+	    q += 1 + size_of_encoded_value (*q);
+	  else if (*p == 'R')
+	    fc->fde_encoding = *q++;
+	  else if (*p == 'S')
+	    ;
+	  else
+	    break;
+	  p++;
+	}
+    }
+
+  *p_cie = fc;
+  if (p_version)
+    *p_version = version;
+  if (p_aug_len)
+    {
+      *p_aug_len = augmentation_data_len;
+      *p_aug = augmentation_data;
+    }
+  return start;
+}
 
 int
 display_debug_frames (Elf_Internal_Shdr *section, unsigned char *start,
@@ -3988,7 +4152,7 @@ display_debug_frames (Elf_Internal_Shdr *section, unsigned char *start,
 {
   unsigned char *end = start + section->sh_size;
   unsigned char *section_start = start;
-  Frame_Chunk *chunks = 0;
+  Frame_Chunk *chunks = 0, *forward_refs = 0;
   Frame_Chunk *remembered_state = 0;
   Frame_Chunk *rs;
   int is_eh = (VG_(strcmp) (SECTION_NAME (section), ".eh_frame") == 0);
@@ -4016,8 +4180,9 @@ display_debug_frames (Elf_Internal_Shdr *section, unsigned char *start,
       unsigned int initial_length_size;
 
       saved_start = start;
-      
+
       SAFE_BYTE_GET_AND_INC (length, start, 4, end);
+
       if (length == 0)
 	{
 	  if (fjalar_debug_dump)
@@ -4039,75 +4204,43 @@ display_debug_frames (Elf_Internal_Shdr *section, unsigned char *start,
 	}
 
       block_end = saved_start + length + initial_length_size;
-      if (block_end > end)
+      if (block_end > end || block_end < start)
 	{
 	  warn ("Invalid length 0x%s in FDE at %#08lx\n",
 		dwarf_vmatoa_1 (NULL, length, offset_size),
 		(unsigned long) (saved_start - section_start));
 	  block_end = end;
 	}
-   
+
       SAFE_BYTE_GET_AND_INC (cie_id, start, offset_size, end);
 
       if (is_eh ? (cie_id == 0) : ((offset_size == 4 && cie_id == DW_CIE_ID)
 				   || (offset_size == 8 && cie_id == DW64_CIE_ID)))
 	{
 	  int version;
+	  int mreg;
 
-	  fc = (Frame_Chunk *) xmalloc (sizeof (Frame_Chunk));
-	  VG_(memset) (fc, 0, sizeof (Frame_Chunk));
+      start = read_cie (start, end, &cie, &version,
+                &augmentation_data_len, &augmentation_data);
+      /* PR 17512: file: 027-135133-0.005.  */
+      if (cie == NULL)
+        break;
+      fc = cie;   
+      fc->next = chunks;
+      chunks = fc;
+      fc->chunk_start = saved_start;
+      mreg = max_regs - 1;
+      if (mreg < fc->ra)
+        mreg = fc->ra;
+      frame_need_space (fc, mreg);
+      if (fc->fde_encoding)
+        encoded_ptr_size = size_of_encoded_value (fc->fde_encoding);
 
-	  fc->next = chunks;
-	  chunks = fc;
-	  fc->chunk_start = saved_start;
-	  fc->ncols = 0;
-	  fc->col_type = (short int *) xmalloc (sizeof (short int));
-	  fc->col_offset = (int *) xmalloc (sizeof (int));
-	  frame_need_space (fc, max_regs-1);
-
-	  version = *start++;
-
-	  fc->augmentation = (char*)start;
-	  start = (unsigned char *)(VG_(strchr) ((char*)start, '\0') + 1);
-
-	  if (VG_(strcmp) (fc->augmentation, "eh") == 0)
-	    start += eh_addr_size;
-
-	  if (version >= 4)
-	    {
-	      GET (fc->ptr_size, 1);
-	      GET (fc->segment_size, 1);
-	      eh_addr_size = fc->ptr_size;
-	    }
-	  else
-	    {
-	      fc->ptr_size = eh_addr_size;
-	      fc->segment_size = 0;
-	    }
-	  fc->code_factor = LEB ();
-	  fc->data_factor = SLEB ();
-	  if (version == 1)
-	    {
-	      GET (fc->ra, 1);
-	    }
-	  else
-	    {
-	      fc->ra = LEB ();
-	    }
-
-	  if (fc->augmentation[0] == 'z')
-	    {
-	      augmentation_data_len = LEB ();
-	      augmentation_data = start;
-	      start += augmentation_data_len;
-	    }
-	  cie = fc;
       if (fjalar_debug_dump) {
 	      printf ("\n%08lx ", (unsigned long) (saved_start - section_start));
 	      print_dwarf_vma (length, fc->ptr_size);
 	      print_dwarf_vma (cie_id, offset_size);
       }
-
 
 	  if (do_debug_frames_interp)
         {
@@ -4136,8 +4269,8 @@ display_debug_frames (Elf_Internal_Shdr *section, unsigned char *start,
               printf ("  Data alignment factor: %d\n", fc->data_factor);
 	      if (fjalar_debug_dump)
               printf ("  Return address column: %d\n", fc->ra);
-
-	      if (augmentation_data_len)
+	      
+        if (augmentation_data_len)
 		{
 		  unsigned long i;
 		  if (fjalar_debug_dump)
@@ -4151,33 +4284,6 @@ display_debug_frames (Elf_Internal_Shdr *section, unsigned char *start,
 	      if (fjalar_debug_dump)
               printf ("\n");
 	    }
-
-	  if (augmentation_data_len)
-	    {
-	      unsigned char *p, *q;
-	      p = (unsigned char *) fc->augmentation + 1;
-	      q = augmentation_data;
-
-	      while (1)
-		{
-		  if (*p == 'L')
-		    q++;
-		  else if (*p == 'P')
-		    q += 1 + size_of_encoded_value (*q);
-		  else if (*p == 'R')
-		    fc->fde_encoding = *q++;
-		  else if (*p == 'S')
-		    ;
-		  else
-		    break;
-		  p++;
-		}
-
-	      if (fc->fde_encoding)
-		encoded_ptr_size = size_of_encoded_value (fc->fde_encoding);
-	    }
-
-	  frame_need_space (fc, fc->ra);
 	}
       else
 	{
@@ -4186,14 +4292,70 @@ display_debug_frames (Elf_Internal_Shdr *section, unsigned char *start,
 	  static Frame_Chunk fde_fc;
       unsigned long segment_selector;
 
+	  if (is_eh)
+	    {
+	      dwarf_vma sign = (dwarf_vma) 1 << (offset_size * 8 - 1);
+	      look_for = start - 4 - ((cie_id ^ sign) - sign);
+	    }
+	  else
+	    look_for = section_start + cie_id;
+
+	  if (look_for <= saved_start)
+	    {
+	      for (cie = chunks; cie ; cie = cie->next)
+		    if (cie->chunk_start == look_for)
+		      break;
+	    }
+	  else
+	    {
+	      for (cie = forward_refs; cie ; cie = cie->next)
+		    if (cie->chunk_start == look_for)
+		      break;
+	      if (!cie)
+		{
+		  unsigned int off_size;
+		  unsigned char *cie_scan;
+
+		  cie_scan = look_for;
+		  off_size = 4;
+		  SAFE_BYTE_GET_AND_INC (length, cie_scan, 4, end);
+		  if (length == 0xffffffff)
+		    {
+		      SAFE_BYTE_GET_AND_INC (length, cie_scan, 8, end);
+		      off_size = 8;
+		    }
+		  if (length != 0)
+		    {
+		      dwarf_vma c_id;
+
+		      SAFE_BYTE_GET_AND_INC (c_id, cie_scan, off_size, end);
+		      if (is_eh
+			  ? c_id == 0
+			  : ((off_size == 4 && c_id == DW_CIE_ID)
+			     || (off_size == 8 && c_id == DW64_CIE_ID)))
+			{
+			  int version;
+			  int mreg;
+
+			  read_cie (cie_scan, end, &cie, &version,
+				    &augmentation_data_len, &augmentation_data);
+			  cie->next = forward_refs;
+			  forward_refs = cie;
+			  cie->chunk_start = look_for;
+			  mreg = max_regs - 1;
+			  if (mreg < cie->ra)
+			    mreg = cie->ra;
+			  frame_need_space (cie, mreg);
+			  if (cie->fde_encoding)
+			    encoded_ptr_size
+			      = size_of_encoded_value (cie->fde_encoding);
+			}
+		    }
+		}
+	    }
+
 	  fc = & fde_fc;
 	  VG_(memset) (fc, 0, sizeof (Frame_Chunk));
-
-	  look_for = is_eh ? start - 4 - cie_id : section_start + cie_id;
-
-	  for (cie = chunks; cie ; cie = cie->next)
-	    if (cie->chunk_start == look_for)
-	      break;
 
 	  if (!cie)
 	    {
@@ -4226,7 +4388,7 @@ display_debug_frames (Elf_Internal_Shdr *section, unsigned char *start,
 	      fc->cfa_reg = cie->cfa_reg;
 	      fc->cfa_offset = cie->cfa_offset;
 	      fc->ra = cie->ra;
-	      frame_need_space (fc, max_regs-1);
+	      frame_need_space (fc, max_regs - 1);
 	      fc->fde_encoding = cie->fde_encoding;
 	    }
 
@@ -4238,8 +4400,7 @@ display_debug_frames (Elf_Internal_Shdr *section, unsigned char *start,
 	    {
 	      SAFE_BYTE_GET_AND_INC (segment_selector, start, fc->segment_size, end);
 	    }
-	  fc->pc_begin = get_encoded_value (start, fc->fde_encoding, section->sh_addr, section_start);
-	  start += encoded_ptr_size;
+	  fc->pc_begin = get_encoded_value (&start, fc->fde_encoding, section->sh_addr, section_start, end);
 
 	  /* FIXME: It appears that sometimes the final pc_range value is
 	     encoded in less than encoded_ptr_size bytes.  See the x86_64
@@ -4311,8 +4472,8 @@ display_debug_frames (Elf_Internal_Shdr *section, unsigned char *start,
 
 	  while (start < block_end)
 	    {
-	      unsigned op, opa;
-	      unsigned long reg, temp;
+	      unsigned int reg, op, opa;
+	      unsigned long temp;
 
 	      op = *start++;
 	      opa = op & 0x3f;
@@ -4322,7 +4483,6 @@ display_debug_frames (Elf_Internal_Shdr *section, unsigned char *start,
 	    /* Warning: if you add any more cases to this switch, be
 	       sure to add them to the corresponding switch below.  */
         // This is not true in standalone dwarf.c (markro)   
-
 	      switch (op)
 		{
 		case DW_CFA_advance_loc:
@@ -4386,13 +4546,26 @@ display_debug_frames (Elf_Internal_Shdr *section, unsigned char *start,
 		  break;
 		case DW_CFA_def_cfa_expression:
 		  temp = LEB ();
-		  start += temp;
+		  if (start + temp < start)
+		    {
+		      warn (_("Corrupt CFA_def expression value: %lu\n"), temp);
+		      start = block_end;
+		    }
+		  else
+		    start += temp;
 		  break;
 		case DW_CFA_expression:
 		case DW_CFA_val_expression:
 		  reg = LEB ();
 		  temp = LEB ();
-		  start += temp;
+		  if (start + temp < start)
+		    {
+		      /* PR 17512: file:306-192417-0.005.  */ 
+		      warn (_("Corrupt CFA expression value: %lu\n"), temp);
+		      start = block_end;
+		    }
+		  else
+		    start += temp;
 		  if (frame_need_space (fc, reg) >= 0)
 		    fc->col_type[reg] = DW_CFA_undefined;
 		  break;
@@ -4496,8 +4669,7 @@ display_debug_frames (Elf_Internal_Shdr *section, unsigned char *start,
 	      break;
 
 	    case DW_CFA_set_loc:
-	      vma = get_encoded_value (start, fc->fde_encoding, section->sh_addr, section_start);
-	      start += encoded_ptr_size;
+	      vma = get_encoded_value (&start, fc->fde_encoding, section->sh_addr, section_start, end);
 	      if (do_debug_frames_interp)
 		frame_display_row (fc, &need_col_headers, &max_regs);
 	      else
@@ -4650,9 +4822,13 @@ display_debug_frames (Elf_Internal_Shdr *section, unsigned char *start,
 
 	    case DW_CFA_remember_state:
 	      if (! do_debug_frames_interp)
-	 if (fjalar_debug_dump)
-         printf ("  DW_CFA_remember_state\n");
+	        if (fjalar_debug_dump)
+              printf ("  DW_CFA_remember_state\n");
 	      rs = (Frame_Chunk *) xmalloc (sizeof (Frame_Chunk));
+          rs->cfa_offset = fc->cfa_offset;
+	      rs->cfa_reg = fc->cfa_reg;
+	      rs->ra = fc->ra;
+	      rs->cfa_exp = fc->cfa_exp;
 	      rs->ncols = fc->ncols;
 	      rs->col_type = (short int *) xmalloc (rs->ncols * sizeof (short int));
 	      rs->col_offset = (int *) xmalloc (rs->ncols * sizeof (int));
@@ -4664,15 +4840,19 @@ display_debug_frames (Elf_Internal_Shdr *section, unsigned char *start,
 
 	    case DW_CFA_restore_state:
 	      if (! do_debug_frames_interp)
-	 if (fjalar_debug_dump)
-         printf ("  DW_CFA_restore_state\n");
+	        if (fjalar_debug_dump)
+              printf ("  DW_CFA_restore_state\n");
 	      rs = remembered_state;
 	      if (rs)
 		{
 	      remembered_state = rs->next;
-	      frame_need_space (fc, rs->ncols-1);
-	      VG_(memcpy) (fc->col_type, rs->col_type, rs->ncols);
-	      VG_(memcpy) (fc->col_offset, rs->col_offset, rs->ncols * sizeof (int));
+	      fc->cfa_offset = rs->cfa_offset;
+		  fc->cfa_reg = rs->cfa_reg;
+	      fc->ra = rs->ra;
+	      fc->cfa_exp = rs->cfa_exp;
+          frame_need_space (fc, rs->ncols - 1);
+	      VG_(memcpy) (fc->col_type, rs->col_type, rs->ncols * sizeof (* rs->col_type));
+	      VG_(memcpy) (fc->col_offset, rs->col_offset, rs->ncols * sizeof (* rs->col_offset));
 	      VG_(free) (rs->col_type);
 	      VG_(free) (rs->col_offset);
 	      VG_(free) (rs);
@@ -4743,7 +4923,7 @@ display_debug_frames (Elf_Internal_Shdr *section, unsigned char *start,
               printf (")\n");
 		}
 	      if (*reg_prefix == '\0')
-	      fc->col_type[reg] = DW_CFA_expression;
+	        fc->col_type[reg] = DW_CFA_expression;
 	      start += ul;
 	      break;
 
@@ -4787,12 +4967,12 @@ display_debug_frames (Elf_Internal_Shdr *section, unsigned char *start,
 	      reg = LEB ();
 	      l = SLEB ();
 	      if (frame_need_space (fc, reg) < 0)
-		 reg_prefix = bad_reg;
+	        reg_prefix = bad_reg;
 	      if (! do_debug_frames_interp || *reg_prefix != '\0')
-		if (fjalar_debug_dump)
-            printf ("  DW_CFA_val_offset_sf: %s%s at cfa%+ld\n",
-			reg_prefix, regname (reg, 0),
-			l * fc->data_factor);
+	        if (fjalar_debug_dump)
+              printf ("  DW_CFA_val_offset_sf: %s%s at cfa%+ld\n",
+	                reg_prefix, regname (reg, 0),
+	                l * fc->data_factor);
 	      if (*reg_prefix == '\0')
 		{
 		  fc->col_type[reg] = DW_CFA_val_offset;
@@ -4868,7 +5048,7 @@ display_debug_frames (Elf_Internal_Shdr *section, unsigned char *start,
 		      if (fjalar_debug_dump)
                   printf (_("  DW_CFA_??? (User defined call frame op: %#x)\n"), op);
 	      } else {
-		      warn (_("unsupported or unknown Dwarf Call Frame Instruction number: %#x\n"), op);
+		      warn (_("Unsupported or unknown Dwarf Call Frame Instruction number: %#x\n"), op);
 	          start = block_end;
 	      }
 	    }

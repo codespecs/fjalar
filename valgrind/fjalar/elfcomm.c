@@ -1,18 +1,5 @@
-/*
-   This file is part of Fjalar, a dynamic analysis framework for C/C++
-   programs.
-
-   Copyright (C) 2007-2015 University of Washington Computer Science & Engineering Department,
-   Programming Languages and Software Engineering Group
-
-   This program is free software; you can redistribute it and/or
-   modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
-   License, or (at your option) any later version.
-*/
-
 /* elfcomm.c -- common code for ELF format file.
-   Copyright 2010-2013 Free Software Foundation, Inc.
+   Copyright (C) 2010-2014 Free Software Foundation, Inc.
 
    Originally developed by Eric Youngdale <eric@andante.jic.com>
    Modifications by Nick Clifton <nickc@redhat.com>
@@ -33,6 +20,19 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston, MA
    02110-1301, USA.  */
+
+/*
+   This file is part of Fjalar, a dynamic analysis framework for C/C++
+   programs.
+
+   Copyright (C) 2007-2015 University of Washington Computer Science & Engineering Department,
+   Programming Languages and Software Engineering Group
+
+   This program is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 2 of the
+   License, or (at your option) any later version.
+*/
 
 #include "my_libc.h"
 #include "pub_tool_basics.h"
