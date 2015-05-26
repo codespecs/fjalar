@@ -5,11 +5,12 @@
 ### Default tag
 help:
 	@echo "Targets:"
-	@echo " build         -- build all of valgrind and fjalar(includes kvasir)"
+	@echo " build         -- build all of valgrind and fjalar (includes kvasir)"
 	@echo " test          -- build and run valgrind regression tests"
 	@echo "               -- see the Daikon tree for fjalar/kvasir regression tests"
 	@echo " clean         -- remove basic generated files"
 	@echo " very-clean    -- remove (most) all generated files"
+	@echo " valgrind-merge-docs -- documentation for doing a Valgrind merge"
 	@echo " hg-update     -- add/remove files as result of Valgrind merge"
 	@echo " "
 
@@ -32,6 +33,18 @@ very-clean:
 	rm -rf valgrind/autom4te.cache
 	rm -rf valgrind/Makefile.in
 	rm -rf valgrind/Makefile.vex.in
+
+.PHONY: valgrind-merge-docs
+valgrind-merge-docs: valgrind-merge.info valgrind-merge.html valgrind-merge.pdf
+
+valgrind-merge.info: valgrind-merge.texinfo
+	makeinfo $<
+
+valgrind-merge.pdf: valgrind-merge.texinfo
+	makeinfo --pdf $<
+
+valgrind-merge.html: valgrind-merge.texinfo
+	makeinfo --html --no-split $<
 
 hg-update:
 	@grep -q '^\-\-\-.*1969\-12\-31' ../coregrind.patch; \
