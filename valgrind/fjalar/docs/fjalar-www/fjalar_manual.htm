@@ -1,0 +1,883 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-15">
+<title>Fjalar: A Dynamic Analysis Framework for C and C++ Programs - Programmer's Manual</title>
+<link rel="StyleSheet" href="fjalar_style.css" />
+</head>
+
+<body>
+
+<h1>Fjalar: A Dynamic Analysis Framework for C and C++ Programs</h1>
+<h2>Programmer's Manual</h2>
+
+<p> <a href="http://pag.csail.mit.edu/fjalar/">Fjalar</a> is a framework that facilitates
+the construction of dynamic analysis tools for programs written in C
+and C++.  This document serves as a guide to building tools on top of
+      the Fjalar framework.
+
+This version of the manual describes Fjalar version 1.3.
+
+<h2><a name="getting-started">Getting Started</a></h2>
+
+Here are the relevant entries in the directory structure after you
+have un-tarred the Fjalar package (executables shown in bold):
+
+<tt>
+    <ul>
+      <li>valgrind-3/
+	<ul>
+	  <li><b>auto-everything.sh</b>
+	  <li>valgrind/
+	    <ul>
+	      <li>fjalar/
+		<ul>
+		  <li>Makefile.am
+		  <li>fjalar_tool.h
+		  <li>fjalar_include.h
+		  <li>mc_main.c
+		  <li>basic-tool/
+		    <ul>
+		      <li>basic-tool.c
+		      <li>basic-tool-test.c
+		    </ul>
+		</ul>
+	      <li>include/
+		<ul>
+		  <li>pub_tool_*.h
+		</ul>
+	      <li>inst/
+		<ul>
+		  <li>bin/
+		    <ul>
+		      <li><b>valgrind</b>
+		    </ul>
+		  <li>lib/
+		    <ul>
+		      <li>valgrind/
+			<ul>
+			  <li>x86-linux/
+			  <ul>
+			    <li>fjalar
+			    <li>vgpreload_fjalar.so
+			    <li>vgpreload_core.so
+			  </ul>
+			</ul>
+		    </ul>
+		</ul>
+	    </ul>
+	</ul>
+    </ul>
+</tt>
+
+Fjalar is implemented as a tool on top of the <a
+href="http://www.valgrind.org">Valgrind</a> binary instrumentation
+framework, so that is why Valgrind's files dominate the directory
+structure.  Fjalar and its tools are located in the
+<tt>valgrind-3/valgrind/fjalar</tt> sub-directory.  The significance
+of all of these files will be explained in this document.
+
+If your system is an x86-64 (AMD64 or Intel64) machine running in
+64-bit mode, substitute "amd64" for "x86" in this and all the
+following examples.
+    
+<h2><a name="programming">Creating Fjalar tools</a></h2>
+
+To create a new tool:
+<ol>
+<li>Create a sub-directory in the <tt>valgrind-3/valgrind/fjalar</tt>
+directory and place all of your tool's source files in there.
+
+<li>Edit <tt>Makefile.am</tt> in <tt>valgrind-3/valgrind/fjalar</tt>
+	to include all the .c files of your tool by adding them to the
+	list of files assigned to the
+	<tt>FJALAR_SOURCES_COMMON</tt> variable. (Feel free to tweak
+	other variables in that file.  For instance, you can adjust
+	<tt>AM_CFLAGS_X86_LINUX</tt> to add optimizations to boost
+  run-time performance.  The default is to turn off all optimizations
+  in order to ease debugging.)
+
+<li>Run <tt>auto-everything.sh</tt> to create a new <tt>Makefile</tt>
+	from your modified <tt>Makefile.am</tt> and re-compile
+	everything.  You only need to run <tt>auto-everything.sh</tt>
+	whenever you make a change to <tt>Makefile.am</tt>.  (Notice
+	that directly editing <tt>Makefile</tt> and
+	<tt>Makefile.in</tt> is probably futile because they are
+	auto-generated from <tt>Makefile.am</tt> every time
+	<tt>auto-everything.sh</tt> is run.)  If you do not
+  subsequently change <tt>Makefile.am</tt>, you can simply use
+  <tt>make</tt> and <tt>make install</tt> to compile and install,
+  respectively.
+
+<li>At this point, you'll probably get some compilation error.  In
+	order for Fjalar to compile properly with your tool, your
+	tool's source files will need to implement all of the
+	functions listed in <tt><a
+	href="http://pag.csail.mit.edu/fjalar/fjalar_tool.h.txt">fjalar_tool.h</a></tt>.  Include this
+	header file in one of your tool's source files and define
+	stubs for all of the functions (or just copy them from
+	<tt>basic-tool.c</tt>).  Hopefully your tool should
+	compile properly now.
+
+<li>If you've configured everything properly, you should be able to do
+<tt>make</tt> and <tt>make install</tt> in the
+<tt>valgrind-3/valgrind/fjalar</tt> directory to compile Fjalar and
+your tool.  Running <tt>make</tt> creates two shared libraries
+  			    <tt>vgpreload_fjalar.so</tt> and
+			    <tt>vgpreload_core.so</tt>, as well as a
+special <tt>fjalar</tt> file, which are
+dynamically-loaded by Valgrind during execution.  Running <tt>make
+install</tt> moves those shared libraries into
+<tt>valgrind-3/valgrind/inst/lib/valgrind</tt>.
+
+</ol>
+
+Programming tips for Fjalar tools:
+
+<ul>
+
+<li><tt><a
+href="http://pag.csail.mit.edu/fjalar/fjalar_include.h.txt">fjalar_include.h</a></tt>
+contains all of the functions and data structures that Fjalar provides
+for its tools.  This file is fairly well-documented, so please read
+over it to get a feel for what services are available to tools.  Your
+tool should only need to include this file (along with the mandatory
+<tt><a
+href="http://pag.csail.mit.edu/fjalar/fjalar_tool.h.txt">fjalar_tool.h</a></tt>),
+but if it requires additional functionality, you can always
+<tt>extern</tt> variables and functions from the other Fjalar source
+files.
+
+<li>Look at the code of <tt>basic-tool.c</tt> to see a simple
+  tool built on top of Fjalar.  It prints out a list of variables at
+  every function entrance and exit and, if the variable refers to an
+  array of elements, the size of that array at the current point in
+  execution.
+
+<li>Because Fjalar itself is implemented as a tool on top of Valgrind,
+it interacts with Valgrind through functions defined in
+a group of header files sharing the common name <tt>pub_tool_*.h</tt>.
+  Your tool can also access those functions.
+
+<li>The system C library is not available in Valgrind tools. However,
+  some of your favorite functions from it are reimplemented by
+  Valgrind, generally with names wrapped by a <tt>VG_( )</tt> macro:
+  e.g., the Valgrind version of <tt>malloc</tt> is named
+  <tt>VG_(malloc)</tt>. Fjalar also provides some other useful libc
+  functions that Valgrind doesn't: see the header <tt>my_libc.h</tt>
+  for prototypes.</li>
+
+<li>Use the <tt>tl_assert()</tt> macro (defined in <tt>pub_tool_libcassert.h</tt>) to
+add assert statements in your code, which can be very helpful for
+catching bugs.
+
+<li>Use the <tt>--xml-output-file</tt> option when executing your
+target program to see what data structures Fjalar can properly
+recognize in the target program.  This information can be helpful for
+debugging.
+
+</ul>
+
+
+<h2><a name="executing">Executing Fjalar tools</a></h2>
+
+Here is the command for executing your tool:
+
+<pre>
+valgrind-3/valgrind/inst/bin/valgrind --tool=fjalar &lt;command-line args&gt;
+</pre>
+
+The actual executable is <tt>valgrind</tt> because Fjalar is
+implemented as a Valgrind tool (and your Fjalar tool is compiled
+together with Fjalar).  This command can be fairly tedious to type, so
+you should probably make a shell script to alias it.  The only
+mandatory command-line argument is the name of the target program (the
+program to analyze).  Use <tt>--help</tt> as one of your arguments to
+view a list of command-line options.
+
+<p>In order for Fjalar to work, the target program must be compiled
+with DWARF2 debugging information (on an x86/Linux system).  Look at
+<tt>basic-tool-test.c</tt> for a simple target program that exercises
+Fjalar's function entrance/exit tracking and array bounds checking
+features.  First, compile it:</p>
+
+<pre>
+gcc -gdwarf-2 basic-tool-test.c -o basic-tool-test
+</pre>
+
+(The <tt>-gdwarf-2</tt> includes debugging information in the DWARF2
+format.)  Now you should be able to run Fjalar from this directory
+(assuming that you have successfully compiled and installed it) with
+the following command:
+
+<pre>
+../../inst/bin/valgrind --tool=fjalar ./basic-tool-test
+</pre>
+
+If all goes well, the tool should print out the name of each function
+during entrances and exits and the names of all variables visible at
+that point in execution (as well as array sizes, if relevant).
+
+<p>Here are some tips related to executing Fjalar tools:</p>
+
+    <ul>
+      <li>To change what messages are displayed when your tool starts up, you
+	can edit some strings within the <tt>mc_pre_clo_init()</tt> function
+	in <tt>mc_main.c</tt>.
+
+      <li>The standard Valgrind terminal printing functions,
+	most notably <tt>VG_(printf)</tt>, output to standard error (file descriptor
+	2) by default, so you may find it useful to use <tt>2&gt;&amp;1</tt>
+	to re-direct to standard output.
+    </ul>
+
+<h2><a name="debugging">Debugging Fjalar tools</a></h2>
+
+If you run your tool with the <tt>--with-gdb</tt> option, Fjalar will
+pause in an infinite loop during initialization.  You can then attach
+a symbolic debugger such as <tt>gdb</tt> to the running process in
+order to debug it:
+
+<ol>
+
+      <li>First start <tt>gdb</tt> with
+	<tt>valgrind-3/valgrind/inst/lib/valgrind/x86-linux/fjalar</tt> as the
+	target program (this is a bit counter-intuitive, but you need to run
+	<tt>gdb</tt> on <tt>fjalar</tt> and NOT on <tt>valgrind</tt>).
+
+      <li>Now use the <tt>at</tt> command to attach <tt>gdb</tt> to
+      the process that's stuck in the infinite loop.  You can see its
+      process ID enclosed in "<tt>==</tt>" next to the start-up banner
+      (e.g., <tt>==3839== ...</tt>), or simply <tt>ps</tt> for it.
+
+<pre>
+  if (fjalar_with_gdb) {
+    int x = 0;
+    while (!x) {}
+  }
+</pre>
+
+      <li>As shown in the code snippet above, Fjalar is stuck in an
+      infinite loop because <tt>x</tt> is 0.  Set <tt>x</tt> to a
+      non-zero value, for instance by typing <tt>p x = 1</tt>, so that
+      it can get out of the infinite loop.
+
+      <li>Now set whatever breakpoints and/or watchpoints you desire,
+      and hit <tt>c</tt> to continue execution.  You'll probably get a
+      mysterious <tt>Segmentation fault</tt> shortly afterwards, but
+      simply hit <tt>c</tt> to continue again, and things should work
+      fine.  Valgrind mucks around with signals, so some error
+      messages sent to the debugger might not be accurate.
+
+      <li>You should now be able to debug as usual.
+
+</ol>
+
+Alternatively, because the role of the loader is less important in
+modern versions of Valgrind, it is also possible to run the
+<tt>fjalar</tt> binary directly under <tt>gdb</tt>. See
+<tt>valgrind-3/valgrind/README_DEVELOPERS</tt> for instructions.
+
+<h2><a name="clo">Fjalar command-line options</a></h2>
+
+Fjalar provides a variety of command-line options to customize its
+behavior and the behavior of its tools.  Run a Fjalar tool with the
+<tt>--help</tt> option to see a complete list of all options.
+
+   <p><a href="#Tracing-only-part-of-a-program">Selective program point and variable tracing</a>:
+
+     <dl>
+<dt><span class="option">--ppt-list-file=</span><var>filename</var><dt><span class="option">--var-list-file=</span><var>filename</var><dd>
+Trace only the program points (respectively, variables) listed in the
+given file.  Other program points (respectively variables) will never be visited (and thus incur little to no runtime overhead).  A convenient
+way to produce such files is by editing the output produced by the
+<span class="option">--dump-ppt-file</span> (respectively, <span class="option">--dump-var-file</span>) option
+described below.  (see <a href="#Tracing-only-part-of-a-program">Tracing only part of a program</a> section
+for detailed instructions on using these options.)
+
+     <br><dt><span class="option">--dump-ppt-file=</span><var>filename</var><dt><span class="option">--dump-var-file=</span><var>filename</var><dd>
+Print a list of all the program points (respectively all the variables)
+in the program to the specified file.  An edited version of this file can
+then be used with the <span class="option">--ppt-list-file</span> (respectively
+<span class="option">--var-list-file</span>) option.
+(see <a href="#Tracing-only-part-of-a-program">Tracing only part of a program</a> section
+for detailed instructions on using these options.)
+
+     <br><dt><span class="option">--ignore-globals</span><dd>
+Ignore all global or static variables.
+
+     <br><dt><span class="option">--ignore-static-vars</span><dd>
+Ignore static variables but still trace global variables.
+
+     <br><dt><span class="option">--all-static-vars</span><dd> Visit
+     all static variables at all program points.  By default, static
+     variables are only visited at program points for functions
+     defined in the same file (compilation unit) as the variable, and
+     static variables declared within a particular function are only
+     visited at program points for that function.  These heuristics
+     improve performance without greatly reducing precision because
+     functions have no easy way of modifying variables that are not
+     in-scope, so it is often not useful to visit those variables.
+     This option turns off these heuristics and always visit static
+     variables at all program points.
+
+   </dl>
+
+   <p><a href="#Pointer-type-disambiguation">Pointer type disambiguation</a>:
+
+     <dl>
+
+       <dt><span
+       class="option">--disambig-file=</span><var>filename</var><dd>Specifies
+     the name of the pointer type disambiguation file (see <a
+     href="#Pointer-type-disambiguation">Pointer type
+     disambiguation</a>).  If this file exists, Fjalar uses it to make
+     decisions about how to visit the referents of pointer variables.
+     If the file does not exist, then Fjalar creates it.  This file
+     may then be edited and used on subsequent runs.
+
+     <br><dt><span class="option">--disambig</span><dd>Tells Fjalar to
+     create or read pointer type disambiguation (see <a
+     href="#Pointer-type-disambiguation">Pointer type
+     disambiguation</a>) with the default filename, which is
+     <var>myprog</var><span class="file">.disambig</span> in the same
+     directory as the target program, where <var>myprog</var> is the
+     name of the target program. This is equivalent to <span
+     class="samp">--disambig-file=</span><var>myprog</var><span
+     class="file">.disambig</span>.
+
+     <br><dt><span class="option">--smart-disambig</span><dd>This
+     option should be used in addition to either the <span
+     class="option">--disambig</span> or <span
+     class="option">--disambig-file</span> options (it does nothing by
+     itself).  If the .disambig file specified by the option does not
+     exist, then Fjalar executes the target program, observes whether
+     each pointer refers to either one element or an array of
+     elements, and creates a disambiguation file that contains
+     suggestions for the disambiguation types of each pointer
+     variable.  This potentially provides more accuracy than using
+     either the <span class="option">--disambig</span> or <span
+     class="option">--disambig-file</span> options alone, but at the
+     expense of a longer run time because it must actually execute the
+     program to completion.  (If the .disambig file already
+     exists, then this option provides no extra functionality.)
+
+     <br><dt><span class="option">--func-disambig-ptrs</span><dd>By
+     default, Fjalar treats all pointers as arrays when visiting their
+     contents.  This option forces Fjalar to treat function parameters
+     and return values that are pointers as pointing to single values.
+     However, all pointers nested inside of data structures pointed-to
+     by parameters and return values are still treated as arrays.
+     This is useful for obtaining richer data information for
+     functions that pass parameters or return values via pointers,
+     which happens often in practice, especially for C programs.
+
+     <br><dt><span class="option">--disambig-ptrs</span><dd>By
+     default, Fjalar treats all pointers as arrays when outputting
+     their contents.  This option forces Fjalar to treat all pointers
+     as pointing to single values.  This is useful when tracing nested
+     structures with lots of pointer fields which all refer to one
+     element.
+
+   </dl>
+
+   <p>Misc. options:
+
+     <dl>
+       <dt><span class="option">--flatten-arrays</span><dd>This option
+       forces the flattening of statically-sized arrays into separate
+       variables, one for each element.  For example, an array
+       <var>foo</var> of size 3 would be flattened into 3 variables:
+       <var>foo[0]</var>, <var>foo[1]</var>, <var>foo[2]</var>.  By
+       default, Fjalar flattens statically-sized arrays only after it
+       has already exhausted the one level of sequences allowed in the
+       traversal routines (e.g. an array of structs
+       where each struct contains a statically-sized array).
+
+	 <br><dt><span
+	 class="option">--array-length-limit=</span><var>N</var><dd>Only
+	 visit at most the first <var>N</var> elements of all arrays.
+	 This can improve performance at the expense of losing
+	 coverage; it is often useful for tracing selected parts of
+	 programs that use extremely large arrays or memory buffers.
+
+     <br><dt><span
+     class="option">--nesting-depth=</span><var>N</var><dd> For
+     recursively-defined structures (structs or classes with members
+     that are structs or classes or pointers to structs or classes of
+     <em>any</em> type), <var>N</var> (an integer between 0 and 100)
+     specifies approximately how many levels of pointers to
+     dereference.  This is useful for controlling the traversal of
+     complex data structures with many references to other structures.
+     The default is 2.
+
+     <br><dt><span class="option">--struct-depth=</span><var>N</var><dd>
+       For recursively-defined structures (structs or classes with
+       members that are pointers to the <em>same</em> type of struct
+       or class), <var>N</var> (an integer between 0 and 100)
+       specifies approximately how many levels of pointers to
+       dereference.  This is useful for controlling the traversal of
+       linked lists and trees.  The default is 4.  If you are trying
+       to traverse deep into data structures, try adjusting the <span
+       class="option">--struct-depth</span> and <span
+       class="option">--total-depth</span> options until Fjalar
+       traverses deep enough to reach the desired variables.
+
+     <br><dt><span class="option">--output-struct-vars</span><dd>This
+     option forces Fjalar to visit and output entries for
+     struct variables .  By default, Fjalar ignores struct variables
+     because there is really no value that can be meaningfully
+     associated with these variables. (e.g., for <code>struct foo
+     f</code>, what is the value of <code>f</code>?)  However, some
+     tools require struct variables to be outputted, so we have
+     included this option.
+
+   </dl>
+
+   <p>Debugging:
+
+     <dl>
+       <dt><span
+       class="option">--xml-output-file=</span><var>filename</var><dd>
+       Outputs a representation of data structures, functions, and
+       variables in the target program to an XML file in order to aid
+       in debugging.  These are all the entities that Fjalar tracks
+       for a particular run of a target program, so if you do not see
+       an entity in this XML file, then you should either adjust
+       command-line options or contact us with a bug report.
+
+     <br><dt><span class="option">--with-gdb</span><dd>
+       This pauses the program's execution in an infinite loop during
+       initialization.  You can attach a debugger such as
+       <code>gdb</code> to the running process by running gdb on <span
+       class="file">inst/lib/valgrind/x86-linux/fjalar</span> and
+       using the <code>attach</code> command (See <a
+       href="#debugging">Debugging Fjalar tools</a> for more details.)
+
+     <br><dt><span class="option">--fjalar-debug</span><dd> Enable
+     progress messages meant for debugging problems with Fjalar.  By
+     default, they are disabled.  This option is intended mainly for
+     Fjalar and tool developers.
+
+   </dl>
+
+<h2><a name="Tracing-only-part-of-a-program">Tracing only part of a program</a></h2>
+
+
+   <p>When a Fjalar tool is run on a target program of significant
+   size, often times too many variables are visited, which might cause
+   a performance slowdown or an overload of output.  It is often
+   desirable to only trace a specific portion of the target program:
+   program points and variables that are of interest for a particular
+   application.  For instance, one may only be
+   interested in tracking changes to a particular global data
+   structure during calls to a specific set of functions (program
+   points), and thus have no need for information about any other
+   program points or variables in the trace file.  The <span
+   class="option">--ppt-list-file</span> and <span
+   class="option">--var-list-file</span> options can be used to
+   achieve such selective tracing.
+
+   <p>The program point list file (abbreviated as <span
+   class="file">ppt-list-file</span>) consists of a newline-separated
+   list of names of functions that the user wants Fjalar to trace.
+   Every name corresponds to both the entrance and exit program points
+   for that function and is printed out in the exact same format that
+   Fjalar uses for that function.  Here is an
+   example of a <span class="file">ppt-list-file</span>:
+
+<pre class="example">     FunctionNamesTest.cpp.staticFoo(int, int)
+     ..firstFileFunction(int)
+     ..main()
+     second_file.cpp.staticFoo(int, int)
+     ..secondFileFunction()
+</pre>
+   <p>It is very important to follow this format in the <span class="file">ppt-list-file</span>
+because Fjalar performs string comparisons to determine which program
+points to trace.  Thus, it is often easier to have Fjalar generate a
+<span class="file">ppt-list-file</span> file that contains a list of all program points in a
+target program by using the <span class="option">--dump-ppt-file</span> option, and then
+either comment out (by using the <code>'#'</code> comment character at the
+beginning of the line) or delete lines in that file for program points
+not to be traced or create a new <span class="file">ppt-list-file</span> using the names in
+the Fjalar-generated file.  This prevents typos and the tedium of
+manually typing up program point names.
+
+   <p>That file represents all the program points that Fjalar would
+normally trace.  If the user wanted to only trace the <code>main()</code>
+function, he could comment out all other lines by placing a single
+<code>'#'</code> character at the beginning of each line to be commented out,
+as demonstrated here:
+
+<pre class="example">     #FunctionNamesTest.cpp.staticFoo(int, int)
+     #..firstFileFunction(int)
+     ..main()
+     #second_file.cpp.staticFoo(int, int)
+     #..secondFileFunction()
+</pre>
+   <p class="noindent">When running Fjalar with the <span
+   class="option">--ppt-list-file</span> option using this as the
+   <span class="file">ppt-list-file</span>, Fjalar only pauses the
+   execution of the target program at the entrance and exit of
+   <code>main()</code> in order to run the tool's code.  There is
+   almost no overhead for all of the other program point executions;
+   thus, Fjalar performs quite well when tracing selected program
+   points, even within extremely large target programs.
+
+   <p>The variable list file (abbreviated as <span
+   class="file">var-list-file</span>) contains all of the variables
+   that the user wants Fjalar to trace.  There is one section for
+   global variables and a section for variables associated with each
+   function (formal parameters and return values).  Again, the best
+   way to create a <span class="file">var-list-file</span> is to have
+   Fjalar generate a file with all variables included using the <span
+   class="option">--dump-var-file</span> option and then modifying
+   that file for one's particular needs by either deleting or
+   commenting out lines (again using the <code>'#'</code> comment
+   character).  Here is an example var-list-file:
+
+<pre class="example">     ----SECTION----
+     globals
+     /globalIntArray
+     /globalIntArray[]
+     /anotherGlobalIntArray
+     /anotherGlobalIntArray[]
+
+
+     ----SECTION----
+     FunctionNamesTest.cpp.staticFoo()
+     x
+     y
+
+
+     ----SECTION----
+     ..firstFileFunction(int)
+     blah
+
+
+     ----SECTION----
+     ..main()
+     argc
+     argv
+     argv[]
+     return
+
+
+     ----SECTION----
+     second_file.cpp.staticFoo()
+     x
+     y
+
+
+     ----SECTION----
+     ..secondFileFunction()
+</pre>
+   <p>The file format is quite straightforward.  Each section is marked by a
+special string &ldquo;<code>----SECTION----</code>&rdquo; on a line by itself followed
+immediately by a line that either denotes the program point name or the
+special string &ldquo;<code>globals</code>&rdquo;.  This is followed by a
+newline-delimited list of all variables to be visited for that
+particular program point.  (Global variables listed in the
+<code>globals</code> section are visited for all program points.)
+For clarity, one or more blank lines should separate neighboring sections,
+although the &ldquo;<code>----SECTION----</code>&rdquo; string literal on a line by itself is the only
+required delimiter.  If an entire section is missing, then no variables
+for that program point (or no global variables, if it is the special
+globals section) are traced.
+
+   <p>In the program that generated the output for the above example,
+   <code>int* globalIntArray</code> is a global integer pointer
+   variable.  For that variable, Fjalar generates two variables:
+   <code>/globalIntArray</code> to represent the hashcode pointer
+   value, and <code>/globalIntArray[]</code> to represent the array of
+   integers referred-to by that pointer.  The latter is a derived
+   variable that can be thought of as the child of
+   <code>/globalIntArray</code>.  If the entry for
+   <code>/globalIntArray</code> is commented-out or missing, then
+   Fjalar will not visit any values for <code>/globalIntArray</code>
+   or for any of its children, which in this case is
+   <code>/globalIntArray[]</code>.  If a struct or struct pointer
+   variable is commented-out or missing, then none of its members are
+   traced.  Thus, a general rule about variable entries in the <span
+   class="file">var-list-file</span> is that if a parent variable is
+   not present, then neither it nor its children are traced.
+
+<pre class="example">
+     record
+     record-&gt;entries[1]
+     record-&gt;entries[1]-&gt;list
+     record-&gt;entries[1]-&gt;list-&gt;head
+     record-&gt;entries[1]-&gt;list-&gt;head-&gt;magic
+
+</pre>
+   <p>For example, if you wanted to trace the value of the <code>magic</code> field
+nested deep within several layers of structs and arrays, it would not be
+enough to merely list this variable in the <span class="file">var-list-file</span>.  You
+would need to list all variables that are the parents of this one, as
+indicated by their names.  This can be easily accomplished by creating a
+file with <span class="option">--dump-var-file</span> and cutting out variable entries,
+taking care to not cut out entries that are the parents of entries that
+you want to trace.
+
+   <p>In order to limit both the number of program points traced as well as
+the variables traced at those program points, the user can run a Fjalar tool
+with both the <span class="option">--ppt-list-file</span> and <span class="option">--var-list-file</span>
+options with the appropriate <span class="file">ppt-list-file</span> and
+<span class="file">var-list-file</span>, respectively.  The <span class="file">var-list-file</span> only needs
+to contain a section for global variables and sections for all program
+points to be traced because variable listings for program points not to
+be traced are irrelevant (their presence in the <span class="file">var-list-file</span>
+does not affect correctness but does cause an unnecessary
+performance and memory inefficiency).
+
+   <p>If the <span class="option">--dump-var-file</span> option is used in conjunction with the
+<span class="option">--ppt-list-file</span> option, then the only sections generated in the
+<span class="file">var-list-file</span> will be the global section and sections for all
+program points explicitly mentioned in the <span class="file">ppt-list-file</span>.  This
+is helpful for generating a smaller <span class="file">var-list-file</span> for use with an
+already-existent <span class="file">ppt-list-file</span>.
+
+<h2><a name="Pointer-type-disambiguation">Pointer type disambiguation</a></h2>
+
+<p>Fjalar permits users (or external analyses) to specify whether pointers
+refer to arrays or to single values, and optionally, to specify the type
+of a pointer (see <a href="#Pointer-type-coercion">Pointer type coercion</a>).  For example, in
+<pre class="example">     void sum(int* array, int* result) { ... }  // definition of "sum"
+     ...
+     int a[40];
+     int total;
+     ...
+     sum(a, &amp;total);        // use of "sum"
+</pre>
+   <p class="noindent">the first pointer parameter refers to an array while the second refers to
+a single value.  Fjalar should treat these values
+differently.  For instance, <code>*array</code> is better observed as <code>array[]</code>,
+an array of integers, and <code>result[]</code> isn't a sensible array
+at all, even though in C <code>result[0]</code> is semantically identical to
+<code>*result</code>.
+By default, Fjalar treats all pointers as referencing arrays.  For
+instance, it would visit <code>result[]</code> rather than <code>result[0]</code>
+and would indicate that the length of array <code>result[]</code> is always 1.
+One can indicate to Fjalar that certain pointers refer to single elements rather than to arrays.
+
+   <p>Information about whether each pointer refers to an array or a single
+element can be specified in a &ldquo;disambig file&rdquo; that resides in the
+same directory as the target program (by default).  The <span class="option">--disambig</span>
+option instructs Fjalar to read this file if it exists.  (If it does not exist,
+Fjalar produces the file automatically and, if invoked along with the
+<span class="option">--smart-disambig</span> option, heuristically infers whether each
+pointer variable refers to single or multiple elements. Thus, users can
+edit this file for use on subsequent runs rather than having to create it
+from scratch.)  The disambig file lists all the program points and user-defined
+types, and under each, lists certain types of variables along with their
+custom disambiguation types as shown below.
+The list of disambiguation options is:
+
+     <ul>
+<li><p/>For variables of type <code>char</code> and <code>unsigned char</code>:
+          <ul>
+<li>'I': an integer, signed for <code>char</code> and unsigned for <code>unsigned char</code>. (Default)
+<li>'C': a single character, interpreted as a string.
+          </ul>
+<li><p/>For pointers to (or arrays of) <code>char</code> and <code>unsigned char</code>:
+          <ul>
+<li>'S': a string, possibly zero-terminated. (Default)
+<li>'C': a single character, interpreted as a string.
+<li>'A': an array of integers.
+<li>'P': a single integer.
+          </ul>
+<li><p/>For pointers to (or arrays of) all other variable types (if invoked
+along with <span class="option">--smart-disambig</span>, Fjalar automatically infers a default 'A' or 'P' for each variable during the generation of a <span class="file">.disambig</span> file):
+          <ul>
+<li>'A': an array.  (Default) (For an array of structs, an array will be visited for each scalar field of the struct.  Aggregate children (arrays, other structs) will not be visited.)
+<li>'P': a pointer to a single element.  (For a pointer to a struct, each
+field will be visited as a single instance, and child aggregate types
+will be traversed recursively. This extra information obtained from struct
+pointers is a powerful consequence of pointer type disambiguation.  This
+will be the default if the <span class="option">--disambig-ptrs</span> option is used.)
+          </ul>
+        </ul>
+
+   <p>The disambig file that Fjalar creates contains a section for each
+function, which can be used to disambiguate parameter variables visible
+at that function's entrance program point and parameter and return
+value variables visible at that function's exit program point.  It also contains
+a section for every user-defined
+struct/class, which can be used to disambiguate member variables of
+that struct/class.  Disambiguation information entered here will apply to all
+instances of a struct/class of that type, at all program points.
+There is also a section called &ldquo;globals&rdquo;, which disambiguates global
+variables which are output at every program point.  The entries in the
+disambig file may appear in any order, and whole entries or individual
+variables within a section may be omitted.  In this case, Fjalar will
+retain their default values.
+
+<h2><a name="disambig-partial-tracing">Using pointer type disambiguation with partial program tracing</a></h2>
+
+	<p>It is possible to use pointer type disambiguation while only tracing
+selected program points and/or variables in a target program, combining
+the functionality described in the <a href="#Pointer-type-disambiguation">Pointer type disambiguation</a> and
+<a href="#Tracing-only-part-of-a-program">Tracing only part of a program</a> sections.  This section describes
+the interaction of the <span class="file">ppt-list-file</span>, <span class="file">var-list-file</span>, and
+.disambig files.
+
+   <p>The interaction between selective program point tracing (via
+the <span class="file">ppt-list-file</span>) and pointer type disambiguation is fairly
+straightforward:  If the user creates a .disambig file while running
+Fjalar with a <span class="file">ppt-list-file</span> that only specifies certain program
+points, the generated .disambig file will only contain sections for
+those program points (as well as the global section and sections for
+each struct type).  If the user reads in a .disambig file while running
+Fjalar with a <span class="file">ppt-list-file</span>, then disambiguation information is
+applied for all variables at the program points to be traced.  This can
+be much faster and generate a much smaller disambiguation file, one that
+only contains information about the program points of interest.
+
+   <p>The interaction between selective variable tracing (via the
+   <span class="file">var-list-file</span>) and pointer type
+   disambiguation is a bit more complicated.  This is because the
+   <span class="file">var-list-file</span> lists variables with munged
+   Fjalar names, but using a .disambig file can actually change those
+   Fjalar variable names.  For example, in a sample program, the
+   <code>struct record* bar</code> parameter of <code>foo()</code> is
+   treated like an array by default.  Hence, the <span
+   class="file">var-list-file</span> will list the following
+   variables derived from this parameter:
+
+<pre class="example">     ----SECTION----
+     ..foo()
+     bar
+     bar[].name
+     bar[].numbers[0]
+     bar[].numbers[0][0]
+     bar[].numbers[1]
+     bar[].numbers[1][0]
+     bar[].numbers[2]
+     bar[].numbers[2][0]
+     bar[].numbers[3]
+     bar[].numbers[3][0]
+     bar[].numbers[4]
+     bar[].numbers[4][0]
+</pre>
+   <p>However, if we use a disambiguation file to denote
+   <code>bar</code> as a pointer to a single element, then the
+   var-list-file will instead list the following variables:
+
+<pre class="example">     ----SECTION----
+     ..foo()
+     bar
+     bar-&gt;name
+     bar-&gt;numbers
+     bar-&gt;numbers[]
+</pre>
+   <p>Notice how the latter variable list is more compact and reflects the
+fact that <code>bar</code> is now a pointer to a single struct.  Thus, the
+flattening of the <code>numbers[5]</code> static array member variable is no
+longer necessary (it was necessary without disambiguation because Fjalar
+does not support nested arrays of arrays, which can occur if <code>bar</code>
+were itself an array since <code>numbers[5]</code> is already an array).
+
+   <p>Notice that, with the exception of the base variable <code>bar</code>, all
+other variable names differ when running without and with
+disambiguation.  Thus, if you used a <span class="file">var-list-file</span> generated on a
+run without the disambiguation information while running Fjalar with the
+disambiguation information, the names will not match up at all, and you
+will not get the proper selective variable tracing behavior.
+
+   <p>Thus, this is the suggested way to use selective variable
+   tracing with pointer type disambiguation:
+
+     <ol type=1 start=1>
+<li>First create the proper .disambig file by using either
+<span class="option">--disambig</span> or <span class="option">--disambig-file</span>.
+You can use <span class="option">--ppt-list-file</span> as well to only create the
+.disambig file for certain program points, but do NOT use
+<span class="option">--var-list-file</span> to try to create a .disambig only for certain
+variables; this feature does not work yet.
+Modify the variable
+entries in the Fjalar-generated .disambig file to suit your needs.
+<li>Now create a <span class="file">var-list-file</span> by using
+<span class="option">--dump-var-file</span> while running Fjalar with the .disambig file
+that you have just created.  This ensures that the variables listed in
+<span class="file">var-list-file</span> will have the proper names for use with that
+particular .disambig file.  Modify the Fjalar-generated
+<span class="file">var-list-file</span> to suit your needs.
+<li>Finally, run Fjalar with the <span class="option">--var-list-file</span> option using
+the <span class="file">var-list-file</span> that you have just created and either the
+<span class="option">--disambig</span> or <span class="option">--disambig-file</span> option with the proper
+.disambig file.  This will perform the desired function: selective
+variable tracing along with disambiguation for all of the traced
+variables.
+        </ol>
+
+   <p>For maximum control of the output, you can use selective program point
+tracing, variable tracing, and disambiguation together all at once.
+
+<h2><a name="Pointer-type-coercion">Pointer type coercion</a></h2>
+
+	<p>In addition to specifying whether a particular pointer
+	refers to one element or to an array of elements, the user can
+	also specify what type of data a pointer refers to.  This type
+	coercion acts like an explicit type cast in C, except that it
+	only works on struct/class types and not on primitive types.
+	This feature is useful for traversing inside of data
+	structures with generic <code>void*</code> pointer fields.
+	Another use is to cast a pointer from one that refers to a
+	'super class' to one that refers to a 'sub class'.  This
+	structural equivalence pattern is often found in C programs
+	that emulate object orientation.  To coerce a pointer to a
+	particular type, simply write the name of the struct type
+	after the disambiguation letter (e.g., A, P, S, C, I) in the
+	<span class="file">.disambig</span> file:
+
+<pre class="example">     ----SECTION----
+     function: ..view_foo_and_bar()
+     f
+     P foo
+     b
+     P bar
+</pre>
+   <p>Without the type coercion, Fjalar cannot visit anything except for a
+hashcode for the two <code>void*</code> parameters of this function:
+
+<pre class="example">     void view_foo_and_bar(void* f, void* b);
+</pre>
+   <p>With type coercion, though, Fjalar treats <code>f</code> as a <code>foo*</code> and
+<code>b</code> as <code>bar*</code> and can traverse inside of them.  Of course, if
+those are not the true runtime types of the variables, then Fjalar's
+traversal will be meaningless.
+
+   <p>Due to the use of typedefs, there may be more than one name for a
+particular struct type.  The exact name that you need to write in the
+<span class="file">.disambig</span> file is the one that appears in that file after the
+<code>usertype</code> prefix.  Note that if a struct does not have any pointer
+fields, then there will be no <code>usertype</code> section for it in the
+<span class="file">.disambig</span> file.  In that case, try different names for the struct
+if necessary until Fjalar accepts the name (names are all one word long;
+you will never have to write <code>struct foo</code>).  There should only be
+at most a few choices to make.  If the coercion if successful, Fjalar
+prints out a message in the following form while it is processing the
+<span class="file">.disambig</span> file:
+
+<pre class="example">       .disambig: Coerced variable f into type 'foo'
+       .disambig: Coerced variable b into type 'bar'
+</pre>
+   <p>One more caveat about type coercion is that you can currently only
+coerce pointers into types that at least one variable in the program
+(e.g., globals, function parameters, struct fields) belongs to.  It is
+not enough to merely declare a struct type in your source code; you must
+have a variable of that type somewhere in your program.  This is a
+limitation of the current implementation, but it should not matter most
+of the time because programs rarely have struct declarations with no
+variables that belong to that type.  If you encounter this problem, you
+can simply create a global variable of a certain type to make type
+coercion work.
+
+<hr/>
+
+<a href="http://alum.mit.edu/www/pgbovine/">Philip Guo</a> &lt;pgbovine <!--boo-->(@) <!--foo-->alum <!--bar-->(.) <!--baz-->mit <!--void-->(.) <!--star-->edu&gt;
+<br/>
+<i>Last modified on October 6th, 2009</i>
+
+</body>
+</html>

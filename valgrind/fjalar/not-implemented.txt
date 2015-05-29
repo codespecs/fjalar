@@ -1,0 +1,13 @@
+The followoing opcodes are defined in VEX/pub/libvex_ir.h and used in
+the various VEX/priv/host* and VEX/priv/guest* files - but are not
+implemented in coregrind/m_translate.c.  I don't know why that is,
+but I speculate they never occure in actual code.  markro 2/24/2015
+
+Iop_ExpCmpNE8
+Iop_F16toF32x4
+Iop_F32toF16x4
+Iop_MulHi32Sx4
+Iop_MulHi32Ux4
+Iop_PwMax32Fx4
+Iop_PwMin32Fx4
+Iop_RSqrtEst32Ux2

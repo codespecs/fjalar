@@ -1,0 +1,15 @@
+----------
+2005-05-26
+----------
+
+Try to run Lackwit on Flex:
+
+PATH=/afs/csail.mit.edu/group/pag/software/pkg/gcc-2.95-links/bin/:$PATH strace -f -e execve dfec -w flex.c config.h flexdef.h parse.h version.h
+
+lh - seems to add fake lh_return_value variables for Lackwit to find
+comparability over return values
+
+The slowness may likely come from our own querying of the
+Lackwit-generated database
+
+Concentrate Lackwit experiments on scalability rather than performance

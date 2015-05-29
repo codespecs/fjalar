@@ -1,0 +1,5 @@
+This directory contains the website for the Fjalar standalone distribution
+(not to be confused with the full distribution that includes Kvasir and
+DynComp).  It's here so that it is saved in version control.  When making a
+release, it gets copied to the web (currently
+http://groups.csail.mit.edu/pag/fjalar/).

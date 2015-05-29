@@ -1,0 +1,4401 @@
+DynComp Dynamic Comparability Analysis development notes
+by Philip Guo
+
+----------
+2005-04-12
+----------
+
+When I run dyncomp on 'date' and Memcheck on 'date', dyncomp gives a
+lot more uninitialized value warnings.  Memcheck seems to generate
+these similar warnings but suppresses them.
+
+dyncomp:
+...
+==24247== Conditional jump or move depends on uninitialised value(s)
+==24247==    at 0x1B8ED585: _dl_relocate_object (in /lib/ld-2.3.2.so)
+==24247==    by 0x1B8E6098: (within /lib/ld-2.3.2.so)
+==24247==    by 0x1B8F30FC: (within /lib/ld-2.3.2.so)
+==24247==    by 0x1B8E4F3A: (within /lib/ld-2.3.2.so)
+==24247==    by 0x1B8E4C26: (within /lib/ld-2.3.2.so)
+==24247==
+==24247== Conditional jump or move depends on uninitialised value(s)
+==24247==    at 0x1B8ED3DA: _dl_relocate_object (in /lib/ld-2.3.2.so)
+==24247==    by 0x1B8E60DF: (within /lib/ld-2.3.2.so)
+==24247==    by 0x1B8F30FC: (within /lib/ld-2.3.2.so)
+==24247==    by 0x1B8E4F3A: (within /lib/ld-2.3.2.so)
+==24247==    by 0x1B8E4C26: (within /lib/ld-2.3.2.so)
+==24247==
+==24247== Conditional jump or move depends on uninitialised value(s)
+==24247==    at 0x1B8ED3E8: _dl_relocate_object (in /lib/ld-2.3.2.so)
+==24247==    by 0x1B8E60DF: (within /lib/ld-2.3.2.so)
+==24247==    by 0x1B8F30FC: (within /lib/ld-2.3.2.so)
+==24247==    by 0x1B8E4F3A: (within /lib/ld-2.3.2.so)
+==24247==    by 0x1B8E4C26: (within /lib/ld-2.3.2.so)
+==24247==
+==24247== Conditional jump or move depends on uninitialised value(s)
+==24247==    at 0x1B8ED585: _dl_relocate_object (in /lib/ld-2.3.2.so)
+==24247==    by 0x1B8E60DF: (within /lib/ld-2.3.2.so)
+==24247==    by 0x1B8F30FC: (within /lib/ld-2.3.2.so)
+==24247==    by 0x1B8E4F3A: (within /lib/ld-2.3.2.so)
+==24247==    by 0x1B8E4C26: (within /lib/ld-2.3.2.so)
+Tue Apr 12 16:25:24 EDT 2005
+==24247==
+==24247== ERROR SUMMARY: 20 errors from 8 contexts (suppressed: 0 from 0)
+==24247== malloc/free: in use at exit: 6186 bytes in 42 blocks.
+==24247== malloc/free: 47 allocs, 5 frees, 8051 bytes allocated.
+==24247== For counts of detected errors, rerun with: -v
+==24247== searching for pointers to 42 not-freed blocks.
+==24247== checked 415748 bytes.
+==24247==
+==24247== LEAK SUMMARY:
+==24247==    definitely lost: 0 bytes in 0 blocks.
+==24247==      possibly lost: 0 bytes in 0 blocks.
+==24247==    still reachable: 6186 bytes in 42 blocks.
+==24247==         suppressed: 0 bytes in 0 blocks.
+==24247== Reachable blocks (those to which a pointer was found) are not shown.
+==24247== To see them, rerun with: --show-reachable=yes
+
+
+Memcheck:
+
+Tue Apr 12 16:25:51 EDT 2005
+==24386==
+==24386== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 20 from 1)
+==24386== malloc/free: in use at exit: 6186 bytes in 42 blocks.
+==24386== malloc/free: 47 allocs, 5 frees, 8051 bytes allocated.
+==24386== For counts of detected errors, rerun with: -v
+==24386== searching for pointers to 42 not-freed blocks.
+==24386== checked 415748 bytes.
+==24386==
+==24386== LEAK SUMMARY:
+==24386==    definitely lost: 0 bytes in 0 blocks.
+==24386==      possibly lost: 0 bytes in 0 blocks.
+==24386==    still reachable: 6186 bytes in 42 blocks.
+==24386==         suppressed: 0 bytes in 0 blocks.
+==24386== Reachable blocks (those to which a pointer was found) are not shown.
+==24386== To see them, rerun with: --show-reachable=yes
+
+
+Notice that Memcheck suppressed 20 warnings but dyncomp didn't.  This
+is weird because I've copied dyncomp over from Memcheck and only
+changed its name.  Oh well ... maybe the Memcheck developers
+suppressed certain errors which only match up with something that's
+dependent on the Memcheck name.  This is probably not a big deal since
+we don't care about leak checking anyways.
+
+
+----------
+2005-04-13
+----------
+
+/* Allocate a new shadow for the given original tmp.  This means any
+   previous shadow is abandoned.  This is needed because it is
+   necessary to give a new value to a shadow once it has been tested
+   for undefinedness, but unfortunately IR's SSA property disallows
+   this.  Instead we must abandon the old shadow, allocate a new one
+   and use that instead. */
+static void newShadowTmp ( MCEnv* mce, IRTemp orig )
+
+In (mc_translate.c):
+Check this out.  One of the first problems I need to solve is how
+Memcheck automatically sets a byte to defined after it has been tested
+for undefinedness in order to avoid propagating errors.  We need to
+disable this functionality.
+
+
+/* Check the supplied **original** atom for undefinedness, and emit a
+   complaint if so.  Once that happens, mark it as defined.  This is
+   possible because the atom is either a tmp or literal.  If it's a
+   tmp, it will be shadowed by a tmp, and so we can set the shadow to
+   be defined.  In fact as mentioned above, we will have to allocate a
+   new tmp to carry the new 'defined' shadow value, and update the
+   original->tmp mapping accordingly; we cannot simply assign a new
+   value to an existing shadow tmp as this breaks SSAness -- resulting
+   in the post-instrumentation sanity checker spluttering in disapproval.
+*/
+static void complainIfUndefined ( MCEnv* mce, IRAtom* atom )
+
+From the Memcheck user's manual (mc_main.html):
+If a check should detect undefinedness, an error message is
+issued. The resulting value is subsequently regarded as
+well-defined. To do otherwise would give long chains of error
+messages. In effect, we say that undefined values are non-infectious.
+
+
+I think that commenting out all the complainIfUndefined() calls in
+mc_translate.c should do the trick.
+
+
+
+/*------------------------------------------------------------*/
+/*--- Generate shadow values from all kinds of IRExprs.    ---*/
+/*------------------------------------------------------------*/
+
+static
+IRAtom* expr2vbits_Binop ( MCEnv* mce,
+                           IROp op,
+                           IRAtom* atom1, IRAtom* atom2 )
+
+This huge function seems to generate the shadow values for all sorts
+of expressions.  Perhaps this is what I should hack on.
+
+The ENSURE_MAPPABLE(addr,caller) macro in mac_shared.h seems to be the
+only thing that calls alloc_secondary_map() to allocate a new
+secondary map if the current one for the address addr is distinguished
+(uninitialized and/or unallocated).
+
+
+----------
+2005-04-14
+----------
+
+The best way is to eliminate the tags from the memcheck structures
+and just have our own (because their optimization messes us up)
+
+When do we have instructions which create a new value in memory?
+
+Tags are associated with valid V-bits - tags are needed for a byte
+when at least 1 V-bit in your byte is valid.  V-bits get set when you
+overwrite stuff.  We want to destroy old tag and move a new one in
+when none of the original data can be recovered
+
+Globals:
+Every byte needs a new unique tag upon program instantiation
+There is probably some special case for this
+
+set_address_range_perms is probably what sets all the global area to A
+and V; need to do similar things with tags
+
+Stack:
+Local variables - upon function entrance, moves ESP down a whole chunk
+at a time
+
+int x = 10;
+x = 6;
+int y = 15;
+
+In x86, you can either have '10' write to a register then write the
+register into memory, or have an instruction that directly writes '10'
+into memory.  But the important thing to note is that the creation of
+the literal '10' is what creates the tag and moves it into either
+register or memory.  We need tags associated with registers as well as
+memory.
+
+IR is maybe some kind of expression tree which implicitly assigns
+names to stuff -
+
+(Maybe) Memcheck must somehow make a new parallel expression tree for
+A/V-bits
+
+mc_translate.c
+
+temps
+newShadowTmp()?
+
+shadowing - given the tree for the actual expressions, give me the
+corresponding one for the V-bits (A-bits don't have to do with
+operations, only on memory allocation)
+
+PUT/GET :: STORE/LOAD
+
+
+expr2vbits_Binop() - the tree-walk which builds up the parallel trees
+
+We start with x86 -> IR tree and then walk it to build up a v-bit tree
+
+Input tree is probably fairly linear but we want a tree representation
+
+IR has two levels - statements and atoms (expressions)
+
+         case Ist_Tmp:
+            assign( bb, findShadowTmp(&mce, st->Ist.Tmp.tmp),
+                        expr2vbits( &mce, st->Ist.Tmp.data) );
+            break;
+
+This seems to be the meaty call
+
+We need some instructions to write to tags just like how they write
+instructions to write A and V bits
+
+
+/* Generate a shadow store.  addr is always the original address atom.
+   You can pass in either originals or V-bits for the data atom, but
+   obviously not both.  */
+
+static
+void do_shadow_STle ( MCEnv* mce,
+                      IRAtom* addr, UInt bias,
+                      IRAtom* data, IRAtom* vdata )
+
+We need vars to keep track of tags - we need store and load tag
+operations in mc_translate.c
+
+We need helpers for store tag, load tag, and merge-two-tags
+
+When we do 32-bit operations, we should just unify them into one tag
+
+LOAD is an expression whereas STORE is a statement
+
+STORE has to be a statement because it has side effects (you can swap
+a LOAD/STORE or two STOREs)
+
+Input from the user is conceptually a place where you get new data
+
+If you do ESP + 1, you need to get a new tag because of &-operators
+
+We seem to need a parallel tmpMap
+
+We need to create parallel helper functions to deal with tags:
+VGA_REGPARM(1)
+UInt MC_(helperc_LOADV1) ( Addr a )
+
+
+
+static
+void mc_new_mem_startup( Addr a, SizeT len, Bool rr, Bool ww, Bool xx )
+
+static
+void mc_new_mem_heap ( Addr a, SizeT len, Bool is_inited )
+
+static
+void mc_new_mem_mmap ( Addr a, SizeT len, Bool rr, Bool ww, Bool xx )
+
+
+We may be able to mc_new_mem_heap to create tags and stuff
+and zero stuff out when stack pointer moves
+
+
+We have two problems to solve:
+
+The easy one: Statically-initialized things - we can simply plug stuff
+into mc_main.c.
+
+The hard one: Dynamic events - we need to actually instrument the IR
+and do funky stuff.
+
+
+Do we need any special handling of malloc() and friends?
+
+
+What do we do with init_new_mem_stack, init_die_mem_stack and friends?
+
+
+----------
+2005-04-17
+----------
+
+I turned on 'verboze' in mc_translate.c:TL_(instrument) and diff'ed
+two versions of SuperSimpleTest, one with an extra 'int z = x + y;'
+statement and here was the main difference:
+
+------ IMark(0x8048375, 3) ------
+
+
+PUT(56) = 0x8048375:I32
+
+
+t33 = Add32(t23,0xFFFFFFFC:I32)
+
+   t75 = Or32(t45,0x0:I32)
+   t76 = Sub32(0x0:I32,t75)
+   t77 = Or32(t75,t76)
+   t78 = t77
+
+t15 = LDle:I32(t33)
+
+   t79 = DIRTY 1:I1 RdFX-gst(16,4) RdFX-gst(56,4) ::: MC_(helperc_LOADV4)[rp=1]{0xB125FDF7}(t33)
+   t80 = t79
+
+t14 = Add32(t32,t15)
+
+   t81 = Or32(t74,t80)
+   t82 = Sub32(0x0:I32,t81)
+   t83 = Or32(t81,t82)
+   t84 = t83
+
+PUT(32) = 0x3:I32
+
+
+PUT(36) = t32
+
+   PUT(348) = t74
+
+PUT(40) = t15
+
+   PUT(352) = t80
+
+PUT(44) = 0x0:I32
+
+
+------ IMark(0x8048378, 3) ------
+
+
+PUT(56) = 0x8048378:I32
+
+
+t35 = Add32(t23,0xFFFFFFF4:I32)
+
+   t85 = Or32(t45,0x0:I32)
+   t86 = Sub32(0x0:I32,t85)
+   t87 = Or32(t85,t86)
+   t88 = t87
+
+STle(t35) = t14
+
+   DIRTY 1:I1 RdFX-gst(16,4) RdFX-gst(56,4) ::: MC_(helperc_STOREV4)[rp=2]{0xB125FE46}(t35,t84)
+
+
+
+Look in do_shadow_STle:
+
+See the 'void* helper' local variable?  We need to somehow hijack this
+one so that we can call our own nifty helper functions at certain
+instructions.  From my observation, what Memcheck does is create new
+IR trees which contain primitive operations (i.e. AND, OR) on the
+V-bits, but there are no primitive operations for "merge tags"
+et. al. so that we need to simply suck it up and call our own helper
+functions. (Check out setHelperAnns(), unsafeIRDirty_0_N(),
+unsafeIRDirty_1_N())
+
+/vex/pub/libvex_ir.h contains some useful IR definitions
+
+IRCallee seems to describe a helper function to call
+mkIRCallee(), dopyIRCallee(), etc...
+
+IRExpr_CCall is for pure (no side effects) helper functions whereas
+IRStmt_Dirty is for non-pure ones
+
+If you make a dirty call, you must specify EXACTLY which memory areas
+you are going to affect, etc...
+
+We definitely need to use tmps to make copies of tags as they flow
+from place-to-place.  Otherwise, when there is an operation which
+involves two registers (i.e. ADD R1 R2), we have no clue about the
+tags of R1 and R2
+
+
+Super ghetto solution - make a copy of all of the Memcheck
+instrumentation code and DUPLICATE it for tags.  Then modify
+TL_(instrument) to create BOTH tag and A/V-bit-manipulation
+instructions for all inputted instructions
+
+
+***
+What do we do when we read multiple bytes from memory?  Do we merge
+the tags associated with all of these bytes and just return one tag?
+That seems like it may lose some precision but it's just much easier
+to implement (at least for now).
+***
+
+helperc_STORE_TAG_4(0x52BFE3BC, 0) [nextTag=110593]
+helperc_STORE_TAG_4(0x52BFE3B8, 0) [nextTag=110593]
+helperc_STORE_TAG_4(0x52BFE3B4, 0) [nextTag=110593]
+helperc_STORE_TAG_4(0x52BFE3B0, 0) [nextTag=110593]
+helperc_STORE_TAG_4(0x52BFE3AC, 0) [nextTag=110593]
+helperc_STORE_TAG_4(0x52BFE35C, 0) [nextTag=110593]
+helperc_LOAD_TAG_4(0x52BFE35C) = 0 [nextTag=110593]
+helperc_LOAD_TAG_4(0x52BFE35C) = 0 [nextTag=110593]
+helperc_STORE_TAG_4(0x52BFE388, 0) [nextTag=110593]
+helperc_LOAD_TAG_4(0x1B8FAC00) = 101377 [nextTag=110593]
+helperc_STORE_TAG_4(0x1B8FA66C, 4294967295) [nextTag=110593]   <---- PROBLEM!!!
+helperc_STORE_TAG_4(0x1B8FA674, 4294967295) [nextTag=110593]   <---- PROBLEM!!!
+helperc_STORE_TAG_4(0x52BFE380, 0) [nextTag=110593]
+helperc_LOAD_TAG_4(0x52BFE380) = 0 [nextTag=110593]
+helperc_STORE_TAG_4(0x52BFE384, 0) [nextTag=110593]
+helperc_LOAD_TAG_4(0x1B8FA674) = 4294967295 [nextTag=110593]   <---- PROBLEM!!!
+
+Look at big-output.pid2528 to see the results of the loads and store
+helper function calls: Ummm, there is this mystery garbage value
+(4294967295, which is 0xffffffff) likely caused by a bogus store ...
+which means that we are storing garbage, which ain't good.
+
+Also other weird garbage values: 4294967280 (0xfffffff0)
+
+I'm trying to get rid of these!!! (Really bad hack - check store
+tag values to make sure that they are below 'nextTag', but this is a
+bad way to patch up the problem.)
+
+I probably need to clean up the rest of the DynComp code before going
+back to this.  Perhaps the rest of the incompatibilities are causing
+these bogus values to be stored.  It's still too early to get to the
+bottom of this problem.
+
+
+----------
+2005-04-20
+----------
+
+Ok, got rid of the garbage values (by disabling handling of unary ops)
+and started getting something to work with MERGE_TAGS, except that the
+second tag parameter is ALWAYS 0.  That's no good :(
+
+e.g.
+
+helperc_STORE_TAG_4(0x52BFE354, 101913) [nextTag=1466035]
+helperc_MERGE_TAGS_4(101913, 0) [nextTag=1466035]
+helperc_STORE_TAG_4(0x52BFE350, 110758) [nextTag=1466035]
+helperc_MERGE_TAGS_4(101913, 0) [nextTag=1466035]
+helperc_STORE_TAG_4(0x52BFE34C, 0) [nextTag=1466035]
+
+
+!!! Ok, I may have some insight into the problem ... we are using
+definedOfType_DC() as a cop-out to create a 0-valued tag, which seems
+to clobber the hell out of a lot of valid tag values.  What I really
+want is something like a no-op. !!!
+
+
+----------
+2005-04-21
+----------
+
+Difference between Put and STle?
+
+      Ist_NoOp,   /* no-op (usually resulting from IR optimisation) */
+      Ist_Put,    /* write guest state, fixed offset */
+      Ist_PutI,   /* write guest state, run-time offset */
+      Ist_Tmp,    /* assign value to temporary */
+      Ist_STle,   /* little-endian write to memory */
+
+Look at Ist_NoOp!
+extern IRStmt* IRStmt_NoOp
+
+/* Convenience function for constructing clean helper calls. */
+IRExpr* mkIRExprCCall
+
+Stephen's suggestions from our meeting today:
+
+Ideally, we want to somehow replicate the tree structure of the
+original IR except for the fact that our binary operations are merges.
+Our merge operations should return the canonical tag of the merged
+sets in the temporary so that it can be used further up the chain.
+mkIRExprCCall can be our savior by providing a way to make a 'clean' C
+function call as an IRExpr, which can fit in our parallel IR
+expression tree.  E.g.
+
+    (sub)
+    /  \
+   /    \
+ (add)  C
+  / \
+ /   \
+ A   B
+
+becomes ...
+
+   (merge)
+    /  \
+   /    \
+(merge) Ctag
+  / \
+ /   \
+Atag Btag
+
+Each (merge) merges the sets of the tags and returns the canonical tag
+of the set so that it can be used in further merges.  This is very
+important!
+
+We need to try to use clean calls since they can fit in our expression
+tree (hopefully) and not dirty calls because they are statements
+(maybe?).
+
+
+
+Ok, onto another issue ... optimization of tag mergings.  When we
+union uf_objects pointed-to by tags, what we really want is to return
+the tag of the canonical uf_object (the root of the tree) so that it
+can be stored away.  This will help in garbage collection because it
+ensures that we will have the smallest possible set of distinct tags
+floating around at any one time.  Conceptually, we have two maps
+(implemented as two-level sparse arrays):
+
+tag_map: Addr --> tag
+uf_object_map: tag --> uf_object
+
+Whenever we perform a union of uf_objects in uf_object_map, we want to
+also return the tag of the canonical (root) uf_object in the set.
+
+Here is an example:
+
+tag_map
+-------
+Addr:   1   2   3   4   5
+tag:    10  20  30  40  50
+
+uf_object_map
+-------------
+tag:        1 ... 10 ... 20 ... 30 ... 40 ... 50
+uf_object:        A      B      C      D      E
+
+Let's say you merge A, B, C, D, and E.  What we really want is to
+return 10 (the tag of A) as the result of this merge.  That way, if we
+assign the results of the merge into any new variable, it will show up
+as 10.  So if we clobber addresses 2, 3, 4, and 5 with the results of
+the merge, all of them will end up being 10 and we can garbage collect
+tags 20, 30, 40, and 50.
+
+To implement this with the two-level uf_object_map, we need to somehow
+provide an efficient reverse mapping of uf_object --> tag.  My
+suggestion is to keep a backpointer to the space in
+primary_uf_object_map when you malloc each 2^16 secondary array of
+uf_objects so that you can do a two-level pointer offset arithmetic to
+get the tag, when given an uf_object*.
+
+However, I want to defer the implementation of this optimization
+because I don't see right off the bat how it will help us out too
+much.  I want to have some more time to think about it first.
+
+... ok, I thought about it.  It would be really helpful in the
+helperc_LOAD_TAG... series of functions, where we are loading the tags
+for several bytes (2, 4, or 8) and doing a union because we figure
+heuristically that if you are reading 4 (or whatever) bytes from
+memory, you really mean for those 4 bytes to have the SAME tag.  Right
+now, we simply union the tags, but as a side effect, we should really
+set the tags for all those relevant bytes to the CANONICAL (root)
+tag.  In the above example, let's say that we were reading Addr 1, 2,
+3, 4 as one block.  If 10 were the canonical tag for the union of A,
+B, C, D, then we want to set the tags as follows:
+
+tag_map
+-------
+Addr:   1   2   3   4   5
+tag:    10  10  10  10  50
+
+... which would allow tags 20, 30, and 40 to be garbage collected.
+
+Ok, I'm now convinced that I should go thru with this optimization.
+
+
+In order to simplify the implementation, I will just keep the 4-byte
+tag along with each uf_object structure.  This wastes a bit of space,
+bloating it from 8 to 12 bytes each, but it eliminates lots of
+implementation complexities.
+
+
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+Garbage collection idea!!!
+
+When you're doing the mark-sweep garbage collection, clobber every
+single tag with the canonical tag found using find_canonical_tag().
+If we are pretty sure that there are relatively few distinct sets
+(lots of merging occurs), then replacing each tag in shadow memory
+(tag_map) with its canonical tag will better enable us to recycle
+tags.
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+Dude, something looks good:
+
+SuperSimpleTest.c:
+
+int main() {
+  int x = 5;
+  int y = 10;
+  int z = x + y;
+  printf("&x=%p, &y=%p, &z=%p\n", &x, &y, &z);
+  return 0;
+}
+
+
+Program output:
+&x=0x52bfe354, &y=0x52bfe350, &z=0x52bfe34c
+
+Possibly an interesting part:
+
+helperc_STORE_TAG_4(0x52BFE358, 0) [nextTag=1768769]
+helperc_CREATE_TAG() = 1768769 [nextTag=1768770]
+helperc_MERGE_TAGS_4(0, 1768769) [nextTag=1768770]
+helperc_CREATE_TAG() = 1768770 [nextTag=1768771]
+helperc_MERGE_TAGS_4(0, 1768770) [nextTag=1768771]
+helperc_CREATE_TAG() = 1768771 [nextTag=1768772]
+helperc_MERGE_TAGS_4(0, 1768771) [nextTag=1768772]
+helperc_CREATE_TAG() = 1768772 [nextTag=1768773]
+helperc_CREATE_TAG() = 1768773 [nextTag=1768774]
+helperc_MERGE_TAGS_4(0, 1768773) [nextTag=1768774]
+helperc_CREATE_TAG() = 1768774 [nextTag=1768775]             <-- create tag for '5'
+helperc_STORE_TAG_4(0x52BFE354, 1768774) [nextTag=1768775]   <-- Assign '5' to x; tag(x) = 1768774
+helperc_CREATE_TAG() = 1768775 [nextTag=1768776]
+helperc_CREATE_TAG() = 1768776 [nextTag=1768777]
+helperc_MERGE_TAGS_4(0, 1768776) [nextTag=1768777]
+helperc_CREATE_TAG() = 1768777 [nextTag=1768778]             <-- create tag for '10'
+helperc_STORE_TAG_4(0x52BFE350, 1768777) [nextTag=1768778]   <-- Assign '10' to y; tag(y) = 1768777
+helperc_CREATE_TAG() = 1768778 [nextTag=1768779]
+helperc_CREATE_TAG() = 1768779 [nextTag=1768780]
+helperc_MERGE_TAGS_4(0, 1768779) [nextTag=1768780]
+helperc_LOAD_TAG_4(0x52BFE350) = 1768777 [nextTag=1768780]   <-- Load y into register; tag(y) = 1768777
+helperc_CREATE_TAG() = 1768780 [nextTag=1768781]
+helperc_CREATE_TAG() = 1768781 [nextTag=1768782]
+helperc_MERGE_TAGS_4(0, 1768781) [nextTag=1768782]
+helperc_LOAD_TAG_4(0x52BFE354) = 1768774 [nextTag=1768782]   <-- Load x into register; tag(x)= 1768774
+helperc_MERGE_TAGS_4(1768777, 1768774) [nextTag=1768782]     <-- Do 'x + y'; Merge tag(x) & tag(y)
+helperc_CREATE_TAG() = 1768782 [nextTag=1768783]
+helperc_CREATE_TAG() = 1768783 [nextTag=1768784]
+helperc_CREATE_TAG() = 1768784 [nextTag=1768785]
+helperc_CREATE_TAG() = 1768785 [nextTag=1768786]
+helperc_MERGE_TAGS_4(0, 1768785) [nextTag=1768786]
+helperc_STORE_TAG_4(0x52BFE34C, 1768777) [nextTag=1768786]   <-- Assign 'x + y' to z; tag(z) = tag(x) = 1768777
+
+
+
+Uhhh, we still have lots of extraneous CREATE_TAG() calls without
+being assigned to variables in memory, but the garbage collector
+should take care of that.
+
+
+----------
+2005-04-22
+----------
+
+Stephen suggested that we count all binary ops as interactions
+(because they all consist of data flow) unless otherwise noted
+(e.g. shift operators, or operator, etc...).
+
+z = x << y implies that z and x are comparable to one another, but not
+to y.  That means that we simply copy the tag over from x to z and not
+merge with the tag of y.
+
+Some things shouldn't count as interactions at all (i.e. z = x || y)
+so just pass along a 0 tag.
+
+
+Ummm, now it barfs on ArrayTest with this error:
+
+==5448==  Address 0x1BB3A000 is not stack'd, malloc'd or (recently) free'd
+buffer population[999]: 134516768
+buffer multiDimensional[4][5][12]: 0x804a720
+
+vex: the `impossible' happened:
+   genGuestArrayOffset(x86 host)
+vex storage:  P 436,  T total 64171040 (1905138),  T curr 53956 (1654)
+
+valgrind: the `impossible' happened:
+   LibVEX called failure_exit().
+==5448==    at 0xB0022A71: ???
+==5448==    by 0xB0022A70: ???
+==5448==    by 0xB0022A99: ???
+==5448==    by 0xB0049C29: ???
+==5448==    by 0xB0061561: ???
+==5448==    by 0xB006ED5C: ???
+==5448==    by 0xB0075A28: ???
+==5448==    by 0xB0076114: ???
+==5448==    by 0xB0060FE0: ???
+==5448==    by 0xB004A1BA: ???
+==5448==    by 0xB00136D7: ???
+==5448==    by 0xB0013B17: ???
+
+Basic block ctr is approximately 32990
+
+sched status:
+  running_tid=1
+
+Thread 1: status = VgTs_Runnable
+==5448==    at 0x80484CE: main (ArrayTest.c:96)
+
+
+Ok, I'm trying to run dyncomp on the programs in the Kvasir test
+suite.  This is all done with the CVS check-in at:
+Fri Apr 22 16:03:55 EDT 2005
+
+Or, in CVS time: 2005-04-22 20:04:56 +0000
+
+Success:
+
+bc
+BinaryTreeTest
+DisambigTest
+Dstr
+function-pointer
+GlobalTest
+inline-func
+ManualDisambigExample
+md5
+MultiDimArrayTest
+MultipleStructsTest
+NestedStructTest
+partial-init
+pointer-levels
+PointerTest
+rijndael
+shared-lib
+SimpleDisambigStructTest
+small-test
+StackArrayCppTest
+StackCppTest
+StaticArraysTest
+static-struct
+string-arrays
+StructPtrTest
+tcas
+two-statics
+virtual-method
+
+Failure (all with the genGuestArrayOffset(x86 host) problem):
+
+ArrayTest
+ArrayTest-cpp
+ArraysInStructTest
+crazy-test-1
+TrivialTest
+TypedefTest
+TypesTest
+
+Special failures:
+
+IntTest
+
+IN STATEMENT:
+
+t325 = x86g_check_fldcw{0xB00838CA}(t73):I64
+
+ERROR = IRStmt.Put.Tmp: tmp and expr do not match
+
+
+vex: the `impossible' happened:
+   sanityCheckFail: exiting due to bad IR
+vex storage:  P 436,  T total 55547180 (1646556),  T curr 137076 (4325)
+
+
+
+Now I need to figure out what exactly makes these programs fail and
+generate the smallest possible example which reproduces this bug.
+
+In TypesTest, if you remove the stuff which deals with doubles and
+floats, it seems like you're fine:
+
+    printf("returnDoubleSum(%f, %f) = %f\n",
+	   (float)((a+b)/7),
+	   (double)((2/b)*a),
+	   returnDoubleSum((float)((a+b)/7), (double)((2/b)*a)));
+    printf("returnFloatProduct(%f, %f) = %f\n",
+	   (float)((b/9)+a*3.14159),
+	   (float)(b*a+6/7*3),
+	   returnFloatProduct((float)((b/9)+a*3.14159), (float)(b*a+6/7*3)));
+
+
+I extracted this out into FloatTest under dyncomp-tests, which is a
+tiny program that reproduces the genGuestArrayOffset() bug.
+
+It seems like any conversion to a float triggers this error.
+
+
+(On another note, all the Memcheck warnings we're getting with the
+dyncomp-instrumented code - interestingly, only system calls - are
+pesky.  Maybe something to do with helper functions, perhaps the dirty
+ones messing up v-bits)
+
+
+V-bits overriding problem:
+The main problem here (we think) is that the shadow guest state is a
+fixed size (the same size as the original guest state), which works
+well for Memcheck, but not for us.  We need more space!!!
+
+
+----------
+2005-04-23
+----------
+
+Yeah, there is only one shadow guest state for Memcheck (too bad it's
+hardcoded into Vex) and BOTH dyncomp AND Memcheck are sharing it,
+which means that we are clobbering V-bit information in the guest
+state (registers and stuff).  That's probably why we are getting so
+many bogus Memcheck errors.  To solve this, we need to somehow
+allocate more guest state.
+
+
+Floating point crash:
+
+int main() {
+  unsigned int a = 10;
+  float c = (float)a;
+  return 0;
+}
+
+vex: the `impossible' happened:
+   genGuestArrayOffset(x86 host)
+vex storage:  P 436,  T total 58577752 (1707030),  T curr 107796 (3293)
+
+
+But this works:
+
+int main() {
+  float c = 5;
+  return 0;
+}
+
+Actually, this may be related to the floating-point crash because
+getGuestArrayOffset() depends on the guest floating point array and if
+the sizes are bogus, then we're screwed.
+
+The problem is eliminated when you get rid of the handlers for Ist_PutI:
+
+case Ist_PutI:
+//            do_shadow_PUTI_DC( &dce,
+//                               st->Ist.PutI.descr,
+//                               st->Ist.PutI.ix,
+//                               st->Ist.PutI.bias,
+//                               st->Ist.PutI.data );
+break;
+
+It's got something to do with the indexing done in do_shadow_PUTI_DC.
+
+From Iex_GetI ...
+From Ist_PutI ...
+From Ist_PutI ...
+
+vex: the `impossible' happened:
+   genGuestArrayOffset(x86 host)
+vex storage:  P 436,  T total 58577752 (1707030),  T curr 107796 (3293)
+
+
+Yep, the debug. output confirms something fishy in PUTI_DC.
+
+Backtrace:
+
+Breakpoint 2, genGuestArrayOffset (env=0xb0275a64, descr=0xb0269b3c, off=0x4,
+    bias=-1) at priv/host-x86/isel.c:586
+(gdb) bt
+#0  genGuestArrayOffset (env=0xb0275a64, descr=0xb0269b3c, off=0x4, bias=-1)
+    at priv/host-x86/isel.c:586
+#1  0xb0075a59 in iselStmt (env=0xb0275a64, stmt=0xb0274c00)
+    at priv/host-x86/isel.c:3295
+#2  0xb0076145 in iselBB_X86 (bb=0xb026da38, subarch_host=123)
+    at priv/host-x86/isel.c:3519
+#3  0xb0060fe1 in LibVEX_Translate (arch_guest=VexArchX86,
+    subarch_guest=VexSubArchX86_sse2, arch_host=2955336248,
+    subarch_host=VexSubArchX86_sse2,
+    guest_bytes=0x8048354 "U\211е\203м\b\203дрё", guest_bytes_addr=134513492,
+    chase_into_ok=0x4, guest_extents=0xb0862ef4,
+    host_bytes=0xb0259aa0 "\213\235L\001", host_bytes_size=20000,
+    host_bytes_used=0x4, instrument1=0xb0046f44 <vgToolInternal_instrument>,
+    instrument2=0xb004958e <vg_SP_update_pass>,
+    cleanup_after_instrumentation=1 '\001', byte_accessible=0x4, traceflags=4)
+    at priv/main/vex_main.c:492
+#4  0xb004a1bb in vgPlain_translate (tid=1, orig_addr=134513492,
+    debugging_translation=0 '\0', debugging_verbosity=0)
+    at libvex_basictypes.h:151
+#5  0xb00136d8 in handle_tt_miss (tid=1) at vg_scheduler.c:653
+#6  0xb0013b18 in vgPlain_scheduler (tid=1) at vg_scheduler.c:768
+#7  0xb005835d in vgArch_thread_wrapper (tidW=1) at core_os.c:41
+#8  0x00000000 in ?? ()
+
+
+This is the statement that it supposedly comes from:
+
+(gdb) p *stmt
+$7 = {tag = Ist_PutI, Ist = {NoOp = {<No data fields>}, IMark = {
+      addr = 12692904998714383164, len = -1}, Put = {offset = -1339647172,
+      data = 0xb02641d8}, PutI = {descr = 0xb0269b3c, ix = 0xb02641d8,
+      bias = -1, data = 0xb0269ad8}, Tmp = {tmp = 2955320124,
+      data = 0xb02641d8}, STle = {addr = 0xb0269b3c, data = 0xb02641d8},
+    Dirty = {details = 0xb0269b3c}, MFence = {<No data fields>}, Exit = {
+      guard = 0xb0269b3c, jk = 2955297240, dst = 0xffffffff}}}
+
+pgbovine@parsnip:~/research/invariants/valgrind-3/vex$ grep -r x86guest_layout *
+...
+priv/guest-x86/gdefs.h:VexGuestLayout x86guest_layout;
+priv/guest-x86/ghelpers.c:   x86guest_layout
+priv/main/vex_main.c:         guest_layout     = &x86guest_layout;
+...
+
+
+pub/libvex_guest_x86.h:   VexGuestX86State;
+
+pub/libvex.h: Check this out - it hardcodes the 2X size:
+/* A note about guest state layout.
+
+   LibVEX defines the layout for the guest state, in the file
+   pub/libvex_guest_<arch>.h.  The struct will have an 8-aligned size.
+   Each translated bb is assumed to be entered with a specified
+   register pointing at such a struct.  Beyond that is a shadow
+   state area with the same size as the struct.  Beyond that is
+   a spill area that LibVEX may spill into.  It must have size
+   LibVEX_N_SPILL_BYTES, and this must be a 16-aligned number.
+
+   On entry, the baseblock pointer register must be 8-aligned.
+*/
+
+coregrind/x86/core_arch.h:      UChar vex_spill[LibVEX_N_SPILL_BYTES];
+
+Here is where the shadow is FIXED!!!
+
+typedef
+   struct {
+      /* --- BEGIN vex-mandated guest state --- */
+
+      /* Saved machine context. */
+      VexGuestX86State vex;
+
+      /* Saved shadow context. */
+      VexGuestX86State vex_shadow;
+
+      /* Spill area. */
+      UChar vex_spill[LibVEX_N_SPILL_BYTES];
+
+      /* --- END vex-mandated guest state --- */
+   }
+   ThreadArchState;
+
+Look at where the 2 is hardcoded! YUCK!
+
+valgrind: vg_scheduler.c:484 (run_thread_for_a_while): Assertion `a_vex + 2 * sz_vex == a_spill' failed.
+
+
+I'm changing it to add a vex_shadow_2 field to ThreadArchState.  Note
+that this blows because I'll need to change it for EVERY architecture,
+but that's ok since we're only doing x86 for now.
+
+but now it segfaults :( bah
+
+
+----------
+2005-04-25
+----------
+
+We want to use 8-byte stores into guest state ONLY for PUTI (using the
+IR conversion functions).
+
+vex/priv/host-generic/reg_alloc2.c:684
+
+      /* This reflects LibVEX's hard-wired knowledge of the baseBlock
+         layout: the guest state, then an equal sized area following
+         it for shadow state, and then the spill area. */
+      vreg_lrs[j].spill_offset = toShort(guest_sizeB * 2 + k * 8);
+
+ThreadArchState is within ThreadState (defined in coregrind/core.h)
+
+./priv/host-generic/reg_alloc2.c:      // PG - modified offset from 2 to 6 (look in core_arch.h)
+./priv/host-x86/isel.c:      // PG - Add handling for 4-byte PUTI's for tags
+
+
+
+Ok, we fixed three problems today:
+1.) Floating point stack problem (as evident in FloatTest)
+
+The problem was that PUTI (Indexed PUT) is only used to write to the
+floating-point stack, but Vex currently only allows 8-byte and 1-byte
+writes for PUTI, 8-byte for doubles and 1-byte for the floating-point
+'tags' (not the same as our tags).  We need to make an indexed 4-byte
+write, so we simply relaxed a few assertions an added a case in the
+x86->IR translator to handle 4-byte PUTI's.
+
+Changes:
+
+./priv/host-x86/isel.c:
+
+Line 588:
+   // PG - Added support for 4-byte writes of DynComp tags
+   if (nElems != 8 || (elemSz != 1 && elemSz != 4 && elemSz != 8))
+      vpanic("genGuestArrayOffset(x86 host)");
+
+Line 608:
+   // PG - Added support for 4-byte writes of DynComp tags
+   vassert(elemSz == 1 || elemSz == 4 || elemSz == 8);
+   // PG - Added support for 4-byte writes of DynComp tags
+   return
+      X86AMode_IRRS( descr->base, hregX86_EBP(), tmp,
+                     elemSz==8 ? 3 :
+                                 elemSz==4 ? 2 : 0);
+}
+
+Line 3313:
+      // PG - Add handling for 4-byte PUTI's for tags
+      if (ty == Ity_I32) {
+         X86RI* ri = iselIntExpr_RI(env, stmt->Ist.PutI.data);
+         addInstr(env, X86Instr_Alu32M(Xalu_MOV,ri,am));
+         return;
+      }
+
+
+2.) Tags and V-bits clobbering each other because they both refer to
+the same place in the shadow guest state
+
+This change was a bit more involved.  The fundamental problem is that
+Vex and Valgrind assume that tools will only need one fixed-sized
+shadow guest state (for holding metadata about register,
+floating-point stack, etc...).  We believe that this design decision
+was made in order to make Memcheck work because Memcheck requires only
+one shadow guest state for the V-bits.  However, we want to maintain
+our own shadow guest state, which requires 4 bytes for EVERY field
+of VexGuestX86State (we're just focusing on x86 for now).
+
+The reason why we were getting all of those weird Memcheck errors when
+running with DynComp was because both Memcheck and DynComp were
+sharing the SAME shadow guest state (vex_shadow field in
+ThreadArchState) and thus DynComp tags were being mis-interpreted as
+V-bits.
+
+Here is the hack that we used to resolve this problem:
+
+In valgrind/coregrind/x86/core_arch.h, it's hard-coded into
+ThreadArchState that there is one vex_shadow, so we just created an
+extra shadow (called vex_extra_shadow) which is 4 times as big as the
+original one.
+
+valgrind/coregrind/x86/core_arch.h:
+
+typedef
+   struct {
+      /* --- BEGIN vex-mandated guest state --- */
+
+      /* Saved machine context. */
+      VexGuestX86State vex;
+
+      /* Saved shadow context. */
+      VexGuestX86State vex_shadow;
+
+      /* PG - Extra shadow guest state for DynComp */
+      VexGuestX86State vex_extra_shadow[4];
+
+      /* Spill area. */
+      UChar vex_spill[LibVEX_N_SPILL_BYTES];
+
+      /* --- END vex-mandated guest state --- */
+   }
+   ThreadArchState;
+
+
+We need it to be 4X larger because we need a 4-byte tag for EVERY
+field of VexGuestX86State, and the smallest entry is a 1-byte Char.
+Now we need to multiply all offsets into vex_extra_shadow by 4 and all
+should be well.  To properly handle GET, GETI, PUT, and PUTI calls for
+DynComp, we must use the base value of TWICE total_sizeB (size of
+VexGuestX86State) in order to get to the beginning of vex_extra_shadow
+and then multiply all offsets by 4 because vex_extra_shadow is 4X the
+size of a VexGuestX86State structure.
+
+Modified functions in mc_translate.c:
+do_shadow_PUT_DC, do_shadow_PUTI_DC, do_shadow_GET_DC, do_shadow_GETI_DC
+
+e.g.
+   stmt( dce->bb, IRStmt_Put( (4 * offset) + (2 * dce->layout->total_sizeB), vatom ) );
+
+Now we also need to relax an assertion in ...
+
+valgrind/coregrind/vg_scheduler.c:485
+   // PG - changed from 2 to 6 to account for vex_extra_shadow in ThreadArchState
+   vg_assert(a_vex + 6 * sz_vex == a_spill);
+
+and finally modify the offset of the spill area in Vex:
+
+vex/priv/host-generic/reg_alloc2.c:685
+
+   // PG - changed from 2 to 6 to account for vex_extra_shadow in ThreadArchState
+      vreg_lrs[j].spill_offset = toShort(guest_sizeB * 6 + k * 8);
+
+
+3.) Multiplexor problem in IntTest This was dumb.  I need to simply
+multiplex the values of the V-bits and pass them along within
+expr2tags_Mux0X_DC.  I didn't do anything to handle this case before
+so the IR was invalid.
+
+
+TypesTest still fails!!! ARGGGGGG.
+
+returnULongProduct(10000000, 0) = 1187331820519724672
+GETI(880:8xI32)[t65,0]
+vex: the `impossible' happened:
+   iselIntExpr_R: cannot reduce tree
+vex storage:  P 436,  T total 66334080 (1949455),  T curr 183020 (5359)
+
+Look into this sometime.  It has to do with some double floating point
+thing, since if we comment this out, it works:
+
+/*     printf("returnDoubleSum(%f, %f) = %f\n", */
+/* 	   (float)((a+b)/7), */
+/* 	   (double)((2/b)*a), */
+/* 	   returnDoubleSum((float)((a+b)/7), (double)((2/b)*a))); */
+
+
+----------
+2005-04-26
+----------
+
+This tiny program replicates the problem above.
+
+double returnDoubleSum(double a, double b)
+{
+  return 0;
+}
+
+int main() {
+  returnDoubleSum(1, 2);
+  return 0;
+}
+
+
+
+GETI(880:8xI32)[t7,0]
+vex: the `impossible' happened:
+   iselIntExpr_R: cannot reduce tree
+
+parsnip:/scratch/pgbovine-do-not-delete-me/xtide/bin/xtide
+shares the SAME failure
+
+
+Hmm, if I comment-out handling for:
+
+      case Iex_Mux0X:
+         return IRExpr_Const(IRConst_U32(0));
+         //         return expr2tags_Mux0X_DC( dce, e->Iex.Mux0X.cond, e->Iex.Mux0X.expr0,
+         //                                    e->Iex.Mux0X.exprX);
+
+... everything seems to work properly
+
+But it may have something to do with CCall.  Look in isel.c for
+'irreducible':
+
+For CCalls:
+      /* be very restrictive for now.  Only 32/64-bit ints allowed
+         for args, and 32 bits for return type. */
+      if (e->Iex.CCall.retty != Ity_I32)
+         goto irreducible;
+
+but the problem may not be in CCall at all.  If nothing matches in the
+switch statement, this line still executes:
+
+   /* We get here if no pattern matched. */
+  irreducible:
+   ppIRExpr(e);
+   vpanic("iselIntExpr_R: cannot reduce tree");
+
+
+GETI is most likely the culprit!
+GETI(880:8xI32)[t7,0]
+
+It's just another instance of the 'not-supporting 4-byte get/put' for
+x87 floating-point stack in isel.c:
+
+Add this line to isel.c and all should be well :)
+
+      // PG - Add support for 32-bit GETI's for DynComp tags
+      if (ty == Ity_I32) {
+         addInstr(env, X86Instr_Alu32R(
+                          Xalu_MOV,
+                          X86RMI_Mem(am),
+                          dst));
+         return dst;
+      }
+
+
+Clean calls are intuitively the correct thing for tag MERGES (and
+they're faster), although they may be optimized away in some special
+cases.
+
+Do a clean call for most merges and do a few dirty calls to 'anchor'
+the computation so that the optimizer doesn't optimize stuff away.
+
+For the MUX and conditional exit (i.e., if (expr1) goto
+literal-value), add a no-op dirty call which takes 1 tag in and does
+nothing so that the optimizer doesn't destroy it.
+
+e.g.
+
+Mux: 'Mux0X(exprC, expr0, exprX)'
+
+Conceptually, the return value of processing the tags for this
+expression is just a parallel Mux with the SAME condition but the tags
+of the expressions:
+
+Mux0X(exprC, tag(expr0), tag(exprX))
+
+Although exprC is an IRAtom (temp or constant), a super-complicated
+expression might have resulted in that temp.  What if exprC is TEMP
+which is the result of evaluating a complicated expression with lots
+of interesting interactions?  The IR optimizer might blow away the
+tree branch containing all of the interesting tag merges if the
+resulting temp is not used anywhere (since all the tag merges are
+clean calls).  Thus, we need to anchor it by adding a temporary t with
+a dirty call (which cannot be optimized away) such that:
+
+t = dirty_NOP(tag(exprC))
+
+We don't really use t for anything, but we need it as an ANCHOR to
+prevent the optimizer from blowing away tag merge interactions arising
+from exprC.
+
+Conditional exits: 'if (expr1) goto literal-value'
+
+Ditto for expr1 here.
+
+
+----------
+2005-04-27
+----------
+
+Questions for Stephen during our weekly meeting (Look at TODO's):
+
+1. Do we have the annotations for the dirty helpers correct for MERGE_TAG
+and CREATE_TAG (as stated in setHelperAnns_DC()).  I guess we don't
+explicitly access guest state in either of these.
+
+They can probably go away because SP and IP are only accessed during
+error reporting (backtraces)
+
+2. Are the AND, OR, etc... binary ops. bitwise by default?  If so, we
+should count them as interactions?  But what about logical AND/OR?  We
+don't want to count (apples || oranges) as interactions, but if it
+gets translated into the same IR instructions as (apples | oranges),
+then we can't tell the difference, right?  We need to err one way or
+another, and I think that logical AND/OR in C are more common than
+bitwise ones.
+
+BITWISE! - Logical AND's and OR's are compiled as branches.
+
+3. Make sure my handling of unary ops (no handling at all) is correct.
+
+Good.
+
+4. How do pointer values get created using &-operator and malloc?  I
+guess I'll experiment and find out.
+
+It will either look like a literal or arithmetic on ESP/EBP.  Right
+now we don't create new tags on malloc and friends.  It's not clear
+that tags for pointers are that important.
+
+5. Optimization - how do we avoid all of these CREATE_TAGS when most
+of them are useless?
+
+6. Perhaps most important.  Ok, I got how to do function entrances,
+but how do I do function exits without the address available in the
+Ist_Exit statement?  Maybe I need to cue off of the PREVIOUS IMark
+statement, which seems like a pain.  Yeah, this seems to work, but is
+there an easier way?
+
+Check out libvex_ir.h:
+
+Look at the Ret jump kind for function exits?
+
+typedef
+   enum {
+      Ijk_Boring=0x14000, /* not interesting; just goto next */
+      Ijk_Call,           /* guest is doing a call */
+      Ijk_Ret,            /* guest is doing a return */
+      Ijk_ClientReq,      /* do guest client req before continuing */
+      Ijk_Syscall,        /* do guest syscall before continuing */
+      Ijk_Yield,          /* client is yielding to thread scheduler */
+      Ijk_EmWarn,         /* report emulation warning before continuing */
+      Ijk_NoDecode,       /* next instruction cannot be decoded */
+      Ijk_MapFail,        /* Vex-provided address translation failed */
+      Ijk_TInval          /* Invalidate translations before continuing. */
+   }
+   IRJumpKind;
+
+Also look into Ist_IMark for markers for function entrance/exit!
+
+
+----------
+2005-04-28
+----------
+
+In tool.h, it looks like you can register Valgrind tools to pick up on
+specific events, such as ESP changing.  Perhaps this is more elegant
+than hacking mac_shared.h directly to put in our own check_ESP(), but
+maybe it would be slower.
+
+Perhaps think about making a Fjalar 1.0 which abstracts out the common
+parts of Kvasir and DynComp.  During our crazy variable traversal,
+take a function pointer parameter so that we can polymorphically do
+dtrace or DynComp output.  Create nice abstractions.
+
+How do we get R_ESP???  In CHECK_ESP(), you can get it from the
+argument.  But how do you get it into the argument?  We need some IR
+statement which grabs the guest state's ESP wheneve it's executed.
+
+When you annotate a dirty helper to say that it uses the ESP, then it
+ensures that ESP is written to the guest state.
+
+Ha! In tool.h:
+
+/* Get the TID of the thread which currently has the CPU. */
+extern ThreadId VG_(get_running_tid) ( void );
+
+/* Searches through all thread's stacks to see if any match.  Returns
+   VG_INVALID_THREADID if none match. */
+extern ThreadId VG_(first_matching_thread_stack)
+                        ( Bool (*p) ( Addr stack_min, Addr stack_max, void* d ),
+                          void* d );
+
+/* Get parts of the client's state. */
+extern Addr VG_(get_SP) ( ThreadId tid );
+extern Addr VG_(get_IP) ( ThreadId tid );
+
+
+
+Hmmm, check out this thing about shadow memory from tool.h:
+
+/* Does the tool need shadow memory allocated (if you set this, you must also statically initialize
+   float TL_(shadow_ratio) = n./m;
+   to define how many shadow bits you need per client address space bit.
+*/
+extern void VG_(needs_shadow_memory)( void );
+extern float TL_(shadow_ratio);
+
+
+Hmmm, wait I don't think we need to hack around using the actual x86
+floating-point stack anymore.  We actually have a shadow
+floating-point stack now :)
+
+Hmmm, the problem now seems to be that I can't properly get
+floating-point return values off of the top of the guest_FPREG.
+Perhaps my dirty helper annotations in handle_possible_exit_DC()
+aren't correct or something, but it ain't working.
+
+An alternative is that we could add an explicit GETI as an IR
+instruction (created in handle_possible_exit_DC()) to get the value of
+the FPU stack top during execution instead of grabbing it ourselves.
+
+
+Ok, the biggest problem right now is that floating point stuff doesn't
+work correctly :(
+
+
+Also, it doesn't properly handle command-line options :(
+
+While we're busy porting/refactoring, get rid of Demsky's
+GenericHashtable and use Valgrind's own hash table.  Also, try to
+abstract out Fjalar stuff using function pointers/stuff?
+
+
+----------
+2005-04-29
+----------
+
+Ok, command-line options and floating-point have been fixed quite
+easily by fixing my stupid typos.  Now the V-bits on the
+floating-point stack still don't seem to be working correctly.  I will
+investigate right now.
+
+extern void *VG_(shadow_alloc)(UInt size); <--- Hmmm, should I use
+this to allocate all of my junk?
+
+
+Ok, my problem now is to try to get A and V bits working for EAX, EDX,
+and FPU because I don't want to have special 'overrideIsInitialized'
+handling for them 'cause that's lame.  Copying A/V-bits over to
+virtualStack seems to work, but not for registers in the guest state.
+Gotta investigate further ...
+
+The question now becomes ... does Memcheck do A/V-bit tracking on
+Kvasir's own C code?  Or does it only do tracking on client code?
+Like what if I pass pointers to local variables (in Kvasir functions)
+around?  Do these get associated A and V-bits?  I'm starting to doubt
+it :(
+
+Ok, it seems like the EAX/EDX shadow bits are working great, but the
+FPU shadow bits are way the hell off.  I've gotta investigate that.
+* Ok, done.  It was a stupid '&' typo in coregrind/vg_main.c
+
+----------
+2005-05-01
+----------
+
+Wow, really good news!  It seems that when I run the Kvasir tests with
+Kvasir_DC (Kvasir + DynComp), I get a lot better results for
+floating-point values.  Whereas before, some of them would print out
+as 'uninit', now they print out as their real values!
+
+Hmmm ... we still don't seem to be getting the validity of array
+contents correctly for stuff in the bc regression test, but I'll
+ignore that for now.
+
+
+----------
+2005-05-03
+----------
+
+Ok, it's time to start implementing the variable comparability stuff.
+
+For the purposes of comparability, we need to keep 'variables' for all
+the Daikon-derived crap, but we don't have DaikonVariable entries for
+all of them.  This means that as we traverse through stuff during the
+.decls run, we need to build up a mapping of variables (referenced
+purely by *strings* since DaikonVariable entries are not unique up to
+pointer dereference levels) to uf_objects.
+
+
+Ok, I am still struggling to understand Stephen's algorithm.  I know
+that outputDtraceValue() needs to be augmented to take in some more
+stuff, but I'll think more about it tomorrow.
+
+
+----------
+2005-05-04
+----------
+
+Umm, when we observe variable values in dtrace-output.c, what if the
+variable in unallocated or uninitialized?  I assume that we just skip
+it and leave its tag as 0 for this particular instance of the program
+point.
+
+Look into doing less merges in dtrace-output.c because we shouldn't
+merge when we don't need to.  For the example of outputting 4-byte
+ints, those tags should already be merged when reading them out of
+registers and into memory, right?
+
+Hmmm, the return values have a tag of 0, which is strange.  Ahhh,
+perhaps they are not shadows properly with tags - ok, fixed now!
+
+
+Ok, question about hashing.  Does it matter what number we mod ('%')
+the size by?  I mean, the size of the hash table does change, right?
+So which number is good for the hash function?  Or does it not matter
+because GenericHashtable will mod it for us?  Oh, haha, it does mod it
+for us :) So don't worry about modding ourselves!
+
+
+----------
+2005-05-05
+----------
+
+Notes from meeting with Stephen:
+
+
+Using tags as Daikon comparability numbers
+------------------------------------------
+
+Can use use the tags as Daikon comparability numbers in the .dtrace
+file?  I guess so.  If we're afraid of the tags being too big, just
+subtract everything by the smallest tag ever observed :)  Yes, but BE
+CAREFUL about large numbers.  The tags are UInts but Daikon represents
+comparability numbers as signed ints (Stephen thinks so).
+
+If we're afraid that there are too many tags in existence, we could
+really just subtract all tags at EACH program point by the smallest
+one AT THAT program point.  This will mean that there are
+comparability number duplications across program points, but Daikon
+doesn't really care at all.
+
+
+Future research question
+------------------------
+
+Once we get a good working prototype and are able to evaluate its
+results, consider refining the algorithm to provide more precise
+information.  Currently, we are restricted by the fact that the
+variable comparability sets are always supersets of the value
+comparability sets.  This makes the implementation much easier and
+cleaner, but may result in coarser-grained info. (which may or may not
+be a bad thing in practice).  However, assuming that we don't make the
+assumption that var. sets and supersets of value sets, then how could
+we implement this efficiently without keeping around too much info. and
+doing post-processing (which is unreasonable).  We need an on-the-fly
+algorithm to create finer partitions.  However, it doesn't matter for
+now because we just want a prototype which works.
+
+
+The current algorithm explained
+-------------------------------
+
+SMcC's current algorithm for propagating value comparability to
+variable comparability sets at each program point (annotated by
+pgbovine)
+
+Each program point has its own copy of the following data structures:
+
+var_uf_map:
+Key: tag which is the leader of some entry in val_uf
+Value: uf_object
+
+Define a function (implemented as a non-null hashtable get)
+var_uf_map.exists(val_uf leader entry) returns true if entry from
+val_uf exists in var_uf_map.
+
+var_uf_map is the variable analogue to val_uf, which is the union-find
+for all values ever created in a program.
+
+var_tags: A fixed-sized array (indexed by the serial # of Daikon
+variables at that program point) which contains tags which are the
+leaders of the comparability sets of their value's tags at that
+program point.
+
+new_tags: A fixed-sized array (also indexed by # of Daikon variables)
+of the tags extracted by a certain Daikon variable's value at this
+program point.  This structure is updated EVERY TIME the program
+executes a program point by querying val_uf with the address of the
+variable's value being observed and getting back the tag.
+
+The size of var_tags and new_tags can be initialized during the .decls
+run because we can count up how many Daikon variables exist at that
+program point.  The number of Daikon variables as well as their order
+is maintained during all program point executions in the .dtrace run
+because the same traversal function is executing for both .decls and
+.dtrace (and more importantly, because Daikon expects the front-end
+output to maintain these variables in the same order).
+
+
+Pseudo-code of the conversion from value to variable comparability
+which occurs at every program point:
+
+for each variable indexed by v {
+  // Update from any val_uf merges that have occurred for variables on
+  // previous executions of this program point.
+
+  // Make sure that the degenerate behavior of this line is that it
+  // returns 0 so we don't do anything when there's no previous info.
+  // to update
+  tag leader = val_uf.find(var_tags[v]);
+  if (leader != var_tags[v]) {
+    var_tags[v] = var_uf_map.union(leader, var_tags[v]);
+  }
+
+
+  // Make sure that an entry is created in var_uf_map for the tag
+  // associated with the new value that we observe from the
+  // memory-level layer
+  tag new_leader = val_uf.find(new_tags[v]);
+  if (!var_uf_map.exists(new_leader)) {
+    var_uf_map.insert(new_leader, make_set(new uf_object));
+  }
+
+  // Merge the sets of all values that were observed before for this
+  // variable at this program point with the new value that we just
+  // observed
+  var_tags[v] = var_uf_map.union(var_tags[v], new_leader);
+}
+
+Notice that val_uf is NEVER modified, only observed.  This is crucial
+in keeping the separation in layers between the variable (language)
+and value (memory) levels.  The concept is that tags may be merged at
+the variable level without being merged at the value level.
+
+
+Ok, remember to change this to something useful if we want Daikon to
+use comparability information:
+
+  fputs("VarComparability\nnone\n\n", decls_fp);
+
+
+
+Remember that we have to make one more pass at the VERY END of
+execution to account for actual argument interactions which occur
+AFTER all instances of the point have finished executing.  At the
+sweep in the end, we really don't have a valid address to use for any
+variables so we are not producing any new tags in the variable
+comparability sets.  We are merely reading the updated information
+from val_uf and, I guess, executing only the first part of our
+per-program-point-instance algorithm.
+
+
+
+In FloatTest.c:
+
+***EXIT returnIntSum - EBP=1388307368, lowestESP=1388307368
+a (0)  new_tags[0]: 1409, new_leader: 1409, var_tags[0]: 1409
+b (1)  new_tags[1]: 1409, new_leader: 1409, var_tags[1]: 1409
+return (2)  new_tags[2]: 0, new_leader: 0, var_tags[2]: 0
+
+Why does the return have a new_tags[2] of 0???  Look into the tags for
+the return values.
+
+I've isolated the problem in IntFromFloatTest.c.  It seems that there
+is a problem because when you're casting from double to int, it
+doesn't propagate the tags correctly.  This is likely to be a problem
+with the memory-level tracking.
+
+The offending function:
+
+int returnIntSum(double a, double b)
+{
+  return a + b;
+}
+
+What IR instruction (or series of IR instructions) performs the
+casting?
+
+
+----------
+2005-05-08
+----------
+
+SMcC's nifty trick to get inline C and assembly listings:
+
+For every .c file:
+Make .o file with gcc -c and debugging and -Wa,-aldhs
+Pipe it to a file
+
+e.g.
+gcc -c -g IntFromFloatTest.c -Wa,-aldhs > IntFromFloatTest.S
+
+It looks like it's doing some crazy-ass thing to convert double into
+int, so maybe one of these steps isn't triggering an 'interaction':
+
+   3:IntFromFloatTest.c ****   return a + b;
+  26              		.loc 1 3 0
+  27 0012 DD45F8   		fldl	-8(%ebp)
+  28 0015 DC45F0   		faddl	-16(%ebp)
+  29 0018 D97DEE   		fnstcw	-18(%ebp)
+  30 001b 0FB745EE 		movzwl	-18(%ebp), %eax
+  31 001f 660D000C 		orw	$3072, %ax
+  32 0023 668945EC 		movw	%ax, -20(%ebp)
+  33 0027 D96DEC   		fldcw	-20(%ebp)
+  34 002a DB5DE8   		fistpl	-24(%ebp)
+  35 002d D96DEE   		fldcw	-18(%ebp)
+  36 0030 8B45E8   		movl	-24(%ebp), %eax
+
+
+Ok, I see what the problem is (I think).  In
+dyncomp_translate.c:expr2tags_Binop_DC(), we don't properly handle
+floating-point to integer conversions (i.e. Iop_F64toI32) so we need
+to add that handling right now.
+
+Ok, I'm gonna try to make the .decls output with comparability.  This
+will require us to output .decls at the END of execution:
+
+We need to change this line from this:
+  fputs("VarComparability\nnone\n\n", decls_fp);
+
+to this:
+  fputs("VarComparability\nexplicit\n\n", decls_fp);
+
+or maybe just delete it altogether?
+
+Daikon user manual:
+"A comparability for a non-compound type is an integer. Comparisons
+succeed exactly if either integer is negative or if both integers are
+the same. ... If no information is supplied (i.e., this line is
+blank), then the variable is compared to all other variables of the
+same type."
+
+
+----------
+2005-05-09
+----------
+
+From SMcC's email:
+
+"Also, I'm still a bit worried about the danger of having the wrong
+behavior if any code tries to access one of the floating-point
+registers with a plain GET or PUT. How hard would it be to put an
+assertion in do_shadow_{GET,PUT}_DC() that would check the offset and
+tell us if this is happening?"
+
+I'll look into this later.
+
+
+Hmmm ... this is unrelated, but it seems like I am merging stuff a bit
+too aggressively.  In FloatTest, some things shouldn't have different
+tags but do nonetheless.
+
+It seems like the problems all come during the extra round of
+propagations at the end, or with the fact that I'm not doing anything
+for .dtrace values that were not observed, or the fact that we are
+using integer literals (which have really tiny tags in the thousands)?
+
+FloatTest.c:
+
+  returnDoubleSum(1.2345, 4.321);
+  returnInvalidInt(1.111, 2.222);
+
+It seems that when the tags are merged for returnDoubleSum, the tags
+for 'returnInvalidInt' are "infected" with the result from
+returnDoubleSum.  Perhaps it has something to do with the virtualStack?
+
+Make sure to clear tags as stack pointer moves up (done)
+
+Ok, things seem to get better when I comment out all references to
+val_uf_union_tags_in_range and val_uf_union_tags_at_addr.  What does
+this mean?
+
+Perhaps there are unnecessary merges (and transformations of tags into
+canonical tags) when massive amounts of data are copied in a big chunk
+over to different areas of memory.
+
+Ok, what seems to solve the problem is to comment-out the
+canonical-tag copying optimization in val_uf_union_tags_in_range,
+which I probably did incorrectly.
+
+Also, what solves the problem is cutting out all calls to
+val_uf_union_tags_in_range only from dyncomp_main.c
+
+
+Now I'm trying to update clear_all_tags_in_range() to actually destroy
+the uf_objects associated with tags when the tags are killed.
+
+
+Ahhh, ok, I may see what the problem is now.  After function entrance,
+the tags are all merged and crap in the REAL stack, but we want to
+observe crap on the VIRTUAL stack, where they aren't merged???  Hmmm?
+
+Wait, but we ARE using the virtual stack.
+
+-------------------------------------------------------------------
+Ok, it seems like parallel mergings are happening under our nose in
+the REAL stack due to the val_uf_union_tags_in_range calls in
+dyncomp_main.c.  We should only do the mergings at the language-level
+in dtrace-output.c when we observe values, not at the memory-level
+in dyncomp_main.c.  That was a premature optimization so we should
+just delete it.
+-------------------------------------------------------------------
+
+
+----------
+2005-05-10
+----------
+
+Right now, DynComp can say that variables of different declared types
+are comparable, but that's ok, right?  Because Daikon won't attempt to
+compare variables of different types even though they have the same
+comparability number.
+
+It seems like the program-point-level granularity may be our downfall
+because even if ONE instance of that program point was called with
+comparable values, then we must report that the params are comparable.
+
+Should we abandon the idea of the virtual stack altogether?
+
+Ok, the only issue with abandoning virtual stack is that you sometimes
+get inconsistencies since formal parameters are sometimes moved around
+outside of their bounded area on the stack frame when calculations are
+performed on them and stuff.  The reason why we used the virtualStack
+idea was to ensure consistency.  All top-level parameters would be
+taken from the state of the stack upon function ENTRY.
+
+How important is this invariant to maintain?
+
+(At least on small tests, it seems that the ints are well-behaved but
+the doubles aren't.  The ints seem to maintain their spot on the
+stack pretty well while the doubles don't.)
+
+/********************************************************************
+The fundamental problem here is that the compiler is free to
+manipulate stuff around the stack as it sees fit after the function
+begins executing.  I want some way of pinning down the parameters and
+ensuring that they are ALWAYS located where the debugging info. says
+that they are located on the stack relative to EBP.
+********************************************************************/
+
+Ok, so if we keep the virtualStack thing, then our results may look
+weird but still consistent since we are always observing the pre-state
+of the top-level Daikon variables.  The comparability sets for the
+enter and exit will be identical for the entrance/exit because the
+top-level VALUES are identical for both entrance/exit.
+
+
+Hmmm, look at these interesting gcc 3.4.3 command-line option.  Maybe
+this will help us eliminate duplication problems, especially for C++:
+
+-feliminate-dwarf2-dups
+    Compress DWARF2 debugging information by eliminating duplicated
+information about each symbol. This option only makes sense when
+generating DWARF2 debugging information with -gdwarf-2.
+
+-feliminate-unused-debug-types
+    Normally, when producing DWARF2 output, GCC will emit debugging
+information for all types declared in a compilation unit, regardless
+of whether or not they are actually used in that compilation
+unit. Sometimes this is useful, such as if, in the debugger, you want
+to cast a value to a type that is not actually used in your program
+(but is declared). More often, however, this results in a significant
+amount of wasted space. With this option, GCC will avoid producing
+debug symbol output for types that are nowhere used in the source file
+being compiled.
+
+
+----------
+2005-05-11
+----------
+
+There is currently no tag created for the '&' address-of operator, but
+that may be okay because we really don't care about comparability for
+pointers, only for the contents of pointers.
+
+
+   9:PointerComp.c ****   inc(&x, yPtr);
+  56              		.loc 1 9 0
+  57 0043 8B45F8   		movl	-8(%ebp), %eax
+  58 0046 89442404 		movl	%eax, 4(%esp)
+  59 004a 8D45FC   		leal	-4(%ebp), %eax
+  60 004d 890424   		movl	%eax, (%esp)
+  61 0050 E8FCFFFF 		call	inc
+
+
+Check out the LEA instruction which pushes &x onto the stack.  What
+does this correspond to in IR?
+
+However, malloc() seems to create a new tag.
+
+
+Ok, we don't really compare hashcode values anyways, right?  So we
+don't care?
+
+Ok, a more serious problem.  We don't seem to be picking up relational
+comparisons (<, >, =, <=, >=) as interactions :( Let's take a look at
+the assembly sometime.
+
+Haha, whoops, there are tons of comparison operations in IR! hehe
+
+Ok, now all comparisons go thru as interactions :)
+
+But ... logical AND, OR, and TERNARY should not qualify as
+interactions because they can be thought of more as control flow:
+
+  int c1 = 0, c2 = 1;
+
+  if (c1 || c2) {
+    logicalOr(c1, c2);
+  }
+
+
+This seems fine because c1 and c2 are ints.  But as soon as I change
+them to chars, it looks like they have interacted.  Is this because
+logicalOr() expects two ints and expands them to chars, somehow
+mangling up their comparability sets?
+
+Maybe everything on the stack is 4-byte aligned so it has to do
+funny stuff to shrink it into 1-byte chars.  Perhaps we are getting an
+inadvertent tag merging somewhere.  Both the 'int' and 'char' versions
+do 'cmp against 0' instructions.
+
+Hmmmm, even with all of the binary op. interactions turned off, it
+still seems like those chars interact!  It has to be a memory-related
+operation that's making them have the same tag.
+
+Ummmm ... we have discovered a more fundamental problem - we don't
+even need logical AND's/OR's, whatever.  'char'-sized things just
+don't work.  DynComp thinks that there is an interaction between the
+parameters of blank() when there is in fact none:
+
+void blank(char a, char b) {}
+
+int main() {
+  char a = 'a';
+  char b = 'b';
+
+  blank(a, b);
+
+  return 0;
+}
+
+Ok, I think I got the culprit.  For some reason, we are storing tags
+for 4 bytes, which clobbers 4 bytes with the same tag, but then
+reading only one byte at a time.  The 2 consecutive bytes will have
+the same tag.  Tag 1787113 is the one which is shared by 'a' and 'b',
+but should not be.
+
+helperc_STORE_TAG_4(0x52BFE3B6, 1787113) [nextTag=1787114]
+helperc_LOAD_TAG_1(1388307382) = 1787113 [nextTag=1787116]
+helperc_STORE_TAG_4(0x52BFE3A4, 1787113) [nextTag=1787118]
+helperc_LOAD_TAG_1(1388307383) = 1787113 [nextTag=1787120]
+helperc_STORE_TAG_4(0x52BFE3A0, 1787113) [nextTag=1787121]
+***ENTER blank at EBP=1388307352, lowestESP=1388307356, startPC=0x8048354
+a (0)  new_tags[0]: 1787113, new_leader: 1787113, var_tags_v (old): 0, var_tags[0]: 1787113 (a: 2970941008)
+b (1)  new_tags[1]: 1787113, new_leader: 1787113, var_tags_v (old): 0, var_tags[1]: 1787113 (a: 2970941012)
+
+Ok, one simple solution is to be conservative and ALWAYS set the tag
+for only 1 byte at at time.  Thus, for a helperc_STORE_TAG_4 of tag X
+at addr A, we get:
+
+A    : X
+A + 1: ?
+A + 2: ?
+A + 3: ?
+
+This leaves the rest of the bytes alone so they take whatever tags they
+had originally.  I'm kind of wary of this because we don't want
+'leftovers' from previous tags.
+
+or we could set the tag for the first byte and create NEW tags for the
+rest:
+
+A    : X
+A + 1: new1
+A + 2: new2
+A + 3: new3
+
+This will allow the language layer to merge them only when we actually
+have confirmed that we want to read all 4 bytes togther as an int.
+This seems like a decent solution, although it's wasteful because we
+are creating new tags without creating new values.  This kind of
+breaks the semantics of new-value -> new-tag.
+
+or set all other bytes to 0 explicitly:
+
+A    : X
+A + 1: 0
+A + 2: 0
+A + 3: 0
+
+This may be bad because 0 is associated with 'invalid' V-bits.
+
+But none of these solutions are truly satisfying.
+
+
+Ok, this is weird.  Vex generates a STORE_TAG_4 for a non-4-byte
+aligned address:
+
+***ENTER blank at EBP=1388307352, lowestESP=1388307356, startPC=0x8048354
+a (0)  new_tags[0]: 1787113, new_leader: 1787113, var_tags_v (old): 0, var_tags[0]: 1787113 (a: 2970941008)
+b (1)  new_tags[1]: 1787113, new_leader: 1787113, var_tags_v (old): 0, var_tags[1]: 1787113 (a: 2970941012)
+helperc_LOAD_TAG_4(1388307360) = 1787113 [nextTag=1787131]
+helperc_LOAD_TAG_4(1388307364) = 1787113 [nextTag=1787133]
+helperc_STORE_TAG_4(1388307351, 1787113) [nextTag=1787135]
+helperc_STORE_TAG_4(1388307350, 1787113) [nextTag=1787137]
+helperc_LOAD_TAG_4(1388307352) = 1787113 [nextTag=1787138]
+
+
+We should really be doing STORE_TAG_1 in these places.
+
+FIXED!!!  The problem was that we were using the tag byte size to
+find out which STORE to all, and the tag byte sizes are always 4.
+However, it worked fine for Memcheck V-bits because the V-bit sizes
+are always the same as the real byte sizes.
+
+
+
+Do more testing with different integral sizes!
+
+
+Questions to ask Stephen for tomorrow's meeting:
+
+1.) Setting up an end-to-end test framework for comparability numbers:
+Do something easily diff-able.  Put comparability sets on separate
+lines underneath their program point names.
+
+2.) Should we still use the virtual stack or not?  I say yes. Definitely
+YES
+
+3.) Address Stephen's email about assertions for the GET's
+DONE!
+
+4.) Try to find some way to dump the IR listing for a compiled binary
+Call ppIRBB()
+
+5.) How to solve the issue with char's being comparable when they
+shouldn't be?
+FIXED - remember that tags are always 4-bytes so don't cue off their
+sizes to do anything.  We used to cue off of the tag's sizes and
+always ended up calling STORE_TAG_4, but we should really cue off the
+size of the REAL data.
+
+6.) Run by the idea of not passing along tags to the results of binary
+comparison operations
+YES, WE AGREE!
+
+----------
+2005-05-12
+----------
+
+
+I really want to find a way to dump all the IR generated by a program,
+kind of like how I can dump the assembly listing.  This way, I can
+compare assembly and IR.
+
+	Solution: Use ppIRBB()!!!
+
+
+IDEA!  Should comparisons only merge the sets of their two arguments
+but NOT pass on one of the tags as the result?  That is, in:
+
+x = (a < b)
+
+We merge the tags of 'a' and 'b' but don't pass the tag of either one
+to 'x'.  Instead, 'x' gets a tag of 0.  After all, 'x' is really just a
+boolean '0' or '1' without any interesting semantic meaning.  Thus, if
+we have (a < b) || (c < d), then we have {a, b} {c, d} like we want,
+without any possibilities of {a, b, c, d} clumping.  Of course, the
+logical AND/OR should not merge tags, but I found that with
+'char'-sized things, they do for some reason.
+
+The only reason why you would want to pass along the tag to the result
+is so that you can have correct behavior on nested expressions (like (a
++ ((b - c) * d))), but you never really nest comparisons, right?
+
+You don't do ((a < b) > c) or anything like that since the result of a
+comparison is a 0 or 1 which really can't be compared with other stuff.
+
+On an unrelated note, there seems to be a lot of tag merging going on
+after the exit of main(), which may take up a lot of time and may or
+may not be helpful at all.  I guess we must keep them in the interest
+of 'full program coverage', though.
+
+
+
+
+------------------------------------------------
+Towards automated unit testing of comparability:
+
+
+We want something which is easy to diff:
+
+Do a post-processing step on the .decls file to generate a new file.
+
+At each program point, there would be one line per comparability set
+of variables, sorted by name.
+
+This way, you could easily do diffs.
+
+e.g.
+
+foo():::ENTER
+a, b
+c
+foo():::EXIT
+a, b
+c
+return
+------------------------------------------------
+
+
+-------------------------------
+Prettier comparability numbers:
+
+Perhaps have a separate set of serial comparability number 'tags' for
+variable-level union finds, but this isn't crucial at this point.  As
+new union-find objects are added to var_tags, associate serial
+comparability numbers to each one of them (similar to how we associate
+serial tags).  That way, we can get a much tighter and smaller group
+of comparability sets
+-------------------------------
+
+
+
+Problem:
+
+  double doubleA = 10.231;
+  float floatB = 10.234;
+
+  if (doubleA < floatB) {
+    lessThanFloat((float)doubleA, floatB);
+  }
+
+It says that the first parameter in lessThanFloat has a tag of 0.  Bad
+bad bad!  This same problem happens to doubles elsewhere too.  Uh oh!
+Ummm, FloatTest just breaks entirely now.
+
+Ok, it seems like fixing the previous bug with the STORE_TAG_4's
+screwed up floating-point stuff for some reason.
+
+
+Look at the CVS log for dyncomp_main.c:
+
+--------------------------------------------------------
+revision 1.9
+date: 2005-05-09 21:27:02 +0000;  author: pgbovine;  state: Exp;  lines: +36 -28
+deleted the val_uf_union_tags_in_range() call in dyncomp_main.c
+because that's incorrect.  We only want to do clumping merges on the
+LANGUAGE-LEVEL when we observe variables.
+
+This became a problem because the LANGUAGE-LEVEL manipulates the virtual
+stack while the memory-level manipulates the real stack.
+--------------------------------------------------------
+
+I've put the val_uf_union_tags_in_range() calls BACK IN ...
+The reason why we deleted those lines in the first place during
+LOAD_TAG's was because they were interfering with the real/virtual
+stack setup.  That might have been a red herring, though, but keep
+that in the back of my mind as one potential problem.
+
+
+Use objdump -d on the executable to get the offsets after linking so
+that we can match it up with the output from ppIRBB()
+
+
+Uhh, with the FloatTest not working problem, if we shift things so
+that both
+
+   case Ity_F64:
+   case Ity_F32:
+
+go to MC_(helperc_STORE_TAG_4), things seem to work, but this is
+highly unsatisfying :(
+
+
+Uhhhh ... for some strange reason, we need:
+
+VGA_REGPARM(1)
+void MC_(helperc_STORE_TAG_8) ( Addr a, UInt tag ) {
+
+REGPARM(1) on the STORE_TAG_8, and that seems to fix it.  Super weird.
+
+
+
+It seems like < and <= are regular comparisons but for some reason, >
+and >= are handled by clean helper calls, thus leading in an asymmetry
+of tag handling for comparisons.
+
+Solution: In handleCCall_DC(), always return a tag of 0.  It seems
+like the only call to this is for '<' and '<=' so far.  Revise this
+later if necessary.
+
+
+----------
+2005-05-16
+----------
+
+Ok, one problem I see is that structs have the same comparability sets
+as their first members.  This is caused by the fact that the struct
+itself is located at the same location as the first member.  However,
+our convention is to print out the struct name like a hashcode, so it
+is BAD if we compare hashcode values with the first member.  However,
+this may not be a big deal since Daikon doesn't compare two variables
+with different Daikon types (i.e. hashcode and int) anyways, right?
+
+Our current .comp format doesn't show which variables are comparable
+to one another in the degenerate case when their comparability numbers
+are -1.  Perhaps we should create a special set for that so that it's
+more evident to the observer.  A variable has a comparability number
+of -1 either when it has never been observed or it has always been
+'uninit' when observed.  Thus, it is comparable to all other variables
+at that program point, but that doesn't matter since it never had a
+valid value for Daikon to infer invariants over anyways.
+
+
+Ok, kvasir tests it now breaks on:
+(only the C++ tests)
+
+StackArrayCppTest
+ArrayTestCpp
+Dstr
+StackCppTest
+virtual-method
+
+MultiDimArrayTest - doesn't crash but gives an invalid write error
+
+Not tested yet due to complex inputs required:
+bc
+wordplay
+md5
+tcas
+
+
+Uhh, crap, all the tags seem to be '0' in ArrayTestCpp whereas the
+tags are definitely non-zero in the C-equivalent, ArrayTest.  It seems
+that we cannot accurately detect function entrances/exits and no
+run-time tracking is happening.  Weird.
+
+It's crashing in DC_get_comp_number_for_var()
+
+Ok, C++ support is still fuzzy :(, so think about how to handle this.
+Right now I just don't handle it, but in the future, we need dedicated
+data structures to handle variable comparability sets for stuff.
+
+In printAllObjectAndClassDecls(), we are now creating 'fake'
+DaikonFunctionInfo entries but we really want to create real ones
+which can maintain their state across different calls.
+
+
+We must handle this at both the .decls and .dtrace printing times
+
+
+----------
+2005-05-17
+----------
+
+From Mike's email: Ok, apparently we don't need to worry about
+printing out OBJECT and CLASS ppt stuff in the .dtrace.  Another thing
+we should investigate is if we named our variables according to
+Daikon's (Java-centric) conventions so that it can infer OBJECT and
+CLASS invariants by observing .dtrace output from normal ppts.
+
+------------------
+
+Philip-
+
+Kvasir outputs OBJECT program points to the dtrace output.  Daikon
+currently ignores all OBJECT program points:  instead, it computes
+information at real (method exit) program points, and then combines those
+formulas (using logic, not dynamic analysis) to determine what the
+properties must have been at the OBJECT points.
+
+If you've chosen your program point names in accordance with Daikon's
+(Java-centric) conventions, you can completely eliminate the OBJECT and
+CLASS program points from your dtrace output.  The Daikon implementation
+still requires those program points to be in the decls output.
+
+                    -Mike
+
+------------------
+
+
+What about the comparability of global variables?  We keep separate
+comparability sets at each program point, and global variables are
+replicated in all of those sets.  Hmmm ... perhaps this extra
+bookkeeping may give us more accurate information since global
+variables can take on different VALUES throughout the execution of a
+program so that globalFoo and globalBar can be comparable during one
+program point but NOT comparable during another one.
+
+
+Hmmm ... right now let's not consider comparability for CLASS and
+OBJECT program points because we don't have any explicit .dtrace
+handling for it and .dtrace handling is required if we want to
+determine variable comparability.  Actually ... we DO have .dtrace
+handling for 'this' and other variables during NORMAL member function
+program points, so perhaps Daikon can smartly use these comparability
+numbers to infer OBJECT and CLASS invariants only over comparable
+MEMBER variables.
+
+
+This is a bit weird.  With comparability info on StackCppTest, we
+generate MUCH more invariants than without it.
+
+Ok, it seems that if we eliminate "VarComparability None" from the
+normal .decls file (without comparability) numbers, we get a helluva a
+lot of more invariants too.  So what is the significance of
+"VarComparability None"?
+
+Ok, the good thing is that with DynComp, we generate less lines of
+invariants (839 lines) than with no DynComp (and no VarComparability
+none) (1157 lines)
+
+So how can we get the 'filtering benefits' of "VarComparability None"
+AND get DynComp info at the same time?
+
+- TURN OFF DAIKON DERIVED VARIABLES and the output is identical - this
+should give us a clue on where the real problem lies
+
+
+Ok, time to re-run all of the tests in the Kvasir test suite again:
+Great!  All tests now pass!
+
+
+----------
+2005-05-18
+----------
+
+What about pointer arithmetic?  How is that reflected in interactions?
+
+Have a mode where you run DynComp and NOT produce .dtrace output (it
+breaks incremental invariant detection because we print .decls at the
+end anyways) - Use the --decls-only option with it to not produce
+.dtrace TODO: Right now, --decls-only skips .dtrace traversals
+altogether and is NOT what we want at all when you have
+--with-dyncomp.  We should eventually fix this, but I don't feel like
+it right now.
+
+
+----------
+2005-05-19
+----------
+
+Approach 1:  Remember all tag tuples
+
+Remember every tuple of tags that were observed at a program point.  At the
+end of execution, determine for each pair of tags whether they interacted;
+if they did, say that the corresponding variables interacted.  This
+perfectly computes the desired goal.
+
+Possible optimization:  store not full tag tuples, but tuples for each pair
+of variables.  (This is similar to the way that samples were stored in
+Daikon version 2.)  These sets could be pruned when value tags merge.
+Perhaps this opeimization would make this approach feasible.
+
+Problem:  Storage for the tag tuples is prohibitive.  This scheme may also
+prevent garbage-collection of tags, unless we add more algorithmic
+cleverness.
+
+
+Tuple is homogeneous list with ordering
+
+Keep all information (all sets of new_tags) until the end
+
+There will be one collection of tags for each Daikon variable at each
+execution of a program point
+
+Once you get to the end, you pick the leaders again (re-canonicalize)
+for everything, and to see whether two variables at a ppt are
+comparable, go across the first row with all pairs of variables, but
+on all subsequent rows, you only have to do it on the members.  Once
+we see that two variables are merged, we don't have to worry about
+comparing within the sets.
+
+
+All of these tags should be leaders (in val_uf) at the end:
+
+X 5 X X 5 X X X
+X 6 X X 6 X X X
+X 5 X X 6 X X X
+
+
+Optimization - we have (n C 2), which is ((n^2)/2), pairs of variables
+initially - for each pair of variables, we have a two-element tuple of
+tags AT EACH EXECUTION of a program point so:
+
+First time:
+(a, b) --> (5, 6)
+(a, c) --> (5, 7)
+(a, d) --> (5, 8)
+
+Second time:
+(a, b) --> (5, 6) (10, 11)
+(a, c) --> (5, 7) (12, 13)
+(a, d) --> (5, 8) (14, 15)  - Remove duplicates from this
+
+We have a hope that there are A LOT of duplicates so the chains are
+short - the columns (across different executions) can be thought of as
+sets because their ordering doesn't matter
+
+As soon as we see that a pair of variables is comparable, we can take
+it out and record elsewhere (in a variable comparability union-find)
+that they are comparable.  When we see that two variable sets merge,
+we can stop keeping track of those pairs of variables - we do this
+incrementally at every execution of a program point
+
+
+Implementation:
+
+Each Daikon variable at every program point is indexed by a unique
+number.  So for a pair, we could implement it as a 2-D array, but that
+doubles our required space since we only need (n^2)/2 slots.
+
+Variables: a, b, c, d
+
+  a b c d
+
+a X
+b X X
+c X X X
+d X X X X
+
+The 'X' slots are not required.  Perhaps we could just allocate a 2-D
+matrix and use the 'mirror image' slots to hold extra data.  e.g.:
+(a,b) will hold the tuples for (a,b) but (b,a) will hold something
+else about (a,b).  Each entry in this 2-D array will be a linked list
+of pairs of ints with no duplicates (insertion should check for
+duplicates).
+
+OHHHH, perhaps the mirror locations could hold the variable
+comparability set uf_objects ... but wait, we only need a variable
+comparability set uf_object for each variable, NOT for each pair of
+variables, so that might be a bit tricky
+
+Requirements:
+
+We need to create a new augmented union-find data structure for
+holding variable comparability at each ppt which can efficiently find
+all elements in the same set as the given element so that we can
+propagate the DON'T TOUCH ME's.  Perhaps keep a parallel set
+structure. (Circularly-linked lists)
+
+
+Maybe don't try to use the lower half of the triangle and use some
+other data structures just to reduce the confusion.  Don't worry about
+wasting space and stuff.
+
+
+At the beginning of execution:
+
+For each program point with n variables:
+    1. Allocate a 2-D array of size n*n and call it tag_tuples
+
+
+At each execution of a program point:
+
+For each variable indexed by v:
+
+    1. Grab the LEADER for the tag of the current value of the
+       variable and store it in tag_tuples[v][v] diagonal entry.  The
+       main diagonal of the matrix acts kind of like new_tags, serving
+       as a temporary storage area for new tags retrieved at every
+       program point execution
+
+For each pair of variables indexed by i and j where i < j:
+    1. tag_i = tag_tuples[i][i], tag_j = tag_tuples[j][j]
+    2. If tag_i == tag_j:
+
+	  Then variables i and j are definitely comparable so destroy
+	  the linked list held in tag_tuples[i][j] and set it to some
+	  DON'T TOUCH ME value so that it will never need to be
+	  considered again.  Merge the comparability sets of variables
+	  i and j in a local variable comparability union-find.
+
+	  Also, mark the entries of all variable pairs x, y in the
+	  same sets as i, j as DON'T TOUCH ME.  For all x, y, if x and
+	  y are in the same variable union-find set, then their entry
+	  tag_tuples[x][y] == DON'T TOUCH ME.  We only need to look
+	  for pairs where one is from the set of i and the other is
+	  from the set of j (across set boundaries) because by
+	  structural induction, all pairs in the same variable set of
+	  i (and j) have already been marked as DON'T TOUCH ME by the
+	  previous mergings
+
+       Else:
+
+          tag_tuples[i][j] should contain either a linked-list or a
+	  special DON'T TOUCH ME value.
+
+	  If it's DON'T TOUCH ME:
+
+	     Then don't do anything because variables i and j have
+	     already been merged in some set before.
+
+	  Else:
+
+	     Try to insert the pair (tag_i, tag_j) into
+	     tag_tuples[i][j], looking for a duplicate entry while
+	     traversing down the list.  While traversing the list, why
+	     don't you also look up the new leaders of each tag in
+	     val_uf (just in case they have been updated), and if the
+	     two tags of some pair in the list are identical, then
+	     merge the variable comparability sets and destroy that
+	     whole list.  Transitively mark all variables which cut
+	     across the sets of the recently-merged things as DON'T
+	     TOUCH ME (goto step 2).  If a duplicate entry is found,
+	     then DON'T insert the new entry in.  Are there more
+	     benefits to continuing the traversal down the linked list
+	     and possibly performing more mergings earlier ... or to
+	     just exit the traversal and do all mergings at the end.
+
+
+At the end of execution:
+
+For each program point:
+    For each pair of variables indexed by i and j where i < j:
+
+	(We need to somehow update the variable comparability sets,
+	 taking into account the fact that value interactions might have
+	 occurred AFTER the program point)
+
+	Walk down the linked list in tag_tuples[i][j] and find the new
+	leaders for every tuple pair in the list.  If both elements of
+	the pair have the same leader, then merge their variable
+	comparability sets (and all sets of variables comparable to
+	those) and destroy that entire linked list
+
+
+    Query the variable comparability sets of each program point to get
+    the comparability numbers for each variable.
+
+
+
+Example run (the parameters should NOT be comparable):
+
+void foo(int a, int b)
+
+1.) foo(x,y)
+2.) foo(y,z)
+
+Assume: tag of value of x = 1, y = 2, z = 3
+
+1.) First execution of foo()
+
+ |a b
+-----
+a|1
+ |
+b|  2
+
+
+ |a b
+---------
+a|1 (1,2)
+ |
+b|  2
+
+
+2.) Second execution of foo()
+
+ |a b
+--------------
+a|2 {(1,2)(2,3)}
+ |
+b|  3
+
+
+Ok, so there is no merging of variable comparability sets here, which
+is the correct behavior.
+
+
+void bar(int a, int b, int c)
+
+int x = 10;      // tag(x) = 1    {1}
+int y = 15;      // tag(y) = 2    {1} {2}
+int z = 20;      // tag(z) = 3    {1} {2} {3}
+
+1.) bar(x, y, z)
+
+z = x + y;       // tag(z) = 1    {1, 2}  {3}
+
+
+1.) First (and only) execution of bar()
+
+ |a    b    c
+-------------
+a|1
+ |
+b|     2
+ |
+c|          3
+
+
+ |a    b    c
+---------------
+a|1  (1,2)(1,3)
+ |
+b|     2  (2,3)
+ |
+c|          3
+
+
+End of execution:
+
+ |a    b    c
+---------------
+a|X  (1,1)(1,3)
+ |
+b|     X  (1,3)
+ |
+c|          X
+
+
+Resulting sets for bar(): {a, b} {c}
+This is the expected result.
+
+-----------------------------------------------------------------------
+
+There is only one 'abstract type' of pointers so comparability over
+them shouldn't matter
+
+That looks bad for a struct and its first element to have the same
+comparability set
+
+Solution for now: Have a reserved number for pointer types that's
+unique from integer types - reserve '1' for hashcodes
+
+
+
+The problem with the inconsistencies in output between having
+"VarComparability none" and not having it seems to come from
+Daikon-derived variables, so it's not as bad as we thought.
+
+
+
+> Try to find a test program (perhaps port one over from a Java test) on which
+> Daikon finds useless invariants due to a lack of comparability information.
+> Try to run DynComp on it and hopefully see an improvement.
+
+Flex is an excellent example.  It produces many, many irrelevant
+invariants, and Jeff is very interested to see how much better the output
+gets (and how much faster Daikon runs) with comparability information.
+
+                    -Mike
+
+
+----------
+2005-05-27
+----------
+
+Nasty performance slowdown alert!!!
+
+It seems like we are creating way too many tags for literals.  Perhaps
+we could create tags for literals at translation time and save them
+instead of inserting in CREATE_TAG helper calls at every step?
+
+Remember to be careful about these tags when performing garbage
+collection because they may not exist anywhere in memory.  Perhaps
+saturate their uf_object reference count to the maximum so that they
+never get garbage collected.
+
+
+
+Why do we get so many 0's in the .decls? Does it have something to do
+with the fact that we are now subtracting from the smallest tag - 2
+instead of smallest tag - 1?
+
+
+Perhaps as an optimization, we could move the check of whether two
+tags are IDENTICAL before merging them INTO THE IR instead of keeping
+it as a helper.  This may provide a performance boost because of the
+fact that a lot of the time, we are merging identical tags so we
+really do nothing.  We are saving the price of a call (which is
+potentially expensive due to saving and restoring of state)
+
+During interactions, we want to generate IR to check whether both tags
+are equal, and ONLY if they aren't, then call MERGE_TAGS
+
+We may want something like this with MuxOX or something:
+(x == y) ? x : cleancall of MERGE_TAGS(x, y)
+
+
+Justification of why MERGE_TAGS can be a clean call:
+
+NOT because MERGE_TAGS is anywhere close to being purely functional
+
+Clean calls can be optimized to be executed either 0 times or more
+than 1.  Idempotent is important for clean calls.  Also, the optimizer
+only nullifies the call (call 0 times) when nobody uses the results of
+the call, but if nobody is using the results of the merge, then we
+don't need to perform it in the first place.
+
+
+----------
+2005-06-02
+----------
+
+Ideas for future work
+
+* Some sort of visualization of how tags merge together throughout
+execution.  e.g. print out variable tags for each execution of a
+program point to see how the tags evolve throughout the execution
+* Visualization would be good for a figure in the paper - use dot
+(directed) and neato (undirected) - sets with neato
+* Make sure that the tool works on the larger examples and generates
+sensible output
+* Perhaps do some profiling with a Valgrind profiling infrastructure
+before optimizations
+* Perhaps do a comparison with Lackwit in terms of the comparability
+sets that it generates
+
+
+----------
+2005-06-06
+----------
+
+We need to change it so that variables which were never observed don't
+have '-1' tags but rather unique tags which specify that they are
+comparable to NOTHING else.
+
+
+----------
+2005-06-08
+----------
+
+Hmmm, the & (address-of) operator does not create a new tag, but
+malloc does.  This now leads to pointer variables getting a
+comparability number of '-1', which implies that they are
+uninitialized, when in fact, they are initialized.
+
+Proposed solution: Screw the '-1' thing.  Mike wants to give
+uninitialized values unique tags to semantically specify that they are
+comparable to NOTHING else, not the same '-1' tag which specifies that
+they are comparable to EVERYTHING else.  According to him, '-1' was
+just an artifact of Lackwit's shortcomings.  If you think about it,
+when you take an address using the & operator, that address really
+isn't conceptually comparable to anything else, so it should be given
+a unique comparability number just like uninitialized variables.
+
+In terms of implementation, uninitialized variables have tags of 0,
+but when you subtract the smallest tag observed at a program point
+from all variables, they end up with negative numbers.  Now, I
+normalize all negative numbers to -1.  I think that instead of doing
+the subtraction thing, I will make one pass at the end of execution
+and allocate sequential comparability numbers (1, 2, 3, 4, etc...),
+giving two variables the same number iff they have the same tag
+... except for a tag of 0, which ALWAYS causes the allocation of a new
+number. - OK, NOW THIS IS IMPLEMENTED
+
+
+Ok, if we do that, we have the problem that struct variables and their
+first elements really share the SAME address, so they will have the
+same tags.  This looks a bit funny and disconcerting.  We probably
+need some special code to disambiguate this. (The 'having one abstract
+type (and hence one reserved tag of '1') of pointers' thing was an
+attempt to solve this problem, but Mike doesn't like it.
+- NOT YET IMPLEMENTED
+
+
+pgbovine@radish:/scratch/pgbovine/flex-kvasir$ /usr/bin/time kvasir-dtrace --with-dyncomp --decls-only ./flex flex.err 5000_words_in
+==15068== kvasir-4.1.2, C/C++ Language Front-End for Daikon with DynComp comparability analysis tool.
+==15068== Copyright (C) 2004-2005, Philip Guo, MIT CSAIL Program Analysis Group
+==15068== Using LibVEX rev 1139, a library for dynamic binary translation.
+==15068== Copyright (C) 2004, and GNU GPL'd, by OpenWorks LLP.
+==15068== Using valgrind-3.0.0.SVN, a dynamic binary instrumentation framework.
+==15068== Copyright (C) 2000-2005, and GNU GPL'd, by Julian Seward et al.
+==15068== For more details, rerun with: -v
+==15068==
+==15068==
+==15068== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
+22233.98user 52.82system 6:14:47elapsed 99%CPU (0avgtext+0avgdata 0maxresident)k
+0inputs+0outputs (1553major+19234minor)pagefaults 0swaps
+
+Check this out.  I ran DynComp on flex on radish (with everything turned on), and it took 22233.98 user seconds to produce a 3.3 MB .decls file
+
+----------
+2005-06-09
+----------
+
+Ok, I'm gonna attempt to run Flex thru Daikon with DynComp
+comparability info.  For some reason, the LARGEFILE thing doesn't work
+and I can't produce .dtrace files over 2GB.  Thus, I will try to pipe
+it into Daikon directly and bypass file creation.
+
+Here is how you do it with a smaller example:
+
+kvasir-dtrace --decls-file=/dev/null --dtrace-file=- ./TypesTest | java -Xmx1768m daikon.Daikon --config_option daikon.Daikon.disable_derived_variables=true daikon-output/TypesTest.dyncomp.decls -
+
+
+Let's try this (we've already created a .decls from an earlier run):
+
+pgbovine@radish:/scratch/pgbovine/flex-kvasir$ kvasir-dtrace --ignore-static-vars --decls-file=/dev/null --dtrace-file=- ./flex flex.err 5000_words_in | java -Xmx1768m daikon.Daikon --config_option daikon.Daikon.disable_derived_variables=true flex-ignore-static-vars.decls - > flex-ignore-static-vars-daikon.invs
+
+
+Proposed solution for the "struct hashcode has the same comparability
+number as its first element" problem - add in some offset for hashcode
+types which boosts them above the highest-observed comparability
+number at a program point.  This is much better than simply declaring
+that all hashcodes have a comp. number of '1' because it still
+differentiates between different abstract types of hashcodes.  Notice
+that the highest comparability number at each program point will never
+exceed the number of Daikon variables at that ppt.  The # of vars at a
+ppt can be determined during the first dry .decls pass (with
+faux_decls = True) and saved.  Then we can simply add that number as
+an offset to the comparability number of every 'hashcode' variable so
+that they don't collide with non-hashcode variables.  This still isn't
+a perfect fix, though, because if the first element of a struct is a
+pointer, then both variables are hashcodes and thus will still have
+the same comparability number.  Again, we must evaluate how important
+this (mostly cosmetic) fix is before implementing it.
+
+
+Ok, I am going through the files in the Kvasir test suite and manually
+checking their comparability numbers for correctness.
+
+ArraysInStructTest:
+-------------------
+
+Nothing weird-looking, just the usual "struct hashcode has the same
+comparability number as its first element" problem
+
+
+ArrayTest:
+----------
+
+It seems that it is clumping too many variables together and making
+them comparable simply because they appear together as arguments to a
+printf() function call.  This is incorrect since printing stuff
+doesn't constitute an interaction between variables.  What does printf
+translate to in IR???
+
+How about strcpy???  Whenever two strings are passed to strcpy, even
+though they are copying completely different things, DynComp still
+says that they are comparable.
+
+Related ... malloc, strdup (which probably uses malloc)
+
+Hmmm, it seems like that that the malloc implementation perhaps
+buffers stuff so it assigns the SAME tag to a chunk of memory which it
+mallocs (but that doesn't make sense, because we assign a unique tag
+for every byte of the allocated memory, right?)
+
+The only time when this really matters is when the pointers are
+actually char*, which is represented in Daikon as java.lang.String, so
+comparability info. for these variables is actually important.
+
+Ok, let me think a bit more about this.  Where do we get these tags
+from?  For these variables, aren't they the tags of memory locations
+on the virtual stack?  Hmmm ...
+
+
+IntTest:
+--------
+
+Again, certain pointer variables seem comparable even though they
+really should not be ... where are we really getting these tags from?
+
+e.g.
+/whatsUp dummy[][] str
+
+
+GlobalTest:
+-----------
+
+It looks all good.  Nothing is comparable, which is the correct answer
+
+
+PointerTest:
+------------
+
+The printf problem again.  It falsely thinks that two things
+interacted simply because they were arguments to the same printf
+function call.
+
+These lines seem to make a difference (when all other printf lines are
+NOT commented-out):
+
+printf("(%i,%i)\n", temp.x, temp.y);
+
+printf("(%i,%i)\n", origin.x, origin.y);
+
+
+small-test:
+-----------
+
+seems okay
+
+
+string-arrays:
+--------------
+
+seems okay
+
+
+StructPtrTest:
+--------------
+
+seems okay
+
+
+TrivialTest:
+------------
+
+The 'ole printf problem again
+
+
+I think even independent of the printf problem, we have a problem
+where these struct fields seem to all clump up together into one big
+comparable mass.  This may be semi-excusable, since all of this has
+undergone major levels of indirection (2 or 3 ptr. levels) ...
+
+e.g.
+
+bp[][] bp[][].char_val bp[][].short_val bp[][].uchar_val cp[][].basic1 cp[][].basic1[].char_val cp[][].basic1[].short_val cp[][].basic1[].uchar_val cp[][].basic2[] return[][][].basic1 return[][][].basic1[].char_val return[][][].basic1[].short_val return[][][].basic1[].uchar_val return[][][].basic2[]
+
+
+TypedefTest:
+------------
+
+seems okay
+
+
+TypesTest:
+----------
+
+Here is perhaps a more challenging problem:
+
+In this function, the comparability sets should be {a}, {b return},
+but DynComp returns {a}, {b}, {return}
+
+UInt returnUIntProduct(Char* a, Short b)
+{
+  Char count;
+  UInt total = 0;
+  for (count = 0; count < a; count++)
+    total = returnIntSum(total, b);
+  return total;
+}
+
+Try total += b
+
+The reason why b and return are comparable is because they interact in
+returnIntSum.  However, the value of b that is sent to returnIntSum is
+from somewhere on the REAL stack, but the tag of b we read is from the
+virtualStack.  Thus, DynComp still doesn't think that b and return are
+comparable, even though they should be.
+
+This wouldn't be a problem if we conceptually decouple out the formal
+parameter b from the local variable 'b' which is set to equal b at
+function entrance.  For example, here we do stuff with the local
+variable b, but the formal parameter b which Kvasir observes is the
+original unmodified value:
+
+
+UInt returnUIntProduct(Char a, Short b)
+{
+  Char count;
+  UInt total = 0;
+
+  b += 10;
+
+  for (count = 0; count < a; count++)
+    total = returnIntSum(total, b);
+  return total;
+}
+
+
+Yeah, this is a more challenging technical problem to overcome
+
+FIXED - the other stuff I changed seemed to magically fix it
+(2005-06-16)
+
+StaticArraysTest:
+-----------------
+
+seems okay
+
+
+
+About the printf problem: Could it just be that the implementation of
+printf has its arguments interact in some way, so if that is compiled
+into IR, then it's really hard to make a special case for it and
+ignore those instructions.  But why would a call to printf cause its
+arguments to interact???  That doesn't really make sense.
+
+Check out $INV/tests/dyncomp-tests/PrintfTest
+
+Hmmm, super weird ... if you comment-out functionality for only
+MC_(helperc_MERGE_TAGS_RETURN_0), you get that the two variables are not
+comparable during entrance but ARE comparable during exit, and if you
+also comment out MC_(helperc_MERGE_TAGS_RETURN_0), then they are not
+comparable, but that's because nothing now merges.
+
+
+Well the printf problem may not be too disastrous because it only
+falsely clumps more variables together into the same set, which means
+that we will never miss potentially important invariants.  Erring on
+the other side (saying that two variables were not comparable when in
+fact they were) is more dangerous in terms of affecting correctness.
+
+
+What about the bitwise OR's in merging tags?  I dunno.  Maybe printf
+does something funky with them.
+
+It may not be the printf itself ... it may be the moving of variables
+during the prologue of the printf call that's causing some unnecessary
+merging ...
+
+
+   7:PrintfTest.c  ****   printf("a=%d, b=%d\n", a, b);
+  29              		.loc 1 7 0
+  30 000d 8B450C   		movl	12(%ebp), %eax
+  31 0010 89442408 		movl	%eax, 8(%esp)
+  32 0014 8B4508   		movl	8(%ebp), %eax
+  33 0017 89442404 		movl	%eax, 4(%esp)
+  34 001b C7042400 		movl	$.LC0, (%esp)
+  34      000000
+  35 0022 E8FCFFFF 		call	printf
+
+
+This is definitely a possibility since the memory locations for 'a'
+and 'b' are moved right near one another, so a bug in DynComp may
+cause their value sets to be falsely merged
+
+
+Hmmmm ... maybe I'm off the hook.  I created an empty function bar()
+which took in the same arguments as my particular invocation of printf.  It generated the same assembly prologue code prior to the function call:
+
+
+  10:PrintfTest.c  ****   bar("a=%d, b=%d\n", a, b);
+  43                            .loc 1 10 0
+  44 0012 8B450C                movl    12(%ebp), %eax
+  45 0015 89442408              movl    %eax, 8(%esp)
+  46 0019 8B4508                movl    8(%ebp), %eax
+  47 001c 89442404              movl    %eax, 4(%esp)
+  48 0020 C7042400              movl    $.LC0, (%esp)
+  48      000000
+  49 0027 E8FCFFFF              call    bar
+
+
+... but resulted in no false mergings.  So something INSIDE of printf
+must be the culprit.
+
+
+And in reality, how often do production (non-debug build) programs
+printf stuff?
+
+
+----------
+2005-06-10
+----------
+
+Mike's suggestions from today's meeting:
+
+Perhaps use objdump -d to list out the binary locations
+of functions (post-linking) and look at the IMark address values,
+which may point to instruction locations in the binary to help map
+between x86 assembly and IR:
+
+e.g.
+   ------ IMark(0x1B8F5E20, 1) ------
+
+
+For the structs thing, simply eliminate the struct variables from the
+.dtrace altogether because in C, structs have no real semantic
+meaning - only pointers to structs have meaning - DONE
+
+
+For the virtual stack thing, keeping the virtual stack is okay since
+nobody outside of the function can really observe the post-state of
+formal parameters passed by value anyways
+
+
+For the printf thing, look in glibc code to see if there is anything
+with varargs processing that may be at fault
+
+
+For the "can't run stuff on Flex thing", look into "man longjobs" or
+"man longsession" to see how to prevent stuff from blowing up because
+my AFS tokens expire!!!
+
+
+Also, try to lift someone's monitor
+
+
+
+Ok, we have the printf problem and the propagating comparabilities
+problem, which I used to think was a virtual stack problem, but now
+may end up not being one
+
+
+The printf problem - it seems that DynComp only thinks that two
+variables are falsely comparable when the format string denotes that
+they are of the SAME TYPE, regardless of the TRUE types of the
+variables (since the varargs mechanism in printf has no clue what the
+types of its variable # of arguments are)
+
+Hmmm, look at PrintfTest with --dyncomp-debug on - it seems that the
+problem is a bit deeper than I originally thought - the tags are
+changing sometime between the ENTRY and EXIT ppts of the function,
+apparently caused by the presence of the printf
+
+
+From a varargs help website:
+( http://www.eskimo.com/~scs/cclass/int/sx11c.html )
+
+---------------------------------------------------------------------
+When a function with a variable-length argument list is called, the
+variable arguments are passed using C's old ``default argument
+promotions.'' These say that types char and short int are
+automatically promoted to int, and type float is automatically
+promoted to double. Therefore, varargs functions will never receive
+arguments of type char, short int, or float. Furthermore, it's an
+error to ``pass'' the type names char, short int, or float as the
+second argument to the va_arg() macro. Finally, for vaguely related
+reasons, the last fixed argument (the one whose name is passed as the
+second argument to the va_start() macro) should not be of type char,
+short int, or float, either.
+---------------------------------------------------------------------
+
+Perhaps the automatic promotions are screwing us up?  I dunno, though,
+since we should really be reading off of the virtual stack and not the
+real stack.
+
+
+----------
+2005-06-10
+----------
+
+Ok, after struggling with the printf problem for a while, I still
+think that there's something funny going on inside of printf itself
+which makes its varargs which are of the same type seem to interact.
+If that's the case, as I suspect that it is, then there is nothing we
+can do about it.  That's simply the behavior of printf.
+
+Well, from doing print statements whenever MC_(helperc_MERGE_TAGS)
+gets executed, it's apparent that the presence of the printf()
+function call causes a helluva a lot of mergings to happen
+
+
+If you REALLY want to look at the printf code, it's in here:
+pgbovine@parsnip:/scratch/pgbovine/glibc-2.3.5/stdio-common
+
+Upon a cursory glance, one thing's for certain ... it's damn
+complicated
+
+
+Let's just give up on it for now and move onto our other problem
+... not propagating comparability in nested function calls
+
+
+Although I still find it a bit disconcerting that printf's can cause
+this stuff to happen:
+
+..printfIntInt():::ENTER
+a
+b
+
+..printfIntInt():::EXIT0
+a b
+
+
+I suspect that the comparability stuff is thrown off since printf
+probably uses some global character buffer which it copies values (and
+hence tags) in and out of
+
+
+----------
+2005-06-13
+----------
+
+Mike wants to re-open the printf() problem for investigation.  Perhaps
+I can write a stub varargs function which doesn't do anything and see
+what happens?  Yes, I did that, and the stuff doesn't interact simply
+because of the presence of varargs.
+
+
+Look at crazy-test-1.comp --- there is possibly some freaky stuff
+going on
+
+
+Ok, here is how you can step inside of printf() with gdb within XEmacs:
+
+Run the following commands in gdb running inside of XEmacs:
+
+  (link against debug library)
+set solib-absolute-prefix /dev/null/
+set solib-search-path /usr/lib/debug/
+
+  (view the source)
+dir /scratch/pgbovine/glibc-2.3.5/stdio-common/
+
+
+
+Hmmm, does it matter if glibc is compiled optimized?  I guess we're
+not reporting anything about stuff in glibc in our output, but might
+not optimization throw off our comparability results and/or make
+strange things happen?
+
+
+I have a hunch that within printf(), there is one common buffer which
+is being read and outputted to stdout, and all the arguments are being
+copied into that buffer so when the entire buffer is read as a string
+or something, DynComp merges the tags of all of its constituent parts.
+
+Check out the 'workend', 'work_buffer', or 'string' variables in vfprintf.c
+
+
+----------
+2005-06-14
+----------
+
+Hmmm, have I considered merging the comparability sets from exit
+program points back to entrance program points, at least for top-level
+function parameters (#isParam = true)?  Because we are using a virtual
+stack, what we observe are the prestate values of these parameters.
+So perhaps we should really be merging from the entrance to the exit?
+
+
+Possible optimization - a string is a contiguous block of bytes, so
+use a val_uf_union_tags_in_range with the string length instead of
+individual val_uf_union_tags_at_addr for greater efficiency
+- DONE!
+
+
+
+Mike explains Approach 2 from
+$INV/papers/compare/values-to-variables.txt:
+
+To recap:
+
+Approach 2:  Remember sets of tags (maintain sets of tags at each ppt)
+
+For each variable, remember the set of all tags that were ever observed for
+its values.  At the end of execution, report two variables as comparable if
+their tag sets overlap (taking into account any additional tag merging that
+has occurred since the last execution of the program point).
+
+This may still be expensive, but it is much cheaper than remembering all
+tuples.  For example, instead of remembering 9 tag tuples
+  { <1,4>, <1,5>, <1,6>, <2,4>, <2,5>, <2,6>, <3,4>, <3,5>, <3,6> }
+this approach remembers 2 tag sets < { 1,2,3 }, { 4,5,6 } >.
+
+Optimization:  remember this as a union-find data structure, where the
+elements are tags, and each variable points at one of the sets.
+This is exactly the same data structure that is already used for value
+tags.  Furthermore, similar garbage-collection strategies might help hold
+down the size of the sets.
+
+Problem:  In
+  foo(x,y)
+  foo(y,z)
+the two parameters of foo are reported as comparable.
+This is over-conservative:  it reports variables as comparable that should
+not be.
+
+
+The algorithm which SMcC suggests (and is currently implemented) is
+Approach 2 with the union-find and incremental optimizations.
+
+The simple explanation:
+We have a mapping from variables to the leaders of the tags of their
+values at every program point.  During every execution of a program
+point, iterate through each relevant Daikon variable for that ppt and
+record the leader of the tag of its current value in a list.  Then at
+the very end of execution, for every program point, two variables are
+comparable iff they have ever contained values with tags which are
+comparable in the global value union-find data structure.
+
+e.g. consider the following program with the empty function 'void
+foo(int x, int y)' and arrays containing the following TAGS (not
+values):
+
+int a[] = {0, 1, 2}
+int b[] = {10, 11, 12}
+
+for (i = 0 to 2) {
+  foo(a[i], b[i]);
+}
+
+Three calls are made (with the following tags):
+
+foo(0, 10);
+foo(1, 11);
+foo(2, 12);
+
+This is what is kept with each variable for foo() ENTER and EXIT:
+
+foo(0, 10);
+x 0
+y 10
+
+foo(1, 11);
+x 0  1
+y 10 11
+
+foo(2, 12);
+x 0  1  2
+y 10 11 12
+
+At the end of execution, we see that 'x' and 'y' never contained tags
+that were comparable, so we don't say that these variables are
+comparable.
+
+On the other hand, let's consider the same program, now run on arrays
+with the following TAGS:
+
+int a[] = {0, 1, 2}
+int b[] = {2, 3, 4}
+
+foo(0, 2);
+x 0
+y 2
+
+foo(1, 3);
+x 0 1
+y 2 3
+
+foo(2, 4);
+x 0 1 2
+y 2 3 4
+
+Ok, now we've got something.  Both 'x' and 'y' held tag 2 during some
+call, and without further information, this algorithm must conclude
+that 'x' and 'y' are comparable.  This is why we say that this
+algorithm is over-conservative.
+
+
+This would make a good example of the limitations of this approach for
+inclusion into an upcoming paper:
+
+Similar problems shows up in strcpy() (and in related glibc functions,
+we suspect) which causes parameters ACROSS different calls of strcpy()
+to appear like they are comparable when in fact they should not be
+comparable.
+
+Here is a small example to demonstrate this problem:
+
+void foo(char* x, char* y) {}
+
+char* my_strcpy (char *dst, const char *src) {
+  char *ret = dst;
+  while ((*dst++ = *src++) != '\0');
+  return ret;
+}
+
+char g_x[] = "AAAA";
+char g_y[] = "BBB";
+
+int main() {
+  my_strcpy(g_x, "CC");
+  my_strcpy(g_y, "D");
+
+  foo(g_x, g_y);
+
+  return 0;
+}
+
+For now, assume that char* variables actually refer to the CONTENTS of
+the strings, not the pointers to the strings.
+
+Here are the values and tags of the bytes in memory corresponding to
+the global data structures:
+
+Global:
+      value  tag
+g_x:  'A'    1
+      'A'    1
+      'A'    1
+      'A'    1
+      '\0'   1
+g_y:  'B'    2
+      'B'    2
+      'B'    2
+      '\0'   2
+
+Literals:
+      "CC"   3
+      "D"    4
+
+
+  my_strcpy(g_x, "CC")
+
+my_strcpy:::ENTER		my_strcpy:::EXIT
+
+g_x  1
+g_y  2
+dst  1
+src  3
+                        return
+
+Within the body of my_strcpy, first ret = dst, so ret points to the
+same global location where g_x points to.  Now each relevant byte of
+dst gets its value copied in from the corresponding byte in src, so
+the tags get copied as well.  No merging occurs, but here is what
+memory looks like after this call:
+
+      value  tag
+g_x:  'C'    3
+      'C'    3
+      '\0'   3
+      'A'    1
+      '\0'   1
+g_y:  'B'    2
+      'B'    2
+      'B'    2
+      '\0'   2
+
+The return value has a tag of 3, just like g_x now
+
+my_strcpy:::ENTER		my_strcpy:::EXIT
+
+g_x  1			g_x	3
+g_y  2			g_y	2
+dst  1			dst	3
+src  3			src	3
+                        return	3
+
+
+Now time for the second call:
+
+  my_strcpy(g_y, "D");
+
+my_strcpy:::ENTER		my_strcpy:::EXIT
+
+g_x  1 3		g_x	3
+g_y  2 2		g_y	2
+dst  1 2		dst	3
+src  3 4		src	3
+                        return	3
+
+Now the body executes and modifies memory:
+
+      value  tag
+g_x:  'C'    3
+      'C'    3
+      '\0'   3
+      'A'    1
+      '\0'   1
+g_y:  'D'    4
+      '\0'   4
+      'B'    2
+      '\0'   2
+
+
+my_strcpy:::ENTER		my_strcpy:::EXIT
+
+g_x  1 3		g_x	3 3
+g_y  2 2		g_y	2 4
+dst  1 2		dst	3 4
+src  3 4		src	3 4
+                        return	3 4
+
+Check out the fact that all the variables are now clumped together.
+Oh no :(
+
+Ok, now when we call foo(), we observe that g_x, g_y, as well as its
+params x and y are ALL comparable, even though g_x and g_y NEVER
+INTERACTED during the same call to strcpy().  The comparability
+'leaked through' across different calls to strcpy.  Ack, that is
+bad!!!  This is one of the reasons why we say that this algorithm is
+over-conservative.
+
+
+
+Now that I've reverted everything back to creating a new tag for every
+dynamic instance of a literal (and not static), I seem to get a lot
+more clumping of pointer variables which came from the stack.  I
+suspect that now we face a problem where DynComp thinks that lots of
+stuff on the stack are comparable when they probably shouldn't be
+... just because ESP has moved around and 'touched' them ... hmmm
+
+
+ ..main():::ENTER
+-argc
+-argv
++argc argv
+ argv[]
+
+
+One disturbing thing is that argc and argv are now clumped together
+... hmmm ... perhaps because they are both neighbors on the stack???
+Could be possible ...
+
+
+----------
+2005-06-15
+----------
+
+Ok, implemented two horrendous hacks to try to get more accurate
+comparability info., at least on our smaller examples:
+
+1.) Reserved a special UINT_MAX tag for tags read from ESP.  In
+MERGE_TAGS, we detect when one tag is UINT_MAX and mark the other one
+as 'dirty' then return the other one.  If the program later tries to
+merge the 'dirty' tag, then the merge does not occur and we return the
+OTHER tag.  This is purely due to observations I made in
+dyncomp-tests/LocalVarsTest and is probably very flaky and unsound.
+
+2.) Don't perform CREATE_TAG, MERGE_TAGS, or MERGE_TAGS_RETURN_0
+unless you are executing the main program (denoted by the global
+'within_main_program' flag).  This probably loses some accuracy here
+and there but helps to reduce the number of crappy mergins and stuff
+that occur BEFORE the program begins and AFTER the program terminates
+... such as in weird glibc initialization/teardown code.
+
+
+The results look alright now, but by no means spectacular.  I really
+need to re-think what I've done and implement something more sound.
+
+
+----------
+2005-06-16
+----------
+
+Ok, I un-did the hacks I made yesterday and made a less-atrocious ESP
+hack, which seems to work much better:
+
+I created a special case where there is always a special tag of
+UINT_MAX given to any tag retrieved from ESP in the guest state.
+There is also a special case in helperc_MERGE_TAGS which notices if
+either of its arguments is UINT_MAX and simply returns 0 if that is
+the case.  This solves the problem because 0 tags are treated
+specially as well.  If either argument to a merge is a 0, then the
+other argument is returned.
+
+By manually inspecting the IR, it seems that the use of the &-operator
+on a LOCAL (stack) VARIABLE translates into a constant literal being
+created and then some arithmetic is done with ESP in order to get an
+address.  The problem we have before is that the SAME ESP is used to
+do arithmetic on different constants so all local addresses within one
+stack frame which are obtained with the &-operator seem to appear
+comparable since they shared that interaction with ESP.  Returning
+that 0 effectively nullifies interactions with ESP.
+
+Currently, the behavior is that each address generated with the
+&-operator gets its own unique tag (NOT a 0 tag) because it was
+created with some constant offset from ESP, so that tag can be passed
+around and these variables can actually merge and be comparable with
+other variables later :)
+
+(&-operator on a global is simply a constant literal so we have no
+problems here)
+
+
+
+Mike suggests to try to assign tags of 0 for all literals and see what
+happens.  Perhaps this could eliminate the need for garbage
+collection?  If we are interested in literals having tags for the
+purposes of the &-operator, perhaps we could make a special case for
+stuff calculated from ESP.  Again, this is just speculation ... let's
+try it out and see what happens.
+
+- tried it out ... this is bad because, as I suspected, pointer values
+don't get tags so comparability doesn't propagate properly
+
+----------
+2005-06-17
+----------
+
+Notes from meeting with Mike on 2005-06-17
+------------------------------------------
+
+On a high level, we've concluded that there are three ways which tags
+can be created.  The challenge is to balance when to use each of the
+three mechanisms for creating tags.
+
+1.) Create tags dynamically during run-time
+Advantage: Perfect context-sensitivity
+Disadvantage: Extremely inefficient, especially in the presence of
+literals
+
+Right now, tags for literals are created dynamically, which means that
+every time the same literal '4' is encountered during an execution, a
+new tag is created.  This provides perfect context-sensitivity because
+it doesn't merge together variables from different executions which
+interact with that same '4', but it is extremely inefficient because
+so many tags are created.
+
+(In fact, right now, ALL new tags are created dynamically)
+
+2.) Create tags statically during translation-time
+
+Advantage: Much more efficient than dynamic tag creation
+Disadvantage: Loses perfect context-sensitivity
+
+3.) Create a tag of 0
+
+Advantage: Most efficient
+Disadvantage: Potentially loses lots of information
+
+Right now, we never explicitly create a tag of 0 for anything, but we
+flirted with the idea of creating 0 tags for all literals, which could
+drastically improve efficiency.  However, we determined that the loss
+in precision is probably not worth it.
+
+
+Possible optimizations (not yet implemented because each one has its
+own flaws):
+
+1.) Peephole optimization for avoiding creating tags for constants
+
+In the expression 'x + 5', the IR looks like (assuming x is loaded
+into EAX):
+
+    +
+   / \
+ EAX  5
+
+We currently generate this parallel IR tree for the tags
+
+     MERGE_TAGS()
+      /     \
+tag(EAX)   CREATE_TAG()
+
+Mike suggests to prune off the CREATE_TAG() call and simply return the
+tag of EAX because the literal '5' really isn't used again.  Thus, the
+pruned version of the tree looks like so:
+
+      tag(EAX)
+
+Remember that literals are leaves in the IR expression tree because
+they are not operators and thus cannot take any operands.  This could
+eliminate the creation of a lot of useless tags which would later have
+to be garbage collected, which is costly.
+
+However, one objection is ... how does this scheme handle the creation
+of unique literals for calculating offsets from ESP when the
+&-operator is used?  Just because the '5' is a leaf doesn't mean that
+it will never be used, even indirectly.  Thus, this optimization may
+lose information, most notably when the &-operator is involved.
+
+
+2.) Adopt different special treatment for 0 tags, and assign all
+literals 0 tags.
+
+Currently, the treatment for 0 tags is that when a 0 appears as an
+operand to a MERGE operation, simply return the other tag as the
+result and don't do any merging.  How about we change special
+treatment for 0 tags so that when a 0 tag is an argument to a MERGE
+operation, change that 0 tag to the OTHER tag argument and then return
+the other argument.
+
+We need to combine this change with a corresponding change to create 0
+tags for all literals.  In fact, the reason why we want this special
+treatment for 0 tags is so that we can create 0 tags for literals,
+which is MUCH more efficient than creating new tags dynamically for
+literals.
+
+The intuition behind this change is that when literals appear by
+themselves, no new tag is created for them, but when they interact
+with other values with tags, then they adopt those tags and magically
+appear to obtain tags.  For example,
+
+a = 5;   // '5' has 0 tag, that's copied into 'a' so 'a' has 0 tag
+a + c;   // Assume that 'c' magically has a tag.  Now 'a' adopts the
+         // tag of 'c' and we return the tag of 'c'
+
+Problem: How does 'c' magically get a non-zero tag?  If we assume that
+'c' was initialized with a literal sometime earlier, then it too will
+have a 0 tag.  This is a big problem.
+
+Another problem:
+
+a = 5;   // a: 0
+b = a;   // a: 0, b: 0
+b + c;   // a: 0, b: 1, c: 1 (assume 'c' has a tag of 1)
+b + z;   // a: 0, b: 1, c: 1, d: 1
+
+This is incorrect because 'a' should be comparable to 'b', 'c', and
+'d' but this optimization will lose this information.
+
+
+3.) Statically allocate tags for address literals which point to the
+global data region of memory.
+
+Currently, for a global static array 'int x[]', we do not give a tag
+to 'x' (the hashcode denoting the location of the beginning of the
+array in the global data region), so all global static arrays are not
+comparable to anything else.  Mike suggests an alternative where we
+assign tags for each global data region location we encounter
+statically at translation-time.  For example,
+
+int x[10] = {blah}   Address: 10000000
+int y[20] = {bleh}   Address: 10000040
+int z[5]  = {bloop}  Address: 10000120
+
+We could give each variable a tag which is the same as its address,
+since global static addresses are fixed and known at compile-time.
+The down-side to this plan is that we need to reserve a large block
+(the size of the global region) of tags which cannot be allocated
+dynamically since there is a chance of contention with these
+statically-allocated tags.
+
+A smarter implementation is to create a map from global addresses to
+tags.  In this example, we would have something like
+
+Address      tag
+10000000     1
+10000040     2
+10000120     3
+
+Now there is no need to block off a large chunk of memory.  If we do
+this all statically at translation time, all of these addresses will
+receive the lowest tags of 1, 2, 3, 4, 5, etc..., and nextTag will
+increment to the first unused tag when it is ready for dynamic
+allocation of tags.
+
+Notice that these tags can never be garbage collected because global
+variables have program-wide scope, and these tags are always being
+used.  However, that's fine because the garbage collector can sweep
+through the values within this map as part of its 'roots' (along with
+the shadow memory and guest state) to see which tags are being used.
+
+Now, at translation-time, whenever we encounter a literal that is
+within range of the global region (between the address of the lowest
+and highest global variable), look it up in the map and statically
+assign it the tag associated with that address.  This makes sense
+because when somebody references a global array by name within a
+function (i.e., 'x' for 'int x[]'), that simply compiles into a large
+integer literal.  Thus, different references to 'x' throughout a
+program will all have the SAME tag instead of unique tags, which is
+both more precise and more efficient.  This suffers the same problem
+as a conservative garbage collector ... there is no way to tell
+whether a large integer literal is actually an address in the global
+data region or simply just a large integer.  However, in practice,
+being a bit conservative isn't that much of a problem.
+
+Potential problem (this is similar to the ESP contamination problem):
+
+struct x{int a; int b;};
+
+x arr[5];
+
+Let's try to observe these values:
+arr[3].a
+arr[4].b
+
+In the original scheme, these two variables will have unique tags
+because all of the literals are dynamically-generated and unique.
+That's the correct behavior.
+
+However, in the proposed scheme, 'arr' will return the same tag for
+both arr[3].a and arr[3].b, and the '3' is simply an offset of
+(3*sizeof(x)) from 'arr' (and the 'b' field is an additional offset of
+sizeof(a) from the start of arr[4]).  Thus, DynComp would say that
+arr[3].a and arr[4].b ARE comparable, which is incorrect, because of
+the fact that the offsets from 'arr' all got merged with the common
+tag from 'arr'.  This is exactly the same thing as the ESP
+'contamination' problem where the invocation of the &-operator on
+local variables is compiled into ESP plus a constant offset.  Perhaps
+we need special treatment for these static array tags to prevent them
+from 'contaminating' other tags to prevent false mergings?  Is the
+solution to the ESP problem generalizable, or do we have to resort to
+even more special cases?
+
+
+4.) Ignore everything that happens before the entrance of main() and
+after the exit of main() (by using the within_main_function boolean).
+I think that I experimented with not doing CREATE_TAG or MERGE_TAGS,
+but with no real difference in results, at least on small test
+programs.  The justification behind this is that we really don't care
+about what happens before the main program starts and after it
+finishes ... it's probably mostly glibc crap.  But like Mike says,
+when the program being run is large, then this probably won't buy us
+much, and it may even lose some precision, so I dunno if this is
+really worthwhile.
+
+
+5.) Move more code, such as the comparison to see if one tag is 0
+during MERGE_TAGS (which probably happens quite frequently), into IR
+instead of having to call out to a helper function, since helper
+function calls are expensive because Valgrind must save and restore
+state.  This was SMcC's suggestion.
+
+
+----------
+2005-06-18
+----------
+
+Garbage collection!!!
+
+rijndael in parsnip:/scratch/pgbovine-do-not-delete-me/rijndael/kvasir-version
+is a great example of a program that currently runs out of memory due to the
+excessive amounts of tags that it allocates.  Check it out:
+
+pgbovine@parsnip:/scratch/pgbovine-do-not-delete-me/rijndael/kvasir-version$ kvasir-dtrace --with-dyncomp ./rijndael
+==18519== kvasir-4.1.2, C/C++ Language Front-End for Daikon with DynComp comparability analysis tool.
+==18519== Copyright (C) 2004-2005, Philip Guo, MIT CSAIL Program Analysis Group
+==18519== Using LibVEX rev 1139, a library for dynamic binary translation.
+==18519== Copyright (C) 2004, and GNU GPL'd, by OpenWorks LLP.
+==18519== Using valgrind-3.0.0.SVN, a dynamic binary instrumentation framework.
+==18519== Copyright (C) 2000-2005, and GNU GPL'd, by Julian Seward et al.
+==18519== For more details, rerun with: -v
+==18519==
+Start garbage collecting tags (nextTag = 1000000) ...
+Done garbage collecting tags (nextTag = 1000000) # tags in use: 920791
+Executing Tables KAT (key 128): Start garbage collecting tags (nextTag = 2000000) ...
+Done garbage collecting tags (nextTag = 2000000) # tags in use: 1422201
+Start garbage collecting tags (nextTag = 3000000) ...
+Done garbage collecting tags (nextTag = 3000000) # tags in use: 1422197
+Start garbage collecting tags (nextTag = 4000000) ...
+Done garbage collecting tags (nextTag = 4000000) # tags in use: 1422198
+Start garbage collecting tags (nextTag = 5000000) ...
+Done garbage collecting tags (nextTag = 5000000) # tags in use: 1422166
+Start garbage collecting tags (nextTag = 6000000) ...
+Done garbage collecting tags (nextTag = 6000000) # tags in use: 1422193
+Start garbage collecting tags (nextTag = 7000000) ...
+Done garbage collecting tags (nextTag = 7000000) # tags in use: 1422186
+Start garbage collecting tags (nextTag = 8000000) ...
+Done garbage collecting tags (nextTag = 8000000) # tags in use: 1422192
+Start garbage collecting tags (nextTag = 9000000) ...
+Done garbage collecting tags (nextTag = 9000000) # tags in use: 1422166
+Start garbage collecting tags (nextTag = 10000000) ...
+Done garbage collecting tags (nextTag = 10000000) # tags in use: 1422170
+Start garbage collecting tags (nextTag = 11000000) ...
+Done garbage collecting tags (nextTag = 11000000) # tags in use: 1422171
+Start garbage collecting tags (nextTag = 12000000) ...
+Done garbage collecting tags (nextTag = 12000000) # tags in use: 1422171
+Start garbage collecting tags (nextTag = 13000000) ...
+Done garbage collecting tags (nextTag = 13000000) # tags in use: 1422166
+Start garbage collecting tags (nextTag = 14000000) ...
+Done garbage collecting tags (nextTag = 14000000) # tags in use: 1422191
+Start garbage collecting tags (nextTag = 15000000) ...
+Done garbage collecting tags (nextTag = 15000000) # tags in use: 1422193
+Start garbage collecting tags (nextTag = 16000000) ...
+Done garbage collecting tags (nextTag = 16000000) # tags in use: 1422165
+Start garbage collecting tags (nextTag = 17000000) ...
+Done garbage collecting tags (nextTag = 17000000) # tags in use: 1422165
+Start garbage collecting tags (nextTag = 18000000) ...
+Done garbage collecting tags (nextTag = 18000000) # tags in use: 1422165
+Start garbage collecting tags (nextTag = 19000000) ...
+Done garbage collecting tags (nextTag = 19000000) # tags in use: 1422190
+Start garbage collecting tags (nextTag = 20000000) ...
+Done garbage collecting tags (nextTag = 20000000) # tags in use: 1422170
+Start garbage collecting tags (nextTag = 21000000) ...
+Done garbage collecting tags (nextTag = 21000000) # tags in use: 1422192
+
+VG_(get_memory_from_mmap): newSuperblock's request for 22003712 bytes failed.
+VG_(get_memory_from_mmap): 245753720 bytes already allocated.
+
+Sorry.  You could try using a tool that uses less memory;
+eg. addrcheck instead of memcheck.
+
+
+When 21,000,000 tags are allocated, only 1,422,192 of them are in use.
+Notice that the number of tags in use fluctuates around 1.4 million,
+but without garbage collection, nextTag keeps on incrementing and
+eating up more memory as more tags are created.
+
+
+This is a classic example of when garbage collection would really help
+us out.
+
+pgbovine@parsnip:/scratch/pgbovine-do-not-delete-me/md5$ kvasir-dtrace --with-dyncomp ./md5 10MB_file
+
+md5 fails in just about the same way, after about 21,000,000 tags have
+been allocated.
+
+Also, I have not implemented the bit-vector optimization for keeping
+track of which tags are in use (each byte can keep track of 8 tags
+since each tag only needs 1 bit) because for some reason Valgrind
+crashes.  In the spirit of not prematurely optimizing, I've simply
+decided to waste a constant 8x space and just allocate a regular UChar
+buffer to keep track of which tags are in use.
+
+
+On a kind-of unrelated note, for some strange reason, now Flex crashes
+:( This ain't good, because Flex was our poster child in the
+Lackwit/DynComp battle.
+
+
+Ok, the multiple passes through to-be-freed list is way slow because
+it has to check for duplicates before entering in free-list
+... perhaps if we re-implement it as a hashtable of tags to tags (tags
+as both keys and value), that would be much more efficient???  It
+would be like a constant-time lookup.
+
+
+Ok, so on rijndael and md5, the garbage-collector still fails because
+we are probablyf reeing tags which are still being used ... hmmm
+... look into this more by using GDB
+
+
+
+pgbovine@parsnip:/scratch/pgbovine-do-not-delete-me/md5$ kvasir-dtrace --with-dyncomp --dyncomp-gc ./md5 10MB_file
+==28223== kvasir-4.1.2, C/C++ Language Front-End for Daikon with DynComp comparability analysis tool.
+==28223== Copyright (C) 2004-2005, Philip Guo, MIT CSAIL Program Analysis Group
+==28223== Using LibVEX rev 1139, a library for dynamic binary translation.
+==28223== Copyright (C) 2004, and GNU GPL'd, by OpenWorks LLP.
+==28223== Using valgrind-3.0.0.SVN, a dynamic binary instrumentation framework.
+==28223== Copyright (C) 2000-2005, and GNU GPL'd, by Julian Seward et al.
+==28223== For more details, rerun with: -v
+==28223==
+Start garbage collecting tags (next tag = 1000002, total assigned = 1000000) ...
+Iterating through tags in tagsInUse
+Begin pass # 0 thru to_be_freed_list to free stuff
+End pass # 0 thru to_be_freed_list to free stuff - # tags freed so far: 0
+Done garbage collecting tags (next tag = 1000002, total assigned = 1000000) # tags in use: 920827, # tags freed: 0
+Start garbage collecting tags (next tag = 2000002, total assigned = 2000000) ...
+Iterating through tags in tagsInUse
+Begin pass # 0 thru to_be_freed_list to free stuff
+End pass # 0 thru to_be_freed_list to free stuff - # tags freed so far: 0
+Done garbage collecting tags (next tag = 2000002, total assigned = 2000000) # tags in use: 1400205, # tags freed: 0
+Start garbage collecting tags (next tag = 3000002, total assigned = 3000000) ...
+Iterating through tags in tagsInUse
+Begin pass # 0 thru to_be_freed_list to free stuff
+End pass # 0 thru to_be_freed_list to free stuff - # tags freed so far: 0
+Done garbage collecting tags (next tag = 3000002, total assigned = 3000000) # tags in use: 1400207, # tags freed: 0
+Start garbage collecting tags (next tag = 4000002, total assigned = 4000000) ...
+Iterating through tags in tagsInUse
+Begin pass # 0 thru to_be_freed_list to free stuff
+End pass # 0 thru to_be_freed_list to free stuff - # tags freed so far: 0
+Done garbage collecting tags (next tag = 4000002, total assigned = 4000000) # tags in use: 1400210, # tags freed: 0
+Start garbage collecting tags (next tag = 5000002, total assigned = 5000000) ...
+Iterating through tags in tagsInUse
+Begin pass # 0 thru to_be_freed_list to free stuff
+End pass # 0 thru to_be_freed_list to free stuff - # tags freed so far: 0
+Done garbage collecting tags (next tag = 5000002, total assigned = 5000000) # tags in use: 1400207, # tags freed: 0
+Start garbage collecting tags (next tag = 6000002, total assigned = 6000000) ...
+Iterating through tags in tagsInUse
+Begin pass # 0 thru to_be_freed_list to free stuff
+End pass # 0 thru to_be_freed_list to free stuff - # tags freed so far: 0
+Done garbage collecting tags (next tag = 6000002, total assigned = 6000000) # tags in use: 1414358, # tags freed: 0
+Start garbage collecting tags (next tag = 7000002, total assigned = 7000000) ...
+Iterating through tags in tagsInUse
+Begin pass # 0 thru to_be_freed_list to free stuff
+End pass # 0 thru to_be_freed_list to free stuff - # tags freed so far: 0
+Done garbage collecting tags (next tag = 7000002, total assigned = 7000000) # tags in use: 1400207, # tags freed: 0
+Start garbage collecting tags (next tag = 8000002, total assigned = 8000000) ...
+Iterating through tags in tagsInUse
+
+VG_(get_memory_from_mmap): newSuperblock's request for 1048576 bytes failed.
+VG_(get_memory_from_mmap): 256251768 bytes already allocated.
+
+Sorry.  You could try using a tool that uses less memory;
+eg. addrcheck instead of memcheck.
+
+
+Ok, with md5, we seem to be able to last much longer with the GC
+(around 20 to 30 million instead of 8 million), but still we can't
+keep a good steady-state yet
+
+
+----------
+2005-06-20
+----------
+
+Hmmm, perhaps on the sweep through tag shadow memory, we do a
+find_leader and set all tags to their leaders?  That may reduce the
+number of tags in play by a bit.
+
+
+Notes from meeting on garbage collection with Mike (2005-06-20):
+----------------------------------------------------------------
+
+Background information:
+
+There is a global two-level tag map (2^16 pointers to 2^16 uf_object
+entries in each slot)
+Key: tag
+Value: uf_object
+
+This tag map gets filled monotonically from the bottom-up, from
+lower-numbered tags to higher-numbered tags.  However, with merges and
+such, lots of tags will probably never be in use so it is safe to
+re-allocate them.  We want to keep the tag map as small as possible
+because that's probably what drives us out of memory.
+
+
+Where are tags kept?
+
+1.) Shadow memory - for each byte of memory in the address space,
+there is a corresponding 32-bit tag (0 for no tag assigned to that
+byte of memory)
+
+2.) Guest state - There is a tag associated with each register (i.e.,
+EAX, EBX, floating-point stack)
+
+3.) Per program point - Because we are doing the value-to-variable
+comparability calculations incrementally, during every execution of a
+program point, we keep the leaders of the tags of each Daikon
+variable's value at that program point.
+
+During every garbage collection step, we must sweep through all areas
+where tags are kept to see which tags are currently in use.  Of the
+ones that are not in use, we must then consult the corresponding
+uf_object entries to see if they are safe to garbage collect (when
+there are no other uf_object entries pointing to that one).  Tags that
+are garbage collected are placed in a free_list.
+
+When DynComp requests a new tag, we first check to see if free_list
+has entries in it, and if so, pop an entry off of free_list and return
+it.  If it's empty, then we return nextTag and increment it.  The hope
+is that with garbage collection, nextTag will remain at a reasonable
+number, and we can keep on popping stuff off of free_list.
+
+
+Reference counting versus garbage collection:
+
+Reference counting involves keeping a reference count field in each
+uf_object entry and adding it to the free_list as soon as its
+reference count drops down to 0.  It has the advantage of never
+requiring an explicit garbage collection call, but the disadvantage of
+incurring an extra small cost during every program operation that
+creates or copies a tag (as well as implementation complexities of
+properly keeping track of tag copies and updating the reference fields
+accordingly)
+
+Garbage collection involves no small overhead during each program
+operation, but does involve discrete calls that have a potentially
+large overhead.
+
+One question is ... when do we perform garbage collection?  A first
+pass is to do it after every x tags which are assigned (both from
+free_list and nextTag).  A more sophisticated requirement is to do it
+heuristically when 'there is not much memory left' ...
+
+One possible heuristic is to notice that the shadow memory for tags
+incurs an additional 4x memory overhead (4-byte tag for every byte of
+memory), and that the worst case occurs when there is 1 unique tag
+allocated for each byte of memory.  Periodically, we could do a sweep
+of the top-level (2^16 pointers) of the shadow memory map to see how
+many of these 2^16 pointers are actually allocated (with 2^16 4-byte
+tags).  That number times 2^16 is an upper-bound on the amount of
+memory used by the program, and hence an upper-bound on the number of
+tags in use.  Now do a similar thing for the top level of the tag map
+(2^16 pointers) and do a garbage collection run when that number
+matches the number of top-level shadow memory map pointers allocated
+(or some constant factor thereof).  This ensures that we don't do
+garbage collection too early when the tag map isn't the primary memory
+hog in the execution ... again, all of this is very vague, but it can
+be refined later.
+
+
+
+uf_object:
+----------
+uf_object* parent
+int ref_count
+int tag
+
+free_list implementation - We should 'thread' the free_list linked
+list through the uf_object entries in the tag map since each entry
+already has a parent pointer.  This will avoid the need to allocate
+additional memory for free_list and to keep track of which entries are
+on free_list.  The head of free_list should point to a uf_object
+entry.  The 'parent' field of that entry should point to the next
+entry in free_list, and so forth, until the last entry should have a
+NULL 'parent' field.  The ref_count field of all entries in free_list
+should be set to -1 (or some other sentinel value) to denote that they
+are in free_list and should not be treated like normal uf_object
+entries.  When a new entry is added to free_list, add it to the head
+of the list by changing the head of free_list to point to the new
+entry and the 'parent' field of the new entry to point to the previous
+head of the list.  When an entry is popped off of free_list, pop it
+off the front by setting the head of free_list to the next ('parent')
+entry and initializing the popped-entry to a valid uf_object with a
+non-sentinel reference count.  (Notice that by keeping the tag along
+with each uf_object entry, free_list is not only a linked list of
+uf_object entries but also a linked list of tags.)
+
+
+
+Proposed garbage collection algorithm:
+--------------------------------------
+
+This algorithm goes through all places where tags are kept, finds the
+leader for each one, and 'compresses' the set of tags in use by
+re-numbering all leaders to the smallest possible numbers.  It has the
+advantage of not requiring the use of a free list at all, but the
+disadvantage of causing tag numbers to change, thus maybe making
+debugging a bit more difficult (but shouldn't really, since the tag
+numbers that change aren't the ones being used or observed anyways).
+
+
+1.) Initialize a newTagNumber variable to 1, and oldToNewMap hash table,
+which maps old tags to new tags (this is what translates old tags to
+new ones during the 'compression' step)
+
+2.) Sweep through shadow memory, guest state, and leader tags held for
+program points:
+
+  * Find the leader of the tag encountered at each location
+
+  * Try to find that leader's entry in oldToNewMap
+
+    * If it does not exist, then add a new entry to oldToNewMap with
+    the key as that tag and the value as newTagNumber.  Then
+    increment newTagNumber.  The idea here is that we want to do a
+    mapping from tags which can be any number from 1 to nextTag to
+    new numbers that are as small as possible.  Overwrite that
+    location with the new tag number (which is newTagNumber before
+    it was incremented).
+
+    * Otherwise, if it exists, return the new tag associated with that
+      tag and overwrite it in that location, thus effectively
+      re-assigning the tag held in that location to a newer, smaller tag.
+
+3.) At the end of all of this action, newTagNumber should be one
+larger than all tags that are now in use.  Thus, the range of tags has
+compressed from [1, nextTag) to [1, newTagNumber), with newTagNumber
+<= nextTag.  Because all of the tags are leaders, we have effectively
+'pruned off' all leaves of the union-find sets since none of the
+leaves are in use.  Thus, we can initialize all uf_object entries in
+the tag map of tags from 1 to (newTagNumber - 1) to singleton sets
+(since they are all leaders without leaves), and we don't even need to
+bother blanking out all tags starting from newTagNumber to nextTag
+because those are not being used anymore.
+
+4.) As the final step, set nextTag = newTagNumber, which substitutes
+for placing stuff on free_list.  Instead of having nextTag not grow
+higher without bound by assigning tags from free_list when new tags
+are requested, now we actually DECREASE nextTag during each garbage
+collection step.
+
+
+
+Another optimization ... using the address of each uf_object as its
+rank.  Because the uf_objects reside statically in the global tag map
+structure, we can use their addresses as the rank.  During a union,
+the leader with the lower rank points to the one with the higher
+rank.  The idea here is that we want to always have the smaller tree
+point to the larger tree.
+
+However, we could simply use the addresses as the rank and never
+really update ranks.  We need to make sure that they are CONSISTENT so
+that we don't have any contention.  Because all uf_object entries in
+the tag map start out as singleton sets, any ordering we explicitly
+impose is going to encourage certain uf_objects in some areas to have
+more children.  We want to make the uf_objects located at smaller
+addresses have more children because we allocate tags and thus
+singleton sets sequentially at higher and higher addresses (more or
+less), so during union (merges), we want to have the entries for those
+new tags at higher addresses point to the entries at lower addresses.
+Thus, the hope is that the large trees will be rooted at lower address
+uf_object entries.
+
+The way to do this is to use addresses as the rank and always make the
+uf_object entry with the LARGER ADDRESS point to the one with the
+SMALLER ADDRESS, which is the opposite of how union find works right
+now, but can easily be implemented.  Remember that consistency is the
+most important part!!!
+
+--- Uhhhh ... don't do this optimization ... I just tried it and the
+comparability numbers looked incorrect ... DOH!!!
+
+
+-----------------
+Alright first successful run on md5!!!
+
+
+==21631== kvasir-4.1.2, C/C++ Language Front-End for Daikon with DynComp comparability analysis tool.
+==21631== Copyright (C) 2004-2005, Philip Guo, MIT CSAIL Program Analysis Group
+==21631== Using LibVEX rev 1139, a library for dynamic binary translation.
+==21631== Copyright (C) 2004, and GNU GPL'd, by OpenWorks LLP.
+==21631== Using valgrind-3.0.0.SVN, a dynamic binary instrumentation framework.
+==21631== Copyright (C) 2000-2005, and GNU GPL'd, by Julian Seward et al.
+==21631== For more details, rerun with: -v
+==21631==
+next tag = 5000002, total assigned = 5000000
+  Start tag GC (next tag = 5000002, total assigned = 5000000)
+   Done tag GC (next tag = 1393915, total assigned = 5000000)
+next tag = 6393915, total assigned = 10000000
+  Start tag GC (next tag = 6393915, total assigned = 10000000)
+   Done tag GC (next tag = 1375748, total assigned = 10000000)
+next tag = 6375748, total assigned = 15000000
+  Start tag GC (next tag = 6375748, total assigned = 15000000)
+   Done tag GC (next tag = 1352053, total assigned = 15000000)
+next tag = 6352053, total assigned = 20000000
+  Start tag GC (next tag = 6352053, total assigned = 20000000)
+   Done tag GC (next tag = 1326124, total assigned = 20000000)
+next tag = 6326124, total assigned = 25000000
+  Start tag GC (next tag = 6326124, total assigned = 25000000)
+   Done tag GC (next tag = 1306368, total assigned = 25000000)
+next tag = 6306368, total assigned = 30000000
+  Start tag GC (next tag = 6306368, total assigned = 30000000)
+   Done tag GC (next tag = 1292788, total assigned = 30000000)
+next tag = 6292788, total assigned = 35000000
+  Start tag GC (next tag = 6292788, total assigned = 35000000)
+   Done tag GC (next tag = 1266958, total assigned = 35000000)
+next tag = 6266958, total assigned = 40000000
+  Start tag GC (next tag = 6266958, total assigned = 40000000)
+   Done tag GC (next tag = 1242677, total assigned = 40000000)
+next tag = 6242677, total assigned = 45000000
+  Start tag GC (next tag = 6242677, total assigned = 45000000)
+   Done tag GC (next tag = 1233776, total assigned = 45000000)
+next tag = 6233776, total assigned = 50000000
+  Start tag GC (next tag = 6233776, total assigned = 50000000)
+   Done tag GC (next tag = 1203200, total assigned = 50000000)
+next tag = 6203200, total assigned = 55000000
+  Start tag GC (next tag = 6203200, total assigned = 55000000)
+   Done tag GC (next tag = 1180689, total assigned = 55000000)
+next tag = 6180689, total assigned = 60000000
+  Start tag GC (next tag = 6180689, total assigned = 60000000)
+   Done tag GC (next tag = 1157861, total assigned = 60000000)
+next tag = 6157861, total assigned = 65000000
+  Start tag GC (next tag = 6157861, total assigned = 65000000)
+   Done tag GC (next tag = 1137827, total assigned = 65000000)
+next tag = 6137827, total assigned = 70000000
+  Start tag GC (next tag = 6137827, total assigned = 70000000)
+   Done tag GC (next tag = 1117299, total assigned = 70000000)
+next tag = 6117299, total assigned = 75000000
+  Start tag GC (next tag = 6117299, total assigned = 75000000)
+   Done tag GC (next tag = 1089441, total assigned = 75000000)
+next tag = 6089441, total assigned = 80000000
+  Start tag GC (next tag = 6089441, total assigned = 80000000)
+   Done tag GC (next tag = 1071462, total assigned = 80000000)
+next tag = 6071462, total assigned = 85000000
+  Start tag GC (next tag = 6071462, total assigned = 85000000)
+   Done tag GC (next tag = 1051561, total assigned = 85000000)
+next tag = 6051561, total assigned = 90000000
+  Start tag GC (next tag = 6051561, total assigned = 90000000)
+   Done tag GC (next tag = 1024769, total assigned = 90000000)
+next tag = 6024769, total assigned = 95000000
+  Start tag GC (next tag = 6024769, total assigned = 95000000)
+   Done tag GC (next tag = 1003495, total assigned = 95000000)
+next tag = 6003495, total assigned = 100000000
+  Start tag GC (next tag = 6003495, total assigned = 100000000)
+   Done tag GC (next tag = 980108, total assigned = 100000000)
+next tag = 5980108, total assigned = 105000000
+  Start tag GC (next tag = 5980108, total assigned = 105000000)
+   Done tag GC (next tag = 946788, total assigned = 105000000)
+next tag = 5946788, total assigned = 110000000
+  Start tag GC (next tag = 5946788, total assigned = 110000000)
+   Done tag GC (next tag = 928643, total assigned = 110000000)
+next tag = 5928643, total assigned = 115000000
+  Start tag GC (next tag = 5928643, total assigned = 115000000)
+   Done tag GC (next tag = 907356, total assigned = 115000000)
+next tag = 5907356, total assigned = 120000000
+  Start tag GC (next tag = 5907356, total assigned = 120000000)
+   Done tag GC (next tag = 892205, total assigned = 120000000)
+next tag = 5892205, total assigned = 125000000
+  Start tag GC (next tag = 5892205, total assigned = 125000000)
+   Done tag GC (next tag = 872713, total assigned = 125000000)
+next tag = 5872713, total assigned = 130000000
+  Start tag GC (next tag = 5872713, total assigned = 130000000)
+   Done tag GC (next tag = 845468, total assigned = 130000000)
+next tag = 5845468, total assigned = 135000000
+  Start tag GC (next tag = 5845468, total assigned = 135000000)
+   Done tag GC (next tag = 824512, total assigned = 135000000)
+next tag = 5824512, total assigned = 140000000
+  Start tag GC (next tag = 5824512, total assigned = 140000000)
+   Done tag GC (next tag = 806359, total assigned = 140000000)
+next tag = 5806359, total assigned = 145000000
+  Start tag GC (next tag = 5806359, total assigned = 145000000)
+   Done tag GC (next tag = 777539, total assigned = 145000000)
+next tag = 5777539, total assigned = 150000000
+  Start tag GC (next tag = 5777539, total assigned = 150000000)
+   Done tag GC (next tag = 761174, total assigned = 150000000)
+next tag = 5761174, total assigned = 155000000
+  Start tag GC (next tag = 5761174, total assigned = 155000000)
+   Done tag GC (next tag = 740648, total assigned = 155000000)
+next tag = 5740648, total assigned = 160000000
+  Start tag GC (next tag = 5740648, total assigned = 160000000)
+   Done tag GC (next tag = 708466, total assigned = 160000000)
+next tag = 5708466, total assigned = 165000000
+  Start tag GC (next tag = 5708466, total assigned = 165000000)
+   Done tag GC (next tag = 688593, total assigned = 165000000)
+next tag = 5688593, total assigned = 170000000
+  Start tag GC (next tag = 5688593, total assigned = 170000000)
+   Done tag GC (next tag = 677722, total assigned = 170000000)
+next tag = 5677722, total assigned = 175000000
+  Start tag GC (next tag = 5677722, total assigned = 175000000)
+   Done tag GC (next tag = 644627, total assigned = 175000000)
+next tag = 5644627, total assigned = 180000000
+  Start tag GC (next tag = 5644627, total assigned = 180000000)
+   Done tag GC (next tag = 625466, total assigned = 180000000)
+next tag = 5625466, total assigned = 185000000
+  Start tag GC (next tag = 5625466, total assigned = 185000000)
+   Done tag GC (next tag = 602802, total assigned = 185000000)
+next tag = 5602802, total assigned = 190000000
+  Start tag GC (next tag = 5602802, total assigned = 190000000)
+   Done tag GC (next tag = 584807, total assigned = 190000000)
+next tag = 5584807, total assigned = 195000000
+  Start tag GC (next tag = 5584807, total assigned = 195000000)
+   Done tag GC (next tag = 565460, total assigned = 195000000)
+next tag = 5565460, total assigned = 200000000
+  Start tag GC (next tag = 5565460, total assigned = 200000000)
+   Done tag GC (next tag = 536818, total assigned = 200000000)
+next tag = 5536818, total assigned = 205000000
+  Start tag GC (next tag = 5536818, total assigned = 205000000)
+   Done tag GC (next tag = 516903, total assigned = 205000000)
+next tag = 5516903, total assigned = 210000000
+  Start tag GC (next tag = 5516903, total assigned = 210000000)
+   Done tag GC (next tag = 500838, total assigned = 210000000)
+next tag = 5500838, total assigned = 215000000
+  Start tag GC (next tag = 5500838, total assigned = 215000000)
+   Done tag GC (next tag = 474591, total assigned = 215000000)
+596C35B949BAF46B721744A13F76A258
+==21631==
+==21631== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
+
+
+Without garbage collection, it only got to 125000000 total tags
+assigned before it barfed!
+
+
+
+
+Ok, let's do some performance benchmarks using /usr/bin/time:
+
+Kvasir without DynComp:
+
+pgbovine@parsnip:/scratch/pgbovine-do-not-delete-me/md5$ /usr/bin/time kvasir-dtrace ./md5 10MB_file
+38.40user 0.85system 0:42.39elapsed 92%CPU (0avgtext+0avgdata 0maxresident)k
+0inputs+0outputs (1263major+1741minor)pagefaults 0swaps
+
+
+First version (dyncomp_runtime.c: CVS revision 1.26):
+
+pgbovine@parsnip:/scratch/pgbovine-do-not-delete-me/md5$ /usr/bin/time kvasir-dtrace --with-dyncomp --dyncomp-gc ./md5 10MB_file
+459.71user 2.77system 8:13.95elapsed 93%CPU (0avgtext+0avgdata 0maxresident)k
+0inputs+0outputs (1264major+46486minor)pagefaults 0swaps
+
+Second version (dyncomp_runtime.c: CVS revision 1.27) - slight improvements:
+446.65user 2.44system 7:38.61elapsed 97%CPU (0avgtext+0avgdata 0maxresident)k
+0inputs+0outputs (1264major+46487minor)pagefaults 0swaps
+
+
+GC every 10,000,000 tags instead of the default 5,000,000 ... faster:
+
+kvasir-dtrace --with-dyncomp --gc-num-tags=10000000 ./md5 10MB_file
+380.22user 4.04system 6:51.80elapsed 93%CPU (0avgtext+0avgdata 0maxresident)k
+0inputs+0outputs (1264major+61271minor)pagefaults 0swaps
+
+
+Hmmmm, still runs out of memory on Flex if you set --gc-num-tags too large:
+
+==30281== kvasir-4.1.2, C/C++ Language Front-End for Daikon with DynComp comparability analysis tool.
+==30281== Copyright (C) 2004-2005, Philip Guo, MIT CSAIL Program Analysis Group
+==30281== Using LibVEX rev 1139, a library for dynamic binary translation.
+==30281== Copyright (C) 2004, and GNU GPL'd, by OpenWorks LLP.
+==30281== Using valgrind-3.0.0.SVN, a dynamic binary instrumentation framework.
+==30281== Copyright (C) 2000-2005, and GNU GPL'd, by Julian Seward et al.
+==30281== For more details, rerun with: -v
+==30281==
+  Start tag GC (next tag = 100000002, total assigned = 100000000)
+
+  VG_(get_memory_from_mmap): newSuperblock's request for 1048576 bytes failed.
+  VG_(get_memory_from_mmap): 256481144 bytes already allocated.
+
+  Sorry.  You could try using a tool that uses less memory;
+  eg. addrcheck instead of memcheck.
+
+  Command exited with non-zero status 1
+  16370.28user 41.84system 9:12:13elapsed 49%CPU (0avgtext+0avgdata 0maxresident)k
+  0inputs+0outputs (1540major+360308minor)pagefaults 0swaps
+  pgbovine@radish:/scratch/pgbovine/flex-kvasir$ /usr/bin/time kvasir-dtrace --decls-only --decls-file=100000000-num-vars-dyncomp.decls --with-dyncomp --gc-num-tags=100000000 ./flex flex.err 5000_words_in
+
+
+
+Arrggg ... even with a smaller number, Flex runs out of memory (after
+running for a really long time)
+
+pgbovine@radish:/scratch/pgbovine/flex-kvasir$ kvasir-dtrace --decls-only --with-dyncomp --dyncomp-gc ./flex --ignore-static-vars flex flex.err 5000_words_in
+==29284== kvasir-4.1.2, C/C++ Language Front-End for Daikon with DynComp comparability analysis tool.
+==29284== Copyright (C) 2004-2005, Philip Guo, MIT CSAIL Program Analysis Group
+==29284== Using LibVEX rev 1139, a library for dynamic binary translation.
+==29284== Copyright (C) 2004, and GNU GPL'd, by OpenWorks LLP.
+==29284== Using valgrind-3.0.0.SVN, a dynamic binary instrumentation framework.
+==29284== Copyright (C) 2000-2005, and GNU GPL'd, by Julian Seward et al.
+==29284== For more details, rerun with: -v
+==29284==
+  Start tag GC (next tag = 10000002, total assigned = 10000000)
+   Done tag GC (next tag = 2317489, total assigned = 10000000)
+  Start tag GC (next tag = 12317489, total assigned = 20000000)
+   Done tag GC (next tag = 2247171, total assigned = 20000000)
+  Start tag GC (next tag = 12247171, total assigned = 30000000)
+   Done tag GC (next tag = 2174375, total assigned = 30000000)
+  Start tag GC (next tag = 12174375, total assigned = 40000000)
+   Done tag GC (next tag = 2103436, total assigned = 40000000)
+  Start tag GC (next tag = 12103436, total assigned = 50000000)
+   Done tag GC (next tag = 2036108, total assigned = 50000000)
+  Start tag GC (next tag = 12036108, total assigned = 60000000)
+   Done tag GC (next tag = 1977043, total assigned = 60000000)
+  Start tag GC (next tag = 11977043, total assigned = 70000000)
+   Done tag GC (next tag = 1956109, total assigned = 70000000)
+  Start tag GC (next tag = 11956109, total assigned = 80000000)
+   Done tag GC (next tag = 1894265, total assigned = 80000000)
+  Start tag GC (next tag = 11894265, total assigned = 90000000)
+   Done tag GC (next tag = 1832462, total assigned = 90000000)
+  Start tag GC (next tag = 11832462, total assigned = 100000000)
+   Done tag GC (next tag = 1773341, total assigned = 100000000)
+  Start tag GC (next tag = 11773341, total assigned = 110000000)
+   Done tag GC (next tag = 1724502, total assigned = 110000000)
+  Start tag GC (next tag = 11724502, total assigned = 120000000)
+   Done tag GC (next tag = 1667594, total assigned = 120000000)
+  Start tag GC (next tag = 11667594, total assigned = 130000000)
+   Done tag GC (next tag = 1614820, total assigned = 130000000)
+  Start tag GC (next tag = 11614820, total assigned = 140000000)
+   Done tag GC (next tag = 1603469, total assigned = 140000000)
+  Start tag GC (next tag = 11603469, total assigned = 150000000)
+   Done tag GC (next tag = 1551502, total assigned = 150000000)
+  Start tag GC (next tag = 11551502, total assigned = 160000000)
+   Done tag GC (next tag = 1508874, total assigned = 160000000)
+  Start tag GC (next tag = 11508874, total assigned = 170000000)
+   Done tag GC (next tag = 1461855, total assigned = 170000000)
+  Start tag GC (next tag = 11461855, total assigned = 180000000)
+   Done tag GC (next tag = 1413555, total assigned = 180000000)
+  Start tag GC (next tag = 11413555, total assigned = 190000000)
+   Done tag GC (next tag = 1368459, total assigned = 190000000)
+  Start tag GC (next tag = 11368459, total assigned = 200000000)
+   Done tag GC (next tag = 1327489, total assigned = 200000000)
+  Start tag GC (next tag = 11327489, total assigned = 210000000)
+   Done tag GC (next tag = 1294043, total assigned = 210000000)
+  Start tag GC (next tag = 11294043, total assigned = 220000000)
+   Done tag GC (next tag = 1255029, total assigned = 220000000)
+  Start tag GC (next tag = 11255029, total assigned = 230000000)
+   Done tag GC (next tag = 1218966, total assigned = 230000000)
+  Start tag GC (next tag = 11218966, total assigned = 240000000)
+   Done tag GC (next tag = 1185620, total assigned = 240000000)
+  Start tag GC (next tag = 11185620, total assigned = 250000000)
+   Done tag GC (next tag = 1161261, total assigned = 250000000)
+  Start tag GC (next tag = 11161261, total assigned = 260000000)
+   Done tag GC (next tag = 1129947, total assigned = 260000000)
+  Start tag GC (next tag = 11129947, total assigned = 270000000)
+   Done tag GC (next tag = 1099656, total assigned = 270000000)
+  Start tag GC (next tag = 11099656, total assigned = 280000000)
+   Done tag GC (next tag = 1073354, total assigned = 280000000)
+  Start tag GC (next tag = 11073354, total assigned = 290000000)
+   Done tag GC (next tag = 1049838, total assigned = 290000000)
+  Start tag GC (next tag = 11049838, total assigned = 300000000)
+   Done tag GC (next tag = 1036845, total assigned = 300000000)
+  Start tag GC (next tag = 11036845, total assigned = 310000000)
+   Done tag GC (next tag = 1016481, total assigned = 310000000)
+  Start tag GC (next tag = 11016481, total assigned = 320000000)
+   Done tag GC (next tag = 997452, total assigned = 320000000)
+  Start tag GC (next tag = 10997452, total assigned = 330000000)
+   Done tag GC (next tag = 979627, total assigned = 330000000)
+  Start tag GC (next tag = 10979627, total assigned = 340000000)
+   Done tag GC (next tag = 961818, total assigned = 340000000)
+  Start tag GC (next tag = 10961818, total assigned = 350000000)
+   Done tag GC (next tag = 952459, total assigned = 350000000)
+  Start tag GC (next tag = 10952459, total assigned = 360000000)
+   Done tag GC (next tag = 935123, total assigned = 360000000)
+  Start tag GC (next tag = 10935123, total assigned = 370000000)
+   Done tag GC (next tag = 918327, total assigned = 370000000)
+  Start tag GC (next tag = 10918327, total assigned = 380000000)
+   Done tag GC (next tag = 910234, total assigned = 380000000)
+  Start tag GC (next tag = 10910234, total assigned = 390000000)
+   Done tag GC (next tag = 894724, total assigned = 390000000)
+  Start tag GC (next tag = 10894724, total assigned = 400000000)
+   Done tag GC (next tag = 886193, total assigned = 400000000)
+  Start tag GC (next tag = 10886193, total assigned = 410000000)
+   Done tag GC (next tag = 871070, total assigned = 410000000)
+  Start tag GC (next tag = 10871070, total assigned = 420000000)
+   Done tag GC (next tag = 863566, total assigned = 420000000)
+  Start tag GC (next tag = 10863566, total assigned = 430000000)
+   Done tag GC (next tag = 849443, total assigned = 430000000)
+  Start tag GC (next tag = 10849443, total assigned = 440000000)
+   Done tag GC (next tag = 842112, total assigned = 440000000)
+  Start tag GC (next tag = 10842112, total assigned = 450000000)
+   Done tag GC (next tag = 828777, total assigned = 450000000)
+  Start tag GC (next tag = 10828777, total assigned = 460000000)
+   Done tag GC (next tag = 822319, total assigned = 460000000)
+  Start tag GC (next tag = 10822319, total assigned = 470000000)
+   Done tag GC (next tag = 809721, total assigned = 470000000)
+  Start tag GC (next tag = 10809721, total assigned = 480000000)
+   Done tag GC (next tag = 804677, total assigned = 480000000)
+  Start tag GC (next tag = 10804677, total assigned = 490000000)
+
+VG_(get_memory_from_mmap): newSuperblock's request for 1048576 bytes failed.
+VG_(get_memory_from_mmap): 256857976 bytes already allocated.
+
+Sorry.  You could try using a tool that uses less memory;
+eg. addrcheck instead of memcheck.
+
+
+
+Perhaps create a command-line option to only create tags for STATIC
+instances of literals, which loses precision but gives us much better
+performance on these huge programs --- but if you do the static thing,
+you must add those tags to some list of stuff to NEVER be garbage
+collected!
