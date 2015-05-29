@@ -5,7 +5,7 @@
 ### Default tag
 help:
 	@echo "Targets:"
-	@echo " build         -- build all of valgrind and fjalar(includes kvasir)"
+	@echo " build         -- build all of valgrind and fjalar (includes kvasir)"
 	@echo " test          -- build and run valgrind regression tests"
 	@echo "               -- see the Daikon tree for fjalar/kvasir regression tests"
 	@echo " clean         -- remove basic generated files"
