@@ -1,6 +1,6 @@
 #! /usr/bin/env python
 ## Program to assist in understanding the series of interactions (C/C++)
-## Dyncomp observers when performing comparability analysis.
+## DynComp observers when performing comparability analysis.
 
 ## This takes a database file produced by merge_tracker and prints
 ## information on the given tag or variable

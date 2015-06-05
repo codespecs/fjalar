@@ -1,4 +1,4 @@
-Dyncomp Merge Utilities
+DynComp Merge Utilities
 Robert Rudd
 
 Last updated: 2009-12-29
@@ -6,7 +6,7 @@ Last updated: 2009-12-29
 Introduction
 ~~~~~~~~~~~~
 This directory contains a set of python scripts to assist in
-understanding Dyncomp's produced abstract type groups;
+understanding DynComp's produced abstract type groups;
 specifically, these scripts will allow you to see the set of
 interactions that caused two variables to be inferred as the same
 abstract type.
@@ -23,20 +23,20 @@ this document assumes that a $DAIKONDIR environmental variable exists
 and points to Daikon's parent directory.
 
 Additionally this document assumes you have an understanding of
-how to run Kvasir/Dyncomp on C/C++ programs, and a basic
-understanding of Dyncomp's abstract type inference algorithms. Please
+how to run Kvasir/DynComp on C/C++ programs, and a basic
+understanding of DynComp's abstract type inference algorithms. Please
 see the above document for more information on these topics.
 
 Detecting relevant interactions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 The goal of these scripts is to produce a list of all interactions
-Dyncomp has observed which played some part in Dyncomp's inference of
+DynComp has observed which played some part in DynComp's inference of
 two variables being of the same abstract type. An interaction is any
 operation which involves multiple values. 
 
 There are three steps for producing these interactions:
 
-1. Run Kvasir with Dyncomp on a target C/C++ program with tracing
+1. Run Kvasir with DynComp on a target C/C++ program with tracing
 turned on to produce a trace file.
 2. Run merge_tracker.py on the produced trace file to create an
 interaction database.
@@ -57,7 +57,7 @@ Example run
        gcc -gdwarf-2 -O0 wordplay.c -o wordplay
      
 
-3. Run Kvasir with Dyncomp with tracing turned on
+3. Run Kvasir with DynComp with tracing turned on
 
        kvasir-dtrace --with-dyncomp --dyncomp-trace ./wordplay -f words.txt 'daikon dynamic invariant detector' > wordplay.trace 2>&1
 
@@ -91,9 +91,9 @@ The output should be:
 
 Indicating that line 540 of wordplay.c may have played a role in the
 merging of these two variables. Line 540 has a comparison between a
-local variable j and ncount, causing Dyncomp to infer j and ncount are
+local variable j and ncount, causing DynComp to infer j and ncount are
 of the same abstract type. On the next line we see j being used to
-index into the words2 array, causing Dyncomp to infer j and words2 are
+index into the words2 array, causing DynComp to infer j and words2 are
 of the same abstract type. As abstract type groups are transitive,
 words2 and ncount are now ocnsidered of the same abstract type. these 2
 lines are one possible cause of the merging of these two variables'
@@ -121,7 +121,7 @@ merge_tracker.py Usage
 ~~~~~~~~~~~~~~~~~~~~~~
 merge_tracker input-file output-db 
 
-input-file - A Dyncomp produced trace file. If "-" is passed as the
+input-file - A DynComp produced trace file. If "-" is passed as the
 	     input file, merge_tracker will read from standard input.
 
 output-db -  Output merge database file, to be used by

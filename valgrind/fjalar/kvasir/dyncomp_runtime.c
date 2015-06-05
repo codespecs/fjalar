@@ -257,7 +257,7 @@ static UInt var_uf_map_union(struct genhashtable* var_uf_map,
     }
 
     leader_obj = uf_union(uf_obj1, uf_obj2);
-    DYNCOMP_TPRINTF("[Dyncomp] Merging %u with %u to get %u at (%s - %s) - VARIABLE\n",
+    DYNCOMP_TPRINTF("[DynComp] Merging %u with %u to get %u at (%s - %s) - VARIABLE\n",
 		    tag1, tag2, leader_obj->tag,(is_enter == 1)?"Entering":"Exiting", func_name );
     return leader_obj->tag;
   }
@@ -369,7 +369,7 @@ holding tags that belong in the same set (have the same leader).
   // memory-level layer
   new_tags_v = get_tag(a);
 
-  DYNCOMP_TPRINTF("\n[Dyncomp] OBSERVATION POINT: %s - %u (%s - %s invocation %u)\n",
+  DYNCOMP_TPRINTF("\n[DynComp] OBSERVATION POINT: %s - %u (%s - %s invocation %u)\n",
                   cur_var_name,  new_tags_v, isEnter?"ENTRY":"EXIT", func_name, funcPtr->num_invocations);
 
 
@@ -388,7 +388,7 @@ holding tags that belong in the same set (have the same leader).
 
 
 
-  DYNCOMP_TPRINTF("[Dyncomp] %s new_tags[%d]: %u, var_uf_map_union(new_leader: %u, var_tags_v (old): %u) ==> var_tags[%d]: %u (a: %p)\n",
+  DYNCOMP_TPRINTF("[DynComp] %s new_tags[%d]: %u, var_uf_map_union(new_leader: %u, var_tags_v (old): %u) ==> var_tags[%d]: %u (a: %p)\n",
                   cur_var_name,
                   daikonVarIndex,
                   new_tags_v,
@@ -442,7 +442,7 @@ void DC_extra_propagation_post_process(DaikonFunctionEntry* funcPtr,
                                                 leader, var_tags_v);
   }
 
-  DYNCOMP_TPRINTF("[Dyncomp] Variable processing in %s[%d]: merging distinct values "
+  DYNCOMP_TPRINTF("[DynComp] Variable processing in %s[%d]: merging distinct values "
 		  "%d (old) and %d (new) to %d (final round)\n",
 		  funcPtr->funcEntry.name, daikonVarIndex,
 		  var_tags_v, leader, var_tags[daikonVarIndex]);
@@ -533,7 +533,7 @@ int DC_get_comp_number_for_var(DaikonFunctionEntry* funcPtr,
         g_curCompNumber++;
         genputtable(g_compNumberMap, VoidPtr(leader), VoidPtr(comp_number));
       }
-      DYNCOMP_TPRINTF("[Dyncomp] Final tag for Function %s Variable %s - %u\n", funcPtr->funcEntry.name, cur_var_name, leader);
+      DYNCOMP_TPRINTF("[DynComp] Final tag for Function %s Variable %s - %u\n", funcPtr->funcEntry.name, cur_var_name, leader);
     }
   }
 

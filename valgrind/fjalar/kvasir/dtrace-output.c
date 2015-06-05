@@ -46,7 +46,7 @@
 
 // Global variable storing the current variable name.
 // currently used for debugging comparability values
-// as Dyncomp isn't passed much in the way of
+// as DynComp isn't passed much in the way of
 // the variable information.
 const HChar* cur_var_name = NULL;
 
