@@ -30,7 +30,7 @@ Code maintenance related:
 
 * DC_outputDeclsAtEnd is essentially the same function as
    outputDeclsFile in decls-output.c. I understand that the reason for
-   their separation is most likely due to the need of Dyncomp to print
+   their separation is most likely due to the need of DynComp to print
    decls files at the end of a dtrace run as opposed to before, but
    this code duplication seems unnecessary
 
@@ -108,9 +108,9 @@ Features
   every manipulation of the %{e,r}sp, this could has some performance
   considerations.
 
-* Investigate Dyncomp speedups
-  Programs run under Dyncomp tend to be slower by an order of
+* Investigate DynComp speedups
+  Programs run under DynComp tend to be slower by an order of
   magnitude over programs run under Fjalar/Memcheck. It would be nice
   if  we could get this down. A good start would be finding any
-  hotspots in the Dyncomp code
+  hotspots in the DynComp code
 

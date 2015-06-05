@@ -151,7 +151,7 @@ __inline__ void set_tag ( Addr a, UInt tag )
     n_primary_tag_map_init_entries++;
   }
   if (dyncomp_print_trace_all) {
-    DYNCOMP_TPRINTF("[Dyncomp] set_tag: %u for loc: %p\n", tag, (void *)a);
+    DYNCOMP_TPRINTF("[DynComp] set_tag: %u for loc: %p\n", tag, (void *)a);
   }
   primary_tag_map[PM_IDX(a)][SM_OFF(a)] = tag;
 }
@@ -189,7 +189,7 @@ static __inline__ UInt grab_fresh_tag(void) {
     Addr tid = VG_(get_IP)(VG_(get_running_tid)());
     const HChar *eip_info;
     eip_info = VG_(describe_IP)(tid, NULL);
-    DYNCOMP_TPRINTF("[Dyncomp] Creating fresh tag %d at %s\n", tag, eip_info);
+    DYNCOMP_TPRINTF("[DynComp] Creating fresh tag %d at %s\n", tag, eip_info);
   }
   return tag;
 
@@ -284,7 +284,7 @@ UInt val_uf_tag_union(UInt tag1, UInt tag2) {
     leader = uf_union(tag1_obj, tag2_obj);
     eip_info = VG_(describe_IP)(eip, NULL);
 
-    DYNCOMP_TPRINTF("[Dyncomp-v1] Merging %u with %u to get %u at %s\n",
+    DYNCOMP_TPRINTF("[DynComp-v1] Merging %u with %u to get %u at %s\n",
                     tag1, tag2, leader->tag, eip_info);
 
     if(dyncomp_no_val_leader){
@@ -454,7 +454,7 @@ void val_uf_union_tags_at_addr(Addr a1, Addr a2) {
   //              a1, a2, canonicalTag);
 
   print_merge = 1;
-  DYNCOMP_TPRINTF("[Dyncomp] val_uf_union_tags_at_addr(%p, %p) canonicalTag=%u\n",
+  DYNCOMP_TPRINTF("[DynComp] val_uf_union_tags_at_addr(%p, %p) canonicalTag=%u\n",
                   (void *)a1, (void *)a2, canonicalTag);
   }
 
@@ -524,7 +524,7 @@ DYNCOMP_TPRINTF("MLR debug val_uf_union_tags_in_range addr=%p, tag=%u\n", (void 
     canonicalTag = (dyncomp_no_val_leader)?tagToMerge:val_uf_find_leader(tagToMerge);
     //canonicalTag = val_uf_find_leader(tagToMerge);
 
-    DYNCOMP_TPRINTF("[Dyncomp] (above) val_uf_union_tags_in_range(%p, %p) canonicalTag=%u\n",
+    DYNCOMP_TPRINTF("[DynComp] (above) val_uf_union_tags_in_range(%p, %p) canonicalTag=%u\n",
                   (void *)a, (void *)(a+len), canonicalTag);
 
     // Set all the tags in this range to the canonical tag
@@ -552,7 +552,7 @@ UInt MC_(helperc_CREATE_TAG)(Addr static_id) {
 
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_8) ( Addr a ) {
-  DYNCOMP_TPRINTF("[Dyncomp] LOAD_TAG_8\n");
+  DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_8\n");
   return val_uf_union_tags_in_range(a, 8);
 }
 
@@ -561,13 +561,13 @@ UInt MC_(helperc_LOAD_TAG_4) ( Addr a ) {
   UInt first_tag = get_tag(a);
   if (first_tag == WEAK_FRESH_TAG)
     return grab_fresh_tag();
-  DYNCOMP_TPRINTF("[Dyncomp] LOAD_TAG_4\n");
+  DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_4\n");
   return val_uf_union_tags_in_range(a, 4);
 }
 
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_2) ( Addr a ) {
-  DYNCOMP_TPRINTF("[Dyncomp] LOAD_TAG_2\n");
+  DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_2\n");
   return val_uf_union_tags_in_range(a, 2);
 }
 
@@ -630,17 +630,17 @@ UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
   // (If both are WEAK_FRESH_TAG's, then return WEAK_FRESH_TAG,
   //  but that's correctly handled)
   else if (WEAK_FRESH_TAG == tag1) {
-    DYNCOMP_TPRINTF("[Dyncomp-m1] Merging %u with %u to get %u at %s\n",
+    DYNCOMP_TPRINTF("[DynComp-m1] Merging %u with %u to get %u at %s\n",
                     tag1, tag2, tag2, eip_info);
     return tag2;
   }
   else if (WEAK_FRESH_TAG == tag2) {
-    DYNCOMP_TPRINTF("[Dyncomp-m2] Merging %u with %u to get %u at %s\n",
+    DYNCOMP_TPRINTF("[DynComp-m2] Merging %u with %u to get %u at %s\n",
                     tag1, tag2, tag1, eip_info);
     return tag1;
   }
   else {
-    DYNCOMP_TPRINTF("[Dyncomp-m3] Calling val_uf_tag_union\n");
+    DYNCOMP_TPRINTF("[DynComp-m3] Calling val_uf_tag_union\n");
     return val_uf_tag_union(tag1, tag2);
   }
 }
@@ -686,7 +686,7 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
     return 0;
   }
   else {
-    DYNCOMP_TPRINTF("[Dyncomp-m4] Calling val_uf_tag_union\n");
+    DYNCOMP_TPRINTF("[DynComp-m4] Calling val_uf_tag_union\n");
     val_uf_tag_union(tag1, tag2);
     return 0;
   }

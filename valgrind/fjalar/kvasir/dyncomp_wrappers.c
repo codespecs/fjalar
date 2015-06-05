@@ -23,7 +23,7 @@
 
 /* vgpreloaded wrapper functions used to modify dyncomp's
    behavior. These run on the guest CPU, so they need to use client
-   requests if they want to modify Dyncomp's behavior beyond what
+   requests if they want to modify DynComp's behavior beyond what
    regular code can do. */
 
 #include "pub_tool_clreq.h"

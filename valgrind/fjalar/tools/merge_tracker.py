@@ -1,14 +1,14 @@
 #! /usr/bin/env python
 ## Program to assist in understanding the series of interactions (C/C++)
-## Dyncomp observes when performing comparability analysis.
+## DynComp observes when performing comparability analysis.
 
-## This takes in a trace file from a Dyncomp run  on a program and
-## generates a graph of all the merges performed by Dyncomp. It then,
+## This takes in a trace file from a DynComp run on a program and
+## generates a graph of all the merges performed by DynComp. It then,
 ## using Python's built in pickle serialization, writes out the graph
-## for use with merge_explorer
+## for use with merge_explorer.
 
 ## TODO: It would be nice to track some data flow information on tags
-## so a user can see where a tag is generated. Unfortunately Dyncomp 
+## so a user can see where a tag is generated. Unfortunately DynComp 
 ## simply does not keep track of enough information for this.
 
 ## Usage merge_tracker trace-file
@@ -35,9 +35,9 @@ else:
 
 output_file = open(sys.argv[2], "wb")
 
-create_tag_regex     = "\[Dyncomp\] Creating fresh tag (.+?) at (.+) \((.+)\)"
-value_merge_regex    = "\[Dyncomp\] Merging (.+?) with (.+?) to get (.+?) at (.+?)\)$"
-obs_point_regex      = "\[Dyncomp\] OBSERVATION POINT: (.+?) - (.+?) \((.+?) (.+?) invocation (.+?)\)"
+create_tag_regex     = "\[DynComp\] Creating fresh tag (.+?) at (.+) \((.+)\)"
+value_merge_regex    = "\[DynComp\] Merging (.+?) with (.+?) to get (.+?) at (.+?)\)$"
+obs_point_regex      = "\[DynComp\] OBSERVATION POINT: (.+?) - (.+?) \((.+?) (.+?) invocation (.+?)\)"
 
 create_tag_re     = re.compile(create_tag_regex)
 value_merge_re    = re.compile(value_merge_regex)
@@ -69,7 +69,7 @@ for line in f:
     tag_source[tag] = source
     continue
 
-  # Update graph with an observation point. This represents Dyncomp
+  # Update graph with an observation point. This represents DynComp
   # updating it's knowledge of values held by a particular variable.
   obs_point_match = obs_point_re.match(line)
   if obs_point_match:

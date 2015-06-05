@@ -286,7 +286,7 @@ Coregrind.</p>
 <p>
 The largest modification to memcheck is in mc_translate.c and special care
 should be made to ensure it is present and up to date.  MC_(instrument)
-handles the instrumentation of calls for Dyncomp. It is primarily contained
+handles the instrumentation of calls for DynComp. It is primarily contained
 in a switch statement; each case handles one VEX instruction type, and the
 body contains both the original code for memcheck and also the code for
 dyncomp.  After the update, you should double-check that each clause
@@ -301,7 +301,7 @@ reflected in the dyncomp versions, and any new clause has a dyncomp version.
 For the most part Valgrind maintains a relatively stable interface to its tools. Any tool-visible changes
 should be noted in the change logs.</p>
 
-<p>A somewhat more problematic area are changes in the VEX IR. Dyncomp makes heavy use of the VEX IR, so any
+<p>A somewhat more problematic area are changes in the VEX IR. DynComp makes heavy use of the VEX IR, so any
 changes in it need to be reflected. Most of the changes to the public VEX IR can be discovered by running the following command:</p>
 
 <pre>
@@ -309,12 +309,12 @@ changes in it need to be reflected. Most of the changes to the public VEX IR can
   svn log -r ${VEX_REVISION}:HEAD VEX/pub/libvex_ir.h</pre>
 
 <p>
-The files with all the VEX IR code for Dyncomp is located in dyncomp_translate.[ch]. dyncomp_translate.c
+The files with all the VEX IR code for DynComp is located in dyncomp_translate.[ch]. dyncomp_translate.c
 is structured primarily into functions of the form <i>expr2tags_[EXPRESSION_TYPE]()</i>. These functions
 will  contain a switch for all VEX IR instructions corresponding to the expression type and some
 call to a dyncomp tag function. Most often VEX IR changes will be syntactical in nature and will only
 involve changing the names of the instructions. If the log indicates that new VEX IR instructions have been
-added, they will need to be explicitly supported by Dyncomp. Please see <a href="#New_IR">Appendix C</a> for
+added, they will need to be explicitly supported by DynComp. Please see <a href="#New_IR">Appendix C</a> for
 guidelines on supporting new VEX instructions.
 </p>
 
@@ -467,11 +467,11 @@ and filled with their signatures for use by Fjalar.</p>
 <p>Other modifications include:</p>
 <dl>
 <dt>$INV/valgrind-3/valgrind/fjalar/mc_malloc_wrappers.c</dt>
-<dd>Calls to Dyncomp functions for memory operations.</dd>
+<dd>Calls to DynComp functions for memory operations.</dd>
 <dt>$INV/valgrind-3/valgrind/fjalar/mc_main.c</dt>
 <dd>Run-time arguments and versioning information for Kvasir to replace the default memcheck ones</dd>
 <dt>$INV/valgrind-3/valgrind/fjalar/mc_translate.c</dt>
-<dd>In memcheck's instrumentation block, duplicate each case for Dyncomp.</dd></dl>
+<dd>In memcheck's instrumentation block, duplicate each case for DynComp.</dd></dl>
 
 <hr>
 
@@ -496,10 +496,10 @@ to instrument examine the translated basic block and insert their own instrument
 the instrumented IR back into the machine's native assembly.
 </p>
 
-<p>In order to keep track of comparabilities, Dyncomp instruments almost every VEX IR instruction type.
-Any added instructions will likely need to be supported by Dyncomp. In general Dyncomp's functionality parallels Memcheck's,
+<p>In order to keep track of comparabilities, DynComp instruments almost every VEX IR instruction type.
+Any added instructions will likely need to be supported by DynComp. In general DynComp's functionality parallels Memcheck's,
 so the best starting point for implementing support for a new instruction would be to mirror Memcheck's implementation.
-Dyncomp's layout is very similar to Memcheck's, so mirroring functionality should be fairly straightforward.
+DynComp's layout is very similar to Memcheck's, so mirroring functionality should be fairly straightforward.
 It is, however, very unlikely that a new instruction type will be added as the VEX IR is a relatively mature
 instruction set and has been in use for almost 9 years at the time of this writing.
 </p>
@@ -516,7 +516,7 @@ t10 = CmpLE32S(t2,0x21:I32)
 <p>
 The above 2 IR Instructions are of the type PUT and they store the result of an IR Expression into a temporary. These instructions consist of
 the destination temporary, an IR Expression, which conceptually is the operation to be formed, and the arguments to the expression. Most IR
-Instructions will have a similar format. Dyncomp is particularly interested
+Instructions will have a similar format. DynComp is particularly interested
 in analyzing all possible IRExpressions.
 </p>
 <pre>$INV/valgrind-3/valgrind/kvasir/fjalar/kvasir/dyncomp_translate.c</pre>
@@ -552,7 +552,7 @@ the implementation of an existing instruction. Alternatively, it should be strai
 <hr>
 
 <address></address>
-<!-- hhmts start -->Last modified: October 1, 2009<!-- hhmts end -->
+<!-- hhmts start -->Last modified: June 4, 2015<!-- hhmts end -->
 </body> </html>
 
 <!--  LocalWords:  Memcheck memcheck Kvasir diffs Coregrind Diff valgrind PAG
@@ -563,7 +563,7 @@ the implementation of an existing instruction. Alternatively, it should be strai
  -->
 <!--  LocalWords:  coregrind perf automake autoconf fjalar aclocal config supp
  -->
-<!--  LocalWords:  depcomp mkinstalldirs diffing rej mc Dyncomp dyncomp ch expr
+<!--  LocalWords:  depcomp mkinstalldirs diffing rej mc DynComp dyncomp ch expr
  -->
 <!--  LocalWords:  autogen'ing daikon html libc malloc versioning memcheck's rm
  -->

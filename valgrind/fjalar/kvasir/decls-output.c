@@ -1074,7 +1074,7 @@ printDeclsEntryAction(VariableEntry* var,
                                                      isEnter,
                                                    g_variableIndex);
 
-        DYNCOMP_TPRINTF("[Dyncomp] %s[%d](%s) value tag is %d\n",
+        DYNCOMP_TPRINTF("[DynComp] %s[%d](%s) value tag is %d\n",
                         entry->funcEntry.name, g_variableIndex, varName,
                         entry->ppt_exit_var_tags[g_variableIndex]);
         fprintf(decls_fp, "%d", comp_number);
