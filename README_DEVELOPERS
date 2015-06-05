@@ -20,7 +20,7 @@ Repository structure
     Contains a local copy of the Fjalar webpage.
 
 ./valgrind/fjalar/kvasir
-    Contains the source for Kvasir and Dyncomp.
+    Contains the source for Kvasir and DynComp.
 
 ./valgrind/fjalar/notes 
     Contains various developmental notes on Fjalar including notes kept
@@ -28,5 +28,5 @@ Repository structure
     instructions for merging new versions of Valgrind into Fjalar.
 
 ./valgrind/fjalar/tools	
-    Contains a tool for debugging Dyncomp comparability errors.
+    Contains a tool for debugging DynComp comparability errors.
 

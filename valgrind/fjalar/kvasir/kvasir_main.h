@@ -189,7 +189,7 @@ Bool dyncomp_units_mode;
 Bool dyncomp_dataflow_only_mode;
 Bool dyncomp_dataflow_comparisons_mode;
 
-// These turn off a few of Dyncomp's optimizations to help preserve merge
+// These turn off a few of DynComp's optimizations to help preserve merge
 // information when producing traces.
 Bool dyncomp_no_var_leader;
 Bool dyncomp_no_val_leader;

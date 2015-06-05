@@ -709,7 +709,7 @@ void fjalar_tool_print_usage()
 "    --dyncomp-print-inc      Print DynComp comp. numbers at the execution of every program\n"
 "                             point - requires separate dtrace file (for debug only)\n"
 "    --old-decls-format       Use the old(1.0) decls format\n\n"
-"    --no-path-compression    Turns off path compression in Dyncomp's union-find structures\n"
+"    --no-path-compression    Turns off path compression in DynComp's union-find structures\n"
 "    --no-var-leader          Turns off variable tag leader optimizations\n"
 "    --no-val-leader          Turns off value tag leader optimizatoins\n"
    );
