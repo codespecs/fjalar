@@ -171,6 +171,17 @@ case "${is_clang}-${gcc_version}" in
 	;;
 esac
 
+case "${gcc_version}" in
+     4.*)
+    gcc_is_v4=yes
+	;;
+     5.*)
+    gcc_is_v5=yes
+	;;
+esac
+AM_CONDITIONAL([COMPILER_IS_V4], [test x$gcc_is_v4 = xyes])
+AM_CONDITIONAL([COMPILER_IS_V5], [test x$gcc_is_v5 = xyes])
+
 #----------------------------------------------------------------------------
 # Arch/OS/platform tests.
 #----------------------------------------------------------------------------
@@ -324,20 +335,14 @@ case "${host_os}" in
         kernel=`uname -r`
 
         case "${kernel}" in
-             2.6.*|3.*) 
-        	    AC_MSG_RESULT([2.6.x/3.x family (${kernel})])
-        	    AC_DEFINE([KERNEL_2_6], 1, [Define to 1 if you're using Linux 2.6.x or Linux 3.x])
-        	    ;;
+             0.*|1.*|2.0.*|2.1.*|2.2.*|2.3.*|2.4.*|2.5.*) 
+                    AC_MSG_RESULT([unsupported (${kernel})])
+                    AC_MSG_ERROR([Valgrind needs a Linux kernel >= 2.6])
+                    ;;
 
-             2.4.*) 
-        	    AC_MSG_RESULT([2.4 family (${kernel})])
-        	    AC_DEFINE([KERNEL_2_4], 1, [Define to 1 if you're using Linux 2.4.x])
-        	    ;;
-
-             *) 
-        	    AC_MSG_RESULT([unsupported (${kernel})])
-        	    AC_MSG_ERROR([Valgrind works on kernels 2.4, 2.6])
-        	    ;;
+             *)
+                    AC_MSG_RESULT([2.6 or later (${kernel})])
+                    ;;
         esac
 
         ;;

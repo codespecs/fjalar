@@ -110,6 +110,12 @@ AM_CFLAGS_BASE = \
 	-fno-strict-aliasing \
 	-fno-builtin
 
+# If have latest gcc then default inlining
+# has been changed, use std=gnu89 to get old style
+if COMPILER_IS_V5
+AM_CFLAGS_BASE += -std=gnu89
+endif
+
 # These flags are used for building the preload shared objects (PSOs).
 # The aim is to give reasonable performance but also to have good
 # stack traces, since users often see stack traces extending 
