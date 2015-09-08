@@ -150,15 +150,32 @@ typedef
 /*------------------------------------------------------------*/
 
 /* add stmt to a bb */
-inline void stmt ( HChar cat, MCEnv* mce, IRStmt* st ) ;
+static inline void stmt ( HChar cat, MCEnv* mce, IRStmt* st ) {
+   if (mce->trace) {
+      printf("  %c: ", cat);
+      ppIRStmt(st);
+      printf("\n");
+   }
+   addStmtToIRSB(mce->sb, st);
+}
+
+static inline void stmt_DC ( HChar cat, DCEnv* dce, IRStmt* st ) {
+   if (dce->mce->trace) {
+      printf("D %c: ", cat);
+      ppIRStmt(st);
+      printf("\n");
+   }
+   addStmtToIRSB(dce->bb, st);
+}
 
 /* assign value to tmp */
-inline void assign ( HChar cat, MCEnv* mce, IRTemp tmp, IRExpr* expr );
+static inline void assign ( HChar cat, MCEnv* mce, IRTemp tmp, IRExpr* expr ) {
+  stmt(cat, mce, IRStmt_WrTmp(tmp,expr));
+}
 
-// RUDD - pgbovine
-// DC functions
-inline void stmt_DC ( HChar cat, DCEnv* mce, IRStmt* st ) ;
-inline void assign_DC ( HChar cat, DCEnv* mce, IRTemp tmp, IRExpr* expr );
+static inline void assign_DC ( HChar cat, DCEnv* dce, IRTemp tmp, IRExpr* expr ) {
+  stmt_DC(cat, dce, IRStmt_WrTmp(tmp,expr));
+}
 
 /* build various kinds of expressions */
 #define binop(_op, _arg1, _arg2) IRExpr_Binop((_op),(_arg1),(_arg2))

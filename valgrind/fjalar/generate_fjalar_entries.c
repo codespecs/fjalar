@@ -45,6 +45,8 @@ static void createNamesForUnnamedDwarfEntries(void);
 static void updateAllVarTypes(void);
 static void processFunctions(void);
 
+int determineFormalParametersStackByteSize(FunctionEntry* f);
+
 static void extractFormalParameterVars(FunctionEntry* f, function* dwarfFunctionEntry);
 static void extractLocalArrayAndStructVariables(FunctionEntry* f, function* dwarfFunctionEntry);
 static void extractOneLocalArrayOrStructVariable(FunctionEntry* f, dwarf_entry* dwarfVariableEntry);
@@ -3166,7 +3168,6 @@ static void initMemberFuncs(void) {
   deleteTypeIterator(typeIt);
 }
 
-
 // FunctionTable
 
 // This is SLOW because we must traverse all values, looking for the
@@ -3204,13 +3205,6 @@ FunctionEntry* getFunctionEntryFromAddr(Addr addr) {
   return 0;
 }
 
-// This is FAST because the keys of the hash table are addresses
-// startPC must match the starting address of the function
-__inline__ FunctionEntry* getFunctionEntryFromStartAddr(Addr startPC) {
-  return (FunctionEntry*)gengettable(FunctionTable, (void*)startPC);
-}
-
-
 // Iterate thru all chars, sum up each (ASCII value * (index + 1))
 // Don't worry about modding because GenericHashtable.c will do it for us :)
 unsigned int hashString(const char* str) {
@@ -3227,8 +3221,6 @@ unsigned int hashString(const char* str) {
 int equivalentStrings(char* str1, char* str2) {
   return VG_STREQ(str1, str2);
 }
-
-
 
 VarIterator* newVarIterator(VarList* vlist) {
   VarIterator* varIt = (VarIterator*)VG_(calloc)("generate_fjalar_entries.c: newVarIterator", 1, sizeof(*varIt));

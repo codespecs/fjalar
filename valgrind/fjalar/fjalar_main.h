@@ -99,8 +99,30 @@ void printFunctionEntryStack(void);
 FunctionExecutionState FunctionExecutionStateStack[VG_N_THREADS][FN_STACK_SIZE];
 int fn_stack_first_free_index[VG_N_THREADS];
 
-__inline__ FunctionExecutionState* fnStackTop(ThreadId tid);
+// "Pushes" a new entry onto the stack by returning a pointer to it
+// and incrementing fn_stack_first_free_index (Notice that this has
+// slightly has different semantics than a normal stack push)
+static __inline__ FunctionExecutionState* fnStackPush(ThreadId tid) {
+  tl_assert(tid != VG_INVALID_THREADID);
+  tl_assert(fn_stack_first_free_index[tid] < FN_STACK_SIZE);
+  fn_stack_first_free_index[tid]++;
+  return &(FunctionExecutionStateStack[tid][fn_stack_first_free_index[tid] - 1]);
+}
 
+// Returns the top element of the stack and pops it off
+static __inline__ FunctionExecutionState* fnStackPop(ThreadId tid) {
+  tl_assert(tid != VG_INVALID_THREADID);
+  tl_assert(fn_stack_first_free_index[tid] > 0);
+  fn_stack_first_free_index[tid]--;
+  return &(FunctionExecutionStateStack[tid][fn_stack_first_free_index[tid]]);
+}
+
+// Returns the top element of the stack
+static __inline__ FunctionExecutionState* fnStackTop(ThreadId tid) {
+  tl_assert(tid != VG_INVALID_THREADID);
+  tl_assert(fn_stack_first_free_index[tid] >= 0);
+  return &(FunctionExecutionStateStack[tid][fn_stack_first_free_index[tid] - 1]);
+}
 
 /*
 Requires:
@@ -155,10 +177,6 @@ This is called from hooks within mac_shared.h
 // reason, if you take them out, things will fail strangely ... weird!
 char* fjalar_program_stdout_filename;
 char* fjalar_program_stderr_filename;
-
-__inline__ FunctionExecutionState* fnStackPush(ThreadId);
-__inline__ FunctionExecutionState* fnStackPop(ThreadId);
-__inline__ FunctionExecutionState* fnStackTop(ThreadId);
 
 // Mapping between Dwarf Register numbers and
 // valgrind function to return the value

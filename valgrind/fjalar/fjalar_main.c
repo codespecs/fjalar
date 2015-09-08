@@ -187,32 +187,6 @@ int fn_stack_first_free_index[VG_N_THREADS];
 // The top element of the stack is:
 // FunctionExecutionStateStack[fn_stack_first_free_index - 1]
 
-
-// "Pushes" a new entry onto the stack by returning a pointer to it
-// and incrementing fn_stack_first_free_index (Notice that this has
-// slightly has different semantics than a normal stack push)
-__inline__ FunctionExecutionState* fnStackPush(ThreadId tid) {
-  tl_assert(tid != VG_INVALID_THREADID);
-  tl_assert(fn_stack_first_free_index[tid] < FN_STACK_SIZE);
-  fn_stack_first_free_index[tid]++;
-  return &(FunctionExecutionStateStack[tid][fn_stack_first_free_index[tid] - 1]);
-}
-
-// Returns the top element of the stack and pops it off
-__inline__ FunctionExecutionState* fnStackPop(ThreadId tid) {
-  tl_assert(tid != VG_INVALID_THREADID);
-  tl_assert(fn_stack_first_free_index[tid] > 0);
-  fn_stack_first_free_index[tid]--;
-  return &(FunctionExecutionStateStack[tid][fn_stack_first_free_index[tid]]);
-}
-
-// Returns the top element of the stack
-__inline__ FunctionExecutionState* fnStackTop(ThreadId tid) {
-  tl_assert(tid != VG_INVALID_THREADID);
-  tl_assert(fn_stack_first_free_index[tid] >= 0);
-  return &(FunctionExecutionStateStack[tid][fn_stack_first_free_index[tid] - 1]);
-}
-
 typedef VG_REGPARM(1) void entry_func(FunctionEntry *);
 
 // This inserts an IR Statement responsible for calling func

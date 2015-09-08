@@ -30,6 +30,7 @@ data structures that tools can use.
 #include "pub_tool_basics.h"
 #include "pub_tool_options.h"
 #include "fjalar_dwarf.h"
+#include "generate_fjalar_entries.h"
 #include "GenericHashtable.h"
 
 /*********************************************************************
@@ -667,7 +668,11 @@ typedef struct _FunctionEntry {
 
 // Returns a FunctionEntry* given its starting address (startPC)
 // [Fast hashtable lookup]
-__inline__ FunctionEntry* getFunctionEntryFromStartAddr(Addr startPC);
+// This is FAST because the keys of the hash table are addresses
+// startPC must match the starting address of the function
+static __inline__ FunctionEntry* getFunctionEntryFromStartAddr(Addr startPC) {
+  return (FunctionEntry*)gengettable(FunctionTable, (void*)startPC);
+}
 
 // Returns a FunctionEntry* given its fjalar_name
 // [Slow linear search lookup]

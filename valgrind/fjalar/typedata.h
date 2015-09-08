@@ -447,8 +447,25 @@ struct genhashtable* ReverseFunctionSymbolTable;
 // Value: An int that represents the global address of that variable
 struct genhashtable* VariableSymbolTable;
 
-__inline__ void insertIntoFunctionSymbolTable(char* name, void* addr);
-__inline__ void insertIntoVariableSymbolTable(char* name, void* addr);
+static __inline__ void insertIntoFunctionSymbolTable(char* name, void* addr) {
+  //  printf("FunctionSymbolTable insert: %p  %s\n", addr, name);
+  // Insert into both the regular and reverse tables:
+
+  genputtable(FunctionSymbolTable,
+              (void*)name,
+              (void*)addr);
+
+  genputtable(ReverseFunctionSymbolTable,
+              (void*)addr,
+              (void*)name);
+}
+
+static __inline__ void insertIntoVariableSymbolTable(char* name, void* addr) {
+  //  printf("VariableSymbolTable insert: %p  %s\n", addr, name);
+  genputtable(VariableSymbolTable,
+              (void*)name,
+              (void*)addr);
+}
 
 // Initialized based on the .debug_lines DWARF section, this table
 // records the code addresses for each statement; more specifically,

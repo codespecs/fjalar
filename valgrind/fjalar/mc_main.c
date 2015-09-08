@@ -66,7 +66,8 @@
 #include "mc_include.h"
 #include "memcheck.h"   /* for client requests */
 
-#include "kvasir/dyncomp_main.h" // PG - pgbovine - dyncomp
+#include "kvasir/kvasir_main.h"
+#include "kvasir/dyncomp_main.h"
 #include "fjalar_main.h"
 
 Bool kvasir_with_dyncomp; // PG - pgbovine - dyncomp

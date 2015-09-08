@@ -22,8 +22,7 @@
 #ifndef DISAMBIG_H
 #define DISAMBIG_H
 
-//#include "tool.h"
-#include "generate_fjalar_entries.h"
+#include "fjalar_include.h"
 
 FILE* disambig_fp;
 Bool disambig_writing; // True if we are writing out to a .disambig file,

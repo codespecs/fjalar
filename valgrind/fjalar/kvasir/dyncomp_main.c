@@ -116,95 +116,8 @@ UInt* primary_tag_map[PRIMARY_SIZE];
 // Range is [0, PRIMARY_SIZE]
 UInt n_primary_tag_map_init_entries = 0;
 
-#if VG_WORDSIZE == 4
-#define IS_SECONDARY_TAG_MAP_NULL(a) (primary_tag_map[PM_IDX(a)] == NULL)
-#else
-/* In this case, need an overflow check */
-#define IS_SECONDARY_TAG_MAP_NULL(a) (PM_IDX(a) >= PRIMARY_SIZE || \
-                                      primary_tag_map[PM_IDX(a)] == NULL)
-#endif
-
-__inline__ UInt get_tag ( Addr a )
-{
-  if (IS_SECONDARY_TAG_MAP_NULL(a)) {
-    return 0; // 0 means NO tag for that byte
-  }
-
-  return primary_tag_map[PM_IDX(a)][SM_OFF(a)];
-}
-
-__inline__ void set_tag ( Addr a, UInt tag )
-{
-  if (IS_SECONDARY_TAG_MAP_NULL(a)) {
-    UInt* new_tag_array;
-
-    if (PM_IDX(a) >= PRIMARY_SIZE) {
-      printf("Address too large for DynComp: %p.\n", (void *)a);
-      printf("Terminating program.\n");
-      VG_(exit)(1);
-    }
-
-    new_tag_array =
-      (UInt*)VG_(am_shadow_alloc)(SECONDARY_SIZE * sizeof(*new_tag_array));
-    VG_(memset)(new_tag_array, 0, (SECONDARY_SIZE * sizeof(*new_tag_array)));
-    primary_tag_map[PM_IDX(a)] = new_tag_array;
-    n_primary_tag_map_init_entries++;
-  }
-  if (dyncomp_print_trace_all) {
-    DYNCOMP_TPRINTF("[DynComp] set_tag: %u for loc: %p\n", tag, (void *)a);
-  }
-  primary_tag_map[PM_IDX(a)][SM_OFF(a)] = tag;
-}
-
-// Return a fresh tag and create a singleton set
-// for the uf_object associated with that tag
-static __inline__ UInt grab_fresh_tag(void) {
-  UInt tag;
-
-  // Let's try garbage collecting here.  Remember to assign
-  // tag = nextTag AFTER garbage collection (if it occurs) because
-  // nextTag may decrease due to the garbage collection step
-  if ((!dyncomp_no_gc) &&
-      totalNumTagsAssigned && // Don't garbage collect when it's zero
-      (totalNumTagsAssigned % dyncomp_gc_after_n_tags == 0)) {
-    garbage_collect_tags();
-  }
-
-  tag = nextTag;
-
-  // Remember to make a new singleton set for the
-  // uf_object associated with that tag
-  val_uf_make_set_for_tag(tag);
-
-  if (nextTag == LARGEST_REAL_TAG) {
-    printf("Error! Maximum tag has been used.\n");
-    VG_(exit)(1);
-  }
-  else {
-    nextTag++;
-  }
-
-  totalNumTagsAssigned++;
-  if (dyncomp_print_trace_all) {
-    Addr tid = VG_(get_IP)(VG_(get_running_tid)());
-    const HChar *eip_info;
-    eip_info = VG_(describe_IP)(tid, NULL);
-    DYNCOMP_TPRINTF("[DynComp] Creating fresh tag %d at %s\n", tag, eip_info);
-  }
-  return tag;
-
-}
-
-// Allocate a new unique tag for all bytes in range [a, a + len)
-__inline__ void allocate_new_unique_tags ( Addr a, SizeT len ) {
-  Addr curAddr;
-  UInt newTag;
-  for (curAddr = a; curAddr < (a+len); curAddr++) {
-    newTag = grab_fresh_tag();
-    set_tag(curAddr, newTag);
-  }
-}
 UInt val_uf_tag_union(UInt tag1, UInt tag2);
+
 // Copies tags of len bytes from src to dst
 // Set both the tags of 'src' and 'dst' to their
 // respective leaders for every byte
@@ -297,7 +210,7 @@ UInt val_uf_tag_union(UInt tag1, UInt tag2) {
     return 0;
   }
 }
-
+/*
 static  __inline__ uf_name val_uf_tag_find(UInt tag) {
   if (IS_ZERO_TAG(tag) || IS_SECONDARY_UF_NULL(tag)) {
     return NULL;
@@ -306,7 +219,7 @@ static  __inline__ uf_name val_uf_tag_find(UInt tag) {
     return uf_find(GET_UF_OBJECT_PTR(tag));
   }
 }
-
+*/
 // Be careful not to bust a false positive by naively
 // comparing val_uf_tag_find(tag1) and val_uf_tag_find(tag2)
 // because you could be comparing 0 == 0 if both satisfy
@@ -418,7 +331,7 @@ void MC_(helperc_STORE_TAG_1) ( Addr a, UInt tag ) {
 
   set_tag(a, tagToWrite);
 }
-
+/*
 // Return the leader (canonical tag) of the set which 'tag' belongs to
 __inline__ UInt val_uf_find_leader(UInt tag) {
   uf_name canonical = val_uf_tag_find(tag);
@@ -429,7 +342,7 @@ __inline__ UInt val_uf_find_leader(UInt tag) {
     return 0;
   }
 }
-
+*/
 // Unions the tags belonging to these addresses and set
 // the tags of both to the canonical tag (for efficiency)
 void val_uf_union_tags_at_addr(Addr a1, Addr a2) {
@@ -692,7 +605,7 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
   }
 }
 
-
+/*
 // Clear all tags for all bytes in range [a, a + len)
 __inline__ void clear_all_tags_in_range( Addr a, SizeT len ) {
   Addr curAddr;
@@ -702,7 +615,7 @@ __inline__ void clear_all_tags_in_range( Addr a, SizeT len ) {
     set_tag(curAddr, 0);
   }
 }
-
+*/
 
 /*------------------------------------------------------------------*/
 /*--- Linked-lists of tags for garbage collection                ---*/

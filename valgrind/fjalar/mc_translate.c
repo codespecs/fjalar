@@ -48,6 +48,7 @@
 // pgbovine
 #include "mc_translate.h"
 #include "fjalar_main.h"
+#include "kvasir/kvasir_main.h"
 #include "kvasir/dyncomp_main.h"
 #include "kvasir/dyncomp_translate.h"
 Bool kvasir_with_dyncomp; // pgbovine - dyncomp
@@ -363,35 +364,6 @@ static IRExpr* definedOfType ( IRType ty ) {
 /*------------------------------------------------------------*/
 /*--- Constructing IR fragments                            ---*/
 /*------------------------------------------------------------*/
-
-/* add stmt to a bb */
-inline void stmt ( HChar cat, MCEnv* mce, IRStmt* st ) {
-   if (mce->trace) {
-      printf("  %c: ", cat);
-      ppIRStmt(st);
-      printf("\n");
-   }
-   addStmtToIRSB(mce->sb, st);
-}
-
-inline void stmt_DC ( HChar cat, DCEnv* dce, IRStmt* st ) {
-   if (dce->mce->trace) {
-      printf("D %c: ", cat);
-      ppIRStmt(st);
-      printf("\n");
-   }
-   addStmtToIRSB(dce->bb, st);
-}
-
-/* assign value to tmp */
-inline void assign ( HChar cat, MCEnv* mce, IRTemp tmp, IRExpr* expr ) {
-  stmt(cat, mce, IRStmt_WrTmp(tmp,expr));
-}
-
-inline
-void assign_DC ( HChar cat, DCEnv* dce, IRTemp tmp, IRExpr* expr ) {
-  stmt_DC(cat, dce, IRStmt_WrTmp(tmp,expr));
-}
 
 /* build various kinds of expressions */
 #define triop(_op, _arg1, _arg2, _arg3) \

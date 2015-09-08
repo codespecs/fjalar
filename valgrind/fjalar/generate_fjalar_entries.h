@@ -25,7 +25,6 @@
 #ifndef GENERATE_FJALAR_ENTRIES_H
 #define GENERATE_FJALAR_ENTRIES_H
 
-#include "fjalar_include.h"
 #include "typedata.h"
 #include "GenericHashtable.h"
 
@@ -81,8 +80,6 @@ void initializeAllFjalarData(void);
 // rep. invariants.  This can only be run after
 // initializeAllFjalarData() has initialized these data structures.
 void repCheckAllEntries(void);
-
-int determineFormalParametersStackByteSize(FunctionEntry* f);
 
 FILE* xml_output_fp;
 void outputAllXMLDeclarations(void);

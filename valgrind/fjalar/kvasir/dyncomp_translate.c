@@ -31,10 +31,10 @@
 #include "my_libc.h"
 
 #include "mc_include.h"
+#include "kvasir_main.h"
 #include "dyncomp_translate.h"
 #include "dyncomp_main.h"
 #include "../fjalar_include.h"
-#include "kvasir_main.h"
 #include "vex_common.h"
 
 extern char dyncomp_profile_tags;

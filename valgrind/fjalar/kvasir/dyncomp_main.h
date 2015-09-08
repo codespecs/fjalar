@@ -24,15 +24,20 @@
 #ifndef DYNCOMP_MAIN_H
 #define DYNCOMP_MAIN_H
 
-//#include "tool.h"
+#include "pub_tool_basics.h"
 #include "pub_tool_aspacemgr.h"
+#include "pub_tool_debuginfo.h"
 #include "pub_tool_libcassert.h"
+#include "pub_tool_libcbase.h"
+#include "pub_tool_machine.h"
+#include "pub_tool_threadstate.h"
 
 //RUDD-REMOVE
 //#include "../mac_shared.h"
 //#include "../mc_translate.h"
 #include "../mc_include.h"
 #include "union_find.h"
+#include "kvasir/dyncomp_runtime.h"
 
 //RUDD-MERGE, no longer in memcheck
 
@@ -88,6 +93,14 @@ UInt n_primary_val_uf_object_map_init_entries;
 // calling this macro or else you may segfault
 #define GET_UF_OBJECT_PTR(tag) (&(primary_val_uf_object_map[PM_IDX(tag)][SM_OFF(tag)]))
 
+#if VG_WORDSIZE == 4
+#define IS_SECONDARY_TAG_MAP_NULL(a) (primary_tag_map[PM_IDX(a)] == NULL)
+#else
+/* In this case, need an overflow check */
+#define IS_SECONDARY_TAG_MAP_NULL(a) (PM_IDX(a) >= PRIMARY_SIZE || \
+                                      primary_tag_map[PM_IDX(a)] == NULL)
+#endif
+
 
 // Defines a singly-linked list of 32-bit UInt tags
 typedef struct _TagNode TagNode;
@@ -112,20 +125,122 @@ void clear_list(TagList* listPtr);
 // Don't do anything with tags equal to 0 because they are invalid
 #define IS_ZERO_TAG(tag) (0 == tag)
 
-__inline__ void clear_all_tags_in_range( Addr a, SizeT len );
-__inline__ void allocate_new_unique_tags ( Addr a, SizeT len );
 void copy_tags(  Addr src, Addr dst, SizeT len );
-
-__inline__ UInt get_tag ( Addr a );
-__inline__ void set_tag ( Addr a, UInt tag );
-
+void val_uf_make_set_for_tag(UInt tag);
 UInt val_uf_union_tags_in_range(Addr a, SizeT len);
 void val_uf_union_tags_at_addr(Addr a1, Addr a2);
-__inline__ UInt val_uf_find_leader(UInt tag);
-
-void val_uf_make_set_for_tag(UInt tag);
-
 void set_tag_for_GOT(Addr a, SizeT len);
+
+static __inline__ void set_tag ( Addr a, UInt tag )
+{
+  if (IS_SECONDARY_TAG_MAP_NULL(a)) {
+    UInt* new_tag_array;
+
+    if (PM_IDX(a) >= PRIMARY_SIZE) {
+      printf("Address too large for DynComp: %p.\n", (void *)a);
+      printf("Terminating program.\n");
+      VG_(exit)(1);
+    }
+
+    new_tag_array =
+      (UInt*)VG_(am_shadow_alloc)(SECONDARY_SIZE * sizeof(*new_tag_array));
+    VG_(memset)(new_tag_array, 0, (SECONDARY_SIZE * sizeof(*new_tag_array)));
+    primary_tag_map[PM_IDX(a)] = new_tag_array;
+    n_primary_tag_map_init_entries++;
+  }
+  if (dyncomp_print_trace_all) {
+    DYNCOMP_TPRINTF("[DynComp] set_tag: %u for loc: %p\n", tag, (void *)a);
+  }
+  primary_tag_map[PM_IDX(a)][SM_OFF(a)] = tag;
+}
+
+static __inline__ UInt get_tag ( Addr a )
+{
+  if (IS_SECONDARY_TAG_MAP_NULL(a)) {
+    return 0; // 0 means NO tag for that byte
+  }
+
+  return primary_tag_map[PM_IDX(a)][SM_OFF(a)];
+}
+
+// Clear all tags for all bytes in range [a, a + len)
+static __inline__ void clear_all_tags_in_range( Addr a, SizeT len ) {
+  Addr curAddr;
+
+  for (curAddr = a; curAddr < (a+len); curAddr++) {
+    // Set the tag to 0
+    set_tag(curAddr, 0);
+  }
+}
+
+// Return a fresh tag and create a singleton set
+// for the uf_object associated with that tag
+static __inline__ UInt grab_fresh_tag(void) {
+  UInt tag;
+
+  // Let's try garbage collecting here.  Remember to assign
+  // tag = nextTag AFTER garbage collection (if it occurs) because
+  // nextTag may decrease due to the garbage collection step
+  if ((!dyncomp_no_gc) &&
+      totalNumTagsAssigned && // Don't garbage collect when it's zero
+      (totalNumTagsAssigned % dyncomp_gc_after_n_tags == 0)) {
+    garbage_collect_tags();
+  }
+
+  tag = nextTag;
+
+  // Remember to make a new singleton set for the
+  // uf_object associated with that tag
+  val_uf_make_set_for_tag(tag);
+
+  if (nextTag == LARGEST_REAL_TAG) {
+    printf("Error! Maximum tag has been used.\n");
+    VG_(exit)(1);
+  }
+  else {
+    nextTag++;
+  }
+
+  totalNumTagsAssigned++;
+  if (dyncomp_print_trace_all) {
+    Addr tid = VG_(get_IP)(VG_(get_running_tid)());
+    const HChar *eip_info;
+    eip_info = VG_(describe_IP)(tid, NULL);
+    DYNCOMP_TPRINTF("[DynComp] Creating fresh tag %d at %s\n", tag, eip_info);
+  }
+  return tag;
+
+}
+
+// Allocate a new unique tag for all bytes in range [a, a + len)
+static __inline__ void allocate_new_unique_tags ( Addr a, SizeT len ) {
+  Addr curAddr;
+  UInt newTag;
+  for (curAddr = a; curAddr < (a+len); curAddr++) {
+    newTag = grab_fresh_tag();
+    set_tag(curAddr, newTag);
+  }
+}
+
+static  __inline__ uf_name val_uf_tag_find(UInt tag) {
+  if (IS_ZERO_TAG(tag) || IS_SECONDARY_UF_NULL(tag)) {
+    return NULL;
+  }
+  else {
+    return uf_find(GET_UF_OBJECT_PTR(tag));
+  }
+}
+
+// Return the leader (canonical tag) of the set which 'tag' belongs to
+static __inline__ UInt val_uf_find_leader(UInt tag) {
+  uf_name canonical = val_uf_tag_find(tag);
+  if (canonical) {
+    return canonical->tag;
+  }
+  else {
+    return 0;
+  }
+}
 
 extern VG_REGPARM(1) UInt MC_(helperc_TAG_NOP) ( UInt );
 

@@ -2846,27 +2846,6 @@ void initialize_typedata_structures() {
     genallocatehashtable(0, (int (*)(void *,void *))&equivalentIDs);
 }
 
-__inline__ void insertIntoFunctionSymbolTable(char* name, void* addr) {
-  //  printf("FunctionSymbolTable insert: %p  %s\n", addr, name);
-  // Insert into both the regular and reverse tables:
-
-  genputtable(FunctionSymbolTable,
-              (void*)name,
-              (void*)addr);
-
-  genputtable(ReverseFunctionSymbolTable,
-              (void*)addr,
-              (void*)name);
-}
-
-__inline__ void insertIntoVariableSymbolTable(char* name, void* addr) {
-  //  printf("VariableSymbolTable insert: %p  %s\n", addr, name);
-  genputtable(VariableSymbolTable,
-              (void*)name,
-              (void*)addr);
-}
-
-
 Addr getFunctionStartAddr(char* name) {
   return (Addr)gengettable(FunctionSymbolTable, (void*)name);
 }
