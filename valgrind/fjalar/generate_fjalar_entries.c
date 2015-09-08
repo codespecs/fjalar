@@ -759,11 +759,15 @@ void repCheckAllEntries(void) {
           // than the one of the previous member variable.  Notice that
           // data_member_location can be 0.
           if (D_STRUCT_CLASS == t->decType) {
-            // We don't do a strictly '>' check because of bit-fields,
-            // which share the same data_member_location but have
-            // different bit offsets within that location.  We
-            // currently don't support bit-fields.
-            tl_assert(curMember->memberVar->data_member_location >= prev_data_member_location);
+            // We don't check bit-fields as the compiler may
+            // allocate them to a previous location.
+            // (We currently don't support bit-fields.)
+            // FJALAR_DPRINTF("addr: %lx, bitfield?: %d %d %d\n", curMember->memberVar->data_member_location,
+            //     curMember->memberVar->internalByteSize,
+            //     curMember->memberVar->internalBitOffset,
+            //     curMember->memberVar->internalBitSize);
+            if ((curMember->memberVar->internalByteSize == 0) && (curMember->memberVar->data_member_location != 0))
+              tl_assert(curMember->memberVar->data_member_location > prev_data_member_location);
             prev_data_member_location = curMember->memberVar->data_member_location;
           }
           // For a union, all offsets should be 0
