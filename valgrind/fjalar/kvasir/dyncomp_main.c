@@ -210,29 +210,6 @@ UInt val_uf_tag_union(UInt tag1, UInt tag2) {
     return 0;
   }
 }
-/*
-static  __inline__ uf_name val_uf_tag_find(UInt tag) {
-  if (IS_ZERO_TAG(tag) || IS_SECONDARY_UF_NULL(tag)) {
-    return NULL;
-  }
-  else {
-    return uf_find(GET_UF_OBJECT_PTR(tag));
-  }
-}
-*/
-// Be careful not to bust a false positive by naively
-// comparing val_uf_tag_find(tag1) and val_uf_tag_find(tag2)
-// because you could be comparing 0 == 0 if both satisfy
-// IS_SECONDARY_UF_NULL
-/* static UChar val_uf_tags_in_same_set(UInt tag1, UInt tag2) { */
-/*   if (!IS_ZERO_TAG(tag1) && !IS_SECONDARY_UF_NULL(tag1) && */
-/*       !IS_ZERO_TAG(tag2) && !IS_SECONDARY_UF_NULL(tag2)) { */
-/*     return (val_uf_tag_find(tag1) == val_uf_tag_find(tag2)); */
-/*   } */
-/*   else { */
-/*     return 0; */
-/*   } */
-/* } */
 
 // Write tag into all addresses in the range [a, a+len)
 static __inline__ void set_tag_for_range(Addr a, SizeT len, UInt tag) {
@@ -331,18 +308,7 @@ void MC_(helperc_STORE_TAG_1) ( Addr a, UInt tag ) {
 
   set_tag(a, tagToWrite);
 }
-/*
-// Return the leader (canonical tag) of the set which 'tag' belongs to
-__inline__ UInt val_uf_find_leader(UInt tag) {
-  uf_name canonical = val_uf_tag_find(tag);
-  if (canonical) {
-    return canonical->tag;
-  }
-  else {
-    return 0;
-  }
-}
-*/
+
 // Unions the tags belonging to these addresses and set
 // the tags of both to the canonical tag (for efficiency)
 void val_uf_union_tags_at_addr(Addr a1, Addr a2) {
@@ -604,18 +570,6 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
     return 0;
   }
 }
-
-/*
-// Clear all tags for all bytes in range [a, a + len)
-__inline__ void clear_all_tags_in_range( Addr a, SizeT len ) {
-  Addr curAddr;
-
-  for (curAddr = a; curAddr < (a+len); curAddr++) {
-    // Set the tag to 0
-    set_tag(curAddr, 0);
-  }
-}
-*/
 
 /*------------------------------------------------------------------*/
 /*--- Linked-lists of tags for garbage collection                ---*/
