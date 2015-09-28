@@ -14,3 +14,5 @@
 export VALGRIND_REVISION=14784
 export VEX_REVISION=3026
 
+export BINUTILS_VERSION=2.25
+# No revision number currently
