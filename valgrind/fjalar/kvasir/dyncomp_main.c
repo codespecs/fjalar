@@ -236,6 +236,7 @@ void set_tag_for_GOT(Addr a, SizeT len) {
 // them
 VG_REGPARM(1)
 UInt MC_(helperc_TAG_NOP) ( UInt tag ) {
+   DYNCOMP_TPRINTF("[DynComp] TAG_NOP: %u \n", tag);
    return tag;
 }
 
@@ -423,6 +424,7 @@ DYNCOMP_TPRINTF("MLR debug val_uf_union_tags_in_range addr=%p, tag=%u\n", (void 
 // garbage-collected.
 VG_REGPARM(1)
 UInt MC_(helperc_CREATE_TAG)(Addr static_id) {
+  DYNCOMP_TPRINTF("[DynComp] CREATE_TAG: %p =>\n", (void *)static_id);
   UInt newTag = grab_fresh_tag();
   (void)static_id;
   return newTag;
@@ -431,27 +433,30 @@ UInt MC_(helperc_CREATE_TAG)(Addr static_id) {
 
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_8) ( Addr a ) {
-  DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_8\n");
+  DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_8: %p\n", (void *)a);
   return val_uf_union_tags_in_range(a, 8);
 }
 
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_4) ( Addr a ) {
   UInt first_tag = get_tag(a);
-  if (first_tag == WEAK_FRESH_TAG)
+  if (first_tag == WEAK_FRESH_TAG) {
+    DYNCOMP_TPRINTF("[DynComp] helperx_LOAD_ATG_4: %p =>\n", (void *)a);
     return grab_fresh_tag();
-  DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_4\n");
+  }
+  DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_4: %p\n", (void *)a);
   return val_uf_union_tags_in_range(a, 4);
 }
 
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_2) ( Addr a ) {
-  DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_2\n");
+  DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_2: %p\n", (void *)a);
   return val_uf_union_tags_in_range(a, 2);
 }
 
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
+  DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_1: %p => %u\n", (void *)a, get_tag(a));
   return get_tag(a);
 }
 
