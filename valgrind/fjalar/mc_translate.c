@@ -54,6 +54,7 @@
 Bool kvasir_with_dyncomp; // pgbovine - dyncomp
 
 #include "mc_include.h"
+#include "pub_tool_debuginfo.h"
 
 
 /* FIXMEs JRS 2011-June-16.
@@ -6153,6 +6154,30 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
    // Silence GCC warnings - rudd
    (void) closure; (void) vge;
 
+   /* The update to libc-2.21 and ld-2.21 started causing spurious
+      results with DynComp. Large sections of libc data were being
+      assigned to the same comprability set - presumablby, due to
+      changes in the loader and libc_memalign. This would, in turn,
+      cause unrelated user variables to be assigned to the same
+      comparability set.  Since, for DynComp purposes, nothing that
+      happens prior to entering 'main' is of any interest, we now
+      detect these (primarily) loader code blocks and do not dyncomp
+      instrument them.   mlr 9/24/2015
+    */
+
+   static Bool start_seen = False;
+   if (!start_seen) {
+      const HChar *fnname;
+      Bool ok = VG_(get_fnname)(closure->nraddr, &fnname);
+      if (!ok) fnname = "???";
+      DPRINTF("fnname: %s\n", fnname);
+
+      if (!(VG_(strcmp)(fnname, "main"))) {
+         start_seen = True;
+      }
+   }
+   Bool do_dyncomp = kvasir_with_dyncomp && start_seen;
+
    if (gWordTy != hWordTy) {
       /* We don't currently support this case. */
       VG_(tool_panic)("host/guest word size mismatch");
@@ -6213,7 +6238,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
    // Is this aliasing of 'bb' going to be a problem?
    // Not if we allocate enough space for the shadow tag guest state
    // and adjust the offsets appropriately
-   if (kvasir_with_dyncomp) {
+   if (do_dyncomp) {
      dce.mce = &mce;
       dce.bb             = sb_out;
       dce.layout         = layout;
@@ -6339,7 +6364,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
 
       /* Generate instrumentation code for each stmt ... */
 
-      if (kvasir_with_dyncomp) {
+      if (do_dyncomp) {
          if (!dce.bogusLiterals) {
             dce.bogusLiterals = checkForBogusLiterals(st);
             if (0&& dce.bogusLiterals) {
@@ -6356,7 +6381,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
             assign( 'V', &mce, findShadowTmpV(&mce, st->Ist.WrTmp.tmp),
                                expr2vbits( &mce, st->Ist.WrTmp.data) );
 #ifndef _NO_DYNCOMP
-            if (kvasir_with_dyncomp)
+            if (do_dyncomp)
                assign_DC( 'V', &dce, findShadowTmp_DC(&dce, st->Ist.WrTmp.tmp),
                                expr2tags_DC( &dce, st->Ist.WrTmp.data) );
 #endif /* _NO_DYNCOMP */
@@ -6368,7 +6393,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                            st->Ist.Put.data,
                            NULL /* shadow atom */, NULL /* guard */ );
 #ifndef _NO_DYNCOMP
-            if (kvasir_with_dyncomp)
+            if (do_dyncomp)
                do_shadow_PUT_DC( &dce,
                               st->Ist.Put.offset,
                               st->Ist.Put.data,
@@ -6379,7 +6404,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
          case Ist_PutI:
             do_shadow_PUTI( &mce, st->Ist.PutI.details);
 #ifndef _NO_DYNCOMP
-            if (kvasir_with_dyncomp)
+            if (do_dyncomp)
                do_shadow_PUTI_DC( &dce, st->Ist.PutI.details );
 #endif /* _NO_DYNCOMP */
             break;
@@ -6391,7 +6416,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                                    NULL /* shadow data */,
                                    NULL /* guard */);
 #ifndef _NO_DYNCOMP
-            if (kvasir_with_dyncomp)
+            if (do_dyncomp)
                do_shadow_STle_DC( &dce, st->Ist.Store.addr, st->Ist.Store.data);
 #endif /* _NO_DYNCOMP */
             break;
@@ -6408,7 +6433,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
             handle_possible_exit( &mce, st->Ist.Exit.jk ); // pgbovine
             //complainIfUndefined( &mce, st->Ist.Exit.guard, NULL ); // pgbovine
 #ifndef _NO_DYNCOMP
-            if (kvasir_with_dyncomp)
+            if (do_dyncomp)
                do_shadow_cond_exit_DC( &dce, st->Ist.Exit.guard );
 #endif /* _NO_DYNCOMP */
             break;
@@ -6416,7 +6441,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
          case Ist_IMark:
             handle_possible_entry( &mce, st->Ist.IMark.addr, sb_in); // pgbovine
 #ifndef _NO_DYNCOMP
-            if (kvasir_with_dyncomp)
+            if (do_dyncomp)
                dce.origAddr = st->Ist.IMark.addr;
 #endif /* _NO_DYNCOMP */
             break;
@@ -6428,7 +6453,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
          case Ist_Dirty:
             do_shadow_Dirty( &mce, st->Ist.Dirty.details );
 #ifndef _NO_DYNCOMP
-            if (kvasir_with_dyncomp)
+            if (do_dyncomp)
                do_shadow_Dirty_DC( &dce, st->Ist.Dirty.details );
 #endif /* _NO_DYNCOMP */
             break;
@@ -6438,7 +6463,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                               st->Ist.AbiHint.len,
                               st->Ist.AbiHint.nia );
 #ifndef _NO_DYNCOMP
-            if (kvasir_with_dyncomp)
+            if (do_dyncomp)
                do_AbiHint( &mce, st->Ist.AbiHint.base,
                               st->Ist.AbiHint.len,
                               st->Ist.AbiHint.nia );
@@ -6454,7 +6479,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                since that's all tangled up with it too; do_shadow_CAS
                does it all. */
 #ifndef _NO_DYNCOMP
-            if(kvasir_with_dyncomp)
+            if(do_dyncomp)
               do_shadow_CAS_DC( &dce, st->Ist.CAS.details);
 #endif /* _NO_DYNCOMP */
             break;
@@ -6475,7 +6500,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                but its not finished.  Doesn't really matter as instruction
                is on PPC, MIPS and ARM - none of which we support. (markro)
             */
-            if (kvasir_with_dyncomp) {
+            if (do_dyncomp) {
                 if (st->Ist.LLSC.storedata) {
                     // it's a Store-Conditional
                     do_shadow_STle_DC( &dce, st->Ist.LLSC.addr, st->Ist.LLSC.storedata);
