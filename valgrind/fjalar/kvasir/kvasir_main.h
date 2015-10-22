@@ -195,6 +195,11 @@ Bool dyncomp_no_var_leader;
 Bool dyncomp_no_val_leader;
 Bool dyncomp_no_path_compression;
 
+// Define MAX_DEBUG_INFO to turn on all sorts of
+// debugging printouts.  WARNING: you will get
+// a LOT of data.
+// #define MAX_DEBUG_INFO 1
+
 #define DPRINTF(...) do { if (kvasir_print_debug_info) \
       printf(__VA_ARGS__); } while (0)
 

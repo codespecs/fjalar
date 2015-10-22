@@ -148,20 +148,41 @@ static __inline__ void set_tag ( Addr a, UInt tag )
     primary_tag_map[PM_IDX(a)] = new_tag_array;
     n_primary_tag_map_init_entries++;
   }
+#ifndef MAX_DEBUG_INFO
   if (dyncomp_print_trace_all) {
     DYNCOMP_TPRINTF("[DynComp] set_tag: %u for loc: %p\n", tag, (void *)a);
   }
+#else
+  printf("[DynComp] set_tag: %u for loc: %p\n", tag, (void *)a);
+#endif
   primary_tag_map[PM_IDX(a)][SM_OFF(a)] = tag;
 }
 
+#ifndef MAX_DEBUG_INFO
 static __inline__ UInt get_tag ( Addr a )
 {
   if (IS_SECONDARY_TAG_MAP_NULL(a)) {
     return 0; // 0 means NO tag for that byte
   }
-
   return primary_tag_map[PM_IDX(a)][SM_OFF(a)];
 }
+#else
+static __inline__ UInt get_tag ( Addr a )
+{
+  UInt tag;
+  Addr tid = VG_(get_IP)(VG_(get_running_tid)());
+  const HChar *eip_info;
+  eip_info = VG_(describe_IP)(tid, NULL);
+
+  if (IS_SECONDARY_TAG_MAP_NULL(a)) {
+    tag = 0; // 0 means NO tag for that byte
+  } else {
+    tag = primary_tag_map[PM_IDX(a)][SM_OFF(a)];
+  }
+  printf("[DynComp] Fetching tag %d for %p at %s\n", tag, (void*)a, eip_info);
+  return tag;
+}
+#endif
 
 // Clear all tags for all bytes in range [a, a + len)
 static __inline__ void clear_all_tags_in_range( Addr a, SizeT len ) {
@@ -202,12 +223,18 @@ static __inline__ UInt grab_fresh_tag(void) {
   }
 
   totalNumTagsAssigned++;
+#ifndef MAX_DEBUG_INFO
   if (dyncomp_print_trace_all) {
+#endif
     Addr tid = VG_(get_IP)(VG_(get_running_tid)());
     const HChar *eip_info;
     eip_info = VG_(describe_IP)(tid, NULL);
+#ifndef MAX_DEBUG_INFO
     DYNCOMP_TPRINTF("[DynComp] Creating fresh tag %d at %s\n", tag, eip_info);
   }
+#else
+    printf("[DynComp] Creating fresh tag %d at %s\n", tag, eip_info);
+#endif
   return tag;
 
 }
@@ -235,9 +262,15 @@ static  __inline__ uf_name val_uf_tag_find(UInt tag) {
 static __inline__ UInt val_uf_find_leader(UInt tag) {
   uf_name canonical = val_uf_tag_find(tag);
   if (canonical) {
+#ifdef MAX_DEBUG_INFO
+    printf("[DynComp] Leader of %d is %d\n", tag, canonical->tag);
+#endif
     return canonical->tag;
   }
   else {
+#ifdef MAX_DEBUG_INFO
+    printf("[DynComp] Leader of %d is %d\n", tag, 0);
+#endif
     return 0;
   }
 }

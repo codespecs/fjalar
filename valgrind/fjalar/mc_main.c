@@ -63,19 +63,23 @@
 #include "pub_tool_tooliface.h"
 #include "pub_tool_threadstate.h"
 
-#include "mc_include.h"
-#include "memcheck.h"   /* for client requests */
-
 #include "kvasir/kvasir_main.h"
 #include "kvasir/dyncomp_main.h"
 #include "fjalar_main.h"
+
+#include "mc_include.h"
+#include "memcheck.h"   /* for client requests */
 
 Bool kvasir_with_dyncomp; // PG - pgbovine - dyncomp
 
 /* Set to 1 to do a little more sanity checking */
 #define VG_DEBUG_MEMORY 0
 
-#define DEBUG(fmt, args...) //printf(fmt, ## args)
+#ifdef MAX_DEBUG_INFO
+#define DEBUG(fmt, args...) printf(fmt, ## args)
+#else
+#define DEBUG(fmt, args...)
+#endif
 
 static void ocache_sarp_Set_Origins ( Addr, UWord, UInt ); /* fwds */
 static void ocache_sarp_Clear_Origins ( Addr, UWord ); /* fwds */
@@ -752,7 +756,7 @@ UChar extract_vabits4_from_vabits8 ( Addr a, UChar vabits8 )
 static INLINE
 void set_vabits2 ( Addr a, UChar vabits2 )
 {
-   DEBUG("set_vabits2 @: %p, %x\n", (void *)a, vabits2);
+   //DEBUG("set_vabits2 @: %p, %x\n", (void *)a, vabits2);
    SecMap* sm       = get_secmap_for_writing(a);
    UWord   sm_off   = SM_OFF(a);
    insert_vabits2_into_vabits8( a, vabits2, &(sm->vabits8[sm_off]) );
@@ -783,7 +787,7 @@ UChar get_vabits8_for_aligned_word32 ( Addr a )
 static INLINE
 void set_vabits8_for_aligned_word32 ( Addr a, UChar vabits8 )
 {
-   DEBUG("set_vabits8 @: %p, %x\n", (void *)a, vabits8);
+   //DEBUG("set_vabits8 @: %p, %x\n", (void *)a, vabits8);
    SecMap* sm       = get_secmap_for_writing(a);
    UWord   sm_off   = SM_OFF(a);
    sm->vabits8[sm_off] = vabits8;
@@ -1131,7 +1135,7 @@ static void set_sec_vbits8(Addr a, UWord vbits8)
    Int          i, amod  = a % BYTES_PER_SEC_VBIT_NODE;
    SecVBitNode* n        = VG_(OSetGen_Lookup)(secVBitTable, &aAligned);
 
-   DEBUG("set_sec_vbits8 @: %p, %lx\n", (void *)a, vbits8);
+   //DEBUG("set_sec_vbits8 @: %p, %lx\n", (void *)a, vbits8);
 
    // Shouldn't be fully defined or fully undefined -- those cases shouldn't
    // make it to the secondary V bits table.
@@ -3053,6 +3057,7 @@ static void VG_REGPARM(1) mc_new_mem_stack_8(Addr new_SP)
 {
   CHECK_SP(new_SP) /* // PG - pgbovine */
    PROF_EVENT(111, "new_mem_stack_8");
+   DEBUG("mc_new_mem_stack_8(%p)\n", (void *)new_SP);
    if (VG_IS_8_ALIGNED( -VG_STACK_REDZONE_SZB + new_SP )) {
       make_aligned_word64_undefined ( -VG_STACK_REDZONE_SZB + new_SP );
    } else if (VG_IS_4_ALIGNED( -VG_STACK_REDZONE_SZB + new_SP )) {

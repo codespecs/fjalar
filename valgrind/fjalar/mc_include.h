@@ -271,6 +271,10 @@ HChar* MC_(event_ctr_name)[N_PROF_EVENTS];
         MC_(event_ctr_name)[ev] = (name);                    \
    } while (False);
 
+#elif MAX_DEBUG_INFO
+
+#  define PROF_EVENT(ev, name) printf("Event: %d, %s\n", ev, name)
+
 #else
 
 #  define PROF_EVENT(ev, name) /* */

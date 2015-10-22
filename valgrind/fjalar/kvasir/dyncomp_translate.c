@@ -134,6 +134,7 @@ void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
    /* Do a plain shadow Put. */
    // PG - Remember the new layout in ThreadArchState
    //      which requires (4 * offset) + (2 * base size)
+   //printf("PUT_DC offset: %d, %d, %d\n", offset, dce->layout->total_sizeB, ((4*offset)+(3*dce->layout->total_sizeB)));
    stmt_DC('V',  dce,
          IRStmt_Put( (4 * offset) + (3 * dce->layout->total_sizeB), vatom ) );
 }
@@ -198,6 +199,7 @@ IRExpr* shadow_GET_DC ( DCEnv* dce, Int offset, IRType ty )
 	       ((UInt)offset <  offsetof(VexGuestArchState, guest_FPREG)
 		+ 8 * sizeof(ULong))));
 
+   //printf("GET_DC offset: %d, %d, %d\n", offset, dce->layout->total_sizeB, ((4*offset)+(3*dce->layout->total_sizeB)));
    return IRExpr_Get( (4 * offset) + (3 * dce->layout->total_sizeB),
                       Ity_Word ); // Tags are word-sized
 }

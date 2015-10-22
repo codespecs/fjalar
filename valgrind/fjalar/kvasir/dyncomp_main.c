@@ -402,7 +402,6 @@ DYNCOMP_TPRINTF("MLR debug val_uf_union_tags_in_range addr=%p, tag=%u\n", (void 
     }
     // Find out the canonical tag
     canonicalTag = (dyncomp_no_val_leader)?tagToMerge:val_uf_find_leader(tagToMerge);
-    //canonicalTag = val_uf_find_leader(tagToMerge);
 
     DYNCOMP_TPRINTF("[DynComp] (above) val_uf_union_tags_in_range(%p, %p) canonicalTag=%u\n",
                   (void *)a, (void *)(a+len), canonicalTag);
@@ -570,7 +569,7 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
     return 0;
   }
   else {
-    DYNCOMP_TPRINTF("[DynComp-m4] Calling val_uf_tag_union\n");
+    DYNCOMP_TPRINTF("[DynComp-m4] Calling val_uf_tag_union but return 0\n");
     val_uf_tag_union(tag1, tag2);
     return 0;
   }
