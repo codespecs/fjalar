@@ -41,6 +41,7 @@ uf_name uf_find(uf_object *object) {
   return root;
 }
 
+// parent might not be NULL; should we free it? (if so, check for ourself)
 void uf_make_set(uf_object *new_object, unsigned int t) {
   new_object->parent = new_object;
   new_object->rank = 0;

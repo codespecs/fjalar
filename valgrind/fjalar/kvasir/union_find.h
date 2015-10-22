@@ -25,9 +25,9 @@
 
 typedef struct _uf_object uf_object;
 
-// 12 bytes total
+// 12/16 bytes total
 struct _uf_object {
-  uf_object* parent;         // 4 bytes
+  uf_object* parent;         // 4/8 bytes
   // The tag which corresponds to this uf_object
   // (0 means invalid tag)
   unsigned int tag;          // 4 bytes
