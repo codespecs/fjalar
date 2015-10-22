@@ -40,6 +40,7 @@
 #include "main_util.h"
 #include "host_generic_regs.h"
 #include "host_amd64_defs.h"
+#include "pub_tool_debuginfo.h"
 
 
 /* --------- Registers. --------- */
@@ -1079,6 +1080,10 @@ void ppAMD64Instr ( const AMD64Instr* i, Bool mode64 )
                     i->Ain.Call.regparms );
          ppRetLoc(i->Ain.Call.rloc);
          vex_printf("] 0x%llx", i->Ain.Call.target);
+         const HChar *fnname;
+         Bool ok = VG_(get_fnname)(i->Ain.Call.target, &fnname);
+         if (!ok) fnname = "???";
+         vex_printf(" %s", fnname);
          break;
 
       case Ain_XDirect:

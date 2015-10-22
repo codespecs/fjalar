@@ -923,6 +923,7 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
                 vta->disp_cp_chain_me_to_fastEP,
                 vta->disp_cp_xindir,
                 vta->disp_cp_xassisted );
+/*
       if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM)) {
          for (k = 0; k < j; k++)
             if (insn_bytes[k] < 16)
@@ -931,6 +932,7 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
                vex_printf("%x ", (UInt)insn_bytes[k]);
          vex_printf("\n\n");
       }
+ */
       if (UNLIKELY(out_used + j > vta->host_bytes_size)) {
          vexSetAllocModeTEMP_and_clear();
          vex_traceflags = 0;
