@@ -595,4 +595,20 @@ valgrind/fjalar/rundoxy
 # Ignore shell scripts for compiling fjalar
 valgrind/fjalar/*.sh
 
+# Documentation
+valgrind-merge.aux
+valgrind-merge.cp
+valgrind-merge.cps
+valgrind-merge.fn
+valgrind-merge.fns
+valgrind-merge.html
+valgrind-merge.info
+valgrind-merge.ky
+valgrind-merge.log
+valgrind-merge.pdf
+valgrind-merge.pg
+valgrind-merge.toc
+valgrind-merge.tp
+valgrind-merge.vr
+
 # syntax: regexp

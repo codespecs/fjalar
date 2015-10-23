@@ -11,6 +11,7 @@ help:
 	@echo " clean         -- remove basic generated files"
 	@echo " very-clean    -- remove (most) all generated files"
 	@echo " hg-update     -- add/remove files as result of Valgrind merge"
+	@echo " doc           -- build the valgrind-merge documentation"
 	@echo " "
 
 build:
@@ -53,4 +54,18 @@ hg-update:
 	if [ $$? -eq 0 ]; then \
 	  echo remove `grep '^\+\+\+.*1969\-12\-31' ../memcheck.patch| cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-new/valgrind/g'`; \
 	fi
+
+doc: html pdf
+
+html: valgrind-merge.html
+
+valgrind-merge.html: valgrind-merge.texinfo
+	makeinfo --html --no-split $<
+	# Fixup 'bad' href inserted by makeinfo.
+	perl -pi -e 's|dir.html#Top|index.html|;' $@
+
+pdf: valgrind-merge.pdf
+
+valgrind-merge.pdf: valgrind-merge.texinfo
+	makeinfo --pdf $<
 

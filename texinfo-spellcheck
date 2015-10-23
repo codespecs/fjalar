@@ -1,0 +1,17 @@
+#! /bin/sh
+
+# texinfo-spellcheck
+# argument: a texinfo file
+# passed to hunspell for spell checking.
+
+# grab the input filename
+input=$1.texinfo
+
+# any additional arguments are to be passed to hunspell
+shift
+
+# -u switch to hunspell is undocumented and subject to change,
+# but gives a line number whereas -l does not.
+
+cat $input | hunspell -u -p texinfo.dict "$@"
+
