@@ -194,8 +194,9 @@ cd $INV/daikon
 make very-clean
 @end example
 
-In addition, we don't want to continue to propagate deleted files.
-You should run the following command to get a list of
+In a later step, we will add any new files found to the Git repository.
+We do not want to add any temporary files still present in the current
+directories. The following command will get a list of
 all unknown (not tracked) files.  Review the list and in most cases
 you will want to delete the file(s).
 
@@ -517,31 +518,33 @@ guidelines on supporting new VEX instructions.
 @node Overview
 @section Overview
 
-[TODO: incorporate this text.]
 The GNU Binutils are completely independent of Valgrind and have their
 own home page (@uref{http://www.gnu.org/software/binutils/})
 and release site (@uref{http://ftp.gnu.org/gnu/binutils/}).
 While the majority of this document discusses how to update Valgrind,
-there is a later chapter on updating the @command{readelf} code from Binutils.
+this chapter describes how to update the @command{readelf} code from Binutils.
 For ease of verification, it is recommended that you do not update Valgrind
 and Binutils at the same time.
 
 
-The GNU Binutils (@uref{http://www.gnu.org/software/binutils/})
+The GNU Binutils
 are a collection of approximately twenty binary tools.
 We are interested only in @command{readelf}, a tool that displays
 information from an ELF format object file.  Fjalar does not use this
 binary directly, rather a portion of the source code for Fjalar contains
 a modified version of the source used to build @command{readelf}.
 
-As noted in the Introduction, the GNU Binutils are completely
-independent of Valgrind and have their own release site
-Browse to @uref{http://ftp.gnu.org/gnu/binutils/?C=M;O=D} to see the most
-recent release.
+As noted in the Introduction,
+you may browse to @uref{http://ftp.gnu.org/gnu/binutils/?C=M;O=D} to see the
+list of all the versions of Binutils that are available.
 
-This site lists all the versions of Binutils that are available. If you
-click on @command{Last modified} you will see the releases sorted by
-date. Select the most recent version and download the tar file to
+UNDONE: the "Last Modified" label is now "Date Modified" and no longer
+a sortable field.
+
+If you click on @command{Last modified} you will see the releases sorted by
+date.
+
+Select the most recent version and download the tar file to
 your machine.  After unpacking, you will have a directory structure
 whose root is @file{binutils-<version>}.
 To complete the update process, you will need a copy of both the current
@@ -638,7 +641,7 @@ review the diffs in the previous versions as the new diffs should be similar.
 Again, a visual merge tool can make this process easier.
 
 
-Update ``export BINUTILS_VERSION='' line in @file{fjalar/valgrind/REVISION}.
+Finally, update the ``export BINUTILS_VERSION='' line in @file{fjalar/valgrind/REVISION}.
 
 
 @node Compiling and Testing
