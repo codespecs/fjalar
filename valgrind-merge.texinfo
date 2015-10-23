@@ -536,14 +536,7 @@ a modified version of the source used to build @command{readelf}.
 
 As noted in the Introduction,
 you may browse to @uref{http://ftp.gnu.org/gnu/binutils/?C=M;O=D} to see the
-list of all the versions of Binutils that are available.
-
-UNDONE: the "Last Modified" label is now "Date Modified" and no longer
-a sortable field.
-
-If you click on @command{Last modified} you will see the releases sorted by
-date.
-
+list of all the versions of Binutils that are available, sorted by date.
 Select the most recent version and download the tar file to
 your machine.  After unpacking, you will have a directory structure
 whose root is @file{binutils-<version>}.
