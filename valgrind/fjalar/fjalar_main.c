@@ -50,6 +50,7 @@
 #include "typedata.h"
 #include "vex_common.h"
 #include "kvasir/kvasir_main.h"
+#include "kvasir/dyncomp_main.h"
 
 // Global variables that are set by command-line options
 Bool fjalar_debug = False;
@@ -533,8 +534,8 @@ void enter_function(FunctionEntry* f)
 
   FJALAR_DPRINTF("[enter_function] startPC is: %x, entryPC is: %x, cu_base: %p\n",
                  (UInt)f->startPC, (UInt)f->entryPC,(void *)f->cuBase);
-  FJALAR_DPRINTF("Value of edi: %x, esi: %x, edx: %x, ecx: %x\n",
-      (int)VG_(get_xDI)(tid), (int)VG_(get_xSI)(tid), (int)VG_(get_xDX)(tid), (int)VG_(get_xCX)(tid));
+  FJALAR_DPRINTF("Value of edi: %lx, esi: %lx, edx: %lx, ecx: %lx\n",
+      (long)VG_(get_xDI)(tid), (long)VG_(get_xSI)(tid), (long)VG_(get_xDX)(tid), (long)VG_(get_xCX)(tid));
 
   // Determine the frame pointer for this function using DWARF
   // location lists. This is a "virtual frame pointer" in that it is
@@ -611,6 +612,7 @@ void enter_function(FunctionEntry* f)
       FJALAR_DPRINTF("Faking prolog\n");
       /* Don't know about prolog, so fake its effects, given we know that
          ESP hasn't yet been modified: */
+      // Looks like we never get here for amd64 as -4 is clearly wrong. (10/26/2015)
       frame_ptr = stack_ptr - 4;
     }
   }
@@ -657,12 +659,19 @@ void enter_function(FunctionEntry* f)
   // Let's be conservative in how much we copy over to the Virtual stack. Due to the
   // stack alignment operations in main, we may need  as much as 16 bytes over the above.
   size = local_stack + f->formalParamStackByteSize + sizeof(Addr)*2 + 32;/* plus stuff in caller's*/
+  FJALAR_DPRINTF("local_stack: %p, arg_size: %x\n", (void *)(frame_ptr - f->formalParamLowerStackByteSize),
+                                                    f->formalParamLowerStackByteSize);
+  int delta = stack_ptr - (frame_ptr - f->formalParamLowerStackByteSize);
+  if (delta < 0 )
+      delta = 0;
 
   tl_assert(size >= 0);
   if (size != 0) {
     newEntry->virtualStack = VG_(calloc)("fjalar_main.c: enter_func",  size, sizeof(char));
     newEntry->virtualStackByteSize = size;
     newEntry->virtualStackFPOffset = local_stack;
+
+    clear_all_tags_in_range(stack_ptr - VG_STACK_REDZONE_SZB, VG_STACK_REDZONE_SZB - delta);
 
     VG_(memcpy)(newEntry->virtualStack,
 		(char*)stack_ptr - VG_STACK_REDZONE_SZB, size);

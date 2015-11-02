@@ -46,6 +46,7 @@ static void updateAllVarTypes(void);
 static void processFunctions(void);
 
 int determineFormalParametersStackByteSize(FunctionEntry* f);
+int determineFormalParametersLowerStackByteSize(FunctionEntry* f);
 
 static void extractFormalParameterVars(FunctionEntry* f, function* dwarfFunctionEntry);
 static void extractLocalArrayAndStructVariables(FunctionEntry* f, function* dwarfFunctionEntry);
@@ -1737,6 +1738,9 @@ void initializeFunctionTable(void)
           cur_func_entry->formalParamStackByteSize
             = determineFormalParametersStackByteSize(cur_func_entry);
 
+          cur_func_entry->formalParamLowerStackByteSize
+            = determineFormalParametersLowerStackByteSize(cur_func_entry);
+
           num_functions_added++;
         }
     }
@@ -2384,6 +2388,28 @@ int determineFormalParametersStackByteSize(FunctionEntry* f)
   // of 4". For the moment, live dangerously and see if anything
   // breaks. -SMcC
   return totalByteSize;
+}
+
+
+// Determines the number of bytes needed below the frame pointer in
+// the stack to hold the values of all function formal parameters for
+// a particular function.
+int determineFormalParametersLowerStackByteSize(FunctionEntry* f)
+{
+  VarNode* cur_node;
+  int totalByteSize = 0;
+
+  if(!f){
+    return 0;
+  }
+
+  for (cur_node = f->formalParameters.first;
+       cur_node != NULL;
+       cur_node = cur_node->next)
+    {
+      totalByteSize = MIN(totalByteSize, cur_node->var->byteOffset);
+    }
+  return -totalByteSize;
 }
 
 
