@@ -374,10 +374,9 @@ holding tags that belong in the same set (have the same leader).
 
 
   new_leader = val_uf_find_leader(new_tags_v);
-#ifdef MAX_DEBUG_INFO
-  printf("post_process_for_variable - address: %p, tag: %d, leader: %d, new-tag: %d, new-leader: %d \n",
+  DYNCOMP_TPRINTF("post_process_for_variable - address: %p, tag: %d, leader: %d, new-tag: %d, new-leader: %d \n",
             (void *)a, var_tags_v, leader, new_tags_v, new_leader);
-#endif
+
   if (new_leader && // We don't want to insert 0 tags into the union find structure
       !gengettable(var_uf_map, VoidPtr(new_leader))) {
     var_uf_map_insert_and_make_set(var_uf_map, new_leader);
@@ -442,9 +441,7 @@ void DC_extra_propagation_post_process(DaikonFunctionEntry* funcPtr,
   var_tags_v = var_tags[daikonVarIndex];
   leader = val_uf_find_leader(var_tags_v);
   if (leader != var_tags_v) {
-#ifdef MAX_DEBUG_INFO
-    printf("extra-post_process: %d, %d \n", var_tags_v, leader);
-#endif
+    DYNCOMP_TPRINTF("extra-post_process: %d, %d \n", var_tags_v, leader);
     var_tags[daikonVarIndex] = var_uf_map_union(var_uf_map,
                                                 leader, var_tags_v);
   }
@@ -541,9 +538,7 @@ int DC_get_comp_number_for_var(DaikonFunctionEntry* funcPtr,
         genputtable(g_compNumberMap, VoidPtr(leader), VoidPtr(comp_number));
       }
       DYNCOMP_TPRINTF("[DynComp] Final tag for Function %s Variable %s - %u\n", funcPtr->funcEntry.name, cur_var_name, leader);
-#ifdef MAX_DEBUG_INFO
-      printf("tag: %d, leader1: %d, leader2: %d \n", tag, var_uf_map_find_leader(var_uf_map, tag), leader);
-#endif
+      DYNCOMP_TPRINTF("tag: %d, leader1: %d, leader2: %d \n", tag, var_uf_map_find_leader(var_uf_map, tag), leader);
     }
   }
 

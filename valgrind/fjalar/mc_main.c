@@ -2087,7 +2087,7 @@ void MC_(copy_address_range_state) ( Addr src, Addr dst, SizeT len )
    UChar vabits2, vabits8;
    Bool  aligned, nooverlap;
 
-   DEBUG("MC_(copy_address_range_state)\n");
+   DEBUG("MC_(copy_address_range_state)(%p, %p, %lu)\n", (void *)src, (void *)dst, len);
    PROF_EVENT(50, "MC_(copy_address_range_state)");
 
    if (len == 0 || src == dst)
@@ -2898,6 +2898,7 @@ void make_aligned_word32_noaccess ( Addr a )
 static INLINE void make_aligned_word64_undefined ( Addr a )
 {
    PROF_EVENT(320, "make_aligned_word64_undefined");
+   DEBUG("make_aligned_word64_undefined(%p)\n", (void *)a);
 
 #ifndef PERF_FAST_STACK2
    make_mem_undefined(a, 8);
@@ -2942,6 +2943,7 @@ static INLINE
 void make_aligned_word64_noaccess ( Addr a )
 {
    PROF_EVENT(330, "make_aligned_word64_noaccess");
+   DEBUG("make_aligned_word64_noaccess(%p)\n", (void *)a);
 
 #ifndef PERF_FAST_STACK2
    MC_(make_mem_noaccess)(a, 8);
@@ -3072,6 +3074,7 @@ MAYBE_USED
 static void VG_REGPARM(1) mc_die_mem_stack_8(Addr new_SP)
 {
    PROF_EVENT(121, "die_mem_stack_8");
+   DEBUG("mc_die_mem_stack_8(%p)\n", (void *)new_SP);
    if (VG_IS_8_ALIGNED( -VG_STACK_REDZONE_SZB + new_SP )) {
       make_aligned_word64_noaccess ( -VG_STACK_REDZONE_SZB + new_SP-8 );
    } else if (VG_IS_4_ALIGNED( -VG_STACK_REDZONE_SZB + new_SP )) {
@@ -3172,6 +3175,7 @@ static void VG_REGPARM(1) mc_new_mem_stack_16(Addr new_SP)
 {
   CHECK_SP(new_SP) /* // PG - pgbovine */
    PROF_EVENT(113, "new_mem_stack_16");
+   DEBUG("mc_new_mem_stack_16(%p)\n", (void *)new_SP);
    if (VG_IS_8_ALIGNED( -VG_STACK_REDZONE_SZB + new_SP )) {
       /* Have 8-alignment at +0, hence do 8 at +0 and 8 at +8. */
       make_aligned_word64_undefined ( -VG_STACK_REDZONE_SZB + new_SP );
@@ -3643,6 +3647,7 @@ static void mc_new_mem_stack ( Addr a, SizeT len )
 static void mc_die_mem_stack ( Addr a, SizeT len )
 {
    PROF_EVENT(125, "die_mem_stack");
+   DEBUG("mc_die_mem_stack(%p, %lu)\n", (void *)a, len);
    MC_(make_mem_noaccess) ( -VG_STACK_REDZONE_SZB + a, len );
 }
 
@@ -4616,6 +4621,7 @@ static INLINE
 ULong mc_LOADV64 ( Addr a, Bool isBigEndian )
 {
    PROF_EVENT(200, "mc_LOADV64");
+   DEBUG("mc_LOADV64(%p)\n", (void *)a);
 
 #ifndef PERF_FAST_LOADV
    return mc_LOADVn_slow( a, 64, isBigEndian );
@@ -4663,6 +4669,7 @@ static INLINE
 void mc_STOREV64 ( Addr a, ULong vbits64, Bool isBigEndian )
 {
    PROF_EVENT(210, "mc_STOREV64");
+   DEBUG("mc_STOREV64(%p, %llu)\n", (void *)a, vbits64);
 
 #ifndef PERF_FAST_STOREV
    // (comment added 2009)  
@@ -4782,6 +4789,7 @@ static INLINE
 void mc_STOREV32 ( Addr a, UWord vbits32, Bool isBigEndian )
 {
    PROF_EVENT(230, "mc_STOREV32");
+   DEBUG("mc_STOREV32(%p, %lu)\n", (void *)a, vbits32);
 
 #ifndef PERF_FAST_STOREV
    mc_STOREVn_slow( a, 32, (ULong)vbits32, isBigEndian );
