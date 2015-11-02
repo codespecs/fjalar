@@ -6154,38 +6154,41 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
    // Silence GCC warnings - rudd
    (void) closure; (void) vge;
 
-// The following change improves some test cases, but degrades others.
-// I have made a change to the Valgrind core to recognize the new
-// internal function __GI_mempcpy and this seems to make similar
-// improvements.  Hence, I am turning off this code for now until
-// the equivalence set differences are better understood.
-// mlr 10/09/2015
-//
-// /* The update to libc-2.21 and ld-2.21 started causing spurious
-//    results with DynComp. Large sections of libc data were being
-//    assigned to the same comprability set - presumablby, due to
-//    changes in the loader and libc_memalign. This would, in turn,
-//    cause unrelated user variables to be assigned to the same
-//    comparability set.  Since, for DynComp purposes, nothing that
-//    happens prior to entering 'main' is of any interest, we now
-//    detect these (primarily) loader code blocks and do not dyncomp
-//    instrument them.   mlr 9/24/2015
-//  */
-//
-// static Bool start_seen = False;
-// if (!start_seen) {
-//    const HChar *fnname;
-//    Bool ok = VG_(get_fnname)(closure->nraddr, &fnname);
-//    if (!ok) fnname = "???";
-//    DPRINTF("fnname: %s\n", fnname);
-//
-//    if (!(VG_(strcmp)(fnname, "main"))) {
-//       start_seen = True;
-//    }
-// }
-// Bool do_dyncomp = kvasir_with_dyncomp && start_seen;
+   /* The update to libc-2.21 and ld-2.21 started causing spurious
+      results with DynComp. Large sections of libc data were being
+      assigned to the same comprability set - presumablby, due to
+      changes in the loader and libc_memalign. This would, in turn,
+      cause unrelated user variables to be assigned to the same
+      comparability set.  Thus, we now skip DynComp processing for
+      any block that is part of the loader.  mlr 10/30/2015
+    */
 
-   Bool do_dyncomp = kvasir_with_dyncomp;
+   if (closure->nraddr != closure->readdr) {
+      DYNCOMP_DPRINTF("Redirect: %p => %p\n", (void*)closure->nraddr, (void*)closure->readdr);
+   }
+
+   static Bool first_time = True;
+   static const HChar* loader_name = "GaRbAgE";
+   Bool do_dyncomp = False;
+
+   if (first_time) {
+      DebugInfo* di = VG_(find_DebugInfo)(closure->readdr);
+      tl_assert(di);
+      loader_name = VG_(DebugInfo_get_filename)(di);
+      DYNCOMP_DPRINTF("loader_name: %s\n", loader_name);
+      first_time = False;
+   } else {
+      const HChar* objname = "UNKNOWN_OBJECT";
+      DebugInfo* di = VG_(find_DebugInfo)(closure->readdr);
+      if (di) {
+         objname = VG_(DebugInfo_get_filename)(di);
+      }
+      DYNCOMP_DPRINTF("objname: %s\n", objname);
+      // if its not the loader, go ahead and process
+      if (VG_(strcmp)(objname, loader_name)) {
+         do_dyncomp = kvasir_with_dyncomp;
+      }
+   }
 
    if (gWordTy != hWordTy) {
       /* We don't currently support this case. */
