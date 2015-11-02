@@ -1025,6 +1025,7 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
 
 
   if(pValue)
+    // Note that we ignore var type and always print (void*) bytes.
     DPRINTF("Value is %p\n",
             (void*)(*(Addr *)pValue));
 
