@@ -266,8 +266,6 @@ static void newShadowTmpV ( MCEnv* mce, IRTemp orig )
    by constants, and temps are shadowed by the corresponding shadow
    temporary. */
 
-typedef  IRExpr  IRAtom;
-
 /* (used for sanity checks only): is this an atom which looks
    like it's from original code? */
 static Bool isOriginalAtom ( MCEnv* mce, IRAtom* a1 )
