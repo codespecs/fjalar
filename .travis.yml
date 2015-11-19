@@ -1,6 +1,6 @@
 language: c
 
-script: travis_wait 120 ./.travis-build.sh
+script: ./.travis-build.sh
 
 # need binutils-dev to get bfd.h
 addons:
