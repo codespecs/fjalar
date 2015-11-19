@@ -1,0 +1,7 @@
+language: c
+
+script: travis_wait 120 ./.travis-build.sh
+
+notifications:
+  email:
+    - markro@cs.washington.edu
