@@ -1,3 +1,3 @@
 #!/bin/bash -v
 
-make build
+make build test daikon-test
