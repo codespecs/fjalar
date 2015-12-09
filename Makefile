@@ -7,7 +7,7 @@ help:
 	@echo "Targets:"
 	@echo " build         -- build all of valgrind and fjalar (includes kvasir)"
 	@echo " test          -- build and run valgrind regression tests"
-	@echo "               -- see the Daikon tree for fjalar/kvasir regression tests"
+	@echo " daikon-test   -- run Fjalar/Kvasir regression tests from Daikon"
 	@echo " clean         -- remove basic generated files"
 	@echo " very-clean    -- remove (most) all generated files"
 	@echo " hg-update     -- add/remove files as result of Valgrind merge"
@@ -19,6 +19,13 @@ build:
 
 test:
 	cd valgrind && $(MAKE) regtest
+
+daikon-test: ../daikon
+	$(MAKE) -C ../daikon compile daikon.jar kvasir
+	$(MAKE) -C ../daikon/tests/kvasir-tests clean-all regression-tests
+
+../daikon:
+	cd .. && git clone git@github.com:codespecs/daikon.git
 
 clean:
 	cd valgrind && $(MAKE) clean
@@ -39,17 +46,17 @@ hg-update:
 	if [ $$? -eq 0 ]; then \
 	  echo hg add `grep '^\-\-\-.*1969\-12\-31' ../coregrind.patch | cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-old/valgrind/g'`; \
 	fi
-	
+
 	@grep -q '^Only in valgrind-old' ../coregrind.patch; \
 	if [ $$? -eq 0 ]; then \
 	  echo hg remove `grep '^Only in valgrind-old' ../coregrind.patch | perl -p -e 's/: /\//g' | cut -d ' ' --fields=3 | perl -p -e 's/^valgrind-old/valgrind/g'`; \
 	fi
-	
+
 	@grep -q '^\-\-\-.*1969\-12\-31' ../memcheck.patch; \
 	if [ $$? -eq 0 ]; then \
 	  echo add `grep '^\-\-\-.*1969\-12\-31' ../memcheck.patch| cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-old/valgrind/g'`; \
 	fi
-	
+
 	@grep -q '^\+\+\+.*1969\-12\-31' ../memcheck.patch; \
 	if [ $$? -eq 0 ]; then \
 	  echo remove `grep '^\+\+\+.*1969\-12\-31' ../memcheck.patch| cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-new/valgrind/g'`; \
@@ -61,7 +68,7 @@ html: valgrind-merge.html
 
 valgrind-merge.html: valgrind-merge.texinfo
 	makeinfo --html --no-split $<
-	# Fixup 'bad' href inserted by makeinfo.
+# Fixup 'bad' href inserted by makeinfo.
 	perl -pi -e 's|dir.html#Top|index.html|;' $@
 
 pdf: valgrind-merge.pdf
