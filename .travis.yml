@@ -17,6 +17,9 @@ before_install:
 #     packages:
 #     # need binutils-dev to get bfd.h
 #     - binutils-dev
+# # On Travis-CI's Ubuntu 12.04 infrastructure, makeinfo does not take the
+# # --split=chapter command-line argument but texi2html does.
+# env: TEXI2HTML=texi2html
 
 notifications:
   email:
