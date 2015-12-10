@@ -638,6 +638,9 @@ valgrind/drd/tests/trylock.stderr.diff
 valgrind/drd/tests/trylock.stderr.out
 valgrind/exp-sgcheck/tests/hackedbz2.stderr.diff-glibc28-amd64
 valgrind/exp-sgcheck/tests/hackedbz2.stderr.out
+valgrind/gdbserver_tests/gdb.eval
+valgrind/gdbserver_tests/gdb.pic
+valgrind/gdbserver_tests/gdb.step
 valgrind/gdbserver_tests/hginfo.stderrB.diff
 valgrind/gdbserver_tests/hginfo.stderrB.out
 valgrind/gdbserver_tests/hgtls.stdoutB.diff
@@ -672,6 +675,8 @@ valgrind/gdbserver_tests/nlvgdbsigqueue.stderr.diff
 valgrind/gdbserver_tests/nlvgdbsigqueue.stderr.out
 valgrind/gdbserver_tests/nlvgdbsigqueue.stdoutB.diff
 valgrind/gdbserver_tests/nlvgdbsigqueue.stdoutB.out
+valgrind/gdbserver_tests/vgdb.invoker
+valgrind/gdbserver_tests/vgdb.stderr.out
 valgrind/helgrind/tests/tc09_bad_unlock.stderr.diff
 valgrind/helgrind/tests/tc09_bad_unlock.stderr.out
 valgrind/helgrind/tests/tc12_rwl_trivial.stderr.diff
