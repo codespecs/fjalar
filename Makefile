@@ -25,7 +25,7 @@ daikon-test: ../daikon
 	$(MAKE) -C ../daikon/tests/kvasir-tests clean-all regression-tests
 
 ../daikon:
-	cd .. && git clone git@github.com:codespecs/daikon.git
+	cd .. && git clone https://github.com/codespecs/daikon.git
 
 clean:
 	cd valgrind && $(MAKE) clean
