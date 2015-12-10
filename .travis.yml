@@ -12,12 +12,13 @@ before_install:
 
 ## Version for container-based infrastructure.
 ## Commented out because Ubuntu 12.04 Precise is too old and gives spurious test failures.
-# # need binutils-dev to get bfd.h
 # addons:
 #   apt:
 #     packages:
+#     # need binutils-dev to get bfd.h
 #     - binutils-dev
 
 notifications:
   email:
     - markro@cs.washington.edu
+    - mernst@cs.washington.edu
