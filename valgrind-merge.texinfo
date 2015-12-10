@@ -22,7 +22,7 @@
 @top Merging newer versions of Valgrind into Fjalar
 
 This document describes how to update Fjalar, Kvasir, and DynComp
-with newer versions of Valgrind and VEX.
+with newer versions of Valgrind, VEX, and readelf.
 
 @menu
 * Introduction::
@@ -66,7 +66,7 @@ stable, but the disadvantages of going longer between bug fixes and making
 each merge larger and more difficult.)
 
 Fjalar also contains code derived from the GNU Binutils
-tool @command{readelf}.  @xref{Updating Readelf from Binutils} tells how
+tool @command{readelf}.  @xref{Updating Readelf from Binutils}
 to update Fjalar when a new version of Binutils is released.
 
 @menu
@@ -510,8 +510,8 @@ guidelines on supporting new VEX instructions.
 
 @menu
 * Overview::
-* Creating the binutil patch and diff files::
-* Merging the binutil changes::
+* Creating the binutils patch and diff files::
+* Merging the binutils changes::
 @end menu
 
 
@@ -546,8 +546,8 @@ Also, the instructions assume that the Binutils directories are at the
 root of your home directory.
 
 
-@node Creating the binutil patch and diff files
-@section Creating the binutil patch and diff files
+@node Creating the binutils patch and diff files
+@section Creating the binutils patch and diff files
 
 First, we create patch files showing what the Binutils
 maintainers have
@@ -555,23 +555,27 @@ changed since the last time the readelf code was merged into Fjalar.
 There are two patch files: one for the include files and one for the
 actual readelf files.
 
-For the example instructions that follow, substitute the current version
-for @file{binutils-old}, e.g. @file{binutils-2.24}
-and the new version for @file{binutils-new}, e.g. @file{binutils-2.25}.
-
 @c Alternately, could work from the binutils git repository:
 @c   git clone git://sourceware.org/git/binutils-gdb.git
 
 
 @example
 # Adjust these first two lines as necessary
-export BUOLD=$HOME/binutils-2.24
-export BUNEW=$HOME/binutils-2.25
-cd ~
-diff -ur $BUOLD/include $BUNEW/include >> ~/include.patch
+export BUOLDVER=2.25
+export BUNEWVER=2.25.1
+
+export BUOLD=binutils-$BUOLDVER
+export BUNEW=binutils-$BUNEWVER
+mkdir -p ~/tmp
+cd ~/tmp
+wget http://ftp.gnu.org/gnu/binutils/binutils-$BUOLDVER.tar.gz
+tar xzf binutils-$BUOLDVER.tar.gz
+wget http://ftp.gnu.org/gnu/binutils/binutils-$BUNEWVER.tar.gz
+tar xzf binutils-$BUNEWVER.tar.gz
+diff -ur $BUOLD/include $BUNEW/include > include.patch
 diff -u  $BUOLD/libiberty/dwarfnames.c \
-         $BUNEW/libiberty/dwarfnames.c >> ~/include.patch
-diff -ur $BUOLD/binutils $BUNEW/binutils > ~/binutils.patch
+         $BUNEW/libiberty/dwarfnames.c >> include.patch
+diff -ur $BUOLD/binutils $BUNEW/binutils > binutils.patch
 @end example
 
 Next, we create diff files comparing the old Binutils to the current
@@ -582,13 +586,13 @@ largest and most complicated files.
 
 @example
 cd $INV/fjalar/valgrind/fjalar
-diff -ub $BUOLD/binutils/dwarf.c dwarf.c > dwarf.diff
-diff -ub $BUOLD/binutils/readelf.c readelf.c > readelf.diff
+diff -ub ~/tmp/$BUOLD/binutils/dwarf.c dwarf.c > dwarf-binutils-vs-fjalar.diff
+diff -ub ~/tmp/$BUOLD/binutils/readelf.c readelf.c > readelf-binutils-vs-fjalar.diff
 @end example
 
 
-@node Merging the binutil changes
-@section Merging the binutil changes
+@node Merging the binutils changes
+@section Merging the binutils changes
 
 Now we can merge the changes by applying the patch files.  @file{include.patch}
 should apply with few, if any, conflicts.
@@ -602,8 +606,8 @@ a dry run.
 
 @example
 cd $INV/fjalar/valgrind/fjalar
-patch -p1 -lu -f <~/include.patch --dry-run
-patch -p2 -lu -f -F3 <~/binutils.patch --dry-run
+patch -p1 -lu -f < ~/tmp/include.patch --dry-run
+patch -p2 -lu -f -F3 < ~/tmp/binutils.patch --dry-run
 @end example
 
 If the patch fails (other than as noted above), it might be indicative
@@ -613,8 +617,8 @@ When you are ready to apply the patch run:
 
 @example
 cd $INV/fjalar/valgrind/fjalar
-patch -p1 -lu -f <~/include.patch
-patch -p2 -lu -f -F3 <~/binutils.patch
+patch -p1 -lu -f < ~/tmp/include.patch
+patch -p2 -lu -f -F3 < ~/tmp/binutils.patch
 @end example
 
 Handle any conflicts. They are listed in the patch output, or run this
