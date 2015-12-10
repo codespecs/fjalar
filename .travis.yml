@@ -2,11 +2,21 @@ language: c
 
 script: ./.travis-build.sh
 
-# need binutils-dev to get bfd.h
-addons:
-  apt:
-    packages:
-    - binutils-dev
+# Version for Ubuntu 14.04 Trusty.
+sudo: required
+dist: trusty
+before_install:
+  - sudo apt-get update -qq
+  # need binutils-dev to get bfd.h
+  - sudo apt-get install -qq binutils-dev
+
+## Version for container-based infrastructure.
+## Commented out because Ubuntu 12.04 Precise is too old and gives spurious test failures.
+# # need binutils-dev to get bfd.h
+# addons:
+#   apt:
+#     packages:
+#     - binutils-dev
 
 notifications:
   email:
