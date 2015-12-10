@@ -8,7 +8,7 @@ dist: trusty
 before_install:
   - sudo apt-get update -qq
   # need binutils-dev to get bfd.h
-  - sudo apt-get install -qq binutils-dev makeinfo
+  - sudo apt-get install -qq binutils-dev texinfo
 
 ## Version for container-based infrastructure.
 ## Commented out because Ubuntu 12.04 Precise is too old and gives spurious test failures.
