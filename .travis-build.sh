@@ -7,12 +7,11 @@ make build
 
 make doc
 
-## Temporarily remove "make test", until Valgrind changes from upstream are
-## integrated.  Even after that, Valgrind doesn't pass its own tests on
-## Ubuntu 12.04 or 14.04 which is used by Travis.  So we should have a
-## version of the target that, given the current operating system, compares
-## the expected failures (those suffered by "make test" on a fresh Valgrind
-## installation) to the actual observed failures.
+## Valgrind doesn't pass its own tests ("make test").  So we should have a
+## version of the target that determines the current operating system,
+## compares the observed failures to the expected failures (those suffered
+## by "make test" on a fresh Valgrind installation on that OS), and the
+## overall target only fails if the set of failing tests is different.
 # make test
 
 ## Kvasir does not currently pass all its tests on Ubuntu 14.04 which is
