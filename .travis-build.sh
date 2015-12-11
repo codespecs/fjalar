@@ -21,3 +21,7 @@ make doc
 ## daikon-test" passes.
 # make daikon-test
 
+# TEMP-daikon-test is a temporary substitute for daikon-test that runs
+# a subset of kvasir-tests.  This is to verify the general test process.
+make TEMP-daikon-test
+

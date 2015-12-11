@@ -7,7 +7,7 @@ sudo: required
 dist: trusty
 before_install:
   - sudo apt-get update -qq
-  # need binutils-dev to get bfd.hq
+  # need binutils-dev to get bfd.h
   # need texinfo and texlive for makeinfo program
   - sudo apt-get install -qq binutils-dev texinfo texlive
 
