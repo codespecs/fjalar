@@ -26,7 +26,7 @@ daikon-test: ../daikon
 
 TEMP-daikon-test: ../daikon
 	$(MAKE) -C ../daikon compile daikon.jar kvasir
-#	$(MAKE) -C ../daikon/tests/kvasir-tests clean-all regression-tests
+	$(MAKE) -C ../daikon/tests/kvasir-tests clean-all TEMP-regression-tests
 
 ../daikon:
 	cd .. && git clone https://github.com/codespecs/daikon.git
