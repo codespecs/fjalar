@@ -1,5 +1,10 @@
 #!/bin/bash -v
 
+#get some system info for debugging
+cat /proc/version
+gcc --version
+ls -l /lib/x86_64-linux-gnu/libc-*
+
 # TODO: The tests ought to work even if $DAIKONDIR is not set.
 export DAIKONDIR=`pwd`/../daikon
 
@@ -19,4 +24,8 @@ make doc
 ## as soon as we have improved Kvasir and/or its test suite so that "make
 ## daikon-test" passes.
 # make daikon-test
+
+# TEMP-daikon-test is a temporary substitute for daikon-test that runs
+# a subset of kvasir-tests.  This is to verify the general test process.
+make TEMP-daikon-test
 
