@@ -1,6 +1,9 @@
 #!/bin/bash -v
 
-#get some system info for debugging
+# Fail the whole script if any command fails
+set -e
+
+# Get some system info for debugging.
 cat /proc/version
 gcc --version
 ls -l /lib/x86_64-linux-gnu/libc-*
