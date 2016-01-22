@@ -796,7 +796,7 @@ static dwarf_entry* test;
 // REMEMBER to use VG_(strdup) to make a COPY of the string
 // or else you will run into SERIOUS memory corruption
 // problems when readelf.c frees those strings from memory!!!
-char harvest_name(dwarf_entry* e, const char* str)
+char harvest_name(dwarf_entry* e, const char* str1)
 {
   unsigned long tag;
   if ((e == 0) || (e->entry_ptr == 0))
@@ -806,22 +806,22 @@ char harvest_name(dwarf_entry* e, const char* str)
 
   if (tag_is_enumerator(tag))
     {
-      ((enumerator*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.1", str);
+      ((enumerator*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.1", str1);
       return 1;
     }
   else if (tag_is_collection_type(tag))
     {
-      ((collection_type*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.2", str);
+      ((collection_type*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.2", str1);
       return 1;
     }
   else if (tag_is_member(tag))
     {
-      ((member*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.3", str);
+      ((member*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.3", str1);
       return 1;
     }
   else if (tag_is_function(tag))
     {
-      ((function*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.4",str);
+      ((function*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.4",str1);
 
       if(e->ID == 0x4ce) {
         test = e;
@@ -831,27 +831,27 @@ char harvest_name(dwarf_entry* e, const char* str)
     }
   else if (tag_is_formal_parameter(tag))
     {
-      ((formal_parameter*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.5",str);
+      ((formal_parameter*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.5",str1);
       return 1;
     }
   else if (tag_is_compile_unit(tag))
     {
-      ((compile_unit*)e->entry_ptr)->filename = VG_(strdup)("typedata.c: harv_name.6",str);
+      ((compile_unit*)e->entry_ptr)->filename = VG_(strdup)("typedata.c: harv_name.6",str1);
       return 1;
     }
   else if (tag_is_typedef(tag))
     {
-      ((typedef_type*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.7",str);
+      ((typedef_type*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.7",str1);
       return 1;
     }
   else if (tag_is_variable(tag))
     {
-      ((variable*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.8",str);
+      ((variable*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.8",str1);
       return 1;
     }
   else if (tag_is_namespace(tag))
     {
-      ((namespace_type*)e->entry_ptr)->namespace_name = VG_(strdup)("typedata.c: harv_name.9", str);
+      ((namespace_type*)e->entry_ptr)->namespace_name = VG_(strdup)("typedata.c: harv_name.9", str1);
       return 1;
     }
   else
@@ -861,7 +861,7 @@ char harvest_name(dwarf_entry* e, const char* str)
 // REMEMBER to use VG_(strdup) to make a COPY of the string
 // or else you will run into SERIOUS memory corruption
 // problems when readelf.c frees those strings from memory!!!
-char harvest_mangled_name(dwarf_entry* e, const char* str)
+char harvest_mangled_name(dwarf_entry* e, const char* str1)
 {
   unsigned long tag;
   if ((e == 0) || (e->entry_ptr == 0))
@@ -872,19 +872,19 @@ char harvest_mangled_name(dwarf_entry* e, const char* str)
   if (tag_is_function(tag))
     {
 
-      ((function*)e->entry_ptr)->mangled_name = VG_(strdup)("typedata.c: harv_mangled_name.1",str);
+      ((function*)e->entry_ptr)->mangled_name = VG_(strdup)("typedata.c: harv_mangled_name.1",str1);
       return 1;
     }
   else if (tag_is_variable(tag))
     {
-      ((variable*)e->entry_ptr)->mangled_name = VG_(strdup)("typedata.c: harv_mangled_name.2",str);
+      ((variable*)e->entry_ptr)->mangled_name = VG_(strdup)("typedata.c: harv_mangled_name.2",str1);
       return 1;
     }
   else
     return 0;
 }
 
-char harvest_comp_dir(dwarf_entry* e, const char* str)
+char harvest_comp_dir(dwarf_entry* e, const char* str1)
 {
   unsigned long tag;
   if ((e == 0) || (e->entry_ptr == 0))
@@ -894,7 +894,7 @@ char harvest_comp_dir(dwarf_entry* e, const char* str)
 
   if (tag_is_compile_unit(tag))
     {
-      ((compile_unit*)e->entry_ptr)->comp_dir = VG_(strdup)("typedata.c: harv_comp_dir",str);
+      ((compile_unit*)e->entry_ptr)->comp_dir = VG_(strdup)("typedata.c: harv_comp_dir",str1);
       return 1;
     }
   else
@@ -1003,17 +1003,17 @@ char harvest_data_member_location(dwarf_entry* e, unsigned long value)
     return 0;
 }
 
-char harvest_string(dwarf_entry* e, unsigned long attr, const char* str)
+char harvest_string(dwarf_entry* e, unsigned long attr, const char* str1)
 {
   if ((e == 0) || (e->entry_ptr == 0))
     return 0;
 
   if (attr == DW_AT_name)
-    return harvest_name(e, str);
+    return harvest_name(e, str1);
   else if (attr == DW_AT_comp_dir)
-    return harvest_comp_dir(e, str);
+    return harvest_comp_dir(e, str1);
   else if (attr == DW_AT_MIPS_linkage_name)
-    return harvest_mangled_name(e, str);
+    return harvest_mangled_name(e, str1);
   else
     return 0;
 }

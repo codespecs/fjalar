@@ -229,13 +229,13 @@ returnArrayVariableWithAddr(VarList* varList,
     if (potentialVar->location_expression_size) {
       unsigned int i = 0;
       for(i = 0; i < potentialVar->location_expression_size; i++ ) {
-        dwarf_location *loc  = &(potentialVar->location_expression[i]);
-        unsigned int  op = loc->atom;
+        dwarf_location *dloc  = &(potentialVar->location_expression[i]);
+        unsigned int  op = dloc->atom;
         int reg_val;
 
         if(op == DW_OP_addr) {
           // DWARF supplied address
-          var_loc = loc->atom_offset;
+          var_loc = dloc->atom_offset;
 
         } else if(op == DW_OP_deref) {
           // Dereference result of last DWARF operation
@@ -244,30 +244,30 @@ returnArrayVariableWithAddr(VarList* varList,
 
         } else if((op >= DW_OP_const1u) && (op <= DW_OP_consts)) {
           // DWARF supplied constant
-          var_loc = loc->atom_offset;
+          var_loc = dloc->atom_offset;
 
         } else if((op >= DW_OP_plus) && (op <= DW_OP_plus_uconst)) {
           // Add DWARF supplied constant to value to result of last DWARF operation
-          var_loc += loc->atom_offset;
+          var_loc += dloc->atom_offset;
 
         } else if((op >= DW_OP_reg0) && (op <= DW_OP_reg31)) {
           // Get value located in architectural register
-          reg_val = (*get_reg[loc->atom - DW_OP_reg0])(tid);
-          FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %x\n", dwarf_reg_string[loc->atom - DW_OP_reg0], reg_val);
+          reg_val = (*get_reg[dloc->atom - DW_OP_reg0])(tid);
+          FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %x\n", dwarf_reg_string[dloc->atom - DW_OP_reg0], reg_val);
           var_loc = (Addr)&reg_val;
 
         } else if((op >= DW_OP_breg0) && (op <= DW_OP_breg31)) {
           // Get value pointed to by architectural register
-          reg_val = (*get_reg[loc->atom - DW_OP_breg0])(tid);
-          FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %x\n", dwarf_reg_string[loc->atom - DW_OP_breg0], reg_val);
-          var_loc = reg_val + loc->atom_offset;
-          FJALAR_DPRINTF("\tAdding %lld to the register value for %p\n", loc->atom_offset, (void *)var_loc);
+          reg_val = (*get_reg[dloc->atom - DW_OP_breg0])(tid);
+          FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %x\n", dwarf_reg_string[dloc->atom - DW_OP_breg0], reg_val);
+          var_loc = reg_val + dloc->atom_offset;
+          FJALAR_DPRINTF("\tAdding %lld to the register value for %p\n", dloc->atom_offset, (void *)var_loc);
           tl_assert(var_loc);
 
         } else if(op == DW_OP_fbreg) {
           // Get value located at an offset from the FRAME_BASE.
-          FJALAR_DPRINTF("atom offset: %lld vs. byteOffset: %d\n", loc->atom_offset, potentialVar->byteOffset);
-          var_loc = e->FP + loc->atom_offset;
+          FJALAR_DPRINTF("atom offset: %lld vs. byteOffset: %d\n", dloc->atom_offset, potentialVar->byteOffset);
+          var_loc = e->FP + dloc->atom_offset;
 
         } else {
           // There's a fair number of DWARF operations still unsupported. There is a full list

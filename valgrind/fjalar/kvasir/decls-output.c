@@ -1837,13 +1837,13 @@ int stringArrayLen(char** stringArr,int start, int end)
  char* stringArrayFlatten(char** stringArr, int start, int end)
  {
    int i, str_len = stringArrayLen(stringArr, start, end);
-   char* str = VG_(calloc)("decls-output.c: stringArrayFlatten", str_len, sizeof(char));
+   char* str1 = VG_(calloc)("decls-output.c: stringArrayFlatten", str_len, sizeof(char));
 
    for(i = start; i < end; i++) {
-     VG_(strcat)(str, stringArr[i]);
+     VG_(strcat)(str1, stringArr[i]);
     }
 
-   return str;
+   return str1;
  }
 
 

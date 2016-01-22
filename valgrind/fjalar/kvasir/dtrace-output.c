@@ -141,18 +141,18 @@ static char mapInitToModbit(char init)
 
 // Prints a string to dtrace_fp, keeping in mind to quote
 // special characters so that the lines don't get screwed up
-static void printOneDtraceString(char* str)
+static void printOneDtraceString(char* str1)
 {
   char readable;
-  Addr strHead = (Addr)str;
+  Addr strHead = (Addr)str1;
   int len = 0;
   // Print leading and trailing quotes to "QUOTE" the string
   DTRACE_PRINTF("\"");
-  readable = addressIsInitialized((Addr)str, sizeof(char));
+  readable = addressIsInitialized((Addr)str1, sizeof(char));
   tl_assert(readable);
-  while (*str != '\0')
+  while (*str1 != '\0')
     {
-      switch (*str) {
+      switch (*str1) {
       case '\n':
 	DTRACE_PRINTF( "\\n");
 	break;
@@ -166,13 +166,13 @@ static void printOneDtraceString(char* str)
 	DTRACE_PRINTF( "\\\\");
 	break;
       default:
-	DTRACE_PRINTF( "%c", *str);
+	DTRACE_PRINTF( "%c", *str1);
       }
 
-      str++;
+      str1++;
       len++;
 
-      readable = addressIsInitialized((Addr)str, sizeof(char));
+      readable = addressIsInitialized((Addr)str1, sizeof(char));
 
       if (!readable) {
 	printf("  Error!  Ran into unreadable character!\n");
@@ -217,22 +217,22 @@ static void printOneCharAsDtraceString(char c)
   DTRACE_PRINTF( "\"");
 }
 
-static void printOneDtraceStringAsIntArray(char* str) {
+static void printOneDtraceStringAsIntArray(char* str1) {
   char readable;
-  Addr strHead = (Addr)str;
+  Addr strHead = (Addr)str1;
   int len = 0;
 
   DTRACE_PRINTF("[ ");
-  readable = addressIsInitialized((Addr)str, sizeof(char));
+  readable = addressIsInitialized((Addr)str1, sizeof(char));
   tl_assert(readable);
-  while (*str != '\0')
+  while (*str1 != '\0')
     {
-      DTRACE_PRINTF( "%d ", *str);
+      DTRACE_PRINTF( "%d ", *str1);
 
-      str++;
+      str1++;
       len++;
 
-      readable = addressIsInitialized((Addr)str, sizeof(char));
+      readable = addressIsInitialized((Addr)str1, sizeof(char));
       if (!readable) {
 	printf("  Error!  Ran into unreadable character!\n");
 	break;
@@ -252,16 +252,16 @@ static void printOneDtraceStringAsIntArray(char* str) {
 /* Returns true if str points to a null-terminated string, every byte of
    which up to the \0 is readable according to memcheck.
 */
-static int checkStringReadable(char *str) {
-  char *p = str;
+static int checkStringReadable(char *str1) {
+  char *p = str1;
   for (;;) {
     int readable = addressIsInitialized((Addr)p, sizeof(char));
     if (!readable) {
-      DPRINTF("String contains unreadable byte %zd (%p)\n", p - str, p);
+      DPRINTF("String contains unreadable byte %zd (%p)\n", p - str1, p);
       return 0;
     }
     else if (!*p) {
-      DPRINTF("All %zd string characters are readable (%p)\n", p - str, p);
+      DPRINTF("All %zd string characters are readable (%p)\n", p - str1, p);
       return 1;
     }
     p++;

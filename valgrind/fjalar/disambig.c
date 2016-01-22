@@ -351,7 +351,7 @@ DisambigOverride returnDisambigOverride(VariableEntry* var) {
 static void processDisambigFile() {
   // (comment added 2005)  
   // TODO: This is crude and unsafe but works for now
-  char line[200];
+  char line1[200];
   char nextLineIsEntry = 0;
   int lineLen = 0;
   DisambigEntryType type = NONE;
@@ -366,9 +366,9 @@ static void processDisambigFile() {
     return;
   }
 
-  while (fgets(line, 200, disambig_fp)) {
-    lineLen = VG_(strlen)(line);
-    // FJALAR_DPRINTF("input-line: %s length: %d\n", line, lineLen);
+  while (fgets(line1, 200, disambig_fp)) {
+    lineLen = VG_(strlen)(line1);
+    // FJALAR_DPRINTF("input-line: %s length: %d\n", line1, lineLen);
 
     // Blank lines only have a "\n" so skip them
     if (lineLen <= 1)
@@ -379,11 +379,11 @@ static void processDisambigFile() {
     // If the very last line of a file is not followed by a newline character,
     // then blindly stripping off the last character will truncate the actual
     // string, which is undesirable.
-    if (line[lineLen - 1] == '\n') {
-      line[lineLen - 1] = '\0';
+    if (line1[lineLen - 1] == '\n') {
+      line1[lineLen - 1] = '\0';
     }
 
-    if VG_STREQ(line, ENTRY_DELIMETER) {
+    if VG_STREQ(line1, ENTRY_DELIMETER) {
       if (entryName) {
         VG_(free)(entryName);
         entryName = 0;
@@ -405,12 +405,12 @@ static void processDisambigFile() {
       if (nextLineIsEntry) {
         char* marker = 0;
         // 1) A function name
-        if ((marker = VG_(strstr)(line, FUNCTION_PREFIX))) {
+        if ((marker = VG_(strstr)(line1, FUNCTION_PREFIX))) {
           FunctionEntry* cur_entry = 0;
           FJALAR_DPRINTF("FUNCTION_PREFIX");
           type = FUNCTION;
           // Strip off the prefix by moving forward that many spots in the buffer:
-          entryName = VG_(strdup)("disambig.c: processDisambigFile.0.1", &line[VG_(strlen)(FUNCTION_PREFIX)]);
+          entryName = VG_(strdup)("disambig.c: processDisambigFile.0.1", &line1[VG_(strlen)(FUNCTION_PREFIX)]);
           //          printf("Function! %s\n", entryName);
 
           VarListArraySize = 1;
@@ -423,7 +423,7 @@ static void processDisambigFile() {
           }
         }
         // 2) "globals"
-        else if (VG_STREQ(line, GLOBAL_STRING)) {
+        else if (VG_STREQ(line1, GLOBAL_STRING)) {
           type = GLOBAL;
           FJALAR_DPRINTF("GLOBAL");
           VarListArraySize = 1;
@@ -433,13 +433,13 @@ static void processDisambigFile() {
         }
         // 3) A user-defined type
         //    (USERTYPE_PREFIX must be the prefix of the string)
-        else if (VG_(strstr)(line, USERTYPE_PREFIX) == (HChar *)line) {
+        else if (VG_(strstr)(line1, USERTYPE_PREFIX) == (HChar *)line1) {
           TypeIterator* typeIt;
           int i = 0;
           type = USERTYPE;
           FJALAR_DPRINTF("USERTYPE");
           // Strip off the prefix:
-          entryName = VG_(strdup)("disambig.c: processDisambigFile.2.1", line + VG_(strlen)(USERTYPE_PREFIX));
+          entryName = VG_(strdup)("disambig.c: processDisambigFile.2.1", line1 + VG_(strlen)(USERTYPE_PREFIX));
 
           // Find ALL THE TypeEntry entries with the matching name
           // and throw their memberVarList entries in VarListArray
@@ -497,7 +497,7 @@ static void processDisambigFile() {
       else {
         VariableEntry* target = 0;
 
-        char* varName = VG_(strdup)("disambig.c: processDisambigFile.3.1", line);
+        char* varName = VG_(strdup)("disambig.c: processDisambigFile.3.1", line1);
         char* disambigLine = 0;
 
         char* firstToken = 0;
@@ -511,18 +511,18 @@ static void processDisambigFile() {
         //   1.) It is just a single disambig letter (e.g., "A", "P")
         //   2.) It consists of a type coercion statement after the
         //   single disambig letter (e.g., "P foo_type")
-        fgets(line, 200, disambig_fp);
-        lineLen = VG_(strlen)(line);
+        fgets(line1, 200, disambig_fp);
+        lineLen = VG_(strlen)(line1);
         // Strip '\n' off the end of the line
         // NOTE: Only do this if the end of the line is a newline character.
         // If the very last line of a file is not followed by a newline character,
         // then blindly stripping off the last character will truncate the actual
         // string, which is undesirable.
-        if (line[lineLen - 1] == '\n') {
-          line[lineLen - 1] = '\0';
+        if (line1[lineLen - 1] == '\n') {
+          line1[lineLen - 1] = '\0';
         }
 
-        disambigLine = VG_(strdup)("disambig.c: processDisambigFile.4.1", line);
+        disambigLine = VG_(strdup)("disambig.c: processDisambigFile.4.1", line1);
 
         firstToken = strtok(disambigLine, " ");
         secondToken = strtok(NULL, " ");

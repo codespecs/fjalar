@@ -3237,12 +3237,12 @@ FunctionEntry* getFunctionEntryFromAddr(Addr addr) {
 
 // Iterate thru all chars, sum up each (ASCII value * (index + 1))
 // Don't worry about modding because GenericHashtable.c will do it for us :)
-unsigned int hashString(const char* str) {
+unsigned int hashString(const char* str1) {
   int i;
   int sum = 0;
-  int len = VG_(strlen)(str);
+  int len = VG_(strlen)(str1);
   for (i = 0; i < len; i++) {
-    sum += ((int)(str[i]) * (i + i));
+    sum += ((int)(str1[i]) * (i + i));
   }
 
   return sum;
