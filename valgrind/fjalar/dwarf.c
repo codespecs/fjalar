@@ -99,7 +99,7 @@ int display_debug_macinfo(Elf_Internal_Shdr *, unsigned char *, FILE *);
 int display_debug_str(Elf_Internal_Shdr *, unsigned char *, FILE *);
 int display_debug_loc(Elf_Internal_Shdr *, unsigned char *, FILE *);
 void free_abbrevs(void);
-PTR get_data(PTR, FILE *, long, size_t, const char *);
+void * get_data (void *, FILE *, long, size_t, size_t, const char *);
 int slurp_rela_relocs(FILE *, unsigned long, unsigned long, Elf_Internal_Rela **, unsigned long *);
 int slurp_rel_relocs(FILE *, unsigned long, unsigned long, Elf_Internal_Rela **, unsigned long *);
 Elf_Internal_Sym *get_32bit_elf_symbols(FILE *, Elf_Internal_Shdr *);
@@ -109,8 +109,34 @@ Elf_Internal_Sym *get_64bit_elf_symbols(FILE *, Elf_Internal_Shdr *);
 /* Size of pointers in the .debug_line section.  This information is not
    really present in that section.  It's obtained before dumping the debug
    sections by doing some pre-scan of the .debug_info section.  */
-int debug_line_pointer_size = 4;
+//int debug_line_pointer_size = 4;
 
+
+#define SECTION_NAME(X)						\
+  ((X) == NULL ? _("<none>")					\
+   : string_table == NULL ? _("<no-name>")			\
+   : ((X)->sh_name >= string_table_length ? _("<corrupt>")	\
+  : string_table + (X)->sh_name))
+
+// Given st_shndx I, map to section_headers index
+#define SECTION_HEADER_INDEX(I) \
+  ((I) < SHN_LORESERVE          \
+   ? (I)                        \
+   : ((I) <= SHN_HIRESERVE      \
+      ? 0                       \
+      : (I) - (SHN_HIRESERVE + 1 - SHN_LORESERVE)))
+
+// Reverse of the above
+#define SECTION_HEADER_NUM(N)   \
+  ((N) < SHN_LORESERVE          \
+   ? (N)                        \
+   : (N) + (SHN_HIRESERVE + 1 - SHN_LORESERVE))
+
+#define SECTION_HEADER(I) (section_headers + SECTION_HEADER_INDEX (I))
+
+#define GET_ELF_SYMBOLS(file, section)                  \
+  (is_32bit_elf ? get_32bit_elf_symbols (file, section) \
+   : get_64bit_elf_symbols (file, section))
 
 // PG - begin custom libiberty.a functions
 
@@ -572,7 +598,7 @@ load_debug_str (FILE *file)
 
   debug_str_size = sec->sh_size;
 
-  debug_str_contents = ((char *) get_data (NULL, file, sec->sh_offset, sec->sh_size,
+  debug_str_contents = ((char *) get_data (NULL, file, sec->sh_offset, sec->sh_size, 1,
                                            _("debug_str section data")));
 }
 
@@ -2203,12 +2229,12 @@ process_debug_info (Elf_Internal_Shdr *section, unsigned char *start, FILE *file
 
 	  for (rp = rela; rp < rela + nrelas; ++rp)
 	    {
-	      unsigned char *loc;
+	      unsigned char *rloc;
 
 	      if (rp->r_offset >= (bfd_vma) (hdrptr - section_begin)
 		  && section->sh_size > (bfd_vma) offset_size
 		  && rp->r_offset <= section->sh_size - offset_size)
-		loc = section_begin + rp->r_offset;
+		rloc = section_begin + rp->r_offset;
 	      else
 		continue;
 
@@ -2237,7 +2263,7 @@ process_debug_info (Elf_Internal_Shdr *section, unsigned char *start, FILE *file
 		    }
 		}
 
-	      byte_put (loc, rp->r_addend, offset_size);
+	      byte_put (rloc, rp->r_addend, offset_size);
 	    }
 
 	  VG_(free) (rela);
@@ -2284,7 +2310,7 @@ process_debug_info (Elf_Internal_Shdr *section, unsigned char *start, FILE *file
 	  }
 
 	begin = ((unsigned char *)
-		 get_data (NULL, file, sec->sh_offset, sec->sh_size,
+		 get_data (NULL, file, sec->sh_offset, sec->sh_size, 1,
 			   _("debug_abbrev section data")));
 	if (!begin)
 	  return 0;
@@ -2444,12 +2470,12 @@ process_debug_info (Elf_Internal_Shdr *section, unsigned char *start, FILE *file
 
 	  for (rp = rela; rp < rela + nrelas; ++rp)
 	    {
-	      unsigned char *loc;
+	      unsigned char *rloc;
 
 	      if (rp->r_offset >= (bfd_vma) (hdrptr - section_begin)
 		  && section->sh_size > (bfd_vma) offset_size
 		  && rp->r_offset <= section->sh_size - offset_size)
-		loc = section_begin + rp->r_offset;
+		rloc = section_begin + rp->r_offset;
 	      else
 		continue;
 
@@ -2478,7 +2504,7 @@ process_debug_info (Elf_Internal_Shdr *section, unsigned char *start, FILE *file
 		    }
 		}
 
-	      byte_put (loc, rp->r_addend, offset_size);
+	      byte_put (rloc, rp->r_addend, offset_size);
 	    }
 
 	  VG_(free) (rela);
@@ -2554,7 +2580,7 @@ process_debug_info (Elf_Internal_Shdr *section, unsigned char *start, FILE *file
 	  }
 
 	begin = ((unsigned char *)
-		 get_data (NULL, file, sec->sh_offset, sec->sh_size,
+		 get_data (NULL, file, sec->sh_offset, sec->sh_size, 1,
 			   _("debug_abbrev section data")));
 	if (!begin)
 	  return 0;
@@ -3442,7 +3468,7 @@ load_debug_loc (FILE *file)
   debug_loc_size = sec->sh_size;
 
   debug_loc_contents = ((char *)
-			get_data (NULL, file, sec->sh_offset, sec->sh_size,
+			get_data (NULL, file, sec->sh_offset, sec->sh_size, 1,
 				  _("debug_loc section data")));
 }
 

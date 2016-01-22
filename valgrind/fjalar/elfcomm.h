@@ -20,7 +20,7 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston, MA
    02110-1301, USA.  */
-
+
 #ifndef _ELFCOMM_H
 #define _ELFCOMM_H
 
@@ -36,7 +36,7 @@ void warn (const char *, ...) ATTRIBUTE_PRINTF_1;
 #if __STDC_VERSION__ >= 199901L || (defined(__GNUC__) && __GNUC__ >= 2)
 /* We can't use any bfd types here since readelf may define BFD64 and
    objdump may not.  */
-#define HOST_WIDEST_INT long long
+#define HOST_WIDEST_INT	long long
 #else
 #define HOST_WIDEST_INT long
 #endif
@@ -56,12 +56,12 @@ extern void byte_get_64 (unsigned char *, elf_vma *, elf_vma *);
 #define BYTE_GET(field)		byte_get (field, sizeof (field))
 #define BYTE_GET_SIGNED(field)	byte_get_signed (field, sizeof (field))
 
-#if 0  // ARCHIVE we don't need any of the archive stuff (markro)
-
 /* This is just a bit of syntatic sugar.  */
-#define streq(a,b)	  (strcmp ((a), (b)) == 0)
-#define strneq(a,b,n)	  (strncmp ((a), (b), (n)) == 0)
-#define const_strneq(a,b) (strncmp ((a), (b), sizeof (b) - 1) == 0)
+#define streq(a,b)	  (VG_(strcmp) ((a), (b)) == 0)
+#define strneq(a,b,n)	  (VG_(strncmp) ((a), (b), (n)) == 0)
+#define const_strneq(a,b) (VG_(strncmp) ((a), (b), sizeof (b) - 1) == 0)
+
+#if 0  // ARCHIVE we don't need any of the archive stuff (markro)
 
 /* Structure to hold information about an archive file.  */
 

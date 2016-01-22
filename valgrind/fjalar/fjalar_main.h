@@ -44,7 +44,7 @@
 
 #define FJALAR_DPRINTF(...) do { if (fjalar_debug) \
       printf(__VA_ARGS__); } while (0)
-
+#if 0
 #define SECTION_NAME(X) ((X) == NULL ? "<none>" : \
                          ((X)->sh_name >= string_table_length \
                          ? "<corrupt>" : string_table + (X)->sh_name))
@@ -65,11 +65,12 @@
 
 #define SECTION_HEADER(I) (section_headers + SECTION_HEADER_INDEX (I))
 
-extern int is_32bit_elf;
-
 #define GET_ELF_SYMBOLS(file, section)                  \
   (is_32bit_elf ? get_32bit_elf_symbols (file, section) \
    : get_64bit_elf_symbols (file, section))
+#endif
+
+extern int is_32bit_elf;
 
 #define ARRAY_SIZE(a) (sizeof (a) / sizeof ((a)[0]))
 
