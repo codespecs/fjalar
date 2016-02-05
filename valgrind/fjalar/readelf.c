@@ -281,16 +281,6 @@ int do_dyn_syms;
 int eh_addr_size;
 int is_32bit_elf;
 
-int display_debug_abbrev(Elf_Internal_Shdr *, unsigned char *, FILE *);
-int display_debug_aranges(Elf_Internal_Shdr *, unsigned char *, FILE *);
-int display_debug_info(Elf_Internal_Shdr *, unsigned char *, FILE *);
-int display_debug_not_supported(Elf_Internal_Shdr *, unsigned char *, FILE *);
-int display_debug_lines(Elf_Internal_Shdr *, unsigned char *, FILE *);
-int display_debug_pubnames(Elf_Internal_Shdr *, unsigned char *, FILE *);
-int display_debug_frames(Elf_Internal_Shdr *, unsigned char *, FILE *);
-int display_debug_macinfo(Elf_Internal_Shdr *, unsigned char *, FILE *);
-int display_debug_str(Elf_Internal_Shdr *, unsigned char *, FILE *);
-int display_debug_loc(Elf_Internal_Shdr *, unsigned char *, FILE *);
 void free_abbrevs(void);
 void * get_data (void *, FILE *, long, size_t, size_t, const char *);
 int slurp_rela_relocs (FILE *, unsigned long, unsigned long, Elf_Internal_Rela **, unsigned long *);
@@ -671,7 +661,7 @@ printable_section_name (Elf_Internal_Shdr * sec)
   return sec_name_buf;
 }
 
-#if 0 // unneeded by Fjalar
+#if 0 // This code is not needed for Fjalar.
 
 static const char *
 printable_section_name_from_index (unsigned long ndx)
@@ -682,7 +672,7 @@ printable_section_name_from_index (unsigned long ndx)
   return printable_section_name (section_headers + ndx);
 }
 
-#endif // unneeded by Fjalar
+#endif // This code is not needed for Fjalar.
 
 /* Return a pointer to section NAME, or NULL if no such section exists.  */
 
@@ -698,7 +688,7 @@ find_section (const char * name)
   return NULL;
 }
 
-#if 0 // unneeded by Fjalar
+#if 0 // This code is not needed for Fjalar.
 
 /* Return a pointer to a section containing ADDR, or NULL if no such
    section exists.  */
@@ -733,6 +723,8 @@ find_section_by_type (unsigned int type)
   return NULL;
 }
 
+#endif // This code is not needed for Fjalar.
+
 /* Return a pointer to section NAME, or NULL if no such section exists,
    restricted to the list of sections given in SET.  */
 
@@ -750,8 +742,6 @@ find_section_in_set (const char * name, unsigned int * set)
 
   return find_section (name);
 }
-
-#endif // unneeded by Fjalar
 
 /* Read an unsigned LEB128 encoded value from p.  Set *PLEN to the number of
    bytes read.  */
@@ -914,7 +904,7 @@ slurp_rela_relocs (FILE * file,
 
       nrelas = rel_size / sizeof (Elf32_External_Rela);
 
-      relas = (Elf_Internal_Rela *) VG_(malloc) ("readelf.c: slurp_rela_relocs", nrelas *
+      relas = (Elf_Internal_Rela *) cmalloc (nrelas,
                                              sizeof (Elf_Internal_Rela));
 
       if (relas == NULL)
@@ -944,7 +934,7 @@ slurp_rela_relocs (FILE * file,
 
       nrelas = rel_size / sizeof (Elf64_External_Rela);
 
-      relas = (Elf_Internal_Rela *) VG_(malloc) ("readelf.c: slurp_rela_relocs.2", nrelas *
+      relas = (Elf_Internal_Rela *) cmalloc (nrelas,
                                              sizeof (Elf_Internal_Rela));
 
       if (relas == NULL)
@@ -1012,7 +1002,7 @@ slurp_rel_relocs (FILE * file,
 
       nrels = rel_size / sizeof (Elf32_External_Rel);
 
-      rels = (Elf_Internal_Rela *) VG_(malloc) ("readelf.c: slurp_rel_relocs", nrels * sizeof (Elf_Internal_Rela));
+      rels = (Elf_Internal_Rela *) cmalloc (nrels, sizeof (Elf_Internal_Rela));
 
       if (rels == NULL)
 	{
@@ -1041,7 +1031,7 @@ slurp_rel_relocs (FILE * file,
 
       nrels = rel_size / sizeof (Elf64_External_Rel);
 
-      rels = (Elf_Internal_Rela *) VG_(malloc) ("readelf.c: slurp_rel_relocs.2", nrels * sizeof (Elf_Internal_Rela));
+      rels = (Elf_Internal_Rela *) cmalloc (nrels, sizeof (Elf_Internal_Rela));
 
       if (rels == NULL)
 	{
@@ -1556,11 +1546,11 @@ dump_relocations (FILE * file,
 	    default: rtype = NULL;
 	    }
 	  if (rtype)
-	    printf (" (%s)", rtype);
+	    FJALAR_DPRINTF (" (%s)", rtype);
 	  else
 	    {
 	      putchar (' ');
-	      printf (_("<unknown addend: %lx>"),
+	      FJALAR_DPRINTF (_("<unknown addend: %lx>"),
 		      (unsigned long) rels[i].r_addend);
 	    }
 	}
@@ -1600,7 +1590,7 @@ dump_relocations (FILE * file,
 		    name = strtab + psym->st_name;
 
 		  len = print_symbol (width, name);
-		  printf ("()%-*s", len <= width ? (width + 1) - len : 1, " ");
+		  FJALAR_DPRINTF ("()%-*s", len <= width ? (width + 1) - len : 1, " ");
 		}
 	      else
 		{
@@ -1654,7 +1644,7 @@ dump_relocations (FILE * file,
 	      else if (strtab == NULL)
 		FJALAR_DPRINTF (_("<string table index: %3ld>"), psym->st_name);
 	      else if (psym->st_name >= strtablen)
-		printf (_("<corrupt string table index: %3ld>"), psym->st_name);
+		FJALAR_DPRINTF (_("<corrupt string table index: %3ld>"), psym->st_name);
 	      else
 		print_symbol (22, strtab + psym->st_name);
 
@@ -1683,9 +1673,9 @@ dump_relocations (FILE * file,
       if (elf_header.e_machine == EM_SPARCV9
 	  && rtype != NULL
 	  && streq (rtype, "R_SPARC_OLO10"))
-	printf (" + %lx", (unsigned long) ELF64_R_TYPE_DATA (inf));
+	FJALAR_DPRINTF (" + %lx", (unsigned long) ELF64_R_TYPE_DATA (inf));
 
-      putchar ('\n');
+      FJALAR_DPRINTF ("%c", '\n');
 
 #ifdef BFD64
       if (! is_32bit_elf && elf_header.e_machine == EM_MIPS)
@@ -1695,21 +1685,21 @@ dump_relocations (FILE * file,
 	  const char * rtype2 = elf_mips_reloc_type (type2);
 	  const char * rtype3 = elf_mips_reloc_type (type3);
 
-	  printf ("                    Type2: ");
+	  FJALAR_DPRINTF ("                    Type2: ");
 
 	  if (rtype2 == NULL)
-	    printf (_("unrecognized: %-7lx"),
+	    FJALAR_DPRINTF (_("unrecognized: %-7lx"),
 		    (unsigned long) type2 & 0xffffffff);
 	  else
-	    printf ("%-17.17s", rtype2);
+	    FJALAR_DPRINTF ("%-17.17s", rtype2);
 
-	  printf ("\n                    Type3: ");
+	  FJALAR_DPRINTF ("\n                    Type3: ");
 
 	  if (rtype3 == NULL)
-	    printf (_("unrecognized: %-7lx"),
+	    FJALAR_DPRINTF (_("unrecognized: %-7lx"),
 		    (unsigned long) type3 & 0xffffffff);
 	  else
-	    printf ("%-17.17s", rtype3);
+	    FJALAR_DPRINTF ("%-17.17s", rtype3);
 
 	  putchar ('\n');
 	}
@@ -1944,7 +1934,7 @@ get_nios2_dynamic_type (unsigned long type)
 
 #endif // Fjalar only supports EM_386, EM_486 and EM_X86_64
 
-#if 0 // unneeded by Fjalar
+#if 0 // This code is not needed for Fjalar.
 
 static const char *
 get_dynamic_type (unsigned long type)
@@ -2105,9 +2095,7 @@ get_dynamic_type (unsigned long type)
     }
 }
 
-#endif // unneeded by Fjalar
-
-static const char *  // const added to remove compile warning
+static char *
 get_file_type (unsigned e_type)
 {
   static char buff[32];
@@ -2131,7 +2119,7 @@ get_file_type (unsigned e_type)
     }
 }
 
-static const char *  // const added to remove compile warning
+static char *
 get_machine_name (unsigned e_machine)
 {
   static char buff[64]; /* XXX */
@@ -2314,6 +2302,8 @@ get_machine_name (unsigned e_machine)
       return buff;
     }
 }
+
+#endif // This code is not needed for Fjalar.
 
 #if 0 // Fjalar only supports EM_386, EM_486 and EM_X86_64
 
@@ -3291,8 +3281,6 @@ get_machine_flags (unsigned e_flags, unsigned e_machine)
   return buf;
 }
 
-#endif // Fjalar only supports EM_386, EM_486 and EM_X86_64
-
 static const char *
 get_osabi_name (unsigned int osabi)
 {
@@ -3355,8 +3343,6 @@ get_osabi_name (unsigned int osabi)
       return buff;
     }
 }
-
-#if 0 // Fjalar only supports EM_386, EM_486 and EM_X86_64
 
 static const char *
 get_aarch64_segment_type (unsigned long type)
@@ -3470,6 +3456,8 @@ get_tic6x_segment_type (unsigned long type)
 
 #endif // Fjalar only supports EM_386, EM_486 and EM_X86_64
 
+#if 0 // This code is not needed for Fjalar.
+
 static const char *
 get_segment_type (unsigned long p_type)
 {
@@ -3498,9 +3486,6 @@ get_segment_type (unsigned long p_type)
 
 	  switch (elf_header.e_machine)
 	    {
-
-#if 0 // Fjalar only supports EM_386, EM_486 and EM_X86_64
-
 	    case EM_AARCH64:
 	      result = get_aarch64_segment_type (p_type);
 	      break;
@@ -3520,9 +3505,6 @@ get_segment_type (unsigned long p_type)
 	    case EM_TI_C6000:
 	      result = get_tic6x_segment_type (p_type);
 	      break;
-
-#endif // Fjalar only supports EM_386, EM_486 and EM_X86_64
-
 	    default:
 	      result = NULL;
 	      break;
@@ -3539,18 +3521,12 @@ get_segment_type (unsigned long p_type)
 
 	  switch (elf_header.e_machine)
 	    {
-
-#if 0 // Fjalar only supports EM_386, EM_486 and EM_X86_64
-
 	    case EM_PARISC:
 	      result = get_parisc_segment_type (p_type);
 	      break;
 	    case EM_IA_64:
 	      result = get_ia64_segment_type (p_type);
 	      break;
-
-#endif // Fjalar only supports EM_386, EM_486 and EM_X86_64
-
 	    default:
 	      result = NULL;
 	      break;
@@ -3850,8 +3826,6 @@ get_section_type_name (unsigned int sh_type)
     }
 }
 
-#if 0 // This code is only needed for the stand alone readelf utility.
-
 #define OPTION_DEBUG_DUMP	512
 #define OPTION_DYN_SYMS		513
 #define OPTION_DWARF_DEPTH	514
@@ -3960,7 +3934,7 @@ usage (FILE * stream)
   exit (stream == stdout ? 0 : 1);
 }
 
-#endif // This code is only needed for the stand alone readelf utility.
+#endif // This code is not needed for Fjalar.
 
 /* Record the fact that the user wants the contents of section number
    SECTION to be displayed using the method(s) encoded as flags bits
@@ -3997,7 +3971,7 @@ request_dump_bynumber (unsigned int section, dump_type type)
   return;
 }
 
-#if 0 // This code is only needed for the stand alone readelf utility.
+#if 0 // This code is not needed for Fjalar.
 
 /* Request a dump by section name.  */
 
@@ -4208,8 +4182,6 @@ parse_args (int argc, char ** argv)
     }
 }
 
-#endif // This code is only needed for the stand alone readelf utility.
-
 static const char *
 get_elf_class (unsigned int elf_class)
 {
@@ -4242,6 +4214,8 @@ get_data_encoding (unsigned int encoding)
     }
 }
 
+#endif // This code is not needed for Fjalar.
+
 /* Decode the data held in 'elf_header'.  */
 
 static int
@@ -4259,77 +4233,80 @@ process_file_header (void)
 
   init_dwarf_regnames (elf_header.e_machine);
 
+#if 0 // do_header is never true for Fjalar
+
   if (do_header)
     {
       int i;
 
-      FJALAR_DPRINTF (_("ELF Header:\n"));
-      FJALAR_DPRINTF (_("  Magic:   "));
+      printf (_("ELF Header:\n"));
+      printf (_("  Magic:   "));
       for (i = 0; i < EI_NIDENT; i++)
-	FJALAR_DPRINTF ("%2.2x ", elf_header.e_ident[i]);
-      FJALAR_DPRINTF ("\n");
-      FJALAR_DPRINTF (_("  Class:                             %s\n"),
+	printf ("%2.2x ", elf_header.e_ident[i]);
+      printf ("\n");
+      printf (_("  Class:                             %s\n"),
 	      get_elf_class (elf_header.e_ident[EI_CLASS]));
-      FJALAR_DPRINTF (_("  Data:                              %s\n"),
+      printf (_("  Data:                              %s\n"),
 	      get_data_encoding (elf_header.e_ident[EI_DATA]));
-      FJALAR_DPRINTF (_("  Version:                           %d %s\n"),
+      printf (_("  Version:                           %d %s\n"),
 	      elf_header.e_ident[EI_VERSION],
 	      (elf_header.e_ident[EI_VERSION] == EV_CURRENT
 	       ? "(current)"
 	       : (elf_header.e_ident[EI_VERSION] != EV_NONE
 		  ? _("<unknown: %lx>")
 		  : "")));
-      FJALAR_DPRINTF (_("  OS/ABI:                            %s\n"),
+      printf (_("  OS/ABI:                            %s\n"),
 	      get_osabi_name (elf_header.e_ident[EI_OSABI]));
-      FJALAR_DPRINTF (_("  ABI Version:                       %d\n"),
+      printf (_("  ABI Version:                       %d\n"),
 	      elf_header.e_ident[EI_ABIVERSION]);
-      FJALAR_DPRINTF (_("  Type:                              %s\n"),
+      printf (_("  Type:                              %s\n"),
 	      get_file_type (elf_header.e_type));
-      FJALAR_DPRINTF (_("  Machine:                           %s\n"),
+      printf (_("  Machine:                           %s\n"),
 	      get_machine_name (elf_header.e_machine));
-      FJALAR_DPRINTF (_("  Version:                           0x%lx\n"),
+      printf (_("  Version:                           0x%lx\n"),
 	      (unsigned long) elf_header.e_version);
 
-      FJALAR_DPRINTF (_("  Entry point address:               "));
+      printf (_("  Entry point address:               "));
       print_vma ((bfd_vma) elf_header.e_entry, PREFIX_HEX);
-      FJALAR_DPRINTF (_("\n  Start of program headers:          "));
+      printf (_("\n  Start of program headers:          "));
       print_vma ((bfd_vma) elf_header.e_phoff, DEC);
-      FJALAR_DPRINTF (_(" (bytes into file)\n  Start of section headers:          "));
+      printf (_(" (bytes into file)\n  Start of section headers:          "));
       print_vma ((bfd_vma) elf_header.e_shoff, DEC);
-      FJALAR_DPRINTF (_(" (bytes into file)\n"));
+      printf (_(" (bytes into file)\n"));
 
-      FJALAR_DPRINTF (_("  Flags:                             0x%lx%s\n"),
+      printf (_("  Flags:                             0x%lx%s\n"),
 	      (unsigned long) elf_header.e_flags,
-//	      get_machine_flags (elf_header.e_flags, elf_header.e_machine));  // machine_flags not needed by Fjalar
-          "");
-      FJALAR_DPRINTF (_("  Size of this header:               %ld (bytes)\n"),
+	      get_machine_flags (elf_header.e_flags, elf_header.e_machine));
+      printf (_("  Size of this header:               %ld (bytes)\n"),
 	      (long) elf_header.e_ehsize);
-      FJALAR_DPRINTF (_("  Size of program headers:           %ld (bytes)\n"),
+      printf (_("  Size of program headers:           %ld (bytes)\n"),
 	      (long) elf_header.e_phentsize);
-      FJALAR_DPRINTF (_("  Number of program headers:         %ld\n"),
+      printf (_("  Number of program headers:         %ld"),
 	      (long) elf_header.e_phnum);
       if (section_headers != NULL
 	  && elf_header.e_phnum == PN_XNUM
 	  && section_headers[0].sh_info != 0)
-	FJALAR_DPRINTF (" (%ld)", (long) section_headers[0].sh_info);
+	printf (" (%ld)", (long) section_headers[0].sh_info);
       putc ('\n', stdout);
-      FJALAR_DPRINTF (_("  Size of section headers:           %ld (bytes)\n"),
+      printf (_("  Size of section headers:           %ld (bytes)\n"),
 	      (long) elf_header.e_shentsize);
-      FJALAR_DPRINTF (_("  Number of section headers:         %ld"),
+      printf (_("  Number of section headers:         %ld"),
 	      (long) elf_header.e_shnum);
       if (section_headers != NULL && elf_header.e_shnum == SHN_UNDEF)
-	FJALAR_DPRINTF (" (%ld)", (long) section_headers[0].sh_size);
+	printf (" (%ld)", (long) section_headers[0].sh_size);
       putc ('\n', stdout);
-      FJALAR_DPRINTF (_("  Section header string table index: %ld"),
+      printf (_("  Section header string table index: %ld"),
 	      (long) elf_header.e_shstrndx);
       if (section_headers != NULL
 	  && elf_header.e_shstrndx == (SHN_XINDEX & 0xffff))
-	FJALAR_DPRINTF (" (%u)", section_headers[0].sh_link);
+	printf (" (%u)", section_headers[0].sh_link);
       else if (elf_header.e_shstrndx != SHN_UNDEF
 	       && elf_header.e_shstrndx >= elf_header.e_shnum)
-	FJALAR_DPRINTF (_(" <corrupt: out of range>"));
+	printf (_(" <corrupt: out of range>"));
       putc ('\n', stdout);
     }
+
+#endif // do_header is never true for Fjalar
 
   if (section_headers != NULL)
     {
@@ -4448,7 +4425,7 @@ get_program_headers (FILE * file)
   if (program_headers != NULL)
     return 1;
 
-  phdrs = (Elf_Internal_Phdr *) VG_(malloc) ("readelf.c: get_program_headers", elf_header.e_phnum *
+  phdrs = (Elf_Internal_Phdr *) cmalloc (elf_header.e_phnum,
                                          sizeof (Elf_Internal_Phdr));
 
   if (phdrs == NULL)
@@ -4470,6 +4447,8 @@ get_program_headers (FILE * file)
   return 0;
 }
 
+#if 0 // This code is not needed for Fjalar.
+
 /* Returns 1 if the program headers were loaded.  */
 
 static int
@@ -4485,19 +4464,19 @@ process_program_headers (FILE * file)
 	warn (_("possibly corrupt ELF header - it has a non-zero program"
 		" header offset, but no program headers"));
       else if (do_segments)
-	FJALAR_DPRINTF (_("\nThere are no program headers in this file.\n"));
+	printf (_("\nThere are no program headers in this file.\n"));
       return 0;
     }
 
   if (do_segments && !do_header)
     {
-      FJALAR_DPRINTF (_("\nElf file type is %s\n"), get_file_type (elf_header.e_type));
-      FJALAR_DPRINTF (_("Entry point "));
+      printf (_("\nElf file type is %s\n"), get_file_type (elf_header.e_type));
+      printf (_("Entry point "));
       print_vma ((bfd_vma) elf_header.e_entry, PREFIX_HEX);
-      FJALAR_DPRINTF (_("\nThere are %d program headers, starting at offset "),
+      printf (_("\nThere are %d program headers, starting at offset "),
 	      elf_header.e_phnum);
       print_vma ((bfd_vma) elf_header.e_phoff, DEC);
-      FJALAR_DPRINTF ("\n");
+      printf ("\n");
     }
 
   if (! get_program_headers (file))
@@ -4506,21 +4485,21 @@ process_program_headers (FILE * file)
   if (do_segments)
     {
       if (elf_header.e_phnum > 1)
-	FJALAR_DPRINTF (_("\nProgram Headers:\n"));
+	printf (_("\nProgram Headers:\n"));
       else
-	FJALAR_DPRINTF (_("\nProgram Headers:\n"));
+	printf (_("\nProgram Headers:\n"));
 
       if (is_32bit_elf)
-	FJALAR_DPRINTF
+	printf
 	  (_("  Type           Offset   VirtAddr   PhysAddr   FileSiz MemSiz  Flg Align\n"));
       else if (do_wide)
-	FJALAR_DPRINTF
+	printf
 	  (_("  Type           Offset   VirtAddr           PhysAddr           FileSiz  MemSiz   Flg Align\n"));
       else
 	{
-	  FJALAR_DPRINTF
+	  printf
 	    (_("  Type           Offset             VirtAddr           PhysAddr\n"));
-	  FJALAR_DPRINTF
+	  printf
 	    (_("                 FileSiz            MemSiz              Flags  Align\n"));
 	}
     }
@@ -4534,25 +4513,25 @@ process_program_headers (FILE * file)
     {
       if (do_segments)
 	{
-	  FJALAR_DPRINTF ("  %-14.14s ", get_segment_type (segment->p_type));
+	  printf ("  %-14.14s ", get_segment_type (segment->p_type));
 
 	  if (is_32bit_elf)
 	    {
-	      FJALAR_DPRINTF ("0x%6.6lx ", (unsigned long) segment->p_offset);
-	      FJALAR_DPRINTF ("0x%8.8lx ", (unsigned long) segment->p_vaddr);
-	      FJALAR_DPRINTF ("0x%8.8lx ", (unsigned long) segment->p_paddr);
-	      FJALAR_DPRINTF ("0x%5.5lx ", (unsigned long) segment->p_filesz);
-	      FJALAR_DPRINTF ("0x%5.5lx ", (unsigned long) segment->p_memsz);
-	      FJALAR_DPRINTF ("%c%c%c ",
+	      printf ("0x%6.6lx ", (unsigned long) segment->p_offset);
+	      printf ("0x%8.8lx ", (unsigned long) segment->p_vaddr);
+	      printf ("0x%8.8lx ", (unsigned long) segment->p_paddr);
+	      printf ("0x%5.5lx ", (unsigned long) segment->p_filesz);
+	      printf ("0x%5.5lx ", (unsigned long) segment->p_memsz);
+	      printf ("%c%c%c ",
 		      (segment->p_flags & PF_R ? 'R' : ' '),
 		      (segment->p_flags & PF_W ? 'W' : ' '),
 		      (segment->p_flags & PF_X ? 'E' : ' '));
-	      FJALAR_DPRINTF ("%#lx", (unsigned long) segment->p_align);
+	      printf ("%#lx", (unsigned long) segment->p_align);
 	    }
 	  else if (do_wide)
 	    {
 	      if ((unsigned long) segment->p_offset == segment->p_offset)
-		FJALAR_DPRINTF ("0x%6.6lx ", (unsigned long) segment->p_offset);
+		printf ("0x%6.6lx ", (unsigned long) segment->p_offset);
 	      else
 		{
 		  print_vma (segment->p_offset, FULL_HEX);
@@ -4565,7 +4544,7 @@ process_program_headers (FILE * file)
 	      putchar (' ');
 
 	      if ((unsigned long) segment->p_filesz == segment->p_filesz)
-		FJALAR_DPRINTF ("0x%6.6lx ", (unsigned long) segment->p_filesz);
+		printf ("0x%6.6lx ", (unsigned long) segment->p_filesz);
 	      else
 		{
 		  print_vma (segment->p_filesz, FULL_HEX);
@@ -4573,19 +4552,19 @@ process_program_headers (FILE * file)
 		}
 
 	      if ((unsigned long) segment->p_memsz == segment->p_memsz)
-		FJALAR_DPRINTF ("0x%6.6lx", (unsigned long) segment->p_memsz);
+		printf ("0x%6.6lx", (unsigned long) segment->p_memsz);
 	      else
 		{
 		  print_vma (segment->p_memsz, FULL_HEX);
 		}
 
-	      FJALAR_DPRINTF (" %c%c%c ",
+	      printf (" %c%c%c ",
 		      (segment->p_flags & PF_R ? 'R' : ' '),
 		      (segment->p_flags & PF_W ? 'W' : ' '),
 		      (segment->p_flags & PF_X ? 'E' : ' '));
 
 	      if ((unsigned long) segment->p_align == segment->p_align)
-		FJALAR_DPRINTF ("%#lx", (unsigned long) segment->p_align);
+		printf ("%#lx", (unsigned long) segment->p_align);
 	      else
 		{
 		  print_vma (segment->p_align, PREFIX_HEX);
@@ -4598,11 +4577,11 @@ process_program_headers (FILE * file)
 	      print_vma (segment->p_vaddr, FULL_HEX);
 	      putchar (' ');
 	      print_vma (segment->p_paddr, FULL_HEX);
-	      FJALAR_DPRINTF ("\n                 ");
+	      printf ("\n                 ");
 	      print_vma (segment->p_filesz, FULL_HEX);
 	      putchar (' ');
 	      print_vma (segment->p_memsz, FULL_HEX);
-	      FJALAR_DPRINTF ("  %c%c%c    ",
+	      printf ("  %c%c%c    ",
 		      (segment->p_flags & PF_R ? 'R' : ' '),
 		      (segment->p_flags & PF_W ? 'W' : ' '),
 		      (segment->p_flags & PF_X ? 'E' : ' '));
@@ -4678,12 +4657,11 @@ process_program_headers (FILE * file)
 		error (_("Internal error: failed to create format string to display program interpreter\n"));
 
 	      program_interpreter[0] = 0;
-//	      if (fscanf (file, fmt, program_interpreter) <= 0)  // no VG(fscanf) available in Vulcan
-//		error (_("Unable to read program interpreter name\n"));
-	      fgets(program_interpreter, 62, file);
+	      if (fscanf (file, fmt, program_interpreter) <= 0)
+		error (_("Unable to read program interpreter name\n"));
 
 	      if (do_segments)
-		FJALAR_DPRINTF (_("      [Requesting program interpreter: %s]\n"),
+		printf (_("      [Requesting program interpreter: %s]\n"),
 		    program_interpreter);
 	    }
 	  break;
@@ -4692,8 +4670,8 @@ process_program_headers (FILE * file)
 
   if (do_segments && section_headers != NULL && string_table != NULL)
     {
-      FJALAR_DPRINTF (_("\n Section to Segment mapping:\n"));
-      FJALAR_DPRINTF (_("  Segment Sections...\n"));
+      printf (_("\n Section to Segment mapping:\n"));
+      printf (_("  Segment Sections...\n"));
 
       for (i = 0; i < elf_header.e_phnum; i++)
 	{
@@ -4703,13 +4681,13 @@ process_program_headers (FILE * file)
 	  segment = program_headers + i;
 	  section = section_headers + 1;
 
-	  FJALAR_DPRINTF ("   %2.2d     ", i);
+	  printf ("   %2.2d     ", i);
 
 	  for (j = 1; j < elf_header.e_shnum; j++, section++)
 	    {
 	      if (!ELF_TBSS_SPECIAL (section, segment)
 		  && ELF_SECTION_IN_SEGMENT_STRICT (section, segment))
-		FJALAR_DPRINTF ("%s ", printable_section_name (section));
+		printf ("%s ", printable_section_name (section));
 	    }
 
 	  putc ('\n',stdout);
@@ -4719,6 +4697,7 @@ process_program_headers (FILE * file)
   return 1;
 }
 
+#endif // This code is not needed for Fjalar.
 
 /* Find the file offset corresponding to VMA by using the program headers.  */
 
@@ -4784,7 +4763,7 @@ get_32bit_section_headers (FILE * file, bfd_boolean probe)
 
   if (section_headers != NULL)
     VG_(free) (section_headers);
-  section_headers = (Elf_Internal_Shdr *) VG_(malloc) ("readelf.c: get_32b_sh", num *
+  section_headers = (Elf_Internal_Shdr *) cmalloc (num,
                                                    sizeof (Elf_Internal_Shdr));
   if (section_headers == NULL)
     {
@@ -4842,7 +4821,7 @@ get_64bit_section_headers (FILE * file, bfd_boolean probe)
 
   if (section_headers != NULL)
     VG_(free) (section_headers);
-  section_headers = (Elf_Internal_Shdr *) VG_(malloc) ("readelf.c: get_64b_sh", num *
+  section_headers = (Elf_Internal_Shdr *) cmalloc (num,
                                                    sizeof (Elf_Internal_Shdr));
   if (section_headers == NULL)
     {
@@ -4923,7 +4902,7 @@ get_32bit_elf_symbols (FILE * file,
 	goto exit_point;
     }
 
-  isyms = (Elf_Internal_Sym *) VG_(malloc) ("readelf.c: get_32b_elfsy", number * sizeof (Elf_Internal_Sym));
+  isyms = (Elf_Internal_Sym *) cmalloc (number, sizeof (Elf_Internal_Sym));
 
   if (isyms == NULL)
     {
@@ -5010,7 +4989,7 @@ get_64bit_elf_symbols (FILE * file,
 	goto exit_point;
     }
 
-  isyms = (Elf_Internal_Sym *) VG_(malloc) ("readelf.c: get_64b_elfsym", number * sizeof (Elf_Internal_Sym));
+  isyms = (Elf_Internal_Sym *) cmalloc (number, sizeof (Elf_Internal_Sym));
 
   if (isyms == NULL)
     {
@@ -5047,6 +5026,8 @@ get_64bit_elf_symbols (FILE * file,
 
   return isyms;
 }
+
+#if 0 // This code is not needed for Fjalar.
 
 static const char *
 get_elf_section_flags (bfd_vma sh_flags)
@@ -5168,17 +5149,14 @@ get_elf_section_flags (bfd_vma sh_flags)
 	      if (p != buff + field_size + 4)
 		{
 		  if (size < (10 + 2))
-            {
-		      warn (_("Internal error: not enough buffer room for section flag info"));
-              return _("<unknown>");
-            }
+		    abort ();
 		  size -= 2;
 		  *p++ = ',';
 		  *p++ = ' ';
 		}
 
 	      size -= flags [sindex].len;
-	      p = VG_(strcpy) (p, flags [sindex].str) + VG_(strlen) (flags [sindex].str);
+	      p = stpcpy (p, flags [sindex].str);
 	    }
 	  else if (flag & SHF_MASKOS)
 	    os_flags |= flag;
@@ -5235,10 +5213,7 @@ get_elf_section_flags (bfd_vma sh_flags)
 	  if (p != buff + field_size + 4)
 	    {
 	      if (size < (2 + 1))
-		{
-                  warn (_("Internal error: not enough buffer room for section flag info"));
-                  return _("<unknown>");
-                }
+		abort ();
 	      size -= 2;
 	      *p++ = ',';
 	      *p++ = ' ';
@@ -5253,10 +5228,7 @@ get_elf_section_flags (bfd_vma sh_flags)
 	  if (p != buff + field_size + 4)
 	    {
 	      if (size < (2 + 1))
-		{
-                  warn (_("Internal error: not enough buffer room for section flag info"));
-                  return _("<unknown>");
-                }
+		abort ();
 	      size -= 2;
 	      *p++ = ',';
 	      *p++ = ' ';
@@ -5271,10 +5243,7 @@ get_elf_section_flags (bfd_vma sh_flags)
 	  if (p != buff + field_size + 4)
 	    {
 	      if (size < (2 + 1))
-		{
-                  warn (_("Internal error: not enough buffer room for section flag info"));
-                  return _("<unknown>");
-                }
+		abort ();
 	      size -= 2;
 	      *p++ = ',';
 	      *p++ = ' ';
@@ -5288,6 +5257,8 @@ get_elf_section_flags (bfd_vma sh_flags)
   *p = '\0';
   return buff;
 }
+
+#endif // This code is not needed for Fjalar.
 
 static int
 process_section_headers (FILE * file)
@@ -5522,65 +5493,67 @@ process_section_headers (FILE * file)
 	}
     }
 
+#if 0 // do_sections is never true for Fjalar
+
   if (! do_sections)
     return 1;
 
   if (elf_header.e_shnum > 1)
-    FJALAR_DPRINTF (_("\nSection Headers:\n"));
+    printf (_("\nSection Headers:\n"));
   else
-    FJALAR_DPRINTF (_("\nSection Header:\n"));
+    printf (_("\nSection Header:\n"));
 
   if (is_32bit_elf)
     {
       if (do_section_details)
 	{
-	  FJALAR_DPRINTF (_("  [Nr] Name\n"));
-	  FJALAR_DPRINTF (_("       Type            Addr     Off    Size   ES   Lk Inf Al\n"));
+	  printf (_("  [Nr] Name\n"));
+	  printf (_("       Type            Addr     Off    Size   ES   Lk Inf Al\n"));
 	}
       else
-	FJALAR_DPRINTF
+	printf
 	  (_("  [Nr] Name              Type            Addr     Off    Size   ES Flg Lk Inf Al\n"));
     }
   else if (do_wide)
     {
       if (do_section_details)
 	{
-	  FJALAR_DPRINTF (_("  [Nr] Name\n"));
-	  FJALAR_DPRINTF (_("       Type            Address          Off    Size   ES   Lk Inf Al\n"));
+	  printf (_("  [Nr] Name\n"));
+	  printf (_("       Type            Address          Off    Size   ES   Lk Inf Al\n"));
 	}
       else
-	FJALAR_DPRINTF
+	printf
 	  (_("  [Nr] Name              Type            Address          Off    Size   ES Flg Lk Inf Al\n"));
     }
   else
     {
       if (do_section_details)
 	{
-	  FJALAR_DPRINTF (_("  [Nr] Name\n"));
-	  FJALAR_DPRINTF (_("       Type              Address          Offset            Link\n"));
-	  FJALAR_DPRINTF (_("       Size              EntSize          Info              Align\n"));
+	  printf (_("  [Nr] Name\n"));
+	  printf (_("       Type              Address          Offset            Link\n"));
+	  printf (_("       Size              EntSize          Info              Align\n"));
 	}
       else
 	{
-	  FJALAR_DPRINTF (_("  [Nr] Name              Type             Address           Offset\n"));
-	  FJALAR_DPRINTF (_("       Size              EntSize          Flags  Link  Info  Align\n"));
+	  printf (_("  [Nr] Name              Type             Address           Offset\n"));
+	  printf (_("       Size              EntSize          Flags  Link  Info  Align\n"));
 	}
     }
 
   if (do_section_details)
-    FJALAR_DPRINTF (_("       Flags\n"));
+    printf (_("       Flags\n"));
 
   for (i = 0, section = section_headers;
        i < elf_header.e_shnum;
        i++, section++)
     {
-      FJALAR_DPRINTF ("  [%2u] ", i);
+      printf ("  [%2u] ", i);
       if (do_section_details)
-	FJALAR_DPRINTF ("%s\n      ", printable_section_name (section));
+	printf ("%s\n      ", printable_section_name (section));
       else
 	print_symbol (-17, SECTION_NAME (section));
 
-      FJALAR_DPRINTF (do_wide ? " %-15s " : " %-15.15s ",
+      printf (do_wide ? " %-15s " : " %-15.15s ",
 	      get_section_type_name (section->sh_type));
 
       if (is_32bit_elf)
@@ -5589,7 +5562,7 @@ process_section_headers (FILE * file)
 
 	  print_vma (section->sh_addr, LONG_HEX);
 
-	  FJALAR_DPRINTF ( " %6.6lx %6.6lx %2.2lx",
+	  printf ( " %6.6lx %6.6lx %2.2lx",
 		   (unsigned long) section->sh_offset,
 		   (unsigned long) section->sh_size,
 		   (unsigned long) section->sh_entsize);
@@ -5597,7 +5570,7 @@ process_section_headers (FILE * file)
 	  if (do_section_details)
 	    fputs ("  ", stdout);
 	  else
-	    FJALAR_DPRINTF (" %3s ", get_elf_section_flags (section->sh_flags));
+	    printf (" %3s ", get_elf_section_flags (section->sh_flags));
 
 	  if (section->sh_link >= elf_header.e_shnum)
 	    {
@@ -5628,14 +5601,14 @@ process_section_headers (FILE * file)
 	  if (do_section_details)
 	    {
 	      if (link_too_big != NULL && * link_too_big)
-		FJALAR_DPRINTF ("<%s> ", link_too_big);
+		printf ("<%s> ", link_too_big);
 	      else
-		FJALAR_DPRINTF ("%2u ", section->sh_link);
-	      FJALAR_DPRINTF ("%3u %2lu\n", section->sh_info,
+		printf ("%2u ", section->sh_link);
+	      printf ("%3u %2lu\n", section->sh_info,
 		      (unsigned long) section->sh_addralign);
 	    }
 	  else
-	    FJALAR_DPRINTF ("%2u %3u %2lu\n",
+	    printf ("%2u %3u %2lu\n",
 		    section->sh_link,
 		    section->sh_info,
 		    (unsigned long) section->sh_addralign);
@@ -5649,7 +5622,7 @@ process_section_headers (FILE * file)
 	  print_vma (section->sh_addr, LONG_HEX);
 
 	  if ((long) section->sh_offset == section->sh_offset)
-	    FJALAR_DPRINTF (" %6.6lx", (unsigned long) section->sh_offset);
+	    printf (" %6.6lx", (unsigned long) section->sh_offset);
 	  else
 	    {
 	      putchar (' ');
@@ -5657,7 +5630,7 @@ process_section_headers (FILE * file)
 	    }
 
 	  if ((unsigned long) section->sh_size == section->sh_size)
-	    FJALAR_DPRINTF (" %6.6lx", (unsigned long) section->sh_size);
+	    printf (" %6.6lx", (unsigned long) section->sh_size);
 	  else
 	    {
 	      putchar (' ');
@@ -5665,7 +5638,7 @@ process_section_headers (FILE * file)
 	    }
 
 	  if ((unsigned long) section->sh_entsize == section->sh_entsize)
-	    FJALAR_DPRINTF (" %2.2lx", (unsigned long) section->sh_entsize);
+	    printf (" %2.2lx", (unsigned long) section->sh_entsize);
 	  else
 	    {
 	      putchar (' ');
@@ -5675,12 +5648,12 @@ process_section_headers (FILE * file)
 	  if (do_section_details)
 	    fputs ("  ", stdout);
 	  else
-	    FJALAR_DPRINTF (" %3s ", get_elf_section_flags (section->sh_flags));
+	    printf (" %3s ", get_elf_section_flags (section->sh_flags));
 
-	  FJALAR_DPRINTF ("%2u %3u ", section->sh_link, section->sh_info);
+	  printf ("%2u %3u ", section->sh_link, section->sh_info);
 
 	  if ((unsigned long) section->sh_addralign == section->sh_addralign)
-	    FJALAR_DPRINTF ("%2lu\n", (unsigned long) section->sh_addralign);
+	    printf ("%2lu\n", (unsigned long) section->sh_addralign);
 	  else
 	    {
 	      print_vma (section->sh_addralign, DEC);
@@ -5713,20 +5686,20 @@ process_section_headers (FILE * file)
 	  putchar (' ');
 	  print_vma (section->sh_addr, LONG_HEX);
 	  if ((long) section->sh_offset == section->sh_offset)
-	    FJALAR_DPRINTF ("  %8.8lx", (unsigned long) section->sh_offset);
+	    printf ("  %8.8lx", (unsigned long) section->sh_offset);
 	  else
 	    {
-	      FJALAR_DPRINTF ("  ");
+	      printf ("  ");
 	      print_vma (section->sh_offset, LONG_HEX);
 	    }
-	  FJALAR_DPRINTF ("\n       ");
+	  printf ("\n       ");
 	  print_vma (section->sh_size, LONG_HEX);
-	  FJALAR_DPRINTF ("  ");
+	  printf ("  ");
 	  print_vma (section->sh_entsize, LONG_HEX);
 
-	  FJALAR_DPRINTF (" %3s ", get_elf_section_flags (section->sh_flags));
+	  printf (" %3s ", get_elf_section_flags (section->sh_flags));
 
-	  FJALAR_DPRINTF ("     %2u   %3u     %lu\n",
+	  printf ("     %2u   %3u     %lu\n",
 		  section->sh_link,
 		  section->sh_info,
 		  (unsigned long) section->sh_addralign);
@@ -5746,16 +5719,18 @@ process_section_headers (FILE * file)
   I (info), L (link order), G (group), T (TLS), E (exclude), x (unknown)\n\
   O (extra OS processing required) o (OS specific), p (processor specific)\n"));
       else
-	FJALAR_DPRINTF (_("Key to Flags:\n\
+	printf (_("Key to Flags:\n\
   W (write), A (alloc), X (execute), M (merge), S (strings)\n\
   I (info), L (link order), G (group), T (TLS), E (exclude), x (unknown)\n\
   O (extra OS processing required) o (OS specific), p (processor specific)\n"));
     }
 
+#endif // do_sections is never true for Fjalar
+
   return 1;
 }
 
-#if 0 // unneeded by Fjalar
+#if 0 // This code is not needed for Fjalar.
 
 static const char *
 get_group_flags (unsigned int flags)
@@ -6024,7 +5999,7 @@ process_section_groups (FILE * file)
   return 1;
 }
 
-#endif // unneeded by Fjalar
+#endif // This code is not needed for Fjalar.
 
 /* Data used to display dynamic fixups.  */
 
@@ -8379,6 +8354,8 @@ dynamic_section_ia64_val (Elf_Internal_Dyn * entry)
 
 #endif // Fjalar only supports EM_386, EM_486 and EM_X86_64
 
+#if 0 // This code is not needed for Fjalar.
+
 static int
 get_32bit_dynamic_section (FILE * file)
 {
@@ -8403,13 +8380,13 @@ get_32bit_dynamic_section (FILE * file)
 	break;
     }
 
-  dynamic_section = (Elf_Internal_Dyn *) VG_(malloc) ("readelf.c: get_32b_dynseg", dynamic_nent *
+  dynamic_section = (Elf_Internal_Dyn *) cmalloc (dynamic_nent,
                                                   sizeof (* entry));
   if (dynamic_section == NULL)
     {
       error (_("Out of memory allocating space for %lu dynamic entries\n"),
 	     (unsigned long) dynamic_nent);
-      VG_(free) (edyn);
+      free (edyn);
       return 0;
     }
 
@@ -8421,7 +8398,7 @@ get_32bit_dynamic_section (FILE * file)
       entry->d_un.d_val = BYTE_GET (ext->d_un.d_val);
     }
 
-  VG_(free) (edyn);
+  free (edyn);
 
   return 1;
 }
@@ -8452,13 +8429,13 @@ get_64bit_dynamic_section (FILE * file)
 	break;
     }
 
-  dynamic_section = (Elf_Internal_Dyn *) VG_(malloc) ("readelf.c: get_64b_dynseg", dynamic_nent *
+  dynamic_section = (Elf_Internal_Dyn *) cmalloc (dynamic_nent,
                                                   sizeof (* entry));
   if (dynamic_section == NULL)
     {
       error (_("Out of memory allocating space for %lu dynamic entries\n"),
 	     (unsigned long) dynamic_nent);
-      VG_(free) (edyn);
+      free (edyn);
       return 0;
     }
 
@@ -8471,12 +8448,10 @@ get_64bit_dynamic_section (FILE * file)
       entry->d_un.d_val = BYTE_GET (ext->d_un.d_val);
     }
 
-  VG_(free) (edyn);
+  free (edyn);
 
   return 1;
 }
-
-#if 0 // unneeded by Fjalar
 
 static void
 print_dynamic_flags (bfd_vma flags)
@@ -8508,8 +8483,6 @@ print_dynamic_flags (bfd_vma flags)
   puts ("");
 }
 
-#endif // unneeded by Fjalar
-
 /* Parse and display the contents of the dynamic section.  */
 
 static int
@@ -8520,7 +8493,7 @@ process_dynamic_section (FILE * file)
   if (dynamic_size == 0)
     {
       if (do_dynamic)
-	FJALAR_DPRINTF (_("\nThere is no dynamic section in this file.\n"));
+	printf (_("\nThere is no dynamic section in this file.\n"));
 
       return 1;
     }
@@ -8663,7 +8636,7 @@ process_dynamic_section (FILE * file)
 	  if (!extsyminfo)
 	    return 0;
 
-	  dynamic_syminfo = (Elf_Internal_Syminfo *) VG_(malloc) ("readelf.c: proc_dynseg", syminsz);
+	  dynamic_syminfo = (Elf_Internal_Syminfo *) malloc (syminsz);
 	  if (dynamic_syminfo == NULL)
 	    {
 	      error (_("Out of memory allocating %lu byte for dynamic symbol info\n"),
@@ -8680,11 +8653,9 @@ process_dynamic_section (FILE * file)
 	      syminfo->si_flags = BYTE_GET (extsym->si_flags);
 	    }
 
-	  VG_(free) (extsyminfo);
+	  free (extsyminfo);
 	}
     }
-
-#if 0 // do_dynamic is never true for Fjalar
 
   if (do_dynamic && dynamic_addr)
     printf (_("\nDynamic section at offset 0x%lx contains %lu entries:\n"),
@@ -9149,10 +9120,10 @@ process_dynamic_section (FILE * file)
 	}
     }
 
-#endif // do_dynamic is never true for Fjalar
-
   return 1;
 }
+
+#endif // This code is not needed for Fjalar.
 
 #if 0 // do_version is never true for Fjalar
 
@@ -9993,7 +9964,7 @@ get_dynamic_data (FILE * file, size_t number, unsigned int ent_size)
       return NULL;
     }
 
-  e_data = (unsigned char *) VG_(malloc) ("readelf.c: get_dyndata.1", number * ent_size);
+  e_data = (unsigned char *) cmalloc (number, ent_size);
   if (e_data == NULL)
     {
       error (_("Out of memory reading %lu dynamic entries\n"),
@@ -10009,7 +9980,7 @@ get_dynamic_data (FILE * file, size_t number, unsigned int ent_size)
       return NULL;
     }
 
-  i_data = (bfd_vma *) VG_(malloc) ("readelf.c: get_dyndata.2", number * sizeof (*i_data));
+  i_data = (bfd_vma *) cmalloc (number, sizeof (*i_data));
   if (i_data == NULL)
     {
       error (_("Out of memory allocating space for %lu dynamic entries\n"),
@@ -10534,7 +10505,7 @@ process_symbol_table (FILE * file)
 
 			  if (ivna.vna_other == vers_data)
 			    {
-			      printf ("@%s (%d)",
+			      FJALAR_DPRINTF ("@%s (%d)",
 				      ivna.vna_name < strtab_size
 				      ? strtab + ivna.vna_name : _("<corrupt>"),
 				      ivna.vna_other);
@@ -10594,7 +10565,7 @@ process_symbol_table (FILE * file)
 			      ivda.vda_name = BYTE_GET (evda.vda_name);
 
 			      if (psym->st_name != ivda.vda_name)
-				printf ((vers_data & VERSYM_HIDDEN)
+				FJALAR_DPRINTF ((vers_data & VERSYM_HIDDEN)
 					? "@%s" : "@@%s",
 					ivda.vda_name < strtab_size
 					? strtab + ivda.vda_name : _("<corrupt>"));
@@ -11560,6 +11531,8 @@ disassemble_section (Elf_Internal_Shdr * section, FILE * file)
 }
 #endif
 
+#if 0 // This code is not needed for Fjalar.
+
 /* Reads in the contents of SECTION from FILE, returning a pointer
    to a malloc'ed buffer or NULL if something went wrong.  */
 
@@ -11644,7 +11617,7 @@ dump_section_as_strings (Elf_Internal_Shdr * section, FILE * file)
 	    {
 	      print_symbol ((int) maxlen, data);
 	      putchar ('\n');
-	      data += VG_(strnlen) (data, maxlen);
+	      data += strnlen (data, maxlen);
 	    }
 	  else
 	    {
@@ -11658,7 +11631,7 @@ dump_section_as_strings (Elf_Internal_Shdr * section, FILE * file)
   if (! some_strings_shown)
     printf (_("  No strings found in this section."));
 
-  VG_(free) (start);
+  free (start);
 
   putchar ('\n');
 }
@@ -11678,7 +11651,7 @@ dump_section_as_bytes (Elf_Internal_Shdr * section,
   if (start == NULL)
     return;
 
-  FJALAR_DPRINTF (_("\nHex dump of section '%s':\n"), printable_section_name (section));
+  printf (_("\nHex dump of section '%s':\n"), printable_section_name (section));
 
   if (relocate)
     {
@@ -11702,7 +11675,7 @@ dump_section_as_bytes (Elf_Internal_Shdr * section,
 	      || relsec->sh_link >= elf_header.e_shnum)
 	    continue;
 
-	  FJALAR_DPRINTF (_(" NOTE: This section has relocations against it, but these have NOT been applied to this dump.\n"));
+	  printf (_(" NOTE: This section has relocations against it, but these have NOT been applied to this dump.\n"));
 	  break;
 	}
     }
@@ -11719,26 +11692,26 @@ dump_section_as_bytes (Elf_Internal_Shdr * section,
 
       lbytes = (bytes > 16 ? 16 : bytes);
 
-      FJALAR_DPRINTF ("  0x%8.8lx ", (unsigned long) addr);
+      printf ("  0x%8.8lx ", (unsigned long) addr);
 
       for (j = 0; j < 16; j++)
 	{
 	  if (j < lbytes)
-	    FJALAR_DPRINTF ("%2.2x", data[j]);
+	    printf ("%2.2x", data[j]);
 	  else
-	    FJALAR_DPRINTF ("  ");
+	    printf ("  ");
 
 	  if ((j & 3) == 3)
-	    FJALAR_DPRINTF (" ");
+	    printf (" ");
 	}
 
       for (j = 0; j < lbytes; j++)
 	{
 	  k = data[j];
 	  if (k >= ' ' && k < 0x7f)
-	    FJALAR_DPRINTF ("%c", k);
+	    printf ("%c", k);
 	  else
-	    FJALAR_DPRINTF (".");
+	    printf (".");
 	}
 
       putchar ('\n');
@@ -11748,14 +11721,12 @@ dump_section_as_bytes (Elf_Internal_Shdr * section,
       bytes -= lbytes;
     }
 
-  VG_(free) (start);
+  free (start);
 
   putchar ('\n');
 }
 
 /* Uncompresses a section that was compressed using zlib, in place.  */
-
-#if 0 // This code is only needed for the stand alone readelf utility.
 
 static int
 uncompress_section_contents (unsigned char **buffer ATTRIBUTE_UNUSED,
@@ -11827,6 +11798,8 @@ uncompress_section_contents (unsigned char **buffer ATTRIBUTE_UNUSED,
 #endif  /* HAVE_ZLIB_H */
 }
 
+#endif // This code is not needed for Fjalar.
+
 static int
 load_specific_debug_section (enum dwarf_section_display_enum debug,
 			     Elf_Internal_Shdr * sec, void * file)
@@ -11848,8 +11821,8 @@ load_specific_debug_section (enum dwarf_section_display_enum debug,
   else
     {
       section->size = sec->sh_size;
-      if (uncompress_section_contents (&section->start, &section->size))
-	sec->sh_size = section->size;
+//      if (uncompress_section_contents (&section->start, &section->size))  // removed for Fjalar
+//	sec->sh_size = section->size;
     }
 
   if (section->start == NULL)
@@ -11901,47 +11874,11 @@ free_debug_section (enum dwarf_section_display_enum debug)
   if (section->start == NULL)
     return;
 
-  free ((char *) section->start);
+  VG_(free) ((char *) section->start);
   section->start = NULL;
   section->address = 0;
   section->size = 0;
 }
-
-#endif // This code is only needed for the stand alone readelf utility.
-
-// START OF CODE ADDED FOR FJALAR
-
-  /* A structure containing the name of a debug section and a pointer
-     to a function that can decode it.  The third field is a prescan
-     function to be run over the section before displaying any of the
-     sections.  */
-struct
-{
-  const char *const name;
-  int (*display) PARAMS ((Elf_Internal_Shdr *, unsigned char *, FILE *));
-  int (*prescan) PARAMS ((unsigned char *));
-}
-debug_displays[] =
-{
-  { ".debug_abbrev",		display_debug_abbrev, NULL },
-  { ".debug_aranges",		display_debug_aranges, NULL },
-  { ".debug_frame",		display_debug_frames, NULL },
-  { ".debug_info",		display_debug_info, NULL },
-  { ".debug_line",		display_debug_lines, NULL },
-  { ".debug_pubnames",		display_debug_pubnames, NULL },
-  { ".eh_frame",		display_debug_frames, NULL },
-  { ".debug_macinfo",		display_debug_macinfo, NULL },
-  { ".debug_str",		display_debug_str, NULL },
-  { ".debug_loc",		display_debug_loc, NULL },
-  { ".debug_pubtypes",		display_debug_not_supported, NULL },
-  { ".debug_ranges",		display_debug_not_supported, NULL },
-  { ".debug_static_func",	display_debug_not_supported, NULL },
-  { ".debug_static_vars",	display_debug_not_supported, NULL },
-  { ".debug_types",		display_debug_not_supported, NULL },
-  { ".debug_weaknames",		display_debug_not_supported, NULL }
-};
-
-// END FJALAR CODE
 
 static int
 display_debug_section (int shndx, Elf_Internal_Shdr * section, FILE * file)
@@ -11949,8 +11886,7 @@ display_debug_section (int shndx, Elf_Internal_Shdr * section, FILE * file)
   const char * name = SECTION_NAME (section);  // const added to remove warning
   const char * print_name = printable_section_name (section);
   bfd_size_type length;
-  int result = 1;
-  unsigned char *start;  // needed for FJALAR
+  int result = 1; // not always set correctly, but caller ignores
   int i;
 
   length = section->sh_size;
@@ -11975,36 +11911,30 @@ display_debug_section (int shndx, Elf_Internal_Shdr * section, FILE * file)
 
 // START OF CODE ADDED FOR FJALAR
 
-  start = (unsigned char *) get_data (NULL, file, section->sh_offset, 1, length,
-				      _("debug section data"));
-  if (!start)
-    return 0;
-
-
-  if (VG_(strncmp) (name, ".gnu.linkonce.wi.", 17) == 0)
-    name = ".debug_info";
-
-  for (i = ARRAY_SIZE (debug_displays); i--;)
-    if (VG_(strcmp) (debug_displays[i].name, name) == 0)
+  for (i = 0; i < max; i++)
+    if (VG_(strcmp) (debug_displays[i].section.uncompressed_name, name) == 0)
       {
-	debug_displays[i].display (section, start, file);
-	break;
+	struct dwarf_section * sec = &debug_displays [i].section;
+	if (i == line && const_strneq (name, ".debug_line."))
+	  sec->name = name;
+	else if (streq (sec->uncompressed_name, name))
+	  sec->name = sec->uncompressed_name;
+	else
+	  sec->name = sec->compressed_name;
+	if (load_specific_debug_section ((enum dwarf_section_display_enum) i,
+                                         section, file))
+          debug_displays[i].display (sec, file);
+        break;
       }
 
   if (i == -1)
-    FJALAR_DPRINTF (_("Unrecognized debug section: %s\n"), print_name);
-
-  VG_(free) (start);
-
-  /* If we loaded in the abbrev section at some point,
-     we must release it here.  */
-  free_abbrevs ();
+    printf (_("Unrecognized debug section: %s\n"), print_name);
 
 // END FJALAR CODE
 
 #if 0 // replaced by Fjalar code above
 
-/* See if we know how to display the contents of this section.  */
+  /* See if we know how to display the contents of this section.  */
   for (i = 0; i < max; i++)
     if (streq (debug_displays[i].section.uncompressed_name, name)
 	|| (i == line && const_strneq (name, ".debug_line."))
@@ -12046,7 +11976,7 @@ display_debug_section (int shndx, Elf_Internal_Shdr * section, FILE * file)
       result = 0;
     }
 
-#endif // replaced by Fjalar code
+#endif // replaced by Fjalar code above
 
   return result;
 }
@@ -12097,6 +12027,9 @@ process_section_contents (FILE * file)
       if (dump_sects[i] & DISASS_DUMP)
 	disassemble_section (section, file);
 #endif
+
+#if 0 // This code is not needed for Fjalar.
+
       if (dump_sects[i] & HEX_DUMP)
 	dump_section_as_bytes (section, file, FALSE);
 
@@ -12105,6 +12038,8 @@ process_section_contents (FILE * file)
 
       if (dump_sects[i] & STRING_DUMP)
 	dump_section_as_strings (section, file);
+
+#endif // This code is not needed for Fjalar.
 
       if (dump_sects[i] & DEBUG_DUMP)
 	display_debug_section (i, section, file);
@@ -14384,7 +14319,7 @@ process_gnu_liblist (FILE * file)
 
 #endif // do_arch is never true for Fjalar
 
-#if 0 // unneeded by Fjalar
+#if 0 // This code is not needed for Fjalar.
 
 static const char *
 get_note_type (unsigned e_type)
@@ -15171,7 +15106,7 @@ process_arch_specific (FILE * file)
   return 1;
 }
 
-#endif // unneeded by Fjalar
+#endif // This code is not needed for Fjalar.
 
 static int
 get_file_header (FILE * file)
@@ -15279,10 +15214,10 @@ fjalar_process_file (const char * file_name)
   if (sr_isError(res))
     {
       if (errno == 2) // ENOENT
-	error (_("'%s': No such file\n"), file_name);
+        error (_("'%s': No such file\n"), file_name);
       else
-	error (_("Could not locate '%s'.  System error message: %s\n"),
-	       file_name, strerror (errno));
+        error (_("Could not locate '%s'.  System error message: %s\n"),
+               file_name, strerror (errno));
       return 1;
     }
 
@@ -15320,49 +15255,51 @@ fjalar_process_file (const char * file_name)
   if (show_name)
     FJALAR_DPRINTF (_("\nFile: %s\n"), file_name);
 
-  //printf("before process_file_header()\n"); // PG
+  //printf("before process_file_header()\n");
 
   if (! process_file_header ())
     {
-      // FJALAR_DPRINTF("failed process_file_header()\n"); // PG
+      // FJALAR_DPRINTF("failed process_file_header()\n");
       fclose (file);
       return 1;
     }
 
-  // FJALAR_DPRINTF("before process_section_headers()\n"); // PG
+  // FJALAR_DPRINTF("before process_section_headers()\n");
 
   if (! process_section_headers (file))
     {
-      //  FJALAR_DPRINTF("failed process_section_headers()\n"); // PG
+      //  FJALAR_DPRINTF("failed process_section_headers()\n");
       /* Without loaded section headers we
-	 cannot process lots of things.  */
+         cannot process lots of things.  */
       do_unwind = do_version = do_dump = do_arch = 0;
-
-      if (! do_using_dynamic)
-	do_syms = do_dyn_syms = do_reloc = 0;
+      do_syms = do_dyn_syms = do_reloc = 0;
     }
 
-  // FJALAR_DPRINTF("before process_program_headers()\n"); // PG
+  // FJALAR_DPRINTF("before get_program_headers()\n");
 
-  if (process_program_headers (file))
-    process_dynamic_section (file);
+  if (! get_program_headers (file))
+    {
+      // FJALAR_DPRINTF("failed get_program_headers()\n");
+      fclose (file);
+      return 1;
+    }
 
-  // FJALAR_DPRINTF("before process_relocs()\n"); // PG
+  // FJALAR_DPRINTF("before process_relocs()\n");
   process_relocs (file);
 
 //  Fjalar does not need the unwind info (do_unwind always = 0).
 //process_unwind (file);
 
-  // FJALAR_DPRINTF("before process_symbol_table()\n"); // PG
+  // FJALAR_DPRINTF("before process_symbol_table()\n");
   process_symbol_table (file);
 
-  // FJALAR_DPRINTF("before process_syminfo()\n"); // PG
+  // FJALAR_DPRINTF("before process_syminfo()\n");
   process_syminfo (file);
 
 //  Fjalar does not need the version info (do_version always = 0).
 //process_version_sections (file);
 
-  // FJALAR_DPRINTF("before process_section_contents()\n"); // PG
+  // FJALAR_DPRINTF("before process_section_contents()\n");
   process_section_contents (file);
 
 //  Fjalar does not need the notes info (do_notes always = 0).
@@ -15432,24 +15369,26 @@ fjalar_process_file (const char * file_name)
       struct group_list * next;
 
       for (i = 0; i < group_count; i++)
-	{
-	  for (g = section_groups [i].root; g != NULL; g = next)
-	    {
-	      next = g->next;
-	      VG_(free) (g);
-	    }
-	}
+        {
+          for (g = section_groups [i].root; g != NULL; g = next)
+            {
+              next = g->next;
+              VG_(free) (g);
+            }
+        }
 
       VG_(free) (section_groups);
       section_groups = NULL;
     }
+
+  free_debug_memory ();
 
   return 0;
 }
 
 // END FJALAR CODE
 
-#if 0 // This code is only needed for the stand alone readelf utility.
+#if 0 // This code is not needed for Fjalar.
 
 /* Process one ELF object file according to the command line options.
    This file may actually be stored in an archive.  The file is
@@ -15977,7 +15916,7 @@ main (int argc, char ** argv)
   return err;
 }
 
-#endif // This code is only needed for the stand alone readelf utility.
+#endif // This code is not needed for Fjalar.
 
 // START OF CODE ADDED FOR FJALAR
 
@@ -15991,10 +15930,10 @@ process_elf_binary_data (const HChar* filename)
   int err;
   // FJALAR_DPRINTF("Entry: process_elf_binary_data\n");
 
-  do_syms++; /* -s */
+  do_syms++;
   do_dump++;
   do_debug_info++;
-  do_debug_lines++; /* --debug-dump=info,lines */
+  do_debug_lines++;
   do_debug_loc++;
   do_debug_frames++;
   show_name = 1;
@@ -16009,7 +15948,7 @@ process_elf_binary_data (const HChar* filename)
       do_debug_str++;
   }
 
-  err = fjalar_process_file (filename); // PG/SMcC - rather than argv[argc - 1]
+  err = fjalar_process_file (filename);
 
   // FJALAR_DPRINTF("AFTER fjalar_process_file(0x%x)\n", filename);
 
@@ -16025,7 +15964,5 @@ process_elf_binary_data (const HChar* filename)
 
   return err;
 }
-
-// End // PG
 
 // END FJALAR CODE

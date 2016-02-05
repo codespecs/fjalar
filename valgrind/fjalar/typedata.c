@@ -2769,7 +2769,7 @@ unsigned long findFunctionStartPCForVariableEntry(dwarf_entry* e)
 // RUDD
 char harvest_frame_base(dwarf_entry *e, enum dwarf_location_atom a, long offset) {
   unsigned long tag;
-  FJALAR_DPRINTF("Attempting to harvest the frame_base\n");
+  // FJALAR_DPRINTF("Attempting to harvest the frame_base\n");
 
   if ((e == 0) || (e->entry_ptr == 0))
     return 0;

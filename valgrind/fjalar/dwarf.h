@@ -176,7 +176,7 @@ struct dwarf_section_display
   unsigned int relocate : 1;
 };
 
-// extern struct dwarf_section_display debug_displays []; // Fjalar uses a different definition
+extern struct dwarf_section_display debug_displays [];
 
 /* This structure records the information that
    we extract from the.debug_info section.  */
@@ -252,6 +252,7 @@ void * cmalloc (size_t, size_t);
 void * xcmalloc (size_t, size_t);
 void * xcrealloc (void *, size_t, size_t);
 
+// added typedef to remove warning
 typedef int bfd_boolean;
 
 extern dwarf_vma read_leb128 (unsigned char *, unsigned int *, bfd_boolean, const unsigned char * const);

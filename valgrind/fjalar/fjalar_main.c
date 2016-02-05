@@ -166,8 +166,10 @@ const HChar* dwarf_reg_string[9] = {
   "xIP"
 };
 
-// located in VEX/priv/main_util.c  (markro)
-extern void vex_bzero ( void* s, UInt n );
+// located in VEX/priv/main_util.c
+extern void vex_bzero(void* s, UInt n);
+// located in my_libc.c
+extern void setNOBUF(FILE *stream);
 
 /*------------------------------------------------------------*/
 /*--- Entry and Exit Handling                              ---*/
@@ -1039,7 +1041,10 @@ void fjalar_post_clo_init()
     fjalar_disambig_filename = disambig_filename;
   }
 
-
+  // There is a bug in my_libc.c that keeps printf and
+  // putchar from intermixing properly.  Using NOBUF
+  // on stdout keeps putchar from buffering incorrectly.
+  setNOBUF(stdout);
 
   FJALAR_DPRINTF("\n%s\n\n", fjalar_disambig_filename);
 
