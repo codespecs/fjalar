@@ -81,7 +81,7 @@ To determine whether a newer version of Valgrind is available, compare file
 @file{fjalar/valgrind/REVISION} to URL
 @url{http://valgrind.org/downloads/current.html}.
 
-To determine whether a newer version of binutils is available, compare file
+To determine whether a newer version of Binutils is available, compare file
 @file{fjalar/valgrind/REVISION} to URL
 @url{http://ftp.gnu.org/gnu/binutils/?C=M;O=D}.
 
@@ -512,6 +512,7 @@ guidelines on supporting new VEX instructions.
 * Overview::
 * Creating the binutils patch and diff files::
 * Merging the binutils changes::
+* Hints to modifing dwarf.c and readelf.c::
 @end menu
 
 
@@ -542,8 +543,6 @@ your machine.  After unpacking, you will have a directory structure
 whose root is @file{binutils-<version>}.
 To complete the update process, you will need a copy of both the current
 version within Fjalar and the version you wish to update to.
-Also, the instructions assume that the Binutils directories are at the
-root of your home directory.
 
 
 @node Creating the binutils patch and diff files
@@ -557,7 +556,6 @@ actual readelf files.
 
 @c Alternately, could work from the binutils git repository:
 @c   git clone git://sourceware.org/git/binutils-gdb.git
-
 
 @example
 # Adjust these first two lines as necessary
@@ -575,7 +573,7 @@ tar xzf binutils-$BUNEWVER.tar.gz
 diff -ur $BUOLD/include $BUNEW/include > include.patch
 diff -u  $BUOLD/libiberty/dwarfnames.c \
          $BUNEW/libiberty/dwarfnames.c >> include.patch
-diff -ur $BUOLD/binutils $BUNEW/binutils > binutils.patch
+diff -u -xMakefile $BUOLD/binutils $BUNEW/binutils > binutils.patch
 @end example
 
 Next, we create diff files comparing the old Binutils to the current
@@ -594,11 +592,15 @@ diff -ub ~/tmp/$BUOLD/binutils/readelf.c readelf.c > readelf-binutils-vs-fjalar.
 @node Merging the binutils changes
 @section Merging the binutils changes
 
-Now we can merge the changes by applying the patch files.  @file{include.patch}
-should apply with few, if any, conflicts.
+Now we can merge the changes by applying the patch files.
+Note that the patch input files
+may (and probably will) include files that Fjalar does not use.  These 
+will produce a warning message including the line "can't find file to
+patch".  It is safe to ignore these messages.
+@file{include.patch} should apply with few, if any, conflicts.
 @file{binutils.patch} will probably work on all but @file{dwarf.c} and
 @file{readelf.c}.
-For these two, a visual merge tool (such as @command{meld}) might be
+For these two, a visual merge tool (such as @command{meld}) will be
 helpful.
 
 It can be difficult to undo a patch operation, so you should first attempt
@@ -639,6 +641,56 @@ Again, a visual merge tool can make this process easier.
 
 
 Finally, update the ``export BINUTILS_VERSION='' line in @file{fjalar/valgrind/REVISION}.
+
+
+@node Hints to modifing dwarf.c and readelf.c
+@section Hints to modifing dwarf.c and readelf.c
+
+Programs written to run under the Valgrind tool must obey certain
+requirements with respect to the use of the C runtime library.
+In particular, most of those routines have been replaced 
+with Valgrind versions. Thus, a call to @code{assert} must be replaced
+with a call to @code{tl_assert}.  The most common changes you will see
+are for the memory allocation, string manipulation and file output
+routines.  The name of the routine must be wrapped in @code{VG_(..)}.
+For example: @code{VG_(malloc)} or @code{VG_(strlen)}.
+
+The other major area of difference is with the @code{printf} calls 
+found in the source.  Remember that the original @command{readelf}
+is a tool to print out information about binary object files.
+Fjalar uses this code to disassemble the object files and harvest
+information needed for analysis of the user's program. Fjalar does
+not want to print out this information (unless a debugging
+option has been selected).  Thus, almost all the
+calls to @code{printf} or @code{putchar} need to be guarded by
+an @code{if} statement testing either @code{fjalar_debug} or
+@code{fjalar_debug_dump}, as appropriate. This leads to a
+subtle problem, if the operands of the @code{printf} call have
+side effects, then they must be removed from the @code{printf}
+and the value assigned to a temp.
+@noindent
+For example:
+@example
+printf ("DW_OP_bit_piece: ");
+printf (_("size: %s "),
+          dwarf_vmatoa ("u", read_uleb128 (data, &bytes_read, end)));
+data += bytes_read;
+@end example
+@noindent
+needs to be rewritten as:
+@example
+uconst_data = read_uleb128 (data, &bytes_read, end);
+if (fjalar_debug_dump)
+printf ("DW_OP_bit_piece: ");
+if (fjalar_debug_dump)
+printf (_("size: %s "),
+          dwarf_vmatoa ("u", uconst_data));
+data += bytes_read;
+@end example
+
+@noindent
+Unfortunately, there are many occurrences of this and similar
+constructs in the Binutils code base.
 
 
 @node Compiling and Testing

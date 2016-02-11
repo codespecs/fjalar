@@ -80,3 +80,7 @@ pdf: valgrind-merge.pdf
 valgrind-merge.pdf: valgrind-merge.texinfo
 	makeinfo --pdf $<
 
+# -u switch to hunspell is undocumented and subject to change,
+# but gives a line number whereas -l does not.
+spell-check:
+	perl $(DAIKONDIR)/doc/prepare-texinfo-for-spellcheck.pl < valgrind-merge.texinfo | hunspell -u -p $(DAIKONDIR)/doc/daikon.dict
