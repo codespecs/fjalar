@@ -24,7 +24,7 @@
 #ifndef _ELFCOMM_H
 #define _ELFCOMM_H
 
-#if 0  // ARCHIVE we don't need any of the archive stuff (markro)
+#if 0  // ARCHIVE Fjalar doesn't need any of the archive code
 
 #include "aout/ar.h"
 
@@ -33,13 +33,13 @@ void warn (const char *, ...) ATTRIBUTE_PRINTF_1;
 
 #endif // ARCHIVE
 
-#if __STDC_VERSION__ >= 199901L || (defined(__GNUC__) && __GNUC__ >= 2)
+//#if defined HAVE_LONG_LONG && SIZEOF_LONG_LONG > SIZEOF_LONG
 /* We can't use any bfd types here since readelf may define BFD64 and
    objdump may not.  */
-#define HOST_WIDEST_INT	long long
-#else
+//#define HOST_WIDEST_INT	long long
+//#else
 #define HOST_WIDEST_INT long
-#endif
+//#endif
 typedef unsigned HOST_WIDEST_INT elf_vma;
 
 extern void (*byte_put) (unsigned char *, elf_vma, int);
@@ -61,7 +61,7 @@ extern void byte_get_64 (unsigned char *, elf_vma *, elf_vma *);
 #define strneq(a,b,n)	  (VG_(strncmp) ((a), (b), (n)) == 0)
 #define const_strneq(a,b) (VG_(strncmp) ((a), (b), sizeof (b) - 1) == 0)
 
-#if 0  // ARCHIVE we don't need any of the archive stuff (markro)
+#if 0  // ARCHIVE Fjalar doesn't need any of the archive code
 
 /* Structure to hold information about an archive file.  */
 
@@ -83,7 +83,7 @@ struct archive_info
 };
 
 /* Return the path name for a proxy entry in a thin archive.  */
-extern char *adjust_relative_path (const char *, const char *, int);
+extern char *adjust_relative_path (const char *, const char *, unsigned long);
 
 /* Read the symbol table and long-name table from an archive.  */
 extern int setup_archive (struct archive_info *, const char *, FILE *,

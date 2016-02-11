@@ -76,6 +76,8 @@ extern int smart_rename (const char *, const char *, int);
 /* In libiberty.  */
 void *xmalloc (size_t);
 
+void *xcalloc (size_t, size_t);
+
 void *xrealloc (void *, size_t);
 
 #endif /* _BUCOMM_H */

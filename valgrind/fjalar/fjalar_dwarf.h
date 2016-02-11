@@ -23,12 +23,7 @@
 #ifndef FJALAR_DWARF_H
 #define FJALAR_DWARF_H
 
-#if __STDC_VERSION__ >= 199901L || (defined(__GNUC__) && __GNUC__ >= 2)
-#define HOST_WIDEST_INT	long long
-#else
-#define HOST_WIDEST_INT long
-#endif
-
+#include "elfcomm.h"
 #include "dwarf.h"
 #include "dwarf2.h"
 
