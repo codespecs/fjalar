@@ -35,7 +35,7 @@
    This file is part of Fjalar, a dynamic analysis framework for C/C++
    programs.
 
-   Copyright (C) 2007-2015 University of Washington Computer Science & Engineering Department,
+   Copyright (C) 2007-2016 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
@@ -7161,7 +7161,7 @@ static void mc_pre_clo_init(void)
    VG_(details_version)         ("5.2.23");
    VG_(details_description)     ("C/C++ Language Front-End for Daikon with DynComp comparability analysis tool.");
    VG_(details_copyright_author)(
-   "Copyright (C) 2007-2015, University of Washington CSE PLSE Group");
+   "Copyright (C) 2007-2016, University of Washington CSE PLSE Group");
 
    VG_(details_bug_reports_to)  ("daikon-developers@googlegroups.com");
 
