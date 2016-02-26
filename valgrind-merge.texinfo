@@ -528,28 +528,18 @@ For ease of verification, it is recommended that you do not update Valgrind
 and Binutils at the same time.
 
 
-The GNU Binutils
-are a collection of approximately twenty binary tools.
+GNU Binutils is a collection of approximately twenty binary tools.
 We are interested only in @command{readelf}, a tool that displays
 information from an ELF format object file.  Fjalar does not use this
 binary directly, rather a portion of the source code for Fjalar contains
 a modified version of the source used to build @command{readelf}.
 
-As noted in the Introduction,
-you may browse to @uref{http://ftp.gnu.org/gnu/binutils/?C=M;O=D} to see the
-list of all the versions of Binutils that are available, sorted by date.
-Select the most recent version and download the tar file to
-your machine.  After unpacking, you will have a directory structure
-whose root is @file{binutils-<version>}.
-To complete the update process, you will need a copy of both the current
-version within Fjalar and the version you wish to update to.
 
 
 @node Creating the binutils patch and diff files
 @section Creating the binutils patch and diff files
 
-First, we create patch files showing what the Binutils
-maintainers have
+First, create patch files showing what the Binutils maintainers have
 changed since the last time the readelf code was merged into Fjalar.
 There are two patch files: one for the include files and one for the
 actual readelf files.
@@ -558,9 +548,10 @@ actual readelf files.
 @c   git clone git://sourceware.org/git/binutils-gdb.git
 
 @example
-# Adjust these first two lines as necessary
-export BUOLDVER=2.25
-export BUNEWVER=2.25.1
+# Get old version number from file @url{valgrind/REVISION}.
+# Get new version number from @uref{http://ftp.gnu.org/gnu/binutils/?C=M;O=D}
+export BUOLDVER=2.25.1
+export BUNEWVER=2.26
 
 export BUOLD=binutils-$BUOLDVER
 export BUNEW=binutils-$BUNEWVER
@@ -576,7 +567,7 @@ diff -u  $BUOLD/libiberty/dwarfnames.c \
 diff -u -xMakefile $BUOLD/binutils $BUNEW/binutils > binutils.patch
 @end example
 
-Next, we create diff files comparing the old Binutils to the current
+Next, create diff files comparing the old Binutils to the current
 versions in Fjalar.  These diffs will not be used for automated
 patching, but for visual verification assistance.  As the majority of
 the files should patch quite well, we prepare diffs for only the two
@@ -592,11 +583,18 @@ diff -ub ~/tmp/$BUOLD/binutils/readelf.c readelf.c > readelf-binutils-vs-fjalar.
 @node Merging the binutils changes
 @section Merging the binutils changes
 
+Before applying any patches, ensure that the tests pass (run these lines one at a time):
+
+@example
+  make -C $INV/fjalar build test
+  make -C $INV/daikon/tests/kvasir-tests nightly-summary-w-daikon
+@end example
+
 Now we can merge the changes by applying the patch files.
-Note that the patch input files
-may (and probably will) include files that Fjalar does not use.  These 
-will produce a warning message including the line "can't find file to
-patch".  It is safe to ignore these messages.
+The patch files probably include files that Fjalar does not use.
+Running @command{patch}
+will produce a warning message including the line ``can't find file to
+patch''.  It is safe to ignore these messages.
 @file{include.patch} should apply with few, if any, conflicts.
 @file{binutils.patch} will probably work on all but @file{dwarf.c} and
 @file{readelf.c}.
@@ -604,15 +602,18 @@ For these two, a visual merge tool (such as @command{meld}) will be
 helpful.
 
 It can be difficult to undo a patch operation, so you should first attempt
-a dry run.
+a dry run.  (The @command{lines-notbetween} command is from
+@uref{http://mernst.github.io/plume-lib/, plume-lib}.)
 
 @example
 cd $INV/fjalar/valgrind/fjalar
-patch -p1 -lu -f < ~/tmp/include.patch --dry-run
-patch -p2 -lu -f -F3 < ~/tmp/binutils.patch --dry-run
+patch -p1 -lu -f < ~/tmp/include.patch --dry-run \
+  | lines-notbetween "can't find file to patch" "No file to patch.  Skipping patch."
+patch -p2 -lu -f -F3 < ~/tmp/binutils.patch --dry-run \
+  | lines-notbetween "can't find file to patch" "No file to patch.  Skipping patch."
 @end example
 
-If the patch fails (other than as noted above), it might be indicative
+If there are problems other than as noted above, it might be indicative
 of problems in the patch creation.
 
 When you are ready to apply the patch run:
@@ -640,7 +641,14 @@ review the diffs in the previous versions as the new diffs should be similar.
 Again, a visual merge tool can make this process easier.
 
 
-Finally, update the ``export BINUTILS_VERSION='' line in @file{fjalar/valgrind/REVISION}.
+Update the ``@code{export BINUTILS_VERSION=}'' line in @file{fjalar/valgrind/REVISION}.
+
+
+Finally, ensure that the tests still pass (run these lines one at a time):
+@example
+  make -C $INV/fjalar build test
+  make -C $INV/daikon/tests/kvasir-tests nightly-summary-w-daikon
+@end example
 
 
 @node Hints to modifing dwarf.c and readelf.c
