@@ -29,6 +29,7 @@
 #include "fjalar_select.h"
 #include "GenericHashtable.h"
 #include "../coregrind/m_demangle/demangle.h"
+extern char * cplus_demangle_v3 (const char *, int);
 
 #include "fjalar_tool.h"
 
@@ -1684,7 +1685,6 @@ void initializeFunctionTable(void)
           // to try to demangle the name (remember the demangled name
           // is malloc'ed):
           if (cur_func_entry->mangled_name) {
-            //extern char* cplus_demangle_v3 (const char* mangled, int options);
             demangled_name = cplus_demangle_v3(cur_func_entry->mangled_name, DMGL_PARAMS | DMGL_ANSI);
             if (demangled_name) {
               FJALAR_DPRINTF("demangling: %s\n", demangled_name);
@@ -2707,8 +2707,6 @@ extractOneVariable(VarList* varListPtr,
 // formal parameters are treated like NORMAL pointers which are not statically-sized
 // just because that's how the C language works
 {
-  extern char* cplus_demangle_v3 (const char* mangled, int options);
-
   VariableEntry* varPtr = 0;
   char ptrLevels = 0;
   char referenceLevels = 0;

@@ -40,9 +40,6 @@
 // for name demangling
 #include "../coregrind/m_demangle/demangle.h"
 extern char * cplus_demangle_v3 (const char *, int);
-// check_headers_and_includes script says this include is bad
-// but I don't see any other way to do it.  (markro)
-#include "../coregrind/pub_core_mallocfree.h"
 
 
 // Global array of all dwarf entries, sorted (hopefully) by dwarf_entry.ID
@@ -1690,11 +1687,7 @@ static void init_specification_and_abstract_stuff(void) {
                     if (VG_(strncmp) (demangled_name, "__gnu_cxx::", 11) == 0) {
                         offset = 11;
                     }
-                    // We do the strdup no matter what because the mangled name has been allocated
-                    // in Valgrind's private memory pools.  We should copy it into ours to be nice.
-                    char *temp = VG_(strdup) ("typedata.c: init_specification...", demangled_name + offset);
-                    VG_(arena_free) (VG_AR_DEMANGLE, demangled_name);
-                    demangled_name = temp;
+                    demangled_name = VG_(strdup) ("typedata.c: init_specification...", demangled_name + offset);
                 }    
             }    
 
