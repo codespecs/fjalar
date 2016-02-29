@@ -59,11 +59,10 @@ The update of the underlying copy of Valgrind can usually be done almost
 automatically. Updating the Memcheck code often involves manual work,
 due to substantial modifications to the Memcheck code that are incorporated
 in Fjalar. The more frequent the merges are, the easier they will be to
-do. Semiannually, at the very least, is recommended.
-(However, we are currently experimenting with merging only when an official
+do. This document gives instructions for merging only when an official
 release is made.  This has the advantage of ensuring that the tool is more
 stable, but the disadvantages of going longer between bug fixes and making
-each merge larger and more difficult.)
+each merge larger and more difficult.
 
 Fjalar also contains code derived from the GNU Binutils
 tool @command{readelf}.  @xref{Updating Readelf from Binutils}
@@ -78,11 +77,13 @@ to update Fjalar when a new version of Binutils is released.
 @section Determining whether a merge is necessary
 
 To determine whether a newer version of Valgrind is available, compare file
-@file{fjalar/valgrind/REVISION} to URL
+@url{https://raw.githubusercontent.com/codespecs/fjalar/master/valgrind/REVISION,
+@file{fjalar/valgrind/REVISION}} to URL
 @url{http://valgrind.org/downloads/current.html}.
 
 To determine whether a newer version of Binutils is available, compare file
-@file{fjalar/valgrind/REVISION} to URL
+@url{https://raw.githubusercontent.com/codespecs/fjalar/master/valgrind/REVISION,
+@file{fjalar/valgrind/REVISION}} to URL
 @url{http://ftp.gnu.org/gnu/binutils/?C=M;O=D}.
 
 
@@ -160,7 +161,7 @@ cd $INV/fjalar
 git log --branches --not --remotes
 @end example
 
-The log commands should say "no changes found". If there are outgoing changes,
+The log commands should produce no output. If there are outgoing changes,
 push them, then start over from the beginning.
 
 
