@@ -179,7 +179,30 @@ make -C $INV/daikon/tests/kvasir-tests nightly-summary-w-daikon
 @end example
 
 The tests should pass. If any tests fail, fix them, then start over from
-the beginning.  Or, run on a system, such as UW CSE, where all tests pass.
+the beginning.
+Currently, all tests pass on a standard UW/CSE machine running Fedora V22.
+However, on a Ubuntu V15.10 based machine two tests fail:
+@example
+flex-pristine/flex-pristine.comp
+flex-rothermel/felx-rothermel.comp
+@end example
+
+Next, we need to run the Valgrind regression tests to obtain a set of
+baseline results prior to the source merge.  These tests are very sensitive
+to the system software on the host machine.  In most cases, there will be
+some failures. (Currently, 4 of 629 tests do not pass on a standard UW/CSE
+system running Fedora V22.) Rather, it is important to capture the results
+as they should be identical after the source merge.
+
+@example
+cd $INV/fjalar
+make test
+@end example
+
+@noindent
+The test results will be written to @file{stdout}.  Make a note of the tests that
+did not pass and save a copy of the associated @file{.diff} file.  These
+will be used in @ref{Compiling and Testing} to help verify the source merge process.
 
 At this point, the source trees are ready for the merge.
 However, the Fjalar repository contains
@@ -591,6 +614,10 @@ Before applying any patches, ensure that the tests pass (run these lines one at 
   make -C $INV/daikon/tests/kvasir-tests nightly-summary-w-daikon
 @end example
 
+@noindent
+@xref{Verify current sources pass the regression tests} for the expected
+results of running these tests.
+
 Now we can merge the changes by applying the patch files.
 The patch files probably include files that Fjalar does not use.
 Running @command{patch}
@@ -640,16 +667,12 @@ As noted above, @file{dwarf.c} and @file{readelf.c} will probably
 have a lot of conflicts.  As you edit the new files, you may wish to
 review the diffs in the previous versions as the new diffs should be similar.
 Again, a visual merge tool can make this process easier.
+@xref{Hints to modifing dwarf.c and readelf.c} for more source details
+that may help you with the merge process.
 
-
-Update the ``@code{export BINUTILS_VERSION=}'' line in @file{fjalar/valgrind/REVISION}.
-
-
-Finally, ensure that the tests still pass (run these lines one at a time):
-@example
-  make -C $INV/fjalar build test
-  make -C $INV/daikon/tests/kvasir-tests nightly-summary-w-daikon
-@end example
+After you have completed the source merge,
+update the ``@code{export BINUTILS_VERSION=}'' line in @file{fjalar/valgrind/REVISION}.
+Then proceed to @ref{Compiling and Testing}.
 
 
 @node Hints to modifing dwarf.c and readelf.c
@@ -657,14 +680,14 @@ Finally, ensure that the tests still pass (run these lines one at a time):
 
 Programs written to run under the Valgrind tool must obey certain
 requirements with respect to the use of the C runtime library.
-In particular, most of those routines have been replaced 
+In particular, most of those routines have been replaced
 with Valgrind versions. Thus, a call to @code{assert} must be replaced
 with a call to @code{tl_assert}.  The most common changes you will see
 are for the memory allocation, string manipulation and file output
 routines.  The name of the routine must be wrapped in @code{VG_(..)}.
 For example: @code{VG_(malloc)} or @code{VG_(strlen)}.
 
-The other major area of difference is with the @code{printf} calls 
+The other major area of difference is with the @code{printf} calls
 found in the source.  Remember that the original @command{readelf}
 is a tool to print out information about binary object files.
 Fjalar uses this code to disassemble the object files and harvest
@@ -741,7 +764,10 @@ cd $INV/fjalar
 make test
 @end example
 
-The test suite should pass without modification.
+@noindent
+While a few tests may not pass, the results should be identical to
+the results obtained when running these tests prior to the source
+merge as described in @ref{Verify current sources pass the regression tests}.
 
 
 @node Testing Fjalar
@@ -756,7 +782,9 @@ cd $INV/daikon/tests/kvasir-tests
 make nightly-summary-w-daikon
 @end example
 
-The test suite should pass without modification.
+@noindent
+@xref{Verify current sources pass the regression tests} for the expected
+results of running these tests.
 
 
 @node Documenting Changes
