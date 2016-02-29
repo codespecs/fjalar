@@ -664,7 +664,7 @@ code as well as our original code and determine if it needs to be hand
 merged or if the change is not relevant.
 
 As noted above, @file{dwarf.c} and @file{readelf.c} will probably
-have a lot of conflicts.  As you edit the new files, you may wish to
+have several conflicts.  As you edit the new files, you may wish to
 review the diffs in the previous versions as the new diffs should be similar.
 Again, a visual merge tool can make this process easier.
 @xref{Hints to modifing dwarf.c and readelf.c} for more source details
@@ -675,19 +675,44 @@ update the ``@code{export BINUTILS_VERSION=}'' line in @file{fjalar/valgrind/REV
 Then proceed to @ref{Compiling and Testing}.
 
 
+@need 2000
 @node Hints to modifing dwarf.c and readelf.c
 @section Hints to modifing dwarf.c and readelf.c
+
+Many sections of code in @file{dwarf.c} and @code{readelf.c}, some
+of them quite large, are not needed for Fjalar and have been
+disabled with C preprocessor commands.  The general format is:
+
+@example
+#if 0 // This code is not needed for Fjalar.
+
+...  <unused code> ...
+
+#endif // This code is not needed for Fjalar.
+@end example
+
+@noindent
+Keeping the unused code instead of deleting it makes the
+@command{diff/patch} process go much smoother with fewer
+conflicts.  In is unnecessary (and inadvisable) to make any
+modifications to these disabled sections of code.
 
 Programs written to run under the Valgrind tool must obey certain
 requirements with respect to the use of the C runtime library.
 In particular, most of those routines have been replaced
-with Valgrind versions. Thus, a call to @code{assert} must be replaced
+with Valgrind equivalents. Thus, a call to @code{assert} must be replaced
 with a call to @code{tl_assert}.  The most common changes you will see
 are for the memory allocation, string manipulation and file output
 routines.  The name of the routine must be wrapped in @code{VG_(..)}.
 For example: @code{VG_(malloc)} or @code{VG_(strlen)}.
+It is not
+critical to find and correct all of these changes in your first
+pass over the modified code.  They will be identified via an
+"implicit declaration" warning from the compiler and an
+"undefined reference" error from the linker.
 
-The other major area of difference is with the @code{printf} calls
+The other major area of difficulty when doing the source merge
+is with the @code{printf} calls
 found in the source.  Remember that the original @command{readelf}
 is a tool to print out information about binary object files.
 Fjalar uses this code to disassemble the object files and harvest
@@ -695,9 +720,36 @@ information needed for analysis of the user's program. Fjalar does
 not want to print out this information (unless a debugging
 option has been selected).  Thus, almost all the
 calls to @code{printf} or @code{putchar} need to be guarded by
-an @code{if} statement testing either @code{fjalar_debug} or
-@code{fjalar_debug_dump}, as appropriate. This leads to a
-subtle problem, if the operands of the @code{printf} call have
+a test of one of the Fjalar debug options.  In particular,
+@code{fjalar_debug} for the output of debugging information
+and @code{fjalar_debug_dump} for the output of the contents of
+the binary file being processed.
+
+A couple of preprocessor short cuts have been used to help with the process.
+@example
+if (fjalar_debug) printf (<print data>);
+@end example
+@noindent
+may be replaced with:
+@example
+FJALAR_DPRINTF(<print data>);
+@end example
+@noindent
+This shortcut is used extensively in @file{readelf.c}.
+
+Within @file{dwarf.c} there is a large section of code from about
+line 1100 to line 2560 that uses the following:
+@example
+#define printf(...) do @{if(ok_to_print) printf(__VA_ARGS__);@} while (0)
+@end example
+@noindent
+This allows the @code{printf} statements within this section of code
+to be used without modification.
+
+@need 2000
+Please note that these @code{if} guards on the @code{printf} statements
+lead to a
+subtle problem; if the operands of the @code{printf} call have
 side effects, then they must be removed from the @code{printf}
 and the value assigned to a temp.
 @noindent
@@ -723,6 +775,12 @@ data += bytes_read;
 @noindent
 Unfortunately, there are many occurrences of this and similar
 constructs in the Binutils code base.
+
+As in the case of a missed @code{VG_(..)} wrapper, missing a @code{printf}
+that needs to be protected should not be a big problem.  Typically, the
+Fjalar tool will operate as expected but contain superfluous information
+in its output.  This will likely be caught as a diff in a @file{.out}
+file when running the kvasir-tests regressions.
 
 
 @node Compiling and Testing
