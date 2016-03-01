@@ -39,6 +39,8 @@
    A few of the Fjalar changes are denoted by // PG or RUDD marks
 */
 
+// Fjalar code
+
 #include "my_libc.h"
 
 #include "pub_tool_basics.h"
@@ -47,18 +49,27 @@
 #include "pub_tool_libcprint.h"
 #include "pub_tool_mallocfree.h"
 
+// end Fjalar code
+
+//#include "sysdep.h"
+//#include "libiberty.h"
 #include "bfd.h"
 //#include "bfd_stdint.h"
 #include "bucomm.h"
 #include "elfcomm.h"
+#include "elf/common.h"
+//#include "dwarf2.h"
+//#include "dwarf.h"
+//#include "gdb/gdb-index.h"
+
+// Fjalar code
+
+#include "elf/internal.h"
 #include "fjalar_main.h"
 #include "fjalar_dwarf.h"
+#include "typedata.h"
 
-#include "elf/common.h"
-#include "elf/external.h"
-#include "elf/internal.h"
-
-#include "typedata.h" // PG
+// end Fjalar code
 
 static const char *regname (unsigned int regno, int row);
 
@@ -76,6 +87,8 @@ static debug_info *debug_information = NULL;
 #define DEBUG_INFO_UNAVAILABLE  (unsigned int) -1
 
 unsigned int eh_addr_size;
+
+// Fjalar code
 
 // Symbolic constants for the display attribute routines (markro)
 //   Second pass through attributes in process_debug_info?
@@ -95,65 +108,47 @@ unsigned long string_table_length;
 Elf_Internal_Ehdr elf_header;
 Elf_Internal_Shdr *section_headers;
 
-// always true for Fjalar
-int show_name;
-int do_syms;
-int do_dump;
-int do_debug_info;
-int do_debug_lines;
-int do_debug_loc;
-int do_debug_frames;
-// only true for Fjalar if --fjalar-debug-dump
-int do_debug_abbrevs;
-int do_debug_aranges;
-int do_debug_pubnames;
-int do_debug_macinfo;
-int do_debug_str;
-// never true for Fjalar
-int do_debug_addr;
-int do_debug_cu_index;
-int do_debug_frames_interp;
-int do_debug_pubtypes;
-int do_debug_ranges;
-int do_gdb_index;
-int do_trace_info;
-int do_trace_abbrevs;
-int do_trace_aranges;
-int do_dynamic;
-int do_reloc;
-int do_sections;
-int do_segments;
-int do_unwind;
-int do_using_dynamic;
-int do_header;
-int do_version;
-int do_wide;
-int do_histogram;
-int do_debugging;
-int do_arch;
-int do_notes;
-int do_section_details;
-int do_section_groups;
-int do_dyn_syms;
+// end Fjalar code
+
+int do_debug_info;		// always true for Fjalar
+int do_debug_abbrevs;		// true if --fjalar-debug-dump
+int do_debug_lines;		// always true for Fjalar
+int do_debug_pubnames;		// true if --fjalar-debug-dump
+int do_debug_pubtypes;		// never true for Fjalar
+int do_debug_aranges;		// never true for Fjalar
+int do_debug_ranges;		// true if --fjalar-debug-dump
+int do_debug_frames;		// always true for Fjalar
+int do_debug_frames_interp;	// never true for Fjalar
+int do_debug_macinfo;		// true if --fjalar-debug-dump
+int do_debug_str;		// true if --fjalar-debug-dump
+int do_debug_loc;		// always true for Fjalar
+int do_gdb_index;		// never true for Fjalar
+int do_trace_info;		// never true for Fjalar
+int do_trace_abbrevs;		// never true for Fjalar
+int do_trace_aranges;		// never true for Fjalar
+int do_debug_addr;		// never true for Fjalar
+int do_debug_cu_index;		// never true for Fjalar
+int do_wide;			// never true for Fjalar
 
 int dwarf_cutoff_level = -1;
 unsigned long dwarf_start_die;
 
-int slurp_rela_relocs(FILE *, unsigned long, unsigned long, Elf_Internal_Rela **, unsigned long *);
-int slurp_rel_relocs(FILE *, unsigned long, unsigned long, Elf_Internal_Rela **, unsigned long *);
-Elf_Internal_Sym *get_32bit_elf_symbols(FILE *, Elf_Internal_Shdr *);
-Elf_Internal_Sym *get_64bit_elf_symbols(FILE *, Elf_Internal_Shdr *);
+#if 0 // This code is not needed for Fjalar.
+
+int dwarf_check = 0;
 
 /* Collection of CU/TU section sets from .debug_cu_index and .debug_tu_index
    sections.  For version 1 package files, each set is stored in SHNDX_POOL
    as a zero-terminated list of section indexes comprising one set of debug
    sections from a .dwo file.  */
-#if 0
+
 static int cu_tu_indexes_read = 0;
 static unsigned int *shndx_pool = NULL;
 static unsigned int shndx_pool_size = 0;
 static unsigned int shndx_pool_used = 0;
-#endif
+
+#endif // This code is not needed for Fjalar
+
 /* For version 2 package files, each set contains an array of section offsets
    and an array of section sizes, giving the offset and size of the
    contribution from a CU or TU within one of the debug sections.
@@ -167,14 +162,16 @@ struct cu_tu_set
   size_t section_sizes[DW_SECT_MAX];
 };
 
-#if 0
+#if 0 // This code is not needed for Fjalar.
+
 static int cu_count = 0;
 static int tu_count = 0;
 static struct cu_tu_set *cu_sets = NULL;
 static struct cu_tu_set *tu_sets = NULL;
 
 static void load_cu_tu_indexes (void *file);
-#endif
+
+#endif // This code is not needed for Fjalar
 
 // start of Fjalar code
 
@@ -283,11 +280,11 @@ warn VPARAMS ((const char *message, ...))
   VA_CLOSE (args);
 }
 
+// end of Fjalar code
+
 /* Values for do_debug_lines.  */
 #define FLAG_DEBUG_LINES_RAW	 1
 #define FLAG_DEBUG_LINES_DECODED 2
-
-// end of Fjalar code
 
 static unsigned int
 size_of_encoded_value (int encoding)
@@ -568,7 +565,7 @@ read_uleb128 (unsigned char * data,
 typedef struct State_Machine_Registers
 {
   dwarf_vma address;
-  dwarf_vma last_address; /* Added for Kvasir */
+  dwarf_vma last_address; // added for Kvasir
   unsigned int file;
   unsigned int line;
   unsigned int column;
@@ -609,7 +606,7 @@ process_extended_line_op (unsigned char * data,
   unsigned int bytes_read;
   unsigned int len;
   unsigned char *name;
-  const char *temp;
+  const char *temp;	// added for Kvasir
   unsigned char *orig_data = data;
   dwarf_vma adr;
 
@@ -6232,7 +6229,7 @@ frame_display_row (Frame_Chunk *fc, int *need_col_headers, unsigned int *max_reg
       printf ("\n");
     }
 
-  if (fjalar_debug)
+  if (fjalar_debug_dump)
   print_dwarf_vma (fc->pc_begin, eh_addr_size);
   if (fc->cfa_exp)
     VG_(strcpy) (tmp, "exp");

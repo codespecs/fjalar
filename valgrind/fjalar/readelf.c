@@ -236,51 +236,40 @@ Elf_Internal_Shdr * section_headers;
 Elf_Internal_Phdr * program_headers;
 Elf_Internal_Dyn *  dynamic_section;
 Elf_Internal_Shdr * symtab_shndx_hdr;
-
-// always true for Fjalar
-int show_name;
-int do_syms;
-int do_dump;
-int do_debug_info;
-int do_debug_lines;
-int do_debug_loc;
-int do_debug_frames;
-// only true for Fjalar if --fjalar-debug-dump
-int do_debug_abbrevs;
-int do_debug_aranges;
-int do_debug_pubnames;
-int do_debug_macinfo;
-int do_debug_str;
-// never true for Fjalar
-int do_debug_addr;
-int do_debug_cu_index;
-int do_debug_frames_interp;
-int do_debug_pubtypes;
-int do_debug_ranges;
-int do_gdb_index;
-int do_trace_info;
-int do_trace_abbrevs;
-int do_trace_aranges;
-int do_dynamic;
-int do_reloc;
-int do_sections;
-int do_segments;
-int do_unwind;
-int do_using_dynamic;
-int do_header;
-int do_version;
-int do_wide;
-int do_histogram;
-int do_debugging;
-int do_arch;
-int do_notes;
-int do_section_details;
-int do_section_groups;
-int do_dyn_syms;
-
-unsigned int eh_addr_size;
+int show_name;		// always true for Fjalar
+int do_dynamic;		// never true for Fjalar
+int do_syms;		// always true for Fjalar
+int do_dyn_syms;	// never true for Fjalar
+int do_reloc;		// never true for Fjalar
+int do_sections;	// never true for Fjalar
+int do_section_groups;	// never true for Fjalar
+int do_section_details;	// never true for Fjalar
+int do_segments;	// never true for Fjalar
+int do_unwind;		// never true for Fjalar
+int do_using_dynamic;	// never true for Fjalar
+int do_header;		// never true for Fjalar
+int do_dump;		// always true for Fjalar
+int do_version;		// never true for Fjalar
+int do_histogram;	// never true for Fjalar
+int do_debugging;	// never true for Fjalar
+int do_arch;		// never true for Fjalar
+int do_notes;		// never true for Fjalar
+int do_archive_index;	// never true for Fjalar
 int is_32bit_elf;
 
+// added declarations for Fjalar
+
+int do_debug_info;	// always true for Fjalar
+int do_debug_lines;	// always true for Fjalar
+int do_debug_loc;	// always true for Fjalar
+int do_debug_frames;	// always true for Fjalar
+int do_debug_abbrevs;	// true if --fjalar-debug-dump
+int do_debug_aranges;	// true if --fjalar-debug-dump
+int do_debug_pubnames;	// true if --fjalar-debug-dump
+int do_debug_macinfo;	// true if --fjalar-debug-dump
+int do_debug_str;	// true if --fjalar-debug-dump
+
+unsigned int eh_addr_size;
 int slurp_rela_relocs (FILE *, unsigned long, unsigned long, Elf_Internal_Rela **, unsigned long *);
 Elf_Internal_Sym * get_32bit_elf_symbols (FILE *, Elf_Internal_Shdr *, unsigned long *);
 Elf_Internal_Sym * get_64bit_elf_symbols (FILE *, Elf_Internal_Shdr *, unsigned long *);
@@ -10576,7 +10565,7 @@ process_symbol_table (FILE * file)
 	      if (fjalar_debug)
               {
 
-   // END FJALAR CODE
+// END FJALAR CODE
 
 	      printf ("%6d: ", si);
 	      print_vma (psym->st_value, LONG_HEX);
@@ -10593,6 +10582,7 @@ process_symbol_table (FILE * file)
 	      printf (" %4s ", get_symbol_index_type (psym->st_shndx));
 	      print_symbol (25, psym->st_name < strtab_size
 			    ? strtab + psym->st_name : _("<corrupt>"));
+
               }  // added for FJALAR
 
 	      if (section->sh_type == SHT_DYNSYM
