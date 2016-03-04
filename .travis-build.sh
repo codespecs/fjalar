@@ -3,6 +3,7 @@
 # Fail the whole script if any command fails
 set -e
 
+# Doing this causes Travis to mysteriously fail, so don't do this.
 # export SHELLOPTS
 
 # Get some system info for debugging.
