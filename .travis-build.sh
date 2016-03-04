@@ -3,7 +3,7 @@
 # Fail the whole script if any command fails
 set -e
 
-export SHELLOPTS
+# export SHELLOPTS
 
 # Get some system info for debugging.
 cat /proc/version
