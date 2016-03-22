@@ -180,8 +180,8 @@ make -C $INV/daikon/tests/kvasir-tests nightly-summary-w-daikon
 
 The tests should pass. If any tests fail, fix them, then start over from
 the beginning.
-Currently, all tests pass on a standard UW/CSE machine running Fedora V22.
-However, on a Ubuntu V15.10 based machine two tests fail:
+Currently, all tests pass on a standard UW/CSE machine running Fedora 22.
+However, on a Ubuntu 15.10 based machine two tests fail:
 @example
 flex-pristine/flex-pristine.comp
 flex-rothermel/felx-rothermel.comp
@@ -191,7 +191,7 @@ Next, we need to run the Valgrind regression tests to obtain a set of
 baseline results prior to the source merge.  These tests are very sensitive
 to the system software on the host machine.  In most cases, there will be
 some failures. (Currently, 4 of 629 tests do not pass on a standard UW/CSE
-system running Fedora V22.) Rather, it is important to capture the results
+system running Fedora 22.) Rather, it is important to capture the results
 as they should be identical after the source merge.
 
 @example
