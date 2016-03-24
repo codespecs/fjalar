@@ -22,7 +22,7 @@
 @top Merging newer versions of Valgrind into Fjalar
 
 This document describes how to update Fjalar, Kvasir, and DynComp
-with newer versions of Valgrind, VEX, and readelf.
+with newer versions of Valgrind and readelf.
 
 @menu
 * Introduction::
@@ -99,8 +99,9 @@ contains both the Daikon and Fjalar source trees.
 * Obtain a copy of Daikon and Fjalar::
 * Ensure your source is up to date::
 * Verify current sources pass the regression tests::
-* Obtain a copy of the base Valgrind and VEX source trees::
-* Obtain a copy of the target Valgrind and VEX source trees::
+* Get Valgrind version tags::
+* Obtain a copy of the base Valgrind source tree::
+* Obtain a copy of the target Valgrind source tree::
 * Remove files that have been removed upstream::
 @end menu
 
@@ -214,8 +215,6 @@ simplify the output of the diff commands below.
 @example
 cd $INV/fjalar
 make very-clean
-cd $INV/daikon
-make very-clean
 @end example
 
 In a later step, we will add any new files found to the Git repository.
@@ -230,16 +229,76 @@ git ls-files --others --exclude-standard
 @end example
 
 
-@node Obtain a copy of the base Valgrind and VEX source trees
-@section Obtain a copy of the base Valgrind and VEX source trees
+@node Get Valgrind version tags
+@section Get Valgrind version tags
 
-First, make directory @file{valgrind-old} contain a copy of the Valgrind
+Execute the following Subversion command:
+
+@example
+svn log -l6 svn://svn.valgrind.org/valgrind/tags
+@end example
+
+@noindent
+The output will list the last three releases of Valgrind.  It will
+look something like:
+
+@example
+------------------------------------------------------------------------
+r15678 | sewardj | 2015-09-23 06:14:07 -0700 (Wed, 23 Sep 2015) | 2 lines
+
+Swizzle external.
+
+------------------------------------------------------------------------
+r15677 | sewardj | 2015-09-23 06:13:22 -0700 (Wed, 23 Sep 2015) | 2 lines
+
+Create tags/VALGRIND_3_11_0 as a copy of r15676 of branches/VALGRIND_3_11_BRANCH.
+
+------------------------------------------------------------------------
+r14787 | sewardj | 2014-11-25 15:09:39 -0800 (Tue, 25 Nov 2014) | 2 lines
+
+Swizzle external.
+
+------------------------------------------------------------------------
+r14786 | sewardj | 2014-11-25 15:08:25 -0800 (Tue, 25 Nov 2014) | 3 lines
+
+Create tags/VALGRIND_3_10_1 as a copy of branches/VALGRIND_3_10_BRANCH r14785.
+
+------------------------------------------------------------------------
+r14525 | sewardj | 2014-09-12 03:26:44 -0700 (Fri, 12 Sep 2014) | 2 lines
+
+Swizzle external for the 3_10_0 tag.
+
+------------------------------------------------------------------------
+r14524 | sewardj | 2014-09-12 03:20:59 -0700 (Fri, 12 Sep 2014) | 3 lines
+
+Create tags/VALGRIND_3_10_0 as a copy of branches/VALGRIND_3_10_BRANCH, r14523.
+
+------------------------------------------------------------------------
+@end example
+Assuming that the Valgrind merge process has been done on a regular basis,
+the first @samp{tags} line will show the next (target) version number and the
+second @samp{tags} line will show the current version number.  You should
+verify this by comparing with version number from the file @file{valgrind/REVISION}.
+Using this information, set two environment variables to be used in the
+steps below.
+
+@example
+export VOLDVER=VALGRIND_3_10_1
+export VNEWVER=VALGRIND_3_11_0
+@end example
+
+
+@node Obtain a copy of the base Valgrind source tree
+@section Obtain a copy of the base Valgrind source tree
+
+First, make the directory @file{valgrind-old} that contains a copy of the Valgrind
 source tree that was used the last time a Valgrind merge was performed.
 
 If you performed the last merge and saved the
 @file{valgrind-old} and @file{valgrind-new} directories, then just run:
 
 @example
+cd $INV
 rm -rf valgrind-old
 mv valgrind-new valgrind-old
 @end example
@@ -248,90 +307,27 @@ Otherwise, run the following commands.
 
 @example
 cd $INV
-source fjalar/valgrind/REVISION
-svn co -r $VALGRIND_REVISION \
-    svn://svn.valgrind.org/valgrind/trunk valgrind-old
-cd valgrind-old
-svn update -r $VEX_REVISION VEX
+svn co svn://svn.valgrind.org/valgrind/tags/$VOLDVER valgrind-old
 @end example
 
-The VEX update command is necessary because the VEX instrumentation library
-Valgrind is built on is stored in a separate SVN repository. A Valgrind
-checkout will always check out the most recent version of the VEX source.
-However, we want the version associated with the previous merge base.
 
+@node Obtain a copy of the target Valgrind source tree
+@section Obtain a copy of the target Valgrind source tree
 
-@node Obtain a copy of the target Valgrind and VEX source trees
-@section Obtain a copy of the target Valgrind and VEX source trees
-
-Obtain a copy of the Valgrind source tree and call it
-@file{valgrind-new}.
-
-Decide on the version you will obtain, such as
-the most recent revision in the @uref{http://www.valgrind.org/downloads/repository.html,
-Valgrind source code repository} or the most recent released version.
-
-To obtain the most recent revision in the Valgrind source code repository:
+Next, make the directory @file{valgrind-new} that contains a copy of the
+latest Valgrind source tree.
 
 @example
 cd $INV
-svn co svn://svn.valgrind.org/valgrind/trunk valgrind-new
+svn co svn://svn.valgrind.org/valgrind/tags/$VNEWVER valgrind-new
 @end example
-
-To get the most recent release sources you first need to find the
-associated revision numbers.  This can be done by looking at the
-most recent source tags:
-
-@example
-svn log -l3 svn://svn.valgrind.org/valgrind/tags
-svn log -l3 svn://svn.valgrind.org/vex/tags
-@end example
-
-The revision number will be displayed at the far left as a number
-preceded by the
-letter "r" - such as r2796.  Remember these two revision numbers
-for the following commands to fetch the source code:
-
-@example
-cd $INV
-svn co -r @var{valgrind-revision-number} \
-    svn://svn.valgrind.org/valgrind/trunk valgrind-new
-cd valgrind-new
-svn update -r @var{vex-revision-number} VEX
-@end example
-
-Here again, the VEX update is necessary because we (normally) want
-the version associated with the last Valgrind release, not the most
-current version.
-
-@* @strong{IMPORTANT NOTE} @*
-The method described above for getting a copy of a
-Valgrind release, while having been used successfully for some time,
-is not technically correct.  We are getting a version from the main
-source trunk as it stood at the time of the release, while the actual
-releases are made from branches.
-There will, almost always, be differences between the two approaches.  The
-branch may not have the exact same set of changes as the trunk.
-The correct method of getting a
-particular release (3.10.1 for example) is:
-
-@example
-cd $INV
-svn co svn://svn.valgrind.org/valgrind/tags/VALGRIND_3_10_1 valgrind-new
-# (No need to update VEX in this case.)
-@end example
-
-We may wish to consider changing our approach to use the branch, or,
-perhaps simpler, use the actual release tar ball from
-@uref{http://www.valgrind.org/downloads/current.html}.
-
 
 
 @node Remove files that have been removed upstream
 @section Remove files that have been removed upstream
 
 The following command lists
-files that have been removed by the Valgrind developers since our last
+files that have been removed by the Valgrind developers since the last
 merge:
 
 @example
@@ -359,7 +355,7 @@ changed since
 the last time Valgrind code was merged into Fjalar.
 File @file{$INV/memcheck.patch} is for Memcheck, and
 file @file{$INV/coregrind.patch} is for everything else (which
-we'll call "Coregrind", and which includes VEX).
+we'll call "Coregrind").
 
 It also creates files
 @file{memcheck-Fjalar.diff} and @file{coregrind-Fjalar.diff}
@@ -411,7 +407,13 @@ executable scripts (typically named @file{filter_<test>}) are copied or updated,
 but lose the execute file mode bit.
 
 While this is documented @command{patch} behavior, we need to add additional
-steps to correct these problems. (documentation UNDONE)
+steps to correct these problems.
+
+@example
+cd $INV/valgrind-new
+find -size 0 -exec touch $INV'/fjalar/valgrind/@{@}' \;
+find -not -type d -executable -exec chmod +x $INV'/fjalar/valgrind/@{@}' \;
+@end example
 
 
 @node Coregrind Conflicts
@@ -478,7 +480,7 @@ care should be made to ensure it is present and up to date.
 The function @code{MC_(instrument)} handles the instrumentation of calls for
 DynComp.
 It is primarily contained in a switch statement; each case handles one
-VEX instruction type, and the body contains both the original code for
+instruction type, and the body contains both the original code for
 Memcheck and also the code for DynComp. After the update, you should
 double-check that each clause contains corresponding code: any changes
 to the Memcheck versions are reflected in the DynComp versions, and
@@ -851,7 +853,7 @@ results of running these tests.
 Any user-visible changes should be documented in
 @file{$INV/daikon/docs/CHANGES}.
 Additionally, @file{fjalar/valgrind/REVISION} should be updated
-with the Valgrind and VEX revisions that were used for this merge.
+with the Valgrind version used for this merge.
 
 The revision for Valgrind can be obtained by:
 
@@ -861,18 +863,14 @@ export VALGRIND_REVISION_NEW=`(cd $INV/valgrind-new; svn info | \
 echo $VALGRIND_REVISION_NEW
 @end example
 
-The revision for VEX can be obtained by:
-
-@example
-export VEX_REVISION_NEW=`(cd $INV/valgrind-new/VEX; svn info | \
-    grep "Last Changed Rev: " | cut -d " " --fields=4)`
-echo $VEX_REVISION_NEW
-@end example
-
 You will need to manually edit @file{$INV/daikon/docs/CHANGES} and
 add the new revision information to the end of log file. Also, you
 will need to comment out the previous values by inserting a @kbd{#}
 character at the beginning of the line.
+
+If new Valgrind tests were added, their names should be added to
+the @file{.gitignore} file in the "Ignore generated test drivers"
+section.
 
 
 @node Committing
@@ -914,8 +912,7 @@ cd $INV/fjalar
 git diff -b | more
 # If looks OK, proceed with commit.
 git commit -a -m "Valgrind merge from revision $@{VALGRIND_REVISION@}\
-   to $@{VALGRIND_REVISION_NEW@}.  VEX IR merge from $@{VEX_REVISION@} \
-   to $@{VEX_REVISION_NEW@}."
+   to $@{VALGRIND_REVISION_NEW@}."
 @end example
 
 Note: We recommend saving the patch and diff files to further document
