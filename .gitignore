@@ -540,7 +540,6 @@ valgrind/none/tests/resolv
 valgrind/none/tests/res_search
 valgrind/none/tests/rlimit64_nofile
 valgrind/none/tests/rlimit_nofile
-valgrind/none/tests/scripts/shell_binaryfile
 valgrind/none/tests/selfrun
 valgrind/none/tests/sem
 valgrind/none/tests/semlimit
