@@ -26,6 +26,7 @@
 #include "pub_core_vkiscnums.h"
 #include "pub_core_libcsignal.h"
 #include "pub_core_options.h"
+#include "pub_core_aspacemgr.h"
 
 #include "server.h"
 
@@ -52,7 +53,7 @@ void sr_extended_perror (SysRes sr, const HChar *msg)
       VG_(dmsg)("current sigmask value { ");
       for (i = 1; i <= _VKI_NSIG; i++) {
          if (VG_(sigismember)(&cursigset, i))
-            VG_(dmsg)("%u ", i);
+            VG_(dmsg)("%d ", i);
       }
       VG_(dmsg)("}\n");
    }
@@ -309,17 +310,20 @@ void remote_open (const HChar *name)
 {
    const HChar *user, *host;
    int len;
-   VgdbShared vgdbinit = 
-      {0, 0, (Addr) VG_(invoke_gdbserver),
-       (Addr) VG_(threads), sizeof(ThreadState), 
-       offsetof(ThreadState, status),
-       offsetof(ThreadState, os_state) + offsetof(ThreadOSstate, lwpid),
-       0};
+   VgdbShared vgdbinit;
    const int pid = VG_(getpid)();
    Addr addr_shared;
    SysRes o;
    int shared_mem_fd = INVALID_DESCRIPTOR;
-   
+
+   VG_(memset) (&vgdbinit, 0, sizeof (VgdbShared));
+   vgdbinit = (VgdbShared) 
+      {0, 0, (Addr) VG_(invoke_gdbserver),
+       (Addr) VG_(threads), VG_N_THREADS, sizeof(ThreadState), 
+       offsetof(ThreadState, status),
+       offsetof(ThreadState, os_state) + offsetof(ThreadOSstate, lwpid),
+       0};
+
    user = VG_(getenv)("LOGNAME");
    if (user == NULL) user = VG_(getenv)("USER");
    if (user == NULL) user = "???";
@@ -395,7 +399,7 @@ void remote_open (const HChar *name)
       o = VG_(open) (shared_mem, VKI_O_CREAT|VKI_O_RDWR, 0600);
       if (sr_isError (o)) {
          sr_perror(o, "cannot create shared_mem file %s\n", shared_mem);
-         fatal("");
+         fatal("Cannot recover from previous error. Good-bye.");
       } else {
          shared_mem_fd = sr_Res(o);
       }
@@ -412,7 +416,7 @@ void remote_open (const HChar *name)
          if (sr_isError(res)) {
             sr_perror(res, "error VG_(am_shared_mmap_file_float_valgrind) %s\n",
                       shared_mem);
-            fatal("");
+            fatal("Cannot recover from previous error. Good-bye.");
          }  
          addr_shared = sr_Res (res);
       }
@@ -597,7 +601,7 @@ int fromhex (int a)
    else if (a >= 'a' && a <= 'f')
       return a - 'a' + 10;
    else
-      error ("Reply contains invalid hex digit 0x%x\n", a);
+     error ("Reply contains invalid hex digit 0x%x\n", (unsigned)a);
    return 0;
 }
 
@@ -850,17 +854,34 @@ int putpkt_binary (char *buf, int cnt)
          return -1;
       }
 
-      if (noack_mode)
-         dlog(1, "putpkt (\"%s\"); [no ack]\n", buf2);
-      else
-         dlog(1,"putpkt (\"%s\"); [looking for ack]\n", buf2);
+      if (VG_(debugLog_getLevel)() >= 3) {
+         char *tracebuf = malloc(4 * (p - buf2) + 1); // worst case
+         char *tr = tracebuf;
+                                                    
+         for (UInt npr = 0; npr < p - buf2; npr++) {
+            UChar uc = (unsigned char)buf2[npr];
+            if (uc > 31 && uc < 127) {
+               *tr++ = uc;
+            } else {
+               *tr++ = '\\';
+               VG_(sprintf)(tr, "%03o", uc);
+               tr += 3;
+            }
+         }
+         *tr++ = 0;
+         dlog(3, "putpkt (\"%s\"); (%slen %d) %s\n", tracebuf,
+              strlen(tracebuf) == p - buf2 ? "binary " : "", 
+              (int)(p - buf2),
+              noack_mode ? "[no ack]" : "[looking for ack]");
+         free (tracebuf);
+      }
 
       if (noack_mode)
          break;
 
       cc = readchar (1);
       if (cc > 0)
-         dlog(1, "[received '%c' (0x%x)]\n", cc, cc);
+         dlog(3, "[received '%c' (0x%x)]\n", cc, (unsigned)cc);
 
       if (cc <= 0) {
          if (cc == 0)
@@ -996,7 +1017,7 @@ int getpkt (char *buf)
          c = readchar (0);
          if (c == '$')
 	    break;
-         dlog(1, "[getpkt: discarding char '%c']\n", c);
+         dlog(3, "[getpkt: discarding char '%c']\n", c);
          if (c < 0)
 	    return -1;
       }
@@ -1020,7 +1041,7 @@ int getpkt (char *buf)
          break;
 
       dlog (0, "Bad checksum, sentsum=0x%x, csum=0x%x, buf=%s\n",
-            (c1 << 4) + c2, csum, buf);
+            (unsigned)(c1 << 4) + c2, (unsigned)csum, buf);
       if (!ensure_write_remote_desc()) {
          dlog(1, "getpkt(write nack) no write_remote_desc");
       }
@@ -1028,16 +1049,16 @@ int getpkt (char *buf)
    }
 
    if (noack_mode)
-      dlog(1, "getpkt (\"%s\");  [no ack] \n", buf);
+      dlog(3, "getpkt (\"%s\");  [no ack] \n", buf);
    else
-      dlog(1, "getpkt (\"%s\");  [sending ack] \n", buf);
+      dlog(3, "getpkt (\"%s\");  [sending ack] \n", buf);
 
    if (!noack_mode) {
       if (!ensure_write_remote_desc()) {
          dlog(1, "getpkt(write ack) no write_remote_desc");
       }
       VG_(write) (write_remote_desc, "+", 1);
-      dlog(1, "[sent ack]\n");
+      dlog(3, "[sent ack]\n");
    }
 
    return bp - buf;
@@ -1146,7 +1167,7 @@ void prepare_resume_reply (char *buf, char status, unsigned char sig)
             ((struct inferior_list_entry *)current_inferior)->id;
          gdb_id_from_wait = thread_to_gdb_id (current_inferior);
          
-         dlog(1, "Writing resume reply for %ld\n", thread_from_wait);
+         dlog(1, "Writing resume reply for %lu\n", thread_from_wait);
          /* This if (1) ought to be unnecessary.  But remote_wait in GDB
             will claim this event belongs to inferior_ptid if we do not
             specify a thread, and there's no way for gdbserver to know

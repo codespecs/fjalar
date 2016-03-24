@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Nicholas Nethercote
+   Copyright (C) 2000-2015 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -33,7 +33,6 @@
 
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
-#include "pub_core_libcsetjmp.h"    // to keep _threadstate.h happy
 #include "pub_core_threadstate.h"
 #include "pub_core_aspacemgr.h"
 #include "pub_core_libcbase.h"
@@ -45,6 +44,7 @@
 #include "pub_core_tooliface.h"
 #include "pub_core_trampoline.h"
 #include "pub_core_sigframe.h"   /* self */
+#include "priv_sigframe.h"
 
 /* This module creates and removes signal frames for signal deliveries
    on amd64-linux.
@@ -372,50 +372,6 @@ void synth_ucontext(ThreadId tid, const vki_siginfo_t *si,
 }
 
 
-/* Extend the stack segment downwards if needed so as to ensure the
-   new signal frames are mapped to something.  Return a Bool
-   indicating whether or not the operation was successful.
-*/
-static Bool extend ( ThreadState *tst, Addr addr, SizeT size )
-{
-   ThreadId        tid = tst->tid;
-   NSegment const* stackseg = NULL;
-
-   if (VG_(extend_stack)(addr, tst->client_stack_szB)) {
-      stackseg = VG_(am_find_nsegment)(addr);
-      if (0 && stackseg)
-	 VG_(printf)("frame=%#lx seg=%#lx-%#lx\n",
-		     addr, stackseg->start, stackseg->end);
-   }
-
-   if (stackseg == NULL || !stackseg->hasR || !stackseg->hasW) {
-      VG_(message)(
-         Vg_UserMsg,
-         "Can't extend stack to %#lx during signal delivery for thread %d:\n",
-         addr, tid);
-      if (stackseg == NULL)
-         VG_(message)(Vg_UserMsg, "  no stack segment\n");
-      else
-         VG_(message)(Vg_UserMsg, "  too small or bad protection modes\n");
-
-      /* set SIGSEGV to default handler */
-      VG_(set_default_handler)(VKI_SIGSEGV);
-      VG_(synth_fault_mapping)(tid, addr);
-
-      /* The whole process should be about to die, since the default
-	 action of SIGSEGV to kill the whole process. */
-      return False;
-   }
-
-   /* For tracking memory events, indicate the entire frame has been
-      allocated. */
-   VG_TRACK( new_mem_stack_signal, addr - VG_STACK_REDZONE_SZB,
-             size + VG_STACK_REDZONE_SZB, tid );
-
-   return True;
-}
-
-
 /* Build the Valgrind-specific part of a signal frame. */
 
 static void build_vg_sigframe(struct vg_sigframe *frame,
@@ -455,7 +411,7 @@ static Addr build_rt_sigframe(ThreadState *tst,
    rsp = VG_ROUNDDN(rsp, 16) - 8;
    frame = (struct rt_sigframe *)rsp;
 
-   if (!extend(tst, rsp, sizeof(*frame)))
+   if (! ML_(sf_maybe_extend_stack)(tst, rsp, sizeof(*frame), flags))
       return rsp_top_of_frame;
 
    /* retaddr, siginfo, uContext fields are to be written */
@@ -495,6 +451,7 @@ static Addr build_rt_sigframe(ThreadState *tst,
 
 
 void VG_(sigframe_create)( ThreadId tid, 
+                            Bool on_altstack,
                             Addr rsp_top_of_frame,
                             const vki_siginfo_t *siginfo,
                             const struct vki_ucontext *siguc,
@@ -537,7 +494,7 @@ void VG_(sigframe_create)( ThreadId tid,
    if (0)
       VG_(printf)("pushed signal frame; %%RSP now = %#lx, "
                   "next %%RIP = %#llx, status=%d\n",
-		  rsp, tst->arch.vex.guest_RIP, tst->status);
+		  rsp, tst->arch.vex.guest_RIP, (Int)tst->status);
 }
 
 
@@ -553,7 +510,7 @@ Bool restore_vg_sigframe ( ThreadState *tst,
 {
    if (frame->magicPI != 0x31415927 ||
        frame->magicE  != 0x27182818) {
-      VG_(message)(Vg_UserMsg, "Thread %d return signal frame "
+      VG_(message)(Vg_UserMsg, "Thread %u return signal frame "
                                "corrupted.  Killing process.\n",
 		   tst->tid);
       VG_(set_default_handler)(VKI_SIGSEGV);
@@ -637,7 +594,7 @@ void VG_(sigframe_destroy)( ThreadId tid, Bool isRT )
    if (VG_(clo_trace_signals))
       VG_(message)(
          Vg_DebugMsg, 
-         "VG_(signal_return) (thread %d): isRT=%d valid magic; RIP=%#llx\n",
+         "VG_(signal_return) (thread %u): isRT=%d valid magic; RIP=%#llx\n",
          tid, isRT, tst->arch.vex.guest_RIP);
 
    /* tell the tools */

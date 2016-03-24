@@ -7,9 +7,9 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2005-2013 Nicholas Nethercote
+   Copyright (C) 2005-2015 Nicholas Nethercote
       njn@valgrind.org
-   Copyright (C) 2006-2013 OpenWorks LLP
+   Copyright (C) 2006-2015 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -62,6 +62,12 @@
 
 #elif defined(VGP_x86_darwin) || defined(VGP_amd64_darwin)
 #  include "vki/vki-scnums-darwin.h"
+
+#elif defined(VGP_tilegx_linux)
+#  include "vki/vki-scnums-tilegx-linux.h"
+
+#elif defined(VGP_x86_solaris) || (VGP_amd64_solaris)
+#  include "vki/vki-scnums-solaris.h"
 
 #else
 #  error Unknown platform

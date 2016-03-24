@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2013 OpenWorks LLP
+   Copyright (C) 2006-2015 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -33,6 +33,7 @@
 #define __PUB_CORE_INITIMG_H
 
 #include "pub_core_basics.h"      // Addr
+#include "libvex.h"
 
 //--------------------------------------------------------------------
 // PURPOSE: Map the client executable into memory, then set up its
@@ -50,7 +51,8 @@ typedef  struct _IIFinaliseImageInfo  IIFinaliseImageInfo;
    structure, which is gathered in an OS-specific way at startup.
    This returns an IIFinaliseImageInfo structure: */
 extern 
-IIFinaliseImageInfo VG_(ii_create_image)( IICreateImageInfo );
+IIFinaliseImageInfo VG_(ii_create_image)( IICreateImageInfo,
+                                          const VexArchInfo* vex_archinfo );
 
 /* Just before starting the client, we may need to make final
    adjustments to its initial image.  Also we need to set up the VEX
@@ -117,6 +119,30 @@ struct _IIFinaliseImageInfo {
    Addr  initial_client_IP;
 };
 
+/* ------------------------- Solaris ------------------------- */
+
+#elif defined(VGO_solaris)
+
+struct _IICreateImageInfo {
+   /* ------ Mandatory fields ------ */
+   const HChar* toolname;
+   Addr    sp_at_startup;
+   Addr    clstack_end; /* highest stack addressable byte */
+   /* ------ Per-OS fields ------ */
+   HChar** argv;
+   HChar** envp;
+};
+
+struct _IIFinaliseImageInfo {
+   /* ------ Mandatory fields ------ */
+   SizeT clstack_max_size;
+   Addr  initial_client_SP;
+   /* ------ Per-OS fields ------ */
+   Addr  initial_client_IP;
+   Addr  initial_client_TOC;
+   UInt* client_auxv;
+   Addr  initial_client_TP; /* thread pointer */
+};
 
 #else
 #  error "Unknown OS"

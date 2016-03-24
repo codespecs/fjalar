@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2013 OpenWorks LLP
+   Copyright (C) 2004-2015 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -52,15 +52,15 @@
    bb_to_IR.h. */
 extern
 DisResult disInstr_PPC ( IRSB*        irbb,
-                         Bool         (*resteerOkFn) ( void*, Addr64 ),
+                         Bool         (*resteerOkFn) ( void*, Addr ),
                          Bool         resteerCisOk,
                          void*        callback_opaque,
                          const UChar* guest_code,
                          Long         delta,
-                         Addr64       guest_IP,
+                         Addr         guest_IP,
                          VexArch      guest_arch,
-                         VexArchInfo* archinfo,
-                         VexAbiInfo*  abiinfo,
+                         const VexArchInfo* archinfo,
+                         const VexAbiInfo*  abiinfo,
                          VexEndness   host_endness,
                          Bool         sigill_diag );
 
@@ -81,10 +81,12 @@ IRExpr* guest_ppc64_spechelper ( const HChar* function_name,
    precise memory exceptions.  This is logically part of the guest
    state description. */
 extern 
-Bool guest_ppc32_state_requires_precise_mem_exns ( Int, Int );
+Bool guest_ppc32_state_requires_precise_mem_exns ( Int, Int,
+                                                   VexRegisterUpdates );
 
 extern 
-Bool guest_ppc64_state_requires_precise_mem_exns ( Int, Int );
+Bool guest_ppc64_state_requires_precise_mem_exns ( Int, Int,
+                                                   VexRegisterUpdates );
 
 extern
 VexGuestLayout ppc32Guest_layout;

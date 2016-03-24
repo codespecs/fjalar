@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward 
+   Copyright (C) 2000-2015 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -660,7 +660,7 @@ void* VG_(memcpy) ( void *dest, const void *src, SizeT sz )
    }
 
    /* If we're unlucky, the alignment constraints for the fast case
-      above won't apply, and we'll have to to it all here.  Hence the
+      above won't apply, and we'll have to do it all here.  Hence the
       unrolling. */
    while (sz >= 4) {
       d[0] = s[0];
@@ -701,28 +701,30 @@ void* VG_(memmove)(void *dest, const void *src, SizeT sz)
 
 void* VG_(memset) ( void *destV, Int c, SizeT sz )
 {
-   Int   c4;
-   HChar* d = (HChar*)destV;
+   UInt   c4;
+   UChar* d = destV;
+   UChar uc = c;
+
    while ((!VG_IS_4_ALIGNED(d)) && sz >= 1) {
-      d[0] = c;
+      d[0] = uc;
       d++;
       sz--;
    }
    if (sz == 0)
       return destV;
-   c4 = c & 0xFF;
+   c4 = uc;
    c4 |= (c4 << 8);
    c4 |= (c4 << 16);
    while (sz >= 16) {
-      ((Int*)d)[0] = c4;
-      ((Int*)d)[1] = c4;
-      ((Int*)d)[2] = c4;
-      ((Int*)d)[3] = c4;
+      ((UInt*)d)[0] = c4;
+      ((UInt*)d)[1] = c4;
+      ((UInt*)d)[2] = c4;
+      ((UInt*)d)[3] = c4;
       d += 16;
       sz -= 16;
    }
    while (sz >= 4) {
-      ((Int*)d)[0] = c4;
+      ((UInt*)d)[0] = c4;
       d += 4;
       sz -= 4;
    }

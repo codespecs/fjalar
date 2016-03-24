@@ -1,7 +1,7 @@
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2013 Bart Van Assche <bvanassche@acm.org>.
+  Copyright (C) 2006-2015 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -58,6 +58,9 @@ void DRD_(vc_init)(VectorClock* const vc,
       VG_(memcpy)(vc->vc, vcelem, size * sizeof(vcelem[0]));
       vc->size = size;
    }
+#ifdef ENABLE_DRD_CONSISTENCY_CHECKS
+   DRD_(vc_check)(vc);
+#endif
 }
 
 /** Reset vc to the empty vector clock. */
@@ -274,7 +277,7 @@ HChar* DRD_(vc_aprint)(const VectorClock* const vc)
             return str;
       }
       size += VG_(snprintf)(str + size, reserved - size,
-                            "%s %d: %d", i > 0 ? "," : "",
+                            "%s %u: %u", i > 0 ? "," : "",
                             vc->vc[i].threadid, vc->vc[i].count);
    }
    size += VG_(snprintf)(str + size, reserved - size, " ]");
@@ -295,11 +298,11 @@ HChar* DRD_(vc_aprint)(const VectorClock* const vc)
 void DRD_(vc_check)(const VectorClock* const vc)
 {
    unsigned i;
+
    tl_assert(vc->size <= vc->capacity);
+
    for (i = 1; i < vc->size; i++)
-   {
       tl_assert(vc->vc[i-1].threadid < vc->vc[i].threadid);
-   }
 }
 
 /**

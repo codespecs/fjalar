@@ -1,7 +1,7 @@
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2013 Bart Van Assche <bvanassche@acm.org>.
+  Copyright (C) 2006-2015 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -164,7 +164,7 @@ void DRD_(hb_happens_before)(const DrdThreadId tid, Addr const hb)
 
    p = DRD_(hb_get_or_allocate)(hb);
    if (DRD_(s_trace_hb))
-      DRD_(trace_msg)("[%d] happens_before 0x%lx",
+      DRD_(trace_msg)("[%u] happens_before 0x%lx",
                       DRD_(thread_get_running_tid)(), hb);
 
    if (!p)
@@ -198,7 +198,7 @@ void DRD_(hb_happens_after)(const DrdThreadId tid, const Addr hb)
    p = DRD_(hb_get_or_allocate)(hb);
 
    if (DRD_(s_trace_hb))
-      DRD_(trace_msg)("[%d] happens_after  0x%lx",
+      DRD_(trace_msg)("[%u] happens_after  0x%lx",
                       DRD_(thread_get_running_tid)(), hb);
 
    if (!p)
@@ -230,7 +230,7 @@ void DRD_(hb_happens_done)(const DrdThreadId tid, const Addr hb)
    struct hb_info* p;
 
    if (DRD_(s_trace_hb))
-      DRD_(trace_msg)("[%d] happens_done  0x%lx",
+      DRD_(trace_msg)("[%u] happens_done  0x%lx",
                       DRD_(thread_get_running_tid)(), hb);
 
    p = DRD_(hb_get)(hb);

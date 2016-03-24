@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward 
+   Copyright (C) 2000-2015 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -30,9 +30,7 @@
 
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
-#include "pub_core_libcsetjmp.h"
 #include "pub_core_threadstate.h"      // For VG_N_THREADS
-#include "pub_core_debugger.h"
 #include "pub_core_debuginfo.h"
 #include "pub_core_debuglog.h"
 #include "pub_core_errormgr.h"
@@ -309,7 +307,7 @@ static Bool eq_Error ( VgRes res, const Error* e1, const Error* e2 )
          } else {
             VG_(printf)("\nUnhandled error type: %u. VG_(needs).tool_errors\n"
                         "probably needs to be set.\n",
-                        e1->ekind);
+                        (UInt)e1->ekind);
             VG_(core_panic)("unhandled error type");
          }
    }
@@ -516,7 +514,7 @@ Bool VG_(is_action_requested) ( const HChar* action, Bool* clo )
 
 /* Do text-mode actions on error, that is, immediately after an error
    is printed.  These are:
-   * possibly, attach to a debugger
+   * possibly, call the GDB server
    * possibly, generate a suppression.
    Note this should not be called in XML mode! 
 */
@@ -524,9 +522,6 @@ static
 void do_actions_on_error(const Error* err, Bool allow_db_attach)
 {
    Bool still_noisy = True;
-
-   /* Should be assured by caller */
-   vg_assert( ! VG_(clo_xml) );
 
    /* if user wants to debug from a certain error nr, then wait for gdb/vgdb */
    if (VG_(clo_vgdb) != Vg_VgdbNo
@@ -537,15 +532,6 @@ void do_actions_on_error(const Error* err, Bool allow_db_attach)
       VG_(umsg)("Continuing ...\n");
    }
 
-   /* Perhaps we want a debugger attach at this point? */
-   /* GDBTD ??? maybe we should/could remove the below assuming the
-      gdbserver interface is better ??? */
-   if (allow_db_attach &&
-       VG_(is_action_requested)( "Attach to debugger", & VG_(clo_db_attach) ))
-   {   
-      if (0) VG_(printf)("starting debugger\n");
-      VG_(start_debugger)( err->tid );
-   }  
    /* Or maybe we want to generate the error's suppression? */
    if (VG_(clo_gen_suppressions) == 2
        || (VG_(clo_gen_suppressions) == 1
@@ -581,9 +567,8 @@ void do_actions_on_error(const Error* err, Bool allow_db_attach)
 
    * prints the tool-specific parts of the message
 
-   * calls do_actions_on_error.  This optionally does a debugger
-     attach (and detach), and optionally prints a suppression; both
-     of these may require user input.
+   * calls do_actions_on_error.  This optionally does a gdbserver call
+     and optionally prints a suppression; both of these may require user input.
 */
 static void pp_Error ( const Error* err, Bool allow_db_attach, Bool xml )
 {
@@ -593,8 +578,6 @@ static void pp_Error ( const Error* err, Bool allow_db_attach, Bool xml )
 
    if (xml) {
 
-      /* Note, allow_db_attach is ignored in here. */
- 
       /* Ensure that suppression generation is either completely
          enabled or completely disabled; either way, we won't require
          any user input.  m_main.process_cmd_line_options should
@@ -608,7 +591,7 @@ static void pp_Error ( const Error* err, Bool allow_db_attach, Bool xml )
       /* standard preamble */
       VG_(printf_xml)("<error>\n");
       VG_(printf_xml)("  <unique>0x%x</unique>\n", err->unique);
-      VG_(printf_xml)("  <tid>%d</tid>\n", err->tid);
+      VG_(printf_xml)("  <tid>%u</tid>\n", err->tid);
       ThreadState* tst = VG_(get_ThreadState)(err->tid);
       if (tst->thread_name) {
          VG_(printf_xml)("  <threadname>%s</threadname>\n", tst->thread_name);
@@ -634,9 +617,9 @@ static void pp_Error ( const Error* err, Bool allow_db_attach, Bool xml )
           && err->tid > 0 && err->tid != last_tid_printed) {
          ThreadState* tst = VG_(get_ThreadState)(err->tid);
          if (tst->thread_name) {
-            VG_(umsg)("Thread %d %s:\n", err->tid, tst->thread_name );
+            VG_(umsg)("Thread %u %s:\n", err->tid, tst->thread_name );
          } else {
-            VG_(umsg)("Thread %d:\n", err->tid );
+            VG_(umsg)("Thread %u:\n", err->tid );
          }
          last_tid_printed = err->tid;
       }
@@ -646,8 +629,9 @@ static void pp_Error ( const Error* err, Bool allow_db_attach, Bool xml )
       if (VG_(clo_error_markers)[1])
          VG_(umsg)("%s\n", VG_(clo_error_markers)[1]);
 
-      do_actions_on_error(err, allow_db_attach);
    }
+
+   do_actions_on_error(err, allow_db_attach);
 }
 
 
@@ -997,7 +981,7 @@ void VG_(show_all_errors) (  Int verbosity, Bool xml )
 
    /* We only get here if not printing XML. */
    VG_(umsg)("ERROR SUMMARY: "
-             "%d errors from %d contexts (suppressed: %d from %d)\n",
+             "%u errors from %u contexts (suppressed: %u from %u)\n",
              n_errs_found, n_err_contexts, 
              n_errs_suppressed, n_supp_contexts );
 
@@ -1025,7 +1009,7 @@ void VG_(show_all_errors) (  Int verbosity, Bool xml )
       if (p_min == NULL) continue; //VG_(core_panic)("show_all_errors()");
 
       VG_(umsg)("\n");
-      VG_(umsg)("%d errors in context %d of %d:\n",
+      VG_(umsg)("%d errors in context %d of %u:\n",
                 p_min->count, i+1, n_err_contexts);
       pp_Error( p_min, False/*allow_db_attach*/, False /* xml */ );
 
@@ -1057,7 +1041,7 @@ void VG_(show_all_errors) (  Int verbosity, Bool xml )
    // reprint this, so users don't have to scroll way up to find
    // the first printing
    VG_(umsg)("ERROR SUMMARY: "
-             "%d errors from %d contexts (suppressed: %d from %d)\n",
+             "%u errors from %u contexts (suppressed: %u from %u)\n",
              n_errs_found, n_err_contexts, n_errs_suppressed,
              n_supp_contexts );
 }
@@ -1907,7 +1891,7 @@ Bool supp_matches_error(const Supp* su, const Error* err)
             VG_(printf)(
                "\nUnhandled suppression type: %u.  VG_(needs).tool_errors\n"
                "probably needs to be set.\n",
-               err->ekind);
+               (UInt)err->ekind);
             VG_(core_panic)("unhandled suppression type");
          }
    }

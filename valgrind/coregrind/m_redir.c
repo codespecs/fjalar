@@ -7,9 +7,9 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward 
+   Copyright (C) 2000-2015 Julian Seward 
       jseward@acm.org
-   Copyright (C) 2003-2013 Jeremy Fitzhardinge
+   Copyright (C) 2003-2015 Jeremy Fitzhardinge
       jeremy@goop.org
 
    This program is free software; you can redistribute it and/or
@@ -406,6 +406,11 @@ void VG_(redir_notify_new_DebugInfo)( const DebugInfo* newdi )
    const HChar* const pthread_soname = "libpthread.so.0";
    const HChar* const pthread_stack_cache_actsize_varname
       = "stack_cache_actsize";
+#if defined(VGO_solaris)
+   Bool         vg_vfork_fildes_var_search = False;
+   const HChar* const vg_preload_core_soname = "vgpreload_core.so.0";
+   const HChar* const vg_vfork_fildes_varname = "vg_vfork_fildes";
+#endif
 
 #  if defined(VG_PLAT_USES_PPCTOC)
    check_ppcTOCs = True;
@@ -504,6 +509,11 @@ void VG_(redir_notify_new_DebugInfo)( const DebugInfo* newdi )
       SimHintiS(SimHint_no_nptl_pthread_stackcache, VG_(clo_sim_hints))
       && 0 == VG_(strcmp)(newdi_soname, pthread_soname);
 
+#if defined(VGO_solaris)
+   vg_vfork_fildes_var_search =
+      0 == VG_(strcmp)(newdi_soname, vg_preload_core_soname);
+#endif
+
    nsyms = VG_(DebugInfo_syms_howmany)( newdi );
    for (i = 0; i < nsyms; i++) {
       VG_(DebugInfo_syms_getidx)( newdi, i, &sym_avmas,
@@ -534,6 +544,18 @@ void VG_(redir_notify_new_DebugInfo)( const DebugInfo* newdi )
                VG_(client__stack_cache_actsize__addr) = (SizeT*) sym_avmas.main;
                dehacktivate_pthread_stack_cache_var_search = False;
             }
+#if defined(VGO_solaris)
+            if (vg_vfork_fildes_var_search
+                && 0 == VG_(strcmp)(*names, vg_vfork_fildes_varname)) {
+               if ( VG_(clo_verbosity) > 1 ) {
+                  VG_(message)( Vg_DebugMsg,
+                                "vfork kludge: found symbol %s at addr %p\n",
+                                *names, (void*) sym_avmas.main);
+               }
+               VG_(vfork_fildes_addr) = (Int*) sym_avmas.main;
+               vg_vfork_fildes_var_search = False;
+            }
+#endif
             continue;
          }
          if (!ok) {
@@ -617,6 +639,15 @@ void VG_(redir_notify_new_DebugInfo)( const DebugInfo* newdi )
       VG_(message)(Vg_DebugMsg,
                    "=> pthread stack cache cannot be disabled!\n");
    }
+#if defined(VGO_solaris)
+   if (vg_vfork_fildes_var_search) {
+      VG_(message)(Vg_DebugMsg,
+                   "WARNING: could not find symbol for var %s in %s\n",
+                   vg_vfork_fildes_varname, vg_preload_core_soname);
+      VG_(message)(Vg_DebugMsg,
+                   "=> posix_spawn() will not work correctly!\n");
+   }
+#endif
 
    if (check_ppcTOCs) {
       for (i = 0; i < nsyms; i++) {
@@ -733,8 +764,8 @@ void VG_(redir_add_ifunc_target)( Addr old_from, Addr new_from )
     if (VG_(clo_trace_redir)) {
        VG_(message)( Vg_DebugMsg,
                      "Adding redirect for indirect function "
-                     "0x%llx from 0x%llx -> 0x%llx\n",
-                     (ULong)old_from, (ULong)new_from, (ULong)new.to_addr );
+                     "0x%lx from 0x%lx -> 0x%lx\n",
+                     old_from, new_from, new.to_addr );
     }
 }
 
@@ -988,9 +1019,9 @@ static void maybe_add_active ( Active act )
          they get redirected to 'to'.  So discard them.  Just for
          paranoia (but, I believe, unnecessarily), discard 'to' as
          well. */
-      VG_(discard_translations)( (Addr64)act.from_addr, 1,
+      VG_(discard_translations)( act.from_addr, 1,
                                  "redir_new_DebugInfo(from_addr)");
-      VG_(discard_translations)( (Addr64)act.to_addr, 1,
+      VG_(discard_translations)( act.to_addr, 1,
                                  "redir_new_DebugInfo(to_addr)");
       if (VG_(clo_verbosity) > 2) {
          VG_(message)(Vg_UserMsg, "Adding active redirection:\n");
@@ -1074,9 +1105,9 @@ void VG_(redir_notify_delete_DebugInfo)( const DebugInfo* delsi )
          VG_(OSetWord_Insert)( tmpSet, act->from_addr );
          /* While we have our hands on both the 'from' and 'to'
             of this Active, do paranoid stuff with tt/tc. */
-         VG_(discard_translations)( (Addr64)act->from_addr, 1,
+         VG_(discard_translations)( act->from_addr, 1,
                                     "redir_del_DebugInfo(from_addr)");
-         VG_(discard_translations)( (Addr64)act->to_addr, 1,
+         VG_(discard_translations)( act->to_addr, 1,
                                     "redir_del_DebugInfo(to_addr)");
       }
    }
@@ -1181,6 +1212,10 @@ static void add_hardwired_spec (const  HChar* sopatt, const HChar* fnpatt,
    vg_assert(topSpecs->next == NULL);
    vg_assert(topSpecs->seginfo == NULL);
    /* FIXED PARTS */
+   /* Note, that these CONST_CAST will not cause a problem, in the sense
+      that VG_(redir_notify_delete_DebugInfo) will delete them. The reason
+      is that the TopSpec here has seginfo == NULL and such a TopSpec will
+      never be freed. See the asserts at the beginning of said function. */
    spec->from_sopatt = CONST_CAST(HChar *,sopatt);
    spec->from_fnpatt = CONST_CAST(HChar *,fnpatt);
    spec->to_addr     = to_addr;
@@ -1487,6 +1522,49 @@ void VG_(redir_initialise) ( void )
       );
    }
 
+#  elif defined(VGP_tilegx_linux)
+   if (0==VG_(strcmp)("Memcheck", VG_(details).name)) {
+
+      add_hardwired_spec(
+         "ld.so.1", "strlen",
+         (Addr)&VG_(tilegx_linux_REDIR_FOR_strlen), NULL
+      );
+   }
+
+#  elif defined(VGP_x86_solaris)
+   /* If we're using memcheck, use these intercepts right from
+      the start, otherwise ld.so makes a lot of noise. */
+   if (0==VG_(strcmp)("Memcheck", VG_(details).name)) {
+      add_hardwired_spec("/lib/ld.so.1", "strcmp",
+                         (Addr)&VG_(x86_solaris_REDIR_FOR_strcmp), NULL);
+   }
+   if (0==VG_(strcmp)("Memcheck", VG_(details).name)) {
+      add_hardwired_spec("/lib/ld.so.1", "strlen",
+                         (Addr)&VG_(x86_solaris_REDIR_FOR_strlen), NULL);
+   }
+
+#  elif defined(VGP_amd64_solaris)
+   if (0==VG_(strcmp)("Memcheck", VG_(details).name)) {
+      add_hardwired_spec("/lib/amd64/ld.so.1", "strcpy",
+                         (Addr)&VG_(amd64_solaris_REDIR_FOR_strcpy), NULL);
+   }
+   if (0==VG_(strcmp)("Memcheck", VG_(details).name)) {
+      add_hardwired_spec("/lib/amd64/ld.so.1", "strncpy",
+                         (Addr)&VG_(amd64_solaris_REDIR_FOR_strncpy), NULL);
+   }
+   if (0==VG_(strcmp)("Memcheck", VG_(details).name)) {
+      add_hardwired_spec("/lib/amd64/ld.so.1", "strcmp",
+                         (Addr)&VG_(amd64_solaris_REDIR_FOR_strcmp), NULL);
+   }
+   if (0==VG_(strcmp)("Memcheck", VG_(details).name)) {
+      add_hardwired_spec("/lib/amd64/ld.so.1", "strcat",
+                         (Addr)&VG_(amd64_solaris_REDIR_FOR_strcat), NULL);
+   }
+   if (0==VG_(strcmp)("Memcheck", VG_(details).name)) {
+      add_hardwired_spec("/lib/amd64/ld.so.1", "strlen",
+                         (Addr)&VG_(amd64_solaris_REDIR_FOR_strlen), NULL);
+   }
+
 #  else
 #    error Unknown platform
 #  endif
@@ -1524,7 +1602,8 @@ static Bool is_plausible_guest_addr(Addr a)
 {
    NSegment const* seg = VG_(am_find_nsegment)(a);
    return seg != NULL
-          && (seg->kind == SkAnonC || seg->kind == SkFileC)
+          && (seg->kind == SkAnonC || seg->kind == SkFileC ||
+              seg->kind == SkShmC)
           && (seg->hasX || seg->hasR); /* crude x86-specific hack */
 }
 
@@ -1694,12 +1773,12 @@ static void handle_require_text_symbols ( const DebugInfo* di )
 static void show_spec ( const HChar* left, const Spec* spec )
 {
    VG_(message)( Vg_DebugMsg, 
-                 "%s%25s %30s %s-> (%04d.%d) 0x%08llx\n",
+                 "%s%-25s %-30s %s-> (%04d.%d) 0x%08lx\n",
                  left,
                  spec->from_sopatt, spec->from_fnpatt,
                  spec->isWrap ? "W" : "R",
                  spec->becTag, spec->becPrio,
-                 (ULong)spec->to_addr );
+                 spec->to_addr );
 }
 
 static void show_active ( const HChar* left, const Active* act )
@@ -1717,12 +1796,12 @@ static void show_active ( const HChar* left, const Active* act )
    ok = VG_(get_fnname_w_offset)(act->to_addr, &name2);
    if (!ok) name2 = "???";
 
-   VG_(message)(Vg_DebugMsg, "%s0x%08llx (%20s) %s-> (%04d.%d) 0x%08llx %s\n", 
+   VG_(message)(Vg_DebugMsg, "%s0x%08lx (%-20s) %s-> (%04d.%d) 0x%08lx %s\n", 
                              left, 
-                             (ULong)act->from_addr, name1,
+                             act->from_addr, name1,
                              act->isWrap ? "W" : "R",
                              act->becTag, act->becPrio,
-                             (ULong)act->to_addr, name2 );
+                             act->to_addr, name2 );
 }
 
 static void show_redir_state ( const HChar* who )

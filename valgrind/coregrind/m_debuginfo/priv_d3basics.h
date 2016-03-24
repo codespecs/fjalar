@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2008-2013 OpenWorks LLP and others; see below
+   Copyright (C) 2008-2015 OpenWorks LLP and others; see below
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -166,6 +166,13 @@ typedef enum dwarf_source_language
     DW_LANG_D = 0x0013,
     /* DWARF 4.  */
     DW_LANG_Python = 0x0014,
+    /* DWARF 5-pre. Only what GCC already outputs. */
+    DW_LANG_Go = 0x0016,
+    DW_LANG_C_plus_plus_11 = 0x001a,
+    DW_LANG_C11 = 0x001d,
+    DW_LANG_C_plus_plus_14 = 0x0021,
+    DW_LANG_Fortran03 = 0x0022,
+    DW_LANG_Fortran08 = 0x0023,
     /* MIPS.  */
     DW_LANG_Mips_Assembler = 0x8001,
     /* UPC.  */

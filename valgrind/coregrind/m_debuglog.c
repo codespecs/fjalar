@@ -1,3 +1,4 @@
+/* -*- mode: C; c-basic-offset: 3; -*- */
 
 /*--------------------------------------------------------------------*/
 /*--- Debug (not-for-user) logging; also vprintf.     m_debuglog.c ---*/
@@ -7,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward 
+   Copyright (C) 2000-2015 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -55,6 +56,9 @@
 #include "pub_core_vkiscnums.h"  /* for syscall numbers */
 #include "pub_core_debuglog.h"   /* our own iface */
 #include "pub_core_clreq.h"      /* for RUNNING_ON_VALGRIND */
+#if defined(VGO_solaris)
+#include "pub_core_vki.h"        /* for EINTR and ERESTART */
+#endif
 
 static Bool clo_xml;
 
@@ -243,12 +247,14 @@ static UInt local_sys_write_stderr ( const HChar* buf, Int n )
       "mov  r0, #2\n\t"        /* stderr */
       "ldr  r1, [%0]\n\t"      /* buf */
       "ldr  r2, [%0, #4]\n\t"  /* n */
+      "push {r6,r7}\n\t"
       "mov  r7, #"VG_STRINGIFY(__NR_write)"\n\t"
       "svc  0x0\n"          /* write() */
+      "pop  {r6,r7}\n\t"
       "str  r0, [%0]\n\t"
       :
       : "r" (block)
-      : "r0","r1","r2","r7"
+      : "r0","r1","r2"
    );
    if (block[0] < 0)
       block[0] = -1;
@@ -259,12 +265,14 @@ static UInt local_sys_getpid ( void )
 {
    UInt __res;
    __asm__ volatile (
-      "mov  r7, #"VG_STRINGIFY(__NR_getpid)"\n"
-      "svc  0x0\n"      /* getpid() */
-      "mov  %0, r0\n"
+      "push {r6,r7}\n\t"
+      "mov  r7, #"VG_STRINGIFY(__NR_getpid)"\n\t"
+      "svc  0x0\n\t"      /* getpid() */
+      "pop  {r6,r7}\n\t"
+      "mov  %0, r0\n\t"
       : "=r" (__res)
       :
-      : "r0", "r7" );
+      : "r0" );
    return __res;
 }
 
@@ -504,6 +512,144 @@ static UInt local_sys_getpid ( void )
    return (UInt)(__res);
 }
 
+#elif defined(VGP_tilegx_linux)
+
+static UInt local_sys_write_stderr ( const HChar* buf, Int n )
+{
+   volatile Long block[2];
+   block[0] = (Long)buf;
+   block[1] = n;
+   Long __res = 0;
+   __asm__ volatile (
+      "movei  r0,  2    \n\t"    /* stderr */
+      "move   r1,  %1   \n\t"    /* buf */
+      "move   r2,  %2   \n\t"    /* n */
+      "move   r3,  zero \n\t"
+      "moveli r10, %3   \n\t"    /* set r10 = __NR_write */
+      "swint1           \n\t"    /* write() */
+      "nop              \n\t"
+      "move   %0, r0    \n\t"    /* save return into block[0] */
+      : "=r"(__res)
+      : "r" (block[0]), "r"(block[1]), "n" (__NR_write)
+      : "r0", "r1", "r2", "r3", "r4", "r5");
+   if (__res < 0)
+      __res = -1;
+   return (UInt)__res;
+}
+
+static UInt local_sys_getpid ( void )
+{
+   UInt __res, __err;
+   __res = 0;
+   __err = 0;
+   __asm__ volatile (
+      "moveli r10, %2\n\t"    /* set r10 = __NR_getpid */
+      "swint1\n\t"            /* getpid() */
+      "nop\n\t"
+      "move  %0, r0\n"
+      "move  %1, r1\n"
+      : "=r" (__res), "=r"(__err)
+      : "n" (__NR_getpid)
+      : "r0", "r1", "r2", "r3", "r4",
+        "r5", "r6", "r7", "r8", "r9",
+        "r10", "r11", "r12", "r13", "r14",
+        "r15", "r16", "r17", "r18", "r19",
+        "r20", "r21", "r22", "r23", "r24",
+        "r25", "r26", "r27", "r28", "r29");
+  return __res;
+}
+
+#elif defined(VGP_x86_solaris)
+static UInt local_sys_write_stderr ( const HChar* buf, Int n )
+{
+   UInt res, err;
+   Bool restart;
+
+   do {
+      /* The Solaris kernel does not restart syscalls automatically so it is
+         done here. */
+      __asm__ __volatile__ (
+         "movl  %[n], %%eax\n"          /* push n */
+         "pushl %%eax\n"
+         "movl  %[buf], %%eax\n"        /* push buf */
+         "pushl %%eax\n"
+         "movl  $2, %%eax\n"            /* push stderr */
+         "pushl %%eax\n"
+         "movl  $"VG_STRINGIFY(__NR_write)", %%eax\n"
+         "pushl %%eax\n"                /* push fake return address */
+         "int   $0x91\n"                /* write(stderr, buf, n) */
+         "movl  $0, %%edx\n"            /* assume no error */
+         "jnc   1f\n"                   /* jump if no error */
+         "movl  $1, %%edx\n"            /* set error flag */
+         "1: "
+         "addl  $16, %%esp\n"           /* pop x4 */
+         : "=&a" (res), "=d" (err)
+         : [buf] "g" (buf), [n] "g" (n)
+         : "cc");
+      restart = err && (res == VKI_EINTR || res == VKI_ERESTART);
+   } while (restart);
+
+   return res;
+}
+
+static UInt local_sys_getpid ( void )
+{
+   UInt res;
+
+   /* The getpid() syscall never returns EINTR or ERESTART so there is no need
+      for restarting it. */
+   __asm__ __volatile__ (
+      "movl $"VG_STRINGIFY(__NR_getpid)", %%eax\n"
+      "int  $0x91\n"                    /* getpid() */
+      : "=a" (res)
+      :
+      : "edx", "cc");
+
+   return res;
+}
+
+#elif defined(VGP_amd64_solaris)
+static UInt local_sys_write_stderr ( const HChar* buf, Int n )
+{
+   ULong res, err;
+   Bool restart;
+
+   do {
+      /* The Solaris kernel does not restart syscalls automatically so it is
+         done here. */
+      __asm__ __volatile__ (
+         "movq  $2, %%rdi\n"            /* push stderr */
+         "movq  $"VG_STRINGIFY(__NR_write)", %%rax\n"
+         "syscall\n"                    /* write(stderr, buf, n) */
+         "movq  $0, %%rdx\n"            /* assume no error */
+         "jnc   1f\n"                   /* jump if no error */
+         "movq  $1, %%rdx\n"            /* set error flag */
+         "1: "
+         : "=a" (res), "=d" (err)
+         : "S" (buf), "d" (n)
+         : "cc");
+      restart = err && (res == VKI_EINTR || res == VKI_ERESTART);
+   } while (restart);
+
+   return res;
+}
+
+static UInt local_sys_getpid ( void )
+{
+   UInt res;
+
+   /* The getpid() syscall never returns EINTR or ERESTART so there is no need
+      for restarting it. */
+   __asm__ __volatile__ (
+      "movq $"VG_STRINGIFY(__NR_getpid)", %%rax\n"
+      "syscall\n"                       /* getpid() */
+      : "=a" (res)
+      :
+      : "edx", "cc");
+
+   return res;
+}
+
 #else
 # error Unknown platform
 #endif
@@ -588,7 +734,7 @@ UInt myvprintf_str ( void(*send)(HChar,void*),
    }
 
    extra = width - len;
-   if (flags & VG_MSG_LJUSTIFY) {
+   if (! (flags & VG_MSG_LJUSTIFY)) {
       ret += extra;
       for (i = 0; i < extra; i++)
          send(' ', send_arg2);
@@ -596,7 +742,7 @@ UInt myvprintf_str ( void(*send)(HChar,void*),
    ret += len;
    for (i = 0; i < len; i++)
       send(MAYBE_TOUPPER(str[i]), send_arg2);
-   if (!(flags & VG_MSG_LJUSTIFY)) {
+   if (flags & VG_MSG_LJUSTIFY) {
       ret += extra;
       for (i = 0; i < extra; i++)
          send(' ', send_arg2);
@@ -657,7 +803,10 @@ UInt myvprintf_int64 ( void(*send)(HChar,void*),
                        Bool capitalised,
                        ULong p )
 {
-   HChar  buf[40];
+   /* To print an ULong base 2 needs 64 characters. If commas are requested,
+      add 21. Plus 1 for a possible sign plus 1 for \0. Makes 87 -- so let's
+      say 90. The size of BUF needs to be max(90, WIDTH + 1) */
+   HChar  buf[width + 1 > 90 ? width + 1 : 90];
    Int    ind = 0;
    Int    i, nc = 0;
    Bool   neg = False;
@@ -692,11 +841,6 @@ UInt myvprintf_int64 ( void(*send)(HChar,void*),
 
    if (width > 0 && !(flags & VG_MSG_LJUSTIFY)) {
       for(; ind < width; ind++) {
-         /* vg_assert(ind < 39); */
-         if (ind > 39) {
-            buf[39] = 0;
-            break;
-         }
          buf[ind] = (flags & VG_MSG_ZJUSTIFY) ? '0': ' ';
       }
    }
@@ -730,9 +874,9 @@ VG_(debugLog_vprintf) (
    UInt ret = 0;
    Int  i;
    Int  flags;
-   Int  width;
+   Int  width, precision;
    Int  n_ls = 0;
-   Bool is_long, caps;
+   Bool is_long, is_sizet, caps;
 
    /* We assume that vargs has already been initialised by the 
       caller, using va_start, and that the caller will similarly
@@ -758,6 +902,7 @@ VG_(debugLog_vprintf) (
       flags = 0;
       n_ls  = 0;
       width = 0; /* length of the field. */
+      precision = -1;  /* unspecified precision */
       while (1) {
          switch (format[i]) {
          case '(':
@@ -787,13 +932,40 @@ VG_(debugLog_vprintf) (
       }
      parse_fieldwidth:
       /* Compute the field length. */
-      while (format[i] >= '0' && format[i] <= '9') {
-         width *= 10;
-         width += format[i++] - '0';
+      if (format[i] == '*') {
+         width = va_arg(vargs, Int);
+         ++i;
+      } else {
+         while (format[i] >= '0' && format[i] <= '9') {
+            width *= 10;
+            width += format[i++] - '0';
+         }
       }
-      while (format[i] == 'l') {
-         i++;
-         n_ls++;
+      /* Parse precision, if any. Only meaningful for %f. For all other
+         format specifiers the precision will be silently ignored. */
+      if (format[i] == '.') {
+         ++i;
+         if (format[i] == '*') {
+            precision = va_arg(vargs, Int);
+            ++i;
+         } else {
+            precision = 0;
+            while (format[i] >= '0' && format[i] <= '9') {
+               precision *= 10;
+               precision += format[i++] - '0';
+            }
+         }
+      }
+
+      is_sizet = False;
+      if (format[i] == 'z') {
+         is_sizet = True;
+         ++i;
+      } else {
+         while (format[i] == 'l') {
+            i++;
+            n_ls++;
+         }
       }
 
       //   %d means print a 32-bit integer.
@@ -809,7 +981,10 @@ VG_(debugLog_vprintf) (
                ret += 2;
                send('0',send_arg2);
             }
-            if (is_long)
+            if (is_sizet)
+               ret += myvprintf_int64(send, send_arg2, flags, 8, width, False,
+                                      (ULong)(va_arg (vargs, SizeT)));
+            else if (is_long)
                ret += myvprintf_int64(send, send_arg2, flags, 8, width, False,
                                       (ULong)(va_arg (vargs, ULong)));
             else
@@ -826,7 +1001,10 @@ VG_(debugLog_vprintf) (
                                       (ULong)(va_arg (vargs, Int)));
             break;
          case 'u': /* %u */
-            if (is_long)
+            if (is_sizet)
+               ret += myvprintf_int64(send, send_arg2, flags, 10, width, False,
+                                      (ULong)(va_arg (vargs, SizeT)));
+            else if (is_long)
                ret += myvprintf_int64(send, send_arg2, flags, 10, width, False,
                                       (ULong)(va_arg (vargs, ULong)));
             else
@@ -870,7 +1048,10 @@ VG_(debugLog_vprintf) (
                send('0',send_arg2);
                send('x',send_arg2);
             }
-            if (is_long)
+            if (is_sizet)
+               ret += myvprintf_int64(send, send_arg2, flags, 16, width, False,
+                                      (ULong)(va_arg (vargs, SizeT)));
+            else if (is_long)
                ret += myvprintf_int64(send, send_arg2, flags, 16, width, caps,
                                       (ULong)(va_arg (vargs, ULong)));
             else
@@ -886,6 +1067,95 @@ VG_(debugLog_vprintf) (
             if (str == NULL) str = "(null)";
             ret += myvprintf_str(send, send_arg2, 
                                  flags, width, str, format[i]=='S');
+            break;
+         }
+         case 'f': {
+            /* Print a floating point number in the format x.y without
+               any exponent. Capabilities are extremely limited, basically
+               a joke, but good enough for our needs. */
+            Double val = va_arg (vargs, Double);
+            Bool is_negative = False;
+            Int cnt;
+
+            if (val < 0.0) {
+               is_negative = True;
+               val = - val;
+            }
+            /* If the integral part of the floating point number cannot be
+               represented by an ULONG_MAX, print '*' characters */
+            if (val > (Double)(~0ULL)) {
+               if (width == 0) width = 6;    // say
+               for (cnt = 0; cnt < width; ++cnt)
+                  send('*', send_arg2);
+               ret += width;
+               break;
+            }
+            /* The integral part of the floating point number is representable
+               by an ULong. */
+            ULong ipval = val;
+            Double frac = val - ipval;
+
+            if (precision == -1) precision = 6;   // say
+
+            /* Silently limit the precision to 10 digits. */
+            if (precision > 10) precision = 10;
+
+            /* Determine fractional part, possibly round up */
+            ULong factor = 1;
+            for (cnt = 0; cnt < precision; ++cnt)
+               factor *= 10;
+            ULong frval = frac * factor;
+            if ((frac * factor - frval) > 0.5)    // round up
+               frval += 1;
+            /* Check rounding. */
+            if (frval == factor)
+               ipval += 1;
+            frval %= factor;
+
+            /* Find out how many characters are needed to print the number */
+
+            /* The integral part... */
+            UInt ipwidth, num_digit = 1;   // at least one digit
+            ULong x, old_x = 0;
+            for (x = 10; ; old_x = x, x *= 10, ++num_digit) {
+               if (x <= old_x) break;    // overflow occurred
+               if (ipval < x) break;
+            }
+            ipwidth = num_digit;   // width of integral part.
+            if (is_negative) ++num_digit;
+            if (precision != 0)
+               num_digit += 1 + precision;
+
+            // Print the number
+
+            // Fill in blanks on the left
+            if (num_digit < width && (flags & VG_MSG_LJUSTIFY) == 0) {
+               for (cnt = 0; cnt < width - num_digit; ++cnt)
+                  send(' ', send_arg2);
+               ret += width - num_digit;
+            }
+            // Sign, maybe
+            if (is_negative) {
+               send('-', send_arg2);
+               ret += 1;
+            }
+            // Integral part
+            ret += myvprintf_int64(send, send_arg2, 0, 10, ipwidth, False,
+                                   ipval);
+            // Decimal point and fractional part
+            if (precision != 0) {
+               send('.', send_arg2);
+               ret += 1;
+
+               ret += myvprintf_int64(send, send_arg2, VG_MSG_ZJUSTIFY, 10,
+                                      precision, False, frval);
+            }
+            // Fill in blanks on the right
+            if (num_digit < width && (flags & VG_MSG_LJUSTIFY) != 0) {
+               for (cnt = 0; cnt < width - num_digit; ++cnt)
+                  send(' ', send_arg2);
+               ret += width - num_digit;
+            }
             break;
          }
 

@@ -8,7 +8,7 @@
    This file is part of Cachegrind, a Valgrind tool for cache
    profiling programs.
 
-   Copyright (C) 2002-2013 Nicholas Nethercote
+   Copyright (C) 2002-2015 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -210,10 +210,9 @@ static HChar* get_perm_string(const HChar* s)
 static void get_debug_info(Addr instr_addr, const HChar **dir,
                            const HChar **file, const HChar **fn, UInt* line)
 {
-   Bool found_dirname;
    Bool found_file_line = VG_(get_filename_linenum)(
                              instr_addr, 
-                             file, dir, &found_dirname,
+                             file, dir,
                              line
                           );
    Bool found_fn        = VG_(get_fnname)(instr_addr, fn);
@@ -1046,9 +1045,10 @@ IRSB* cg_instrument ( VgCallbackClosure* closure,
                       const VexArchInfo* archinfo_host,
                       IRType gWordTy, IRType hWordTy )
 {
-   Int        i, isize;
+   Int        i;
+   UInt       isize;
    IRStmt*    st;
-   Addr64     cia; /* address of current insn */
+   Addr       cia; /* address of current insn */
    CgState    cgs;
    IRTypeEnv* tyenv = sbIn->tyenv;
    InstrInfo* curr_inode = NULL;
@@ -1243,7 +1243,7 @@ IRSB* cg_instrument ( VgCallbackClosure* closure,
                   we can pass it to the branch predictor simulation
                   functions easily. */
                Bool     inverted;
-               Addr64   nia, sea;
+               Addr     nia, sea;
                IRConst* dst;
                IRType   tyW    = hWordTy;
                IROp     widen  = tyW==Ity_I32  ? Iop_1Uto32  : Iop_1Uto64;
@@ -1258,15 +1258,13 @@ IRSB* cg_instrument ( VgCallbackClosure* closure,
                   inverted by the ir optimiser.  To do that, figure out
                   the next (fallthrough) instruction's address and the
                   side exit address and see if they are the same. */
-               nia = cia + (Addr64)isize;
-               if (tyW == Ity_I32)
-                  nia &= 0xFFFFFFFFULL;
+               nia = cia + isize;
 
                /* Side exit address */
                dst = st->Ist.Exit.dst;
                if (tyW == Ity_I32) {
                   tl_assert(dst->tag == Ico_U32);
-                  sea = (Addr64)(UInt)dst->Ico.U32;
+                  sea = dst->Ico.U32;
                } else {
                   tl_assert(tyW == Ity_I64);
                   tl_assert(dst->tag == Ico_U64);
@@ -1458,7 +1456,7 @@ static void fprint_CC_table_and_calc_totals(void)
 
       // Print the LineCC
       if (clo_cache_sim && clo_branch_sim) {
-         VG_(fprintf)(fp,  "%u %llu %llu %llu"
+         VG_(fprintf)(fp,  "%d %llu %llu %llu"
                              " %llu %llu %llu"
                              " %llu %llu %llu"
                              " %llu %llu %llu %llu\n",
@@ -1470,7 +1468,7 @@ static void fprint_CC_table_and_calc_totals(void)
                             lineCC->Bi.b, lineCC->Bi.mp);
       }
       else if (clo_cache_sim && !clo_branch_sim) {
-         VG_(fprintf)(fp,  "%u %llu %llu %llu"
+         VG_(fprintf)(fp,  "%d %llu %llu %llu"
                              " %llu %llu %llu"
                              " %llu %llu %llu\n",
                             lineCC->loc.line,
@@ -1479,7 +1477,7 @@ static void fprint_CC_table_and_calc_totals(void)
                             lineCC->Dw.a, lineCC->Dw.m1, lineCC->Dw.mL);
       }
       else if (!clo_cache_sim && clo_branch_sim) {
-         VG_(fprintf)(fp,  "%u %llu"
+         VG_(fprintf)(fp,  "%d %llu"
                              " %llu %llu %llu %llu\n",
                             lineCC->loc.line,
                             lineCC->Ir.a, 
@@ -1487,7 +1485,7 @@ static void fprint_CC_table_and_calc_totals(void)
                             lineCC->Bi.b, lineCC->Bi.mp);
       }
       else {
-         VG_(fprintf)(fp,  "%u %llu\n",
+         VG_(fprintf)(fp,  "%d %llu\n",
                             lineCC->loc.line,
                             lineCC->Ir.a);
       }
@@ -1563,7 +1561,6 @@ static UInt ULong_width(ULong n)
 
 static void cg_fini(Int exitcode)
 {
-   static HChar buf1[128], buf2[128], buf3[128], buf4[123];  // FIXME
    static HChar fmt[128];   // OK; large enough
 
    CacheCC  D_total;
@@ -1599,11 +1596,10 @@ static void cg_fini(Int exitcode)
       VG_(umsg)(fmt, "LLi misses:   ", Ir_total.mL);
 
       if (0 == Ir_total.a) Ir_total.a = 1;
-      VG_(percentify)(Ir_total.m1, Ir_total.a, 2, l1+1, buf1);
-      VG_(umsg)("I1  miss rate: %s\n", buf1);
-
-      VG_(percentify)(Ir_total.mL, Ir_total.a, 2, l1+1, buf1);
-      VG_(umsg)("LLi miss rate: %s\n", buf1);
+      VG_(umsg)("I1  miss rate: %*.2f%%\n", l1,
+                Ir_total.m1 * 100.0 / Ir_total.a);
+      VG_(umsg)("LLi miss rate: %*.2f%%\n", l1,
+                Ir_total.mL * 100.0 / Ir_total.a);
       VG_(umsg)("\n");
 
       /* D cache results.  Use the D_refs.rd and D_refs.wr values to
@@ -1626,15 +1622,14 @@ static void cg_fini(Int exitcode)
       if (0 == D_total.a)  D_total.a = 1;
       if (0 == Dr_total.a) Dr_total.a = 1;
       if (0 == Dw_total.a) Dw_total.a = 1;
-      VG_(percentify)( D_total.m1,  D_total.a, 1, l1+1, buf1);
-      VG_(percentify)(Dr_total.m1, Dr_total.a, 1, l2+1, buf2);
-      VG_(percentify)(Dw_total.m1, Dw_total.a, 1, l3+1, buf3);
-      VG_(umsg)("D1  miss rate: %s (%s     + %s  )\n", buf1, buf2,buf3);
-
-      VG_(percentify)( D_total.mL,  D_total.a, 1, l1+1, buf1);
-      VG_(percentify)(Dr_total.mL, Dr_total.a, 1, l2+1, buf2);
-      VG_(percentify)(Dw_total.mL, Dw_total.a, 1, l3+1, buf3);
-      VG_(umsg)("LLd miss rate: %s (%s     + %s  )\n", buf1, buf2,buf3);
+      VG_(umsg)("D1  miss rate: %*.1f%% (%*.1f%%     + %*.1f%%  )\n",
+                l1, D_total.m1  * 100.0 / D_total.a,
+                l2, Dr_total.m1 * 100.0 / Dr_total.a,
+                l3, Dw_total.m1 * 100.0 / Dw_total.a);
+      VG_(umsg)("LLd miss rate: %*.1f%% (%*.1f%%     + %*.1f%%  )\n",
+                l1, D_total.mL  * 100.0 / D_total.a,
+                l2, Dr_total.mL * 100.0 / Dr_total.a,
+                l3, Dw_total.mL * 100.0 / Dw_total.a);
       VG_(umsg)("\n");
 
       /* LL overall results */
@@ -1651,10 +1646,10 @@ static void cg_fini(Int exitcode)
       VG_(umsg)(fmt, "LL misses:    ",
                      LL_total_m, LL_total_mr, LL_total_mw);
 
-      VG_(percentify)(LL_total_m,  (Ir_total.a + D_total.a),  1, l1+1, buf1);
-      VG_(percentify)(LL_total_mr, (Ir_total.a + Dr_total.a), 1, l2+1, buf2);
-      VG_(percentify)(LL_total_mw, Dw_total.a,                1, l3+1, buf3);
-      VG_(umsg)("LL miss rate:  %s (%s     + %s  )\n", buf1, buf2,buf3);
+      VG_(umsg)("LL miss rate:  %*.1f%% (%*.1f%%     + %*.1f%%  )\n",
+                l1, LL_total_m  * 100.0 / (Ir_total.a + D_total.a),
+                l2, LL_total_mr * 100.0 / (Ir_total.a + Dr_total.a),
+                l3, LL_total_mw * 100.0 / Dw_total.a);
    }
 
    /* If branch profiling is enabled, show branch overall results. */
@@ -1675,11 +1670,10 @@ static void cg_fini(Int exitcode)
       VG_(umsg)(fmt, "Mispredicts:  ",
                      B_total.mp, Bc_total.mp, Bi_total.mp);
 
-      VG_(percentify)(B_total.mp,  B_total.b,  1, l1+1, buf1);
-      VG_(percentify)(Bc_total.mp, Bc_total.b, 1, l2+1, buf2);
-      VG_(percentify)(Bi_total.mp, Bi_total.b, 1, l3+1, buf3);
-
-      VG_(umsg)("Mispred rate:  %s (%s     + %s   )\n", buf1, buf2,buf3);
+      VG_(umsg)("Mispred rate:  %*.1f%% (%*.1f%%     + %*.1f%%   )\n",
+                l1, B_total.mp  * 100.0 / B_total.b,
+                l2, Bc_total.mp * 100.0 / Bc_total.b,
+                l3, Bi_total.mp * 100.0 / Bi_total.b);
    }
 
    // Various stats
@@ -1695,24 +1689,20 @@ static void cg_fini(Int exitcode)
       VG_(dmsg)("cachegrind: distinct instrs Gen: %d\n", distinct_instrsGen);
       VG_(dmsg)("cachegrind: debug lookups      : %d\n", debug_lookups);
       
-      VG_(percentify)(full_debugs,      debug_lookups, 1, 6, buf1);
-      VG_(percentify)(file_line_debugs, debug_lookups, 1, 6, buf2);
-      VG_(percentify)(fn_debugs,        debug_lookups, 1, 6, buf3);
-      VG_(percentify)(no_debugs,        debug_lookups, 1, 6, buf4);
-      VG_(dmsg)("cachegrind: with full      info:%s (%d)\n", 
-                buf1, full_debugs);
-      VG_(dmsg)("cachegrind: with file/line info:%s (%d)\n", 
-                buf2, file_line_debugs);
-      VG_(dmsg)("cachegrind: with fn name   info:%s (%d)\n", 
-                buf3, fn_debugs);
-      VG_(dmsg)("cachegrind: with zero      info:%s (%d)\n", 
-                buf4, no_debugs);
+      VG_(dmsg)("cachegrind: with full      info:%6.1f%% (%d)\n", 
+                full_debugs * 100.0 / debug_lookups, full_debugs);
+      VG_(dmsg)("cachegrind: with file/line info:%6.1f%% (%d)\n", 
+                file_line_debugs * 100.0 / debug_lookups, file_line_debugs);
+      VG_(dmsg)("cachegrind: with fn name   info:%6.1f%% (%d)\n", 
+                fn_debugs * 100.0 / debug_lookups, fn_debugs);
+      VG_(dmsg)("cachegrind: with zero      info:%6.1f%% (%d)\n", 
+                no_debugs * 100.0 / debug_lookups, no_debugs);
 
-      VG_(dmsg)("cachegrind: string table size: %lu\n",
+      VG_(dmsg)("cachegrind: string table size: %u\n",
                 VG_(OSetGen_Size)(stringTable));
-      VG_(dmsg)("cachegrind: CC table size: %lu\n",
+      VG_(dmsg)("cachegrind: CC table size: %u\n",
                 VG_(OSetGen_Size)(CC_table));
-      VG_(dmsg)("cachegrind: InstrInfo table size: %lu\n",
+      VG_(dmsg)("cachegrind: InstrInfo table size: %u\n",
                 VG_(OSetGen_Size)(instrInfoTable));
    }
 }
@@ -1725,17 +1715,17 @@ static void cg_fini(Int exitcode)
 // any reason at all: to free up space, because the guest code was
 // unmapped or modified, or for any arbitrary reason.
 static
-void cg_discard_superblock_info ( Addr64 orig_addr64, VexGuestExtents vge )
+void cg_discard_superblock_info ( Addr orig_addr64, VexGuestExtents vge )
 {
    SB_info* sbInfo;
-   Addr     orig_addr = (Addr)vge.base[0];
+   Addr     orig_addr = vge.base[0];
 
    tl_assert(vge.n_used > 0);
 
    if (DEBUG_CG)
       VG_(printf)( "discard_basic_block_info: %p, %p, %llu\n", 
-                   (void*)(Addr)orig_addr,
-                   (void*)(Addr)vge.base[0], (ULong)vge.len[0]);
+                   (void*)orig_addr,
+                   (void*)vge.base[0], (ULong)vge.len[0]);
 
    // Get BB info, remove from table, free BB info.  Simple!  Note that we
    // use orig_addr, not the first instruction address in vge.
@@ -1793,12 +1783,14 @@ static void cg_pre_clo_init(void)
    VG_(details_version)         (NULL);
    VG_(details_description)     ("a cache and branch-prediction profiler");
    VG_(details_copyright_author)(
-      "Copyright (C) 2002-2013, and GNU GPL'd, by Nicholas Nethercote et al.");
+      "Copyright (C) 2002-2015, and GNU GPL'd, by Nicholas Nethercote et al.");
    VG_(details_bug_reports_to)  (VG_BUGS_TO);
    VG_(details_avg_translation_sizeB) ( 500 );
 
-   VG_(clo_vex_control).iropt_register_updates
+   VG_(clo_vex_control).iropt_register_updates_default
+      = VG_(clo_px_file_backed)
       = VexRegUpdSpAtMemAccess; // overridable by the user.
+
    VG_(basic_tool_funcs)          (cg_post_clo_init,
                                    cg_instrument,
                                    cg_fini);

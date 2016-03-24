@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward
+   Copyright (C) 2000-2015 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -42,7 +42,7 @@
 #include "pub_tool_threadstate.h"
 #include "pub_core_libcsetjmp.h"   // VG_MINIMAL_JMP_BUF
 #include "pub_core_vki.h"          // vki_sigset_t
-#include "pub_core_guest.h"        // VexGuestAMD64State etc.
+#include "pub_core_guest.h"        // VexGuestArchState
 #include "libvex.h"                // LibVEX_N_SPILL_BYTES
 
 
@@ -92,22 +92,26 @@ typedef
 
       /* Note that for code generation reasons, we require that the
          guest state area, its two shadows, and the spill area, are
-         16-aligned and have 16-aligned sizes, and there are no holes
-         in between.  This is checked by do_pre_run_checks() in
-         scheduler.c. */
+         aligned on LibVEX_GUEST_STATE_ALIGN and have sizes, such that
+         there are no holes in between. This is checked by do_pre_run_checks()
+         in scheduler.c. */
 
       /* Saved machine context. */
-      VexGuestArchState vex __attribute__((aligned(16)));
+      VexGuestArchState vex __attribute__((aligned(LibVEX_GUEST_STATE_ALIGN)));
 
       /* Saved shadow context (2 copies). */
-      VexGuestArchState vex_shadow1 __attribute__((aligned(16)));
-      VexGuestArchState vex_shadow2 __attribute__((aligned(16)));
+      VexGuestArchState vex_shadow1
+                        __attribute__((aligned(LibVEX_GUEST_STATE_ALIGN)));
+      VexGuestArchState vex_shadow2 
+                        __attribute__((aligned(LibVEX_GUEST_STATE_ALIGN)));
 
       /* PG - pgbovine - Extra shadow guest state for DynComp */
-      VexGuestArchState vex_extra_shadow[4] __attribute__((aligned(16)));
+      VexGuestArchState vex_extra_shadow[4] 
+                        __attribute__((aligned(LibVEX_GUEST_STATE_ALIGN)));
 
       /* Spill area. */
-      UChar vex_spill[LibVEX_N_SPILL_BYTES] __attribute__((aligned(16)));
+      UChar vex_spill[LibVEX_N_SPILL_BYTES]
+            __attribute__((aligned(LibVEX_GUEST_STATE_ALIGN)));
 
       /* --- END vex-mandated guest state --- */
    } 
@@ -251,6 +255,9 @@ typedef
             int which_port;
          } task_get_special_port;
          struct {
+            int which;
+         } host_get_special_port;
+         struct {
             char *service_name;
          } bootstrap_look_up;
          struct {
@@ -263,6 +270,53 @@ typedef
             char *path;
          } io_registry_entry_from_path;
       } mach_args;
+
+#     elif defined(VGO_solaris)
+#     if defined(VGP_x86_solaris)
+      /* A pointer to thread related data. The pointer is used to set up
+         a segment descriptor (GDT[VKI_GDT_LWPGS]) when the thread is about to
+         be run. A client program sets this value explicitly by calling the
+         lwp_private syscall or it can be passed as a part of ucontext_t when
+         a new thread is created (the lwp_create syscall). */
+      Addr thrptr;
+#     elif defined(VGP_amd64_solaris)
+      /* GDT is not fully simulated by AMD64/Solaris. The %fs segment
+         register is assumed to be always zero and vex->guest_FS_CONST holds
+         the 64-bit offset associated with a %fs value of zero. */
+#     endif
+
+      /* Stack id (value (UWord)(-1) means that there is no stack). This
+         tracks a stack that is set in restore_stack(). */
+      UWord stk_id;
+
+      /* Simulation of the kernel's lwp->lwp_ustack. Set in the PRE wrapper
+         of the getsetcontext syscall, for SETUSTACK. Used in
+         VG_(save_context)(), VG_(restore_context)() and
+         VG_(sigframe_create)(). */
+      vki_stack_t *ustack;
+
+      /* Flag saying if the current call is in the door_return() variant of
+         the door() syscall. */
+      Bool in_door_return;
+
+      /* Address of the door server procedure corresponding to the current
+         thread. Used to keep track which door call the current thread
+         services. Valid only between subsequent door_return() invocations. */
+      Addr door_return_procedure;
+
+      /* Simulation of the kernel's lwp->lwp_oldcontext. Set in
+         VG_(restore_context)() and VG_(sigframe_create)(). Used in
+         VG_(save_context)(). */
+      vki_ucontext_t *oldcontext;
+
+      /* Address of sc_shared_t struct shared between kernel and libc.
+         Set in POST(sys_schedctl). Every thread gets its own address
+         but typically many are squeezed on a singled mapped page.
+         Cleaned in the child atfork handler. */
+      Addr schedctl_data;
+
+      /* True if this is daemon thread. */
+      Bool daemon_thread;
 #     endif
 
    }
@@ -346,7 +400,7 @@ typedef struct {
    UInt err_disablement_level;
 
    /* Per-thread jmp_buf to resume scheduler after a signal */
-   Bool    sched_jmpbuf_valid;
+   Bool               sched_jmpbuf_valid;
    VG_MINIMAL_JMP_BUF(sched_jmpbuf);
 
    /* This thread's name. NULL, if no name. */
@@ -362,7 +416,7 @@ ThreadState;
 /* A statically allocated array of threads.  NOTE: [0] is
    never used, to simplify the simulation of initialisers for
    LinuxThreads. */
-extern ThreadState VG_(threads)[VG_N_THREADS];
+extern ThreadState *VG_(threads);
 
 // The running thread.  m_scheduler should be the only other module
 // to write to this.

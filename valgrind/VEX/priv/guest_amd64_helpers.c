@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2013 OpenWorks LLP
+   Copyright (C) 2004-2015 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -79,32 +79,34 @@
 
 static void mullS64 ( Long u, Long v, Long* rHi, Long* rLo )
 {
+   const Long halfMask = 0xFFFFFFFFLL;
    ULong u0, v0, w0;
     Long u1, v1, w1, w2, t;
-   u0   = u & 0xFFFFFFFFULL; 
+   u0   = u & halfMask; 
    u1   = u >> 32;
-   v0   = v & 0xFFFFFFFFULL;
+   v0   = v & halfMask;
    v1   = v >> 32;
    w0   = u0 * v0;
    t    = u1 * v0 + (w0 >> 32);
-   w1   = t & 0xFFFFFFFFULL;
+   w1   = t & halfMask;
    w2   = t >> 32;
    w1   = u0 * v1 + w1;
    *rHi = u1 * v1 + w2 + (w1 >> 32);
-   *rLo = u * v;
+   *rLo = (Long)((ULong)u * (ULong)v);
 }
 
 static void mullU64 ( ULong u, ULong v, ULong* rHi, ULong* rLo )
 {
+   const ULong halfMask = 0xFFFFFFFFULL;
    ULong u0, v0, w0;
    ULong u1, v1, w1,w2,t;
-   u0   = u & 0xFFFFFFFFULL;
+   u0   = u & halfMask;
    u1   = u >> 32;
-   v0   = v & 0xFFFFFFFFULL;
+   v0   = v & halfMask;
    v1   = v >> 32;
    w0   = u0 * v0;
    t    = u1 * v0 + (w0 >> 32);
-   w1   = t & 0xFFFFFFFFULL;
+   w1   = t & halfMask;
    w2   = t >> 32;
    w1   = u0 * v1 + w1;
    *rHi = u1 * v1 + w2 + (w1 >> 32);
@@ -151,7 +153,7 @@ static const UChar parity_table[256] = {
 static inline Long lshift ( Long x, Int n )
 {
    if (n >= 0)
-      return x << n;
+      return (ULong)x << n;
    else
       return x >> (-n);
 }
@@ -190,8 +192,8 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_ADD(DATA_BITS,DATA_UTYPE)			\
 {								\
    PREAMBLE(DATA_BITS);						\
-   { Long cf, pf, af, zf, sf, of;				\
-     Long argL, argR, res;					\
+   { ULong cf, pf, af, zf, sf, of;				\
+     ULong argL, argR, res;					\
      argL = CC_DEP1;						\
      argR = CC_DEP2;						\
      res  = argL + argR;					\
@@ -211,8 +213,8 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_SUB(DATA_BITS,DATA_UTYPE)			\
 {								\
    PREAMBLE(DATA_BITS);						\
-   { Long cf, pf, af, zf, sf, of;				\
-     Long argL, argR, res;					\
+   { ULong cf, pf, af, zf, sf, of;				\
+     ULong argL, argR, res;					\
      argL = CC_DEP1;						\
      argR = CC_DEP2;						\
      res  = argL - argR;					\
@@ -232,8 +234,8 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_ADC(DATA_BITS,DATA_UTYPE)			\
 {								\
    PREAMBLE(DATA_BITS);						\
-   { Long cf, pf, af, zf, sf, of;				\
-     Long argL, argR, oldC, res;		 		\
+   { ULong cf, pf, af, zf, sf, of;				\
+     ULong argL, argR, oldC, res;		 		\
      oldC = CC_NDEP & AMD64G_CC_MASK_C;				\
      argL = CC_DEP1;						\
      argR = CC_DEP2 ^ oldC;	       				\
@@ -257,8 +259,8 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_SBB(DATA_BITS,DATA_UTYPE)			\
 {								\
    PREAMBLE(DATA_BITS);						\
-   { Long cf, pf, af, zf, sf, of;				\
-     Long argL, argR, oldC, res;	       			\
+   { ULong cf, pf, af, zf, sf, of;				\
+     ULong argL, argR, oldC, res;	       			\
      oldC = CC_NDEP & AMD64G_CC_MASK_C;				\
      argL = CC_DEP1;						\
      argR = CC_DEP2 ^ oldC;	       				\
@@ -282,7 +284,7 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_LOGIC(DATA_BITS,DATA_UTYPE)			\
 {								\
    PREAMBLE(DATA_BITS);						\
-   { Long cf, pf, af, zf, sf, of;				\
+   { ULong cf, pf, af, zf, sf, of;				\
      cf = 0;							\
      pf = parity_table[(UChar)CC_DEP1];				\
      af = 0;							\
@@ -298,8 +300,8 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_INC(DATA_BITS,DATA_UTYPE)			\
 {								\
    PREAMBLE(DATA_BITS);						\
-   { Long cf, pf, af, zf, sf, of;				\
-     Long argL, argR, res;					\
+   { ULong cf, pf, af, zf, sf, of;				\
+     ULong argL, argR, res;					\
      res  = CC_DEP1;						\
      argL = res - 1;						\
      argR = 1;							\
@@ -318,8 +320,8 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_DEC(DATA_BITS,DATA_UTYPE)			\
 {								\
    PREAMBLE(DATA_BITS);						\
-   { Long cf, pf, af, zf, sf, of;				\
-     Long argL, argR, res;					\
+   { ULong cf, pf, af, zf, sf, of;				\
+     ULong argL, argR, res;					\
      res  = CC_DEP1;						\
      argL = res + 1;						\
      argR = 1;							\
@@ -339,7 +341,7 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_SHL(DATA_BITS,DATA_UTYPE)			\
 {								\
    PREAMBLE(DATA_BITS);						\
-   { Long cf, pf, af, zf, sf, of;				\
+   { ULong cf, pf, af, zf, sf, of;				\
      cf = (CC_DEP2 >> (DATA_BITS - 1)) & AMD64G_CC_MASK_C;	\
      pf = parity_table[(UChar)CC_DEP1];				\
      af = 0; /* undefined */					\
@@ -357,7 +359,7 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_SHR(DATA_BITS,DATA_UTYPE)			\
 {								\
    PREAMBLE(DATA_BITS);  					\
-   { Long cf, pf, af, zf, sf, of;				\
+   { ULong cf, pf, af, zf, sf, of;				\
      cf = CC_DEP2 & 1;						\
      pf = parity_table[(UChar)CC_DEP1];				\
      af = 0; /* undefined */					\
@@ -377,7 +379,7 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_ROL(DATA_BITS,DATA_UTYPE)			\
 {								\
    PREAMBLE(DATA_BITS);						\
-   { Long fl 							\
+   { ULong fl 							\
         = (CC_NDEP & ~(AMD64G_CC_MASK_O | AMD64G_CC_MASK_C))	\
           | (AMD64G_CC_MASK_C & CC_DEP1)			\
           | (AMD64G_CC_MASK_O & (lshift(CC_DEP1,  		\
@@ -394,7 +396,7 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_ROR(DATA_BITS,DATA_UTYPE)			\
 {								\
    PREAMBLE(DATA_BITS);						\
-   { Long fl 							\
+   { ULong fl 							\
         = (CC_NDEP & ~(AMD64G_CC_MASK_O | AMD64G_CC_MASK_C))	\
           | (AMD64G_CC_MASK_C & (CC_DEP1 >> (DATA_BITS-1)))	\
           | (AMD64G_CC_MASK_O & (lshift(CC_DEP1, 		\
@@ -410,7 +412,7 @@ static inline ULong idULong ( ULong x )
                                 DATA_U2TYPE, NARROWto2U)        \
 {                                                               \
    PREAMBLE(DATA_BITS);                                         \
-   { Long cf, pf, af, zf, sf, of;                               \
+   { ULong cf, pf, af, zf, sf, of;                              \
      DATA_UTYPE  hi;                                            \
      DATA_UTYPE  lo                                             \
         = NARROWtoU( ((DATA_UTYPE)CC_DEP1)                      \
@@ -436,11 +438,11 @@ static inline ULong idULong ( ULong x )
                                 DATA_S2TYPE, NARROWto2S)        \
 {                                                               \
    PREAMBLE(DATA_BITS);                                         \
-   { Long cf, pf, af, zf, sf, of;                               \
+   { ULong cf, pf, af, zf, sf, of;                              \
      DATA_STYPE  hi;                                            \
      DATA_STYPE  lo                                             \
-        = NARROWtoS( ((DATA_STYPE)CC_DEP1)                      \
-                     * ((DATA_STYPE)CC_DEP2) );                 \
+        = NARROWtoS( ((DATA_S2TYPE)(DATA_STYPE)CC_DEP1)         \
+                     * ((DATA_S2TYPE)(DATA_STYPE)CC_DEP2) );    \
      DATA_S2TYPE rr                                             \
         = NARROWto2S(                                           \
              ((DATA_S2TYPE)((DATA_STYPE)CC_DEP1))               \
@@ -461,7 +463,7 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_UMULQ                                           \
 {                                                               \
    PREAMBLE(64);                                                \
-   { Long cf, pf, af, zf, sf, of;                               \
+   { ULong cf, pf, af, zf, sf, of;                              \
      ULong lo, hi;                                              \
      mullU64( (ULong)CC_DEP1, (ULong)CC_DEP2, &hi, &lo );       \
      cf = (hi != 0);                                            \
@@ -479,7 +481,7 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_SMULQ                                           \
 {                                                               \
    PREAMBLE(64);                                                \
-   { Long cf, pf, af, zf, sf, of;                               \
+   { ULong cf, pf, af, zf, sf, of;                              \
      Long lo, hi;                                               \
      mullS64( (Long)CC_DEP1, (Long)CC_DEP2, &hi, &lo );         \
      cf = (hi != (lo >>/*s*/ (64-1)));                          \
@@ -497,7 +499,7 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_ANDN(DATA_BITS,DATA_UTYPE)			\
 {								\
    PREAMBLE(DATA_BITS);						\
-   { Long cf, pf, af, zf, sf, of;				\
+   { ULong cf, pf, af, zf, sf, of;				\
      cf = 0;							\
      pf = 0;							\
      af = 0;							\
@@ -513,7 +515,7 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_BLSI(DATA_BITS,DATA_UTYPE)			\
 {								\
    PREAMBLE(DATA_BITS);						\
-   { Long cf, pf, af, zf, sf, of;				\
+   { ULong cf, pf, af, zf, sf, of;				\
      cf = ((DATA_UTYPE)CC_DEP2 != 0);				\
      pf = 0;							\
      af = 0;							\
@@ -545,7 +547,7 @@ static inline ULong idULong ( ULong x )
 #define ACTIONS_BLSR(DATA_BITS,DATA_UTYPE)			\
 {								\
    PREAMBLE(DATA_BITS);						\
-   { Long cf, pf, af, zf, sf, of;				\
+   { ULong cf, pf, af, zf, sf, of;				\
      cf = ((DATA_UTYPE)CC_DEP2 == 0);				\
      pf = 0;							\
      af = 0;							\
@@ -911,6 +913,43 @@ ULong LibVEX_GuestAMD64_get_rflags ( /*IN*/const VexGuestAMD64State* vex_state )
 
 /* VISIBLE TO LIBVEX CLIENT */
 void
+LibVEX_GuestAMD64_put_rflags ( ULong rflags,
+                               /*MOD*/VexGuestAMD64State* vex_state )
+{
+   /* D flag */
+   if (rflags & AMD64G_CC_MASK_D) {
+      vex_state->guest_DFLAG = -1;
+      rflags &= ~AMD64G_CC_MASK_D;
+   }
+   else
+      vex_state->guest_DFLAG = 1;
+
+   /* ID flag */
+   if (rflags & AMD64G_CC_MASK_ID) {
+      vex_state->guest_IDFLAG = 1;
+      rflags &= ~AMD64G_CC_MASK_ID;
+   }
+   else
+      vex_state->guest_IDFLAG = 0;
+
+   /* AC flag */
+   if (rflags & AMD64G_CC_MASK_AC) {
+      vex_state->guest_ACFLAG = 1;
+      rflags &= ~AMD64G_CC_MASK_AC;
+   }
+   else
+      vex_state->guest_ACFLAG = 0;
+
+   UInt cc_mask = AMD64G_CC_MASK_O | AMD64G_CC_MASK_S | AMD64G_CC_MASK_Z |
+                  AMD64G_CC_MASK_A | AMD64G_CC_MASK_C | AMD64G_CC_MASK_P;
+   vex_state->guest_CC_OP   = AMD64G_CC_OP_COPY;
+   vex_state->guest_CC_DEP1 = rflags & cc_mask;
+   vex_state->guest_CC_DEP2 = 0;
+   vex_state->guest_CC_NDEP = 0;
+}
+
+/* VISIBLE TO LIBVEX CLIENT */
+void
 LibVEX_GuestAMD64_put_rflag_c ( ULong new_carry_flag,
                                /*MOD*/VexGuestAMD64State* vex_state )
 {
@@ -1036,7 +1075,7 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
                             binop(Iop_Xor64,
                                   cc_dep1,
                                   binop(Iop_Sub64, cc_dep1, cc_dep2))),
-                      mkU8(64));
+                      mkU8(63));
       }
       if (isU64(cc_op, AMD64G_CC_OP_SUBQ) && isU64(cond, AMD64CondNO)) {
          /* No action.  Never yet found a test case. */
@@ -1288,6 +1327,7 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
 
       /*---------------- SUBW ----------------*/
 
+      /* 4, 5 */
       if (isU64(cc_op, AMD64G_CC_OP_SUBW) && isU64(cond, AMD64CondZ)) {
          /* word sub/cmp, then Z --> test dst==src */
          return unop(Iop_1Uto64,
@@ -1303,6 +1343,7 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
                            unop(Iop_64to16,cc_dep2)));
       }
 
+      /* 6, */
       if (isU64(cc_op, AMD64G_CC_OP_SUBW) && isU64(cond, AMD64CondBE)) {
          /* word sub/cmp, then BE (unsigned less than or equal)
             --> test dst <=u src */
@@ -1312,6 +1353,7 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
                            binop(Iop_Shl64, cc_dep2, mkU8(48))));
       }
 
+      /* 14, */
       if (isU64(cc_op, AMD64G_CC_OP_SUBW) && isU64(cond, AMD64CondLE)) {
          /* word sub/cmp, then LE (signed less than or equal) 
             --> test dst <=s src */
@@ -1324,6 +1366,26 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
 
       /*---------------- SUBB ----------------*/
 
+      /* 2, 3 */
+      if (isU64(cc_op, AMD64G_CC_OP_SUBB) && isU64(cond, AMD64CondB)) {
+         /* byte sub/cmp, then B (unsigned less than)
+            --> test dst <u src */
+         return unop(Iop_1Uto64,
+                     binop(Iop_CmpLT64U,
+                           binop(Iop_And64, cc_dep1, mkU64(0xFF)),
+                           binop(Iop_And64, cc_dep2, mkU64(0xFF))));
+      }
+      if (isU64(cc_op, AMD64G_CC_OP_SUBB) && isU64(cond, AMD64CondNB)) {
+         /* byte sub/cmp, then NB (unsigned greater than or equal)
+            --> test src <=u dst */
+         /* Note, args are opposite way round from the usual */
+         return unop(Iop_1Uto64,
+                     binop(Iop_CmpLE64U,
+                           binop(Iop_And64, cc_dep2, mkU64(0xFF)),
+                           binop(Iop_And64, cc_dep1, mkU64(0xFF))));
+      }
+
+      /* 4, 5 */
       if (isU64(cc_op, AMD64G_CC_OP_SUBB) && isU64(cond, AMD64CondZ)) {
          /* byte sub/cmp, then Z --> test dst==src */
          return unop(Iop_1Uto64,
@@ -1339,6 +1401,7 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
                            unop(Iop_64to8,cc_dep2)));
       }
 
+      /* 6, */
       if (isU64(cc_op, AMD64G_CC_OP_SUBB) && isU64(cond, AMD64CondBE)) {
          /* byte sub/cmp, then BE (unsigned less than or equal)
             --> test dst <=u src */
@@ -1348,6 +1411,7 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
                            binop(Iop_And64, cc_dep2, mkU64(0xFF))));
       }
 
+      /* 8, 9 */
       if (isU64(cc_op, AMD64G_CC_OP_SUBB) && isU64(cond, AMD64CondS)
                                           && isU64(cc_dep2, 0)) {
          /* byte sub/cmp of zero, then S --> test (dst-0 <s 0)
@@ -1879,11 +1943,15 @@ void do_get_x87 ( /*IN*/VexGuestAMD64State* vex_state,
 }
 
 
+/*---------------------------------------------------------------*/
+/*--- Supporting functions for XSAVE/FXSAVE.                  ---*/
+/*---------------------------------------------------------------*/
+
 /* CALLED FROM GENERATED CODE */
 /* DIRTY HELPER (reads guest state, writes guest mem) */
-/* NOTE: only handles 32-bit format (no REX.W on the insn) */
-void amd64g_dirtyhelper_FXSAVE_ALL_EXCEPT_XMM ( VexGuestAMD64State* gst,
-                                                HWord addr )
+/* XSAVE component 0 is the x87 FPU state. */
+void amd64g_dirtyhelper_XSAVE_COMPONENT_0
+        ( VexGuestAMD64State* gst, HWord addr )
 {
    /* Derived from values obtained from
       vendor_id       : AuthenticAMD
@@ -1898,17 +1966,15 @@ void amd64g_dirtyhelper_FXSAVE_ALL_EXCEPT_XMM ( VexGuestAMD64State* gst,
    Fpu_State tmp;
    UShort*   addrS = (UShort*)addr;
    UChar*    addrC = (UChar*)addr;
-   UInt      mxcsr;
    UShort    fp_tags;
    UInt      summary_tags;
    Int       r, stno;
    UShort    *srcS, *dstS;
 
    do_get_x87( gst, (UChar*)&tmp );
-   mxcsr = amd64g_create_mxcsr( gst->guest_SSEROUND );
 
-   /* Now build the proper fxsave image from the x87 image we just
-      made. */
+   /* Now build the proper fxsave x87 image from the fsave x87 image
+      we just made. */
 
    addrS[0]  = tmp.env[FP_ENV_CTRL]; /* FCW: fpu control word */
    addrS[1]  = tmp.env[FP_ENV_STAT]; /* FCW: fpu status word */
@@ -1941,11 +2007,8 @@ void amd64g_dirtyhelper_FXSAVE_ALL_EXCEPT_XMM ( VexGuestAMD64State* gst,
    addrS[10] = 0; /* BOGUS */
    addrS[11] = 0; /* BOGUS */
 
-   addrS[12] = toUShort(mxcsr);  /* MXCSR */
-   addrS[13] = toUShort(mxcsr >> 16);
-
-   addrS[14] = 0xFFFF; /* MXCSR mask (lo16) */
-   addrS[15] = 0x0000; /* MXCSR mask (hi16) */
+   /* addrS[13,12] are MXCSR -- not written */
+   /* addrS[15,14] are MXCSR_MASK -- not written */
 
    /* Copy in the FP registers, in ST order. */
    for (stno = 0; stno < 8; stno++) {
@@ -1960,32 +2023,94 @@ void amd64g_dirtyhelper_FXSAVE_ALL_EXCEPT_XMM ( VexGuestAMD64State* gst,
       dstS[6] = 0;
       dstS[7] = 0;
    }
-
-   /* That's the first 160 bytes of the image done.  Now only %xmm0
-      .. %xmm15 remain to be copied, and we let the generated IR do
-      that, so as to make Memcheck's definedness flow for the non-XMM
-      parts independant from that of the all the other control and
-      status words in the structure.  This avoids the false positives
-      shown in #291310. */
 }
 
 
 /* CALLED FROM GENERATED CODE */
+/* DIRTY HELPER (reads guest state, writes guest mem) */
+/* XSAVE component 1 is the SSE state. */
+void amd64g_dirtyhelper_XSAVE_COMPONENT_1_EXCLUDING_XMMREGS 
+        ( VexGuestAMD64State* gst, HWord addr )
+{
+   UShort* addrS = (UShort*)addr;
+   UInt    mxcsr;
+
+   /* The only non-register parts of the SSE state are MXCSR and
+      MXCSR_MASK. */
+   mxcsr = amd64g_create_mxcsr( gst->guest_SSEROUND );
+
+   addrS[12] = toUShort(mxcsr);  /* MXCSR */
+   addrS[13] = toUShort(mxcsr >> 16);
+
+   addrS[14] = 0xFFFF; /* MXCSR mask (lo16) */
+   addrS[15] = 0x0000; /* MXCSR mask (hi16) */
+}
+
+
+/* VISIBLE TO LIBVEX CLIENT */
+/* Do FXSAVE from the supplied VexGuestAMD64State structure and store
+   the result at the given address which represents a buffer of at
+   least 416 bytes.
+
+   This function is not called from generated code.  FXSAVE is dealt
+   with by the amd64 front end by calling the XSAVE_COMPONENT_{0,1}
+   functions above plus some in-line IR.  This function is merely a
+   convenience function for VEX's users.
+*/
+void LibVEX_GuestAMD64_fxsave ( /*IN*/VexGuestAMD64State* gst,
+                                /*OUT*/HWord fp_state )
+{
+   /* Do the x87 part */
+   amd64g_dirtyhelper_XSAVE_COMPONENT_0(gst, fp_state);
+
+   /* And now the SSE part, except for the registers themselves. */
+   amd64g_dirtyhelper_XSAVE_COMPONENT_1_EXCLUDING_XMMREGS(gst, fp_state);
+
+   /* That's the first 160 bytes of the image done. */
+   /* Now only %xmm0 .. %xmm15 remain to be copied.  If the host is
+      big-endian, these need to be byte-swapped. */
+   U128 *xmm = (U128 *)(fp_state + 160);
+   vassert(host_is_little_endian());
+
+#  define COPY_U128(_dst,_src)                       \
+      do { _dst[0] = _src[0]; _dst[1] = _src[1];     \
+           _dst[2] = _src[2]; _dst[3] = _src[3]; }   \
+      while (0)
+
+   COPY_U128( xmm[0],  gst->guest_YMM0 );
+   COPY_U128( xmm[1],  gst->guest_YMM1 );
+   COPY_U128( xmm[2],  gst->guest_YMM2 );
+   COPY_U128( xmm[3],  gst->guest_YMM3 );
+   COPY_U128( xmm[4],  gst->guest_YMM4 );
+   COPY_U128( xmm[5],  gst->guest_YMM5 );
+   COPY_U128( xmm[6],  gst->guest_YMM6 );
+   COPY_U128( xmm[7],  gst->guest_YMM7 );
+   COPY_U128( xmm[8],  gst->guest_YMM8 );
+   COPY_U128( xmm[9],  gst->guest_YMM9 );
+   COPY_U128( xmm[10], gst->guest_YMM10 );
+   COPY_U128( xmm[11], gst->guest_YMM11 );
+   COPY_U128( xmm[12], gst->guest_YMM12 );
+   COPY_U128( xmm[13], gst->guest_YMM13 );
+   COPY_U128( xmm[14], gst->guest_YMM14 );
+   COPY_U128( xmm[15], gst->guest_YMM15 );
+#  undef COPY_U128
+}
+
+
+/*---------------------------------------------------------------*/
+/*--- Supporting functions for XRSTOR/FXRSTOR.                ---*/
+/*---------------------------------------------------------------*/
+
+/* CALLED FROM GENERATED CODE */
 /* DIRTY HELPER (writes guest state, reads guest mem) */
-VexEmNote amd64g_dirtyhelper_FXRSTOR_ALL_EXCEPT_XMM ( VexGuestAMD64State* gst,
-                                                      HWord addr )
+VexEmNote amd64g_dirtyhelper_XRSTOR_COMPONENT_0
+             ( VexGuestAMD64State* gst, HWord addr )
 {
    Fpu_State tmp;
-   VexEmNote warnX87 = EmNote_NONE;
-   VexEmNote warnXMM = EmNote_NONE;
    UShort*   addrS   = (UShort*)addr;
    UChar*    addrC   = (UChar*)addr;
    UShort    fp_tags;
    Int       r, stno, i;
-
-   /* Don't restore %xmm0 .. %xmm15, for the same reasons that
-      amd64g_dirtyhelper_FXSAVE_ALL_EXCEPT_XMM doesn't save them.  See
-      comment in that function for details. */
 
    /* Copy the x87 registers out of the image, into a temporary
       Fpu_State struct. */
@@ -2015,16 +2140,75 @@ VexEmNote amd64g_dirtyhelper_FXRSTOR_ALL_EXCEPT_XMM ( VexGuestAMD64State* gst,
    tmp.env[FP_ENV_TAG] = fp_tags;
 
    /* Now write 'tmp' into the guest state. */
-   warnX87 = do_put_x87( True/*moveRegs*/, (UChar*)&tmp, gst );
+   VexEmNote warnX87 = do_put_x87( True/*moveRegs*/, (UChar*)&tmp, gst );
 
-   { UInt w32 = (((UInt)addrS[12]) & 0xFFFF)
-                | ((((UInt)addrS[13]) & 0xFFFF) << 16);
-     ULong w64 = amd64g_check_ldmxcsr( (ULong)w32 );
+   return warnX87;
+}
 
-     warnXMM = (VexEmNote)(w64 >> 32);
 
-     gst->guest_SSEROUND = w64 & 0xFFFFFFFFULL;
-   }
+/* CALLED FROM GENERATED CODE */
+/* DIRTY HELPER (writes guest state, reads guest mem) */
+VexEmNote amd64g_dirtyhelper_XRSTOR_COMPONENT_1_EXCLUDING_XMMREGS
+             ( VexGuestAMD64State* gst, HWord addr )
+{
+   UShort* addrS = (UShort*)addr;
+   UInt    w32   = (((UInt)addrS[12]) & 0xFFFF)
+                   | ((((UInt)addrS[13]) & 0xFFFF) << 16);
+   ULong   w64   = amd64g_check_ldmxcsr( (ULong)w32 );
+
+   VexEmNote warnXMM = (VexEmNote)(w64 >> 32);
+
+   gst->guest_SSEROUND = w64 & 0xFFFFFFFFULL;
+   return warnXMM;
+}
+
+
+/* VISIBLE TO LIBVEX CLIENT */
+/* Do FXRSTOR from the supplied address and store read values to the given
+   VexGuestAMD64State structure. 
+
+   This function is not called from generated code.  FXRSTOR is dealt
+   with by the amd64 front end by calling the XRSTOR_COMPONENT_{0,1}
+   functions above plus some in-line IR.  This function is merely a
+   convenience function for VEX's users.
+*/
+VexEmNote LibVEX_GuestAMD64_fxrstor ( /*IN*/HWord fp_state,
+                                      /*MOD*/VexGuestAMD64State* gst )
+{
+   /* Restore %xmm0 .. %xmm15.  If the host is big-endian, these need
+      to be byte-swapped. */
+   U128 *xmm = (U128 *)(fp_state + 160);
+
+   vassert(host_is_little_endian());
+
+#  define COPY_U128(_dst,_src)                       \
+      do { _dst[0] = _src[0]; _dst[1] = _src[1];     \
+           _dst[2] = _src[2]; _dst[3] = _src[3]; }   \
+      while (0)
+
+   COPY_U128( gst->guest_YMM0, xmm[0] );
+   COPY_U128( gst->guest_YMM1, xmm[1] );
+   COPY_U128( gst->guest_YMM2, xmm[2] );
+   COPY_U128( gst->guest_YMM3, xmm[3] );
+   COPY_U128( gst->guest_YMM4, xmm[4] );
+   COPY_U128( gst->guest_YMM5, xmm[5] );
+   COPY_U128( gst->guest_YMM6, xmm[6] );
+   COPY_U128( gst->guest_YMM7, xmm[7] );
+   COPY_U128( gst->guest_YMM8, xmm[8] );
+   COPY_U128( gst->guest_YMM9, xmm[9] );
+   COPY_U128( gst->guest_YMM10, xmm[10] );
+   COPY_U128( gst->guest_YMM11, xmm[11] );
+   COPY_U128( gst->guest_YMM12, xmm[12] );
+   COPY_U128( gst->guest_YMM13, xmm[13] );
+   COPY_U128( gst->guest_YMM14, xmm[14] );
+   COPY_U128( gst->guest_YMM15, xmm[15] );
+
+#  undef COPY_U128
+
+   VexEmNote warnXMM
+      = amd64g_dirtyhelper_XRSTOR_COMPONENT_1_EXCLUDING_XMMREGS(gst, fp_state);
+   VexEmNote warnX87
+      = amd64g_dirtyhelper_XRSTOR_COMPONENT_0(gst, fp_state);
 
    /* Prefer an X87 emwarn over an XMM one, if both exist. */
    if (warnX87 != EmNote_NONE)
@@ -2033,6 +2217,10 @@ VexEmNote amd64g_dirtyhelper_FXRSTOR_ALL_EXCEPT_XMM ( VexGuestAMD64State* gst,
       return warnXMM;
 }
 
+
+/*---------------------------------------------------------------*/
+/*--- Supporting functions for FSAVE/FRSTOR                   ---*/
+/*---------------------------------------------------------------*/
 
 /* DIRTY HELPER (writes guest state) */
 /* Initialise the x87 FPU state as per 'finit'. */
@@ -2051,18 +2239,18 @@ void amd64g_dirtyhelper_FINIT ( VexGuestAMD64State* gst )
 
 /* CALLED FROM GENERATED CODE */
 /* DIRTY HELPER (reads guest memory) */
-ULong amd64g_dirtyhelper_loadF80le ( ULong addrU )
+ULong amd64g_dirtyhelper_loadF80le ( Addr addrU )
 {
    ULong f64;
-   convert_f80le_to_f64le ( (UChar*)ULong_to_Ptr(addrU), (UChar*)&f64 );
+   convert_f80le_to_f64le ( (UChar*)addrU, (UChar*)&f64 );
    return f64;
 }
 
 /* CALLED FROM GENERATED CODE */
 /* DIRTY HELPER (writes guest memory) */
-void amd64g_dirtyhelper_storeF80le ( ULong addrU, ULong f64 )
+void amd64g_dirtyhelper_storeF80le ( Addr addrU, ULong f64 )
 {
-   convert_f64le_to_f80le( (UChar*)&f64, (UChar*)ULong_to_Ptr(addrU) );
+   convert_f64le_to_f80le( (UChar*)&f64, (UChar*)addrU );
 }
 
 
@@ -2326,7 +2514,7 @@ VexEmNote amd64g_dirtyhelper_FRSTORS ( /*OUT*/VexGuestAMD64State* vex_state,
 
 
 /*---------------------------------------------------------------*/
-/*--- Misc integer helpers, including rotates and CPUID.      ---*/
+/*--- CPUID helpers.                                          ---*/
 /*---------------------------------------------------------------*/
 
 /* Claim to be the following CPU, which is probably representative of
@@ -2685,6 +2873,14 @@ void amd64g_dirtyhelper_CPUID_sse42_and_cx16 ( VexGuestAMD64State* st )
 /* Claim to be the following CPU (4 x ...), which is AVX and cx16
    capable.  Plus (kludge!) it "supports" HTM.
 
+   Also with the following change: claim that XSaveOpt is not
+   available, by cpuid(eax=0xD,ecx=1).eax[0] returns 0, compared to 1
+   on the real CPU.  Consequently, programs that correctly observe
+   these CPUID values should only try to use 3 of the 8 XSave-family
+   instructions: XGETBV, XSAVE and XRSTOR.  In particular this avoids
+   having to implement the compacted or optimised save/restore
+   variants.
+
    vendor_id       : GenuineIntel
    cpu family      : 6
    model           : 42
@@ -2795,7 +2991,7 @@ void amd64g_dirtyhelper_CPUID_avx_and_cx16 ( VexGuestAMD64State* st )
          switch (old_ecx) {
             case 0x00000000: SET_ABCD(0x00000007, 0x00000340,
                                       0x00000340, 0x00000000); break;
-            case 0x00000001: SET_ABCD(0x00000001, 0x00000000,
+            case 0x00000001: SET_ABCD(0x00000000, 0x00000000,
                                       0x00000000, 0x00000000); break;
             case 0x00000002: SET_ABCD(0x00000100, 0x00000240,
                                       0x00000000, 0x00000000); break;
@@ -2843,6 +3039,176 @@ void amd64g_dirtyhelper_CPUID_avx_and_cx16 ( VexGuestAMD64State* st )
 #  undef SET_ABCD
 }
 
+
+/* Claim to be the following CPU (4 x ...), which is AVX2 capable.
+
+   With the following change: claim that XSaveOpt is not available, by
+   cpuid(eax=0xD,ecx=1).eax[0] returns 0, compared to 1 on the real
+   CPU.  Consequently, programs that correctly observe these CPUID
+   values should only try to use 3 of the 8 XSave-family instructions:
+   XGETBV, XSAVE and XRSTOR.  In particular this avoids having to
+   implement the compacted or optimised save/restore variants.
+
+   vendor_id       : GenuineIntel
+   cpu family      : 6
+   model           : 60
+   model name      : Intel(R) Core(TM) i7-4910MQ CPU @ 2.90GHz
+   stepping        : 3
+   microcode       : 0x1c
+   cpu MHz         : 919.957
+   cache size      : 8192 KB
+   physical id     : 0
+   siblings        : 4
+   core id         : 3
+   cpu cores       : 4
+   apicid          : 6
+   initial apicid  : 6
+   fpu             : yes
+   fpu_exception   : yes
+   cpuid level     : 13
+   wp              : yes
+   flags           : fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca
+                     cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht
+                     tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc
+                     arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc
+                     aperfmperf eagerfpu pni pclmulqdq dtes64 monitor ds_cpl
+                     vmx smx est tm2 ssse3 fma cx16 xtpr pdcm pcid sse4_1
+                     sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave
+                     avx f16c rdrand lahf_lm abm ida arat epb pln pts dtherm
+                     tpr_shadow vnmi flexpriority ept vpid fsgsbase tsc_adjust
+                     bmi1 avx2 smep bmi2 erms invpcid xsaveopt
+   bugs            :
+   bogomips        : 5786.68
+   clflush size    : 64
+   cache_alignment : 64
+   address sizes   : 39 bits physical, 48 bits virtual
+   power management:
+*/
+void amd64g_dirtyhelper_CPUID_avx2 ( VexGuestAMD64State* st )
+{
+#  define SET_ABCD(_a,_b,_c,_d)                \
+      do { st->guest_RAX = (ULong)(_a);        \
+           st->guest_RBX = (ULong)(_b);        \
+           st->guest_RCX = (ULong)(_c);        \
+           st->guest_RDX = (ULong)(_d);        \
+      } while (0)
+
+   UInt old_eax = (UInt)st->guest_RAX;
+   UInt old_ecx = (UInt)st->guest_RCX;
+
+   switch (old_eax) {
+      case 0x00000000:
+         SET_ABCD(0x0000000d, 0x756e6547, 0x6c65746e, 0x49656e69);
+         break;
+      case 0x00000001:
+         SET_ABCD(0x000306c3, 0x02100800, 0x7ffafbff, 0xbfebfbff);
+         break;
+      case 0x00000002:
+         SET_ABCD(0x76036301, 0x00f0b6ff, 0x00000000, 0x00c10000);
+         break;
+      case 0x00000003:
+         SET_ABCD(0x00000000, 0x00000000, 0x00000000, 0x00000000);
+         break;
+      case 0x00000004:
+         switch (old_ecx) {
+            case 0x00000000: SET_ABCD(0x1c004121, 0x01c0003f,
+                                      0x0000003f, 0x00000000); break;
+            case 0x00000001: SET_ABCD(0x1c004122, 0x01c0003f,
+                                      0x0000003f, 0x00000000); break;
+            case 0x00000002: SET_ABCD(0x1c004143, 0x01c0003f,
+                                      0x000001ff, 0x00000000); break;
+            case 0x00000003: SET_ABCD(0x1c03c163, 0x03c0003f,
+                                      0x00001fff, 0x00000006); break;
+            default:         SET_ABCD(0x00000000, 0x00000000,
+                                      0x00000000, 0x00000000); break;
+         }
+         break;
+      case 0x00000005:
+         SET_ABCD(0x00000040, 0x00000040, 0x00000003, 0x00042120);
+         break;
+      case 0x00000006:
+         SET_ABCD(0x00000077, 0x00000002, 0x00000009, 0x00000000);
+         break;
+      case 0x00000007:
+         switch (old_ecx) {
+            case 0x00000000: SET_ABCD(0x00000000, 0x000027ab,
+                                      0x00000000, 0x00000000); break;
+            default:         SET_ABCD(0x00000000, 0x00000000,
+                                      0x00000000, 0x00000000); break;
+         }
+         break;
+      case 0x00000008:
+         SET_ABCD(0x00000000, 0x00000000, 0x00000000, 0x00000000);
+         break;
+      case 0x00000009:
+         SET_ABCD(0x00000000, 0x00000000, 0x00000000, 0x00000000);
+         break;
+      case 0x0000000a:
+         SET_ABCD(0x07300803, 0x00000000, 0x00000000, 0x00000603);
+         break;
+      case 0x0000000b:
+         switch (old_ecx) {
+            case 0x00000000: SET_ABCD(0x00000001, 0x00000002,
+                                      0x00000100, 0x00000002); break;
+            case 0x00000001: SET_ABCD(0x00000004, 0x00000008,
+                                      0x00000201, 0x00000002); break;
+            default:         SET_ABCD(0x00000000, 0x00000000,
+                                      old_ecx,    0x00000002); break;
+         }
+         break;
+      case 0x0000000c:
+         SET_ABCD(0x00000000, 0x00000000, 0x00000000, 0x00000000);
+         break;
+      case 0x0000000d:
+         switch (old_ecx) {
+            case 0x00000000: SET_ABCD(0x00000007, 0x00000340,
+                                      0x00000340, 0x00000000); break;
+            case 0x00000001: SET_ABCD(0x00000000, 0x00000000,
+                                      0x00000000, 0x00000000); break;
+            case 0x00000002: SET_ABCD(0x00000100, 0x00000240,
+                                      0x00000000, 0x00000000); break;
+            default:         SET_ABCD(0x00000000, 0x00000000,
+                                      0x00000000, 0x00000000); break;
+         }
+         break;
+      case 0x80000000:
+         SET_ABCD(0x80000008, 0x00000000, 0x00000000, 0x00000000);
+         break;
+      case 0x80000001:
+         SET_ABCD(0x00000000, 0x00000000, 0x00000021, 0x2c100800);
+         break;
+      case 0x80000002:
+         SET_ABCD(0x65746e49, 0x2952286c, 0x726f4320, 0x4d542865);
+         break;
+      case 0x80000003:
+         SET_ABCD(0x37692029, 0x3139342d, 0x20514d30, 0x20555043);
+         break;
+      case 0x80000004:
+         SET_ABCD(0x2e322040, 0x48473039, 0x0000007a, 0x00000000);
+         break;
+      case 0x80000005:
+         SET_ABCD(0x00000000, 0x00000000, 0x00000000, 0x00000000);
+         break;
+      case 0x80000006:
+         SET_ABCD(0x00000000, 0x00000000, 0x01006040, 0x00000000);
+         break;
+      case 0x80000007:
+         SET_ABCD(0x00000000, 0x00000000, 0x00000000, 0x00000100);
+         break;
+      case 0x80000008:
+         SET_ABCD(0x00003027, 0x00000000, 0x00000000, 0x00000000);
+         break;
+      default:
+         SET_ABCD(0x00000007, 0x00000340, 0x00000340, 0x00000000);
+         break;
+   }
+#  undef SET_ABCD
+}
+
+
+/*---------------------------------------------------------------*/
+/*--- Misc integer helpers, including rotates and crypto.     ---*/
+/*---------------------------------------------------------------*/
 
 ULong amd64g_calculate_RCR ( ULong arg, 
                              ULong rot_amt, 
@@ -3845,10 +4211,19 @@ extern void amd64g_dirtyhelper_AESKEYGENASSIST (
    V128* argL = (V128*)( ((UChar*)gst) + gstOffL );
    V128* argR = (V128*)( ((UChar*)gst) + gstOffR );
 
-   argR->w32[3] = RotWord (SubWord (argL->w32[3])) ^ imm8;
-   argR->w32[2] = SubWord (argL->w32[3]);
-   argR->w32[1] = RotWord (SubWord (argL->w32[1])) ^ imm8;
-   argR->w32[0] = SubWord (argL->w32[1]);
+   // We have to create the result in a temporary in the
+   // case where the src and dst regs are the same.  See #341698.
+   V128 tmp;
+
+   tmp.w32[3] = RotWord (SubWord (argL->w32[3])) ^ imm8;
+   tmp.w32[2] = SubWord (argL->w32[3]);
+   tmp.w32[1] = RotWord (SubWord (argL->w32[1])) ^ imm8;
+   tmp.w32[0] = SubWord (argL->w32[1]);
+
+   argR->w32[3] = tmp.w32[3];
+   argR->w32[2] = tmp.w32[2];
+   argR->w32[1] = tmp.w32[1];
+   argR->w32[0] = tmp.w32[0];
 }
 
 
@@ -3892,9 +4267,10 @@ void LibVEX_GuestAMD64_initialise ( /*OUT*/VexGuestAMD64State* vex_state )
    vex_state->guest_IDFLAG  = 0;
    vex_state->guest_ACFLAG  = 0;
 
-   /* HACK: represent the offset associated with %fs==0. This
-      assumes that %fs is only ever zero. */
-   vex_state->guest_FS_ZERO = 0;
+   /* HACK: represent the offset associated with a constant %fs. 
+      Typically, on linux, this assumes that %fs is only ever zero (main
+      thread) or 0x63. */
+   vex_state->guest_FS_CONST = 0;
 
    vex_state->guest_RIP = 0;
 
@@ -3936,7 +4312,7 @@ void LibVEX_GuestAMD64_initialise ( /*OUT*/VexGuestAMD64State* vex_state )
 
    vex_state->guest_NRADDR   = 0;
    vex_state->guest_SC_CLASS = 0;
-   vex_state->guest_GS_0x60  = 0;
+   vex_state->guest_GS_CONST = 0;
 
    vex_state->guest_IP_AT_SYSCALL = 0;
    vex_state->pad1 = 0;
@@ -3953,8 +4329,9 @@ void LibVEX_GuestAMD64_initialise ( /*OUT*/VexGuestAMD64State* vex_state )
 
    Only %RSP is needed in mode VexRegUpdSpAtMemAccess.   
 */
-Bool guest_amd64_state_requires_precise_mem_exns ( Int minoff,
-                                                   Int maxoff)
+Bool guest_amd64_state_requires_precise_mem_exns (
+        Int minoff, Int maxoff, VexRegisterUpdates pxControl
+     )
 {
    Int rbp_min = offsetof(VexGuestAMD64State, guest_RBP);
    Int rbp_max = rbp_min + 8 - 1;
@@ -3965,7 +4342,7 @@ Bool guest_amd64_state_requires_precise_mem_exns ( Int minoff,
 
    if (maxoff < rsp_min || minoff > rsp_max) {
       /* no overlap with rsp */
-      if (vex_control.iropt_register_updates == VexRegUpdSpAtMemAccess)
+      if (pxControl == VexRegUpdSpAtMemAccess)
          return False; // We only need to check stack pointer.
    } else {
       return True;
@@ -4086,7 +4463,7 @@ VexGuestLayout
 		 /*  2 */ ALWAYSDEFD(guest_DFLAG),
                  /*  3 */ ALWAYSDEFD(guest_IDFLAG),
                  /*  4 */ ALWAYSDEFD(guest_RIP),
-                 /*  5 */ ALWAYSDEFD(guest_FS_ZERO),
+                 /*  5 */ ALWAYSDEFD(guest_FS_CONST),
                  /*  6 */ ALWAYSDEFD(guest_FTOP),
                  /*  7 */ ALWAYSDEFD(guest_FPTAG),
                  /*  8 */ ALWAYSDEFD(guest_FPROUND),

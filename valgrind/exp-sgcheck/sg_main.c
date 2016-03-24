@@ -9,7 +9,7 @@
    This file is part of Ptrcheck, a Valgrind tool for checking pointer
    use in programs.
 
-   Copyright (C) 2008-2013 OpenWorks Ltd
+   Copyright (C) 2008-2015 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -631,7 +631,7 @@ typedef
 
 static void GlobalTreeNode__pp ( GlobalTreeNode* nd ) {
    tl_assert(nd->descr);
-   VG_(printf)("GTNode [%#lx,+%ld) %s", 
+   VG_(printf)("GTNode [%#lx,+%lu) %s", 
                nd->addr, nd->szB, nd->descr->name);
 }
 
@@ -1038,11 +1038,11 @@ static ULong stats__qcache_probes  = 0;
    * a shadow stack of StackFrames, which is a double-linked list
    * an stack block interval tree
 */
-static  struct _StackFrame*          shadowStacks[VG_N_THREADS];
+static  struct _StackFrame**         shadowStacks;
 
-static  WordFM* /* StackTreeNode */  siTrees[VG_N_THREADS];
+static  WordFM** /* StackTreeNode */ siTrees;
 
-static  QCache                       qcaches[VG_N_THREADS];
+static  QCache*                      qcaches;
 
 
 /* Additionally, there is one global variable interval tree
@@ -1062,9 +1062,16 @@ static void invalidate_all_QCaches ( void )
 static void ourGlobals_init ( void )
 {
    Word i;
+
+   shadowStacks = sg_malloc( "di.sg_main.oGi.2",
+                             VG_N_THREADS * sizeof shadowStacks[0] );
+   siTrees = sg_malloc( "di.sg_main.oGi.3", VG_N_THREADS * sizeof siTrees[0] );
+   qcaches = sg_malloc( "di.sg_main.oGi.4", VG_N_THREADS * sizeof qcaches[0] );
+
    for (i = 0; i < VG_N_THREADS; i++) {
       shadowStacks[i] = NULL;
       siTrees[i] = NULL;
+      qcaches[i] = (QCache){};
    }
    invalidate_all_QCaches();
    giTree = VG_(newFM)( sg_malloc, "di.sg_main.oGi.1", sg_free, 
@@ -1641,7 +1648,7 @@ static void classify_address ( /*OUT*/Invar* inv,
            sKey.szB  = szB;
            gKey.addr = ea;
            gKey.szB  = szB;
-           if (0) VG_(printf)("Tree sizes %ld %ld\n",
+           if (0) VG_(printf)("Tree sizes %lu %lu\n",
                               VG_(sizeFM)(siTrees[tid]), VG_(sizeFM)(giTree));
            sOK = VG_(findBoundsFM)( siTrees[tid], 
                                     (UWord*)&sLB,    NULL/*unused*/,
@@ -1889,7 +1896,7 @@ void shadowStack_new_frame ( ThreadId tid,
          if (0 && (sb || gb))
             VG_(message)(Vg_DebugMsg, 
                          "exp-sgcheck: new max tree sizes: "
-                         "StackTree %ld, GlobalTree %ld\n",
+                         "StackTree %lu, GlobalTree %lu\n",
                          stats__max_sitree_size, stats__max_gitree_size );
       }
    } else {
@@ -2063,7 +2070,7 @@ static void shadowStack_unwind ( ThreadId tid, Addr sp_now )
 
 struct _SGEnv {
    /* the current insn's IP */
-   Addr64 curr_IP;
+   Addr curr_IP;
    /* whether the above is actually known */
    Bool curr_IP_known;
    /* if we find a mem ref, is it the first for this insn?  Used for
@@ -2224,7 +2231,7 @@ void sg_instrument_IRStmt ( /*MOD*/struct _SGEnv * env,
 
       case Ist_IMark:
          env->curr_IP_known = True;
-         env->curr_IP       = (Addr)st->Ist.IMark.addr;
+         env->curr_IP       = st->Ist.IMark.addr;
          env->firstRef      = True;
          break;
 

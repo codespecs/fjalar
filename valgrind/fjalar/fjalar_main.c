@@ -180,12 +180,12 @@ extern void setNOBUF(FILE *stream);
 // this into an array of pointers. Have one stack for
 // each thread. We'll be wasteful and just have the maximum number
 // of threads.
-FunctionExecutionState FunctionExecutionStateStack[VG_N_THREADS][FN_STACK_SIZE];
+FunctionExecutionState FunctionExecutionStateStack[MAX_THREADS_DEFAULT][FN_STACK_SIZE];
 
 
 // The first free slot in FunctionExecutionStateStack
 // right above the top element:
-int fn_stack_first_free_index[VG_N_THREADS];
+int fn_stack_first_free_index[MAX_THREADS_DEFAULT];
 
 // The top element of the stack is:
 // FunctionExecutionStateStack[fn_stack_first_free_index - 1]

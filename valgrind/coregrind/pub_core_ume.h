@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward 
+   Copyright (C) 2000-2015 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -62,6 +62,12 @@ typedef
       Addr  text;             // OUT: address of executable's Mach header
       Bool  dynamic;          // OUT: False iff executable is static
       HChar* executable_path; // OUT: path passed to execve()
+#endif
+
+#if defined(VGO_solaris)
+      Addr  init_thrptr;       // OUT: architecture-specific user per-thread location
+      Bool  real_phdr_present; // OUT: PT_PHDR found, include phdr in auxv
+      Bool  ldsoexec;          // OUT: the program is the runtime linker itself
 #endif
 
       Addr entry;        // OUT: entrypoint in main executable

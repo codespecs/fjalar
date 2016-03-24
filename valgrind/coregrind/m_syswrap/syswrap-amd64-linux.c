@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Nicholas Nethercote
+   Copyright (C) 2000-2015 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -33,7 +33,6 @@
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
 #include "pub_core_vkiscnums.h"
-#include "pub_core_libcsetjmp.h"    // to keep _threadstate.h happy
 #include "pub_core_threadstate.h"
 #include "pub_core_aspacemgr.h"
 #include "pub_core_debuglog.h"
@@ -49,7 +48,6 @@
 #include "pub_core_syscall.h"
 #include "pub_core_syswrap.h"
 #include "pub_core_tooliface.h"
-#include "pub_core_stacks.h"        // VG_(register_stack)
 
 #include "priv_types_n_macros.h"
 #include "priv_syswrap-generic.h"   /* for decls of generic wrappers */
@@ -190,7 +188,7 @@ static void setup_child ( ThreadArchState*, ThreadArchState* );
 
 /* 
    When a client clones, we need to keep track of the new thread.  This means:
-   1. allocate a ThreadId+ThreadState+stack for the the thread
+   1. allocate a ThreadId+ThreadState+stack for the thread
 
    2. initialize the thread's new VCPU state
 
@@ -275,7 +273,7 @@ static SysRes do_clone ( ThreadId ptid,
    if (flags & VKI_CLONE_SETTLS) {
       if (debug)
 	 VG_(printf)("clone child has SETTLS: tls at %#lx\n", tlsaddr);
-      ctst->arch.vex.guest_FS_ZERO = tlsaddr;
+      ctst->arch.vex.guest_FS_CONST = tlsaddr;
    }
 
    flags &= ~VKI_CLONE_SETTLS;
@@ -491,7 +489,7 @@ PRE(sys_rt_sigreturn)
 PRE(sys_arch_prctl)
 {
    ThreadState* tst;
-   PRINT( "arch_prctl ( %ld, %lx )", ARG1, ARG2 );
+   PRINT( "arch_prctl ( %ld, %lx )", SARG1, ARG2 );
 
    vg_assert(VG_(is_valid_tid)(tid));
    vg_assert(tid >= 1 && tid < VG_N_THREADS);
@@ -506,21 +504,31 @@ PRE(sys_arch_prctl)
    /* "do" the syscall ourselves; the kernel never sees it */
    if (ARG1 == VKI_ARCH_SET_FS) {
       tst = VG_(get_ThreadState)(tid);
-      tst->arch.vex.guest_FS_ZERO = ARG2;
+      tst->arch.vex.guest_FS_CONST = ARG2;
    }
    else if (ARG1 == VKI_ARCH_GET_FS) {
       PRE_MEM_WRITE("arch_prctl(addr)", ARG2, sizeof(unsigned long));
       tst = VG_(get_ThreadState)(tid);
-      *(unsigned long *)ARG2 = tst->arch.vex.guest_FS_ZERO;
+      *(unsigned long *)ARG2 = tst->arch.vex.guest_FS_CONST;
+      POST_MEM_WRITE(ARG2, sizeof(unsigned long));
+   }
+   else if (ARG1 == VKI_ARCH_SET_GS) {
+      tst = VG_(get_ThreadState)(tid);
+      tst->arch.vex.guest_GS_CONST = ARG2;
+   }
+   else if (ARG1 == VKI_ARCH_GET_GS) {
+      PRE_MEM_WRITE("arch_prctl(addr)", ARG2, sizeof(unsigned long));
+      tst = VG_(get_ThreadState)(tid);
+      *(unsigned long *)ARG2 = tst->arch.vex.guest_GS_CONST;
       POST_MEM_WRITE(ARG2, sizeof(unsigned long));
    }
    else {
-      VG_(core_panic)("Unsupported arch_prtctl option");
+      VG_(core_panic)("Unsupported arch_prctl option");
    }
 
    /* Note; the Status writeback to guest state that happens after
-      this wrapper returns does not change guest_FS_ZERO; hence that
-      direct assignment to the guest state is safe here. */
+      this wrapper returns does not change guest_FS_CONST or guest_GS_CONST;
+      hence that direct assignment to the guest state is safe here. */
    SET_STATUS_Success( 0 );
 }
 
@@ -532,7 +540,7 @@ PRE(sys_arch_prctl)
 // space, and we should therefore not check anything it points to.
 PRE(sys_ptrace)
 {
-   PRINT("sys_ptrace ( %ld, %ld, %#lx, %#lx )", ARG1,ARG2,ARG3,ARG4);
+   PRINT("sys_ptrace ( %ld, %ld, %#lx, %#lx )", SARG1, SARG2, ARG3, ARG4);
    PRE_REG_READ4(int, "ptrace", 
                  long, request, long, pid, long, addr, long, data);
    switch (ARG1) {
@@ -611,7 +619,7 @@ POST(sys_ptrace)
 
 PRE(sys_fadvise64)
 {
-   PRINT("sys_fadvise64 ( %ld, %ld, %lu, %ld )", ARG1,ARG2,ARG3,ARG4);
+   PRINT("sys_fadvise64 ( %ld, %ld, %lu, %ld )", SARG1, SARG2, ARG3, SARG4);
    PRE_REG_READ4(long, "fadvise64",
                  int, fd, vki_loff_t, offset, vki_size_t, len, int, advice);
 }
@@ -620,12 +628,11 @@ PRE(sys_mmap)
 {
    SysRes r;
 
-   PRINT("sys_mmap ( %#lx, %llu, %ld, %ld, %d, %ld )",
-         ARG1, (ULong)ARG2, ARG3, ARG4, (Int)ARG5, ARG6 );
+   PRINT("sys_mmap ( %#lx, %lu, %ld, %ld, %ld, %ld )",
+         ARG1, ARG2, SARG3, SARG4, SARG5, SARG6 );
    PRE_REG_READ6(long, "mmap",
                  unsigned long, start, unsigned long, length,
-                 unsigned long, prot,  unsigned long, flags,
-                 unsigned long, fd,    unsigned long, offset);
+                 int, prot, int, flags, int, fd, vki_off_t, offset);
 
    r = ML_(generic_PRE_sys_mmap)( tid, ARG1, ARG2, ARG3, ARG4, ARG5, ARG6 );
    SET_STATUS_from_SysRes(r);
@@ -1054,7 +1061,7 @@ static SyscallTableEntry syscall_table[] = {
    LINXY(__NR_open_by_handle_at, sys_open_by_handle_at),// 304
 
    LINXY(__NR_clock_adjtime,     sys_clock_adjtime),    // 305
-//   LINX_(__NR_syncfs,            sys_ni_syscall),       // 306
+   LINX_(__NR_syncfs,            sys_syncfs),           // 306
    LINXY(__NR_sendmmsg,          sys_sendmmsg),         // 307
 //   LINX_(__NR_setns,             sys_ni_syscall),       // 308
    LINXY(__NR_getcpu,            sys_getcpu),           // 309
@@ -1068,8 +1075,8 @@ static SyscallTableEntry syscall_table[] = {
 //   LIN__(__NR_sched_getattr,     sys_ni_syscall),       // 315
 //   LIN__(__NR_renameat2,         sys_ni_syscall),       // 316
 //   LIN__(__NR_seccomp,           sys_ni_syscall),       // 317
-   LINXY(__NR_getrandom,         sys_getrandom)         // 318
-//   LIN__(__NR_memfd_create,      sys_ni_syscall),       // 319
+   LINXY(__NR_getrandom,         sys_getrandom),        // 318
+   LINXY(__NR_memfd_create,      sys_memfd_create)      // 319
 
 //   LIN__(__NR_kexec_file_load,   sys_ni_syscall),       // 320
 //   LIN__(__NR_bpf,               sys_ni_syscall)        // 321

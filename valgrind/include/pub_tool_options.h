@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward
+   Copyright (C) 2000-2015 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -105,7 +105,8 @@
       Long n = VG_(strtoll10)( val, &s ); \
       (qq_var) = n; \
       /* Check for non-numeralness, or overflow. */ \
-      if ('\0' != s[0] || (qq_var) != n) VG_(fmsg_bad_option)(qq_arg, ""); \
+      if ('\0' != s[0] || (qq_var) != n) VG_(fmsg_bad_option)(qq_arg, \
+                                  "Invalid integer value '%s'\n", val); \
       True; \
      }) \
     )
@@ -123,7 +124,8 @@
       /* for all the other macros in this file. */ \
       /* Check for non-numeralness, or overflow. */ \
       /* Nb: it will overflow if qq_var is unsigned and qq_val is negative! */ \
-      if ('\0' != s[0] || (qq_var) != n) VG_(fmsg_bad_option)(qq_arg, ""); \
+      if ('\0' != s[0] || (qq_var) != n) VG_(fmsg_bad_option)(qq_arg, \
+                                  "Invalid integer value '%s'\n", val); \
       /* Check bounds. */ \
       if ((qq_var) < (qq_lo) || (qq_var) > (qq_hi)) { \
          VG_(fmsg_bad_option)(qq_arg, \
@@ -153,7 +155,8 @@
       double n = VG_(strtod)( val, &s ); \
       (qq_var) = n; \
       /* Check for non-numeralness */ \
-      if ('\0' != s[0]) VG_(fmsg_bad_option)(qq_arg, ""); \
+      if ('\0' != s[0]) VG_(fmsg_bad_option)(qq_arg, \
+                            "Invalid floating point value '%s'\n",val); \
       True; \
      }) \
     )
@@ -167,6 +170,24 @@
       True; \
     }) \
    )
+
+// Arg that can be one of a set of strings, as specified in an NULL
+// terminated array.  Returns the index of the string in |qq_ix|, or
+// aborts if not found.
+#define VG_STRINDEX_CLO(qq_arg, qq_option, qq_strings, qq_ix) \
+   (VG_STREQN(VG_(strlen)(qq_option)+1, qq_arg, qq_option"=") && \
+    ({ \
+      const HChar* val = &(qq_arg)[ VG_(strlen)(qq_option)+1 ]; \
+      for (qq_ix = 0; (qq_strings)[qq_ix]; qq_ix++) { \
+         if (VG_STREQ(val, (qq_strings)[qq_ix])) \
+            break; \
+      } \
+      if ((qq_strings)[qq_ix] == NULL) \
+         VG_(fmsg_bad_option)(qq_arg, \
+                              "Invalid string '%s' in '%s'\n", val, qq_arg); \
+      True; \
+     }) \
+    )
 
 /* Verbosity level: 0 = silent, 1 (default), > 1 = more verbose. */
 extern Int  VG_(clo_verbosity);
@@ -200,6 +221,7 @@ extern const HChar* VG_(clo_xml_user_comment);
 /* Vex iropt control.  Tool-visible so tools can make Vex optimise
    less aggressively if that is needed (callgrind needs this). */
 extern VexControl VG_(clo_vex_control);
+extern VexRegisterUpdates VG_(clo_px_file_backed);
 
 /* Number of parents of a backtrace.  Default: 12  */
 extern Int   VG_(clo_backtrace_size);

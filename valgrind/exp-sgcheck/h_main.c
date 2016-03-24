@@ -11,12 +11,12 @@
 
    Initial version (Annelid):
 
-   Copyright (C) 2003-2013 Nicholas Nethercote
+   Copyright (C) 2003-2015 Nicholas Nethercote
       njn@valgrind.org
 
    Valgrind-3.X port:
 
-   Copyright (C) 2008-2013 OpenWorks Ltd
+   Copyright (C) 2008-2015 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -628,7 +628,7 @@ IRSB* h_instrument ( VgCallbackClosure* closure,
    tl_assert(sizeof(Addr)   == sizeof(void*));
    tl_assert(sizeof(ULong)  == 8);
    tl_assert(sizeof(Long)   == 8);
-   tl_assert(sizeof(Addr64) == 8);
+   tl_assert(sizeof(Addr)   == sizeof(void*));
    tl_assert(sizeof(UInt)   == 4);
    tl_assert(sizeof(Int)    == 4);
 

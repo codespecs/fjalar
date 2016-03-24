@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward
+   Copyright (C) 2000-2015 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -38,6 +38,7 @@
 //--------------------------------------------------------------------
 
 #include "pub_core_transtab_asm.h"
+#include "pub_tool_transtab.h"
 #include "libvex.h"                   // VexGuestExtents
 
 /* The fast-cache for tt-lookup.  Unused entries are denoted by .guest
@@ -55,7 +56,8 @@ extern __attribute__((aligned(16)))
 #define TRANSTAB_BOGUS_GUEST_ADDR ((Addr)1)
 
 
-/* Initialises the TC, using VG_(clo_num_transtab_sectors).
+/* Initialises the TC, using VG_(clo_num_transtab_sectors)
+   and VG_(clo_avg_transtab_entry_size).
    VG_(clo_num_transtab_sectors) must be >= MIN_N_SECTORS
    and <= MAX_N_SECTORS. */
 extern void VG_(init_tt_tc)       ( void );
@@ -82,26 +84,33 @@ extern void VG_(init_tt_tc)       ( void );
 
 extern
 void VG_(add_to_transtab)( const VexGuestExtents* vge,
-                           Addr64           entry,
-                           AddrH            code,
+                           Addr             entry,
+                           Addr             code,
                            UInt             code_len,
                            Bool             is_self_checking,
                            Int              offs_profInc,
                            UInt             n_guest_instrs );
 
+typedef UShort SECno; // SECno type identifies a sector
+typedef UShort TTEno; // TTEno type identifies a TT entry in a sector.
+
+// 2 constants that indicates Invalid entries.
+#define INV_SNO ((SECno)0xFFFF)
+#define INV_TTE ((TTEno)0xFFFF)
+
 extern
 void VG_(tt_tc_do_chaining) ( void* from__patch_addr,
-                              UInt  to_sNo,
-                              UInt  to_tteNo,
+                              SECno to_sNo,
+                              TTEno to_tteNo,
                               Bool  to_fastEP );
 
-extern Bool VG_(search_transtab) ( /*OUT*/AddrH* res_hcode,
-                                   /*OUT*/UInt*  res_sNo,
-                                   /*OUT*/UInt*  res_tteNo,
-                                   Addr64        guest_addr, 
+extern Bool VG_(search_transtab) ( /*OUT*/Addr*  res_hcode,
+                                   /*OUT*/SECno* res_sNo,
+                                   /*OUT*/TTEno* res_tteNo,
+                                   Addr          guest_addr, 
                                    Bool          upd_cache );
 
-extern void VG_(discard_translations) ( Addr64 start, ULong range,
+extern void VG_(discard_translations) ( Addr  start, ULong range,
                                         const HChar* who );
 
 extern void VG_(print_tt_tc_stats) ( void );
@@ -113,21 +122,24 @@ extern UInt VG_(get_bbs_translated) ( void );
 
 extern
 void VG_(add_to_unredir_transtab)( const VexGuestExtents* vge,
-                                   Addr64           entry,
-                                   AddrH            code,
+                                   Addr             entry,
+                                   Addr             code,
                                    UInt             code_len );
 extern 
-Bool VG_(search_unredir_transtab) ( /*OUT*/AddrH* result,
-                                    Addr64        guest_addr );
+Bool VG_(search_unredir_transtab) ( /*OUT*/Addr*  result,
+                                    Addr          guest_addr );
 
 // SB profiling stuff
 
 typedef struct _SBProfEntry {
-   Addr64 addr;
+   Addr   addr;
    ULong  score;
 } SBProfEntry;
 
 extern ULong VG_(get_SB_profile) ( SBProfEntry tops[], UInt n_tops );
+
+//  Exported variables
+extern Bool  VG_(ok_to_discard_translations);
 
 #endif   // __PUB_CORE_TRANSTAB_H
 

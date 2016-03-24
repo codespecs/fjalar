@@ -8,10 +8,10 @@
    This file is part of Callgrind, a Valgrind tool for call graph
    profiling programs.
 
-   Copyright (C) 2002-2013, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2015, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This tool is derived from and contains code from Cachegrind
-   Copyright (C) 2002-2013 Nicholas Nethercote (njn@valgrind.org)
+   Copyright (C) 2002-2015 Nicholas Nethercote (njn@valgrind.org)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -37,6 +37,7 @@
 
 #include "pub_tool_threadstate.h"
 #include "pub_tool_gdbserver.h"
+#include "pub_tool_transtab.h"       // VG_(discard_translations_safely)
 
 #include "cg_branchpred.c"
 
@@ -139,7 +140,7 @@ void log_cond_branch(InstrInfo* ii, Word taken)
     Int fullOffset_Bc;
     ULong* cost_Bc;
 
-    CLG_DEBUG(6, "log_cond_branch:  Ir %#lx, taken %lu\n",
+    CLG_DEBUG(6, "log_cond_branch:  Ir %#lx, taken %ld\n",
               CLG_(bb_base) + ii->instr_offset, taken);
 
     miss = 1 & do_cond_branch_predict(CLG_(bb_base) + ii->instr_offset, taken);
@@ -330,23 +331,23 @@ static void showEvent ( Event* ev )
 {
    switch (ev->tag) {
       case Ev_Ir:
-	 VG_(printf)("Ir (InstrInfo %p) at +%d\n",
+	 VG_(printf)("Ir (InstrInfo %p) at +%u\n",
 		     ev->inode, ev->inode->instr_offset);
 	 break;
       case Ev_Dr:
-	 VG_(printf)("Dr (InstrInfo %p) at +%d %d EA=",
+	 VG_(printf)("Dr (InstrInfo %p) at +%u %d EA=",
 		     ev->inode, ev->inode->instr_offset, ev->Ev.Dr.szB);
 	 ppIRExpr(ev->Ev.Dr.ea);
 	 VG_(printf)("\n");
 	 break;
       case Ev_Dw:
-	 VG_(printf)("Dw (InstrInfo %p) at +%d %d EA=",
+	 VG_(printf)("Dw (InstrInfo %p) at +%u %d EA=",
 		     ev->inode, ev->inode->instr_offset, ev->Ev.Dw.szB);
 	 ppIRExpr(ev->Ev.Dw.ea);
 	 VG_(printf)("\n");
 	 break;
       case Ev_Dm:
-	 VG_(printf)("Dm (InstrInfo %p) at +%d %d EA=",
+	 VG_(printf)("Dm (InstrInfo %p) at +%u %d EA=",
 		     ev->inode, ev->inode->instr_offset, ev->Ev.Dm.szB);
 	 ppIRExpr(ev->Ev.Dm.ea);
 	 VG_(printf)("\n");
@@ -880,7 +881,7 @@ void CLG_(collectBlockInfo)(IRSB* sbIn,
 	  if (Ist_IMark == st->tag) {
 	      inPreamble = False;
 
-	      instrAddr = (Addr)ULong_to_Ptr(st->Ist.IMark.addr);
+	      instrAddr = st->Ist.IMark.addr;
 	      instrLen  = st->Ist.IMark.len;
 
 	      (*instrs)++;
@@ -994,7 +995,7 @@ IRSB* CLG_(instrument)( VgCallbackClosure* closure,
    st = sbIn->stmts[i];
    CLG_ASSERT(Ist_IMark == st->tag);
 
-   origAddr = (Addr)st->Ist.IMark.addr + (Addr)st->Ist.IMark.delta;
+   origAddr = st->Ist.IMark.addr + st->Ist.IMark.delta;
    CLG_ASSERT(origAddr == st->Ist.IMark.addr 
                           + st->Ist.IMark.delta);  // XXX: check no overflow
 
@@ -1026,9 +1027,9 @@ IRSB* CLG_(instrument)( VgCallbackClosure* closure,
 	    break;
 
 	 case Ist_IMark: {
-            Addr64 cia   = st->Ist.IMark.addr + st->Ist.IMark.delta;
-            Int    isize = st->Ist.IMark.len;
-            CLG_ASSERT(clgs.instr_offset == (Addr)cia - origAddr);
+            Addr   cia   = st->Ist.IMark.addr + st->Ist.IMark.delta;
+            UInt   isize = st->Ist.IMark.len;
+            CLG_ASSERT(clgs.instr_offset == cia - origAddr);
 	    // If Vex fails to decode an instruction, the size will be zero.
 	    // Pretend otherwise.
 	    if (isize == 0) isize = VG_MIN_INSTR_SZB;
@@ -1352,7 +1353,7 @@ IRSB* CLG_(instrument)( VgCallbackClosure* closure,
    if (cJumps>0) {
        CLG_DEBUG(3, "                     [ ");
        for (i=0;i<cJumps;i++)
-	   CLG_DEBUG(3, "%d ", clgs.bb->jmp[i].instr);
+	   CLG_DEBUG(3, "%u ", clgs.bb->jmp[i].instr);
        CLG_DEBUG(3, "], last inverted: %s \n",
 		 clgs.bb->cjmp_inverted ? "yes":"no");
    }
@@ -1368,20 +1369,20 @@ IRSB* CLG_(instrument)( VgCallbackClosure* closure,
 // any reason at all: to free up space, because the guest code was
 // unmapped or modified, or for any arbitrary reason.
 static
-void clg_discard_superblock_info ( Addr64 orig_addr64, VexGuestExtents vge )
+void clg_discard_superblock_info ( Addr orig_addr, VexGuestExtents vge )
 {
-    Addr orig_addr = (Addr)orig_addr64;
-
     tl_assert(vge.n_used > 0);
 
    if (0)
       VG_(printf)( "discard_superblock_info: %p, %p, %llu\n",
-                   (void*)(Addr)orig_addr,
-                   (void*)(Addr)vge.base[0], (ULong)vge.len[0]);
+                   (void*)orig_addr,
+                   (void*)vge.base[0], (ULong)vge.len[0]);
 
-   // Get BB info, remove from table, free BB info.  Simple!  Note that we
-   // use orig_addr, not the first instruction address in vge.
-   CLG_(delete_bb)(orig_addr);
+   // Get BB info, remove from table, free BB info.  Simple!
+   // When created, the BB is keyed by the first instruction address,
+   // (not orig_addr, but eventually redirected address). Thus, we
+   // use the first instruction address in vge.
+   CLG_(delete_bb)(vge.base[0]);
 }
 
 
@@ -1448,10 +1449,6 @@ void zero_state_cost(thread_info* t)
     CLG_(zero_cost)( CLG_(sets).full, CLG_(current_state).cost );
 }
 
-/* Ups, this can go very wrong...
-   FIXME: We should export this function or provide other means to get a handle */
-extern void VG_(discard_translations) ( Addr64 start, ULong range, const HChar* who );
-
 void CLG_(set_instrument_state)(const HChar* reason, Bool state)
 {
   if (CLG_(instrument_state) == state) {
@@ -1463,7 +1460,7 @@ void CLG_(set_instrument_state)(const HChar* reason, Bool state)
   CLG_DEBUG(2, "%s: Switching instrumentation %s ...\n",
 	   reason, state ? "ON" : "OFF");
 
-  VG_(discard_translations)( (Addr64)0x1000, (ULong) ~0xfffl, "callgrind");
+  VG_(discard_translations_safely)( (Addr)0x1000, ~(SizeT)0xfff, "callgrind");
 
   /* reset internal state: call stacks, simulator */
   CLG_(forall_threads)(unwind_thread);
@@ -1656,8 +1653,9 @@ Bool CLG_(handle_client_request)(ThreadId tid, UWord *args, UWord *ret)
 
    case VG_USERREQ__DUMP_STATS_AT:
      {
-       HChar buf[512];
-       VG_(sprintf)(buf,"Client Request: %s", (HChar*)args[1]);
+       const HChar *arg = (HChar*)args[1];
+       HChar buf[30 + VG_(strlen)(arg)];    // large enough
+       VG_(sprintf)(buf,"Client Request: %s", arg);
        CLG_(dump_profile)(buf, True);
        *ret = 0;                 /* meaningless */
      }
@@ -1705,13 +1703,9 @@ Bool CLG_(handle_client_request)(ThreadId tid, UWord *args, UWord *ret)
 
 /* struct timeval syscalltime[VG_N_THREADS]; */
 #if CLG_MICROSYSTIME
-#include <sys/time.h>
-#include <sys/syscall.h>
-extern Int VG_(do_syscall) ( UInt, ... );
-
-ULong syscalltime[VG_N_THREADS];
+ULong *syscalltime;
 #else
-UInt syscalltime[VG_N_THREADS];
+UInt *syscalltime;
 #endif
 
 static
@@ -1721,7 +1715,7 @@ void CLG_(pre_syscalltime)(ThreadId tid, UInt syscallno,
   if (CLG_(clo).collect_systime) {
 #if CLG_MICROSYSTIME
     struct vki_timeval tv_now;
-    VG_(do_syscall)(__NR_gettimeofday, (UInt)&tv_now, (UInt)NULL);
+    VG_(gettimeofday)(&tv_now, NULL);
     syscalltime[tid] = tv_now.tv_sec * 1000000ULL + tv_now.tv_usec;
 #else
     syscalltime[tid] = VG_(read_millisecond_timer)();
@@ -1740,7 +1734,7 @@ void CLG_(post_syscalltime)(ThreadId tid, UInt syscallno,
     struct vki_timeval tv_now;
     ULong diff;
     
-    VG_(do_syscall)(__NR_gettimeofday, (UInt)&tv_now, (UInt)NULL);
+    VG_(gettimeofday)(&tv_now, NULL);
     diff = (tv_now.tv_sec * 1000000ULL + tv_now.tv_usec) - syscalltime[tid];
 #else
     UInt diff = VG_(read_millisecond_timer)() - syscalltime[tid];
@@ -1749,7 +1743,8 @@ void CLG_(post_syscalltime)(ThreadId tid, UInt syscallno,
     /* offset o is for "SysCount", o+1 for "SysTime" */
     o = fullOffset(EG_SYS);
     CLG_ASSERT(o>=0);
-    CLG_DEBUG(0,"   Time (Off %d) for Syscall %d: %ull\n", o, syscallno, diff);
+    CLG_DEBUG(0,"   Time (Off %d) for Syscall %u: %llu\n", o, syscallno,
+              (ULong)diff);
     
     CLG_(current_state).cost[o] ++;
     CLG_(current_state).cost[o+1] += diff;
@@ -1775,7 +1770,6 @@ static UInt ULong_width(ULong n)
 static
 void branchsim_printstat(int l1, int l2, int l3)
 {
-    static HChar buf1[128], buf2[128], buf3[128];
     static HChar fmt[128];    // large enough
     FullCost total;
     ULong Bc_total_b, Bc_total_mp, Bi_total_b, Bi_total_mp;
@@ -1803,11 +1797,10 @@ void branchsim_printstat(int l1, int l2, int l3)
     VG_(umsg)(fmt, "Mispredicts:  ",
               B_total_mp, Bc_total_mp, Bi_total_mp);
 
-    VG_(percentify)(B_total_mp,  B_total_b,  1, l1+1, buf1);
-    VG_(percentify)(Bc_total_mp, Bc_total_b, 1, l2+1, buf2);
-    VG_(percentify)(Bi_total_mp, Bi_total_b, 1, l3+1, buf3);
-
-    VG_(umsg)("Mispred rate:  %s (%s     + %s   )\n", buf1, buf2,buf3);
+    VG_(umsg)("Mispred rate:  %*.1f%% (%*.1f%%     + %*.1f%%   )\n",
+              l1, B_total_mp  * 100.0 / B_total_b,
+              l2, Bc_total_mp * 100.0 / Bc_total_b,
+              l3, Bi_total_mp * 100.0 / Bi_total_b);
 }
 
 static
@@ -1830,7 +1823,7 @@ void clg_print_stats(void)
 		CLG_(stat).distinct_contexts);
    VG_(message)(Vg_DebugMsg, "Distinct BBs:     %d\n",
 		CLG_(stat).distinct_bbs);
-   VG_(message)(Vg_DebugMsg, "Cost entries:     %d (Chunks %d)\n",
+   VG_(message)(Vg_DebugMsg, "Cost entries:     %u (Chunks %u)\n",
 		CLG_(costarray_entries), CLG_(costarray_chunks));
    VG_(message)(Vg_DebugMsg, "Distinct BBCCs:   %d\n",
 		CLG_(stat).distinct_bbccs);
@@ -1860,7 +1853,6 @@ void clg_print_stats(void)
 		CLG_(stat).bb_retranslations);
    VG_(message)(Vg_DebugMsg, "Distinct instrs:   %d\n",
 		CLG_(stat).distinct_instrs);
-   VG_(message)(Vg_DebugMsg, "");
 
    VG_(message)(Vg_DebugMsg, "LRU Contxt Misses: %d\n",
 		CLG_(stat).cxt_lru_misses);
@@ -1973,13 +1965,22 @@ static void clg_start_client_code_callback ( ThreadId tid, ULong blocks_done )
 static
 void CLG_(post_clo_init)(void)
 {
-   if (VG_(clo_vex_control).iropt_register_updates
+   if (VG_(clo_vex_control).iropt_register_updates_default
        != VexRegUpdSpAtMemAccess) {
       CLG_DEBUG(1, " Using user specified value for "
                 "--vex-iropt-register-updates\n");
    } else {
       CLG_DEBUG(1, 
                 " Using default --vex-iropt-register-updates="
+                "sp-at-mem-access\n");
+   }
+
+   if (VG_(clo_px_file_backed) != VexRegUpdSpAtMemAccess) {
+      CLG_DEBUG(1, " Using user specified value for "
+                "--px-file-backed\n");
+   } else {
+      CLG_DEBUG(1, 
+                " Using default --px-file-backed="
                 "sp-at-mem-access\n");
    }
 
@@ -2037,13 +2038,15 @@ void CLG_(pre_clo_init)(void)
     VG_(details_name)            ("Callgrind");
     VG_(details_version)         (NULL);
     VG_(details_description)     ("a call-graph generating cache profiler");
-    VG_(details_copyright_author)("Copyright (C) 2002-2013, and GNU GPL'd, "
+    VG_(details_copyright_author)("Copyright (C) 2002-2015, and GNU GPL'd, "
 				  "by Josef Weidendorfer et al.");
     VG_(details_bug_reports_to)  (VG_BUGS_TO);
     VG_(details_avg_translation_sizeB) ( 500 );
 
-    VG_(clo_vex_control).iropt_register_updates
+    VG_(clo_vex_control).iropt_register_updates_default
+       = VG_(clo_px_file_backed)
        = VexRegUpdSpAtMemAccess; // overridable by the user.
+
     VG_(clo_vex_control).iropt_unroll_thresh = 0;   // cannot be overriden.
     VG_(clo_vex_control).guest_chase_thresh = 0;    // cannot be overriden.
 
@@ -2068,6 +2071,12 @@ void CLG_(pre_clo_init)(void)
     VG_(track_post_deliver_signal)( & CLG_(post_signal) );
 
     CLG_(set_clo_defaults)();
+
+    syscalltime = CLG_MALLOC("cl.main.pci.1",
+                             VG_N_THREADS * sizeof syscalltime[0]);
+    for (UInt i = 0; i < VG_N_THREADS; ++i) {
+       syscalltime[i] = 0;
+    }
 }
 
 VG_DETERMINE_INTERFACE_VERSION(CLG_(pre_clo_init))

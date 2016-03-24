@@ -8,11 +8,11 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Nicholas Nethercote
+   Copyright (C) 2000-2015 Nicholas Nethercote
       njn@valgrind.org
-   Copyright (C) 2004-2013 Paul Mackerras
+   Copyright (C) 2004-2015 Paul Mackerras
       paulus@samba.org
-   Copyright (C) 2008-2013 Evan Geller
+   Copyright (C) 2008-2015 Evan Geller
       gaze@bea.ms
 
    This program is free software; you can redistribute it and/or
@@ -38,7 +38,6 @@
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
 #include "pub_core_vkiscnums.h"
-#include "pub_core_libcsetjmp.h"    // to keep _threadstate.h happy
 #include "pub_core_threadstate.h"
 #include "pub_core_aspacemgr.h"
 #include "pub_core_libcbase.h"
@@ -50,7 +49,7 @@
 #include "pub_core_signals.h"
 #include "pub_core_tooliface.h"
 #include "pub_core_trampoline.h"
-#include "pub_core_transtab.h"      // VG_(discard_translations)
+#include "priv_sigframe.h"
 
 
 /* This uses the hack of dumping the vex guest state along with both
@@ -81,44 +80,6 @@ struct rt_sigframe {
    struct sigframe sig;
 };
 
-static Bool extend ( ThreadState *tst, Addr addr, SizeT size )
-{
-   ThreadId        tid = tst->tid;
-   NSegment const* stackseg = NULL;
-
-   if (VG_(extend_stack)(addr, tst->client_stack_szB)) {
-      stackseg = VG_(am_find_nsegment)(addr);
-      if (0 && stackseg)
-    VG_(printf)("frame=%#lx seg=%#lx-%#lx\n",
-           addr, stackseg->start, stackseg->end);
-   }
-
-   if (stackseg == NULL || !stackseg->hasR || !stackseg->hasW) {
-      VG_(message)(
-         Vg_UserMsg,
-         "Can't extend stack to %#lx during signal delivery for thread %d:",
-         addr, tid);
-      if (stackseg == NULL)
-         VG_(message)(Vg_UserMsg, "  no stack segment");
-      else
-         VG_(message)(Vg_UserMsg, "  too small or bad protection modes");
-
-      /* set SIGSEGV to default handler */
-      VG_(set_default_handler)(VKI_SIGSEGV);
-      VG_(synth_fault_mapping)(tid, addr);
-
-      /* The whole process should be about to die, since the default
-    action of SIGSEGV to kill the whole process. */
-      return False;
-   }
-
-   /* For tracking memory events, indicate the entire frame has been
-      allocated. */
-   VG_TRACK( new_mem_stack_signal, addr - VG_STACK_REDZONE_SZB,
-             size + VG_STACK_REDZONE_SZB, tid );
-
-   return True;
-}
 
 static void synth_ucontext( ThreadId tid, const vki_siginfo_t *si,
                     UWord trapno, UWord err, const vki_sigset_t *set, 
@@ -200,6 +161,7 @@ static void build_sigframe(ThreadState *tst,
 
 /* EXPORTED */
 void VG_(sigframe_create)( ThreadId tid, 
+                           Bool on_altstack,
                            Addr sp_top_of_frame,
                            const vki_siginfo_t *siginfo,
                            const struct vki_ucontext *siguc,
@@ -223,7 +185,7 @@ void VG_(sigframe_create)( ThreadId tid,
    sp -= size;
    sp = VG_ROUNDDN(sp, 16);
 
-   if(!extend(tst, sp, size))
+   if (! ML_(sf_maybe_extend_stack)(tst, sp, size, flags))
       I_die_here; // XXX Incorrect behavior
 
 
@@ -267,6 +229,11 @@ void VG_(sigframe_create)( ThreadId tid,
             : (Addr)&VG_(arm_linux_SUBST_FOR_sigreturn);
 
    tst->arch.vex.guest_R15T = (Addr) handler; /* R15 == PC */
+
+   if (VG_(clo_trace_signals))
+      VG_(message)(Vg_DebugMsg,
+                   "VG_(sigframe_create): continuing in handler with PC=%#lx\n",
+                   (Addr)handler);
 }
 
 
@@ -281,7 +248,6 @@ void VG_(sigframe_destroy)( ThreadId tid, Bool isRT )
    struct vg_sig_private *priv;
    Addr sp;
    UInt frame_size;
-   struct vki_sigcontext *mc;
    Int sigNo;
    Bool has_siginfo = isRT;
 
@@ -292,14 +258,12 @@ void VG_(sigframe_destroy)( ThreadId tid, Bool isRT )
    if (has_siginfo) {
       struct rt_sigframe *frame = (struct rt_sigframe *)sp;
       frame_size = sizeof(*frame);
-      mc = &frame->sig.uc.uc_mcontext;
       priv = &frame->sig.vp;
       vg_assert(priv->magicPI == 0x31415927);
       tst->sig_mask = frame->sig.uc.uc_sigmask;
    } else {
       struct sigframe *frame = (struct sigframe *)sp;
       frame_size = sizeof(*frame);
-      mc = &frame->uc.uc_mcontext;
       priv = &frame->vp;
       vg_assert(priv->magicPI == 0x31415927);
       tst->sig_mask = frame->uc.uc_sigmask;
@@ -312,25 +276,25 @@ void VG_(sigframe_destroy)( ThreadId tid, Bool isRT )
 
    sigNo = priv->sigNo_private;
 
-    //XXX: restore regs
-#  define REST(reg,REG)  tst->arch.vex.guest_##REG = mc->arm_##reg;
-   REST(r0,R0);
-   REST(r1,R1);
-   REST(r2,R2);
-   REST(r3,R3);
-   REST(r4,R4);
-   REST(r5,R5);
-   REST(r6,R6);
-   REST(r7,R7);
-   REST(r8,R8);
-   REST(r9,R9);
-   REST(r10,R10);
-   REST(fp,R11);
-   REST(ip,R12);
-   REST(sp,R13);
-   REST(lr,R14);
-   REST(pc,R15T);
-#  undef REST
+//ZZ     //XXX: restore regs
+//ZZ #  define REST(reg,REG)  tst->arch.vex.guest_##REG = mc->arm_##reg;
+//ZZ    REST(r0,R0);
+//ZZ    REST(r1,R1);
+//ZZ    REST(r2,R2);
+//ZZ    REST(r3,R3);
+//ZZ    REST(r4,R4);
+//ZZ    REST(r5,R5);
+//ZZ    REST(r6,R6);
+//ZZ    REST(r7,R7);
+//ZZ    REST(r8,R8);
+//ZZ    REST(r9,R9);
+//ZZ    REST(r10,R10);
+//ZZ    REST(fp,R11);
+//ZZ    REST(ip,R12);
+//ZZ    REST(sp,R13);
+//ZZ    REST(lr,R14);
+//ZZ    REST(pc,R15T);
+//ZZ #  undef REST
 
    /* Uh, the next line makes all the REST() above pointless. */
    tst->arch.vex         = priv->vex;
@@ -343,7 +307,7 @@ void VG_(sigframe_destroy)( ThreadId tid, Bool isRT )
              
    if (VG_(clo_trace_signals))
       VG_(message)(Vg_DebugMsg,
-                   "vg_pop_signal_frame (thread %d): "
+                   "vg_pop_signal_frame (thread %u): "
                    "isRT=%d valid magic; PC=%#x\n",
                    tid, has_siginfo, tst->arch.vex.guest_R15T);
 

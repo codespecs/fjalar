@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward
+   Copyright (C) 2000-2015 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -71,8 +71,11 @@
 // Environment manipulations
 extern HChar **VG_(env_setenv)   ( HChar ***envp, const HChar* varname,
                                    const HChar *val );
-extern void    VG_(env_unsetenv) ( HChar **env, const HChar *varname );
-extern void    VG_(env_remove_valgrind_env_stuff) ( HChar** env ); 
+extern void    VG_(env_unsetenv) ( HChar **env, const HChar *varname,
+                                   void (*free_fn) ( void *) );
+extern void    VG_(env_remove_valgrind_env_stuff) ( HChar** env,
+                                                    Bool ro_strings,
+                                                    void (*free_fn) (void *) );
 extern HChar **VG_(env_clone)    ( HChar **env_clone );
 
 // misc

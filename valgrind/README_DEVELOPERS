@@ -24,14 +24,15 @@ To build a distribution tarball from the valgrind sources:
   make dist
 
 In addition to compiling, linking and packaging everything up, the command
-will also build the documentation. Even if all required tools for building the
-documentation are installed, this step may not succeed because of hidden
-dependencies. E.g. on Ubuntu you must have "docbook-xsl" installed.
-Additionally, specific tool versions maybe needed.
+will also attempt to build the documentation.
 
 If you only want to test whether the generated tarball is complete and runs
 regression tests successfully, building documentation is not needed.
-Edit docs/Makefile.am, search for BUILD_ALL_DOCS and follow instructions there.
+
+  make dist BUILD_ALL_DOCS=no
+
+If you insist on building documentation some embarrassing instructions
+can be found in docs/README.
 
 
 Running the regression tests
@@ -249,6 +250,7 @@ Do *not* use vg-in-place.
 
  To compare the performance of multiple Valgrind versions, do :
     perl perf/vg_perf --outer-valgrind=../outer/.../bin/valgrind \
+      --outer-tool=callgrind \
       --vg=../inner_xxxx --vg=../inner_yyyy perf
   (where inner_xxxx and inner_yyyy are the toplevel directories of
   the versions to compare).

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2013 OpenWorks LLP
+   Copyright (C) 2004-2015 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -225,6 +225,7 @@ typedef
       Ity_I32,
       Ity_I64,
       Ity_I128,  /* 128-bit scalar */
+      Ity_F16,   /* 16 bit float */
       Ity_F32,   /* IEEE 754 float */
       Ity_F64,   /* IEEE 754 double */
       Ity_D32,   /* 32-bit Decimal floating point */
@@ -712,6 +713,8 @@ typedef
       Iop_CosF64,    /* FCOS */
       Iop_TanF64,    /* FTAN */
       Iop_2xm1F64,   /* (2^arg - 1.0) */
+      Iop_RoundF128toInt, /* F128 value to nearest integral value (still
+                             as F128) */
       Iop_RoundF64toInt, /* F64 value to nearest integral value (still
                             as F64) */
       Iop_RoundF32toInt, /* F32 value to nearest integral value (still
@@ -753,6 +756,19 @@ typedef
       Iop_RoundF64toF32, /* round F64 to nearest F32 value (still as F64) */
       /* NB: pretty much the same as Iop_F64toF32, except no change
          of type. */
+
+      /* --- guest arm64 specifics, not mandated by 754. --- */
+
+      Iop_RecpExpF64,  /* FRECPX d  :: IRRoundingMode(I32) x F64 -> F64 */
+      Iop_RecpExpF32,  /* FRECPX s  :: IRRoundingMode(I32) x F32 -> F32 */
+
+      /* ------------------ 16-bit scalar FP ------------------ */
+
+      Iop_F16toF64,  /*                       F16 -> F64 */
+      Iop_F64toF16,  /* IRRoundingMode(I32) x F64 -> F16 */
+
+      Iop_F16toF32,  /*                       F16 -> F32 */
+      Iop_F32toF16,  /* IRRoundingMode(I32) x F32 -> F16 */
 
       /* ------------------ 32-bit SIMD Integer ------------------ */
 
@@ -1280,12 +1296,14 @@ typedef
 
       /* unary */
       Iop_Abs32Fx4,
-      Iop_Sqrt32Fx4,
       Iop_Neg32Fx4,
 
+      /* binary :: IRRoundingMode(I32) x V128 -> V128 */
+      Iop_Sqrt32Fx4,
+
       /* Vector Reciprocal Estimate finds an approximate reciprocal of each
-      element in the operand vector, and places the results in the destination
-      vector.  */
+         element in the operand vector, and places the results in the
+         destination vector.  */
       Iop_RecipEst32Fx4,
 
       /* Vector Reciprocal Step computes (2.0 - arg1 * arg2).
@@ -1345,8 +1363,16 @@ typedef
 
       /* unary */
       Iop_Abs64Fx2,
-      Iop_Sqrt64Fx2,
       Iop_Neg64Fx2,
+
+      /* binary :: IRRoundingMode(I32) x V128 -> V128 */
+      Iop_Sqrt64Fx2,
+
+      /* see 32Fx4 variants for description */
+      Iop_RecipEst64Fx2,    // unary
+      Iop_RecipStep64Fx2,   // binary
+      Iop_RSqrtEst64Fx2,    // unary
+      Iop_RSqrtStep64Fx2,   // binary
 
       /* --- 64x2 lowest-lane-only scalar FP --- */
 
@@ -2258,6 +2284,8 @@ typedef
       Ijk_Sys_int128,     /* amd64/x86 'int $0x80' */
       Ijk_Sys_int129,     /* amd64/x86 'int $0x81' */
       Ijk_Sys_int130,     /* amd64/x86 'int $0x82' */
+      Ijk_Sys_int145,     /* amd64/x86 'int $0x91' */
+      Ijk_Sys_int210,     /* amd64/x86 'int $0xD2' */
       Ijk_Sys_sysenter    /* x86 'sysenter'.  guest_EIP becomes
                              invalid at the point this happens. */
    }
@@ -2568,6 +2596,8 @@ typedef
 typedef
    enum {
       ILGop_INVALID=0x1D00,
+      ILGop_IdentV128, /* 128 bit vector, no conversion */
+      ILGop_Ident64,   /* 64 bit, no conversion */
       ILGop_Ident32,   /* 32 bit, no conversion */
       ILGop_16Uto32,   /* 16 bit load, Z-widen to 32 */
       ILGop_16Sto32,   /* 16 bit load, S-widen to 32 */
@@ -2677,8 +2707,8 @@ typedef
                          eg. ------ IMark(0x4000792, 5, 0) ------,
          */
          struct {
-            Addr64 addr;   /* instruction address */
-            Int    len;    /* instruction length */
+            Addr   addr;   /* instruction address */
+            UInt   len;    /* instruction length */
             UChar  delta;  /* addr = program counter as encoded in guest state
                                      - delta */
          } IMark;
@@ -2876,7 +2906,7 @@ typedef
 
 /* Statement constructors. */
 extern IRStmt* IRStmt_NoOp    ( void );
-extern IRStmt* IRStmt_IMark   ( Addr64 addr, Int len, UChar delta );
+extern IRStmt* IRStmt_IMark   ( Addr addr, UInt len, UChar delta );
 extern IRStmt* IRStmt_AbiHint ( IRExpr* base, Int len, IRExpr* nia );
 extern IRStmt* IRStmt_Put     ( Int off, IRExpr* data );
 extern IRStmt* IRStmt_PutI    ( IRPutI* details );

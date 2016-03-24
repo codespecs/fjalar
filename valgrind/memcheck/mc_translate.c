@@ -8,7 +8,7 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2000-2013 Julian Seward 
+   Copyright (C) 2000-2015 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -381,6 +381,7 @@ static IRType shadowTypeV ( IRType ty )
       case Ity_I32: 
       case Ity_I64: 
       case Ity_I128: return ty;
+      case Ity_F16:  return Ity_I16;
       case Ity_F32:  return Ity_I32;
       case Ity_D32:  return Ity_I32;
       case Ity_F64:  return Ity_I64;
@@ -2390,6 +2391,35 @@ IRAtom* binary32Fx8_w_rm ( MCEnv* mce, IRAtom* vRM,
    return t1;
 }
 
+/* --- 64Fx2 unary FP ops, with rounding mode --- */
+
+static
+IRAtom* unary64Fx2_w_rm ( MCEnv* mce, IRAtom* vRM, IRAtom* vatomX )
+{
+   /* Same scheme as binary64Fx2_w_rm. */
+   // "do" the vector arg
+   IRAtom* t1 = unary64Fx2(mce, vatomX);
+   // PCast the RM, and widen it to 128 bits
+   IRAtom* t2 = mkPCastTo(mce, Ity_V128, vRM);
+   // Roll it into the result
+   t1 = mkUifUV128(mce, t1, t2);
+   return t1;
+}
+
+/* --- ... and ... 32Fx4 versions of the same --- */
+
+static
+IRAtom* unary32Fx4_w_rm ( MCEnv* mce, IRAtom* vRM, IRAtom* vatomX )
+{
+   /* Same scheme as unary32Fx4_w_rm. */
+   IRAtom* t1 = unary32Fx4(mce, vatomX);
+   // PCast the RM, and widen it to 128 bits
+   IRAtom* t2 = mkPCastTo(mce, Ity_V128, vRM);
+   // Roll it into the result
+   t1 = mkUifUV128(mce, t1, t2);
+   return t1;
+}
+
 
 /* --- --- Vector saturated narrowing --- --- */
 
@@ -3174,6 +3204,11 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
 
       /* V128-bit SIMD */
 
+      case Iop_Sqrt32Fx4:
+         return unary32Fx4_w_rm(mce, vatom1, vatom2);
+      case Iop_Sqrt64Fx2:
+         return unary64Fx2_w_rm(mce, vatom1, vatom2);
+
       case Iop_ShrN8x16:
       case Iop_ShrN16x8:
       case Iop_ShrN32x4:
@@ -3396,6 +3431,8 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
       case Iop_CmpLE64Fx2:
       case Iop_CmpEQ64Fx2:
       case Iop_CmpUN64Fx2:
+      case Iop_RecipStep64Fx2:
+      case Iop_RSqrtStep64Fx2:
          return binary64Fx2(mce, vatom1, vatom2);      
 
       case Iop_Sub64F0x2:
@@ -3732,6 +3769,7 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
       case Iop_TanF64:
       case Iop_2xm1F64:
       case Iop_SqrtF64:
+      case Iop_RecpExpF64:
          /* I32(rm) x I64/F64 -> I64/F64 */
          return mkLazy2(mce, Ity_I64, vatom1, vatom2);
 
@@ -3745,6 +3783,10 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
       case Iop_ShrD128:
       case Iop_RoundD128toInt:
          /* I32(rm) x D128 -> D128 */
+         return mkLazy2(mce, Ity_I128, vatom1, vatom2);
+
+      case Iop_RoundF128toInt:
+         /* I32(rm) x F128 -> F128 */
          return mkLazy2(mce, Ity_I128, vatom1, vatom2);
 
       case Iop_D64toI64S:
@@ -3783,6 +3825,7 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
 
       case Iop_RoundF32toInt:
       case Iop_SqrtF32:
+      case Iop_RecpExpF32:
          /* I32(rm) x I32/F32 -> I32/F32 */
          return mkLazy2(mce, Ity_I32, vatom1, vatom2);
 
@@ -3796,6 +3839,11 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
       case Iop_F32toI32U:
          /* First arg is I32 (rounding mode), second is F32/I32 (data). */
          return mkLazy2(mce, Ity_I32, vatom1, vatom2);
+
+      case Iop_F64toF16:
+      case Iop_F32toF16:
+         /* First arg is I32 (rounding mode), second is F64/F32 (data). */
+         return mkLazy2(mce, Ity_I16, vatom1, vatom2);
 
       case Iop_F128toI32S: /* IRRoundingMode(I32) x F128 -> signed I32  */
       case Iop_F128toI32U: /* IRRoundingMode(I32) x F128 -> unsigned I32  */
@@ -4241,9 +4289,10 @@ IRExpr* expr2vbits_Unop ( MCEnv* mce, IROp op, IRAtom* atom )
    tl_assert(isOriginalAtom(mce,atom));
    switch (op) {
 
-      case Iop_Sqrt64Fx2:
       case Iop_Abs64Fx2:
       case Iop_Neg64Fx2:
+      case Iop_RSqrtEst64Fx2:
+      case Iop_RecipEst64Fx2:
          return unary64Fx2(mce, vatom);
 
       case Iop_Sqrt64F0x2:
@@ -4257,7 +4306,6 @@ IRExpr* expr2vbits_Unop ( MCEnv* mce, IROp op, IRAtom* atom )
       case Iop_Sqrt64Fx4:
          return unary64Fx4(mce, vatom);
 
-      case Iop_Sqrt32Fx4:
       case Iop_RecipEst32Fx4:
       case Iop_I32UtoFx4:
       case Iop_I32StoFx4:
@@ -4329,6 +4377,7 @@ IRExpr* expr2vbits_Unop ( MCEnv* mce, IROp op, IRAtom* atom )
       case Iop_I64UtoD128: /* unsigned I64 -> D128 */
          return mkPCastTo(mce, Ity_I128, vatom);
 
+      case Iop_F16toF64:
       case Iop_F32toF64: 
       case Iop_I32StoF64:
       case Iop_I32UtoF64:
@@ -4358,6 +4407,7 @@ IRExpr* expr2vbits_Unop ( MCEnv* mce, IROp op, IRAtom* atom )
       case Iop_TruncF64asF32:
       case Iop_NegF32:
       case Iop_AbsF32:
+      case Iop_F16toF32: 
          return mkPCastTo(mce, Ity_I32, vatom);
 
       case Iop_Ctz32:
@@ -4682,7 +4732,7 @@ IRAtom* expr2vbits_Load_WRK ( MCEnv* mce,
       di->guard = guard;
       /* Ideally the didn't-happen return value here would be all-ones
          (all-undefined), so it'd be obvious if it got used
-         inadvertantly.  We can get by with the IR-mandated default
+         inadvertently.  We can get by with the IR-mandated default
          value (0b01 repeating, 0x55 etc) as that'll still look pretty
          undefined if it ever leaks out. */
    }
@@ -6027,11 +6077,13 @@ static void do_shadow_LoadG ( MCEnv* mce, IRLoadG* lg )
    IROp   vwiden   = Iop_INVALID;
    IRType loadedTy = Ity_INVALID;
    switch (lg->cvt) {
-      case ILGop_Ident32: loadedTy = Ity_I32; vwiden = Iop_INVALID; break;
-      case ILGop_16Uto32: loadedTy = Ity_I16; vwiden = Iop_16Uto32; break;
-      case ILGop_16Sto32: loadedTy = Ity_I16; vwiden = Iop_16Sto32; break;
-      case ILGop_8Uto32:  loadedTy = Ity_I8;  vwiden = Iop_8Uto32;  break;
-      case ILGop_8Sto32:  loadedTy = Ity_I8;  vwiden = Iop_8Sto32;  break;
+      case ILGop_IdentV128: loadedTy = Ity_V128; vwiden = Iop_INVALID; break;
+      case ILGop_Ident64:   loadedTy = Ity_I64;  vwiden = Iop_INVALID; break;
+      case ILGop_Ident32:   loadedTy = Ity_I32;  vwiden = Iop_INVALID; break;
+      case ILGop_16Uto32:   loadedTy = Ity_I16;  vwiden = Iop_16Uto32; break;
+      case ILGop_16Sto32:   loadedTy = Ity_I16;  vwiden = Iop_16Sto32; break;
+      case ILGop_8Uto32:    loadedTy = Ity_I8;   vwiden = Iop_8Uto32;  break;
+      case ILGop_8Sto32:    loadedTy = Ity_I8;   vwiden = Iop_8Sto32;  break;
       default: VG_(tool_panic)("do_shadow_LoadG");
    }
 
@@ -6204,7 +6256,6 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                         IRType gWordTy, IRType hWordTy )
 {
    Bool    verboze = 0||False;
-   Bool    bogus;
    Int     i, j, first_stmt;
    IRStmt* st;
    MCEnv   mce;
@@ -6221,7 +6272,6 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
    tl_assert(sizeof(Addr)   == sizeof(void*));
    tl_assert(sizeof(ULong)  == 8);
    tl_assert(sizeof(Long)   == 8);
-   tl_assert(sizeof(Addr64) == 8);
    tl_assert(sizeof(UInt)   == 4);
    tl_assert(sizeof(Int)    == 4);
 
@@ -6257,6 +6307,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
 
    mce.tmpMap = VG_(newXA)( VG_(malloc), "mc.MC_(instrument).1", VG_(free),
                             sizeof(TempMapEnt));
+   VG_(hintSizeXA) (mce.tmpMap, sb_in->tyenv->types_used);
    for (i = 0; i < sb_in->tyenv->types_used; i++) {
       TempMapEnt ent;
       ent.kind    = Orig;
@@ -6266,32 +6317,35 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
    }
    tl_assert( VG_(sizeXA)( mce.tmpMap ) == sb_in->tyenv->types_used );
 
-   /* Make a preliminary inspection of the statements, to see if there
-      are any dodgy-looking literals.  If there are, we generate
-      extra-detailed (hence extra-expensive) instrumentation in
-      places.  Scan the whole bb even if dodgyness is found earlier,
-      so that the flatness assertion is applied to all stmts. */
+   if (MC_(clo_expensive_definedness_checks)) {
+      /* For expensive definedness checking skip looking for bogus
+         literals. */
+      mce.bogusLiterals = True;
+   } else {
+      /* Make a preliminary inspection of the statements, to see if there
+         are any dodgy-looking literals.  If there are, we generate
+         extra-detailed (hence extra-expensive) instrumentation in
+         places.  Scan the whole bb even if dodgyness is found earlier,
+         so that the flatness assertion is applied to all stmts. */
+      Bool bogus = False;
 
-   bogus = False;
+      for (i = 0; i < sb_in->stmts_used; i++) {
+         st = sb_in->stmts[i];
+         tl_assert(st);
+         tl_assert(isFlatIRStmt(st));
 
-   for (i = 0; i < sb_in->stmts_used; i++) {
-
-      st = sb_in->stmts[i];
-      tl_assert(st);
-      tl_assert(isFlatIRStmt(st));
-
-      if (!bogus) {
-         bogus = checkForBogusLiterals(st);
-         if (0 && bogus) {
-            VG_(printf)("bogus: ");
-            ppIRStmt(st);
-            VG_(printf)("\n");
+         if (!bogus) {
+            bogus = checkForBogusLiterals(st);
+            if (0 && bogus) {
+               VG_(printf)("bogus: ");
+               ppIRStmt(st);
+               VG_(printf)("\n");
+            }
+            if (bogus) break;
          }
       }
-
+      mce.bogusLiterals = bogus;
    }
-
-   mce.bogusLiterals = bogus;
 
    /* Copy verbatim any IR preamble preceding the first IMark */
 
@@ -6739,7 +6793,7 @@ static IRAtom* gen_guarded_load_b ( MCEnv* mce, Int szB,
       di->guard = guard;
       /* Ideally the didn't-happen return value here would be
          all-zeroes (unknown-origin), so it'd be harmless if it got
-         used inadvertantly.  We slum it out with the IR-mandated
+         used inadvertently.  We slum it out with the IR-mandated
          default value (0b01 repeating, 0x55 etc) as that'll probably
          trump all legitimate otags via Max32, and it's pretty
          obviously bogus. */
@@ -7262,11 +7316,13 @@ static void do_origins_LoadG ( MCEnv* mce, IRLoadG* lg )
 {
    IRType loadedTy = Ity_INVALID;
    switch (lg->cvt) {
-      case ILGop_Ident32: loadedTy = Ity_I32; break;
-      case ILGop_16Uto32: loadedTy = Ity_I16; break;
-      case ILGop_16Sto32: loadedTy = Ity_I16; break;
-      case ILGop_8Uto32:  loadedTy = Ity_I8;  break;
-      case ILGop_8Sto32:  loadedTy = Ity_I8;  break;
+      case ILGop_IdentV128: loadedTy = Ity_V128; break;
+      case ILGop_Ident64:   loadedTy = Ity_I64;  break;
+      case ILGop_Ident32:   loadedTy = Ity_I32;  break;
+      case ILGop_16Uto32:   loadedTy = Ity_I16;  break;
+      case ILGop_16Sto32:   loadedTy = Ity_I16;  break;
+      case ILGop_8Uto32:    loadedTy = Ity_I8;   break;
+      case ILGop_8Sto32:    loadedTy = Ity_I8;   break;
       default: VG_(tool_panic)("schemeS.IRLoadG");
    }
    IRAtom* ori_alt

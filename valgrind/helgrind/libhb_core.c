@@ -9,7 +9,7 @@
    This file is part of LibHB, a library for implementing and checking
    the happens-before relationship in concurrent programs.
 
-   Copyright (C) 2008-2013 OpenWorks Ltd
+   Copyright (C) 2008-2015 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -37,11 +37,12 @@
 #include "pub_tool_libcprint.h"
 #include "pub_tool_mallocfree.h"
 #include "pub_tool_wordfm.h"
-#include "pub_tool_sparsewa.h"
+#include "pub_tool_hashtable.h"
 #include "pub_tool_xarray.h"
 #include "pub_tool_oset.h"
 #include "pub_tool_threadstate.h"
 #include "pub_tool_aspacemgr.h"
+#include "pub_tool_stacktrace.h"
 #include "pub_tool_execontext.h"
 #include "pub_tool_errormgr.h"
 #include "pub_tool_options.h"        // VG_(clo_stats)
@@ -142,7 +143,7 @@ typedef  ULong  SVal;
    a pair, (Thr*, ULong), but that takes 16 bytes on a 64-bit target.
    We pack it into 64 bits by representing the Thr* using a ThrID, a
    small integer (18 bits), and a 46 bit integer for the timestamp
-   number.  The 46/18 split is arbitary, but has the effect that
+   number.  The 46/18 split is arbitrary, but has the effect that
    Helgrind can only handle programs that create 2^18 or fewer threads
    over their entire lifetime, and have no more than 2^46 timestamp
    ticks (synchronisation operations on the same thread).
@@ -153,17 +154,19 @@ typedef  ULong  SVal;
    at a clock rate of 5 GHz is 162.9 days.  And that's doing nothing
    but VTS ticks, which isn't realistic.
 
-   NB1: SCALARTS_N_THRBITS must be 29 or lower.  The obvious limit is
-   32 since a ThrID is a UInt.  29 comes from the fact that
+   NB1: SCALARTS_N_THRBITS must be 27 or lower.  The obvious limit is
+   32 since a ThrID is a UInt.  27 comes from the fact that
    'Thr_n_RCEC', which records information about old accesses, packs
-   not only a ThrID but also 2+1 other bits (access size and
-   writeness) in a UInt, hence limiting size to 32-(2+1) == 29.
+   in tsw not only a ThrID but also minimum 4+1 other bits (access size
+   and writeness) in a UInt, hence limiting size to 32-(4+1) == 27.
 
    NB2: thrid values are issued upwards from 1024, and values less
    than that aren't valid.  This isn't per se necessary (any order
    will do, so long as they are unique), but it does help ensure they
    are less likely to get confused with the various other kinds of
-   small-integer thread ids drifting around (eg, TId).  See also NB5.
+   small-integer thread ids drifting around (eg, TId).
+   So, SCALARTS_N_THRBITS must be 11 or more.
+   See also NB5.
 
    NB3: this probably also relies on the fact that Thr's are never
    deallocated -- they exist forever.  Hence the 1-1 mapping from
@@ -183,7 +186,8 @@ typedef  ULong  SVal;
    ThrID == 0 to denote an empty Thr_n_RCEC record.  So ThrID == 0
    must never be a valid ThrID.  Given NB2 that's OK.
 */
-#define SCALARTS_N_THRBITS 18  /* valid range: 11 to 29 inclusive */
+#define SCALARTS_N_THRBITS 18  /* valid range: 11 to 27 inclusive,
+                                  See NB1 and NB2 above. */
 
 #define SCALARTS_N_TYMBITS (64 - SCALARTS_N_THRBITS)
 typedef
@@ -365,6 +369,11 @@ static inline Bool SVal__isC ( SVal s );
 static inline VtsID SVal__unC_Rmin ( SVal s );
 static inline VtsID SVal__unC_Wmin ( SVal s );
 static inline SVal SVal__mkC ( VtsID rmini, VtsID wmini );
+static inline void SVal__rcinc ( SVal s );
+static inline void SVal__rcdec ( SVal s );
+/* SVal in LineZ are used to store various pointers. */
+static inline void *SVal2Ptr (SVal s);
+static inline SVal Ptr2SVal (void* ptr);
 
 /* A double linked list of all the SO's. */
 SO* admin_SO;
@@ -383,7 +392,7 @@ SO* admin_SO;
 #define __HB_ZSM_H
 
 /* Initialise the library.  Once initialised, it will (or may) call
-   rcinc and rcdec in response to all the calls below, in order to
+   SVal__rcinc and SVal__rcdec in response to all the calls below, in order to
    allow the user to do reference counting on the SVals stored herein.
    It is important to understand, however, that due to internal
    caching, the reference counts are in general inaccurate, and can be
@@ -394,13 +403,14 @@ SO* admin_SO;
    To make the reference counting exact and therefore non-pointless,
    call zsm_flush_cache.  Immediately after it returns, the reference
    counts for all items, as deduced by the caller by observing calls
-   to rcinc and rcdec, will be correct, and so any items with a zero
-   reference count may be freed (or at least considered to be
+   to SVal__rcinc and SVal__rcdec, will be correct, and so any items with a
+   zero reference count may be freed (or at least considered to be
    unreferenced by this library).
 */
-static void zsm_init ( void(*rcinc)(SVal), void(*rcdec)(SVal) );
+static void zsm_init ( void );
 
 static void zsm_sset_range  ( Addr, SizeT, SVal );
+static void zsm_sset_range_SMALL ( Addr a, SizeT len, SVal svNew );
 static void zsm_scopy_range ( Addr, Addr, SizeT );
 static void zsm_flush_cache ( void );
 
@@ -412,12 +422,19 @@ static void zsm_flush_cache ( void );
 /* Round a down to the next multiple of N.  N must be a power of 2 */
 #define ROUNDDN(a, N)   ((a) & ~(N-1))
 
-
-
-/* ------ User-supplied RC functions ------ */
-static void(*rcinc)(SVal) = NULL;
-static void(*rcdec)(SVal) = NULL;
-
+/* True if a belongs in range [start, start + szB[
+   (i.e. start + szB is excluded). */
+static inline Bool address_in_range (Addr a, Addr start,  SizeT szB)
+{
+   /* Checking start <= a && a < start + szB.
+      As start and a are unsigned addresses, the condition can
+      be simplified. */
+   if (CHECK_ZSM)
+      tl_assert ((a - start < szB)
+                 == (start <= a
+                     &&       a < start + szB));
+   return a - start < szB;
+}
 
 /* ------ CacheLine ------ */
 
@@ -454,17 +471,33 @@ typedef
       SVal  dict[4]; /* can represent up to 4 diff values in the line */
       UChar ix2s[N_LINE_ARANGE/4]; /* array of N_LINE_ARANGE 2-bit
                                       dict indexes */
-      /* if dict[0] == SVal_INVALID then dict[1] is the index of the
+      /* if dict[0] == SVal_INVALID then dict[1] is a pointer to the
          LineF to use, and dict[2..] are also SVal_INVALID. */
    }
    LineZ; /* compressed rep for a cache line */
 
+/* LineZ.dict[1] is used to store various pointers:
+   * In the first lineZ of a free SecMap, it points to the next free SecMap.
+   * In a lineZ for which we need to use a lineF, it points to the lineF. */
+
+
 typedef
    struct {
-      Bool inUse;
       SVal w64s[N_LINE_ARANGE];
    }
    LineF; /* full rep for a cache line */
+
+/* We use a pool allocator for LineF, as LineF is relatively small,
+   and we will often alloc/release such lines. */
+static PoolAlloc* LineF_pool_allocator;
+
+/* SVal in a lineZ are used to store various pointers.
+   Below are conversion functions to support that. */
+static inline LineF *LineF_Ptr (LineZ *lineZ)
+{
+   tl_assert(lineZ->dict[0] == SVal_INVALID);
+   return SVal2Ptr (lineZ->dict[1]);
+}
 
 /* Shadow memory.
    Primary map is a WordFM Addr SecMap*.  
@@ -486,36 +519,37 @@ typedef
 
 /* The data in the SecMap is held in the array of LineZs.  Each LineZ
    either carries the required data directly, in a compressed
-   representation, or it holds (in .dict[0]) an index to the LineF in
-   .linesF that holds the full representation.
+   representation, or it holds (in .dict[1]) a pointer to a LineF
+   that holds the full representation.
 
-   Currently-unused LineF's have their .inUse bit set to zero.
-   Since each in-use LineF is referred to be exactly one LineZ,
-   the number of .linesZ[] that refer to .linesF should equal
-   the number of .linesF[] that have .inUse == True.
+   As each in-use LineF is referred to by exactly one LineZ,
+   the number of .linesZ[] that refer to a lineF should equal
+   the number of used lineF.
 
    RC obligations: the RCs presented to the user include exactly
    the values in:
    * direct Z reps, that is, ones for which .dict[0] != SVal_INVALID
-   * F reps that are in use (.inUse == True)
+   * F reps that are in use
 
    Hence the following actions at the following transitions are required:
 
-   F rep: .inUse==True  -> .inUse==False        -- rcdec_LineF
-   F rep: .inUse==False -> .inUse==True         -- rcinc_LineF
+   F rep: alloc'd       -> freed                -- rcdec_LineF
+   F rep:               -> alloc'd              -- rcinc_LineF
    Z rep: .dict[0] from other to SVal_INVALID   -- rcdec_LineZ
    Z rep: .dict[0] from SVal_INVALID to other   -- rcinc_LineZ
 */
+
 typedef
    struct {
       UInt   magic;
       LineZ  linesZ[N_SECMAP_ZLINES];
-      LineF* linesF;
-      UInt   linesF_size;
    }
    SecMap;
 
 #define SecMap_MAGIC   0x571e58cbU
+
+// (UInt) `echo "Free SecMap" | md5sum`
+#define SecMap_free_MAGIC 0x5a977f30U
 
 __attribute__((unused))
 static inline Bool is_sane_SecMap ( SecMap* sm ) {
@@ -558,18 +592,18 @@ static Cache   cache_shmem;
 static UWord stats__secmaps_search       = 0; // # SM finds
 static UWord stats__secmaps_search_slow  = 0; // # SM lookupFMs
 static UWord stats__secmaps_allocd       = 0; // # SecMaps issued
+static UWord stats__secmaps_in_map_shmem = 0; // # SecMaps 'live'
+static UWord stats__secmaps_scanGC       = 0; // # nr of scan GC done.
+static UWord stats__secmaps_scanGCed     = 0; // # SecMaps GC-ed via scan
+static UWord stats__secmaps_ssetGCed     = 0; // # SecMaps GC-ed via setnoaccess
 static UWord stats__secmap_ga_space_covered = 0; // # ga bytes covered
 static UWord stats__secmap_linesZ_allocd = 0; // # LineZ's issued
 static UWord stats__secmap_linesZ_bytes  = 0; // .. using this much storage
-static UWord stats__secmap_linesF_allocd = 0; // # LineF's issued
-static UWord stats__secmap_linesF_bytes  = 0; //  .. using this much storage
-static UWord stats__secmap_iterator_steppings = 0; // # calls to stepSMIter
 static UWord stats__cache_Z_fetches      = 0; // # Z lines fetched
 static UWord stats__cache_Z_wbacks       = 0; // # Z lines written back
 static UWord stats__cache_F_fetches      = 0; // # F lines fetched
 static UWord stats__cache_F_wbacks       = 0; // # F lines written back
-static UWord stats__cache_invals         = 0; // # cache invals
-static UWord stats__cache_flushes        = 0; // # cache flushes
+static UWord stats__cache_flushes_invals = 0; // # cache flushes and invals
 static UWord stats__cache_totrefs        = 0; // # total accesses
 static UWord stats__cache_totmisses      = 0; // # misses
 static ULong stats__cache_make_New_arange = 0; // total arange made New
@@ -599,6 +633,8 @@ static UWord stats__vts__tick            = 0; // # calls to VTS__tick
 static UWord stats__vts__join            = 0; // # calls to VTS__join
 static UWord stats__vts__cmpLEQ          = 0; // # calls to VTS__cmpLEQ
 static UWord stats__vts__cmp_structural  = 0; // # calls to VTS__cmp_structural
+static UWord stats__vts_tab_GC           = 0; // # nr of vts_tab GC
+static UWord stats__vts_pruning          = 0; // # nr of vts pruning
 
 // # calls to VTS__cmp_structural w/ slow case
 static UWord stats__vts__cmp_structural_slow = 0;
@@ -657,10 +693,75 @@ static void* shmem__bigchunk_alloc ( SizeT n )
    return shmem__bigchunk_next - n;
 }
 
-static SecMap* shmem__alloc_SecMap ( void )
+/* SecMap changed to be fully SVal_NOACCESS are inserted in a list of
+   recycled SecMap. When a new SecMap is needed, a recycled SecMap
+   will be used in preference to allocating a new SecMap. */
+/* We make a linked list of SecMap. The first LineZ is re-used to
+   implement the linked list. */
+/* Returns the SecMap following sm in the free list.
+   NULL if sm is the last SecMap. sm must be on the free list. */
+static inline SecMap *SecMap_freelist_next ( SecMap* sm )
+{
+   tl_assert (sm);
+   tl_assert (sm->magic == SecMap_free_MAGIC);
+   return SVal2Ptr (sm->linesZ[0].dict[1]);
+}
+static inline void set_SecMap_freelist_next ( SecMap* sm, SecMap* next )
+{
+   tl_assert (sm);
+   tl_assert (sm->magic == SecMap_free_MAGIC);
+   tl_assert (next == NULL || next->magic == SecMap_free_MAGIC);
+   sm->linesZ[0].dict[1] = Ptr2SVal (next);
+}
+
+static SecMap *SecMap_freelist = NULL;
+static UWord SecMap_freelist_length(void)
+{
+   SecMap *sm;
+   UWord n = 0;
+
+   sm = SecMap_freelist;
+   while (sm) {
+     n++;
+     sm = SecMap_freelist_next (sm);
+   }
+   return n;
+}
+
+static void push_SecMap_on_freelist(SecMap* sm)
+{
+   if (0) VG_(message)(Vg_DebugMsg, "%p push\n", sm);
+   sm->magic = SecMap_free_MAGIC;
+   set_SecMap_freelist_next(sm, SecMap_freelist);
+   SecMap_freelist = sm;
+}
+/* Returns a free SecMap if there is one.
+   Otherwise, returns NULL. */
+static SecMap *pop_SecMap_from_freelist(void)
+{
+   SecMap *sm;
+
+   sm = SecMap_freelist;
+   if (sm) {
+      tl_assert (sm->magic == SecMap_free_MAGIC);
+      SecMap_freelist = SecMap_freelist_next (sm);
+      if (0) VG_(message)(Vg_DebugMsg, "%p pop\n", sm);
+   }
+   return sm;
+}
+
+static SecMap* shmem__alloc_or_recycle_SecMap ( void )
 {
    Word    i, j;
-   SecMap* sm = shmem__bigchunk_alloc( sizeof(SecMap) );
+   SecMap* sm = pop_SecMap_from_freelist();
+
+   if (!sm) {
+      sm = shmem__bigchunk_alloc( sizeof(SecMap) );
+      stats__secmaps_allocd++;
+      stats__secmap_ga_space_covered += N_SECMAP_ARANGE;
+      stats__secmap_linesZ_allocd += N_SECMAP_ZLINES;
+      stats__secmap_linesZ_bytes += N_SECMAP_ZLINES * sizeof(LineZ);
+   }
    if (0) VG_(printf)("alloc_SecMap %p\n",sm);
    tl_assert(sm);
    sm->magic = SecMap_MAGIC;
@@ -672,12 +773,6 @@ static SecMap* shmem__alloc_SecMap ( void )
       for (j = 0; j < N_LINE_ARANGE/4; j++)
          sm->linesZ[i].ix2s[j] = 0; /* all reference dict[0] */
    }
-   sm->linesF      = NULL;
-   sm->linesF_size = 0;
-   stats__secmaps_allocd++;
-   stats__secmap_ga_space_covered += N_SECMAP_ARANGE;
-   stats__secmap_linesZ_allocd += N_SECMAP_ZLINES;
-   stats__secmap_linesZ_bytes += N_SECMAP_ZLINES * sizeof(LineZ);
    return sm;
 }
 
@@ -719,52 +814,181 @@ static SecMap* shmem__find_SecMap ( Addr ga )
    return sm;
 }
 
+/* Scan the SecMap and count the SecMap that can be GC-ed.
+   If really, really does the GC of the SecMap. */
+/* NOT TO BE CALLED FROM WITHIN libzsm. */
+static UWord next_SecMap_GC_at = 1000;
+__attribute__((noinline))
+static UWord shmem__SecMap_do_GC(Bool really)
+{
+   UWord secmapW = 0;
+   Addr  gaKey;
+   UWord examined = 0;
+   UWord ok_GCed = 0;
+
+   /* First invalidate the smCache */
+   smCache[0].gaKey = 1;
+   smCache[1].gaKey = 1;
+   smCache[2].gaKey = 1;
+   STATIC_ASSERT (3 == sizeof(smCache)/sizeof(smCache[0]));
+
+   VG_(initIterFM)( map_shmem );
+   while (VG_(nextIterFM)( map_shmem, &gaKey, &secmapW )) {
+      UWord   i;
+      UWord   j;
+      UWord   n_linesF = 0;
+      SecMap* sm = (SecMap*)secmapW;
+      tl_assert(sm->magic == SecMap_MAGIC);
+      Bool ok_to_GC = True;
+
+      examined++;
+
+      /* Deal with the LineZs and the possible LineF of a LineZ. */
+      for (i = 0; i < N_SECMAP_ZLINES && ok_to_GC; i++) {
+         LineZ* lineZ = &sm->linesZ[i];
+         if (lineZ->dict[0] != SVal_INVALID) {
+            ok_to_GC = lineZ->dict[0] == SVal_NOACCESS
+               && !SVal__isC (lineZ->dict[1])
+               && !SVal__isC (lineZ->dict[2])
+               && !SVal__isC (lineZ->dict[3]);
+         } else {
+            LineF *lineF = LineF_Ptr(lineZ);
+            n_linesF++;
+            for (j = 0; j < N_LINE_ARANGE && ok_to_GC; j++)
+               ok_to_GC = lineF->w64s[j] == SVal_NOACCESS;
+         }
+      }
+      if (ok_to_GC)
+         ok_GCed++;
+      if (ok_to_GC && really) {
+        SecMap *fm_sm;
+        Addr fm_gaKey;
+        /* We cannot remove a SecMap from map_shmem while iterating.
+           So, stop iteration, remove from map_shmem, recreate the iteration
+           on the next SecMap. */
+        VG_(doneIterFM) ( map_shmem );
+        /* No need to rcdec linesZ or linesF, these are all SVal_NOACCESS.
+           We just need to free the lineF referenced by the linesZ. */
+        if (n_linesF > 0) {
+           for (i = 0; i < N_SECMAP_ZLINES && n_linesF > 0; i++) {
+              LineZ* lineZ = &sm->linesZ[i];
+              if (lineZ->dict[0] == SVal_INVALID) {
+                 VG_(freeEltPA)( LineF_pool_allocator, LineF_Ptr(lineZ) );
+                 n_linesF--;
+              }
+           }
+        }
+        if (!VG_(delFromFM)(map_shmem, &fm_gaKey, (UWord*)&fm_sm, gaKey))
+          tl_assert (0);
+        stats__secmaps_in_map_shmem--;
+        tl_assert (gaKey == fm_gaKey);
+        tl_assert (sm == fm_sm);
+        stats__secmaps_scanGCed++;
+        push_SecMap_on_freelist (sm);
+        VG_(initIterAtFM) (map_shmem, gaKey + N_SECMAP_ARANGE);
+      }
+   }
+   VG_(doneIterFM)( map_shmem );
+
+   if (really) {
+      stats__secmaps_scanGC++;
+      /* Next GC when we approach the max allocated */
+      next_SecMap_GC_at = stats__secmaps_allocd - 1000;
+      /* Unless we GCed less than 10%. We then allow to alloc 10%
+         more before GCing. This avoids doing a lot of costly GC
+         for the worst case : the 'growing phase' of an application
+         that allocates a lot of memory.
+         Worst can can be reproduced e.g. by
+             perf/memrw -t 30000000 -b 1000 -r 1 -l 1 
+         that allocates around 30Gb of memory. */
+      if (ok_GCed < stats__secmaps_allocd/10)
+         next_SecMap_GC_at = stats__secmaps_allocd + stats__secmaps_allocd/10;
+
+   }
+
+   if (VG_(clo_stats) && really) {
+      VG_(message)(Vg_DebugMsg,
+                  "libhb: SecMap GC: #%lu scanned %lu, GCed %lu,"
+                   " next GC at %lu\n",
+                   stats__secmaps_scanGC, examined, ok_GCed,
+                   next_SecMap_GC_at);
+   }
+
+   return ok_GCed;
+}
+
 static SecMap* shmem__find_or_alloc_SecMap ( Addr ga )
 {
    SecMap* sm = shmem__find_SecMap ( ga );
    if (LIKELY(sm)) {
+      if (CHECK_ZSM) tl_assert(is_sane_SecMap(sm));
       return sm;
    } else {
       /* create a new one */
       Addr gaKey = shmem__round_to_SecMap_base(ga);
-      sm = shmem__alloc_SecMap();
+      sm = shmem__alloc_or_recycle_SecMap();
       tl_assert(sm);
       VG_(addToFM)( map_shmem, (UWord)gaKey, (UWord)sm );
+      stats__secmaps_in_map_shmem++;
+      if (CHECK_ZSM) tl_assert(is_sane_SecMap(sm));
       return sm;
    }
 }
 
+/* Returns the nr of linesF which are in use. Note: this is scanning
+   the secmap wordFM. So, this is to be used for statistics only. */
+__attribute__((noinline))
+static UWord shmem__SecMap_used_linesF(void)
+{
+   UWord secmapW = 0;
+   Addr  gaKey;
+   UWord inUse = 0;
+
+   VG_(initIterFM)( map_shmem );
+   while (VG_(nextIterFM)( map_shmem, &gaKey, &secmapW )) {
+      UWord   i;
+      SecMap* sm = (SecMap*)secmapW;
+      tl_assert(sm->magic == SecMap_MAGIC);
+
+      for (i = 0; i < N_SECMAP_ZLINES; i++) {
+         LineZ* lineZ = &sm->linesZ[i];
+         if (lineZ->dict[0] == SVal_INVALID)
+            inUse++;
+      }
+   }
+   VG_(doneIterFM)( map_shmem );
+
+   return inUse;
+}
 
 /* ------------ LineF and LineZ related ------------ */
 
 static void rcinc_LineF ( LineF* lineF ) {
    UWord i;
-   tl_assert(lineF->inUse);
    for (i = 0; i < N_LINE_ARANGE; i++)
-      rcinc(lineF->w64s[i]);
+      SVal__rcinc(lineF->w64s[i]);
 }
 
 static void rcdec_LineF ( LineF* lineF ) {
    UWord i;
-   tl_assert(lineF->inUse);
    for (i = 0; i < N_LINE_ARANGE; i++)
-      rcdec(lineF->w64s[i]);
+      SVal__rcdec(lineF->w64s[i]);
 }
 
 static void rcinc_LineZ ( LineZ* lineZ ) {
    tl_assert(lineZ->dict[0] != SVal_INVALID);
-   rcinc(lineZ->dict[0]);
-   if (lineZ->dict[1] != SVal_INVALID) rcinc(lineZ->dict[1]);
-   if (lineZ->dict[2] != SVal_INVALID) rcinc(lineZ->dict[2]);
-   if (lineZ->dict[3] != SVal_INVALID) rcinc(lineZ->dict[3]);
+   SVal__rcinc(lineZ->dict[0]);
+   if (lineZ->dict[1] != SVal_INVALID) SVal__rcinc(lineZ->dict[1]);
+   if (lineZ->dict[2] != SVal_INVALID) SVal__rcinc(lineZ->dict[2]);
+   if (lineZ->dict[3] != SVal_INVALID) SVal__rcinc(lineZ->dict[3]);
 }
 
 static void rcdec_LineZ ( LineZ* lineZ ) {
    tl_assert(lineZ->dict[0] != SVal_INVALID);
-   rcdec(lineZ->dict[0]);
-   if (lineZ->dict[1] != SVal_INVALID) rcdec(lineZ->dict[1]);
-   if (lineZ->dict[2] != SVal_INVALID) rcdec(lineZ->dict[2]);
-   if (lineZ->dict[3] != SVal_INVALID) rcdec(lineZ->dict[3]);
+   SVal__rcdec(lineZ->dict[0]);
+   if (lineZ->dict[1] != SVal_INVALID) SVal__rcdec(lineZ->dict[1]);
+   if (lineZ->dict[2] != SVal_INVALID) SVal__rcdec(lineZ->dict[2]);
+   if (lineZ->dict[3] != SVal_INVALID) SVal__rcdec(lineZ->dict[3]);
 }
 
 inline
@@ -787,6 +1011,48 @@ static UWord read_twobit_array ( UChar* arr, UWord ix ) {
    return (arr[bix] >> shft) & 3;
 }
 
+/* We cache one free lineF, to avoid pool allocator calls.
+   Measurement on firefox has shown that this avoids more than 90%
+   of the PA calls. */
+static LineF *free_lineF = NULL;
+
+/* Allocates a lineF for LineZ. Sets lineZ in a state indicating
+   lineF has to be used. */
+static inline LineF *alloc_LineF_for_Z (LineZ *lineZ)
+{
+   LineF *lineF;
+
+   tl_assert(lineZ->dict[0] == SVal_INVALID);
+
+   if (LIKELY(free_lineF)) {
+      lineF = free_lineF;
+      free_lineF = NULL;
+   } else {
+      lineF = VG_(allocEltPA) ( LineF_pool_allocator );
+   }
+   lineZ->dict[0] = lineZ->dict[2] = lineZ->dict[3] = SVal_INVALID;
+   lineZ->dict[1] = Ptr2SVal (lineF);
+
+   return lineF;
+}
+
+/* rcdec the LineF of lineZ, frees the lineF, and sets lineZ
+   back to its initial state SVal_NOACCESS (i.e. ready to be
+   read or written just after SecMap allocation). */
+static inline void clear_LineF_of_Z (LineZ *lineZ)
+{
+   LineF *lineF = LineF_Ptr(lineZ);
+
+   rcdec_LineF(lineF);
+   if (UNLIKELY(free_lineF)) {
+      VG_(freeEltPA)( LineF_pool_allocator, lineF );
+   } else {
+      free_lineF = lineF;
+   }
+   lineZ->dict[0] = SVal_NOACCESS;
+   lineZ->dict[1] = SVal_INVALID;
+}
+
 /* Given address 'tag', find either the Z or F line containing relevant
    data, so it can be read into the cache.
 */
@@ -805,12 +1071,7 @@ static void find_ZF_for_reading ( /*OUT*/LineZ** zp,
    lineZ = &sm->linesZ[zix];
    lineF = NULL;
    if (lineZ->dict[0] == SVal_INVALID) {
-      UInt fix = (UInt)lineZ->dict[1];
-      tl_assert(sm->linesF);
-      tl_assert(sm->linesF_size > 0);
-      tl_assert(fix >= 0 && fix < sm->linesF_size);
-      lineF = &sm->linesF[fix];
-      tl_assert(lineF->inUse);
+      lineF = LineF_Ptr (lineZ);
       lineZ = NULL;
    }
    *zp = lineZ;
@@ -828,7 +1089,6 @@ void find_Z_for_writing ( /*OUT*/SecMap** smp,
                           /*OUT*/Word* zixp,
                           Addr tag ) {
    LineZ* lineZ;
-   LineF* lineF;
    UWord   zix;
    SecMap* sm    = shmem__find_or_alloc_SecMap(tag);
    UWord   smoff = shmem__get_SecMap_offset(tag);
@@ -838,85 +1098,16 @@ void find_Z_for_writing ( /*OUT*/SecMap** smp,
    zix = smoff >> N_LINE_BITS;
    tl_assert(zix < N_SECMAP_ZLINES);
    lineZ = &sm->linesZ[zix];
-   lineF = NULL;
-   /* re RCs, we are freeing up this LineZ/LineF so that new data can
-      be parked in it.  Hence have to rcdec it accordingly. */
+   /* re RCs, we are rcdec_LineZ/clear_LineF_of_Z this LineZ so that new data
+      can be parked in it.  Hence have to rcdec it accordingly. */
    /* If lineZ has an associated lineF, free it up. */
-   if (lineZ->dict[0] == SVal_INVALID) {
-      UInt fix = (UInt)lineZ->dict[1];
-      tl_assert(sm->linesF);
-      tl_assert(sm->linesF_size > 0);
-      tl_assert(fix >= 0 && fix < sm->linesF_size);
-      lineF = &sm->linesF[fix];
-      tl_assert(lineF->inUse);
-      rcdec_LineF(lineF);
-      lineF->inUse = False;
-   } else {
+   if (lineZ->dict[0] == SVal_INVALID)
+      clear_LineF_of_Z(lineZ);
+   else
       rcdec_LineZ(lineZ);
-   }
    *smp  = sm;
    *zixp = zix;
 }
-
-static __attribute__((noinline))
-void alloc_F_for_writing ( /*MOD*/SecMap* sm, /*OUT*/Word* fixp ) {
-   UInt        i, new_size;
-   LineF* nyu;
-
-   if (sm->linesF) {
-      tl_assert(sm->linesF_size > 0);
-   } else {
-      tl_assert(sm->linesF_size == 0);
-   }
-
-   if (sm->linesF) {
-      for (i = 0; i < sm->linesF_size; i++) {
-         if (!sm->linesF[i].inUse) {
-            *fixp = (Word)i;
-            return;
-         }
-      }
-   }
-
-   /* No free F line found.  Expand existing array and try again. */
-   new_size = sm->linesF_size==0 ? 1 : 2 * sm->linesF_size;
-   nyu      = HG_(zalloc)( "libhb.aFfw.1 (LineF storage)",
-                           new_size * sizeof(LineF) );
-
-   stats__secmap_linesF_allocd += (new_size - sm->linesF_size);
-   stats__secmap_linesF_bytes  += (new_size - sm->linesF_size)
-                                  * sizeof(LineF);
-
-   if (0)
-   VG_(printf)("SM %p: expand F array from %d to %d\n", 
-               sm, (Int)sm->linesF_size, new_size);
-
-   for (i = 0; i < new_size; i++)
-      nyu[i].inUse = False;
-
-   if (sm->linesF) {
-      for (i = 0; i < sm->linesF_size; i++) {
-         tl_assert(sm->linesF[i].inUse);
-         nyu[i] = sm->linesF[i];
-      }
-      VG_(memset)(sm->linesF, 0, sm->linesF_size * sizeof(LineF) );
-      HG_(free)(sm->linesF);
-   }
-
-   sm->linesF      = nyu;
-   sm->linesF_size = new_size;
-
-   for (i = 0; i < sm->linesF_size; i++) {
-      if (!sm->linesF[i].inUse) {
-         *fixp = (Word)i;
-         return;
-      }
-    }
-
-    /*NOTREACHED*/
-    tl_assert(0);
-}
-
 
 /* ------------ CacheLine and implicit-tree related ------------ */
 
@@ -1089,7 +1280,7 @@ static void sprintf_Byte ( /*OUT*/HChar* dst, UChar byte ) {
 static Bool is_sane_Descr_and_Tree ( UShort descr, SVal* tree ) {
    Word  i;
    UChar validbits = descr_to_validbits(descr);
-   HChar buf[128], buf2[128];
+   HChar buf[128], buf2[128];    // large enough
    if (validbits == 0)
       goto bad;
    for (i = 0; i < 8; i++) {
@@ -1138,10 +1329,11 @@ static UShort normalise_tree ( /*MOD*/SVal* tree )
    UShort descr;
    /* pre: incoming tree[0..7] does not have any invalid shvals, in
       particular no zeroes. */
-   if (UNLIKELY(tree[7] == SVal_INVALID || tree[6] == SVal_INVALID
-                || tree[5] == SVal_INVALID || tree[4] == SVal_INVALID
-                || tree[3] == SVal_INVALID || tree[2] == SVal_INVALID
-                || tree[1] == SVal_INVALID || tree[0] == SVal_INVALID))
+   if (CHECK_ZSM
+       && UNLIKELY(tree[7] == SVal_INVALID || tree[6] == SVal_INVALID
+                   || tree[5] == SVal_INVALID || tree[4] == SVal_INVALID
+                   || tree[3] == SVal_INVALID || tree[2] == SVal_INVALID
+                   || tree[1] == SVal_INVALID || tree[0] == SVal_INVALID))
       tl_assert(0);
    
    descr = TREE_DESCR_8_7 | TREE_DESCR_8_6 | TREE_DESCR_8_5
@@ -1311,7 +1503,7 @@ static __attribute__((noinline)) void cacheline_wback ( UWord wix )
    sequentialise_CacheLine( csvals, &csvalsUsed, 
                             N_LINE_ARANGE, cl );
    tl_assert(csvalsUsed >= 1 && csvalsUsed <= N_LINE_ARANGE);
-   if (0) VG_(printf)("%lu ", csvalsUsed);
+   if (0) VG_(printf)("%ld ", csvalsUsed);
 
    lineZ->dict[0] = lineZ->dict[1] 
                   = lineZ->dict[2] = lineZ->dict[3] = SVal_INVALID;
@@ -1384,15 +1576,8 @@ static __attribute__((noinline)) void cacheline_wback ( UWord wix )
       /* Cannot use the compressed(z) representation.  Use the full(f)
          rep instead. */
       tl_assert(i >= 0 && i < N_LINE_ARANGE);
-      alloc_F_for_writing( sm, &fix );
-      tl_assert(sm->linesF);
-      tl_assert(sm->linesF_size > 0);
-      tl_assert(fix >= 0 && fix < (Word)sm->linesF_size);
-      lineF = &sm->linesF[fix];
-      tl_assert(!lineF->inUse);
       lineZ->dict[0] = lineZ->dict[2] = lineZ->dict[3] = SVal_INVALID;
-      lineZ->dict[1] = (SVal)fix;
-      lineF->inUse = True;
+      lineF = alloc_LineF_for_Z (lineZ);
       i = 0;
       for (k = 0; k < csvalsUsed; k++) {
          if (CHECK_ZSM)
@@ -1442,34 +1627,49 @@ static __attribute__((noinline)) void cacheline_fetch ( UWord wix )
    /* expand the data into the bottom layer of the tree, then get
       cacheline_normalise to build the descriptor array. */
    if (lineF) {
-      tl_assert(lineF->inUse);
       for (i = 0; i < N_LINE_ARANGE; i++) {
          cl->svals[i] = lineF->w64s[i];
       }
       stats__cache_F_fetches++;
    } else {
       for (i = 0; i < N_LINE_ARANGE; i++) {
-         SVal sv;
          UWord ix = read_twobit_array( lineZ->ix2s, i );
-         /* correct, but expensive: tl_assert(ix >= 0 && ix <= 3); */
-         sv = lineZ->dict[ix];
-         tl_assert(sv != SVal_INVALID);
-         cl->svals[i] = sv;
+         if (CHECK_ZSM) tl_assert(ix >= 0 && ix <= 3);
+         cl->svals[i] = lineZ->dict[ix];
+         if (CHECK_ZSM) tl_assert(cl->svals[i] != SVal_INVALID);
       }
       stats__cache_Z_fetches++;
    }
    normalise_CacheLine( cl );
 }
 
-static void shmem__invalidate_scache ( void ) {
+/* Invalid the cachelines corresponding to the given range, which
+   must start and end on a cacheline boundary. */
+static void shmem__invalidate_scache_range (Addr ga, SizeT szB)
+{
    Word wix;
-   if (0) VG_(printf)("%s","scache inval\n");
-   tl_assert(!is_valid_scache_tag(1));
-   for (wix = 0; wix < N_WAY_NENT; wix++) {
-      cache_shmem.tags0[wix] = 1/*INVALID*/;
+
+   /* ga must be on a cacheline boundary. */
+   tl_assert (is_valid_scache_tag (ga));
+   /* szB must be a multiple of cacheline size. */
+   tl_assert (0 == (szB & (N_LINE_ARANGE - 1)));
+   
+
+   Word ga_ix = (ga >> N_LINE_BITS) & (N_WAY_NENT - 1);
+   Word nwix = szB / N_LINE_ARANGE;
+
+   if (nwix > N_WAY_NENT)
+      nwix = N_WAY_NENT; // no need to check several times the same entry.
+
+   for (wix = 0; wix < nwix; wix++) {
+      if (address_in_range(cache_shmem.tags0[ga_ix], ga, szB))
+         cache_shmem.tags0[ga_ix] = 1/*INVALID*/;
+      ga_ix++;
+      if (UNLIKELY(ga_ix == N_WAY_NENT))
+         ga_ix = 0;
    }
-   stats__cache_invals++;
 }
+
 
 static void shmem__flush_and_invalidate_scache ( void ) {
    Word wix;
@@ -1486,8 +1686,7 @@ static void shmem__flush_and_invalidate_scache ( void ) {
       }
       cache_shmem.tags0[wix] = 1/*INVALID*/;
    }
-   stats__cache_flushes++;
-   stats__cache_invals++;
+   stats__cache_flushes_invals++;
 }
 
 
@@ -1747,18 +1946,29 @@ static void zsm_flush_cache ( void )
 }
 
 
-static void zsm_init ( void(*p_rcinc)(SVal), void(*p_rcdec)(SVal) )
+static void zsm_init ( void )
 {
    tl_assert( sizeof(UWord) == sizeof(Addr) );
-
-   rcinc = p_rcinc;
-   rcdec = p_rcdec;
 
    tl_assert(map_shmem == NULL);
    map_shmem = VG_(newFM)( HG_(zalloc), "libhb.zsm_init.1 (map_shmem)",
                            HG_(free), 
                            NULL/*unboxed UWord cmp*/);
-   shmem__invalidate_scache();
+   /* Invalidate all cache entries. */
+   tl_assert(!is_valid_scache_tag(1));
+   for (UWord wix = 0; wix < N_WAY_NENT; wix++) {
+      cache_shmem.tags0[wix] = 1/*INVALID*/;
+   }
+
+   LineF_pool_allocator = VG_(newPA) (
+                             sizeof(LineF),
+                             /* Nr elements/pool to fill a core arena block
+                                taking some arena overhead into account. */
+                             (4 * 1024 * 1024 - 200)/sizeof(LineF),
+                             HG_(zalloc),
+                             "libhb.LineF_storage.pool",
+                             HG_(free)
+                          );
 
    /* a SecMap must contain an integral number of CacheLines */
    tl_assert(0 == (N_SECMAP_ARANGE % N_LINE_ARANGE));
@@ -1818,16 +2028,18 @@ static void scalarts_limitations_fail_NORETURN ( Bool due_to_nThrs )
 }
 
 
-/* The dead thread (ThrID, actually) table.  A thread may only be
+/* The dead thread (ThrID, actually) tables.  A thread may only be
    listed here if we have been notified thereof by libhb_async_exit.
    New entries are added at the end.  The order isn't important, but
-   the ThrID values must be unique.  This table lists the identity of
-   all threads that have ever died -- none are ever removed.  We keep
-   this table so as to be able to prune entries from VTSs.  We don't
-   actually need to keep the set of threads that have ever died --
+   the ThrID values must be unique.
+   verydead_thread_table_not_pruned lists the identity of the threads
+   that died since the previous round of pruning.
+   Once pruning is done, these ThrID are added in verydead_thread_table.
+   We don't actually need to keep the set of threads that have ever died --
    only the threads that have died since the previous round of
    pruning.  But it's useful for sanity check purposes to keep the
    entire set, so we do. */
+static XArray* /* of ThrID */ verydead_thread_table_not_pruned = NULL;
 static XArray* /* of ThrID */ verydead_thread_table = NULL;
 
 /* Arbitrary total ordering on ThrIDs. */
@@ -1839,16 +2051,40 @@ static Int cmp__ThrID ( const void* v1, const void* v2 ) {
    return 0;
 }
 
-static void verydead_thread_table_init ( void )
+static void verydead_thread_tables_init ( void )
 {
    tl_assert(!verydead_thread_table);
+   tl_assert(!verydead_thread_table_not_pruned);
    verydead_thread_table
      = VG_(newXA)( HG_(zalloc),
                    "libhb.verydead_thread_table_init.1",
                    HG_(free), sizeof(ThrID) );
    VG_(setCmpFnXA)(verydead_thread_table, cmp__ThrID);
+   verydead_thread_table_not_pruned
+     = VG_(newXA)( HG_(zalloc),
+                   "libhb.verydead_thread_table_init.2",
+                   HG_(free), sizeof(ThrID) );
+   VG_(setCmpFnXA)(verydead_thread_table_not_pruned, cmp__ThrID);
 }
 
+static void verydead_thread_table_sort_and_check (XArray* thrids)
+{
+   UWord i;
+
+   VG_(sortXA)( thrids );
+   /* Sanity check: check for unique .sts.thr values. */
+   UWord nBT = VG_(sizeXA)( thrids );
+   if (nBT > 0) {
+      ThrID thrid1, thrid2;
+      thrid2 = *(ThrID*)VG_(indexXA)( thrids, 0 );
+      for (i = 1; i < nBT; i++) {
+         thrid1 = thrid2;
+         thrid2 = *(ThrID*)VG_(indexXA)( thrids, i );
+         tl_assert(thrid1 < thrid2);
+      }
+   }
+   /* Ok, so the dead thread table thrids has unique and in-order keys. */
+}
 
 /* A VTS contains .ts, its vector clock, and also .id, a field to hold
    a backlink for the caller's convenience.  Since we have no idea
@@ -2383,13 +2619,13 @@ Word VTS__cmp_structural ( VTS* a, VTS* b )
 static void VTS__show ( const VTS* vts )
 {
    Word      i, n;
-   tl_assert(vts && vts->ts);
+   tl_assert(vts);
 
    VG_(printf)("[");
    n =  vts->usedTS;
    for (i = 0; i < n; i++) {
       const ScalarTS *st = &vts->ts[i];
-      VG_(printf)(i < n-1 ? "%u:%llu " : "%u:%llu", st->thrid, (ULong)st->tym);
+      VG_(printf)(i < n-1 ? "%d:%llu " : "%d:%llu", st->thrid, (ULong)st->tym);
    }
    VG_(printf)("]");
 }
@@ -2402,7 +2638,7 @@ ULong VTS__indexAt_SLOW ( VTS* vts, Thr* idx )
    UWord i, n;
    ThrID idx_thrid = Thr__to_ThrID(idx);
    stats__vts__indexat_slow++;
-   tl_assert(vts && vts->ts);
+   tl_assert(vts);
    n = vts->usedTS;
    for (i = 0; i < n; i++) {
       ScalarTS* st = &vts->ts[i];
@@ -2424,7 +2660,7 @@ static void VTS__declare_thread_very_dead ( Thr* thr )
 
    ThrID nyu;
    nyu = Thr__to_ThrID(thr);
-   VG_(addToXA)( verydead_thread_table, &nyu );
+   VG_(addToXA)( verydead_thread_table_not_pruned, &nyu );
 
    /* We can only get here if we're assured that we'll never again
       need to look at this thread's ::viR or ::viW.  Set them to
@@ -2515,19 +2751,23 @@ static void VtsID__invalidate_caches ( void ); /* fwds */
    If .vts == NULL, then this entry is not in use, so:
    - .rc == 0
    - this entry is on the freelist (unfortunately, does not imply
-     any constraints on value for .freelink)
+     any constraints on value for u.freelink)
    If .vts != NULL, then this entry is in use:
    - .vts is findable in vts_set
    - .vts->id == this entry number
    - no specific value for .rc (even 0 is OK)
-   - this entry is not on freelist, so .freelink == VtsID_INVALID
+   - this entry is not on freelist, so u.freelink == VtsID_INVALID
 */
 typedef
    struct {
       VTS*  vts;      /* vts, in vts_set */
       UWord rc;       /* reference count - enough for entire aspace */
-      VtsID freelink; /* chain for free entries, VtsID_INVALID at end */
-      VtsID remap;    /* used only during pruning */
+      union {
+         VtsID freelink; /* chain for free entries, VtsID_INVALID at end */
+         VtsID remap;    /* used only during pruning, for used entries */
+      } u; 
+      /* u.freelink only used when vts == NULL,
+         u.remap only used when vts != NULL, during pruning. */
    }
    VtsTE;
 
@@ -2557,8 +2797,8 @@ static void add_to_free_list ( VtsID ii )
    VtsTE* ie = VG_(indexXA)( vts_tab, ii );
    tl_assert(ie->vts == NULL);
    tl_assert(ie->rc == 0);
-   tl_assert(ie->freelink == VtsID_INVALID);
-   ie->freelink = vts_tab_freelist;
+   tl_assert(ie->u.freelink == VtsID_INVALID);
+   ie->u.freelink = vts_tab_freelist;
    vts_tab_freelist = ii;
 }
 
@@ -2574,7 +2814,7 @@ static VtsID get_from_free_list ( void )
    ie = VG_(indexXA)( vts_tab, ii );
    tl_assert(ie->vts == NULL);
    tl_assert(ie->rc == 0);
-   vts_tab_freelist = ie->freelink;
+   vts_tab_freelist = ie->u.freelink;
    return ii;
 }
 
@@ -2589,8 +2829,7 @@ static VtsID get_new_VtsID ( void )
       return ii;
    te.vts = NULL;
    te.rc = 0;
-   te.freelink = VtsID_INVALID;
-   te.remap    = VtsID_INVALID;
+   te.u.freelink = VtsID_INVALID;
    ii = (VtsID)VG_(addToXA)( vts_tab, &te );
    return ii;
 }
@@ -2643,7 +2882,7 @@ static VtsID vts_tab__find__or__clone_and_add ( VTS* cand )
       VtsTE* ie = VG_(indexXA)( vts_tab, ii );
       ie->vts = in_tab;
       ie->rc = 0;
-      ie->freelink = VtsID_INVALID;
+      ie->u.freelink = VtsID_INVALID;
       in_tab->id = ii;
       return ii;
    }
@@ -2691,7 +2930,7 @@ void remap_VtsID ( /*MOD*/XArray* /* of VtsTE */ old_tab,
    old_id = *ii;
    old_te = VG_(indexXA)( old_tab, old_id );
    old_te->rc--;
-   new_id = old_te->remap;
+   new_id = old_te->u.remap;
    new_te = VG_(indexXA)( new_tab, new_id );
    new_te->rc++;
    *ii = new_id;
@@ -2767,7 +3006,7 @@ static void vts_tab__do_GC ( Bool show_stats )
       VTS__delete(te->vts);
       te->vts = NULL;
       /* and finally put this entry on the free list */
-      tl_assert(te->freelink == VtsID_INVALID); /* can't already be on it */
+      tl_assert(te->u.freelink == VtsID_INVALID); /* can't already be on it */
       add_to_free_list( i );
       nFreed++;
    }
@@ -2775,7 +3014,7 @@ static void vts_tab__do_GC ( Bool show_stats )
    /* Now figure out when the next GC should be.  We'll allow the
       number of VTSs to double before GCing again.  Except of course
       that since we can't (or, at least, don't) shrink vts_tab, we
-      can't set the threshhold value smaller than it. */
+      can't set the threshold value smaller than it. */
    tl_assert(nFreed <= nTab);
    nLive = nTab - nFreed;
    tl_assert(nLive >= 0 && nLive <= nTab);
@@ -2788,12 +3027,13 @@ static void vts_tab__do_GC ( Bool show_stats )
       VG_(printf)("<<GC ends, next gc at %ld>>\n", vts_next_GC_at);
    }
 
+   stats__vts_tab_GC++;
    if (VG_(clo_stats)) {
-      static UInt ctr = 1;
       tl_assert(nTab > 0);
       VG_(message)(Vg_DebugMsg,
-                  "libhb: VTS GC: #%u  old size %lu  live %lu  (%2llu%%)\n",
-                  ctr++, nTab, nLive, (100ULL * (ULong)nLive) / (ULong)nTab);
+                   "libhb: VTS GC: #%lu  old size %lu  live %lu  (%2llu%%)\n",
+                   stats__vts_tab_GC, 
+                   nTab, nLive, (100ULL * (ULong)nLive) / (ULong)nTab);
    }
    /* ---------- END VTS GC ---------- */
 
@@ -2819,32 +3059,22 @@ static void vts_tab__do_GC ( Bool show_stats )
       quit at this point if it is not to be done. */
    if (!do_pruning)
       return;
+   /* No need to do pruning if no thread died since the last pruning as
+      no VtsTE can be pruned. */
+   if (VG_(sizeXA)( verydead_thread_table_not_pruned) == 0)
+      return;
 
    /* ---------- BEGIN VTS PRUNING ---------- */
-   /* We begin by sorting the backing table on its .thr values, so as
-      to (1) check they are unique [else something has gone wrong,
-      since it means we must have seen some Thr* exiting more than
-      once, which can't happen], and (2) so that we can quickly look
+   /* Sort and check the very dead threads that died since the last pruning.
+      Sorting is used for the check and so that we can quickly look
       up the dead-thread entries as we work through the VTSs. */
-   VG_(sortXA)( verydead_thread_table );
-   /* Sanity check: check for unique .sts.thr values. */
-   UWord nBT = VG_(sizeXA)( verydead_thread_table );
-   if (nBT > 0) {
-      ThrID thrid1, thrid2;
-      thrid2 = *(ThrID*)VG_(indexXA)( verydead_thread_table, 0 );
-      for (i = 1; i < nBT; i++) {
-         thrid1 = thrid2;
-         thrid2 = *(ThrID*)VG_(indexXA)( verydead_thread_table, i );
-         tl_assert(thrid1 < thrid2);
-      }
-   }
-   /* Ok, so the dead thread table has unique and in-order keys. */
+   verydead_thread_table_sort_and_check (verydead_thread_table_not_pruned);
 
    /* We will run through the old table, and create a new table and
-      set, at the same time setting the .remap entries in the old
+      set, at the same time setting the u.remap entries in the old
       table to point to the new entries.  Then, visit every VtsID in
       the system, and replace all of them with new ones, using the
-      .remap entries in the old table.  Finally, we can delete the old
+      u.remap entries in the old table.  Finally, we can delete the old
       table and set. */
 
    XArray* /* of VtsTE */ new_tab
@@ -2882,13 +3112,13 @@ static void vts_tab__do_GC ( Bool show_stats )
       /* For each old VTS .. */
       VtsTE* old_te  = VG_(indexXA)( vts_tab, i );
       VTS*   old_vts = old_te->vts;
-      tl_assert(old_te->remap == VtsID_INVALID);
 
       /* Skip it if not in use */
       if (old_te->rc == 0) {
          tl_assert(old_vts == NULL);
          continue;
       }
+      tl_assert(old_te->u.remap == VtsID_INVALID);
       tl_assert(old_vts != NULL);
       tl_assert(old_vts->id == i);
       tl_assert(old_vts->ts != NULL);
@@ -2897,7 +3127,7 @@ static void vts_tab__do_GC ( Bool show_stats )
       nBeforePruning++;
       nSTSsBefore += old_vts->usedTS;
       VTS* new_vts = VTS__subtract("libhb.vts_tab__do_GC.new_vts",
-                                   old_vts, verydead_thread_table);
+                                   old_vts, verydead_thread_table_not_pruned);
       tl_assert(new_vts->sizeTS == new_vts->usedTS);
       tl_assert(*(ULong*)(&new_vts->ts[new_vts->usedTS])
                 == 0x0ddC0ffeeBadF00dULL);
@@ -2944,8 +3174,7 @@ static void vts_tab__do_GC ( Bool show_stats )
          VtsTE new_te;
          new_te.vts      = new_vts;
          new_te.rc       = 0;
-         new_te.freelink = VtsID_INVALID;
-         new_te.remap    = VtsID_INVALID;
+         new_te.u.freelink = VtsID_INVALID;
          Word j = VG_(addToXA)( new_tab, &new_te );
          tl_assert(j <= i);
          tl_assert(j == new_VtsID_ctr - 1);
@@ -2953,17 +3182,32 @@ static void vts_tab__do_GC ( Bool show_stats )
          nAfterPruning++;
          nSTSsAfter += new_vts->usedTS;
       }
-      old_te->remap = new_vts->id;
+      old_te->u.remap = new_vts->id;
 
    } /* for (i = 0; i < nTab; i++) */
 
+   /* Move very dead thread from verydead_thread_table_not_pruned to
+      verydead_thread_table. Sort and check verydead_thread_table
+      to verify a thread was reported very dead only once. */
+   {
+      UWord nBT = VG_(sizeXA)( verydead_thread_table_not_pruned);
+
+      for (i = 0; i < nBT; i++) {
+         ThrID thrid = 
+            *(ThrID*)VG_(indexXA)( verydead_thread_table_not_pruned, i );
+         VG_(addToXA)( verydead_thread_table, &thrid );
+      }
+      verydead_thread_table_sort_and_check (verydead_thread_table);
+      VG_(dropHeadXA) (verydead_thread_table_not_pruned, nBT);
+   }
+
    /* At this point, we have:
-      * the old VTS table, with its .remap entries set,
+      * the old VTS table, with its u.remap entries set,
         and with all .vts == NULL.
       * the old VTS tree should be empty, since it and the old VTSs
         it contained have been incrementally deleted was we worked
         through the old table.
-      * the new VTS table, with all .rc == 0, all .freelink and .remap
+      * the new VTS table, with all .rc == 0, all u.freelink and u.remap
         == VtsID_INVALID. 
       * the new VTS tree.
    */
@@ -2978,7 +3222,7 @@ static void vts_tab__do_GC ( Bool show_stats )
       Nowhere else, AFAICS.  Not in the zsm cache, because that just
       got invalidated.
 
-      Using the .remap fields in vts_tab, map each old VtsID to a new
+      Using the u.remap fields in vts_tab, map each old VtsID to a new
       VtsID.  For each old VtsID, dec its rc; and for each new one,
       inc it.  This sets up the new refcounts, and it also gives a
       cheap sanity check of the old ones: all old refcounts should be
@@ -2996,18 +3240,14 @@ static void vts_tab__do_GC ( Bool show_stats )
       /* Deal with the LineZs */
       for (i = 0; i < N_SECMAP_ZLINES; i++) {
          LineZ* lineZ = &sm->linesZ[i];
-         if (lineZ->dict[0] == SVal_INVALID)
-            continue; /* not in use -- data is in F rep instead */
-         for (j = 0; j < 4; j++)
-            remap_VtsIDs_in_SVal(vts_tab, new_tab, &lineZ->dict[j]);
-      }
-      /* Deal with the LineFs */
-      for (i = 0; i < sm->linesF_size; i++) {
-         LineF* lineF = &sm->linesF[i];
-         if (!lineF->inUse)
-            continue;
-         for (j = 0; j < N_LINE_ARANGE; j++)
-            remap_VtsIDs_in_SVal(vts_tab, new_tab, &lineF->w64s[j]);
+         if (lineZ->dict[0] != SVal_INVALID) {
+            for (j = 0; j < 4; j++)
+               remap_VtsIDs_in_SVal(vts_tab, new_tab, &lineZ->dict[j]);
+         } else {
+            LineF* lineF = SVal2Ptr (lineZ->dict[1]);
+            for (j = 0; j < N_LINE_ARANGE; j++)
+               remap_VtsIDs_in_SVal(vts_tab, new_tab, &lineF->w64s[j]);
+         }
       }
    }
    VG_(doneIterFM)( map_shmem );
@@ -3049,8 +3289,7 @@ static void vts_tab__do_GC ( Bool show_stats )
       VtsTE* te = VG_(indexXA)( vts_tab, i );
       tl_assert(te->vts == NULL);
       /* This is the assert proper.  Note we're also asserting
-         zeroness for old entries which are unmapped (hence have
-         .remap == VtsID_INVALID).  That's OK. */
+         zeroness for old entries which are unmapped.  That's OK. */
       tl_assert(te->rc == 0);
    }
 
@@ -3092,28 +3331,23 @@ static void vts_tab__do_GC ( Bool show_stats )
       tl_assert(te->vts);
       tl_assert(te->vts->id == i);
       tl_assert(te->rc > 0); /* 'cos we just GC'd */
-      tl_assert(te->freelink == VtsID_INVALID); /* in use */
-      tl_assert(te->remap == VtsID_INVALID); /* not relevant */
+      tl_assert(te->u.freelink == VtsID_INVALID); /* in use */
+      /* value of te->u.remap  not relevant */
    }
 
    /* And we're done.  Bwahahaha. Ha. Ha. Ha. */
+   stats__vts_pruning++;
    if (VG_(clo_stats)) {
-      static UInt ctr = 1;
       tl_assert(nTab > 0);
       VG_(message)(
          Vg_DebugMsg,
-         "libhb: VTS PR: #%u  before %lu (avg sz %lu)  "
+         "libhb: VTS PR: #%lu  before %lu (avg sz %lu)  "
             "after %lu (avg sz %lu)\n",
-         ctr++,
+         stats__vts_pruning,
          nBeforePruning, nSTSsBefore / (nBeforePruning ? nBeforePruning : 1),
          nAfterPruning, nSTSsAfter / (nAfterPruning ? nAfterPruning : 1)
       );
    }
-   if (0)
-   VG_(printf)("VTQ: before pruning %lu (avg sz %lu), "
-               "after pruning %lu (avg sz %lu)\n",
-               nBeforePruning, nSTSsBefore / nBeforePruning,
-               nAfterPruning, nSTSsAfter / nAfterPruning);
    /* ---------- END VTS PRUNING ---------- */
 }
 
@@ -3358,9 +3592,12 @@ static void Filter__clear_8bytes_aligned ( Filter* fi, Addr a )
    }
 }
 
-static void Filter__clear_range ( Filter* fi, Addr a, UWord len )
+/* Only used to verify the fast Filter__clear_range */
+__attribute__((unused))
+static void Filter__clear_range_SLOW ( Filter* fi, Addr a, UWord len )
 {
-  //VG_(printf)("%lu ", len);
+   tl_assert (CHECK_ZSM);
+
    /* slowly do part preceding 8-alignment */
    while (UNLIKELY(!VG_IS_8_ALIGNED(a)) && LIKELY(len > 0)) {
       Filter__clear_1byte( fi, a );
@@ -3381,6 +3618,151 @@ static void Filter__clear_range ( Filter* fi, Addr a, UWord len )
    }
 }
 
+static void Filter__clear_range ( Filter* fi, Addr a, UWord len )
+{
+#  if CHECK_ZSM > 0
+   /* We check the below more complex algorithm with the simple one.
+      This check is very expensive : we do first the slow way on a
+      copy of the data, then do it the fast way. On RETURN, we check
+      the two values are equal. */
+   Filter fi_check = *fi;
+   Filter__clear_range_SLOW(&fi_check, a, len);
+#  define RETURN goto check_and_return
+#  else
+#  define RETURN return
+#  endif
+
+   Addr    begtag = FI_GET_TAG(a);       /* tag of range begin */
+
+   Addr    end = a + len - 1;
+   Addr    endtag = FI_GET_TAG(end); /* tag of range end. */
+
+   UWord rlen = len; /* remaining length to clear */
+
+   Addr    c = a; /* Current position we are clearing. */
+   UWord   clineno = FI_GET_LINENO(c); /* Current lineno we are clearing */
+   FiLine* cline; /* Current line we are clearing */
+   UWord   cloff; /* Current offset in line we are clearing, when clearing
+                     partial lines. */
+
+   UShort u16;
+
+   STATIC_ASSERT (FI_LINE_SZB == 32);
+   // Below assumes filter lines are 32 bytes
+
+   if (LIKELY(fi->tags[clineno] == begtag)) {
+      /* LIKELY for the heavy caller VG_(unknown_SP_update). */
+      /* First filter line matches begtag.
+         If c is not at the filter line begin, the below will clear
+         the filter line bytes starting from c. */
+      cline = &fi->lines[clineno];
+      cloff = (c - begtag) / 8;
+
+      /* First the byte(s) needed to reach 8-alignment */
+      if (UNLIKELY(!VG_IS_8_ALIGNED(c))) {
+         /* hiB is the nr of bytes (higher addresses) from c to reach
+            8-aligment. */
+         UWord hiB = 8 - (c & 7);
+         /* Compute 2-bit/byte mask representing hiB bytes [c..c+hiB[
+            mask is  C000 , F000, FC00, FF00, FFC0, FFF0 or FFFC for the byte
+            range    7..7   6..7  5..7  4..7  3..7  2..7    1..7 */
+         UShort mask = 0xFFFF << (16 - 2*hiB);
+
+         u16  = cline->u16s[cloff];
+         if (LIKELY(rlen >= hiB)) {
+            cline->u16s[cloff] = u16 & ~mask; /* clear all hiB from c */
+            rlen -= hiB;
+            c += hiB;
+            cloff += 1;
+         } else {
+            /* Only have the bits for rlen bytes bytes. */
+            mask = mask & ~(0xFFFF << (16 - 2*(hiB-rlen)));
+            cline->u16s[cloff] = u16 & ~mask; /* clear rlen bytes from c. */
+            RETURN;  // We have cleared all what we can.
+         }
+      }
+      /* c is now 8 aligned. Clear by 8 aligned bytes, 
+         till c is filter-line aligned */
+      while (!VG_IS_32_ALIGNED(c) && rlen >= 8) {
+         cline->u16s[cloff] = 0;
+         c += 8;
+         rlen -= 8;
+         cloff += 1;
+      }
+   } else {
+      c = begtag + FI_LINE_SZB;
+      if (c > end)
+         RETURN;   // We have cleared all what we can.
+      rlen -= c - a;
+   }
+   // We have changed c, so re-establish clineno.
+   clineno = FI_GET_LINENO(c);
+
+   if (rlen >= FI_LINE_SZB) {
+      /* Here, c is filter line-aligned. Clear all full lines that
+         overlap with the range starting at c, made of a full lines */
+      UWord nfull = rlen / FI_LINE_SZB;
+      UWord full_len = nfull * FI_LINE_SZB;
+      rlen -= full_len;
+      if (nfull > FI_NUM_LINES)
+         nfull = FI_NUM_LINES; // no need to check several times the same entry.
+
+      for (UWord n = 0; n < nfull; n++) {
+         if (UNLIKELY(address_in_range(fi->tags[clineno], c, full_len))) {
+            cline = &fi->lines[clineno];
+            cline->u16s[0] = 0;
+            cline->u16s[1] = 0;
+            cline->u16s[2] = 0;
+            cline->u16s[3] = 0;
+            STATIC_ASSERT (4 == sizeof(cline->u16s)/sizeof(cline->u16s[0]));
+         }
+         clineno++;
+         if (UNLIKELY(clineno == FI_NUM_LINES))
+            clineno = 0;
+      }
+
+      c += full_len;
+      clineno = FI_GET_LINENO(c);
+   }
+
+   if (CHECK_ZSM) {
+      tl_assert(VG_IS_8_ALIGNED(c));
+      tl_assert(clineno == FI_GET_LINENO(c));
+   }
+
+   /* Do the last filter line, if it was not cleared as a full filter line */
+   if (UNLIKELY(rlen > 0) && fi->tags[clineno] == endtag) {
+      cline = &fi->lines[clineno];
+      cloff = (c - endtag) / 8;
+      if (CHECK_ZSM) tl_assert(FI_GET_TAG(c) == endtag);
+
+      /* c is 8 aligned. Clear by 8 aligned bytes, till we have less than
+         8 bytes. */
+      while (rlen >= 8) {
+         cline->u16s[cloff] = 0;
+         c += 8;
+         rlen -= 8;
+         cloff += 1;
+      }
+      /* Then the remaining byte(s) */
+      if (rlen > 0) {
+         /* nr of bytes from c to reach end. */
+         UWord loB = rlen;
+         /* Compute mask representing loB bytes [c..c+loB[ :
+            mask is 0003, 000F, 003F, 00FF, 03FF, 0FFF or 3FFF */
+         UShort mask = 0xFFFF >> (16 - 2*loB);
+
+         u16  = cline->u16s[cloff];
+         cline->u16s[cloff] = u16 & ~mask; /* clear all loB from c */
+      }
+   }
+
+#  if CHECK_ZSM > 0
+   check_and_return:
+   tl_assert (VG_(memcmp)(&fi_check, fi, sizeof(fi_check)) == 0);
+#  endif
+#  undef RETURN
+}
 
 /* ------ Read handlers for the filter. ------ */
 
@@ -3770,7 +4152,7 @@ static inline SVal SVal__mkA ( void ) {
 }
 
 /* Direct callback from lib_zsm. */
-static void SVal__rcinc ( SVal s ) {
+static inline void SVal__rcinc ( SVal s ) {
    if (SVal__isC(s)) {
       VtsID__rcinc( SVal__unC_Rmin(s) );
       VtsID__rcinc( SVal__unC_Wmin(s) );
@@ -3778,12 +4160,23 @@ static void SVal__rcinc ( SVal s ) {
 }
 
 /* Direct callback from lib_zsm. */
-static void SVal__rcdec ( SVal s ) {
+static inline void SVal__rcdec ( SVal s ) {
    if (SVal__isC(s)) {
       VtsID__rcdec( SVal__unC_Rmin(s) );
       VtsID__rcdec( SVal__unC_Wmin(s) );
    }
 }
+
+static inline void *SVal2Ptr (SVal s)
+{
+   return (void*)(UWord)s;
+}
+
+static inline SVal Ptr2SVal (void* ptr)
+{
+   return (SVal)(UWord)ptr;
+}
+
 
 
 /////////////////////////////////////////////////////////
@@ -3791,8 +4184,6 @@ static void SVal__rcdec ( SVal s ) {
 // Change-event map2                                   //
 //                                                     //
 /////////////////////////////////////////////////////////
-
-#define EVENT_MAP_GC_DISCARD_FRACTION  0.5
 
 /* This is in two parts:
 
@@ -3803,49 +4194,34 @@ static void SVal__rcdec ( SVal s ) {
       only represent each one once.  The set is indexed/searched by
       ordering on the stack trace vectors.
 
-   2. A SparseWA of OldRefs.  These store information about each old
-      ref that we need to record.  It is indexed by address of the
+   2. A Hash table of OldRefs.  These store information about each old
+      ref that we need to record.  Hash table key is the address of the
       location for which the information is recorded.  For LRU
-      purposes, each OldRef also contains a generation number,
-      indicating when it was most recently accessed.
+      purposes, each OldRef in the hash table is also on a doubly
+      linked list maintaining the order in which the OldRef were most
+      recently accessed.
+      Each OldRef also maintains the stamp at which it was last accessed.
+      With these stamps, we can quickly check which of 2 OldRef is the
+      'newest', without having to scan the full list of LRU OldRef.
 
-      The important part of an OldRef is, however, its accs[] array.
-      This is an array of N_OLDREF_ACCS which binds (thread, R/W,
-      size) triples to RCECs.  This allows us to collect the last
-      access-traceback by up to N_OLDREF_ACCS different triples for
-      this location.  The accs[] array is a MTF-array.  If a binding
-      falls off the end, that's too bad -- we will lose info about
-      that triple's access to this location.
+      The important part of an OldRef is, however, its acc component.
+      This binds a TSW triple (thread, size, R/W) to an RCEC.
 
-      When the SparseWA becomes too big, we can throw away the OldRefs
-      whose generation numbers are below some threshold; hence doing
-      approximate LRU discarding.  For each discarded OldRef we must
-      of course decrement the reference count on the all RCECs it
+      We allocate a maximum of VG_(clo_conflict_cache_size) OldRef.
+      Then we do exact LRU discarding.  For each discarded OldRef we must
+      of course decrement the reference count on the RCEC it
       refers to, in order that entries from (1) eventually get
       discarded too.
-
-   A major improvement in reliability of this mechanism would be to
-   have a dynamically sized OldRef.accs[] array, so no entries ever
-   fall off the end.  In investigations (Dec 08) it appears that a
-   major cause for the non-availability of conflicting-access traces
-   in race reports is caused by the fixed size of this array.  I
-   suspect for most OldRefs, only a few entries are used, but for a
-   minority of cases there is an overflow, leading to info lossage.
-   Investigations also suggest this is very workload and scheduling
-   sensitive.  Therefore a dynamic sizing would be better.
-
-   However, dynamic sizing would defeat the use of a PoolAllocator
-   for OldRef structures.  And that's important for performance.  So
-   it's not straightforward to do.
 */
 
+static UWord stats__evm__lookup_found = 0;
+static UWord stats__evm__lookup_notfound = 0;
 
-static UWord stats__ctxt_rcdec1 = 0;
-static UWord stats__ctxt_rcdec2 = 0;
-static UWord stats__ctxt_rcdec3 = 0;
+static UWord stats__ctxt_eq_tsw_eq_rcec = 0;
+static UWord stats__ctxt_eq_tsw_neq_rcec = 0;
+static UWord stats__ctxt_neq_tsw_neq_rcec = 0;
 static UWord stats__ctxt_rcdec_calls = 0;
-static UWord stats__ctxt_rcdec_discards = 0;
-static UWord stats__ctxt_rcdec1_eq = 0;
+static UWord stats__ctxt_rcec_gc_discards = 0;
 
 static UWord stats__ctxt_tab_curr = 0;
 static UWord stats__ctxt_tab_max  = 0;
@@ -3877,8 +4253,22 @@ typedef
    }
    RCEC;
 
+//////////// BEGIN RCEC pool allocator
+static PoolAlloc* rcec_pool_allocator;
+static RCEC* alloc_RCEC ( void ) {
+   return VG_(allocEltPA) ( rcec_pool_allocator );
+}
+
+static void free_RCEC ( RCEC* rcec ) {
+   tl_assert(rcec->magic == RCEC_MAGIC);
+   VG_(freeEltPA)( rcec_pool_allocator, rcec );
+}
+//////////// END RCEC pool allocator
+
 static RCEC** contextTab = NULL; /* hash table of RCEC*s */
 
+/* Count of allocated RCEC having ref count > 0 */
+static UWord RCEC_referenced = 0;
 
 /* Gives an arbitrary total order on RCEC .frames fields */
 static Word RCEC__cmp_by_frames ( RCEC* ec1, RCEC* ec2 ) {
@@ -3902,31 +4292,21 @@ static void ctxt__rcdec ( RCEC* ec )
    tl_assert(ec && ec->magic == RCEC_MAGIC);
    tl_assert(ec->rc > 0);
    ec->rc--;
+   if (ec->rc == 0) 
+      RCEC_referenced--;
 }
 
 static void ctxt__rcinc ( RCEC* ec )
 {
    tl_assert(ec && ec->magic == RCEC_MAGIC);
+   if (ec->rc == 0) 
+      RCEC_referenced++;
    ec->rc++;
 }
 
 
-//////////// BEGIN RCEC pool allocator
-static PoolAlloc* rcec_pool_allocator;
-
-static RCEC* alloc_RCEC ( void ) {
-   return VG_(allocEltPA) ( rcec_pool_allocator );
-}
-
-static void free_RCEC ( RCEC* rcec ) {
-   tl_assert(rcec->magic == RCEC_MAGIC);
-   VG_(freeEltPA)( rcec_pool_allocator, rcec );
-}
-//////////// END RCEC pool allocator
-
-
 /* Find 'ec' in the RCEC list whose head pointer lives at 'headp' and
-   move it one step closer the the front of the list, so as to make
+   move it one step closer to the front of the list, so as to make
    subsequent searches for it cheaper. */
 static void move_RCEC_one_step_forward ( RCEC** headp, RCEC* ec )
 {
@@ -3974,7 +4354,7 @@ static void move_RCEC_one_step_forward ( RCEC** headp, RCEC* ec )
    return a pointer to the copy.  The caller can safely have 'example'
    on its stack, since we will always return a pointer to a copy of
    it, not to the original.  Note that the inserted node will have .rc
-   of zero and so the caller must immediatly increment it. */
+   of zero and so the caller must immediately increment it. */
 __attribute__((noinline))
 static RCEC* ctxt__find_or_add ( RCEC* example )
 {
@@ -4043,57 +4423,136 @@ static RCEC* get_RCEC ( Thr* thr )
 
 ///////////////////////////////////////////////////////
 //// Part (2):
-///  A SparseWA guest-addr -> OldRef, that refers to (1)
-///
-
-// (UInt) `echo "Old Reference Information" | md5sum`
-#define OldRef_MAGIC 0x30b1f075UL
+///  A hashtable guest-addr -> OldRef, that refers to (1)
+///  Note: we use the guest address as key. This means that the entries
+///  for multiple threads accessing the same address will land in the same
+///  bucket. It might be nice to have a better distribution of the
+///  OldRef in the hashtable by using ask key the guestaddress ^ tsw.
+///  The problem is that when a race is reported on a ga, we need to retrieve
+///  efficiently the accesses to ga by other threads, only using the ga.
+///  Measurements on firefox have shown that the chain length is reasonable.
 
 /* Records an access: a thread, a context (size & writeness) and the
-   number of held locks. The size (1,2,4,8) is encoded as 00 = 1, 01 =
-   2, 10 = 4, 11 = 8. 
-*/
-typedef
-   struct { 
-      RCEC*     rcec;
-      WordSetID locksHeldW;
+   number of held locks. The size (1,2,4,8) is stored as is in szB.
+   Note that szB uses more bits than needed to store a size up to 8.
+   This allows to use a TSW as a fully initialised UInt e.g. in
+   cmp_oldref_tsw. If needed, a more compact representation of szB
+   can be done (e.g. use only 4 bits, or use only 2 bits and encode the
+   size (1,2,4,8) as 00 = 1, 01 = 2, 10 = 4, 11 = 8. */
+typedef 
+   struct {
       UInt      thrid  : SCALARTS_N_THRBITS;
-      UInt      szLg2B : 2;
+      UInt      szB    : 32 - SCALARTS_N_THRBITS - 1;
       UInt      isW    : 1;
+   } TSW; // Thread+Size+Writeness
+typedef
+   struct {
+      TSW       tsw;
+      WordSetID locksHeldW;
+      RCEC*     rcec;
    }
    Thr_n_RCEC;
 
-#define N_OLDREF_ACCS 5
-
 typedef
-   struct {
-      UWord magic;  /* sanity check only */
-      UWord gen;    /* when most recently accessed */
-                    /* or free list when not in use */
-      /* unused slots in this array have .thrid == 0, which is invalid */
-      Thr_n_RCEC accs[N_OLDREF_ACCS];
+   struct OldRef {
+      struct OldRef *ht_next; // to link hash table nodes together.
+      UWord  ga; // hash_table key, == address for which we record an access.
+      struct OldRef *prev; // to refs older than this one
+      struct OldRef *next; // to refs newer that this one
+      UWord stamp; // allows to order (by time of access) 2 OldRef
+      Thr_n_RCEC acc;
    }
    OldRef;
+
+/* Returns the or->tsw as an UInt */
+static inline UInt oldref_tsw (const OldRef* or)
+{
+   return *(const UInt*)(&or->acc.tsw);
+}
+
+/* Compare the tsw component for 2 OldRef.
+   Used for OldRef hashtable (which already verifies equality of the
+   'key' part. */
+static Word cmp_oldref_tsw (const void* node1, const void* node2 )
+{
+   const UInt tsw1 = oldref_tsw(node1);
+   const UInt tsw2 = oldref_tsw(node2);
+
+   if (tsw1 < tsw2) return -1;
+   if (tsw1 > tsw2) return  1;
+   return 0;
+}
 
 
 //////////// BEGIN OldRef pool allocator
 static PoolAlloc* oldref_pool_allocator;
-
-static OldRef* alloc_OldRef ( void ) {
-   return VG_(allocEltPA) ( oldref_pool_allocator );
-}
-
-static void free_OldRef ( OldRef* r ) {
-   tl_assert(r->magic == OldRef_MAGIC);
-   VG_(freeEltPA)( oldref_pool_allocator, r );
-}
+// Note: We only allocate elements in this pool allocator, we never free them.
+// We stop allocating elements at VG_(clo_conflict_cache_size).
 //////////// END OldRef pool allocator
 
+static OldRef mru; 
+static OldRef lru; 
+// A double linked list, chaining all OldREf in a mru/lru order.
+// mru/lru are sentinel nodes.
+// Whenever an oldref is re-used, its position is changed as the most recently
+// used (i.e. pointed to by mru.prev).
+// When a new oldref is needed, it is allocated from the pool
+//  if we have not yet reached --conflict-cache-size.
+// Otherwise, if all oldref have already been allocated,
+// the least recently used (i.e. pointed to by lru.next) is re-used.
+// When an OldRef is used, it is moved as the most recently used entry
+// (i.e. pointed to by mru.prev).
 
-static SparseWA* oldrefTree     = NULL; /* SparseWA* OldRef* */
-static UWord     oldrefGen      = 0;    /* current LRU generation # */
-static UWord     oldrefTreeN    = 0;    /* # elems in oldrefTree */
-static UWord     oldrefGenIncAt = 0;    /* inc gen # when size hits this */
+// Removes r from the double linked list
+// Note: we do not need to test for special cases such as
+// NULL next or prev pointers, because we have sentinel nodes
+// at both sides of the list. So, a node is always forward and
+// backward linked.
+static inline void OldRef_unchain(OldRef *r)
+{
+   r->next->prev = r->prev;
+   r->prev->next = r->next;
+}
+
+// Insert new as the newest OldRef
+// Similarly to OldRef_unchain, no need to test for NULL
+// pointers, as e.g. mru.prev is always guaranteed to point
+// to a non NULL node (lru when the list is empty).
+static inline void OldRef_newest(OldRef *new)
+{
+   new->next = &mru;
+   new->prev = mru.prev;
+   mru.prev = new;
+   new->prev->next = new;
+}
+
+
+static VgHashTable* oldrefHT    = NULL; /* Hash table* OldRef* */
+static UWord     oldrefHTN    = 0;    /* # elems in oldrefHT */
+/* Note: the nr of ref in the oldrefHT will always be equal to
+   the nr of elements that were allocated from the OldRef pool allocator
+   as we never free an OldRef : we just re-use them. */
+
+
+/* allocates a new OldRef or re-use the lru one if all allowed OldRef
+   have already been allocated. */
+static OldRef* alloc_or_reuse_OldRef ( void )
+{
+   if (oldrefHTN < HG_(clo_conflict_cache_size)) {
+      oldrefHTN++;
+      return VG_(allocEltPA) ( oldref_pool_allocator );
+   } else {
+      OldRef *oldref_ht;
+      OldRef *oldref = lru.next;
+
+      OldRef_unchain(oldref);
+      oldref_ht = VG_(HT_gen_remove) (oldrefHT, oldref, cmp_oldref_tsw);
+      tl_assert (oldref == oldref_ht);
+      ctxt__rcdec( oldref->acc.rcec );
+      return oldref;
+   }
+}
+
 
 inline static UInt min_UInt ( UInt a, UInt b ) {
    return a < b ? a : b;
@@ -4106,8 +4565,8 @@ inline static UInt min_UInt ( UInt a, UInt b ) {
    some of the comparisons were done signedly instead of
    unsignedly. */
 /* Copied from exp-ptrcheck/sg_main.c */
-static Word cmp_nonempty_intervals ( Addr a1, SizeT n1,
-                                     Addr a2, SizeT n2 ) {
+static inline Word cmp_nonempty_intervals ( Addr a1, SizeT n1,
+                                            Addr a2, SizeT n2 ) {
    UWord a1w = (UWord)a1;
    UWord n1w = (UWord)n1;
    UWord a2w = (UWord)a2;
@@ -4118,13 +4577,13 @@ static Word cmp_nonempty_intervals ( Addr a1, SizeT n1,
    return 0;
 }
 
+static UWord event_map_stamp = 0; // Used to stamp each OldRef when touched.
+
 static void event_map_bind ( Addr a, SizeT szB, Bool isW, Thr* thr )
 {
+   OldRef  example;
    OldRef* ref;
    RCEC*   rcec;
-   Word    i, j;
-   UWord   keyW, valW;
-   Bool    b;
 
    tl_assert(thr);
    ThrID thrid = thr->thrid;
@@ -4133,125 +4592,63 @@ static void event_map_bind ( Addr a, SizeT szB, Bool isW, Thr* thr )
    WordSetID locksHeldW = thr->hgthread->locksetW;
 
    rcec = get_RCEC( thr );
-   ctxt__rcinc(rcec);
 
-   UInt szLg2B = 0;
-   switch (szB) {
-      /* This doesn't look particularly branch-predictor friendly. */
-      case 1:  szLg2B = 0; break;
-      case 2:  szLg2B = 1; break;
-      case 4:  szLg2B = 2; break;
-      case 8:  szLg2B = 3; break;
-      default: tl_assert(0);
-   }
+   tl_assert (szB == 4 || szB == 8 ||szB == 1 || szB == 2);
+   // Check for most frequent cases first
+   // Note: we could support a szB up to 1 << (32 - SCALARTS_N_THRBITS - 1)
 
-   /* Look in the map to see if we already have a record for this
-      address. */
-   b = VG_(lookupSWA)( oldrefTree, &keyW, &valW, a );
+   /* Look in the oldrefHT to see if we already have a record for this
+      address/thr/sz/isW. */
+   example.ga = a;
+   example.acc.tsw = (TSW) {.thrid = thrid,
+                            .szB = szB,
+                            .isW = (UInt)(isW & 1)};
+   ref = VG_(HT_gen_lookup) (oldrefHT, &example, cmp_oldref_tsw);
 
-   if (b) {
-
-      /* We already have a record for this address.  We now need to
-         see if we have a stack trace pertaining to this (thrid, R/W,
+   if (ref) {
+      /* We already have a record for this address and this (thrid, R/W,
          size) triple. */
-      tl_assert(keyW == a);
-      ref = (OldRef*)valW;
-      tl_assert(ref->magic == OldRef_MAGIC);
+      tl_assert (ref->ga == a);
 
-      for (i = 0; i < N_OLDREF_ACCS; i++) {
-         if (ref->accs[i].thrid != thrid)
-            continue;
-         if (ref->accs[i].szLg2B != szLg2B)
-            continue;
-         if (ref->accs[i].isW != (UInt)(isW & 1))
-            continue;
-         /* else we have a match, so stop looking. */
-         break;
+      /* thread 'thr' has an entry.  Update its RCEC, if it differs. */
+      if (rcec == ref->acc.rcec)
+         stats__ctxt_eq_tsw_eq_rcec++;
+      else {
+         stats__ctxt_eq_tsw_neq_rcec++;
+         ctxt__rcdec( ref->acc.rcec );
+         ctxt__rcinc(rcec);
+         ref->acc.rcec       = rcec;
       }
+      tl_assert(ref->acc.tsw.thrid == thrid);
+      /* Update the stamp, RCEC and the W-held lockset. */
+      ref->stamp = event_map_stamp;
+      ref->acc.locksHeldW = locksHeldW;
 
-      if (i < N_OLDREF_ACCS) {
-         /* thread 'thr' has an entry at index 'i'.  Update its RCEC. */
-         if (i > 0) {
-            Thr_n_RCEC tmp = ref->accs[i-1];
-            ref->accs[i-1] = ref->accs[i];
-            ref->accs[i] = tmp;
-            i--;
-         }
-         if (rcec == ref->accs[i].rcec) stats__ctxt_rcdec1_eq++;
-         stats__ctxt_rcdec1++;
-         ctxt__rcdec( ref->accs[i].rcec );
-         tl_assert(ref->accs[i].thrid == thrid);
-         /* Update the RCEC and the W-held lockset. */
-         ref->accs[i].rcec       = rcec;
-         ref->accs[i].locksHeldW = locksHeldW;
-      } else {
-         /* No entry for this (thread, R/W, size, nWHeld) quad.
-            Shuffle all of them down one slot, and put the new entry
-            at the start of the array. */
-         if (ref->accs[N_OLDREF_ACCS-1].thrid != 0) {
-            /* the last slot is in use.  We must dec the rc on the
-               associated rcec. */
-            tl_assert(ref->accs[N_OLDREF_ACCS-1].rcec);
-            stats__ctxt_rcdec2++;
-            if (0 && 0 == (stats__ctxt_rcdec2 & 0xFFF))
-               VG_(printf)("QQQQ %lu overflows\n",stats__ctxt_rcdec2);
-            ctxt__rcdec( ref->accs[N_OLDREF_ACCS-1].rcec );
-         } else {
-            tl_assert(!ref->accs[N_OLDREF_ACCS-1].rcec);
-         }
-         for (j = N_OLDREF_ACCS-1; j >= 1; j--)
-            ref->accs[j] = ref->accs[j-1];
-         ref->accs[0].thrid      = thrid;
-         ref->accs[0].szLg2B     = szLg2B;
-         ref->accs[0].isW        = (UInt)(isW & 1);
-         ref->accs[0].locksHeldW = locksHeldW;
-         ref->accs[0].rcec       = rcec;
-         /* thrid==0 is used to signify an empty slot, so we can't
-            add zero thrid (such a ThrID is invalid anyway). */
-         /* tl_assert(thrid != 0); */ /* There's a dominating assert above. */
-      }
-
-      ref->gen = oldrefGen;
+      OldRef_unchain(ref);
+      OldRef_newest(ref);
 
    } else {
+      /* We don't have a record for this address+triple.  Create a new one. */
+      stats__ctxt_neq_tsw_neq_rcec++;
+      ref = alloc_or_reuse_OldRef();
+      ref->ga = a;
+      ref->acc.tsw = (TSW) {.thrid  = thrid,
+                            .szB    = szB,
+                            .isW    = (UInt)(isW & 1)};
+      ref->stamp = event_map_stamp;
+      ref->acc.locksHeldW = locksHeldW;
+      ref->acc.rcec       = rcec;
+      ctxt__rcinc(rcec);
 
-      /* We don't have a record for this address.  Create a new one. */
-      if (oldrefTreeN >= oldrefGenIncAt) {
-         oldrefGen++;
-         oldrefGenIncAt = oldrefTreeN + 50000;
-         if (0) VG_(printf)("oldrefTree: new gen %lu at size %lu\n",
-                            oldrefGen, oldrefTreeN );
-      }
-
-      ref = alloc_OldRef();
-      ref->magic = OldRef_MAGIC;
-      ref->gen   = oldrefGen;
-      ref->accs[0].thrid      = thrid;
-      ref->accs[0].szLg2B     = szLg2B;
-      ref->accs[0].isW        = (UInt)(isW & 1);
-      ref->accs[0].locksHeldW = locksHeldW;
-      ref->accs[0].rcec       = rcec;
-
-      /* thrid==0 is used to signify an empty slot, so we can't
-         add zero thrid (such a ThrID is invalid anyway). */
-      /* tl_assert(thrid != 0); */ /* There's a dominating assert above. */
-
-      /* Clear out the rest of the entries */
-      for (j = 1; j < N_OLDREF_ACCS; j++) {
-         ref->accs[j].rcec       = NULL;
-         ref->accs[j].thrid      = 0;
-         ref->accs[j].szLg2B     = 0;
-         ref->accs[j].isW        = 0;
-         ref->accs[j].locksHeldW = 0;
-      }
-      VG_(addToSWA)( oldrefTree, a, (UWord)ref );
-      oldrefTreeN++;
-
+      VG_(HT_add_node) ( oldrefHT, ref );
+      OldRef_newest (ref);
    }
+   event_map_stamp++;
 }
 
 
-/* Extract info from the conflicting-access machinery. */
+/* Extract info from the conflicting-access machinery.
+   Returns the most recent conflicting access with thr/[a, a+szB[/isW. */
 Bool libhb_event_map_lookup ( /*OUT*/ExeContext** resEC,
                               /*OUT*/Thr**        resThr,
                               /*OUT*/SizeT*       resSzB,
@@ -4260,16 +4657,12 @@ Bool libhb_event_map_lookup ( /*OUT*/ExeContext** resEC,
                               Thr* thr, Addr a, SizeT szB, Bool isW )
 {
    Word    i, j;
-   OldRef* ref;
-   UWord   keyW, valW;
-   Bool    b;
+   OldRef *ref = NULL;
+   SizeT  ref_szB = 0;
 
-   ThrID     cand_thrid;
-   RCEC*     cand_rcec;
-   Bool      cand_isW;
-   SizeT     cand_szB;
-   WordSetID cand_locksHeldW;
-   Addr      cand_a;
+   OldRef *cand_ref;
+   SizeT  cand_ref_szB;
+   Addr   cand_a;
 
    Addr toCheck[15];
    Int  nToCheck = 0;
@@ -4293,71 +4686,64 @@ Bool libhb_event_map_lookup ( /*OUT*/ExeContext** resEC,
       cand_a = toCheck[j];
       //      VG_(printf)("test %ld %p\n", j, cand_a);
 
-      b = VG_(lookupSWA)( oldrefTree, &keyW, &valW, cand_a );
-      if (!b)
-         continue;
-
-      ref = (OldRef*)valW;
-      tl_assert(keyW == cand_a);
-      tl_assert(ref->magic == OldRef_MAGIC);
-      tl_assert(ref->accs[0].thrid != 0); /* first slot must always be used */
-
-      cand_thrid      = 0; /* invalid; see comments in event_map_bind */
-      cand_rcec       = NULL;
-      cand_isW        = False;
-      cand_szB        = 0;
-      cand_locksHeldW = 0; /* always valid; see initialise_data_structures() */
-
-      for (i = 0; i < N_OLDREF_ACCS; i++) {
-         Thr_n_RCEC* cand = &ref->accs[i];
-         cand_rcec       = cand->rcec;
-         cand_thrid      = cand->thrid;
-         cand_isW        = (Bool)cand->isW;
-         cand_szB        = 1 << cand->szLg2B;
-         cand_locksHeldW = cand->locksHeldW;
-
-         if (cand_thrid == 0) 
-            /* This slot isn't in use.  Ignore it. */
+      /* Find the first HT element for this address.
+         We might have several of these. They will be linked via ht_next.
+         We however need to check various elements as the list contains
+         all elements that map to the same bucket. */
+      for (cand_ref = VG_(HT_lookup)( oldrefHT, cand_a ); 
+           cand_ref; cand_ref = cand_ref->ht_next) {
+         if (cand_ref->ga != cand_a)
+            /* OldRef for another address in this HT bucket. Ignore. */
             continue;
 
-         if (cand_thrid == thrid)
+         if (cand_ref->acc.tsw.thrid == thrid)
             /* This is an access by the same thread, but we're only
                interested in accesses from other threads.  Ignore. */
             continue;
 
-         if ((!cand_isW) && (!isW))
+         if ((!cand_ref->acc.tsw.isW) && (!isW))
             /* We don't want to report a read racing against another
                read; that's stupid.  So in this case move on. */
             continue;
 
-         if (cmp_nonempty_intervals(a, szB, cand_a, cand_szB) != 0)
+         cand_ref_szB        = cand_ref->acc.tsw.szB;
+         if (cmp_nonempty_intervals(a, szB, cand_a, cand_ref_szB) != 0)
             /* No overlap with the access we're asking about.  Ignore. */
             continue;
 
-         /* We have a match.  Stop searching. */
-         break;
+         /* We have a match. Keep this match if it is newer than
+            the previous match. Note that stamp are Unsigned Words, and
+            for long running applications, event_map_stamp might have cycled.
+            So, 'roll' each stamp using event_map_stamp to have the
+            stamps in the good order, in case event_map_stamp recycled. */
+         if (!ref 
+             || (ref->stamp - event_map_stamp) 
+                   < (cand_ref->stamp - event_map_stamp)) {
+            ref = cand_ref;
+            ref_szB = cand_ref_szB;
+         }
       }
 
-      tl_assert(i >= 0 && i <= N_OLDREF_ACCS);
-
-      if (i < N_OLDREF_ACCS) {
-         Int n, maxNFrames;
+      if (ref) {
          /* return with success */
-         tl_assert(cand_thrid);
-         tl_assert(cand_rcec);
-         tl_assert(cand_rcec->magic == RCEC_MAGIC);
-         tl_assert(cand_szB >= 1);
+         Int n, maxNFrames;
+         RCEC*     ref_rcec = ref->acc.rcec;
+         tl_assert(ref->acc.tsw.thrid);
+         tl_assert(ref_rcec);
+         tl_assert(ref_rcec->magic == RCEC_MAGIC);
+         tl_assert(ref_szB >= 1);
          /* Count how many non-zero frames we have. */
          maxNFrames = min_UInt(N_FRAMES, VG_(clo_backtrace_size));
          for (n = 0; n < maxNFrames; n++) {
-            if (0 == cand_rcec->frames[n]) break;
+            if (0 == ref_rcec->frames[n]) break;
          }
-         *resEC      = VG_(make_ExeContext_from_StackTrace)
-                          (cand_rcec->frames, n);
-         *resThr     = Thr__from_ThrID(cand_thrid);
-         *resSzB     = cand_szB;
-         *resIsW     = cand_isW;
-         *locksHeldW = cand_locksHeldW;
+         *resEC      = VG_(make_ExeContext_from_StackTrace)(ref_rcec->frames,
+                                                            n);
+         *resThr     = Thr__from_ThrID(ref->acc.tsw.thrid);
+         *resSzB     = ref_szB;
+         *resIsW     = ref->acc.tsw.isW;
+         *locksHeldW = ref->acc.locksHeldW;
+         stats__evm__lookup_found++;
          return True;
       }
 
@@ -4365,7 +4751,38 @@ Bool libhb_event_map_lookup ( /*OUT*/ExeContext** resEC,
    } /* for (j = 0; j < nToCheck; j++) */
 
    /* really didn't find anything. */
+   stats__evm__lookup_notfound++;
    return False;
+}
+
+
+void libhb_event_map_access_history ( Addr a, SizeT szB, Access_t fn )
+{
+   OldRef *ref = lru.next;
+   SizeT ref_szB;
+   Int n;
+      
+   while (ref != &mru) {
+      ref_szB = ref->acc.tsw.szB;
+      if (cmp_nonempty_intervals(a, szB, ref->ga, ref_szB) == 0) {
+         RCEC* ref_rcec = ref->acc.rcec;
+         for (n = 0; n < N_FRAMES; n++) {
+            if (0 == ref_rcec->frames[n]) {
+               break;
+            }
+         }
+         (*fn)(ref_rcec->frames, n,
+               Thr__from_ThrID(ref->acc.tsw.thrid),
+               ref->ga,
+               ref_szB,
+               ref->acc.tsw.isW,
+               ref->acc.locksHeldW);
+      }
+      tl_assert (ref->next == &mru
+                 || ((ref->stamp - event_map_stamp)
+                        < ref->next->stamp - event_map_stamp));
+      ref = ref->next;
+   }
 }
 
 static void event_map_init ( void )
@@ -4397,26 +4814,29 @@ static void event_map_init ( void )
                                HG_(free)
                             );
 
-   /* Oldref tree */
-   tl_assert(!oldrefTree);
-   oldrefTree = VG_(newSWA)(
-                   HG_(zalloc),
-                   "libhb.event_map_init.4 (oldref tree)", 
-                   HG_(free)
-                );
+   /* Oldref hashtable */
+   tl_assert(!oldrefHT);
+   oldrefHT = VG_(HT_construct) ("libhb.event_map_init.4 (oldref hashtable)");
 
-   oldrefGen = 0;
-   oldrefGenIncAt = 0;
-   oldrefTreeN = 0;
+   oldrefHTN = 0;
+   mru.prev = &lru;
+   mru.next = NULL;
+   lru.prev = NULL;
+   lru.next = &mru;
+   mru.acc = (Thr_n_RCEC) {.tsw = {.thrid = 0, 
+                                   .szB = 0, 
+                                   .isW = 0},
+                           .locksHeldW = 0, 
+                           .rcec = NULL};
+   lru.acc = mru.acc;
 }
 
-static void event_map__check_reference_counts ( Bool before )
+static void event_map__check_reference_counts ( void )
 {
    RCEC*   rcec;
    OldRef* oldref;
    Word    i;
    UWord   nEnts = 0;
-   UWord   keyW, valW;
 
    /* Set the 'check' reference counts to zero.  Also, optionally
       check that the real reference counts are non-zero.  We allow
@@ -4428,8 +4848,6 @@ static void event_map__check_reference_counts ( Bool before )
          nEnts++;
          tl_assert(rcec);
          tl_assert(rcec->magic == RCEC_MAGIC);
-         if (!before)
-            tl_assert(rcec->rc > 0);
          rcec->rcX = 0;
       }
    }
@@ -4439,21 +4857,14 @@ static void event_map__check_reference_counts ( Bool before )
    tl_assert(stats__ctxt_tab_curr <= stats__ctxt_tab_max);
 
    /* visit all the referencing points, inc check ref counts */
-   VG_(initIterSWA)( oldrefTree );
-   while (VG_(nextIterSWA)( oldrefTree, &keyW, &valW )) {
-      oldref = (OldRef*)valW;
-      tl_assert(oldref->magic == OldRef_MAGIC);
-      for (i = 0; i < N_OLDREF_ACCS; i++) {
-         ThrID aThrID = oldref->accs[i].thrid;
-         RCEC* aRef   = oldref->accs[i].rcec;
-         if (aThrID != 0) {
-            tl_assert(aRef);
-            tl_assert(aRef->magic == RCEC_MAGIC);
-            aRef->rcX++;
-         } else {
-            tl_assert(!aRef);
-         }
-      }
+   VG_(HT_ResetIter)( oldrefHT );
+   oldref = VG_(HT_Next)( oldrefHT );
+   while (oldref) {
+      tl_assert (oldref->acc.tsw.thrid);
+      tl_assert (oldref->acc.rcec);
+      tl_assert (oldref->acc.rcec->magic == RCEC_MAGIC);
+      oldref->acc.rcec->rcX++;
+      oldref = VG_(HT_Next)( oldrefHT );
    }
 
    /* compare check ref counts with actual */
@@ -4465,248 +4876,22 @@ static void event_map__check_reference_counts ( Bool before )
 }
 
 __attribute__((noinline))
-static void event_map_maybe_GC ( void )
+static void do_RCEC_GC ( void )
 {
-   OldRef* oldref;
-   UWord   keyW, valW, retained, maxGen;
-   XArray* refs2del;
-   Word    i, j, n2del;
+   UInt i;
 
-   UWord* genMap      = NULL;
-   UWord  genMap_min  = 0;
-   UWord  genMap_size = 0;
-
-   if (LIKELY(oldrefTreeN < HG_(clo_conflict_cache_size)))
-      return;
-
-   if (0)
-      VG_(printf)("libhb: event_map GC at size %lu\n", oldrefTreeN);
-
-   /* Check for sane command line params.  Limit values must match
-      those in hg_process_cmd_line_option. */
-   tl_assert( HG_(clo_conflict_cache_size) >= 10*1000 );
-   tl_assert( HG_(clo_conflict_cache_size) <= 30*1000*1000 );
-
-   /* Check our counting is sane (expensive) */
-   if (CHECK_CEM)
-      tl_assert(oldrefTreeN == VG_(sizeSWA)( oldrefTree ));
-
-   /* Check the reference counts (expensive) */
-   if (CHECK_CEM)
-      event_map__check_reference_counts( True/*before*/ );
-
-   /* Compute the distribution of generation values in the ref tree.
-      There are likely only to be a few different generation numbers
-      in the whole tree, but we don't know what they are.  Hence use a
-      dynamically resized array of counters.  The array is genMap[0
-      .. genMap_size-1], where genMap[0] is the count for the
-      generation number genMap_min, genMap[1] is the count for
-      genMap_min+1, etc.  If a new number is seen outside the range
-      [genMap_min .. genMap_min + genMap_size - 1] then the array is
-      copied into a larger array, and genMap_min and genMap_size are
-      adjusted accordingly. */
-
-   /* genMap :: generation-number -> count-of-nodes-with-that-number */
-
-   VG_(initIterSWA)( oldrefTree );
-   while ( VG_(nextIterSWA)( oldrefTree, &keyW, &valW )) {
-
-       UWord ea, key;
-       oldref = (OldRef*)valW;
-       key = oldref->gen;
-
-      /* BEGIN find 'ea', which is the index in genMap holding the
-         count for generation number 'key'. */
-      if (UNLIKELY(genMap == NULL)) {
-         /* deal with the first key to be seen, so that the following
-            cases don't need to handle the complexity of a NULL count
-            array. */
-         genMap_min  = key;
-         genMap_size = 1;
-         genMap = HG_(zalloc)( "libhb.emmG.1a",
-                                genMap_size * sizeof(UWord) );
-         ea = 0;
-         if (0) VG_(printf)("(%lu) case 1 [%lu .. %lu]\n",
-                            key, genMap_min, genMap_min+genMap_size- 1 );
-      }
-      else
-      if (LIKELY(key >= genMap_min && key < genMap_min + genMap_size)) {
-         /* this is the expected (almost-always-happens) case: 'key'
-            is already mapped in the array. */
-         ea = key - genMap_min;
-      }
-      else
-      if (key < genMap_min) {
-         /* 'key' appears before the start of the current array.
-            Extend the current array by allocating a larger one and
-            copying the current one to the upper end of it. */
-         Word   more;
-         UWord* map2;
-         more = genMap_min - key;
-         tl_assert(more > 0);
-         map2 = HG_(zalloc)( "libhb.emmG.1b",
-                             (genMap_size + more) * sizeof(UWord) );
-         VG_(memcpy)( &map2[more], genMap, genMap_size * sizeof(UWord) );
-         HG_(free)( genMap );
-         genMap = map2;
-         genMap_size += more;
-         genMap_min -= more;
-         ea = 0;
-         tl_assert(genMap_min == key);
-         if (0) VG_(printf)("(%lu) case 2 [%lu .. %lu]\n",
-                            key, genMap_min,  genMap_min+genMap_size- 1 );
-      }
-      else {
-         /* 'key' appears after the end of the current array.  Extend
-            the current array by allocating a larger one and copying
-            the current one to the lower end of it. */
-         Word   more;
-         UWord* map2;
-         tl_assert(key >= genMap_min + genMap_size);
-         more = key - (genMap_min + genMap_size) + 1;
-         tl_assert(more > 0);
-         map2 = HG_(zalloc)( "libhb.emmG.1c",
-                             (genMap_size + more) * sizeof(UWord) );
-         VG_(memcpy)( &map2[0], genMap, genMap_size * sizeof(UWord) );
-         HG_(free)( genMap );
-         genMap = map2;
-         genMap_size += more;
-         ea = genMap_size - 1;;
-         tl_assert(genMap_min + genMap_size - 1 == key);
-         if (0) VG_(printf)("(%lu) case 3 [%lu .. %lu]\n",
-                            key, genMap_min, genMap_min+genMap_size- 1 );
-      }
-      /* END find 'ea' from 'key' */
-
-      tl_assert(ea >= 0 && ea < genMap_size);
-      /* and the whole point of this elaborate computation of 'ea' is .. */
-      genMap[ea]++;
+   if (VG_(clo_stats)) {
+      static UInt ctr = 1;
+      VG_(message)(Vg_DebugMsg,
+                  "libhb: RCEC GC: #%u  %lu slots,"
+                   " %lu cur ents(ref'd %lu),"
+                   " %lu max ents\n",
+                   ctr++,
+                   (UWord)N_RCEC_TAB,
+                   stats__ctxt_tab_curr, RCEC_referenced,
+                   stats__ctxt_tab_max );
    }
-
-   tl_assert(genMap);
-   tl_assert(genMap_size > 0);
-
-   /* Sanity check what we just computed */
-   { UWord sum = 0;
-     for (i = 0; i < genMap_size; i++) {
-        if (0) VG_(printf)("  xxx: gen %ld has %lu\n",
-                           i + genMap_min, genMap[i] );
-        sum += genMap[i];
-     }
-     tl_assert(sum == oldrefTreeN);
-   }
-
-   /* Figure out how many generations to throw away */
-   retained = oldrefTreeN;
-   maxGen = 0;
-
-   for (i = 0; i < genMap_size; i++) {
-      keyW = i + genMap_min;
-      valW = genMap[i];
-      tl_assert(keyW > 0); /* can't allow a generation # 0 */
-      if (0) VG_(printf)("  XXX: gen %lu has %lu\n", keyW, valW );
-      tl_assert(keyW >= maxGen);
-      tl_assert(retained >= valW);
-      if (retained - valW
-          > (UWord)(HG_(clo_conflict_cache_size) 
-                    * EVENT_MAP_GC_DISCARD_FRACTION)) {
-         retained -= valW;
-         maxGen = keyW;
-      } else {
-         break;
-      }
-   }
-
-   HG_(free)(genMap);
-
-   tl_assert(retained >= 0 && retained <= oldrefTreeN);
-
-   /* Now make up a big list of the oldrefTree entries we want to
-      delete.  We can't simultaneously traverse the tree and delete
-      stuff from it, so first we need to copy them off somewhere
-      else. (sigh) */
-   refs2del = VG_(newXA)( HG_(zalloc), "libhb.emmG.2",
-                          HG_(free), sizeof(Addr) );
-
-   if (retained < oldrefTreeN) {
-
-      /* This is the normal (expected) case.  We discard any ref whose
-         generation number <= maxGen. */
-      VG_(initIterSWA)( oldrefTree );
-      while (VG_(nextIterSWA)( oldrefTree, &keyW, &valW )) {
-         oldref = (OldRef*)valW;
-         tl_assert(oldref->magic == OldRef_MAGIC);
-         if (oldref->gen <= maxGen) {
-            VG_(addToXA)( refs2del, &keyW );
-         }
-      }
-      if (VG_(clo_stats)) {
-         VG_(message)(Vg_DebugMsg,
-            "libhb: EvM GC: delete generations %lu and below, "
-            "retaining %lu entries\n",
-            maxGen, retained );
-      }
-
-   } else {
-
-      static UInt rand_seed = 0; /* leave as static */
-
-      /* Degenerate case: there's only one generation in the entire
-         tree, so we need to have some other way of deciding which
-         refs to throw away.  Just throw out half of them randomly. */
-      tl_assert(retained == oldrefTreeN);
-      VG_(initIterSWA)( oldrefTree );
-      while (VG_(nextIterSWA)( oldrefTree, &keyW, &valW )) {
-         UInt n;
-         oldref = (OldRef*)valW;
-         tl_assert(oldref->magic == OldRef_MAGIC);
-         n = VG_(random)( &rand_seed );
-         if ((n & 0xFFF) < 0x800) {
-            VG_(addToXA)( refs2del, &keyW );
-            retained--;
-         }
-      }
-      if (VG_(clo_stats)) {
-         VG_(message)(Vg_DebugMsg,
-            "libhb: EvM GC: randomly delete half the entries, "
-            "retaining %lu entries\n",
-            retained );
-      }
-
-   }
-
-   n2del = VG_(sizeXA)( refs2del );
-   tl_assert(n2del == (Word)(oldrefTreeN - retained));
-
-   if (0) VG_(printf)("%s","deleting entries\n");
-   for (i = 0; i < n2del; i++) {
-      Bool  b;
-      Addr  ga2del = *(Addr*)VG_(indexXA)( refs2del, i );
-      b = VG_(delFromSWA)( oldrefTree, &keyW, &valW, ga2del );
-      tl_assert(b);
-      tl_assert(keyW == ga2del);
-      oldref = (OldRef*)valW;
-      for (j = 0; j < N_OLDREF_ACCS; j++) {
-         ThrID aThrID = oldref->accs[j].thrid;
-         RCEC* aRef   = oldref->accs[j].rcec;
-         if (aRef) {
-            tl_assert(aThrID != 0);
-            stats__ctxt_rcdec3++;
-            ctxt__rcdec( aRef );
-         } else {
-            tl_assert(aThrID == 0);
-         }
-      }
-
-      free_OldRef( oldref );
-   }
-
-   VG_(deleteXA)( refs2del );
-
-   tl_assert( VG_(sizeSWA)( oldrefTree ) == retained );
-
-   oldrefTreeN = retained;
-   oldrefGenIncAt = oldrefTreeN; /* start new gen right away */
+   tl_assert (stats__ctxt_tab_curr > RCEC_referenced);
 
    /* Throw away all RCECs with zero reference counts */
    for (i = 0; i < N_RCEC_TAB; i++) {
@@ -4718,6 +4903,7 @@ static void event_map_maybe_GC ( void )
             free_RCEC(p);
             p = *pp;
             tl_assert(stats__ctxt_tab_curr > 0);
+            stats__ctxt_rcec_gc_discards++;
             stats__ctxt_tab_curr--;
          } else {
             pp = &p->next;
@@ -4726,16 +4912,8 @@ static void event_map_maybe_GC ( void )
       }
    }
 
-   /* Check the reference counts (expensive) */
-   if (CHECK_CEM)
-      event_map__check_reference_counts( False/*after*/ );
-
-   //if (0)
-   //VG_(printf)("XXXX final sizes: oldrefTree %ld, contextTree %ld\n\n",
-   //            VG_(OSetGen_Size)(oldrefTree), VG_(OSetGen_Size)(contextTree));
-
+   tl_assert (stats__ctxt_tab_curr == RCEC_referenced);
 }
-
 
 /////////////////////////////////////////////////////////
 //                                                     //
@@ -4872,7 +5050,7 @@ static void record_race_info ( Thr* acc_thr,
                  (XACmpFn_t)cmp__ULong_n_EC__by_ULong
               );
       if (0) VG_(printf)("record_race_info %u %u %u  confThr %p "
-                         "confTym %llu found %d (%lu,%lu)\n", 
+                         "confTym %llu found %d (%ld,%ld)\n", 
                          Cfailed, Kfailed, Cw,
                          confThr, confTym, found, firstIx, lastIx);
       /* We can't indefinitely collect stack traces at VTS
@@ -5601,7 +5779,7 @@ static void zsm_sset_range ( Addr a, SizeT len, SVal svNew )
    stats__cache_make_New_arange += (ULong)len;
 
    if (0 && len > 500)
-      VG_(printf)("make New      ( %#lx, %ld )\n", a, len );
+      VG_(printf)("make New      ( %#lx, %lu )\n", a, len );
 
    if (0) {
       static UWord n_New_in_cache = 0;
@@ -6046,27 +6224,25 @@ Thr* libhb_init (
 
    // We will have to have to store a large number of these,
    // so make sure they're the size we expect them to be.
-   tl_assert(sizeof(ScalarTS) == 8);
+   STATIC_ASSERT(sizeof(ScalarTS) == 8);
 
    /* because first 1024 unusable */
-   tl_assert(SCALARTS_N_THRBITS >= 11);
-   /* so as to fit in a UInt w/ 3 bits to spare (see defn of
-      Thr_n_RCEC). */
-   tl_assert(SCALARTS_N_THRBITS <= 29);
+   STATIC_ASSERT(SCALARTS_N_THRBITS >= 11);
+   /* so as to fit in a UInt w/ 5 bits to spare (see defn of
+      Thr_n_RCEC and TSW). */
+   STATIC_ASSERT(SCALARTS_N_THRBITS <= 27);
 
    /* Need to be sure that Thr_n_RCEC is 2 words (64-bit) or 3 words
       (32-bit).  It's not correctness-critical, but there are a lot of
       them, so it's important from a space viewpoint.  Unfortunately
       we simply can't pack it into 2 words on a 32-bit target. */
-   if (sizeof(UWord) == 8) {
-      tl_assert(sizeof(Thr_n_RCEC) == 16);
-   } else {
-      tl_assert(sizeof(Thr_n_RCEC) == 12);
-   }
+   STATIC_ASSERT(   (sizeof(UWord) == 8 && sizeof(Thr_n_RCEC) == 16)
+                 || (sizeof(UWord) == 4 && sizeof(Thr_n_RCEC) == 12));
+   STATIC_ASSERT(sizeof(TSW) == sizeof(UInt));
 
    /* Word sets really are 32 bits.  Even on a 64 bit target. */
-   tl_assert(sizeof(WordSetID) == 4);
-   tl_assert(sizeof(WordSet) == sizeof(WordSetID));
+   STATIC_ASSERT(sizeof(WordSetID) == 4);
+   STATIC_ASSERT(sizeof(WordSet) == sizeof(WordSetID));
 
    tl_assert(get_stacktrace);
    tl_assert(get_EC);
@@ -6080,14 +6256,14 @@ Thr* libhb_init (
       VTS singleton, tick and join operations. */
    temp_max_sized_VTS = VTS__new( "libhb.libhb_init.1", ThrID_MAX_VALID );
    temp_max_sized_VTS->id = VtsID_INVALID;
-   verydead_thread_table_init();
+   verydead_thread_tables_init();
    vts_set_init();
    vts_tab_init();
    event_map_init();
    VtsID__invalidate_caches();
 
    // initialise shadow memory
-   zsm_init( SVal__rcinc, SVal__rcdec );
+   zsm_init( );
 
    thr = Thr__new();
    vi  = VtsID__mk_Singleton( thr, 1 );
@@ -6149,11 +6325,22 @@ void libhb_shutdown ( Bool show_stats )
       VG_(printf)("  linesZ: %'10lu allocd (%'12lu bytes occupied)\n",
                   stats__secmap_linesZ_allocd,
                   stats__secmap_linesZ_bytes);
-      VG_(printf)("  linesF: %'10lu allocd (%'12lu bytes occupied)\n",
-                  stats__secmap_linesF_allocd,
-                  stats__secmap_linesF_bytes);
-      VG_(printf)(" secmaps: %'10lu iterator steppings\n",
-                  stats__secmap_iterator_steppings);
+      VG_(printf)("  linesF: %'10lu allocd (%'12lu bytes occupied)"
+                  " (%'10lu used)\n",
+                  VG_(sizePA) (LineF_pool_allocator),
+                  VG_(sizePA) (LineF_pool_allocator) * sizeof(LineF),
+                  shmem__SecMap_used_linesF());
+      VG_(printf)(" secmaps: %'10lu in map (can be scanGCed %'5lu)"
+                  " #%lu scanGC \n",
+                  stats__secmaps_in_map_shmem,
+                  shmem__SecMap_do_GC(False /* really do GC */),
+                  stats__secmaps_scanGC);
+      tl_assert (VG_(sizeFM) (map_shmem) == stats__secmaps_in_map_shmem);
+      VG_(printf)(" secmaps: %'10lu in freelist,"
+                  " total (scanGCed %'lu, ssetGCed %'lu)\n",
+                  SecMap_freelist_length(),
+                  stats__secmaps_scanGCed,
+                  stats__secmaps_ssetGCed);
       VG_(printf)(" secmaps: %'10lu searches (%'12lu slow)\n",
                   stats__secmaps_search, stats__secmaps_search_slow);
 
@@ -6164,8 +6351,8 @@ void libhb_shutdown ( Bool show_stats )
                   stats__cache_Z_fetches, stats__cache_F_fetches );
       VG_(printf)("   cache: %'14lu Z-wback,    %'14lu F-wback\n",
                   stats__cache_Z_wbacks, stats__cache_F_wbacks );
-      VG_(printf)("   cache: %'14lu invals,     %'14lu flushes\n",
-                  stats__cache_invals, stats__cache_flushes );
+      VG_(printf)("   cache: %'14lu flushes_invals\n",
+                  stats__cache_flushes_invals );
       VG_(printf)("   cache: %'14llu arange_New  %'14llu direct-to-Zreps\n",
                   stats__cache_make_New_arange,
                   stats__cache_make_New_inZrep);
@@ -6190,17 +6377,19 @@ void libhb_shutdown ( Bool show_stats )
                   stats__cline_swrite08s );
       VG_(printf)("   cline: s rd1s %'lu, s copy1s %'lu\n",
                   stats__cline_sread08s, stats__cline_scopy08s );
-      VG_(printf)("   cline:    splits: 8to4 %'12lu    4to2 %'12lu    2to1 %'12lu\n",
-                 stats__cline_64to32splits,
-                 stats__cline_32to16splits,
-                 stats__cline_16to8splits );
-      VG_(printf)("   cline: pulldowns: 8to4 %'12lu    4to2 %'12lu    2to1 %'12lu\n",
-                 stats__cline_64to32pulldown,
-                 stats__cline_32to16pulldown,
-                 stats__cline_16to8pulldown );
+      VG_(printf)("   cline:    splits: 8to4 %'12lu    4to2 %'12lu"
+                  "    2to1 %'12lu\n",
+                  stats__cline_64to32splits, stats__cline_32to16splits,
+                  stats__cline_16to8splits );
+      VG_(printf)("   cline: pulldowns: 8to4 %'12lu    4to2 %'12lu"
+                  "    2to1 %'12lu\n",
+                  stats__cline_64to32pulldown, stats__cline_32to16pulldown,
+                  stats__cline_16to8pulldown );
       if (0)
-      VG_(printf)("   cline: sizeof(CacheLineZ) %ld, covers %ld bytes of arange\n",
-                  (Word)sizeof(LineZ), (Word)N_LINE_ARANGE);
+      VG_(printf)("   cline: sizeof(CacheLineZ) %ld,"
+                  " covers %ld bytes of arange\n",
+                  (Word)sizeof(LineZ),
+                  (Word)N_LINE_ARANGE);
 
       VG_(printf)("%s","\n");
 
@@ -6214,11 +6403,12 @@ void libhb_shutdown ( Bool show_stats )
                   stats__join2_queries, stats__join2_misses);
 
       VG_(printf)("%s","\n");
-      VG_(printf)( "   libhb: VTSops: tick %'lu,  join %'lu,  cmpLEQ %'lu\n",
-                   stats__vts__tick, stats__vts__join,  stats__vts__cmpLEQ );
-      VG_(printf)( "   libhb: VTSops: cmp_structural %'lu (%'lu slow)\n",
-                   stats__vts__cmp_structural, stats__vts__cmp_structural_slow );
-      VG_(printf)( "   libhb: VTSset: find__or__clone_and_add %'lu (%'lu allocd)\n",
+      VG_(printf)("   libhb: VTSops: tick %'lu,  join %'lu,  cmpLEQ %'lu\n",
+                  stats__vts__tick, stats__vts__join,  stats__vts__cmpLEQ );
+      VG_(printf)("   libhb: VTSops: cmp_structural %'lu (%'lu slow)\n",
+                  stats__vts__cmp_structural, stats__vts__cmp_structural_slow);
+      VG_(printf)("   libhb: VTSset: find__or__clone_and_add %'lu"
+                  " (%'lu allocd)\n",
                    stats__vts_set__focaa, stats__vts_set__focaa_a );
       VG_(printf)( "   libhb: VTSops: indexAt_SLOW %'lu\n",
                    stats__vts__indexat_slow );
@@ -6228,19 +6418,100 @@ void libhb_shutdown ( Bool show_stats )
          "   libhb: %ld entries in vts_table (approximately %lu bytes)\n",
          VG_(sizeXA)( vts_tab ), VG_(sizeXA)( vts_tab ) * sizeof(VtsTE)
       );
+      VG_(printf)("   libhb: #%lu vts_tab GC    #%lu vts pruning\n",
+                  stats__vts_tab_GC, stats__vts_pruning);
       VG_(printf)( "   libhb: %lu entries in vts_set\n",
                    VG_(sizeFM)( vts_set ) );
 
       VG_(printf)("%s","\n");
-      VG_(printf)( "   libhb: ctxt__rcdec: 1=%lu(%lu eq), 2=%lu, 3=%lu\n",
-                   stats__ctxt_rcdec1, stats__ctxt_rcdec1_eq,
-                   stats__ctxt_rcdec2,
-                   stats__ctxt_rcdec3 );
-      VG_(printf)( "   libhb: ctxt__rcdec: calls %lu, discards %lu\n",
-                   stats__ctxt_rcdec_calls, stats__ctxt_rcdec_discards);
-      VG_(printf)( "   libhb: contextTab: %lu slots, %lu max ents\n",
+      {
+         UInt live = 0;
+         UInt llexit_done = 0;
+         UInt joinedwith_done = 0;
+         UInt llexit_and_joinedwith_done = 0;
+
+         Thread* hgthread = get_admin_threads();
+         tl_assert(hgthread);
+         while (hgthread) {
+            Thr* hbthr = hgthread->hbthr;
+            tl_assert(hbthr);
+            if (hbthr->llexit_done && hbthr->joinedwith_done)
+               llexit_and_joinedwith_done++;
+            else if (hbthr->llexit_done)
+               llexit_done++;
+            else if (hbthr->joinedwith_done)
+               joinedwith_done++;
+            else
+               live++;
+            hgthread = hgthread->admin;
+         }
+         VG_(printf)("   libhb: threads live: %u exit_and_joinedwith %u"
+                     " exit %u joinedwith %u\n",
+                     live, llexit_and_joinedwith_done,
+                     llexit_done, joinedwith_done);
+         VG_(printf)("   libhb: %d verydead_threads, "
+                     "%d verydead_threads_not_pruned\n",
+                     (int) VG_(sizeXA)( verydead_thread_table),
+                     (int) VG_(sizeXA)( verydead_thread_table_not_pruned));
+         tl_assert (VG_(sizeXA)( verydead_thread_table)
+                    + VG_(sizeXA)( verydead_thread_table_not_pruned)
+                    == llexit_and_joinedwith_done);
+      }
+
+      VG_(printf)("%s","\n");
+      VG_(printf)( "   libhb: oldrefHTN %lu (%'d bytes)\n",
+                   oldrefHTN, (int)(oldrefHTN * sizeof(OldRef)));
+      tl_assert (oldrefHTN == VG_(HT_count_nodes) (oldrefHT));
+      VG_(printf)( "   libhb: oldref lookup found=%lu notfound=%lu\n",
+                   stats__evm__lookup_found, stats__evm__lookup_notfound);
+      if (VG_(clo_verbosity) > 1)
+         VG_(HT_print_stats) (oldrefHT, cmp_oldref_tsw);
+      VG_(printf)( "   libhb: oldref bind tsw/rcec "
+                   "==/==:%'lu ==/!=:%'lu !=/!=:%'lu\n",
+                   stats__ctxt_eq_tsw_eq_rcec, stats__ctxt_eq_tsw_neq_rcec,
+                   stats__ctxt_neq_tsw_neq_rcec);
+      VG_(printf)( "   libhb: ctxt__rcdec calls %'lu. rcec gc discards %'lu\n",
+                   stats__ctxt_rcdec_calls, stats__ctxt_rcec_gc_discards);
+      VG_(printf)( "   libhb: contextTab: %lu slots,"
+                   " %lu cur ents(ref'd %lu),"
+                   " %lu max ents\n",
                    (UWord)N_RCEC_TAB,
-                   stats__ctxt_tab_curr );
+                   stats__ctxt_tab_curr, RCEC_referenced,
+                   stats__ctxt_tab_max );
+      {
+#        define  MAXCHAIN 10
+         UInt chains[MAXCHAIN+1]; // [MAXCHAIN] gets all chains >= MAXCHAIN
+         UInt non0chain = 0;
+         UInt n;
+         UInt i;
+         RCEC *p;
+
+         for (i = 0; i <= MAXCHAIN; i++) chains[i] = 0;
+         for (i = 0; i < N_RCEC_TAB; i++) {
+            n = 0;
+            for (p = contextTab[i]; p; p = p->next)
+               n++;
+            if (n < MAXCHAIN)
+               chains[n]++;
+            else
+               chains[MAXCHAIN]++;
+            if (n > 0)
+               non0chain++;
+         }
+         VG_(printf)( "   libhb: contextTab chain of [length]=nchain."
+                      " Avg chain len %3.1f\n"
+                      "        ",
+                      (Double)stats__ctxt_tab_curr
+                      / (Double)(non0chain ? non0chain : 1));
+         for (i = 0; i <= MAXCHAIN; i++) {
+            if (chains[i] != 0)
+                VG_(printf)( "[%u%s]=%u ",
+                             i, i == MAXCHAIN ? "+" : "",
+                             chains[i]);
+         }
+         VG_(printf)( "\n");
+#        undef MAXCHAIN
+      }
       VG_(printf)( "   libhb: contextTab: %lu queries, %lu cmps\n",
                    stats__ctxt_tab_qs,
                    stats__ctxt_tab_cmps );
@@ -6486,22 +6757,276 @@ void libhb_srange_noaccess_NoFX ( Thr* thr, Addr a, SizeT szB )
    /* do nothing */
 }
 
+
+/* Set the lines zix_start till zix_end to NOACCESS. */
+static void zsm_secmap_line_range_noaccess (SecMap *sm,
+                                            UInt zix_start, UInt zix_end)
+{
+   for (UInt lz = zix_start; lz <= zix_end; lz++) {
+      LineZ* lineZ;
+      lineZ = &sm->linesZ[lz];
+      if (lineZ->dict[0] != SVal_INVALID) {
+         rcdec_LineZ(lineZ);
+         lineZ->dict[0] = SVal_NOACCESS;
+         lineZ->dict[1] = lineZ->dict[2] = lineZ->dict[3] = SVal_INVALID;
+      } else {
+         clear_LineF_of_Z(lineZ);
+      }
+      for (UInt i = 0; i < N_LINE_ARANGE/4; i++)
+         lineZ->ix2s[i] = 0; /* all refer to dict[0] */
+   }
+}
+
+/* Set the given range to SVal_NOACCESS in-place in the secmap.
+   a must be cacheline aligned. len must be a multiple of a cacheline
+   and must be < N_SECMAP_ARANGE. */
+static void zsm_sset_range_noaccess_in_secmap(Addr a, SizeT len)
+{
+   tl_assert (is_valid_scache_tag (a));
+   tl_assert (0 == (len & (N_LINE_ARANGE - 1)));
+   tl_assert (len < N_SECMAP_ARANGE);
+
+   SecMap *sm1 = shmem__find_SecMap (a);
+   SecMap *sm2 = shmem__find_SecMap (a + len - 1);
+   UWord zix_start = shmem__get_SecMap_offset(a          ) >> N_LINE_BITS;
+   UWord zix_end   = shmem__get_SecMap_offset(a + len - 1) >> N_LINE_BITS;
+
+   if (sm1) {
+      if (CHECK_ZSM) tl_assert(is_sane_SecMap(sm1));
+      zsm_secmap_line_range_noaccess (sm1, zix_start,
+                                      sm1 == sm2 ? zix_end : N_SECMAP_ZLINES-1);
+   }
+   if (sm2 && sm1 != sm2) {
+      if (CHECK_ZSM) tl_assert(is_sane_SecMap(sm2));
+      zsm_secmap_line_range_noaccess (sm2, 0, zix_end);
+   }
+}
+
+/* Set the given address range to SVal_NOACCESS.
+   The SecMaps fully set to SVal_NOACCESS will be pushed in SecMap_freelist. */
+static void zsm_sset_range_noaccess (Addr addr, SizeT len)
+{
+   /*
+       BPC = Before, Partial Cacheline, = addr 
+             (i.e. starting inside a cacheline/inside a SecMap)
+       BFC = Before, Full Cacheline(s), but not full SecMap
+             (i.e. starting inside a SecMap)
+       FSM = Full SecMap(s)
+             (i.e. starting a SecMap)
+       AFC = After, Full Cacheline(s), but not full SecMap
+             (i.e. first address after the full SecMap(s))
+       APC = After, Partial Cacheline, i.e. first address after the
+             full CacheLines).
+       ARE = After Range End = addr+len = first address not part of the range.
+
+       If addr     starts a Cacheline, then BPC == BFC.
+       If addr     starts a SecMap,    then BPC == BFC == FSM.
+       If addr+len starts a SecMap,    then APC == ARE == AFC
+       If addr+len starts a Cacheline, then APC == ARE
+   */
+   Addr ARE = addr + len;
+   Addr BPC = addr;
+   Addr BFC = ROUNDUP(BPC, N_LINE_ARANGE);
+   Addr FSM = ROUNDUP(BPC, N_SECMAP_ARANGE);
+   Addr AFC = ROUNDDN(ARE, N_SECMAP_ARANGE);
+   Addr APC = ROUNDDN(ARE, N_LINE_ARANGE);
+   SizeT Plen = len; // Plen will be split between the following:
+   SizeT BPClen;
+   SizeT BFClen;
+   SizeT FSMlen;
+   SizeT AFClen;
+   SizeT APClen;
+
+   /* Consumes from Plen the nr of bytes between from and to.
+      from and to must be aligned on a multiple of round.
+      The length consumed will be a multiple of round, with
+      a maximum of Plen. */
+#  define PlenCONSUME(from, to, round, consumed) \
+   do {                                          \
+   if (from < to) {                              \
+      if (to - from < Plen)                      \
+         consumed = to - from;                   \
+      else                                       \
+         consumed = ROUNDDN(Plen, round);        \
+   } else {                                      \
+      consumed = 0;                              \
+   }                                             \
+   Plen -= consumed; } while (0)
+      
+   PlenCONSUME(BPC, BFC, 1,               BPClen);
+   PlenCONSUME(BFC, FSM, N_LINE_ARANGE,   BFClen);
+   PlenCONSUME(FSM, AFC, N_SECMAP_ARANGE, FSMlen);
+   PlenCONSUME(AFC, APC, N_LINE_ARANGE,   AFClen);
+   PlenCONSUME(APC, ARE, 1,               APClen);
+
+   if (0)
+      VG_(printf) ("addr %p[%lu] ARE %p"
+                   " BPC %p[%lu] BFC %p[%lu] FSM %p[%lu]"
+                   " AFC %p[%lu] APC %p[%lu]\n",
+                   (void*)addr, len, (void*)ARE,
+                   (void*)BPC, BPClen, (void*)BFC, BFClen, (void*)FSM, FSMlen,
+                   (void*)AFC, AFClen, (void*)APC, APClen);
+
+   tl_assert (Plen == 0);
+
+   /* Set to NOACCESS pieces before and after not covered by entire SecMaps. */
+
+   /* First we set the partial cachelines. This is done through the cache. */
+   if (BPClen > 0)
+      zsm_sset_range_SMALL (BPC, BPClen, SVal_NOACCESS);
+   if (APClen > 0)
+      zsm_sset_range_SMALL (APC, APClen, SVal_NOACCESS);
+
+   /* After this, we will not use the cache anymore. We will directly work
+      in-place on the z shadow memory in SecMap(s).
+      So, we invalidate the cachelines for the whole range we are setting
+      to NOACCESS below. */
+   shmem__invalidate_scache_range (BFC, APC - BFC);
+
+   if (BFClen > 0)
+      zsm_sset_range_noaccess_in_secmap (BFC, BFClen);
+   if (AFClen > 0)
+      zsm_sset_range_noaccess_in_secmap (AFC, AFClen);
+
+   if (FSMlen > 0) {
+      /* Set to NOACCESS all the SecMaps, pushing the SecMaps to the
+         free list. */
+      Addr  sm_start = FSM;
+      while (sm_start < AFC) {
+         SecMap *sm = shmem__find_SecMap (sm_start);
+         if (sm) {
+            Addr gaKey;
+            SecMap *fm_sm;
+
+            if (CHECK_ZSM) tl_assert(is_sane_SecMap(sm));
+            for (UInt lz = 0; lz < N_SECMAP_ZLINES; lz++) {
+               LineZ *lineZ = &sm->linesZ[lz];
+               if (LIKELY(lineZ->dict[0] != SVal_INVALID))
+                  rcdec_LineZ(lineZ);
+               else
+                  clear_LineF_of_Z(lineZ);
+            }
+            if (!VG_(delFromFM)(map_shmem, &gaKey, (UWord*)&fm_sm, sm_start))
+               tl_assert (0);
+            stats__secmaps_in_map_shmem--;
+            tl_assert (gaKey == sm_start);
+            tl_assert (sm == fm_sm);
+            stats__secmaps_ssetGCed++;
+            push_SecMap_on_freelist (sm);
+         }
+         sm_start += N_SECMAP_ARANGE;
+      }
+      tl_assert (sm_start == AFC);
+
+      /* The above loop might have kept copies of freed SecMap in the smCache.
+         => clear them. */
+      if (address_in_range(smCache[0].gaKey, FSM, FSMlen)) {
+         smCache[0].gaKey = 1;
+         smCache[0].sm = NULL;
+      }
+      if (address_in_range(smCache[1].gaKey, FSM, FSMlen)) {
+         smCache[1].gaKey = 1;
+         smCache[1].sm = NULL;
+      }
+      if (address_in_range(smCache[2].gaKey, FSM, FSMlen)) {
+         smCache[2].gaKey = 1;
+         smCache[2].sm = NULL;
+      }
+      STATIC_ASSERT (3 == sizeof(smCache)/sizeof(SMCacheEnt));
+   }
+}
+
 void libhb_srange_noaccess_AHAE ( Thr* thr, Addr a, SizeT szB )
 {
    /* This really does put the requested range in NoAccess.  It's
       expensive though. */
    SVal sv = SVal_NOACCESS;
    tl_assert(is_sane_SVal_C(sv));
-   zsm_sset_range( a, szB, sv );
+   if (LIKELY(szB < 2 * N_LINE_ARANGE))
+      zsm_sset_range_SMALL (a, szB, SVal_NOACCESS);
+   else
+      zsm_sset_range_noaccess (a, szB);
    Filter__clear_range( thr->filter, a, szB );
 }
+
+/* Works byte at a time. Can be optimised if needed. */
+UWord libhb_srange_get_abits (Addr a, UChar *abits, SizeT len)
+{
+   UWord anr = 0; // nr of bytes addressable.
+
+   /* Get the accessibility of each byte. Pay attention to not
+      create SecMap or LineZ when checking if a byte is addressable.
+
+      Note: this is used for client request. Performance deemed not critical.
+      So for simplicity, we work byte per byte.
+      Performance could be improved  by working with full cachelines
+      or with full SecMap, when reaching a cacheline or secmap boundary. */
+   for (SizeT i = 0; i < len; i++) {
+      SVal       sv = SVal_INVALID;
+      Addr       b = a + i;
+      Addr       tag = b & ~(N_LINE_ARANGE - 1);
+      UWord      wix = (b >> N_LINE_BITS) & (N_WAY_NENT - 1);
+      UWord      cloff = get_cacheline_offset(b);
+
+      /* Note: we do not use get_cacheline(b) to avoid creating cachelines
+         and/or SecMap for non addressable bytes. */
+      if (tag == cache_shmem.tags0[wix]) {
+         CacheLine copy = cache_shmem.lyns0[wix];
+         /* We work on a copy of the cacheline, as we do not want to
+            record the client request as a real read.
+            The below is somewhat similar to zsm_sapply08__msmcread but
+            avoids side effects on the cache. */
+         UWord toff = get_tree_offset(b); /* == 0 .. 7 */
+         UWord tno  = get_treeno(b);
+         UShort descr = copy.descrs[tno];
+         if (UNLIKELY( !(descr & (TREE_DESCR_8_0 << toff)) )) {
+            SVal* tree = &copy.svals[tno << 3];
+            copy.descrs[tno] = pulldown_to_8(tree, toff, descr);
+         }
+         sv = copy.svals[cloff];
+      } else {
+         /* Byte not found in the cacheline. Search for a SecMap. */
+         SecMap *sm = shmem__find_SecMap(b);
+         LineZ *lineZ;
+         if (sm == NULL)
+            sv = SVal_NOACCESS;
+         else {
+            UWord zix = shmem__get_SecMap_offset(b) >> N_LINE_BITS;
+            lineZ = &sm->linesZ[zix];
+            if (lineZ->dict[0] == SVal_INVALID) {
+               LineF *lineF = SVal2Ptr(lineZ->dict[1]);
+               sv = lineF->w64s[cloff];
+            } else {
+               UWord ix = read_twobit_array( lineZ->ix2s, cloff );
+               sv = lineZ->dict[ix];
+            }
+         }
+      }
+      
+      tl_assert (sv != SVal_INVALID);
+      if (sv == SVal_NOACCESS) {
+         if (abits)
+            abits[i] = 0x00;
+      } else {
+         if (abits)
+            abits[i] = 0xff;
+         anr++;
+      }
+   }
+
+   return anr;
+}
+
 
 void libhb_srange_untrack ( Thr* thr, Addr a, SizeT szB )
 {
    SVal sv = SVal_NOACCESS;
    tl_assert(is_sane_SVal_C(sv));
    if (0 && TRACEME(a,szB)) trace(thr,a,szB,"untrack-before");
-   zsm_sset_range( a, szB, sv );
+   if (LIKELY(szB < 2 * N_LINE_ARANGE))
+      zsm_sset_range_SMALL (a, szB, SVal_NOACCESS);
+   else
+      zsm_sset_range_noaccess (a, szB);
    Filter__clear_range( thr->filter, a, szB );
    if (0 && TRACEME(a,szB)) trace(thr,a,szB,"untrack-after ");
 }
@@ -6524,16 +7049,44 @@ void libhb_copy_shadow_state ( Thr* thr, Addr src, Addr dst, SizeT len )
 
 void libhb_maybe_GC ( void )
 {
-   event_map_maybe_GC();
-   /* If there are still freelist entries available, no need for a
-      GC. */
-   if (vts_tab_freelist != VtsID_INVALID)
-      return;
-   /* So all the table entries are full, and we're having to expand
-      the table.  But did we hit the threshhold point yet? */
-   if (VG_(sizeXA)( vts_tab ) < vts_next_GC_at)
-      return;
-   vts_tab__do_GC( False/*don't show stats*/ );
+   /* GC the unreferenced (zero rc) RCECs when
+         (1) reaching a significant nr of RCECs (to avoid scanning a contextTab
+             with mostly NULL ptr)
+     and (2) approaching the max nr of RCEC (as we have in any case
+             at least that amount of RCEC in the pool allocator)
+             Note: the margin allows to avoid a small but constant increase
+             of the max nr of RCEC due to the fact that libhb_maybe_GC is
+             not called when the current nr of RCEC exactly reaches the max.
+     and (3) the nr of referenced RCECs is less than 75% than total nr RCECs.
+     Avoid growing too much the nr of RCEC keeps the memory use low,
+     and avoids to have too many elements in the (fixed) contextTab hashtable.
+   */
+   if (UNLIKELY(stats__ctxt_tab_curr > N_RCEC_TAB/2
+                && stats__ctxt_tab_curr + 1000 >= stats__ctxt_tab_max
+                && (stats__ctxt_tab_curr * 3)/4 > RCEC_referenced))
+      do_RCEC_GC();
+
+   /* If there are still no entries available (all the table entries are full),
+      and we hit the threshold point, then do a GC */
+   Bool vts_tab_GC = vts_tab_freelist == VtsID_INVALID
+      && VG_(sizeXA)( vts_tab ) >= vts_next_GC_at;
+   if (UNLIKELY (vts_tab_GC))
+      vts_tab__do_GC( False/*don't show stats*/ );
+
+   /* scan GC the SecMaps when
+          (1) no SecMap in the freelist
+      and (2) the current nr of live secmaps exceeds the threshold. */
+   if (UNLIKELY(SecMap_freelist == NULL
+                && stats__secmaps_in_map_shmem >= next_SecMap_GC_at)) {
+      // If we did a vts tab GC, then no need to flush the cache again.
+      if (!vts_tab_GC)
+         zsm_flush_cache();
+      shmem__SecMap_do_GC(True);
+   }
+
+   /* Check the reference counts (expensive) */
+   if (CHECK_CEM)
+      event_map__check_reference_counts();
 }
 
 

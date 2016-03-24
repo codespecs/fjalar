@@ -7,12 +7,14 @@
 #include <sys/mman.h>
 #include <sys/syscall.h>
 
+typedef unsigned int             UInt;
 typedef unsigned long            UWord;
 typedef unsigned long long int   ULong;
+
 // Below code is copied from m_syscall.c
 // Refer to this file for syscall convention.
 #if defined(VGP_x86_linux)
-extern UWord do_syscall_WRK (UWord syscall_no, 
+extern UWord do_syscall_WRK (UWord syscall_no,
                              UWord a1, UWord a2, UWord a3,
                              UWord a4, UWord a5, UWord a6
                              );
@@ -39,6 +41,7 @@ asm(
 "	ret\n"
 ".previous\n"
 );
+
 #elif defined(VGP_amd64_linux)
 extern UWord do_syscall_WRK (
           UWord syscall_no, 
@@ -104,6 +107,7 @@ asm(
 "         bx      lr\n"
 ".previous\n"
 );
+
 #elif defined(VGP_s390x_linux)
 UWord do_syscall_WRK (
    UWord syscall_no,
@@ -159,6 +163,75 @@ extern UWord do_syscall_WRK (
                  : "v0", "v1", "a0", "a1", "a2", "a3", "$8", "$9");
    return out;
 }
+#elif defined(VGP_tilegx_linux)
+extern UWord do_syscall_WRK (
+          UWord syscall_no,
+          UWord a1, UWord a2, UWord a3,
+          UWord a4, UWord a5, UWord a6
+       )
+{
+   UWord out;
+   __asm__ __volatile__ (
+                 "move r10, %1\n\t"
+                 "move r0,  %2\n\t"
+                 "move r1,  %3\n\t"
+                 "move r2,  %4\n\t"
+                 "move r3,  %5\n\t"
+                 "move r4,  %6\n\t"
+                 "move r5,  %7\n\t"
+                 "swint1      \n\t"
+                 "move %0,  r0\n\t"
+                 : /*out*/ "=r" (out)
+                 : "r"(syscall_no), "r"(a1), "r"(a2), "r"(a3),
+                   "r"(a4), "r"(a5), "r"(a6)
+                 : "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r10");
+   return out;
+}
+
+#elif defined(VGP_x86_solaris)
+extern ULong
+do_syscall_WRK(UWord a1, UWord a2, UWord a3,
+               UWord a4, UWord a5, UWord a6,
+               UWord a7, UWord a8,
+               UWord syscall_no,
+               UInt *errflag);
+asm(
+".text\n"
+".globl do_syscall_WRK\n"
+"do_syscall_WRK:\n"
+"        movl    40(%esp), %ecx\n"      /* assume syscall success */
+"        movl    $0, (%ecx)\n"
+"        movl    36(%esp), %eax\n"
+"        int     $0x91\n"
+"        jnc     1f\n"                  /* jump if success */
+"        movl    40(%esp), %ecx\n"      /* syscall failed - set *errflag */
+"        movl    $1, (%ecx)\n"
+"1:      ret\n"
+".previous\n"
+);
+
+#elif defined(VGP_amd64_solaris)
+extern ULong
+do_syscall_WRK(UWord a1, UWord a2, UWord a3,
+               UWord a4, UWord a5, UWord a6,
+               UWord a7, UWord a8,
+               UWord syscall_no,
+               UInt *errflag);
+asm(
+".text\n"
+".globl do_syscall_WRK\n"
+"do_syscall_WRK:\n"
+"       movq    %rcx, %r10\n"           /* pass rcx in r10 instead */
+"       movq    32(%rsp), %rcx\n"       /* assume syscall success */
+"       movl    $0, (%rcx)\n"
+"       movq    24(%rsp), %rax\n"
+"       syscall\n"
+"       jnc     1f\n"                   /* jump if success */
+"       movq    32(%rsp), %rcx\n"       /* syscall failed - set *errflag */
+"       movl    $1, (%rcx)\n"
+"1:     ret\n"
+".previous\n"
+);
 
 #else
 // Ensure the file compiles even if the syscall nr is not defined.
@@ -181,9 +254,18 @@ char **b10;
 int mprotect_result = 0;
 static void non_simd_mprotect (long tid, void* addr, long len)
 {
+#if defined(VGP_x86_solaris) || defined(VGP_amd64_solaris)
+   UInt err = 0;
+   mprotect_result = do_syscall_WRK((UWord) addr, len, PROT_NONE,
+                                    0, 0, 0, 0, 0, SYS_mprotect, 
+                                    &err);
+   if (err)
+      mprotect_result = -1;
+#else
    mprotect_result = do_syscall_WRK(__NR_mprotect,
                                     (UWord) addr, len, PROT_NONE,
                                     0, 0, 0);
+#endif
 }
 
 void f(void)

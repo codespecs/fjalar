@@ -8,8 +8,8 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright IBM Corp. 2010-2013
-   Copyright (C) 2012-2013  Florian Krohm   (britzel@acm.org)
+   Copyright IBM Corp. 2010-2015
+   Copyright (C) 2012-2015  Florian Krohm   (britzel@acm.org)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -215,26 +215,31 @@ lookupIRTemp128(HReg *hi, HReg *lo, ISelEnv *env, IRTemp tmp)
 }
 
 
-/* Allocate a new integer register */
-static HReg
+/* Allocate a new virtual integer register */
+static __inline__ HReg
+mkVRegI(UInt ix)
+{
+   return mkHReg(/*virtual*/True, HRcInt64, /*encoding*/0, ix);
+}
+
+static __inline__ HReg
 newVRegI(ISelEnv *env)
 {
-   HReg reg = mkHReg(env->vreg_ctr, HRcInt64, True /* virtual */ );
-   env->vreg_ctr++;
-
-   return reg;
+   return mkVRegI(env->vreg_ctr++);
 }
 
 
-/* Allocate a new floating point register */
-static HReg
+/* Allocate a new virtual floating point register */
+static __inline__ HReg
+mkVRegF(UInt ix)
+{
+   return mkHReg(/*virtual*/True, HRcFlt64, /*encoding*/0, ix);
+}
+
+static __inline__ HReg
 newVRegF(ISelEnv *env)
 {
-   HReg reg = mkHReg(env->vreg_ctr, HRcFlt64, True /* virtual */ );
-
-   env->vreg_ctr++;
-
-   return reg;
+   return mkVRegF(env->vreg_ctr++);
 }
 
 
@@ -242,7 +247,7 @@ newVRegF(ISelEnv *env)
 static __inline__ HReg
 make_gpr(UInt regno)
 {
-   return mkHReg(regno, HRcInt64, False /* virtual */ );
+   return s390_hreg_gpr(regno);
 }
 
 
@@ -250,7 +255,7 @@ make_gpr(UInt regno)
 static __inline__ HReg
 make_fpr(UInt regno)
 {
-   return mkHReg(regno, HRcFlt64, False /* virtual */ );
+   return s390_hreg_fpr(regno);
 }
 
 
@@ -268,22 +273,22 @@ ulong_fits_unsigned_12bit(ULong val)
 static __inline__ Bool
 ulong_fits_signed_20bit(ULong val)
 {
-   Long v = val & 0xFFFFFu;
+   ULong v = val & 0xFFFFFu;
 
-   v = (v << 44) >> 44;  /* sign extend */
+   v = (Long)(v << 44) >> 44;  /* sign extend */
 
-   return val == (ULong)v;
+   return val == v;
 }
 
 
 static __inline__ Bool
 ulong_fits_signed_8bit(ULong val)
 {
-   Long v = val & 0xFFu;
+   ULong v = val & 0xFFu;
 
-   v = (v << 56) >> 56;  /* sign extend */
+   v = (Long)(v << 56) >> 56;  /* sign extend */
 
-   return val == (ULong)v;
+   return val == v;
 }
 
 /* EXPR is an expression that is used as an address. Return an s390_amode
@@ -312,9 +317,7 @@ s390_isel_amode_wrk(ISelEnv *env, IRExpr *expr,
          if (ulong_fits_unsigned_12bit(value)) {
             return s390_amode_b12((Int)value, s390_isel_int_expr(env, arg1));
          }
-         /* If long-displacement is not available, do not construct B20 or
-            BX20 amodes because code generation cannot handle them. */
-         if (s390_host_has_ldisp && ulong_fits_signed_20bit(value)) {
+         if (ulong_fits_signed_20bit(value)) {
             return s390_amode_b20((Int)value, s390_isel_int_expr(env, arg1));
          }
       }
@@ -465,13 +468,13 @@ s390_expr_is_const_zero(IRExpr *expr)
 static ULong
 get_const_value_as_ulong(const IRConst *con)
 {
-   Long value;
+   ULong value;
 
    switch (con->tag) {
-   case Ico_U1:  value = con->Ico.U1;  return (ULong) ((value << 63) >> 63);
-   case Ico_U8:  value = con->Ico.U8;  return (ULong) ((value << 56) >> 56);
-   case Ico_U16: value = con->Ico.U16; return (ULong) ((value << 48) >> 48);
-   case Ico_U32: value = con->Ico.U32; return (ULong) ((value << 32) >> 32);
+   case Ico_U1:  value = con->Ico.U1;  return ((Long)(value << 63) >> 63);
+   case Ico_U8:  value = con->Ico.U8;  return ((Long)(value << 56) >> 56);
+   case Ico_U16: value = con->Ico.U16; return ((Long)(value << 48) >> 48);
+   case Ico_U32: value = con->Ico.U32; return ((Long)(value << 32) >> 32);
    case Ico_U64: return con->Ico.U64;
    default:
       vpanic("get_const_value_as_ulong");
@@ -511,7 +514,7 @@ doHelperCall(/*OUT*/UInt *stackAdjustAfterCall,
              IRCallee *callee, IRType retTy, IRExpr **args)
 {
    UInt n_args, i, argreg, size;
-   ULong target;
+   Addr64 target;
    HReg tmpregs[S390_NUM_GPRPARMS];
    s390_cc_t cc;
 
@@ -556,7 +559,7 @@ doHelperCall(/*OUT*/UInt *stackAdjustAfterCall,
          IRType type = typeOfIRExpr(env->type_env, args[i]);
          if (type != Ity_I64) {
             ++arg_errors;
-            vex_printf("calling %s: argument #%d has type ", callee->name, i);
+            vex_printf("calling %s: argument #%u has type ", callee->name, i);
             ppIRType(type);
             vex_printf("; Ity_I64 is required\n");
          }
@@ -608,7 +611,7 @@ doHelperCall(/*OUT*/UInt *stackAdjustAfterCall,
       addInstr(env, s390_insn_move(size, finalreg, tmpregs[i]));
    }
 
-   target = Ptr_to_ULong(callee->addr);
+   target = (Addr)callee->addr;
 
    /* Do final checks, set the return values, and generate the call
       instruction proper. */
@@ -632,7 +635,7 @@ doHelperCall(/*OUT*/UInt *stackAdjustAfterCall,
    }
 
    /* Finally, the call itself. */
-   addInstr(env, s390_insn_helper_call(cc, (Addr64)target, n_args,
+   addInstr(env, s390_insn_helper_call(cc, target, n_args,
                                        callee->name, *retloc));
 }
 
@@ -2140,6 +2143,42 @@ s390_isel_float128_expr_wrk(HReg *dst_hi, HReg *dst_lo, ISelEnv *env,
          return;
       }
 
+      case Iop_RoundF128toInt: {
+         IRExpr *irrm;
+         IRExpr *left;
+         s390_bfp_round_t rm;
+         HReg op_hi, op_lo;
+         HReg f0, f2, f4, f6;           /* real registers */
+
+         f4 = make_fpr(4); /* source */
+         f6 = make_fpr(6); /* source */
+         f0 = make_fpr(0); /* destination */
+         f2 = make_fpr(2); /* destination */
+
+         irrm = expr->Iex.Binop.arg1;
+         left = expr->Iex.Binop.arg2;
+         
+         if (s390_host_has_fpext) {
+            rm = get_bfp_rounding_mode(env, irrm);
+         } else {
+            set_bfp_rounding_mode_in_fpc(env, irrm);
+            rm = S390_BFP_ROUND_PER_FPC;
+         }
+
+         s390_isel_float128_expr(&op_hi, &op_lo, env, left);
+         /* operand --> (f4, f6) */
+         addInstr(env, s390_insn_move(8, f4, op_hi));
+         addInstr(env, s390_insn_move(8, f6, op_lo));
+         addInstr(env, s390_insn_bfp128_convert(16, S390_BFP_F128_TO_F128I,
+                                                f0, f2, f4, f6, rm));
+         /* (f0, f2) --> destination */
+         *dst_hi = newVRegF(env);
+         *dst_lo = newVRegF(env);
+         addInstr(env, s390_insn_move(8, *dst_hi, f0));
+         addInstr(env, s390_insn_move(8, *dst_lo, f2));
+         return;
+      }
+
       default:
          goto irreducible;
       }
@@ -2375,6 +2414,8 @@ s390_isel_float_expr_wrk(ISelEnv *env, IRExpr *expr)
          return dst;
 
       case Iop_F64toF32:  conv = S390_BFP_F64_TO_F32; goto convert_float;
+      case Iop_RoundF32toInt: conv = S390_BFP_F32_TO_F32I; goto convert_float;
+      case Iop_RoundF64toInt: conv = S390_BFP_F64_TO_F64I; goto convert_float;
       case Iop_I32StoF32: conv = S390_BFP_I32_TO_F32; goto convert_int;
       case Iop_I32UtoF32: conv = S390_BFP_U32_TO_F32; goto convert_int;
       case Iop_I64StoF32: conv = S390_BFP_I64_TO_F32; goto convert_int;
@@ -4050,18 +4091,15 @@ iselNext(ISelEnv *env, IRExpr *next, IRJumpKind jk, Int offsIP)
    Do not assign it to a global variable! */
 
 HInstrArray *
-iselSB_S390(IRSB *bb, VexArch arch_host, const VexArchInfo *archinfo_host,
+iselSB_S390(const IRSB *bb, VexArch arch_host, const VexArchInfo *archinfo_host,
             const VexAbiInfo *vbi, Int offset_host_evcheck_counter,
             Int offset_host_evcheck_fail_addr, Bool chaining_allowed,
-            Bool add_profinc, Addr64 max_ga)
+            Bool add_profinc, Addr max_ga)
 {
    UInt     i, j;
    HReg     hreg, hregHI;
    ISelEnv *env;
    UInt     hwcaps_host = archinfo_host->hwcaps;
-
-   /* KLUDGE: export hwcaps. */
-   s390_host_hwcaps = hwcaps_host;
 
    /* Do some sanity checks */
    vassert((VEX_HWCAPS_S390X(hwcaps_host) & ~(VEX_HWCAPS_S390X_ALL)) == 0);
@@ -4070,7 +4108,7 @@ iselSB_S390(IRSB *bb, VexArch arch_host, const VexArchInfo *archinfo_host,
    vassert(archinfo_host->endness == VexEndnessBE);
 
    /* Make up an initial environment to use. */
-   env = LibVEX_Alloc(sizeof(ISelEnv));
+   env = LibVEX_Alloc_inline(sizeof(ISelEnv));
    env->vreg_ctr = 0;
 
    /* Set up output code array. */
@@ -4092,8 +4130,8 @@ iselSB_S390(IRSB *bb, VexArch arch_host, const VexArchInfo *archinfo_host,
    vassert(bb->tyenv->types_used >= 0);
 
    env->n_vregmap = bb->tyenv->types_used;
-   env->vregmap   = LibVEX_Alloc(env->n_vregmap * sizeof(HReg));
-   env->vregmapHI = LibVEX_Alloc(env->n_vregmap * sizeof(HReg));
+   env->vregmap   = LibVEX_Alloc_inline(env->n_vregmap * sizeof(HReg));
+   env->vregmapHI = LibVEX_Alloc_inline(env->n_vregmap * sizeof(HReg));
 
    env->previous_bfp_rounding_mode = NULL;
    env->previous_dfp_rounding_mode = NULL;
@@ -4114,29 +4152,26 @@ iselSB_S390(IRSB *bb, VexArch arch_host, const VexArchInfo *archinfo_host,
       case Ity_I8:
       case Ity_I16:
       case Ity_I32:
-         hreg = mkHReg(j++, HRcInt64, True);
-         break;
-
       case Ity_I64:
-         hreg   = mkHReg(j++, HRcInt64, True);
+         hreg = mkVRegI(j++);
          break;
 
       case Ity_I128:
-         hreg   = mkHReg(j++, HRcInt64, True);
-         hregHI = mkHReg(j++, HRcInt64, True);
+         hreg   = mkVRegI(j++);
+         hregHI = mkVRegI(j++);
          break;
 
       case Ity_F32:
       case Ity_F64:
       case Ity_D32:
       case Ity_D64:
-         hreg = mkHReg(j++, HRcFlt64, True);
+         hreg = mkVRegF(j++);
          break;
 
       case Ity_F128:
       case Ity_D128:
-         hreg   = mkHReg(j++, HRcFlt64, True);
-         hregHI = mkHReg(j++, HRcFlt64, True);
+         hreg   = mkVRegF(j++);
+         hregHI = mkVRegF(j++);
          break;
 
       case Ity_V128: /* fall through */

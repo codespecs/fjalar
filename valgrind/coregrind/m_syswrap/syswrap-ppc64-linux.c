@@ -7,8 +7,8 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2005-2013 Nicholas Nethercote <njn@valgrind.org>
-   Copyright (C) 2005-2013 Cerion Armour-Brown <cerion@open-works.co.uk>
+   Copyright (C) 2005-2015 Nicholas Nethercote <njn@valgrind.org>
+   Copyright (C) 2005-2015 Cerion Armour-Brown <cerion@open-works.co.uk>
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -33,7 +33,6 @@
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
 #include "pub_core_vkiscnums.h"
-#include "pub_core_libcsetjmp.h"    // to keep _threadstate.h happy
 #include "pub_core_threadstate.h"
 #include "pub_core_aspacemgr.h"
 #include "pub_core_debuglog.h"
@@ -49,7 +48,6 @@
 #include "pub_core_syscall.h"
 #include "pub_core_syswrap.h"
 #include "pub_core_tooliface.h"
-#include "pub_core_stacks.h"        // VG_(register_stack)
 
 #include "priv_types_n_macros.h"
 #include "priv_syswrap-generic.h"   /* for decls of generic wrappers */
@@ -373,7 +371,7 @@ static void setup_child ( ThreadArchState*, ThreadArchState* );
 
 /* 
    When a client clones, we need to keep track of the new thread.  This means:
-   1. allocate a ThreadId+ThreadState+stack for the the thread
+   1. allocate a ThreadId+ThreadState+stack for the thread
 
    2. initialize the thread's new VCPU state
 
@@ -555,8 +553,8 @@ PRE(sys_mmap)
 {
    SysRes r;
 
-   PRINT("sys_mmap ( %#lx, %llu, %ld, %ld, %ld, %ld )",
-         ARG1, (ULong)ARG2, ARG3, ARG4, ARG5, ARG6 );
+   PRINT("sys_mmap ( %#lx, %lu, %lu, %lu, %lu, %lu )",
+         ARG1, ARG2, ARG3, ARG4, ARG5, ARG6 );
    PRE_REG_READ6(long, "mmap",
                  unsigned long, start, unsigned long, length,
                  unsigned long, prot,  unsigned long, flags,
@@ -719,7 +717,7 @@ PRE(sys_clone)
 
 PRE(sys_fadvise64)
 {
-   PRINT("sys_fadvise64 ( %ld, %ld, %lu, %ld )", ARG1,ARG2,ARG3,ARG4);
+   PRINT("sys_fadvise64 ( %ld, %ld, %lu, %ld )",  SARG1, SARG2, SARG3, SARG4);
    PRE_REG_READ4(long, "fadvise64",
                  int, fd, vki_loff_t, offset, vki_size_t, len, int, advice);
 }
@@ -810,6 +808,7 @@ static SyscallTableEntry syscall_table[] = {
    GENX_(__NR_getuid,            sys_getuid),             //  24
 
 // _____(__NR_stime,             sys_stime),              //  25
+// When ptrace is supported, memcheck/tests/linux/getregset should be enabled
 // _____(__NR_ptrace,            sys_ptrace),             //  26
    GENX_(__NR_alarm,             sys_alarm),              //  27
 // _____(__NR_oldfstat,          sys_oldfstat),           //  28
@@ -989,7 +988,7 @@ static SyscallTableEntry syscall_table[] = {
    LINXY(__NR_rt_sigaction,      sys_rt_sigaction),       // 173
    LINXY(__NR_rt_sigprocmask,    sys_rt_sigprocmask),     // 174
 
-// _____(__NR_rt_sigpending,     sys_rt_sigpending),      // 175
+   LINXY(__NR_rt_sigpending,     sys_rt_sigpending),      // 175
    LINXY(__NR_rt_sigtimedwait,   sys_rt_sigtimedwait),    // 176
    LINXY(__NR_rt_sigqueueinfo,   sys_rt_sigqueueinfo),    // 177
    LINX_(__NR_rt_sigsuspend,     sys_rt_sigsuspend),      // 178
@@ -1152,12 +1151,18 @@ static SyscallTableEntry syscall_table[] = {
    LINX_(__NR_pwritev,           sys_pwritev),          // 321
    LINXY(__NR_rt_tgsigqueueinfo, sys_rt_tgsigqueueinfo),// 322
 
+   LINXY(__NR_recvmmsg,          sys_recvmmsg),         // 343
+   LINXY(__NR_accept4,           sys_accept4),          // 344
+
    LINXY(__NR_clock_adjtime,     sys_clock_adjtime),    // 347
+   LINX_(__NR_syncfs,            sys_syncfs),           // 348
+   LINXY(__NR_sendmmsg,          sys_sendmmsg),         // 349
 
    LINXY(__NR_process_vm_readv,  sys_process_vm_readv), // 351
    LINX_(__NR_process_vm_writev, sys_process_vm_writev),// 352
 
-   LINXY(__NR_getrandom,         sys_getrandom)         // 359
+   LINXY(__NR_getrandom,         sys_getrandom),        // 359
+   LINXY(__NR_memfd_create,      sys_memfd_create)      // 360
 };
 
 SyscallTableEntry* ML_(get_linux_syscall_entry) ( UInt sysno )

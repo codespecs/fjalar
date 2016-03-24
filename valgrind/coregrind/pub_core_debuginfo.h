@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward
+   Copyright (C) 2000-2015 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -62,7 +62,7 @@ extern void VG_(di_initialise) ( void );
    released by simply re-opening and closing the same file (even via
    different fd!).
 */
-#if defined(VGO_linux) || defined(VGO_darwin)
+#if defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_solaris)
 extern ULong VG_(di_notify_mmap)( Addr a, Bool allow_SkFileV, Int use_fd );
 
 extern void VG_(di_notify_munmap)( Addr a, SizeT len );
@@ -130,6 +130,10 @@ typedef
 typedef
    struct { Addr pc; Addr sp; Addr fp; Addr ra; }
    D3UnwindRegs;
+#elif defined(VGA_tilegx)
+typedef
+   struct { Addr pc; Addr sp; Addr fp; Addr lr; }
+   D3UnwindRegs;
 #else
 #  error "Unsupported arch"
 #endif
@@ -138,13 +142,21 @@ extern Bool VG_(use_CF_info) ( /*MOD*/D3UnwindRegs* uregs,
                                Addr min_accessible,
                                Addr max_accessible );
 
-/* returns the "generation" of the CF info.
+/* returns the "generation" of the debug info.
    Each time some debuginfo is changed (e.g. loaded or unloaded),
-   the VG_(CF_info_generation) value returned will be increased.
-   This can be used to flush cached information derived from the CF info. */
-extern UInt VG_(CF_info_generation) (void);
+   the VG_(debuginfo_generation)() value returned will be increased.
+   This can be used to flush cached information derived from debug
+   info (e.g. CFI info or FPO info or ...). */
+extern UInt VG_(debuginfo_generation) (void);
 
 
+
+/* True if some FPO information is loaded.
+   It is useless to call VG_(use_FPO_info) if this returns False.
+   Note that the return value should preferrably be cached in
+   the stack unwind code, and re-queried when the debug info generation
+   changes. */
+extern Bool VG_(FPO_info_present)(void);
 
 /* Use MSVC FPO data to do one step of stack unwinding. */
 extern Bool VG_(use_FPO_info) ( /*MOD*/Addr* ipP,
@@ -152,6 +164,10 @@ extern Bool VG_(use_FPO_info) ( /*MOD*/Addr* ipP,
                                 /*MOD*/Addr* fpP,
                                 Addr min_accessible,
                                 Addr max_accessible );
+
+/* Print the unwind info (if there is some) for the given address
+   range [from,to]. */
+extern void VG_(ppUnwindInfo) (Addr from, Addr to);
 
 /* AVMAs for a symbol. Usually only the lowest address of the entity.
    On ppc64 platforms, also contains tocptr and local_ep.

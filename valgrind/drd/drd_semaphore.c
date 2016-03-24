@@ -1,7 +1,7 @@
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2013 Bart Van Assche <bvanassche@acm.org>.
+  Copyright (C) 2006-2015 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -55,7 +55,7 @@ static void drd_segment_push(struct semaphore_info* p, Segment* sg)
    tl_assert(sg);
    n = VG_(addToXA)(p->last_sem_post_seg, &sg);
 #if 0
-   VG_(message)(Vg_DebugMsg, "0x%lx push: added at position %ld/%ld",
+   VG_(message)(Vg_DebugMsg, "0x%lx push: added at position %ld/%ld\n",
                 p->a1, n, VG_(sizeXA)(p->last_sem_post_seg));
 #endif
    tl_assert(*(Segment**)VG_(indexXA)(p->last_sem_post_seg, n) == sg);
@@ -69,7 +69,7 @@ static Segment* drd_segment_pop(struct semaphore_info* p)
 
    sz = VG_(sizeXA)(p->last_sem_post_seg);
 #if 0
-   VG_(message)(Vg_DebugMsg, "0x%lx pop:  removed from position %ld/%ld",
+   VG_(message)(Vg_DebugMsg, "0x%lx pop:  removed from position %ld/%ld\n",
                 p->a1, sz - 1, sz);
 #endif
    sg = 0;
@@ -90,7 +90,7 @@ void DRD_(semaphore_set_trace)(const Bool trace_semaphore)
 
 /**
  * Initialize the memory 'p' points at as a semaphore_info structure for the
- * client semaphore at client addres 'semaphore'.
+ * client semaphore at client address 'semaphore'.
  */
 static
 void drd_semaphore_initialize(struct semaphore_info* const p,
@@ -174,7 +174,7 @@ struct semaphore_info* DRD_(semaphore_init)(const Addr semaphore,
    Segment* sg;
 
    if (s_trace_semaphore)
-      DRD_(trace_msg)("[%d] sem_init      0x%lx value %u",
+      DRD_(trace_msg)("[%u] sem_init      0x%lx value %u",
                       DRD_(thread_get_running_tid)(), semaphore, value);
 
    p = semaphore_get(semaphore);
@@ -222,7 +222,7 @@ void DRD_(semaphore_destroy)(const Addr semaphore)
    p = semaphore_get(semaphore);
 
    if (s_trace_semaphore)
-      DRD_(trace_msg)("[%d] sem_destroy   0x%lx value %u",
+      DRD_(trace_msg)("[%u] sem_destroy   0x%lx value %u",
                       DRD_(thread_get_running_tid)(), semaphore,
                       p ? p->value : 0);
 
@@ -252,10 +252,10 @@ struct semaphore_info* DRD_(semaphore_open)(const Addr semaphore,
    Segment* sg;
 
    if (s_trace_semaphore)
-      DRD_(trace_msg)("[%d] sem_open      0x%lx name %s"
+      DRD_(trace_msg)("[%u] sem_open      0x%lx name %s"
                       " oflag %#lx mode %#lo value %u",
                       DRD_(thread_get_running_tid)(),
-                      semaphore, name, oflag, mode, value);
+                      semaphore, name, (UWord)oflag, (UWord)mode, value);
 
    /* Return if the sem_open() call failed. */
    if (! semaphore)
@@ -295,7 +295,7 @@ void DRD_(semaphore_close)(const Addr semaphore)
    p = semaphore_get(semaphore);
 
    if (s_trace_semaphore)
-      DRD_(trace_msg)("[%d] sem_close     0x%lx value %u",
+      DRD_(trace_msg)("[%u] sem_close     0x%lx value %u",
                       DRD_(thread_get_running_tid)(), semaphore,
                       p ? p->value : 0);
 
@@ -350,7 +350,7 @@ void DRD_(semaphore_post_wait)(const DrdThreadId tid, const Addr semaphore,
    tl_assert(waited == 0 || waited == 1);
    p = semaphore_get(semaphore);
    if (s_trace_semaphore)
-      DRD_(trace_msg)("[%d] sem_wait      0x%lx value %u -> %u%s",
+      DRD_(trace_msg)("[%u] sem_wait      0x%lx value %u -> %u%s",
                       DRD_(thread_get_running_tid)(), semaphore,
                       p ? p->value : 0, p ? p->value - waited : 0,
 		      waited ? "" : " (did not wait)");
@@ -409,7 +409,7 @@ void DRD_(semaphore_pre_post)(const DrdThreadId tid, const Addr semaphore)
    p->value++;
 
    if (s_trace_semaphore)
-      DRD_(trace_msg)("[%d] sem_post      0x%lx value %u -> %u",
+      DRD_(trace_msg)("[%u] sem_post      0x%lx value %u -> %u",
                       DRD_(thread_get_running_tid)(),
                       semaphore, p->value - 1, p->value);
 

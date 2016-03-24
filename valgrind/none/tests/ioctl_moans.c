@@ -4,8 +4,15 @@
 
 #include <sys/ioctl.h>
 
-/* An ioctl request for a strange ioctl device driver. */
-#define IOCTL_REQUEST_BASE 0x12345670
+/* An ioctl request for a strange ioctl device driver.
+   The choice of values here needs to match the logic in
+   ML_(PRE_unknown_ioctl) and take into account that _IOC_NONE
+   is not == 0 everywhere. */
+# if defined(VGO_linux)
+#define IOCTL_REQUEST_BASE (0x12345670 | _IOC(_IOC_NONE,0,0,0))
+# else
+#define IOCTL_REQUEST_BASE  0x12345670
+# endif
 
 int main(int argc, const char *argv[])
 {

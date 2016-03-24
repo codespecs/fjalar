@@ -6,7 +6,7 @@
 /*
    This file is part of Callgrind, a Valgrind tool for call tracing.
 
-   Copyright (C) 2002-2013, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2015, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -61,7 +61,7 @@ static exec_stack current_states;
 /* current running thread */
 ThreadId CLG_(current_tid);
 
-static thread_info* thread[VG_N_THREADS];
+static thread_info** thread;
 
 thread_info** CLG_(get_threads)()
 {
@@ -75,7 +75,10 @@ thread_info* CLG_(get_current_thread)()
 
 void CLG_(init_threads)()
 {
-    Int i;
+    UInt i;
+
+    thread = CLG_MALLOC("cl.threads.it.1", VG_N_THREADS * sizeof thread[0]);
+
     for(i=0;i<VG_N_THREADS;i++)
 	thread[i] = 0;
     CLG_(current_tid) = VG_INVALID_THREADID;
@@ -128,7 +131,7 @@ void CLG_(switch_thread)(ThreadId tid)
 {
   if (tid == CLG_(current_tid)) return;
 
-  CLG_DEBUG(0, ">> thread %d (was %d)\n", tid, CLG_(current_tid));
+  CLG_DEBUG(0, ">> thread %u (was %u)\n", tid, CLG_(current_tid));
 
   if (CLG_(current_tid) != VG_INVALID_THREADID) {    
     /* save thread state */
@@ -179,7 +182,7 @@ void CLG_(run_thread)(ThreadId tid)
 {
     /* check for dumps needed */
     static ULong bbs_done = 0;
-    static HChar buf[512];
+    HChar buf[50];   // large enough
 
     if (CLG_(clo).dump_every_bb >0) {
        if (CLG_(stat).bb_executions - bbs_done > CLG_(clo).dump_every_bb) {
@@ -197,7 +200,7 @@ void CLG_(pre_signal)(ThreadId tid, Int sigNum, Bool alt_stack)
 {
     exec_state *es;
 
-    CLG_DEBUG(0, ">> pre_signal(TID %d, sig %d, alt_st %s)\n",
+    CLG_DEBUG(0, ">> pre_signal(TID %u, sig %d, alt_st %s)\n",
 	     tid, sigNum, alt_stack ? "yes":"no");
 
     /* switch to the thread the handler runs in */
@@ -238,7 +241,7 @@ void CLG_(post_signal)(ThreadId tid, Int sigNum)
     exec_state* es;
     UInt fn_number, *pactive;
 
-    CLG_DEBUG(0, ">> post_signal(TID %d, sig %d)\n",
+    CLG_DEBUG(0, ">> post_signal(TID %u, sig %d)\n",
 	     tid, sigNum);
 
     /* thread switching potentially needed, eg. with instrumentation off */
@@ -258,7 +261,7 @@ void CLG_(post_signal)(ThreadId tid, Int sigNum)
       fn_number = CLG_(current_state).cxt->fn[0]->number;
       pactive = CLG_(get_fn_entry)(fn_number);
       (*pactive)--;
-      CLG_DEBUG(0, "  set active count of %s back to %d\n",
+      CLG_DEBUG(0, "  set active count of %s back to %u\n",
 	       CLG_(current_state).cxt->fn[0]->name, *pactive);
     }
 

@@ -9,7 +9,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2013-2013 Mozilla Foundation
+   Copyright (C) 2013-2015 Mozilla Foundation
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -46,8 +46,10 @@
 
 #include "minilzo.h"
 
+/* These values (1024 entries of 8192 bytes each) gives a cache
+   size of 8MB. */
 #define CACHE_ENTRY_SIZE_BITS (12+1)
-#define CACHE_N_ENTRIES       32
+#define CACHE_N_ENTRIES       1024
 
 #define CACHE_ENTRY_SIZE      (1 << CACHE_ENTRY_SIZE_BITS)
 
@@ -394,7 +396,23 @@ static inline Bool is_in_CEnt ( const CEnt* cent, DiOffT off )
       no benefit, whereas skipping it does remove it from the hottest
       path. */
    /* vg_assert(cent->used > 0 && cent->used <= CACHE_ENTRY_SIZE); */
-   return cent->off <= off && off < cent->off + cent->used;
+   /* What we want to return is:
+        cent->off <= off && off < cent->off + cent->used;
+      This is however a very hot path, so here's alternative that uses
+      only one conditional branch, using the following transformation,
+      where all quantities are unsigned:
+              x >= LO && x < LO+N
+         -->  x-LO >= 0 && x-LO < LO+N-LO
+         -->  x-LO >= 0 && x-LO < N
+         -->  x-LO < N
+      This is however only valid when the original bounds, that is, LO
+      .. LO+N-1, do not wrap around the end of the address space.  That
+      is, we require that LO <= LO+N-1.  But that's OK .. we don't
+      expect wraparounds in CEnts or for that matter any object
+      allocated from C-land.  See Hacker's Delight, Chapter 4.1,
+      "Checking Bounds of Integers", for more details.
+   */
+   return off - cent->off < cent->used;
 }
 
 /* Allocate a new CEnt, connect it to |img|, and return its index. */
@@ -456,7 +474,7 @@ static void set_CEnt ( const DiImage* img, UInt entNo, DiOffT off )
       UInt delay = now - t_last;
       t_last = now;
       nread += len;
-      VG_(printf)("XXXXXXXX (tot %lld) read %ld offset %lld  %u\n", 
+      VG_(printf)("XXXXXXXX (tot %'llu)  read %'lu  offset %'llu  delay %'u\n", 
                   nread, len, off, delay);
    }
 
@@ -780,6 +798,20 @@ inline Bool ML_(img_valid)(const DiImage* img, DiOffT offset, SizeT size)
    return img->size > 0 && offset + size <= (DiOffT)img->size;
 }
 
+__attribute__((noinline))
+static void ensure_valid_failed (const DiImage* img, DiOffT offset, SizeT size,
+                                 const HChar* caller)
+{
+   VG_(umsg)("Valgrind: debuginfo reader: ensure_valid failed:\n");
+   VG_(umsg)("Valgrind:   during call to %s\n", caller);
+   VG_(umsg)("Valgrind:   request for range [%llu, +%lu) exceeds\n",
+             offset, size);
+   VG_(umsg)("Valgrind:   valid image size of %lu for image:\n",
+             img->size);
+   VG_(umsg)("Valgrind:   \"%s\"\n", img->source.name);
+   give_up__image_overrun();
+}
+
 /* Check the given range is valid, and if not, shut down the system.
    An invalid range would imply that we're trying to read outside the
    image, which normally means the image is corrupted somehow, or the
@@ -790,14 +822,8 @@ static void ensure_valid(const DiImage* img, DiOffT offset, SizeT size,
 {
    if (LIKELY(ML_(img_valid)(img, offset, size)))
       return;
-   VG_(umsg)("Valgrind: debuginfo reader: ensure_valid failed:\n");
-   VG_(umsg)("Valgrind:   during call to %s\n", caller);
-   VG_(umsg)("Valgrind:   request for range [%llu, +%llu) exceeds\n",
-             (ULong)offset, (ULong)size);
-   VG_(umsg)("Valgrind:   valid image size of %llu for image:\n",
-             (ULong)img->size);
-   VG_(umsg)("Valgrind:   \"%s\"\n", img->source.name);
-   give_up__image_overrun();
+   else
+      ensure_valid_failed(img, offset, size, caller);
 }
 
 

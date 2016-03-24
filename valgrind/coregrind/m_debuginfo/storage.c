@@ -9,7 +9,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward 
+   Copyright (C) 2000-2015 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -32,7 +32,7 @@
 
 /* This file manages the data structures built by the debuginfo
    system.  These are: the top level SegInfo list.  For each SegInfo,
-   there are tables for for address-to-symbol mappings,
+   there are tables for address-to-symbol mappings,
    address-to-src-file/line mappings, and address-to-CFI-info
    mappings.
 */
@@ -59,8 +59,8 @@
 /*--- Misc (printing, errors)                              ---*/
 /*------------------------------------------------------------*/
 
-/* Show a non-fatal debug info reading error.  Use vg_panic if
-   terminal.  'serious' errors are shown regardless of the
+/* Show a non-fatal debug info reading error.  Use VG_(core_panic) for
+   fatal errors.  'serious' errors are shown regardless of the
    verbosity setting. */
 void ML_(symerr) ( const DebugInfo* di, Bool serious, const HChar* msg )
 {
@@ -98,7 +98,7 @@ void ML_(ppSym) ( Int idx, const DiSym* sym )
    vg_assert(sym->pri_name);
    if (sec_names)
       vg_assert(sec_names);
-   VG_(printf)( "%5d:  %c%c %#8lx .. %#8lx (%d)      %s%s",
+   VG_(printf)( "%5d:  %c%c %#8lx .. %#8lx (%u)      %s%s",
                 idx,
                 sym->isText ? 'T' : '-',
                 sym->isIFunc ? 'I' : '-',
@@ -142,8 +142,11 @@ void ML_(ppDiCfSI) ( const XArray* /* of CfiExpr */ exprs,
          }                                       \
       } while (0)
 
-   VG_(printf)("[%#lx .. %#lx]: ", base,
-                                   base + (UWord)len - 1);
+   if (base != 0 || len != 0)
+      VG_(printf)("[%#lx .. %#lx]: ", base, base + len - 1);
+   else
+      VG_(printf)("[]: ");
+
    switch (si_m->cfa_how) {
       case CFIC_IA_SPREL: 
          VG_(printf)("let cfa=oldSP+%d", si_m->cfa_off); 
@@ -212,6 +215,11 @@ void ML_(ppDiCfSI) ( const XArray* /* of CfiExpr */ exprs,
    SHOW_HOW(si_m->x30_how, si_m->x30_off);
    VG_(printf)(" X29=");
    SHOW_HOW(si_m->x29_how, si_m->x29_off);
+#  elif defined(VGA_tilegx)
+   VG_(printf)(" SP=");
+   SHOW_HOW(si_m->sp_how, si_m->sp_off);
+   VG_(printf)(" FP=");
+   SHOW_HOW(si_m->fp_how, si_m->fp_off);
 #  else
 #    error "Unknown arch"
 #  endif
@@ -529,7 +537,18 @@ void ML_(addLineInfo) ( struct _DebugInfo* di,
        return;
    }
 
-   vg_assert(lineno >= 0);
+   if (lineno < 0) {
+      static Bool complained = False;
+      if (!complained) {
+         complained = True;
+         VG_(message)(Vg_UserMsg, 
+                      "warning: ignoring line info entry with "
+                      "negative line number (%d)\n", lineno);
+         VG_(message)(Vg_UserMsg, 
+                      "(Nb: this message is only shown once)\n");
+      }
+      return;
+   }
    if (lineno > MAX_LINENO) {
       static Bool complained = False;
       if (!complained) {
@@ -649,7 +668,7 @@ void ML_(addInlInfo) ( struct _DebugInfo* di,
    if (0) VG_(message)
              (Vg_DebugMsg, 
               "addInlInfo: fn %s inlined as addr_lo %#lx,addr_hi %#lx,"
-              "caller fndn_ix %d %s:%d\n",
+              "caller fndn_ix %u %s:%d\n",
               inlinedfn, addr_lo, addr_hi, fndn_ix,
               ML_(fndn_ix2filename) (di, fndn_ix), lineno);
 
@@ -692,13 +711,18 @@ void ML_(addDiCfSI) ( struct _DebugInfo* di,
 
    /* sanity */
    vg_assert(len > 0);
-   /* If this fails, the implication is you have a single procedure
+   /* Issue a warning if LEN is unexpectedly large (exceeds 5 million).
+      The implication is you have a single procedure 
       with more than 5 million bytes of code.  Which is pretty
       unlikely.  Either that, or the debuginfo reader is somehow
       broken.  5 million is of course arbitrary; but it's big enough
       to be bigger than the size of any plausible piece of code that
-      would fall within a single procedure. */
-   vg_assert(len < 5000000);
+      would fall within a single procedure. But occasionally it does
+      happen (c.f. BZ #339542). */
+   if (len >= 5000000)
+      VG_(message)(Vg_DebugMsg,
+                   "warning: DiCfSI %#lx .. %#lx is huge; length = %u (%s)\n",
+                   base, base + len - 1, len, di->soname);
 
    vg_assert(di->fsm.have_rx_map && di->fsm.have_rw_map);
    /* Find mapping where at least one end of the CFSI falls into. */
@@ -911,7 +935,14 @@ static void ppCfiReg ( CfiReg reg )
       case Creg_ARM_R7:    VG_(printf)("R7");  break;
       case Creg_ARM64_X30: VG_(printf)("X30"); break;
       case Creg_MIPS_RA:   VG_(printf)("RA"); break;
-      case Creg_S390_R14:  VG_(printf)("R14"); break;
+      case Creg_S390_IA:   VG_(printf)("IA"); break;
+      case Creg_S390_SP:   VG_(printf)("SP"); break;
+      case Creg_S390_FP:   VG_(printf)("FP"); break;
+      case Creg_S390_LR:   VG_(printf)("LR"); break;
+      case Creg_TILEGX_IP: VG_(printf)("PC");  break;
+      case Creg_TILEGX_SP: VG_(printf)("SP");  break;
+      case Creg_TILEGX_BP: VG_(printf)("BP");  break;
+      case Creg_TILEGX_LR: VG_(printf)("R55"); break;
       default: vg_assert(0);
    }
 }
@@ -983,7 +1014,7 @@ void show_scope ( OSet* /* of DiAddrRange */ scope, const HChar* who )
    while (True) {
       range = VG_(OSetGen_Next)( scope );
       if (!range) break;
-      VG_(printf)("   %#lx .. %#lx: %lu vars\n", range->aMin, range->aMax,
+      VG_(printf)("   %#lx .. %#lx: %ld vars\n", range->aMin, range->aMax,
                   range->vars ? VG_(sizeXA)(range->vars) : 0);
    }
    VG_(printf)("}\n");
@@ -1436,7 +1467,7 @@ Bool preferName ( const DebugInfo* di,
    vlena = VG_(strlen)(a_name);
    vlenb = VG_(strlen)(b_name);
 
-#  if defined(VGO_linux)
+#  if defined(VGO_linux) || defined(VGO_solaris)
 #    define VERSION_CHAR '@'
 #  elif defined(VGO_darwin)
 #    define VERSION_CHAR '$'
@@ -1636,15 +1667,16 @@ static void canonicaliseSymtab ( struct _DebugInfo* di )
 
   cleanup_more:
  
-   /* If two symbols have identical address ranges, and agree on
-      .isText and .isIFunc, merge them into a single entry, but
-      preserve both names, so we end up knowing all the names for that
-      particular address range. */
+   /* BEGIN Detect and "fix" identical address ranges. */
    while (1) {
       Word r, w, n_merged;
       n_merged = 0;
       w = 0;
-      /* A pass merging entries together */
+      /* A pass merging entries together in the case where they agree
+         on .isText -- that is, either: both are .isText or both are
+         not .isText.  They are merged into a single entry, but both
+         sets of names are preserved, so we end up knowing all the
+         names for that particular address range.*/
       for (r = 1; r < di->symtab_used; r++) {
          vg_assert(w < r);
          if (   di->symtab[w].avmas.main == di->symtab[r].avmas.main
@@ -1675,6 +1707,46 @@ static void canonicaliseSymtab ( struct _DebugInfo* di )
             w = r;
          }
       }
+
+      /* A second pass merging entries together where one .isText but
+         the other isn't.  In such cases, just ignore the non-.isText
+         one (a heuristic hack.) */
+      for (r = 1; r < di->symtab_used; r++) {
+         /* Either of the symbols might already have been zapped by
+            the previous pass, so we first have to check that. */
+         if (di->symtab[r-1].pri_name == NULL) continue;
+         if (di->symtab[r-0].pri_name == NULL) continue;
+         /* ok, they are both still valid.  Identical address ranges? */
+         if (di->symtab[r-1].avmas.main != di->symtab[r-0].avmas.main) continue;
+         if (di->symtab[r-1].size       != di->symtab[r-0].size) continue;
+         /* Identical address ranges.  They must disagree on .isText
+            since if they agreed, the previous pass would have merged
+            them. */
+         if (di->symtab[r-1].isText && di->symtab[r-0].isText) vg_assert(0);
+         if (!di->symtab[r-1].isText && !di->symtab[r-0].isText) vg_assert(0);
+         Word to_zap  = di->symtab[r-1].isText ? (r-0) : (r-1);
+         Word to_keep = di->symtab[r-1].isText ? (r-1) : (r-0);
+         vg_assert(!di->symtab[to_zap].isText);
+         vg_assert(di->symtab[to_keep].isText);
+         /* Add to_zap's names to to_keep if to_zap has secondary names 
+            or to_zap's and to_keep's primary names differ. */
+         if (di->symtab[to_zap].sec_names 
+             || (0 != VG_(strcmp)(di->symtab[to_zap].pri_name,
+                                  di->symtab[to_keep].pri_name))) {
+            add_DiSym_names_to_from(di, &di->symtab[to_keep],
+                                        &di->symtab[to_zap]);
+         }
+         /* Mark to_zap as not-in use in the same way as in the
+            previous loop. */
+         di->symtab[to_zap].pri_name = NULL;
+         if (di->symtab[to_zap].sec_names) {
+            ML_(dinfo_free)(di->symtab[to_zap].sec_names);
+            di->symtab[to_zap].sec_names = NULL;
+         }
+         VG_(memset)(&di->symtab[to_zap], 0, sizeof(DiSym));
+         n_merged++;
+      }
+
       TRACE_SYMTAB( "canonicaliseSymtab: %ld symbols merged\n", n_merged);
       if (n_merged == 0)
          break;
@@ -1691,9 +1763,10 @@ static void canonicaliseSymtab ( struct _DebugInfo* di )
       }
       vg_assert(w + n_merged == di->symtab_used);
       di->symtab_used = w;
-   }
+   } /* while (1) */
+   /* END Detect and "fix" identical address ranges. */
 
-   /* Detect and "fix" overlapping address ranges. */
+   /* BEGIN Detect and "fix" overlapping address ranges. */
    n_truncated = 0;
 
    for (i = 0; i < ((Word)di->symtab_used) -1; i++) {
@@ -1781,6 +1854,7 @@ static void canonicaliseSymtab ( struct _DebugInfo* di )
       }
       n_truncated++;
    }
+   /* END Detect and "fix" overlapping address ranges. */
 
    if (n_truncated > 0) goto cleanup_more;
 
@@ -1955,7 +2029,7 @@ static void canonicaliseLoctab ( struct _DebugInfo* di )
    /* Ensure relevant postconditions hold. */
    for (i = 0; i < ((Word)di->loctab_used)-1; i++) {
       if (0)
-         VG_(printf)("%lu  0x%p  lno:%d sz:%d fndn_ix:%d  i+1 0x%p\n", 
+         VG_(printf)("%ld  0x%p  lno:%d sz:%d fndn_ix:%u  i+1 0x%p\n", 
                      i,
                      (void*)di->loctab[i].addr,
                      di->loctab[i].lineno, 
@@ -2087,9 +2161,9 @@ void ML_(canonicaliseCFI) ( struct _DebugInfo* di )
    }
 
    if (di->trace_cfi)
-      VG_(printf)("canonicaliseCfiSI: %ld entries, %#lx .. %#lx\n",
+      VG_(printf)("canonicaliseCfiSI: %lu entries, %#lx .. %#lx\n",
                   di->cfsi_used,
-	          di->cfsi_minavma, di->cfsi_maxavma);
+                  di->cfsi_minavma, di->cfsi_maxavma);
 
    /* Sort the cfsi_rd array by base address. */
    VG_(ssort)(di->cfsi_rd, di->cfsi_used, sizeof(*di->cfsi_rd), compare_DiCfSI);

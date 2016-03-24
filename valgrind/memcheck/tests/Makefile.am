@@ -27,6 +27,9 @@ endif
 if VGCONF_OS_IS_DARWIN
 SUBDIRS += darwin
 endif
+if VGCONF_OS_IS_SOLARIS
+SUBDIRS += solaris
+endif
 
 # Platform-specific tests
 if VGCONF_PLATFORMS_INCLUDE_X86_LINUX
@@ -35,9 +38,16 @@ endif
 if VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX
 SUBDIRS += amd64-linux
 endif
+if VGCONF_PLATFORMS_INCLUDE_X86_SOLARIS
+SUBDIRS += x86-solaris
+endif
+if VGCONF_PLATFORMS_INCLUDE_AMD64_SOLARIS
+SUBDIRS += amd64-solaris
+endif
 
 DIST_SUBDIRS = x86 amd64 ppc32 ppc64 s390x linux \
-		darwin x86-linux amd64-linux common .
+		darwin solaris x86-linux amd64-linux x86-solaris amd64-solaris \
+		common .
 
 dist_noinst_SCRIPTS = \
 	filter_addressable \
@@ -74,6 +84,7 @@ EXTRA_DIST = \
 		buflen_check.stderr.exp-kfail \
 	bug155125.stderr.exp bug155125.vgtest \
 	bug287260.stderr.exp bug287260.vgtest \
+	bug340392.stderr.exp bug340392.vgtest \
 	calloc-overflow.stderr.exp calloc-overflow.vgtest\
 	client-msg.stderr.exp client-msg.vgtest \
 	client-msg-as-xml.stderr.exp client-msg-as-xml.vgtest \
@@ -98,7 +109,7 @@ EXTRA_DIST = \
 	describe-block.stderr.exp describe-block.vgtest \
 	descr_belowsp.vgtest descr_belowsp.stderr.exp \
 	doublefree.stderr.exp doublefree.vgtest \
-	dw4.vgtest dw4.stderr.exp dw4.stdout.exp \
+	dw4.vgtest dw4.stderr.exp dw4.stderr.exp-solaris dw4.stdout.exp \
 	err_disable1.vgtest err_disable1.stderr.exp \
 	err_disable2.vgtest err_disable2.stderr.exp \
 	err_disable3.vgtest err_disable3.stderr.exp \
@@ -187,9 +198,11 @@ EXTRA_DIST = \
 	origin5-bz2.stderr.exp-glibc212-s390x \
 	origin5-bz2.stderr.exp-glibc234-s390x \
 	origin5-bz2.stderr.exp-glibc218-mips32 \
+	origin5-bz2.stderr.exp-glibc212-tilegx \
 	origin6-fp.vgtest origin6-fp.stdout.exp \
 	origin6-fp.stderr.exp-glibc25-amd64 \
 	origin6-fp.stderr.exp-glibc27-ppc64 \
+	origin6-fp.stderr.exp-glibc212-tilegx \
 	overlap.stderr.exp overlap.stdout.exp overlap.vgtest \
 	partiallydefinedeq.vgtest partiallydefinedeq.stderr.exp \
 	partiallydefinedeq.stderr.exp4 \
@@ -214,15 +227,16 @@ EXTRA_DIST = \
 	realloc2.stderr.exp realloc2.vgtest \
 	realloc3.stderr.exp realloc3.vgtest \
 	recursive-merge.stderr.exp recursive-merge.vgtest \
+	resvn_stack.stderr.exp resvn_stack.vgtest \
 	sbfragment.stdout.exp sbfragment.stderr.exp sbfragment.vgtest \
 	sem.stderr.exp sem.vgtest \
-	sendmsg.stderr.exp sendmsg.vgtest \
+	sendmsg.stderr.exp sendmsg.stderr.exp-solaris sendmsg.vgtest \
 	sh-mem.stderr.exp sh-mem.vgtest \
 	sh-mem-random.stderr.exp sh-mem-random.stdout.exp64 \
 	sh-mem-random.stdout.exp sh-mem-random.vgtest \
 	sigaltstack.stderr.exp sigaltstack.vgtest \
 	sigkill.stderr.exp sigkill.stderr.exp-darwin sigkill.stderr.exp-mips32 \
-	sigkill.vgtest \
+	    sigkill.stderr.exp-solaris sigkill.vgtest \
 	signal2.stderr.exp signal2.stdout.exp signal2.vgtest \
 	sigprocmask.stderr.exp sigprocmask.stderr.exp2 sigprocmask.vgtest \
 	static_malloc.stderr.exp static_malloc.vgtest \
@@ -265,7 +279,8 @@ EXTRA_DIST = \
 	vcpu_bz2.stdout.exp vcpu_bz2.stderr.exp vcpu_bz2.vgtest \
 	vcpu_fbench.stdout.exp vcpu_fbench.stderr.exp vcpu_fbench.vgtest \
 	vcpu_fnfns.stdout.exp vcpu_fnfns.stdout.exp-glibc28-amd64 \
-	vcpu_fnfns.stdout.exp-darwin vcpu_fnfns.stderr.exp vcpu_fnfns.vgtest \
+	vcpu_fnfns.stdout.exp-darwin vcpu_fnfns.stdout.exp-solaris \
+	vcpu_fnfns.stderr.exp vcpu_fnfns.vgtest \
 	wcs.vgtest wcs.stderr.exp wcs.stdout.exp \
 	wrap1.vgtest wrap1.stdout.exp wrap1.stderr.exp \
 	wrap2.vgtest wrap2.stdout.exp wrap2.stderr.exp \
@@ -275,8 +290,8 @@ EXTRA_DIST = \
 	wrap6.vgtest wrap6.stdout.exp wrap6.stderr.exp \
 	wrap7.vgtest wrap7.stdout.exp wrap7.stderr.exp \
 	wrap8.vgtest wrap8.stdout.exp wrap8.stderr.exp \
-	wrap8.stdout.exp2 wrap8.stderr.exp2 \
-	writev1.stderr.exp writev1.vgtest \
+	wrap8.stdout.exp-ppc64 wrap8.stderr.exp-ppc64 \
+	writev1.stderr.exp writev1.stderr.exp-solaris writev1.vgtest \
 	xml1.stderr.exp xml1.stdout.exp xml1.vgtest xml1.stderr.exp-s390x-mvc \
 	threadname.vgtest threadname.stderr.exp \
 	threadname_xml.vgtest threadname_xml.stderr.exp
@@ -294,6 +309,7 @@ check_PROGRAMS = \
 	buflen_check \
 	bug155125 \
 	bug287260 \
+	bug340392 \
 	calloc-overflow \
 	client-msg \
 	clientperm \
@@ -320,7 +336,6 @@ check_PROGRAMS = \
 	leak-pool \
 	leak-tree \
 	leak-segv-jmp \
-	long_namespace_xml \
 	long-supps \
 	mallinfo \
 	malloc_free_fill \
@@ -340,6 +355,7 @@ check_PROGRAMS = \
 	post-syscall \
 	realloc1 realloc2 realloc3 \
 	recursive-merge \
+	resvn_stack \
 	sbfragment \
 	sendmsg \
 	sh-mem sh-mem-random \
@@ -360,6 +376,11 @@ check_PROGRAMS = \
 	xml1 \
 	wrap1 wrap2 wrap3 wrap4 wrap5 wrap6 wrap7 wrap7so.so wrap8 \
 	writev1
+
+if !SOLARIS_SUN_STUDIO_AS
+# Sun Studio assembler fails on "IDENT too long"
+check_PROGRAMS += long_namespace_xml
+endif
 
 if DWARF4
 check_PROGRAMS += dw4
@@ -391,17 +412,26 @@ else
 atomic_incs_CFLAGS = $(AM_CFLAGS)
 endif
 
+if VGCONF_OS_IS_SOLARIS
+buflen_check_LDADD	= -lsocket -lnsl
+endif
+
 leak_cpp_interior_SOURCES	= leak_cpp_interior.cpp
 
 demangle_SOURCES = demangle.cpp
 
+bug340392_CFLAGS        = $(AM_CFLAGS) -O3
 dw4_CFLAGS		= $(AM_CFLAGS) -gdwarf-4 -fdebug-types-section
 
 descr_belowsp_LDADD     = -lpthread
 err_disable3_LDADD 	= -lpthread
 err_disable4_LDADD 	= -lpthread
+err_disable4_CFLAGS	= $(AM_CFLAGS)
+if VGCONF_OS_IS_SOLARIS
+err_disable4_CFLAGS	+= -D_XOPEN_SOURCE=500
+endif
 reach_thread_register_CFLAGS	= $(AM_CFLAGS) -O2
-reach_thread_register_LDADD     = -lpthread
+reach_thread_register_LDADD	= -lpthread
 thread_alloca_LDADD     = -lpthread
 threadname_LDADD 	= -lpthread
 
@@ -415,7 +445,7 @@ fprw_CFLAGS = $(AM_CFLAGS) @FLAG_W_NO_UNINITIALIZED@
 
 inits_CFLAGS = $(AM_CFLAGS) @FLAG_W_NO_UNINITIALIZED@
 
-inlinfo_CFLAGS = $(AM_CFLAGS) @FLAG_W_NO_UNINITIALIZED@ @FLAG_W_NO_STATIC_LOCAL_IN_INLINE@
+inlinfo_CFLAGS = $(AM_CFLAGS) -w
 
 inltemplate_SOURCES = inltemplate.cpp
 inltemplate_CXXFLAGS = $(AM_CXXFLAGS) @FLAG_W_NO_UNINITIALIZED@
@@ -424,12 +454,22 @@ long_namespace_xml_SOURCES = long_namespace_xml.cpp
 
 manuel1_CFLAGS = $(AM_CFLAGS) @FLAG_W_NO_UNINITIALIZED@
 
+memalign2_CFLAGS	= $(AM_CFLAGS)
+if VGCONF_OS_IS_SOLARIS
+memalign2_CFLAGS	+= -std=c99 -D__EXTENSIONS__
+endif
+
 memcmptest_CFLAGS	= $(AM_CFLAGS) -fno-builtin-memcmp
 
 mismatches_SOURCES	= mismatches.cpp
+mismatches_CXXFLAGS	= $(AM_CXXFLAGS) @FLAG_W_NO_MISMATCHED_NEW_DELETE@
 
 new_nothrow_SOURCES 	= new_nothrow.cpp
 new_override_SOURCES 	= new_override.cpp
+
+if VGCONF_OS_IS_SOLARIS
+null_socket_LDADD	= -lsocket -lnsl
+endif
 
 origin1_yes_CFLAGS      = $(AM_CFLAGS) @FLAG_W_NO_UNINITIALIZED@
 
@@ -448,7 +488,16 @@ origin6_fp_CFLAGS	= $(AM_CFLAGS) -O
 # because then we can't intercept it
 overlap_CFLAGS		= $(AM_CFLAGS) -fno-builtin-memcpy -fno-builtin-strcpy
 
-str_tester_CFLAGS	= $(AM_CFLAGS) -Wno-shadow
+resvn_stack_CFLAGS      = $(AM_CFLAGS) @FLAG_W_NO_UNINITIALIZED@
+
+sendmsg_CFLAGS		= $(AM_CFLAGS)
+if VGCONF_OS_IS_SOLARIS
+sendmsg_CFLAGS		+= -D_XOPEN_SOURCE=500
+sendmsg_LDADD		= -lsocket -lnsl
+endif
+
+str_tester_CFLAGS	= $(AM_CFLAGS) -Wno-shadow \
+			  @FLAG_W_NO_MEMSET_TRANSPOSED_ARGS@
 
 supp_CFLAGS             = $(AM_CFLAGS) @FLAG_W_NO_UNINITIALIZED@
 
@@ -521,3 +570,4 @@ else
 				-Wl,-soname -Wl,wrap7so.so
 endif
 
+xml1_CFLAGS             = $(AM_CFLAGS) -D_GNU_SOURCE

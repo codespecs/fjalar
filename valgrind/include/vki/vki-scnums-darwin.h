@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2007-2013 Apple Inc.
+   Copyright (C) 2007-2015 Apple Inc.
       Greg Parker  gparker@apple.com
 
    This program is free software; you can redistribute it and/or
@@ -175,12 +175,13 @@
 #define __NR_semaphore_timedwait_trap         VG_DARWIN_SYSCALL_CONSTRUCT_MACH(38)
 #define __NR_semaphore_timedwait_signal_trap  VG_DARWIN_SYSCALL_CONSTRUCT_MACH(39)
 
-#if defined(VGA_x86)
-#define __NR_init_process                     VG_DARWIN_SYSCALL_CONSTRUCT_MACH(41)
-#define __NR_map_fd                           VG_DARWIN_SYSCALL_CONSTRUCT_MACH(43)
-#else
+#if DARWIN_VERS >= DARWIN_10_9
 #define __NR_kernelrpc_mach_port_guard_trap   VG_DARWIN_SYSCALL_CONSTRUCT_MACH(41)
 #define __NR_kernelrpc_mach_port_unguard_trap VG_DARWIN_SYSCALL_CONSTRUCT_MACH(42)
+#endif
+
+#if defined(VGA_x86) || DARWIN_VERS == DARWIN_10_9
+#define __NR_map_fd                           VG_DARWIN_SYSCALL_CONSTRUCT_MACH(43)
 #endif
 
 #define __NR_task_name_for_pid                VG_DARWIN_SYSCALL_CONSTRUCT_MACH(44)
@@ -508,7 +509,7 @@
 
 #if DARWIN_VERS < DARWIN_10_10
 #define	__NR_sem_getvalue   VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(274)
-#elif DARWIN_VERS == DARWIN_10_10
+#elif DARWIN_VERS >= DARWIN_10_10
 #define	__NR_sysctlbyname   VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(274)
 #endif
 
@@ -535,25 +536,42 @@
 #define	__NR_shared_region_map_np   VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(295)
 #if DARWIN_VERS >= DARWIN_10_6
 #define __NR_vm_pressure_monitor    VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(296)
+#define __NR_psynch_rw_longrdlock   VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(297)
+#define __NR_psynch_rw_yieldwrlock  VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(298)
+#define __NR_psynch_rw_downgrade    VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(299)
+#define __NR_psynch_rw_upgrade      VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(300)
+#define __NR_psynch_mutexwait       VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(301)
+#define __NR_psynch_mutexdrop       VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(302)
+#define __NR_psynch_cvbroad         VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(303)
+#define __NR_psynch_cvsignal        VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(304)
+#define __NR_psynch_cvwait          VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(305)
+#define __NR_psynch_rw_rdlock       VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(306)
+#define __NR_psynch_rw_wrlock       VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(307)
+#define __NR_psynch_rw_unlock       VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(308)
+#define __NR_psynch_rw_unlock2      VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(309)
 #else
 			/* 296  old load_shared_file */
-#endif
 			/* 297  old reset_shared_file */
 			/* 298  old new_system_shared_regions */
 			/* 299  old shared_region_map_file_np */
 			/* 300  old shared_region_make_private_np */
-#define __NR_psynch_mutexwait VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(301)
-#define __NR_psynch_mutexdrop VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(302)
-#define __NR_psynch_cvbroad   VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(303)
-#define __NR_psynch_cvsignal  VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(304)
-#define __NR_psynch_cvwait    VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(305)
-#define __NR_psynch_rw_rdlock VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(306)
-#define __NR_psynch_rw_wrlock VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(307)
-#define __NR_psynch_rw_unlock VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(308)
-			/* 309 */
+#define __NR___pthread_mutex_destroy  VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(301)
+#define __NR___pthread_mutex_init     VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(302)
+#define __NR___pthread_mutex_lock     VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(303)
+#define __NR___pthread_mutex_trylock  VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(304)
+#define __NR___pthread_mutex_unlock   VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(305)
+#define __NR___pthread_cond_init      VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(306)
+#define __NR___pthread_cond_destroy   VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(307)
+#define __NR___pthread_cond_broadcast VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(308)
+#define __NR___pthread_cond_signal    VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(309)
+#endif
 #define	__NR_getsid         VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(310)
 #define	__NR_settid_with_pid VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(311)
+#if DARWIN_VERS >= DARWIN_10_7
 #define __NR_psynch_cvclrprepost VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(312)
+#else
+#define __NR___pthread_cond_timedwait VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(312)
+#endif
 #define	__NR_aio_fsync      VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(313)
 #define	__NR_aio_return     VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(314)
 #define	__NR_aio_suspend    VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(315)
@@ -711,11 +729,32 @@
 #define __NR_vfs_purge              VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(455)
 #endif /* DARWIN_VERS >= DARWIN_10_9 */
 
-#if DARWIN_VERS == DARWIN_10_10
+#if DARWIN_VERS >= DARWIN_10_10
 #define __NR_necp_match_policy      VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(460)
 #define __NR_getattrlistbulk        VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(461)
+#define __NR_readlinkat             VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(473)
 #define __NR_bsdthread_ctl          VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(478)
-#endif
+#define __NR_guarded_open_dprotected_np VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(484)
+#define __NR_guarded_write_np       VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(485)
+#define __NR_guarded_pwrite_np      VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(486)
+#define __NR_guarded_writev_np      VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(487)
+			/* 488  */
+			/* 489  */
+#endif /* DARWIN_VERS >= DARWIN_10_10 */
+
+// TODO Update with OS X 10.11 kernel (xnu) source code release
+#if DARWIN_VERS >= DARWIN_10_11
+			/* 490  */
+			/* 491  */
+			/* 492  */
+			/* 493  */
+			/* 494  */
+			/* 495  */
+			/* 496  */
+			/* 497  */
+			/* 498  */
+			/* 499  */
+#endif /* DARWIN_VERS >= DARWIN_10_11 */
 
 #if DARWIN_VERS < DARWIN_10_6
 #define	__NR_MAXSYSCALL             VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(427)
@@ -727,6 +766,9 @@
 #define	__NR_MAXSYSCALL             VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(456)
 #elif DARWIN_VERS == DARWIN_10_10
 #define __NR_MAXSYSCALL             VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(490)
+#elif DARWIN_VERS == DARWIN_10_11
+// TODO Confirm against final release
+#define __NR_MAXSYSCALL             VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(500)
 #else
 #error unknown darwin version
 #endif

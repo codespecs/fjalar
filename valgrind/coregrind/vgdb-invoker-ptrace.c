@@ -6,7 +6,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2011-2013 Philippe Waroquiers
+   Copyright (C) 2011-2015 Philippe Waroquiers
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -72,23 +72,10 @@
 #   endif
 #endif
 
-#if VEX_HOST_WORDSIZE == 8
-typedef Addr64 CORE_ADDR;
-#elif VEX_HOST_WORDSIZE == 4
-typedef Addr32 CORE_ADDR;
-#else
-# error "unexpected wordsize"
-#endif
-
-#if VEX_HOST_WORDSIZE == 8
-typedef Addr64 PTRACE_XFER_TYPE;
+// 32-bit or 64-bit wide, depending on primary architecture.
+typedef Addr  CORE_ADDR;
+typedef Addr  PTRACE_XFER_TYPE;
 typedef void* PTRACE_ARG3_TYPE;
-#elif VEX_HOST_WORDSIZE == 4
-typedef Addr32 PTRACE_XFER_TYPE;
-typedef void* PTRACE_ARG3_TYPE;
-#else
-# error "unexpected wordsize"
-#endif
 
 // if > 0, pid for which registers have to be restored.
 // if == 0, means we have not yet called setregs (or have already
@@ -207,7 +194,8 @@ typedef struct {
    Int lwpid;
 }
 VgdbThreadState;
-static VgdbThreadState vgdb_threads[VG_N_THREADS];
+static VgdbThreadState *vgdb_threads;
+static int vg_n_threads;
 
 static const
 HChar* name_of_ThreadStatus ( ThreadStatus status )
@@ -226,7 +214,7 @@ HChar* name_of_ThreadStatus ( ThreadStatus status )
 static 
 char *status_image (int status)
 {
-   static char result[256];
+   static char result[256];  // large enough
    int sz = 0;
 #define APPEND(...) sz += snprintf (result+sz, 256 - sz - 1, __VA_ARGS__)
   
@@ -314,7 +302,8 @@ Bool waitstopped (pid_t pid, int signal_expected, const char *msg)
          // realloc a bigger queue, and store new signal at the end.
          // This is not very efficient but we assume not many sigs are queued.
          signal_queue_sz++;
-         signal_queue = vrealloc(signal_queue, sizeof(siginfo_t) * signal_queue_sz);
+         signal_queue = vrealloc(signal_queue, 
+                                 sizeof(siginfo_t) * signal_queue_sz);
          newsiginfo = signal_queue + (signal_queue_sz - 1);
 
          res = ptrace (PTRACE_GETSIGINFO, pid, NULL, newsiginfo);
@@ -340,7 +329,7 @@ Bool waitstopped (pid_t pid, int signal_expected, const char *msg)
 }
 
 /* Stops the given pid, wait for the process to be stopped.
-   Returns True if succesful, False otherwise.
+   Returns True if successful, False otherwise.
    msg is used in tracing and error reporting. */
 static
 Bool stop (pid_t pid, const char *msg)
@@ -359,7 +348,7 @@ Bool stop (pid_t pid, const char *msg)
 }
 
 /* Attaches to given pid, wait for the process to be stopped.
-   Returns True if succesful, False otherwise.
+   Returns True if successful, False otherwise.
    msg is used in tracing and error reporting. */
 static
 Bool attach (pid_t pid, const char *msg)
@@ -405,12 +394,14 @@ Bool acquire_and_suspend_threads (pid_t pid)
 
    if (shared32 != NULL) {
       vgt = shared32->threads;
+      vg_n_threads = shared32->vg_n_threads;
       sz_tst = shared32->sizeof_ThreadState;
       off_status = shared32->offset_status;
       off_lwpid = shared32->offset_lwpid;
    }
    else if (shared64 != NULL) {
       vgt = shared64->threads;
+      vg_n_threads = shared64->vg_n_threads;
       sz_tst = shared64->sizeof_ThreadState;
       off_status = shared64->offset_status;
       off_lwpid = shared64->offset_lwpid;
@@ -418,8 +409,11 @@ Bool acquire_and_suspend_threads (pid_t pid)
       assert (0);
    }
 
+   vgdb_threads = vmalloc(vg_n_threads * sizeof vgdb_threads[0]);
+
    /* note: the entry 0 is unused */
-   for (i = 1; i < VG_N_THREADS; i++) {
+   DEBUG(1, "examining thread entries from tid 1 to tid %d\n", vg_n_threads-1);
+   for (i = 1; i < vg_n_threads; i++) {
       vgt += sz_tst;
       rw = ptrace_read_memory(pid, vgt+off_status,
                               &(vgdb_threads[i].status),
@@ -486,7 +480,7 @@ void detach_from_all_threads (pid_t pid)
    Bool pid_found = False;
 
    /* detach from all the threads  */
-   for (i = 1; i < VG_N_THREADS; i++) {
+   for (i = 1; i < vg_n_threads; i++) {
       if (vgdb_threads[i].status != VgTs_Empty) {
          if (vgdb_threads[i].status == VgTs_Init
              && vgdb_threads[i].lwpid == 0) {
@@ -512,6 +506,8 @@ void detach_from_all_threads (pid_t pid)
       }
    }
 
+   free (vgdb_threads);
+
    if (!pid_found && pid) {
       /* No threads are live. Process is busy stopping.
          We need to detach from pid explicitely. */
@@ -522,7 +518,7 @@ void detach_from_all_threads (pid_t pid)
    }
 }
 
-#  if defined(VGA_arm64)
+#  if defined(VGA_arm64) || defined(VGA_tilegx)
 /* arm64 is extra special, old glibc defined kernel user_pt_regs, but
    newer glibc instead define user_regs_struct. */
 #    ifdef HAVE_SYS_USER_REGS
@@ -576,7 +572,7 @@ Bool getregs (pid_t pid, void *regs, long regs_bsz)
       res = ptrace (PTRACE_GETREGSET, pid, NT_PRSTATUS, &iovec);
       if (res == 0) {
          if (has_working_ptrace_getregset == -1) {
-            // First call to PTRACE_GETREGSET succesful =>
+            // First call to PTRACE_GETREGSET successful =>
             has_working_ptrace_getregset = 1;
             DEBUG(1, "detected a working PTRACE_GETREGSET\n");
          }
@@ -611,7 +607,7 @@ Bool getregs (pid_t pid, void *regs, long regs_bsz)
       res = ptrace (PTRACE_GETREGS, pid, NULL, regs);
       if (res == 0) {
          if (has_working_ptrace_getregs == -1) {
-            // First call to PTRACE_GETREGS succesful =>
+            // First call to PTRACE_GETREGS successful =>
             has_working_ptrace_getregs = 1;
             DEBUG(1, "detected a working PTRACE_GETREGS\n");
          }
@@ -798,7 +794,7 @@ Bool invoker_invoke_gdbserver (pid_t pid)
 {
    long res;
    Bool stopped;
-#  if defined(VGA_arm64)
+#  if defined(VGA_arm64) || defined(VGA_tilegx)
 /* arm64 is extra special, old glibc defined kernel user_pt_regs, but
    newer glibc instead define user_regs_struct. */
 #    ifdef HAVE_SYS_USER_REGS
@@ -809,7 +805,8 @@ Bool invoker_invoke_gdbserver (pid_t pid)
 #  else
    struct user user_mod;
 #  endif
-   Addr sp;
+   Addr sp __attribute__((unused)); // Not used on all platforms.
+
    /* A specific int value is passed to invoke_gdbserver, to check
       everything goes according to the plan. */
    const int check = 0x8BADF00D; // ate bad food.
@@ -874,8 +871,10 @@ Bool invoker_invoke_gdbserver (pid_t pid)
    sp = p[29];
 #elif defined(VGA_mips64)
    sp = user_mod.regs[29];
+#elif defined(VGA_tilegx)
+   sp = user_mod.sp;
 #else
-   I_die_here : (sp) architecture missing in vgdb.c
+   I_die_here : (sp) architecture missing in vgdb-invoker-ptrace.c
 #endif
 
 
@@ -959,10 +958,10 @@ Bool invoker_invoke_gdbserver (pid_t pid)
       /* make stack space for args */
       p[29] = sp - 32;
 
-#elif defined(VGA_mips64)
+#elif defined(VGA_mips64) || defined(VGA_tilegx)
       assert(0); // cannot vgdb a 32 bits executable with a 64 bits exe
 #else
-      I_die_here : architecture missing in vgdb.c
+      I_die_here : architecture missing in vgdb-invoker-ptrace.c
 #endif
       }
 
@@ -1007,12 +1006,12 @@ Bool invoker_invoke_gdbserver (pid_t pid)
 #elif defined(VGA_ppc32)
       assert(0); // cannot vgdb a 64 bits executable with a 32 bits exe
 #elif defined(VGA_ppc64be)
-      Addr64 func_addr;
-      Addr64 toc_addr;
+      Addr func_addr;
+      Addr toc_addr;
       int rw;
       rw = ptrace_read_memory(pid, shared64->invoke_gdbserver,
                               &func_addr,
-                              sizeof(Addr64));
+                              sizeof(Addr));
       if (rw != 0) {
          ERROR(rw, "ppc64 read func_addr\n");
          detach_from_all_threads(pid);
@@ -1020,7 +1019,7 @@ Bool invoker_invoke_gdbserver (pid_t pid)
       }
       rw = ptrace_read_memory(pid, shared64->invoke_gdbserver+8,
                               &toc_addr,
-                              sizeof(Addr64));
+                              sizeof(Addr));
       if (rw != 0) {
          ERROR(rw, "ppc64 read toc_addr\n");
          detach_from_all_threads(pid);
@@ -1066,8 +1065,14 @@ Bool invoker_invoke_gdbserver (pid_t pid)
       user_mod.regs[31] = bad_return;
       user_mod.regs[34] = shared64->invoke_gdbserver;
       user_mod.regs[25] = shared64->invoke_gdbserver;
+#elif defined(VGA_tilegx)
+      /* put check arg in register r0 */
+      user_mod.regs[0] = check;
+      /* put NULL return address in lr */
+      user_mod.lr = bad_return;
+      user_mod.pc = shared64->invoke_gdbserver;
 #else
-      I_die_here: architecture missing in vgdb.c
+      I_die_here: architecture missing in vgdb-invoker-ptrace.c
 #endif
    }
    else {

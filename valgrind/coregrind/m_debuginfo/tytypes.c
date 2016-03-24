@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2008-2013 OpenWorks LLP
+   Copyright (C) 2008-2015 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -104,7 +104,7 @@ void ML_(pp_TyEnt)( const TyEnt* te )
                         te->Te.Field.typeR, te->Te.Field.pos.offset,
                         te->Te.Field.name ? te->Te.Field.name : "");
          else
-            VG_(printf)("Te_Field(ty=0x%05lx,nLoc=%lu,pos.loc=%p,\"%s\")",
+            VG_(printf)("Te_Field(ty=0x%05lx,nLoc=%ld,pos.loc=%p,\"%s\")",
                         te->Te.Field.typeR, te->Te.Field.nLoc,
                         te->Te.Field.pos.loc,
                         te->Te.Field.name ? te->Te.Field.name : "");
@@ -152,14 +152,13 @@ void ML_(pp_TyEnt)( const TyEnt* te )
          break;
       case Te_TyStOrUn:
          if (te->Te.TyStOrUn.complete) {
-            VG_(printf)("Te_TyStOrUn(%ld,%c,%p,\"%s\")",
+            VG_(printf)("Te_TyStOrUn(%lu,%c,%p,\"%s\")",
                         te->Te.TyStOrUn.szB, 
                         te->Te.TyStOrUn.isStruct ? 'S' : 'U',
                         te->Te.TyStOrUn.fieldRs,
                         te->Te.TyStOrUn.name ? te->Te.TyStOrUn.name
                                              : "" );
-            if (te->Te.TyStOrUn.fieldRs)
-               pp_XArray_of_cuOffs( te->Te.TyStOrUn.fieldRs );
+            pp_XArray_of_cuOffs( te->Te.TyStOrUn.fieldRs );
          } else {
             VG_(printf)("Te_TyStOrUn(INCOMPLETE,\"%s\")",
                         te->Te.TyStOrUn.name);
@@ -619,7 +618,7 @@ void ML_(TyEnt__make_EMPTY) ( TyEnt* te )
          break;
       case Te_TyStOrUn:
          if (te->Te.TyStOrUn.name) ML_(dinfo_free)(te->Te.TyStOrUn.name);
-         if (te->Te.TyStOrUn.fieldRs) VG_(deleteXA)(te->Te.TyStOrUn.fieldRs);
+         VG_(deleteXA)(te->Te.TyStOrUn.fieldRs);
          break;
       case Te_TyEnum:
          if (te->Te.TyEnum.name) ML_(dinfo_free)(te->Te.TyEnum.name);
@@ -739,8 +738,7 @@ MaybeULong ML_(sizeOfType)( const XArray* /* of TyEnt */ tyents,
 
 static void copy_UWord_into_XA ( XArray* /* of HChar */ xa,
                                  UWord uw ) {
-   HChar buf[32];
-   VG_(memset)(buf, 0, sizeof(buf));
+   HChar buf[32];     // large enough 
    VG_(sprintf)(buf, "%lu", uw);
    VG_(addBytesToXA)( xa, buf, VG_(strlen)(buf));
 }
@@ -785,7 +783,7 @@ XArray* /*HChar*/ ML_(describe_type)( /*OUT*/PtrdiffT* residual_offset,
             PtrdiffT   offMin = 0, offMax1 = 0;
             if (!ty->Te.TyStOrUn.isStruct) goto done;
             fieldRs = ty->Te.TyStOrUn.fieldRs;
-            if (((!fieldRs) || VG_(sizeXA)(fieldRs) == 0)
+            if (VG_(sizeXA)(fieldRs) == 0
                 && (ty->Te.TyStOrUn.typeR == 0)) goto done;
             for (i = 0; i < VG_(sizeXA)( fieldRs ); i++ ) {
                fieldR = *(UWord*)VG_(indexXA)( fieldRs, i );

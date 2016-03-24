@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward
+   Copyright (C) 2000-2015 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -65,6 +65,11 @@ extern void VG_(err_missing_prog) ( void );
    error. */
 __attribute__((noreturn))
 extern void VG_(err_config_error) ( const HChar* format, ... );
+
+/* Called by main_process_cmd_line_options to indicate an unrecognised
+   command line option. */
+__attribute__((noreturn))
+extern void VG_(fmsg_unknown_option) ( const HChar *opt );
 
 #endif   // __PUB_CORE_LIBCPRINT_H
 

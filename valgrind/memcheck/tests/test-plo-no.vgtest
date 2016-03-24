@@ -1,2 +1,2 @@
 prog: test-plo
-vgopts: -q
+vgopts: -q --partial-loads-ok=no --keep-stacktraces=alloc-then-free

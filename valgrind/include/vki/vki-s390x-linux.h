@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright IBM Corp. 2010-2013
+   Copyright IBM Corp. 2010-2015
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -975,6 +975,13 @@ struct vki_shminfo64 {
 
 #define	VKI_ENOSYS       38  /* Function not implemented */
 #define	VKI_EOVERFLOW    75  /* Value too large for defined data type */
+
+//----------------------------------------------------------------------
+// From linux-3.19.0/include/uapi/asm-generic/ioctls.h
+//----------------------------------------------------------------------
+
+#define VKI_TIOCGSERIAL     0x541E
+#define VKI_TIOCSSERIAL     0x541F
 
 #endif // __VKI_S390X_LINUX_H
 

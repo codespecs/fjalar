@@ -22,6 +22,15 @@ static void handler(int sig)
 {
 }
 
+static void install_handler(int sig, void (*sig_handler)(int))
+{
+   struct sigaction sa;
+   sa.sa_handler = sig_handler;
+   sigemptyset(&sa.sa_mask);
+   sa.sa_flags = 0;
+   sigaction(sig, &sa, 0);
+}
+
 /* Kill our child, but use a separate kill command.  This is so that
    it's running independently of Valgrind, and so is async with
    respect to thread scheduling. */
@@ -43,7 +52,7 @@ static void do_kill(int pid, int sig)
       char pidbuf[20];
       sprintf(sigbuf, "-%d", sig);
       sprintf(pidbuf, "%d", pid);
-      execl("/bin/kill", "kill", sigbuf, pidbuf, NULL);
+      execl("/bin/kill", "kill", sigbuf, pidbuf, (char *) NULL);
       perror("exec failed");
       exit(1);
    }
@@ -87,7 +96,7 @@ static void test(int block, int caughtsig, int fatalsig)
    // - otherwise, wait in client code (by spinning).
    // The alarm() calls is so that if something breaks, we don't get stuck.
    if (pid == 0) {
-      signal(caughtsig, handler);
+      install_handler(caughtsig, handler);
       alarm(10);
 
       for (;;)
@@ -126,6 +135,9 @@ static void test(int block, int caughtsig, int fatalsig)
 
 int main()
 {
+   /* Restore default behaviour of SIGHUP when forked from cron. */
+   install_handler(SIGHUP, SIG_DFL);
+
    test(/*non-blocked*/0, /* sync*/SIGSEGV, /* sync*/SIGBUS);
    test(/*non-blocked*/0, /* sync*/SIGSEGV, /*async*/SIGHUP);
    test(/*non-blocked*/0, /*async*/SIGUSR1, /* sync*/SIGBUS);

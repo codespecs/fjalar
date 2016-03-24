@@ -1934,6 +1934,18 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
    case Iop_Rsh64Ux2:                    // only used by arm64 
    case Iop_Rsh8Sx16:                    // only used by arm64 
    case Iop_Rsh8Ux16:                    // only used by arm64 
+
+   case  Iop_F16toF32:                   // only used by arm64
+   case  Iop_F16toF64:                   // only used by arm64
+   case  Iop_F32toF16:                   // only used by arm64
+   case  Iop_F64toF16:                   // only used by arm64
+   case  Iop_RecipEst64Fx2:              // only used by arm64
+   case  Iop_RecipStep64Fx2:             // only used by arm64
+   case  Iop_RecpExpF32:                 // only used by arm64
+   case  Iop_RecpExpF64:                 // only used by arm64
+   case  Iop_RoundF128toInt:             // only used by s390
+   case  Iop_RSqrtEst64Fx2:              // only used by arm64
+   case  Iop_RSqrtStep64Fx2:             // only used by arm64
    
    case Iop_Sh16Sx8:                     // only used by arm64 
    case Iop_Sh16Ux8:                     // only used by arm64 

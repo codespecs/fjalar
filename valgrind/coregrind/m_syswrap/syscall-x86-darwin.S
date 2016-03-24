@@ -7,7 +7,7 @@
   This file is part of Valgrind, a dynamic binary instrumentation
   framework.
 
-  Copyright (C) 2000-2013 Julian Seward 
+  Copyright (C) 2000-2015 Julian Seward 
      jseward@acm.org
 
   This program is free software; you can redistribute it and/or
@@ -89,9 +89,9 @@
 	
 L_$0_1:	/* Even though we can't take a signal until the
            __pthread_sigmask completes, start the range early.
-	   If eip is in the range [1,2), the syscall hasn't been started yet */
+           If eip is in the range [1,2), the syscall hasn't been started yet */
 
-	/* Set the signal mask which should be current during the syscall. */
+        /* Set the signal mask which should be current during the syscall. */
         /* Set up for __pthread_sigmask(SIG_SETMASK, sysmask, postmask) */
         pushl   20(%ebp)
         pushl   16(%ebp)

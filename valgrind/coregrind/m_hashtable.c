@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2005-2013 Nicholas Nethercote
+   Copyright (C) 2005-2015 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -82,7 +82,7 @@ VgHashTable *VG_(HT_construct) ( const HChar* name )
    return table;
 }
 
-Int VG_(HT_count_nodes) ( const VgHashTable *table )
+UInt VG_(HT_count_nodes) ( const VgHashTable *table )
 {
    return table->n_elements;
 }
@@ -179,7 +179,7 @@ void* VG_(HT_gen_lookup) ( const VgHashTable *table, const void* node,
    VgHashNode* curr = table->chains[ CHAIN_NO(hnode->key, table) ]; // GEN!!!
 
    while (curr) {
-      if (cmp (hnode, curr) == 0) { // GEN!!!
+      if (hnode->key == curr->key && cmp (hnode, curr) == 0) { // GEN!!!
          return curr;
       }
       curr = curr->next;
@@ -222,7 +222,7 @@ void* VG_(HT_gen_remove) ( VgHashTable *table, const void* node, HT_Cmp_t cmp  )
    table->iterOK = False;
 
    while (curr) {
-      if (cmp(hnode, curr) == 0) { // GEN!!!
+      if (hnode->key == curr->key && cmp(hnode, curr) == 0) { // GEN!!!
          *prev_next_ptr = curr->next;
          table->n_elements--;
          return curr;
@@ -278,22 +278,18 @@ void VG_(HT_print_stats) ( const VgHashTable *table, HT_Cmp_t cmp )
          nelt = 0;
          // Is the same cnode element existing before cnode ?
          for (node = table->chains[i]; node != cnode; node = node->next) {
-            if (cmp) {
-               if ((*cmp)(node, cnode) == 0)
-                  nelt++;
-            } else 
-               if (node->key == cnode->key)
-                  nelt++;
+            if (node->key == cnode->key
+                && (cmp == NULL || cmp (node, cnode) == 0)) {
+               nelt++;
+            }
          }
          // If cnode element not in a previous node, count occurences of elt.
          if (nelt == 0) {
             for (node = cnode; node != NULL; node = node->next) {
-               if (cmp) {
-                  if ((*cmp)(node, cnode) == 0)
-                     nelt++;
-               } else 
-                  if (node->key == cnode->key)
-                     nelt++;
+               if (node->key == cnode->key
+                   && (cmp == NULL || cmp (node, cnode) == 0)) {
+                  nelt++;
+               }
             }
             INCOCCUR(elt_occurences, nelt);
          }
@@ -312,7 +308,7 @@ void VG_(HT_print_stats) ( const VgHashTable *table, HT_Cmp_t cmp )
           || key_occurences[i] > 0 
           || cno_occurences[i] > 0)
          VG_(message)(Vg_DebugMsg,
-                      "%s=%2d : nr chain %6d, nr keys %6d, nr elts %6d\n",
+                      "%s=%2u : nr chain %6u, nr keys %6u, nr elts %6u\n",
                       i == MAXOCCUR ? ">" : "N", i,
                       cno_occurences[i], key_occurences[i], elt_occurences[i]);
       nkey += key_occurences[i];
@@ -320,8 +316,11 @@ void VG_(HT_print_stats) ( const VgHashTable *table, HT_Cmp_t cmp )
       ncno += cno_occurences[i];
    }
    VG_(message)(Vg_DebugMsg, 
-                "total nr of unique   chains: %6d, keys %6d, elts %6d\n",
-                ncno, nkey, nelt);
+                "total nr of unique   slots: %6u, keys %6u, elts %6u."
+                " Avg chain len %3.1f\n",
+                ncno, nkey, nelt,
+                (Double)nelt/(Double)(ncno == cno_occurences[0] ?
+                                      1 : ncno - cno_occurences[0]));
 }
 
 

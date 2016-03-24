@@ -43,8 +43,8 @@ static struct valgrind_target_ops the_low_target;
 static
 char *image_ptid(unsigned long ptid)
 {
-  static char result[100];
-  VG_(sprintf) (result, "id %ld", ptid);
+  static char result[50];    // large enough
+  VG_(sprintf) (result, "id %lu", ptid);
   return result;
 }
 #define get_thread(inf) ((struct thread_info *)(inf))
@@ -74,7 +74,7 @@ void valgrind_update_threads (int pid)
   /* call add_thread for all valgrind threads not known in gdb all_threads */
   for (tid = 1; tid < VG_N_THREADS; tid++) {
 
-#define LOCAL_THREAD_TRACE " ti* %p vgtid %d status %s as gdb ptid %s lwpid %d\n", \
+#define LOCAL_THREAD_TRACE " ti* %p vgtid %u status %s as gdb ptid %s lwpid %d\n", \
         ti, tid, VG_(name_of_ThreadStatus) (ts->status), \
         image_ptid (ptid), ts->os_state.lwpid
 
@@ -116,7 +116,7 @@ struct reg* build_shadow_arch (struct reg *reg_defs, int n) {
          new_regs[i*n + r].offset = i*reg_set_len + reg_defs[r].offset;
          new_regs[i*n + r].size = reg_defs[r].size;
          dlog(1,
-              "%10s Nr %d offset(bit) %d offset(byte) %d  size(bit) %d\n",
+              "%-10s Nr %d offset(bit) %d offset(byte) %d  size(bit) %d\n",
               new_regs[i*n + r].name, i*n + r, new_regs[i*n + r].offset,
               (new_regs[i*n + r].offset) / 8, new_regs[i*n + r].size);
       }  
@@ -153,17 +153,28 @@ static CORE_ADDR stop_pc;
 */
 static CORE_ADDR resume_pc;
 
-static int vki_signal_to_report;
+static vki_siginfo_t vki_signal_to_report;
+static vki_siginfo_t vki_signal_to_deliver;
 
-void gdbserver_signal_encountered (Int vki_sigNo)
+void gdbserver_signal_encountered (const vki_siginfo_t *info)
 {
-   vki_signal_to_report = vki_sigNo;
+   vki_signal_to_report = *info;
+   vki_signal_to_deliver = *info;
 }
 
-static int vki_signal_to_deliver;
-Bool gdbserver_deliver_signal (Int vki_sigNo)
+void gdbserver_pending_signal_to_report (vki_siginfo_t *info)
 {
-   return vki_sigNo == vki_signal_to_deliver;
+   *info = vki_signal_to_report;
+}
+
+Bool gdbserver_deliver_signal (vki_siginfo_t *info)
+{
+   if (info->si_signo != vki_signal_to_deliver.si_signo)
+      dlog(1, "GDB changed signal  info %d to_report %d to_deliver %d\n",
+           info->si_signo, vki_signal_to_report.si_signo,
+           vki_signal_to_deliver.si_signo);
+   *info = vki_signal_to_deliver;
+   return vki_signal_to_deliver.si_signo != 0;
 }
 
 static unsigned char exit_status_to_report;
@@ -238,7 +249,10 @@ void valgrind_resume (struct thread_resume *resume_info)
            C2v(stopped_data_address));
       VG_(set_watchpoint_stop_address) ((Addr) 0);
    }
-   vki_signal_to_deliver = resume_info->sig;
+   vki_signal_to_deliver.si_signo = resume_info->sig;
+   /* signal was reported to GDB, GDB told us to resume execution.
+      So, reset the signal to report to 0. */
+   VG_(memset) (&vki_signal_to_report, 0, sizeof(vki_signal_to_report));
    
    stepping = resume_info->step;
    resume_pc = (*the_low_target.get_pc) ();
@@ -279,7 +293,7 @@ unsigned char valgrind_wait (char *ourstatus)
       if (*ourstatus == 'X') {
          sig = target_signal_from_host(exit_code_to_report);
          exit_code_to_report = 0;
-         dlog(1, "exit valgrind_wait status X signal %d\n", sig);
+         dlog(1, "exit valgrind_wait status X signal %u\n", sig);
          return sig;
       }
    }
@@ -288,12 +302,10 @@ unsigned char valgrind_wait (char *ourstatus)
       and with a signal TRAP (i.e. a breakpoint), unless there is
       a signal to report. */
    *ourstatus = 'T';
-   if (vki_signal_to_report == 0)
+   if (vki_signal_to_report.si_signo == 0)
       sig = TARGET_SIGNAL_TRAP;
-   else {
-      sig = target_signal_from_host(vki_signal_to_report);
-      vki_signal_to_report = 0;
-   }
+   else
+      sig = target_signal_from_host(vki_signal_to_report.si_signo);
    
    if (vgdb_interrupted_tid != 0)
       tst = VG_(get_ThreadState) (vgdb_interrupted_tid);
@@ -308,7 +320,7 @@ unsigned char valgrind_wait (char *ourstatus)
    stop_pc = (*the_low_target.get_pc) ();
    
    dlog(1,
-        "exit valgrind_wait status T ptid %s stop_pc %s signal %d\n", 
+        "exit valgrind_wait status T ptid %s stop_pc %s signal %u\n", 
         image_ptid (wptid), sym (stop_pc), sig);
    return sig;
 }
@@ -339,7 +351,7 @@ void fetch_register (int regno)
       if (mod && VG_(debugLog_getLevel)() > 1) {
          char bufimage [2*size + 1];
          heximage (bufimage, buf, size);
-         dlog(2, "fetched register %d size %d name %s value %s tid %d status %s\n", 
+         dlog(3, "fetched register %d size %d name %s value %s tid %u status %s\n", 
               regno, size, the_low_target.reg_defs[regno].name, bufimage, 
               tid, VG_(name_of_ThreadStatus) (tst->status));
       }
@@ -407,7 +419,7 @@ void usr_store_inferior_registers (int regno)
             heximage (bufimage, buf, size);
             dlog(2, 
                  "stored register %d size %d name %s value %s "
-                 "tid %d status %s\n", 
+                 "tid %u status %s\n", 
                  regno, size, the_low_target.reg_defs[regno].name, bufimage, 
                  tid, VG_(name_of_ThreadStatus) (tst->status));
          }
@@ -449,7 +461,7 @@ Bool hostvisibility = False;
 int valgrind_read_memory (CORE_ADDR memaddr, unsigned char *myaddr, int len)
 {
    const void *sourceaddr = C2v (memaddr);
-   dlog(2, "reading memory %p size %d\n", sourceaddr, len);
+   dlog(3, "reading memory %p size %d\n", sourceaddr, len);
    if (VG_(am_is_valid_for_client) ((Addr) sourceaddr, 
                                     len, VKI_PROT_READ)
        || (hostvisibility 
@@ -463,11 +475,12 @@ int valgrind_read_memory (CORE_ADDR memaddr, unsigned char *myaddr, int len)
    }
 }
 
-int valgrind_write_memory (CORE_ADDR memaddr, const unsigned char *myaddr, int len)
+int valgrind_write_memory (CORE_ADDR memaddr, 
+                           const unsigned char *myaddr, int len)
 {
    Bool is_valid_client_memory;
    void *targetaddr = C2v (memaddr);
-   dlog(2, "writing memory %p size %d\n", targetaddr, len);
+   dlog(3, "writing memory %p size %d\n", targetaddr, len);
    is_valid_client_memory 
       = VG_(am_is_valid_for_client) ((Addr)targetaddr, len, VKI_PROT_WRITE);
    if (is_valid_client_memory
@@ -554,7 +567,7 @@ static Bool getplatformoffset (SizeT *result)
    static Bool getplatformoffset_called = False;
 
    static Bool lm_modid_offset_found = False;
-   static SizeT lm_modid_offset = 1<<31; // Rubbish initial value.
+   static SizeT lm_modid_offset = 1u << 31; // Rubbish initial value.
    // lm_modid_offset is a magic offset, retrieved using an external program.
 
    if (!getplatformoffset_called) {
@@ -668,7 +681,7 @@ Bool valgrind_get_tls_addr (ThreadState *tst,
 
    // Check we can read at least 2 address at the beginning of dtv.
    CHECK_DEREF(dtv, 2*sizeof(CORE_ADDR), "dtv 2 first entries");
-   dlog (2, "tid %d dtv %p\n", tst->tid, (void*)dtv);
+   dlog (2, "tid %u dtv %p\n", tst->tid, (void*)dtv);
 
    // Check we can read the modid
    CHECK_DEREF(lm+lm_modid_offset, sizeof(unsigned long int), "link_map modid");
@@ -753,7 +766,7 @@ void set_desired_inferior (int use_general)
   {
      ThreadState *tst = (ThreadState *) inferior_target_data (current_inferior);
      ThreadId tid = tst->tid;
-     dlog(1, "set_desired_inferior use_general %d found %p tid %d lwpid %d\n",
+     dlog(1, "set_desired_inferior use_general %d found %p tid %u lwpid %d\n",
           use_general, found, tid, tst->os_state.lwpid);
   }
 }
@@ -803,6 +816,8 @@ void valgrind_initialize_target(void)
    mips32_init_architecture(&the_low_target);
 #elif defined(VGA_mips64)
    mips64_init_architecture(&the_low_target);
+#elif defined(VGA_tilegx)
+   tilegx_init_architecture(&the_low_target);
 #else
    #error "architecture missing in target.c valgrind_initialize_target"
 #endif

@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <malloc.h>  // memalign
 #include <string.h>  // memset
+#include "tests/malloc.h"
 #include <assert.h>
 
 typedef  unsigned char           UChar;
@@ -19,16 +20,6 @@ typedef  unsigned long long int  ULong;
 typedef  unsigned char           Bool;
 #define False ((Bool)0)
 #define True  ((Bool)1)
-
-__attribute__((noinline))
-static void* memalign16(size_t szB)
-{
-   void* x;
-   x = memalign(16, szB);
-   assert(x);
-   assert(0 == ((16-1) & (unsigned long)x));
-   return x;
-}
 
 static inline UChar randUChar ( void )
 {
@@ -1599,6 +1590,23 @@ printf("PRFM (immediate)\n");
 
 MEM_TEST("prfm pldl1keep, [x5, #40]",  12, -4);
 MEM_TEST("prfm pstl3strm, [x5, #56]",  12, -4);
+
+////////////////////////////////////////////////////////////////
+printf("PRFM (register)\n");
+
+MEM_TEST("prfm pldl1keep, [x5,x6]",  12, -4);
+MEM_TEST("prfm pldl1strm, [x5,x6, lsl #3]",  12, -4);
+MEM_TEST("prfm pldl2keep, [x5,w6,uxtw #0]", 12, 4);
+MEM_TEST("prfm pldl2strm, [x5,w6,uxtw #3]", 12, 4);
+MEM_TEST("prfm pldl3keep, [x5,w6,sxtw #0]", 12, 4);
+MEM_TEST("prfm pldl3strm, [x5,w6,sxtw #3]",  12, -4);
+
+MEM_TEST("prfm pstl1keep, [x5,x6]",  12, -4);
+MEM_TEST("prfm pstl1strm, [x5,x6, lsl #3]",  12, -4);
+MEM_TEST("prfm pstl2keep, [x5,w6,uxtw #0]", 12, 4);
+MEM_TEST("prfm pstl2strm, [x5,w6,uxtw #3]", 12, 4);
+MEM_TEST("prfm pstl3keep, [x5,w6,sxtw #0]", 12, 4);
+MEM_TEST("prfm pstl3strm, [x5,w6,sxtw #3]",  12, -4);
 
 } /* end of test_memory2() */
 

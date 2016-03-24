@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward
+   Copyright (C) 2000-2015 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -32,6 +32,7 @@
 #define __PUB_TOOL_ADDRINFO_H
 
 #include "pub_tool_basics.h"   // VG_ macro
+#include "pub_tool_aspacemgr.h"  // SegKind
 
 /*====================================================================*/
 /*=== Obtaining information about an address                       ===*/
@@ -72,6 +73,7 @@ typedef
       Addr_DataSym,     // in a global data sym
       Addr_Variable,    // variable described by the debug info
       Addr_SectKind,    // Section from a mmap-ed object file
+      Addr_BrkSegment,  // address in brk data segment
       Addr_SegmentKind  // Client segment (mapped memory)
    }
    AddrTag;
@@ -173,6 +175,15 @@ struct _AddrInfo {
          HChar      *objname;
          VgSectKind kind;
       } SectKind;
+
+      // Described address is or was in the brk data segment.
+      // brk_limit is the limit that was in force
+      // at the time address was described. 
+      // If address is >= brk_limit, it means address is in a zone
+      // of the data segment that was shrinked.
+      struct {
+         Addr brk_limit; // limit in force when address was described.
+      } BrkSegment;
 
       struct {
          SegKind segkind;   // SkAnonC, SkFileC or SkShmC.

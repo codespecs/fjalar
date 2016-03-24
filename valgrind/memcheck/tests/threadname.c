@@ -1,12 +1,17 @@
+#include "config.h"
+
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <pthread.h>
 #include <string.h>
 #include <stdlib.h>
+#if defined(HAVE_SYS_PRCTL_H)
+#include <sys/prctl.h>
+#endif /* HAVE_SYS_PRCTL_H */
 #include <sys/types.h>
 #include <unistd.h>
 #include <assert.h>
-
+#include "valgrind.h"
 
 static pthread_t children[3];
 
@@ -44,6 +49,7 @@ void* child_fn_1 ( void* arg )
 #  endif
 
   bad_things(3);
+  VALGRIND_PRINTF("%s", "I am in child_fn_1\n");
 
   r = pthread_create(&children[2], NULL, child_fn_2, NULL);
   assert(!r);

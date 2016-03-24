@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward
+   Copyright (C) 2000-2015 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -47,7 +47,6 @@
 #include "pub_core_ume.h"
 #include "pub_core_options.h"
 #include "pub_core_tooliface.h"       /* VG_TRACK */
-#include "pub_core_libcsetjmp.h"      // to keep _threadstate.h happy
 #include "pub_core_threadstate.h"     /* ThreadArchState */
 #include "priv_initimg_pathscan.h"
 #include "pub_core_initimg.h"         /* self */
@@ -312,7 +311,8 @@ Addr setup_client_stack( void*  init_sp,
                          HChar** orig_envp, 
                          const ExeInfo* info,
                          Addr   clstack_end,
-                         SizeT  clstack_max_size )
+                         SizeT  clstack_max_size,
+                         const VexArchInfo* vex_archinfo )
 {
    HChar **cpp;
    HChar *strtab;		/* string table */
@@ -508,7 +508,8 @@ static void record_system_memory(void)
 /*====================================================================*/
 
 /* Create the client's initial memory image. */
-IIFinaliseImageInfo VG_(ii_create_image)( IICreateImageInfo iicii )
+IIFinaliseImageInfo VG_(ii_create_image)( IICreateImageInfo iicii,
+                                          const VexArchInfo* vex_archinfo )
 {
    ExeInfo info;
    VG_(memset)( &info, 0, sizeof(info) );
@@ -548,7 +549,8 @@ IIFinaliseImageInfo VG_(ii_create_image)( IICreateImageInfo iicii )
    
    iifii.initial_client_SP = 
        setup_client_stack( iicii.argv - 1, env, &info, 
-                           iicii.clstack_end, iifii.clstack_max_size );
+                           iicii.clstack_end, iifii.clstack_max_size,
+                           vex_archinfo );
 
    VG_(free)(env);
 

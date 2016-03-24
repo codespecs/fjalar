@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2013-2013 OpenWorks
+   Copyright (C) 2013-2015 OpenWorks
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -33,29 +33,22 @@
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
 #include "pub_core_vkiscnums.h"
-#include "pub_core_libcsetjmp.h"    // to keep _threadstate.h happy
 #include "pub_core_threadstate.h"
 #include "pub_core_aspacemgr.h"
-//ZZ #include "pub_core_debuglog.h"
 #include "pub_core_libcbase.h"
 #include "pub_core_libcassert.h"
 #include "pub_core_libcprint.h"
-//ZZ #include "pub_core_libcproc.h"
 #include "pub_core_libcsignal.h"
 #include "pub_core_options.h"
 #include "pub_core_scheduler.h"
 #include "pub_core_sigframe.h"      // For VG_(sigframe_destroy)()
-//ZZ #include "pub_core_signals.h"
 #include "pub_core_syscall.h"
 #include "pub_core_syswrap.h"
 #include "pub_core_tooliface.h"
-#include "pub_core_stacks.h"        // VG_(register_stack)
-//ZZ #include "pub_core_transtab.h"      // VG_(discard_translations)
 
 #include "priv_types_n_macros.h"
 #include "priv_syswrap-generic.h"   /* for decls of generic wrappers */
 #include "priv_syswrap-linux.h"     /* for decls of linux-ish wrappers */
-//ZZ #include "priv_syswrap-main.h"
 
 
 /* ---------------------------------------------------------------------
@@ -205,7 +198,7 @@ static void assign_guest_tls(ThreadId ctid, Addr tlsptr);
             
 /* 
    When a client clones, we need to keep track of the new thread.  This means:
-   1. allocate a ThreadId+ThreadState+stack for the the thread
+   1. allocate a ThreadId+ThreadState+stack for the thread
 
    2. initialize the thread's new VCPU state
 
@@ -438,7 +431,7 @@ DECL_TEMPLATE(arm64_linux, sys_rt_sigreturn);
 // ARM64 FIXME is this correct?
 PRE(sys_fadvise64)
 {
-   PRINT("sys_fadvise64 ( %ld, %ld, %lu, %ld )", ARG1,ARG2,ARG3,ARG4);
+   PRINT("sys_fadvise64 ( %ld, %ld, %lu, %ld )", SARG1, SARG2, ARG3, SARG4);
    PRE_REG_READ4(long, "fadvise64",
                  int, fd, vki_loff_t, offset, vki_size_t, len, int, advice);
 }
@@ -448,8 +441,8 @@ PRE(sys_mmap)
 {
    SysRes r;
 
-   PRINT("sys_mmap ( %#lx, %llu, %ld, %ld, %d, %ld )",
-         ARG1, (ULong)ARG2, ARG3, ARG4, (Int)ARG5, ARG6 );
+   PRINT("sys_mmap ( %#lx, %lu, %lu, %#lx, %lu, %lu )",
+         ARG1, ARG2, ARG3, ARG4, ARG5, ARG6 );
    PRE_REG_READ6(long, "mmap",
                  unsigned long, start, unsigned long, length,
                  unsigned long, prot,  unsigned long, flags,
@@ -601,13 +594,12 @@ PRE(sys_clone)
 
    default:
       /* should we just ENOSYS? */
-      VG_(message)(Vg_UserMsg, "");
-      VG_(message)(Vg_UserMsg, "Unsupported clone() flags: 0x%lx", ARG1);
-      VG_(message)(Vg_UserMsg, "");
-      VG_(message)(Vg_UserMsg, "The only supported clone() uses are:");
-      VG_(message)(Vg_UserMsg, " - via a threads library (LinuxThreads or NPTL)");
-      VG_(message)(Vg_UserMsg, " - via the implementation of fork or vfork");
-      VG_(message)(Vg_UserMsg, " - for the Quadrics Elan3 user-space driver");
+      VG_(message)(Vg_UserMsg, "Unsupported clone() flags: 0x%lx\n", ARG1);
+      VG_(message)(Vg_UserMsg, "\n");
+      VG_(message)(Vg_UserMsg, "The only supported clone() uses are:\n");
+      VG_(message)(Vg_UserMsg, " - via a threads library (LinuxThreads or NPTL)\n");
+      VG_(message)(Vg_UserMsg, " - via the implementation of fork or vfork\n");
+      VG_(message)(Vg_UserMsg, " - for the Quadrics Elan3 user-space driver\n");
       VG_(unimplemented)
          ("Valgrind does not support general clone().");
    }
@@ -704,7 +696,7 @@ PRE(sys_rt_sigreturn)
 //ZZ {
 //ZZ    PRINT("cacheflush (%lx, %#lx, %#lx)",ARG1,ARG2,ARG3);
 //ZZ    PRE_REG_READ3(long, "cacheflush", void*, addrlow,void*, addrhigh,int, flags);
-//ZZ    VG_(discard_translations)( (Addr64)ARG1,
+//ZZ    VG_(discard_translations)( (Addr)ARG1,
 //ZZ                               ((ULong)ARG2) - ((ULong)ARG1) + 1ULL/*paranoia*/,
 //ZZ                               "PRE(sys_cacheflush)" );
 //ZZ    SET_STATUS_Success(0);
@@ -888,6 +880,9 @@ static SyscallTableEntry syscall_main_table[] = {
    LINX_(__NR_linkat,            sys_linkat),            // 37
    LINX_(__NR_renameat,		 sys_renameat),          // 38
 
+   LINX_(__NR_umount2,            sys_umount),           // 39
+   LINX_(__NR_mount,              sys_mount),            // 40
+
    // FIXME IS THIS CORRECT?  it may well not be.
    GENXY(__NR3264_statfs,        sys_statfs),            // 43
    GENXY(__NR3264_fstatfs,       sys_fstatfs),           // 44
@@ -960,9 +955,12 @@ static SyscallTableEntry syscall_main_table[] = {
    GENX_(__NR_setpriority,       sys_setpriority),       // 140
    GENX_(__NR_getpriority,       sys_getpriority),       // 141
    GENX_(__NR_setregid,          sys_setregid),          // 143
+   GENX_(__NR_setgid,            sys_setgid),            // 144
    GENX_(__NR_setreuid,          sys_setreuid),          // 145
+   GENX_(__NR_setuid,            sys_setuid),            // 146
    LINX_(__NR_setresuid,         sys_setresuid),         // 147
    LINXY(__NR_getresuid,         sys_getresuid),         // 148
+   LINX_(__NR_setresgid,         sys_setresgid),         // 149
    LINXY(__NR_getresgid,         sys_getresgid),         // 150
    GENXY(__NR_times,             sys_times),             // 153
    GENX_(__NR_setpgid,           sys_setpgid),           // 154
@@ -992,6 +990,10 @@ static SyscallTableEntry syscall_main_table[] = {
    LINXY(__NR_mq_timedreceive,   sys_mq_timedreceive),   // 183
    LINX_(__NR_mq_notify,         sys_mq_notify),         // 184
    LINXY(__NR_mq_getsetattr,     sys_mq_getsetattr),     // 185
+   LINX_(__NR_msgget,            sys_msgget),            // 186
+   LINXY(__NR_msgctl,            sys_msgctl),            // 187
+   LINXY(__NR_msgrcv,            sys_msgrcv),            // 188
+   LINX_(__NR_msgsnd,            sys_msgsnd),            // 189
    LINX_(__NR_semget,            sys_semget),            // 190
    LINXY(__NR_semctl,            sys_semctl),            // 191
    LINX_(__NR_semtimedop,        sys_semtimedop),        // 192
@@ -1033,11 +1035,22 @@ static SyscallTableEntry syscall_main_table[] = {
    GENX_(__NR_mlock,             sys_mlock),             // 228
    GENX_(__NR_mlockall,          sys_mlockall),          // 230
    GENX_(__NR_madvise,           sys_madvise),           // 233
+   LINX_(__NR_mbind,             sys_mbind),             // 235
+   LINXY(__NR_get_mempolicy,     sys_get_mempolicy),     // 236
+   LINX_(__NR_set_mempolicy,     sys_set_mempolicy),     // 237
+
+   LINXY(__NR_recvmmsg,          sys_recvmmsg),          // 243
+   LINXY(__NR_accept4,           sys_accept4),           // 242
+
    GENXY(__NR_wait4,             sys_wait4),             // 260
 
+   LINX_(__NR_syncfs,            sys_syncfs),            // 267
+
+   LINXY(__NR_sendmmsg,          sys_sendmmsg),          // 269
    LINXY(__NR_process_vm_readv,  sys_process_vm_readv),  // 270
    LINX_(__NR_process_vm_writev, sys_process_vm_writev), // 271
    LINXY(__NR_getrandom,         sys_getrandom),         // 278
+   LINXY(__NR_memfd_create,      sys_memfd_create),      // 279
 
 // The numbers below are bogus.  (See comment further down.)
 // When pulling entries above this line, change the numbers
@@ -1062,7 +1075,6 @@ static SyscallTableEntry syscall_main_table[] = {
 //ZZ    LINX_(__NR_lseek,             sys_lseek),          // 19
 //ZZ 
 //ZZ    GENX_(__NR_getpid,            sys_getpid),         // 20
-//ZZ    LINX_(__NR_mount,             sys_mount),          // 21
 //ZZ    LINX_(__NR_umount,            sys_oldumount),      // 22
 //ZZ    LINX_(__NR_setuid,            sys_setuid16),       // 23 ## P
 //ZZ    LINX_(__NR_getuid,            sys_getuid16),       // 24 ## P
@@ -1088,14 +1100,12 @@ static SyscallTableEntry syscall_main_table[] = {
 //ZZ    LINXY(__NR_pipe,              sys_pipe),           // 42
 //ZZ //   GENX_(__NR_prof,              sys_ni_syscall),     // 44
 
-//ZZ    LINX_(__NR_setgid,            sys_setgid16),       // 46
 //ZZ    LINX_(__NR_getgid,            sys_getgid16),       // 47
 //ZZ //zz    //   (__NR_signal,            sys_signal),         // 48 */* (ANSI C)
 //ZZ    LINX_(__NR_geteuid,           sys_geteuid16),      // 49
 //ZZ 
 //ZZ    LINX_(__NR_getegid,           sys_getegid16),      // 50
 //ZZ    GENX_(__NR_acct,              sys_acct),           // 51
-//ZZ    LINX_(__NR_umount2,           sys_umount),         // 52
 //ZZ //   GENX_(__NR_lock,              sys_ni_syscall),     // 53
 //ZZ 
 //ZZ    LINXY(__NR_fcntl,             sys_fcntl),          // 55
@@ -1320,10 +1330,6 @@ static SyscallTableEntry syscall_main_table[] = {
 //ZZ    LINXY(__NR_recvfrom,          sys_recvfrom),       // 292
 //ZZ    LINX_(__NR_semget,            sys_semget),         // 299
 //ZZ    LINXY(__NR_semctl,            sys_semctl),         // 300
-//ZZ    LINX_(__NR_msgget,            sys_msgget),         
-//ZZ    LINX_(__NR_msgsnd,            sys_msgsnd),          
-//ZZ    LINXY(__NR_msgrcv,            sys_msgrcv),         
-//ZZ    LINXY(__NR_msgctl,            sys_msgctl),         // 304
 //ZZ 
 //ZZ    LINX_(__NR_request_key,       sys_request_key),    // 287
 //ZZ //   LINX_(__NR_ioprio_set,        sys_ioprio_set),     // 289
@@ -1375,8 +1381,6 @@ static SyscallTableEntry syscall_main_table[] = {
 //ZZ    LINX_(__NR_pwritev,           sys_pwritev),          // 362
 //ZZ    LINXY(__NR_rt_tgsigqueueinfo, sys_rt_tgsigqueueinfo),// 363
 //ZZ    LINXY(__NR_perf_event_open,   sys_perf_event_open),  // 364
-//ZZ 
-//ZZ    LINXY(__NR_accept4,           sys_accept4),          // 366
 //ZZ 
 //ZZ    LINXY(__NR_name_to_handle_at, sys_name_to_handle_at),// 370
 //ZZ    LINXY(__NR_open_by_handle_at, sys_open_by_handle_at),// 371

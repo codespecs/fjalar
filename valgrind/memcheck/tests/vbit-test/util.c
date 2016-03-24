@@ -7,6 +7,14 @@
 #include <machine/endian.h>
 #define __BYTE_ORDER    BYTE_ORDER
 #define __LITTLE_ENDIAN LITTLE_ENDIAN
+#elif defined(__sun)
+#define __LITTLE_ENDIAN 1234
+#define __BIG_ENDIAN    4321
+#  if defined(_LITTLE_ENDIAN)
+#  define __BYTE_ORDER    __LITTLE_ENDIAN
+#  else
+#  define __BYTE_ORDER    __BIG_ENDIAN
+#  endif
 #else
 #include <endian.h>
 #endif
@@ -803,6 +811,7 @@ typeof_primop(IROp op, IRType *t_dst, IRType *t_arg1, IRType *t_arg2,
          UNARY(Ity_F128, Ity_F128);
 
       case Iop_SqrtF128:
+      case Iop_RoundF128toInt:
          BINARY(ity_RMode,Ity_F128, Ity_F128);
 
       case Iop_I32StoF128: UNARY(Ity_I32, Ity_F128);

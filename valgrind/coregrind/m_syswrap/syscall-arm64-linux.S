@@ -7,7 +7,7 @@
   This file is part of Valgrind, a dynamic binary instrumentation
   framework.
 
-  Copyright (C) 2013-2013 OpenWorks
+  Copyright (C) 2013-2015 OpenWorks
      info@open-works.net
 
   This program is free software; you can redistribute it and/or
@@ -157,6 +157,7 @@ ML_(do_syscall_for_client_WRK):
    VG_(fixup_guest_state_after_syscall_interrupted) can do the
    right thing */
 
+.align 3
 .globl ML_(blksys_setup)
 .globl ML_(blksys_restart)
 .globl ML_(blksys_complete)

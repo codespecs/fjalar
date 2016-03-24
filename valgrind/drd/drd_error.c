@@ -1,7 +1,7 @@
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2013 Bart Van Assche <bvanassche@acm.org>.
+  Copyright (C) 2006-2015 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -174,7 +174,7 @@ void drd_report_data_race(const Error* const err,
    tl_assert(dri->size > 0);
 
    (void) VG_(get_data_description)(descr1, descr2, dri->addr);
-   /* If there's nothing in descr1/2, free them.  Why is it safe to to
+   /* If there's nothing in descr1/2, free them.  Why is it safe to
       VG_(indexXA) at zero here?  Because VG_(get_data_description)
       guarantees to zero terminate descr1/2 regardless of the outcome
       of the call.  So there's always at least one element in each XA
@@ -199,7 +199,7 @@ void drd_report_data_race(const Error* const err,
       describe_malloced_addr(dri->addr, &ai);
    }
 
-   print_err_detail("%sConflicting %s by thread %d at 0x%08lx size %ld%s\n",
+   print_err_detail("%sConflicting %s by thread %u at 0x%08lx size %lu%s\n",
                     what_prefix, dri->access_type == eStore ? "store" : "load",
                     dri->tid, dri->addr, dri->size, what_suffix);
 
@@ -316,7 +316,7 @@ static void drd_tool_error_pp(const Error* const e)
       MutexErrInfo* p = (MutexErrInfo*)(VG_(get_error_extra)(e));
       tl_assert(p);
       if (p->recursion_count >= 0) {
-         print_err_detail("%s%s: mutex 0x%lx, recursion count %d, owner %d."
+         print_err_detail("%s%s: mutex 0x%lx, recursion count %d, owner %u."
                           "%s\n", what_prefix, VG_(get_error_string)(e),
                           p->mutex, p->recursion_count, p->owner, what_suffix);
       } else {
@@ -337,7 +337,7 @@ static void drd_tool_error_pp(const Error* const e)
    }
    case CondDestrErr: {
       CondDestrErrInfo* cdi = (CondDestrErrInfo*)(VG_(get_error_extra)(e));
-      print_err_detail("%s%s: cond 0x%lx, mutex 0x%lx locked by thread %d%s\n",
+      print_err_detail("%s%s: cond 0x%lx, mutex 0x%lx locked by thread %u%s\n",
                        what_prefix, VG_(get_error_string)(e), cdi->cond,
                        cdi->mutex, cdi->owner, what_suffix);
       VG_(pp_ExeContext)(VG_(get_error_where)(e));
@@ -384,7 +384,7 @@ static void drd_tool_error_pp(const Error* const e)
       if (bei->other_context) {
          if (xml)
             print_err_detail("  <confl_wait_call>\n");
-         print_err_detail("%sConflicting wait call by thread %d:%s\n",
+         print_err_detail("%sConflicting wait call by thread %u:%s\n",
                           what_prefix, bei->other_tid, what_suffix);
          VG_(pp_ExeContext)(bei->other_context);
          if (xml)
@@ -413,8 +413,8 @@ static void drd_tool_error_pp(const Error* const e)
       VG_(pp_ExeContext)(p->acquired_at);
       if (xml)
          print_err_detail("  </acquired_at>\n");
-      print_err_detail("%sLock on %s 0x%lx was held during %d ms"
-                       " (threshold: %d ms).%s\n", what_prefix,
+      print_err_detail("%sLock on %s 0x%lx was held during %u ms"
+                       " (threshold: %u ms).%s\n", what_prefix,
                        VG_(get_error_string)(e), p->synchronization_object,
                        p->hold_time_ms, p->threshold_ms, what_suffix);
       VG_(pp_ExeContext)(VG_(get_error_where)(e));

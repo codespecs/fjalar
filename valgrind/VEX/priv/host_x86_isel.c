@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2013 OpenWorks LLP
+   Copyright (C) 2004-2015 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -181,7 +181,7 @@ typedef
       UInt         hwcaps;
 
       Bool         chainingAllowed;
-      Addr64       max_ga;
+      Addr32       max_ga;
 
       /* These are modified as we go along. */
       HInstrArray* code;
@@ -217,21 +217,21 @@ static void addInstr ( ISelEnv* env, X86Instr* instr )
 
 static HReg newVRegI ( ISelEnv* env )
 {
-   HReg reg = mkHReg(env->vreg_ctr, HRcInt32, True/*virtual reg*/);
+   HReg reg = mkHReg(True/*virtual reg*/, HRcInt32, 0/*enc*/, env->vreg_ctr);
    env->vreg_ctr++;
    return reg;
 }
 
 static HReg newVRegF ( ISelEnv* env )
 {
-   HReg reg = mkHReg(env->vreg_ctr, HRcFlt64, True/*virtual reg*/);
+   HReg reg = mkHReg(True/*virtual reg*/, HRcFlt64, 0/*enc*/, env->vreg_ctr);
    env->vreg_ctr++;
    return reg;
 }
 
 static HReg newVRegV ( ISelEnv* env )
 {
-   HReg reg = mkHReg(env->vreg_ctr, HRcVec128, True/*virtual reg*/);
+   HReg reg = mkHReg(True/*virtual reg*/, HRcVec128, 0/*enc*/, env->vreg_ctr);
    env->vreg_ctr++;
    return reg;
 }
@@ -387,7 +387,7 @@ void callHelperAndClearArgs ( ISelEnv* env, X86CondCode cc,
       parameters. */
    vassert(sizeof(void*) == 4);
 
-   addInstr(env, X86Instr_Call( cc, toUInt(Ptr_to_ULong(cee->addr)),
+   addInstr(env, X86Instr_Call( cc, (Addr)cee->addr,
                                 cee->regparms, rloc));
    if (n_arg_ws > 0)
       add_to_esp(env, 4*n_arg_ws);
@@ -1400,11 +1400,11 @@ static HReg iselIntExpr_R_wrk ( ISelEnv* env, IRExpr* e )
             */
             HReg  xLo, xHi;
             HReg  dst = newVRegI(env);
-            HWord fn = (HWord)h_generic_calc_GetMSBs8x8;
+            Addr fn = (Addr)h_generic_calc_GetMSBs8x8;
             iselInt64Expr(&xHi, &xLo, env, e->Iex.Unop.arg);
             addInstr(env, X86Instr_Push(X86RMI_Reg(xHi)));
             addInstr(env, X86Instr_Push(X86RMI_Reg(xLo)));
-            addInstr(env, X86Instr_Call( Xcc_ALWAYS, (UInt)fn,
+            addInstr(env, X86Instr_Call( Xcc_ALWAYS, (Addr32)fn,
                                          0, mk_RetLoc_simple(RLPri_Int) ));
             add_to_esp(env, 2*4);
             addInstr(env, mk_iMOVsd_RR(hregX86_EAX(), dst));
@@ -2541,7 +2541,7 @@ static void iselInt64Expr_wrk ( HReg* rHi, HReg* rLo, ISelEnv* env, IRExpr* e )
             iselInt64Expr(&xHi, &xLo, env, e->Iex.Binop.arg1);
             addInstr(env, X86Instr_Push(X86RMI_Reg(xHi)));
             addInstr(env, X86Instr_Push(X86RMI_Reg(xLo)));
-            addInstr(env, X86Instr_Call( Xcc_ALWAYS, (UInt)fn,
+            addInstr(env, X86Instr_Call( Xcc_ALWAYS, (Addr32)fn,
                                          0, mk_RetLoc_simple(RLPri_2Int) ));
             add_to_esp(env, 4*4);
             addInstr(env, mk_iMOVsd_RR(hregX86_EDX(), tHi));
@@ -2581,7 +2581,7 @@ static void iselInt64Expr_wrk ( HReg* rHi, HReg* rLo, ISelEnv* env, IRExpr* e )
             iselInt64Expr(&xHi, &xLo, env, e->Iex.Binop.arg1);
             addInstr(env, X86Instr_Push(X86RMI_Reg(xHi)));
             addInstr(env, X86Instr_Push(X86RMI_Reg(xLo)));
-            addInstr(env, X86Instr_Call( Xcc_ALWAYS, (UInt)fn,
+            addInstr(env, X86Instr_Call( Xcc_ALWAYS, (Addr32)fn,
                                          0, mk_RetLoc_simple(RLPri_2Int) ));
             add_to_esp(env, 3*4);
             addInstr(env, mk_iMOVsd_RR(hregX86_EDX(), tHi));
@@ -2820,7 +2820,7 @@ static void iselInt64Expr_wrk ( HReg* rHi, HReg* rLo, ISelEnv* env, IRExpr* e )
             iselInt64Expr(&xHi, &xLo, env, e->Iex.Unop.arg);
             addInstr(env, X86Instr_Push(X86RMI_Reg(xHi)));
             addInstr(env, X86Instr_Push(X86RMI_Reg(xLo)));
-            addInstr(env, X86Instr_Call( Xcc_ALWAYS, (UInt)fn,
+            addInstr(env, X86Instr_Call( Xcc_ALWAYS, (Addr32)fn,
                                          0, mk_RetLoc_simple(RLPri_2Int) ));
             add_to_esp(env, 2*4);
             addInstr(env, mk_iMOVsd_RR(hregX86_EDX(), tHi));
@@ -3415,22 +3415,11 @@ static HReg iselVecExpr_wrk ( ISelEnv* env, IRExpr* e )
 
       case Iop_RecipEst32Fx4: op = Xsse_RCPF;   goto do_32Fx4_unary;
       case Iop_RSqrtEst32Fx4: op = Xsse_RSQRTF; goto do_32Fx4_unary;
-      case Iop_Sqrt32Fx4:     op = Xsse_SQRTF;  goto do_32Fx4_unary;
       do_32Fx4_unary:
       {
          HReg arg = iselVecExpr(env, e->Iex.Unop.arg);
          HReg dst = newVRegV(env);
          addInstr(env, X86Instr_Sse32Fx4(op, arg, dst));
-         return dst;
-      }
-
-      case Iop_Sqrt64Fx2:  op = Xsse_SQRTF;  goto do_64Fx2_unary;
-      do_64Fx2_unary:
-      {
-         HReg arg = iselVecExpr(env, e->Iex.Unop.arg);
-         HReg dst = newVRegV(env);
-         REQUIRE_SSE2;
-         addInstr(env, X86Instr_Sse64Fx2(op, arg, dst));
          return dst;
       }
 
@@ -3498,6 +3487,21 @@ static HReg iselVecExpr_wrk ( ISelEnv* env, IRExpr* e )
 
    if (e->tag == Iex_Binop) {
    switch (e->Iex.Binop.op) {
+
+      case Iop_Sqrt64Fx2:
+         REQUIRE_SSE2;
+         /* fallthrough */
+      case Iop_Sqrt32Fx4: {
+         /* :: (rmode, vec) -> vec */
+         HReg arg = iselVecExpr(env, e->Iex.Binop.arg2);
+         HReg dst = newVRegV(env);
+         /* XXXROUNDINGFIXME */
+         /* set roundingmode here */
+         addInstr(env, (e->Iex.Binop.op == Iop_Sqrt64Fx2 
+                           ? X86Instr_Sse64Fx2 : X86Instr_Sse32Fx4)
+                       (Xsse_SQRTF, arg, dst));
+         return dst;
+      }
 
       case Iop_SetV128lo32: {
          HReg dst = newVRegV(env);
@@ -4281,6 +4285,8 @@ static void iselStmt ( ISelEnv* env, IRStmt* stmt )
          case Ijk_Sys_int128:
          case Ijk_Sys_int129:
          case Ijk_Sys_int130:
+         case Ijk_Sys_int145:
+         case Ijk_Sys_int210:
          case Ijk_Sys_syscall:
          case Ijk_Sys_sysenter:
          case Ijk_InvalICache:
@@ -4333,7 +4339,7 @@ static void iselNext ( ISelEnv* env,
             /* Skip the event check at the dst if this is a forwards
                edge. */
             Bool toFastEP
-               = ((Addr64)cdst->Ico.U32) > env->max_ga;
+               = ((Addr32)cdst->Ico.U32) > env->max_ga;
             if (0) vex_printf("%s", toFastEP ? "X" : ".");
             addInstr(env, X86Instr_XDirect(cdst->Ico.U32,
                                            amEIP, Xcc_ALWAYS, 
@@ -4380,6 +4386,8 @@ static void iselNext ( ISelEnv* env,
       case Ijk_Sys_int128:
       case Ijk_Sys_int129:
       case Ijk_Sys_int130:
+      case Ijk_Sys_int145:
+      case Ijk_Sys_int210:
       case Ijk_Sys_syscall:
       case Ijk_Sys_sysenter:
       case Ijk_InvalICache:
@@ -4409,7 +4417,7 @@ static void iselNext ( ISelEnv* env,
 
 /* Translate an entire SB to x86 code. */
 
-HInstrArray* iselSB_X86 ( IRSB* bb,
+HInstrArray* iselSB_X86 ( const IRSB* bb,
                           VexArch      arch_host,
                           const VexArchInfo* archinfo_host,
                           const VexAbiInfo*  vbi/*UNUSED*/,
@@ -4417,7 +4425,7 @@ HInstrArray* iselSB_X86 ( IRSB* bb,
                           Int offs_Host_EvC_FailAddr,
                           Bool chainingAllowed,
                           Bool addProfInc,
-                          Addr64 max_ga )
+                          Addr max_ga )
 {
    Int      i, j;
    HReg     hreg, hregHI;
@@ -4433,14 +4441,12 @@ HInstrArray* iselSB_X86 ( IRSB* bb,
                      | VEX_HWCAPS_X86_SSE2
                      | VEX_HWCAPS_X86_SSE3
                      | VEX_HWCAPS_X86_LZCNT)));
-   vassert(sizeof(max_ga) == 8);
-   vassert((max_ga >> 32) == 0);
 
    /* Check that the host's endianness is as expected. */
    vassert(archinfo_host->endness == VexEndnessLE);
 
    /* Make up an initial environment to use. */
-   env = LibVEX_Alloc(sizeof(ISelEnv));
+   env = LibVEX_Alloc_inline(sizeof(ISelEnv));
    env->vreg_ctr = 0;
 
    /* Set up output code array. */
@@ -4452,8 +4458,8 @@ HInstrArray* iselSB_X86 ( IRSB* bb,
    /* Make up an IRTemp -> virtual HReg mapping.  This doesn't
       change as we go along. */
    env->n_vregmap = bb->tyenv->types_used;
-   env->vregmap   = LibVEX_Alloc(env->n_vregmap * sizeof(HReg));
-   env->vregmapHI = LibVEX_Alloc(env->n_vregmap * sizeof(HReg));
+   env->vregmap   = LibVEX_Alloc_inline(env->n_vregmap * sizeof(HReg));
+   env->vregmapHI = LibVEX_Alloc_inline(env->n_vregmap * sizeof(HReg));
 
    /* and finally ... */
    env->chainingAllowed = chainingAllowed;
@@ -4469,12 +4475,12 @@ HInstrArray* iselSB_X86 ( IRSB* bb,
          case Ity_I1:
          case Ity_I8:
          case Ity_I16:
-         case Ity_I32:  hreg   = mkHReg(j++, HRcInt32, True); break;
-         case Ity_I64:  hreg   = mkHReg(j++, HRcInt32, True);
-                        hregHI = mkHReg(j++, HRcInt32, True); break;
+         case Ity_I32:  hreg   = mkHReg(True, HRcInt32,  0, j++); break;
+         case Ity_I64:  hreg   = mkHReg(True, HRcInt32,  0, j++);
+                        hregHI = mkHReg(True, HRcInt32,  0, j++); break;
          case Ity_F32:
-         case Ity_F64:  hreg   = mkHReg(j++, HRcFlt64, True); break;
-         case Ity_V128: hreg   = mkHReg(j++, HRcVec128, True); break;
+         case Ity_F64:  hreg   = mkHReg(True, HRcFlt64,  0, j++); break;
+         case Ity_V128: hreg   = mkHReg(True, HRcVec128, 0, j++); break;
          default: ppIRType(bb->tyenv->types[i]);
                   vpanic("iselBB: IRTemp type");
       }

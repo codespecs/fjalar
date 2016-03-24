@@ -6,7 +6,7 @@
    This file is part of Massif, a Valgrind tool for profiling memory
    usage of programs.
 
-   Copyright (C) 2003-2013 Nicholas Nethercote
+   Copyright (C) 2003-2015 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -37,10 +37,7 @@
 //   - preset column widths for stats are not generic
 //   - preset column headers are not generic
 //   - "Massif arguments:" line is not generic
-// - do snapshots on client requests
-//   - (Michael Meeks): have an interactive way to request a dump
-//     (callgrind_control-style)
-//     - "profile now"
+// - do snapshots on some specific client requests
 //     - "show me the extra allocations since the last snapshot"
 //     - "start/stop logging" (eg. quickly skip boring bits)
 // - Add ability to draw multiple graphs, eg. heap-only, stack-only, total.
@@ -1118,7 +1115,7 @@ static void VERB_snapshot(Int verbosity, const HChar* prefix, Int i)
    default:
       tl_assert2(0, "VERB_snapshot: unknown snapshot kind: %d", snapshot->kind);
    }
-   VERB(verbosity, "%s S%s%3d (t:%lld, hp:%ld, ex:%ld, st:%ld)\n",
+   VERB(verbosity, "%s S%s%3d (t:%lld, hp:%lu, ex:%lu, st:%lu)\n",
       prefix, suffix, i,
       snapshot->time,
       snapshot->heap_szB,
@@ -1725,7 +1722,8 @@ void* realloc_block ( ThreadId tid, void* p_old, SizeT new_req_szB )
       }
 
       VERB(3, ">>> (%ld, %ld)\n",
-         new_req_szB - old_req_szB, new_slop_szB - old_slop_szB);
+           (SSizeT)(new_req_szB - old_req_szB),
+           (SSizeT)(new_slop_szB - old_slop_szB));
    }
 
    return p_new;
@@ -1905,7 +1903,7 @@ static void update_stack_stats(SSizeT stack_szB_delta)
 static INLINE void new_mem_stack_2(SizeT len, const HChar* what)
 {
    if (have_started_executing_code) {
-      VERB(3, "<<< new_mem_stack (%ld)\n", len);
+      VERB(3, "<<< new_mem_stack (%lu)\n", len);
       n_stack_allocs++;
       update_stack_stats(len);
       maybe_take_snapshot(Normal, what);
@@ -1916,7 +1914,7 @@ static INLINE void new_mem_stack_2(SizeT len, const HChar* what)
 static INLINE void die_mem_stack_2(SizeT len, const HChar* what)
 {
    if (have_started_executing_code) {
-      VERB(3, "<<< die_mem_stack (%ld)\n", -len);
+      VERB(3, "<<< die_mem_stack (-%lu)\n", len);
       n_stack_frees++;
       maybe_take_snapshot(Peak,   "stkPEAK");
       update_stack_stats(-len);
@@ -1956,8 +1954,11 @@ static void print_monitor_help ( void )
    VG_(gdb_printf) ("massif monitor commands:\n");
    VG_(gdb_printf) ("  snapshot [<filename>]\n");
    VG_(gdb_printf) ("  detailed_snapshot [<filename>]\n");
-   VG_(gdb_printf) ("       takes a snapshot (or a detailed snapshot)\n");
-   VG_(gdb_printf) ("       and saves it in <filename>\n");
+   VG_(gdb_printf) ("      takes a snapshot (or a detailed snapshot)\n");
+   VG_(gdb_printf) ("      and saves it in <filename>\n");
+   VG_(gdb_printf) ("             default <filename> is massif.vgdb.out\n");
+   VG_(gdb_printf) ("  all_snapshots [<filename>]\n");
+   VG_(gdb_printf) ("      saves all snapshot(s) taken so far in <filename>\n");
    VG_(gdb_printf) ("             default <filename> is massif.vgdb.out\n");
    VG_(gdb_printf) ("\n");
 }
@@ -2105,18 +2106,6 @@ IRSB* ms_instrument ( VgCallbackClosure* closure,
 
 #define FP(format, args...) ({ VG_(fprintf)(fp, format, ##args); })
 
-// Nb: uses a static buffer, each call trashes the last string returned.
-static const HChar* make_perc(double x)
-{
-   static HChar mbuf[32];
-
-   VG_(percentify)((ULong)(x * 100), 10000, 2, 6, mbuf);
-   // XXX: this is bogus if the denominator was zero -- resulting string is
-   // something like "0 --%")
-   if (' ' == mbuf[0]) mbuf[0] = '0';
-   return mbuf;
-}
-
 static void pp_snapshot_SXPt(VgFile *fp, SXPt* sxpt, Int depth,
                              HChar* depth_str, Int depth_str_len,
                              SizeT snapshot_heap_szB, SizeT snapshot_total_szB)
@@ -2161,7 +2150,7 @@ static void pp_snapshot_SXPt(VgFile *fp, SXPt* sxpt, Int depth,
       }
       
       // Do the non-ip_desc part first...
-      FP("%sn%d: %lu ", depth_str, sxpt->Sig.n_children, sxpt->szB);
+      FP("%sn%u: %lu ", depth_str, sxpt->Sig.n_children, sxpt->szB);
 
       // For ip_descs beginning with "0xABCD...:" addresses, we first
       // measure the length of the "0xabcd: " address at the start of the
@@ -2225,9 +2214,8 @@ static void pp_snapshot_SXPt(VgFile *fp, SXPt* sxpt, Int depth,
 
     case InsigSXPt: {
       const HChar* s = ( 1 == sxpt->Insig.n_xpts ? "," : "s, all" );
-      FP("%sn0: %lu in %d place%s below massif's threshold (%s)\n",
-         depth_str, sxpt->szB, sxpt->Insig.n_xpts, s,
-         make_perc(clo_threshold));
+      FP("%sn0: %lu in %d place%s below massif's threshold (%.2f%%)\n",
+         depth_str, sxpt->szB, sxpt->Insig.n_xpts, s, clo_threshold);
       break;
     }
 
@@ -2350,6 +2338,20 @@ static void handle_snapshot_monitor_command (const HChar *filename,
    delete_snapshot(&snapshot);
 }
 
+static void handle_all_snapshots_monitor_command (const HChar *filename)
+{
+   if (!clo_pages_as_heap && !have_started_executing_code) {
+      // See comments of variable have_started_executing_code.
+      VG_(gdb_printf) 
+         ("error: cannot take snapshot before execution has started\n");
+      return;
+   }
+
+   write_snapshots_to_file ((filename == NULL) ? 
+                            "massif.vgdb.out" : filename,
+                            snapshots, next_snapshot_i);
+}
+
 static Bool handle_gdb_monitor_command (ThreadId tid, HChar *req)
 {
    HChar* wcmd;
@@ -2359,7 +2361,7 @@ static Bool handle_gdb_monitor_command (ThreadId tid, HChar *req)
    VG_(strcpy) (s, req);
 
    wcmd = VG_(strtok_r) (s, " ", &ssaveptr);
-   switch (VG_(keyword_id) ("help snapshot detailed_snapshot", 
+   switch (VG_(keyword_id) ("help snapshot detailed_snapshot all_snapshots", 
                             wcmd, kwd_report_duplicated_matches)) {
    case -2: /* multiple matches */
       return True;
@@ -2378,6 +2380,12 @@ static Bool handle_gdb_monitor_command (ThreadId tid, HChar *req)
       HChar* filename;
       filename = VG_(strtok_r) (NULL, " ", &ssaveptr);
       handle_snapshot_monitor_command (filename, True /* detailed */);
+      return True;
+   }
+   case  3: { /* all_snapshots */
+      HChar* filename;
+      filename = VG_(strtok_r) (NULL, " ", &ssaveptr);
+      handle_all_snapshots_monitor_command (filename);
       return True;
    }
    default: 
@@ -2400,7 +2408,7 @@ static void ms_print_stats (void)
    STATS("stack allocs:          %u\n", n_stack_allocs);
    STATS("stack frees:           %u\n", n_stack_frees);
    STATS("XPts:                  %u\n", n_xpts);
-   STATS("top-XPts:              %u (%d%%)\n",
+   STATS("top-XPts:              %u (%u%%)\n",
       alloc_xpt->n_children,
       ( n_xpts ? alloc_xpt->n_children * 100 / n_xpts : 0));
    STATS("XPt init expansions:   %u\n", n_xpt_init_expansions);
@@ -2447,8 +2455,8 @@ static void ms_post_clo_init(void)
    // Check options.
    if (clo_pages_as_heap) {
       if (clo_stacks) {
-         VG_(fmsg_bad_option)(
-            "--pages-as-heap=yes together with --stacks=yes", "");
+         VG_(fmsg_bad_option)("--pages-as-heap=yes",
+            "Cannot be used together with --stacks=yes");
       }
    }
    if (!clo_heap) {
@@ -2542,12 +2550,13 @@ static void ms_pre_clo_init(void)
    VG_(details_version)         (NULL);
    VG_(details_description)     ("a heap profiler");
    VG_(details_copyright_author)(
-      "Copyright (C) 2003-2013, and GNU GPL'd, by Nicholas Nethercote");
+      "Copyright (C) 2003-2015, and GNU GPL'd, by Nicholas Nethercote");
    VG_(details_bug_reports_to)  (VG_BUGS_TO);
 
    VG_(details_avg_translation_sizeB) ( 330 );
 
-   VG_(clo_vex_control).iropt_register_updates
+   VG_(clo_vex_control).iropt_register_updates_default
+      = VG_(clo_px_file_backed)
       = VexRegUpdSpAtMemAccess; // overridable by the user.
 
    // Basic functions.

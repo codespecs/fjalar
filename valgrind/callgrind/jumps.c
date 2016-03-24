@@ -6,7 +6,7 @@
 /*
    This file is part of Callgrind, a Valgrind tool for call tracing.
 
-   Copyright (C) 2002-2013, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2015, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -119,7 +119,7 @@ static void resize_jcc_table(void)
     VG_(free)(current_jccs.table);
 
 
-    CLG_DEBUG(0, "Resize JCC Hash: %d => %d (entries %d, conflicts %d/%d)\n",
+    CLG_DEBUG(0, "Resize JCC Hash: %u => %d (entries %u, conflicts %d/%d)\n",
 	     current_jccs.size, new_size,
 	     current_jccs.entries, conflicts1, conflicts2);
 
@@ -188,7 +188,7 @@ jCC* CLG_(get_jcc)(BBCC* from, UInt jmp, BBCC* to)
     jCC* jcc;
     UInt idx;
 
-    CLG_DEBUG(5, "+ get_jcc(bbcc %p/%d => bbcc %p)\n",
+    CLG_DEBUG(5, "+ get_jcc(bbcc %p/%u => bbcc %p)\n",
 		from, jmp, to);
 
     /* first check last recently used JCC */

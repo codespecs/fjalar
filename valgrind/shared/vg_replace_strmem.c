@@ -8,7 +8,7 @@
 /*
    This file is part of Valgrind.
 
-   Copyright (C) 2000-2013 Julian Seward
+   Copyright (C) 2000-2015 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -102,6 +102,15 @@
    20410 WCSRCHR
    20420 STPNCPY
 */
+
+#if defined(VGO_solaris)
+/*
+   Detour functions in the libc and the runtime linker. If a function isn't
+   much optimized (and no overlap checking is necessary) then redir the
+   function only in the libc. This way we can keep stacktraces in the tests
+   consistent.
+*/
+#endif
 
 
 /* Figure out if [dst .. dst+dstlen-1] overlaps with
@@ -204,9 +213,14 @@ static inline void my_exit ( int x )
  //STRRCHR(VG_Z_DYLD,          strrchr)
  //STRRCHR(VG_Z_DYLD,          rindex)
  STRRCHR(VG_Z_LIBC_SONAME, strrchr)
-# if DARWIN_VERS == DARWIN_10_9
+# if DARWIN_VERS >= DARWIN_10_9
   STRRCHR(libsystemZucZddylib, strrchr)
 # endif
+
+#elif defined(VGO_solaris)
+ STRRCHR(VG_Z_LIBC_SONAME,   strrchr)
+ STRRCHR(VG_Z_LIBC_SONAME,   rindex)
+ STRRCHR(VG_Z_LD_SO_1,       strrchr)
 
 #endif
 
@@ -245,6 +259,18 @@ static inline void my_exit ( int x )
 # if DARWIN_VERS == DARWIN_10_9
   STRCHR(libsystemZuplatformZddylib, _platform_strchr)
 # endif
+# if DARWIN_VERS >= DARWIN_10_10
+  /* _platform_strchr$VARIANT$Generic */
+  STRCHR(libsystemZuplatformZddylib, _platform_strchr$VARIANT$Generic)
+  /* _platform_strchr$VARIANT$Haswell */
+  STRCHR(libsystemZuplatformZddylib, _platform_strchr$VARIANT$Haswell)
+# endif
+
+#elif defined(VGO_solaris)
+ STRCHR(VG_Z_LIBC_SONAME,          strchr)
+ STRCHR(VG_Z_LIBC_SONAME,          index)
+ STRCHR(VG_Z_LD_SO_1,              strchr)
+
 #endif
 
 
@@ -279,6 +305,10 @@ static inline void my_exit ( int x )
 
 #elif defined(VGO_darwin)
  //STRCAT(VG_Z_LIBC_SONAME, strcat)
+
+#elif defined(VGO_solaris)
+ STRCAT(VG_Z_LIBC_SONAME, strcat)
+ STRCAT(VG_Z_LD_SO_1,     strcat)
 
 #endif
 
@@ -316,6 +346,9 @@ static inline void my_exit ( int x )
 #elif defined(VGO_darwin)
  //STRNCAT(VG_Z_LIBC_SONAME, strncat)
  //STRNCAT(VG_Z_DYLD,        strncat)
+
+#elif defined(VGO_solaris)
+ STRNCAT(VG_Z_LIBC_SONAME, strncat)
 
 #endif
 
@@ -365,6 +398,9 @@ static inline void my_exit ( int x )
  //STRLCAT(VG_Z_DYLD,        strlcat)
  STRLCAT(VG_Z_LIBC_SONAME, strlcat)
 
+#elif defined(VGO_solaris)
+ STRLCAT(VG_Z_LIBC_SONAME, strlcat)
+
 #endif
 
 
@@ -389,6 +425,9 @@ static inline void my_exit ( int x )
 # if DARWIN_VERS == DARWIN_10_9
   STRNLEN(libsystemZucZddylib, strnlen)
 # endif
+
+#elif defined(VGO_solaris)
+ STRNLEN(VG_Z_LIBC_SONAME, strnlen)
 
 #endif
 
@@ -427,9 +466,14 @@ static inline void my_exit ( int x )
 
 #elif defined(VGO_darwin)
  STRLEN(VG_Z_LIBC_SONAME, strlen)
-# if DARWIN_VERS == DARWIN_10_9 || DARWIN_VERS == DARWIN_10_10
+# if DARWIN_VERS >= DARWIN_10_9
   STRLEN(libsystemZucZddylib, strlen)
 # endif
+
+#elif defined(VGO_solaris)
+ STRLEN(VG_Z_LIBC_SONAME,          strlen)
+ STRLEN(VG_Z_LD_SO_1,              strlen)
+
 #endif
 
 
@@ -468,6 +512,10 @@ static inline void my_exit ( int x )
   STRCPY(libsystemZucZddylib, strcpy)
 # endif
 
+#elif defined(VGO_solaris)
+ STRCPY(VG_Z_LIBC_SONAME, strcpy)
+ STRCPY(VG_Z_LD_SO_1,     strcpy)
+
 #endif
 
 
@@ -501,9 +549,13 @@ static inline void my_exit ( int x )
 
 #elif defined(VGO_darwin)
  STRNCPY(VG_Z_LIBC_SONAME, strncpy)
-# if DARWIN_VERS == DARWIN_10_9 || DARWIN_VERS == DARWIN_10_10
+# if DARWIN_VERS >= DARWIN_10_9
   STRNCPY(libsystemZucZddylib, strncpy)
 # endif
+
+#elif defined(VGO_solaris)
+ STRNCPY(VG_Z_LIBC_SONAME, strncpy)
+ STRNCPY(VG_Z_LD_SO_1,     strncpy)
 
 #endif
 
@@ -522,6 +574,8 @@ static inline void my_exit ( int x )
       HChar* dst_orig = dst; \
       SizeT m = 0; \
       \
+      STRLCPY_CHECK_FOR_DSTSIZE_ZERO \
+      \
       while (m < n-1 && *src) { m++; *dst++ = *src++; } \
       /* m non-nul bytes have now been copied, and m <= n-1. */ \
       /* Check for overlap after copying; all n bytes of dst are relevant, */ \
@@ -539,12 +593,24 @@ static inline void my_exit ( int x )
 
 #if defined(VGPV_arm_linux_android) || defined(VGPV_x86_linux_android) \
     || defined(VGPV_mips32_linux_android)
+ #define STRLCPY_CHECK_FOR_DSTSIZE_ZERO
  STRLCPY(VG_Z_LIBC_SONAME, strlcpy);
 #endif
 
 #elif defined(VGO_darwin)
+ #define STRLCPY_CHECK_FOR_DSTSIZE_ZERO
  //STRLCPY(VG_Z_LIBC_SONAME, strlcpy)
  //STRLCPY(VG_Z_DYLD,        strlcpy)
+ STRLCPY(VG_Z_LIBC_SONAME, strlcpy)
+
+#elif defined(VGO_solaris)
+ /* special case for n == 0 which is undocumented but heavily used */
+ #define STRLCPY_CHECK_FOR_DSTSIZE_ZERO \
+    if (n == 0) { \
+       while (*src) src++; \
+       return src - src_orig; \
+    }
+
  STRLCPY(VG_Z_LIBC_SONAME, strlcpy)
 
 #endif
@@ -580,9 +646,12 @@ static inline void my_exit ( int x )
 
 #elif defined(VGO_darwin)
  STRNCMP(VG_Z_LIBC_SONAME,        strncmp)
-# if DARWIN_VERS == DARWIN_10_9 || DARWIN_VERS == DARWIN_10_10
+# if DARWIN_VERS >= DARWIN_10_9
   STRNCMP(libsystemZuplatformZddylib, _platform_strncmp)
 # endif
+
+#elif defined(VGO_solaris)
+ STRNCMP(VG_Z_LIBC_SONAME, strncmp)
 
 #endif
 
@@ -621,6 +690,9 @@ static inline void my_exit ( int x )
 
 #elif defined(VGO_darwin)
  //STRCASECMP(VG_Z_LIBC_SONAME, strcasecmp)
+
+#elif defined(VGO_solaris)
+ STRCASECMP(VG_Z_LIBC_SONAME, strcasecmp)
 
 #endif
 
@@ -663,6 +735,9 @@ static inline void my_exit ( int x )
  //STRNCASECMP(VG_Z_LIBC_SONAME, strncasecmp)
  //STRNCASECMP(VG_Z_DYLD,        strncasecmp)
 
+#elif defined(VGO_solaris)
+ STRNCASECMP(VG_Z_LIBC_SONAME, strncasecmp)
+
 #endif
 
 
@@ -696,6 +771,8 @@ static inline void my_exit ( int x )
 
 #elif defined(VGO_darwin)
  //STRCASECMP_L(VG_Z_LIBC_SONAME, strcasecmp_l)
+
+#elif defined(VGO_solaris)
 
 #endif
 
@@ -733,6 +810,8 @@ static inline void my_exit ( int x )
 #elif defined(VGO_darwin)
  //STRNCASECMP_L(VG_Z_LIBC_SONAME, strncasecmp_l)
  //STRNCASECMP_L(VG_Z_DYLD,        strncasecmp_l)
+
+#elif defined(VGO_solaris)
 
 #endif
 
@@ -773,9 +852,13 @@ static inline void my_exit ( int x )
 
 #elif defined(VGO_darwin)
  STRCMP(VG_Z_LIBC_SONAME, strcmp)
-# if DARWIN_VERS == DARWIN_10_9 || DARWIN_VERS == DARWIN_10_10
+# if DARWIN_VERS >= DARWIN_10_9
   STRCMP(libsystemZuplatformZddylib, _platform_strcmp)
 # endif
+
+#elif defined(VGO_solaris)
+ STRCMP(VG_Z_LIBC_SONAME,          strcmp)
+ STRCMP(VG_Z_LD_SO_1,              strcmp)
 
 #endif
 
@@ -805,11 +888,16 @@ static inline void my_exit ( int x )
   MEMCHR(VG_Z_DYLD,                   memchr)
   MEMCHR(libsystemZuplatformZddylib, _platform_memchr)
 # endif
-# if DARWIN_VERS == DARWIN_10_10
+# if DARWIN_VERS >= DARWIN_10_10
   MEMCHR(VG_Z_DYLD,                   memchr)
   /* _platform_memchr$VARIANT$Generic */
   MEMCHR(libsystemZuplatformZddylib, _platform_memchr$VARIANT$Generic)
+  /* _platform_memchr$VARIANT$Haswell */
+  MEMCHR(libsystemZuplatformZddylib, _platform_memchr$VARIANT$Haswell)
 # endif
+
+#elif defined(VGO_solaris)
+ MEMCHR(VG_Z_LIBC_SONAME, memchr)
 
 #endif
 
@@ -836,6 +924,8 @@ static inline void my_exit ( int x )
 #elif defined(VGO_darwin)
  //MEMRCHR(VG_Z_LIBC_SONAME, memrchr)
  //MEMRCHR(VG_Z_DYLD,        memrchr)
+
+#elif defined(VGO_solaris)
 
 #endif
 
@@ -948,6 +1038,10 @@ static inline void my_exit ( int x )
  MEMCPY(VG_Z_LIBC_SONAME,  memcpyZDVARIANTZDsse3x) /* memcpy$VARIANT$sse3x */
  MEMCPY(VG_Z_LIBC_SONAME,  memcpyZDVARIANTZDsse42) /* memcpy$VARIANT$sse42 */
 
+#elif defined(VGO_solaris)
+ MEMCPY(VG_Z_LIBC_SONAME,  memcpy)
+ MEMCPY(VG_Z_LD_SO_1,      memcpy)
+
 #endif
 
 
@@ -959,18 +1053,33 @@ static inline void my_exit ( int x )
    int VG_REPLACE_FUNCTION_EZU(20190,soname,fnname)       \
           ( const void *s1V, const void *s2V, SizeT n )  \
    { \
-      int res; \
-      UChar a0; \
-      UChar b0; \
-      const UChar* s1 = s1V; \
-      const UChar* s2 = s2V; \
+      const SizeT WS = sizeof(UWord); /* 8 or 4 */ \
+      const SizeT WM = WS - 1;        /* 7 or 3 */ \
+      Addr s1A = (Addr)s1V; \
+      Addr s2A = (Addr)s2V; \
+      \
+      if (((s1A | s2A) & WM) == 0) { \
+         /* Both areas are word aligned.  Skip over the */ \
+         /* equal prefix as fast as possible. */ \
+         while (n >= WS) { \
+            UWord w1 = *(UWord*)s1A; \
+            UWord w2 = *(UWord*)s2A; \
+            if (w1 != w2) break; \
+            s1A += WS; \
+            s2A += WS; \
+            n -= WS; \
+         } \
+      } \
+      \
+      const UChar* s1 = (const UChar*) s1A; \
+      const UChar* s2 = (const UChar*) s2A; \
       \
       while (n != 0) { \
-         a0 = s1[0]; \
-         b0 = s2[0]; \
+         UChar a0 = s1[0]; \
+         UChar b0 = s2[0]; \
          s1 += 1; \
          s2 += 1; \
-         res = ((int)a0) - ((int)b0); \
+         int res = ((int)a0) - ((int)b0); \
          if (res != 0) \
             return res; \
          n -= 1; \
@@ -987,9 +1096,14 @@ static inline void my_exit ( int x )
  MEMCMP(VG_Z_LD_SO_1,     bcmp)
 
 #elif defined(VGO_darwin)
-# if DARWIN_VERS == DARWIN_10_9 || DARWIN_VERS == DARWIN_10_10
+# if DARWIN_VERS >= DARWIN_10_9
   MEMCMP(libsystemZuplatformZddylib, _platform_memcmp)
 # endif
+
+#elif defined(VGO_solaris)
+ MEMCMP(VG_Z_LIBC_SONAME, memcmp)
+ MEMCMP(VG_Z_LIBC_SONAME, bcmp)
+ MEMCMP(VG_Z_LD_SO_1,     memcmp)
 
 #endif
 
@@ -1032,6 +1146,9 @@ static inline void my_exit ( int x )
 #elif defined(VGO_darwin)
  //STPCPY(VG_Z_LIBC_SONAME,          stpcpy)
  //STPCPY(VG_Z_DYLD,                 stpcpy)
+
+#elif defined(VGO_solaris)
+ STPCPY(VG_Z_LIBC_SONAME,          stpcpy)
 
 #endif
 
@@ -1111,6 +1228,9 @@ static inline void my_exit ( int x )
  //MEMSET(VG_Z_DYLD,        memset)
  MEMSET(VG_Z_LIBC_SONAME, memset)
 
+#elif defined(VGO_solaris)
+ MEMSET(VG_Z_LIBC_SONAME, memset)
+
 #endif
 
 
@@ -1121,6 +1241,10 @@ static inline void my_exit ( int x )
 #if defined(VGO_linux)
  MEMMOVE(VG_Z_LIBC_SONAME, memmove)
  MEMMOVE(VG_Z_LIBC_SONAME, __GI_memmove)
+ /* See bug #349828 Override for ld64.so.1 like memcpy, because for some
+    arches MEMCPY_OK_FOR_FORWARD_MEMMOVE is set, which might cause memmove
+    to call memcpy.  */
+ MEMMOVE(VG_Z_LD64_SO_1, memmove)
 
 #elif defined(VGO_darwin)
 # if DARWIN_VERS <= DARWIN_10_6
@@ -1128,10 +1252,15 @@ static inline void my_exit ( int x )
 # endif
  MEMMOVE(VG_Z_LIBC_SONAME,  memmoveZDVARIANTZDsse3x) /* memmove$VARIANT$sse3x */
  MEMMOVE(VG_Z_LIBC_SONAME,  memmoveZDVARIANTZDsse42) /* memmove$VARIANT$sse42 */
-# if DARWIN_VERS == DARWIN_10_9 || DARWIN_VERS == DARWIN_10_10
+# if DARWIN_VERS >= DARWIN_10_9
   /* _platform_memmove$VARIANT$Ivybridge */
   MEMMOVE(libsystemZuplatformZddylib, ZuplatformZumemmoveZDVARIANTZDIvybridge)
 # endif
+
+#elif defined(VGO_solaris)
+ MEMMOVE(VG_Z_LIBC_SONAME, memmove)
+ MEMMOVE(VG_Z_LD_SO_1,     memmove)
+
 #endif
 
 
@@ -1163,6 +1292,9 @@ static inline void my_exit ( int x )
 #elif defined(VGO_darwin)
  //BCOPY(VG_Z_LIBC_SONAME, bcopy)
  //BCOPY(VG_Z_DYLD,        bcopy)
+
+#elif defined(VGO_darwin)
+ BCOPY(VG_Z_LIBC_SONAME, bcopy)
 
 #endif
 
@@ -1196,7 +1328,7 @@ static inline void my_exit ( int x )
       VALGRIND_PRINTF_BACKTRACE( \
          "*** memmove_chk: buffer overflow detected ***: " \
          "program terminated\n"); \
-     my_exit(127); \
+     my_exit(1); \
      /*NOTREACHED*/ \
      return NULL; \
    }
@@ -1205,6 +1337,8 @@ static inline void my_exit ( int x )
  GLIBC25___MEMMOVE_CHK(VG_Z_LIBC_SONAME, __memmove_chk)
 
 #elif defined(VGO_darwin)
+
+#elif defined(VGO_solaris)
 
 #endif
 
@@ -1232,6 +1366,8 @@ static inline void my_exit ( int x )
 
 #elif defined(VGO_darwin)
 
+#elif defined(VGO_solaris)
+
 #endif
 
 
@@ -1258,6 +1394,8 @@ static inline void my_exit ( int x )
 
 #elif defined(VGO_darwin)
 
+#elif defined(VGO_solaris)
+
 #endif
 
 
@@ -1282,7 +1420,7 @@ static inline void my_exit ( int x )
       VALGRIND_PRINTF_BACKTRACE( \
          "*** strcpy_chk: buffer overflow detected ***: " \
          "program terminated\n"); \
-     my_exit(127); \
+     my_exit(1); \
      /*NOTREACHED*/ \
      return NULL; \
    }
@@ -1291,6 +1429,8 @@ static inline void my_exit ( int x )
  GLIBC25___STRCPY_CHK(VG_Z_LIBC_SONAME, __strcpy_chk)
 
 #elif defined(VGO_darwin)
+
+#elif defined(VGO_solaris)
 
 #endif
 
@@ -1315,7 +1455,7 @@ static inline void my_exit ( int x )
       VALGRIND_PRINTF_BACKTRACE( \
          "*** stpcpy_chk: buffer overflow detected ***: " \
          "program terminated\n"); \
-     my_exit(127); \
+     my_exit(1); \
      /*NOTREACHED*/ \
      return NULL; \
    }
@@ -1324,6 +1464,8 @@ static inline void my_exit ( int x )
  GLIBC25___STPCPY_CHK(VG_Z_LIBC_SONAME, __stpcpy_chk)
 
 #elif defined(VGO_darwin)
+
+#elif defined(VGO_solaris)
 
 #endif
 
@@ -1371,6 +1513,8 @@ static inline void my_exit ( int x )
 #elif defined(VGO_darwin)
  //GLIBC25_MEMPCPY(VG_Z_LIBC_SONAME, mempcpy)
 
+#elif defined(VGO_solaris)
+
 #endif
 
 
@@ -1411,7 +1555,7 @@ static inline void my_exit ( int x )
       VALGRIND_PRINTF_BACKTRACE( \
          "*** memcpy_chk: buffer overflow detected ***: " \
          "program terminated\n"); \
-     my_exit(127); \
+     my_exit(1); \
      /*NOTREACHED*/ \
      return NULL; \
    }
@@ -1420,6 +1564,8 @@ static inline void my_exit ( int x )
  GLIBC26___MEMCPY_CHK(VG_Z_LIBC_SONAME, __memcpy_chk)
 
 #elif defined(VGO_darwin)
+
+#elif defined(VGO_solaris)
 
 #endif
 
@@ -1470,6 +1616,9 @@ static inline void my_exit ( int x )
 
 #elif defined(VGO_darwin)
 
+#elif defined(VGO_solaris)
+ STRSTR(VG_Z_LIBC_SONAME,          strstr)
+
 #endif
 
 
@@ -1511,6 +1660,9 @@ static inline void my_exit ( int x )
  STRPBRK(VG_Z_LIBC_SONAME,          strpbrk)
 
 #elif defined(VGO_darwin)
+
+#elif defined(VGO_solaris)
+ STRPBRK(VG_Z_LIBC_SONAME,          strpbrk)
 
 #endif
 
@@ -1555,6 +1707,9 @@ static inline void my_exit ( int x )
 
 #elif defined(VGO_darwin)
 
+#elif defined(VGO_solaris)
+ STRCSPN(VG_Z_LIBC_SONAME,          strcspn)
+
 #endif
 
 
@@ -1598,6 +1753,9 @@ static inline void my_exit ( int x )
  STRSPN(VG_Z_LIBC_SONAME,          strspn)
 
 #elif defined(VGO_darwin)
+
+#elif defined(VGO_solaris)
+ STRSPN(VG_Z_LIBC_SONAME,          strspn)
 
 #endif
 
@@ -1652,6 +1810,9 @@ static inline void my_exit ( int x )
 
 #elif defined(VGO_darwin)
 
+#elif defined(VGO_solaris)
+  STRCASESTR(VG_Z_LIBC_SONAME,      strcasestr)
+
 #endif
 
 
@@ -1677,6 +1838,9 @@ static inline void my_exit ( int x )
  WCSLEN(VG_Z_LIBC_SONAME,          wcslen)
 
 #elif defined(VGO_darwin)
+
+#elif defined(VGO_solaris)
+ WCSLEN(VG_Z_LIBC_SONAME,          wcslen)
 
 #endif
 

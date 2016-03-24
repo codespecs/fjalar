@@ -4,15 +4,15 @@
 ############################################
 ## Leaks.  For other stuff see below.
 
-#{
-#   OSX1010:1-Leak
-#   Memcheck:Leak
-#   match-leak-kinds: possible
-#   fun:malloc_zone_?alloc
-#   ...
-#   fun:_read_images
-#}
-#
+{
+   OSX1010:1-Leak
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc_zone_?alloc
+   ...
+   fun:_read_images
+}
+
 #{
 #   OSX1010:2-Leak
 #   Memcheck:Leak
@@ -21,19 +21,20 @@
 #   ...
 #   fun:_ZN4dyld24initializeMainExecutableEv
 #}
-#
-#{
-#   OSX1010:3-Leak
-#   Memcheck:Leak
-#   match-leak-kinds: definite
-#   fun:malloc_zone_?alloc
-#   fun:recursive_mutex_init
-#   fun:_objc_init
-#   fun:_os_object_init
-#   fun:libSystem_initializer
-#   ...
-#}
-#
+
+{
+   OSX1010:3-Leak
+   Memcheck:Leak
+   match-leak-kinds: definite
+   fun:malloc_zone_?alloc
+   fun:recursive_mutex_init
+   ...
+   fun:_os_object_init
+   fun:libdispatch_init
+   fun:libSystem_initializer
+   ...
+}
+
 #{
 #   OSX1010:4-Leak
 #   Memcheck:Leak
@@ -43,69 +44,69 @@
 #   fun:dyld_register_image_state_change_handler
 #   ...
 #}
-#
-#{
-#   OSX1010:5-Leak
-#   Memcheck:Leak
-#   match-leak-kinds: reachable
-#   fun:?alloc
-#   ...
-#   fun:dyld_register_image_state_change_handler
-#   ...
-#}
-#
-#{
-#   OSX1010:6-Leak
-#   Memcheck:Leak
-#   match-leak-kinds: reachable
-#   fun:malloc_zone_?alloc
-#   ...
-#   fun:map_images_nolock
-#   fun:map_images
-#   ...
-#}
-#
-#{
-#   OSX1010:7-Leak
-#   Memcheck:Leak
-#   match-leak-kinds: possible
-#   fun:malloc_zone_?alloc
-#   ...
-#   fun:map_images_nolock
-#   fun:map_images
-#   ...
-#}
-#
-#{
-#   OSX1010:8-Leak
-#   Memcheck:Leak
-#   match-leak-kinds: indirect
-#   fun:?alloc
-#   ...
-#   fun:libSystem_initializer
-#   ...
-#}
-#
-#{
-#   OSX1010:9-Leak
-#   Memcheck:Leak
-#   match-leak-kinds: reachable
-#   fun:malloc_zone_?alloc
-#   ...
-#   fun:libSystem_initializer
-#   ...
-#}
-#
-#{
-#   OSX1010:10-Leak
-#   Memcheck:Leak
-#   match-leak-kinds: reachable
-#   fun:?alloc
-#   ...
-#   fun:libSystem_initializer
-#   ...
-#}
-#
+
+{
+   OSX1010:5-Leak
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   fun:?alloc
+   ...
+   fun:dyld_register_image_state_change_handler
+   ...
+}
+
+{
+   OSX1010:6-Leak
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   fun:malloc_zone_?alloc
+   ...
+   fun:map_images_nolock
+   fun:map_images
+   ...
+}
+
+{
+   OSX1010:7-Leak
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc_zone_?alloc
+   ...
+   fun:map_images_nolock
+   fun:map_images
+   ...
+}
+
+{
+   OSX1010:8-Leak
+   Memcheck:Leak
+   match-leak-kinds: definite
+   fun:?alloc
+   ...
+   fun:libSystem_initializer
+   ...
+}
+
+{
+   OSX1010:9-Leak
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   fun:malloc_zone_?alloc
+   ...
+   fun:libSystem_initializer
+   ...
+}
+
+{
+   OSX1010:10-Leak
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   fun:?alloc
+   ...
+   fun:libSystem_initializer
+   ...
+}
+
 #{
 #   OSX1010:11-Leak
 #   Memcheck:Leak
@@ -122,6 +123,37 @@
 #   fun:tzsetwall_basic
 #   fun:_st_tzset_basic
 #}
+
+{
+   OSX1010:13-Leak
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   fun:malloc_zone_memalign
+   ...
+   fun:_ZN4dyld24initializeMainExecutableEv
+   ...
+}
+
+{
+   OSX1010:14-Leak
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   fun:?alloc
+   ...
+   fun:libSystem_atfork_child
+   ...
+}
+
+{
+   OSX1010:15-Leak
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   fun:malloc
+   fun:__smakebuf
+   ...
+   fun:printf
+   ...
+}
 
 ############################################
 ## Non-leak errors
@@ -427,6 +459,13 @@
 }
 
 {
+   OSX1010:dyld-2
+   Memcheck:Cond
+   fun:exit
+   obj:*libdyld*dylib*
+}
+
+{
    OSX1010:libsystem_kernel-1
    Memcheck:Cond
    obj:*libsystem_kernel*dylib*
@@ -642,4 +681,22 @@
    fun:mach_msg_trap
    obj:*SystemConfiguration.framework*SystemConfiguration*
    obj:*SystemConfiguration.framework*SystemConfiguration*
+}
+
+# See https://bugs.kde.org/show_bug.cgi?id=188572 about this;  it's
+# unavoidable due to BSD setenv() semantics.
+{
+   macos-__setenv-leak-see-our-bug-188572
+   Memcheck:Leak
+   match-leak-kinds: definite
+   fun:malloc
+   fun:_owned_ptr_alloc
+   fun:setenv
+}
+
+# See https://bugs.kde.org/show_bug.cgi?id=196528
+{
+macos-__pthread_rwlock_init-see-our-bug-196528
+Memcheck:Cond
+fun:pthread_rwlock_init
 }

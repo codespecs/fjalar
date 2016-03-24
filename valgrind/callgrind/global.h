@@ -6,7 +6,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2014 Josef Weidendorfer
+   Copyright (C) 2004-2015 Josef Weidendorfer
       josef.weidendorfer@gmx.de
 
    This program is free software; you can redistribute it and/or
@@ -126,9 +126,6 @@ struct _CommandLineOptions {
 
 /* Minimum cache line size allowed */
 #define MIN_LINE_SIZE   16
-
-/* Size of various buffers used for storing strings */
-#define RESULTS_BUF_LEN                 256
 
 
 /*------------------------------------------------------------*/

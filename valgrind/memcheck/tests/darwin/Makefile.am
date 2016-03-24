@@ -7,8 +7,12 @@ noinst_HEADERS = scalar.h
 
 EXTRA_DIST = \
 	aio.stderr.exp aio.vgtest \
+	deep_badparam.stderr.exp deep_badparam.stdout.exp deep_badparam.vgtest \
 	env.stderr.exp env.vgtest \
+	ioctl-tiocsbrk.stderr.exp ioctl-tiocsbrk.vgtest \
 	pth-supp.stderr.exp pth-supp.vgtest \
+	pth-undocumented.stderr.exp pth-undocumented.stdout.exp pth-undocumented.vgtest \
+	mkfifo.stderr.exp mkfifo.vgtest \
 	scalar.stderr.exp scalar.vgtest \
 	scalar_fork.stderr.exp scalar_fork.vgtest \
 	scalar_nocancel.stderr.exp scalar_nocancel.vgtest \
@@ -16,8 +20,12 @@ EXTRA_DIST = \
 
 check_PROGRAMS = \
 	aio \
+	deep_badparam \
 	env \
+	ioctl-tiocsbrk \
 	pth-supp \
+	pth-undocumented \
+	mkfifo \
 	scalar \
 	scalar_fork \
 	scalar_nocancel \

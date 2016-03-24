@@ -1,7 +1,7 @@
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2013 Bart Van Assche <bvanassche@acm.org>.
+  Copyright (C) 2006-2015 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -55,6 +55,8 @@
 #define STACK_POINTER_OFFSET OFFSET_mips32_r29
 #elif defined(VGA_mips64)
 #define STACK_POINTER_OFFSET OFFSET_mips64_r29
+#elif defined(VGA_tilegx)
+#define STACK_POINTER_OFFSET OFFSET_tilegx_r54
 #else
 #error Unknown architecture.
 #endif
@@ -101,7 +103,7 @@ void DRD_(trace_mem_access)(const Addr addr, const SizeT size,
 
       vc = DRD_(vc_aprint)(DRD_(thread_get_vc)(DRD_(thread_get_running_tid)()));
       if (access_type == eStore && size <= sizeof(HWord)) {
-         DRD_(trace_msg_w_bt)("store 0x%lx size %ld val %ld/0x%lx (thread %d /"
+         DRD_(trace_msg_w_bt)("store 0x%lx size %lu val %lu/0x%lx (thread %u /"
                               " vc %s)", addr, size, stored_value_lo,
                               stored_value_lo, DRD_(thread_get_running_tid)(),
                               vc);
@@ -110,11 +112,11 @@ void DRD_(trace_mem_access)(const Addr addr, const SizeT size,
 
          tl_assert(sizeof(HWord) == 4);
          sv = ((ULong)stored_value_hi << 32) | stored_value_lo;
-         DRD_(trace_msg_w_bt)("store 0x%lx size %ld val %lld/0x%llx (thread %d"
+         DRD_(trace_msg_w_bt)("store 0x%lx size %lu val %llu/0x%llx (thread %u"
                               " / vc %s)", addr, size, sv, sv,
                               DRD_(thread_get_running_tid)(), vc);
       } else {
-         DRD_(trace_msg_w_bt)("%s 0x%lx size %ld (thread %d / vc %s)",
+         DRD_(trace_msg_w_bt)("%s 0x%lx size %lu (thread %u / vc %s)",
                               access_type == eLoad ? "load "
                               : access_type == eStore ? "store"
                               : access_type == eStart ? "start"

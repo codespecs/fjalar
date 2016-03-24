@@ -6,7 +6,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward 
+   Copyright (C) 2000-2015 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -27,32 +27,32 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-#if defined(VGO_linux) || defined(VGO_darwin)
+#if defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_solaris)
 
 #ifndef __PRIV_UME_H
 #define __PRIV_UME_H
 
 #include "pub_core_ume.h"   // ExeInfo
 
-extern int VG_(do_exec_inner)(const HChar *exe, ExeInfo *info);
+extern Int VG_(do_exec_inner)(const HChar *exe, ExeInfo *info);
 
-#if defined(VGO_linux)
-extern Bool VG_(match_ELF) ( const void *hdr, Int len );
+#if defined(VGO_linux) || defined(VGO_solaris)
+extern Bool VG_(match_ELF) ( const void *hdr, SizeT len );
 extern Int  VG_(load_ELF)  ( Int fd, const HChar *name, ExeInfo *info );
 #elif defined(VGO_darwin)
-extern Bool VG_(match_macho) ( const void *hdr, Int len );
+extern Bool VG_(match_macho) ( const void *hdr, SizeT len );
 extern Int  VG_(load_macho)  ( Int fd, const HChar *name, ExeInfo *info );
 #else
 #  error Unknown OS
 #endif
 
-extern Bool VG_(match_script) ( const void *hdr, Int len );
+extern Bool VG_(match_script) ( const void *hdr, SizeT len );
 extern Int  VG_(load_script)  ( Int fd, const HChar *name, ExeInfo *info );
 
 
 #endif // __PRIV_UME_H
 
-#endif // defined(VGO_linux) || defined(VGO_darwin)
+#endif // defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_solaris)
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

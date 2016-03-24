@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2008-2013 OpenWorks LLP
+   Copyright (C) 2008-2015 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -400,10 +400,12 @@ static Long read_leb128S( const UChar **data )
 static Bool get_Dwarf_Reg( /*OUT*/Addr* a, Word regno, const RegSummary* regs )
 {
    vg_assert(regs);
-#  if defined(VGP_x86_linux) || defined(VGP_x86_darwin)
+#  if defined(VGP_x86_linux) || defined(VGP_x86_darwin) \
+      || defined(VGP_x86_solaris)
    if (regno == 5/*EBP*/) { *a = regs->fp; return True; }
    if (regno == 4/*ESP*/) { *a = regs->sp; return True; }
-#  elif defined(VGP_amd64_linux) || defined(VGP_amd64_darwin)
+#  elif defined(VGP_amd64_linux) || defined(VGP_amd64_darwin) \
+        || defined(VGP_amd64_solaris)
    if (regno == 6/*RBP*/) { *a = regs->fp; return True; }
    if (regno == 7/*RSP*/) { *a = regs->sp; return True; }
 #  elif defined(VGP_ppc32_linux)
@@ -424,6 +426,9 @@ static Bool get_Dwarf_Reg( /*OUT*/Addr* a, Word regno, const RegSummary* regs )
    if (regno == 30) { *a = regs->fp; return True; }
 #  elif defined(VGP_arm64_linux)
    if (regno == 31) { *a = regs->sp; return True; }
+#  elif defined(VGP_tilegx_linux)
+   if (regno == 52) { *a = regs->fp; return True; }
+   if (regno == 54) { *a = regs->sp; return True; }
 #  else
 #    error "Unknown platform"
 #  endif
@@ -969,8 +974,8 @@ GXResult ML_(evaluate_GX)( const GExpr* gx, const GExpr* fbGX,
       aMax   = ML_(read_Addr)(p);   p += sizeof(Addr);
       nbytes = ML_(read_UShort)(p); p += sizeof(UShort);
       nGuards++;
-      if (0) VG_(printf)("           guard %d: %#lx %#lx\n",
-                         (Int)nGuards, aMin,aMax);
+      if (0) VG_(printf)("           guard %lu: %#lx %#lx\n",
+                         nGuards, aMin,aMax);
       if (regs == NULL) {
          vg_assert(aMin == (Addr)0);
          vg_assert(aMax == ~(Addr)0);

@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2008-2013 OpenWorks Ltd
+   Copyright (C) 2008-2015 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -30,13 +30,13 @@
 */
 
 #include "pub_core_basics.h"
+#include "pub_core_clientstate.h"
 #include "pub_core_libcassert.h"
 #include "pub_core_libcbase.h"
 #include "pub_core_libcprint.h"
 #include "pub_core_xarray.h"
 #include "pub_core_debuginfo.h"
 #include "pub_core_execontext.h"
-#include "pub_core_aspacemgr.h"
 #include "pub_core_addrinfo.h"
 #include "pub_core_mallocfree.h"
 #include "pub_core_machine.h"
@@ -100,7 +100,7 @@ void VG_(describe_addr) ( Addr a, /*OUT*/AddrInfo* ai )
 
    (void) VG_(get_data_description)( ai->Addr.Variable.descr1,
                                      ai->Addr.Variable.descr2, a );
-   /* If there's nothing in descr1/2, free them.  Why is it safe to to
+   /* If there's nothing in descr1/2, free them.  Why is it safe to
       VG_(indexXA) at zero here?  Because VG_(get_data_description)
       guarantees to zero terminate descr1/2 regardless of the outcome
       of the call.  So there's always at least one element in each XA
@@ -205,10 +205,9 @@ void VG_(describe_addr) ( Addr a, /*OUT*/AddrInfo* ai )
 
    /* -- last ditch attempt at classification -- */
    sect = VG_(DebugInfo_sect_kind)( &name, a);
-   ai->Addr.SectKind.objname = VG_(strdup)("mc.da.dsname", name);
-
    if (sect != Vg_SectUnknown) {
       ai->tag = Addr_SectKind;
+      ai->Addr.SectKind.objname = VG_(strdup)("mc.da.dsname", name);
       ai->Addr.SectKind.kind = sect;
       return;
    }
@@ -263,6 +262,31 @@ void VG_(describe_addr) ( Addr a, /*OUT*/AddrInfo* ai )
    /* Try to find a segment belonging to the client. */
    {
       const NSegment *seg = VG_(am_find_nsegment) (a);
+
+      /* Special case to detect the brk data segment. */
+      if (seg != NULL
+#if defined(VGO_solaris)
+          && (seg->kind == SkAnonC || seg->kind == SkFileC)
+#else
+          && seg->kind == SkAnonC
+#endif /* VGO_solaris */
+          && VG_(brk_limit) >= seg->start
+          && VG_(brk_limit) <= seg->end+1) {
+         /* Address a is in a Anon Client segment which contains
+            VG_(brk_limit). So, this segment is the brk data segment
+            as initimg-linux.c:setup_client_dataseg maps an anonymous
+            segment followed by a reservation, with one reservation
+            page that will never be used by syswrap-generic.c:do_brk,
+            when increasing VG_(brk_limit).
+            So, the brk data segment will never be merged with the
+            next segment, and so an address in that area will
+            either be in the brk data segment, or in the unmapped
+            part of the brk data segment reservation. */
+         ai->tag = Addr_BrkSegment;
+         ai->Addr.BrkSegment.brk_limit = VG_(brk_limit);
+         return;
+      }
+
       if (seg != NULL 
           && (seg->kind == SkAnonC 
               || seg->kind == SkFileC
@@ -271,11 +295,8 @@ void VG_(describe_addr) ( Addr a, /*OUT*/AddrInfo* ai )
          ai->Addr.SegmentKind.segkind = seg->kind;
          ai->Addr.SegmentKind.filename = NULL;
          if (seg->kind == SkFileC)
-            ai->Addr.SegmentKind.filename = VG_(am_get_filename) (seg);
-         if (ai->Addr.SegmentKind.filename != NULL)
-            ai->Addr.SegmentKind.filename 
-               = VG_(strdup)("mc.da.skfname",
-                             ai->Addr.SegmentKind.filename);
+            ai->Addr.SegmentKind.filename
+               = VG_(strdup)("mc.da.skfname", VG_(am_get_filename)(seg));
          ai->Addr.SegmentKind.hasR = seg->hasR;
          ai->Addr.SegmentKind.hasW = seg->hasW;
          ai->Addr.SegmentKind.hasX = seg->hasX;
@@ -326,6 +347,9 @@ void VG_(clear_addrinfo) ( AddrInfo* ai)
 
       case Addr_SectKind:
          VG_(free)(ai->Addr.SectKind.objname);
+         break;
+
+      case Addr_BrkSegment:
          break;
 
       case Addr_SegmentKind:
@@ -396,22 +420,21 @@ static void pp_addrinfo_WRK ( Addr a, const AddrInfo* ai, Bool mc,
 
       case Addr_Unknown:
          if (maybe_gcc) {
-            VG_(emit)( "%sAddress 0x%llx is just below the stack ptr.  "
+            VG_(emit)( "%sAddress 0x%lx is just below the stack ptr.  "
                        "To suppress, use: --workaround-gcc296-bugs=yes%s\n",
-                       xpre, (ULong)a, xpost );
+                       xpre, a, xpost );
 	 } else {
-            VG_(emit)( "%sAddress 0x%llx "
+            VG_(emit)( "%sAddress 0x%lx "
                        "is not stack'd, malloc'd or %s%s\n",
-                       xpre, 
-                       (ULong)a, 
+                       xpre, a,
                        mc ? "(recently) free'd" : "on a free list",
                        xpost );
          }
          break;
 
       case Addr_Stack: 
-         VG_(emit)( "%sAddress 0x%llx is on thread %s%d's stack%s\n", 
-                    xpre, (ULong)a, 
+         VG_(emit)( "%sAddress 0x%lx is on thread %s%u's stack%s\n", 
+                    xpre, a, 
                     opt_tnr_prefix (ai->Addr.Stack.tinfo), 
                     tnr_else_tid (ai->Addr.Stack.tinfo), 
                     xpost );
@@ -435,7 +458,7 @@ static void pp_addrinfo_WRK ( Addr a, const AddrInfo* ai, Bool mc,
 
             HChar strlinenum[16] = "";   // large enough
             if (hasfile && haslinenum)
-               VG_(sprintf)(strlinenum, "%d", linenum);
+               VG_(sprintf)(strlinenum, "%u", linenum);
 
             hasfn = VG_(get_fnname)(ai->Addr.Stack.IP, &fn);
 
@@ -539,7 +562,7 @@ static void pp_addrinfo_WRK ( Addr a, const AddrInfo* ai, Bool mc,
          }
          if (ai->Addr.Block.alloc_tinfo.tnr || ai->Addr.Block.alloc_tinfo.tid)
             VG_(emit)(
-               "%sBlock was alloc'd by thread %s%d%s\n",
+               "%sBlock was alloc'd by thread %s%u%s\n",
                xpre,
                opt_tnr_prefix (ai->Addr.Block.alloc_tinfo),
                tnr_else_tid (ai->Addr.Block.alloc_tinfo),
@@ -549,10 +572,9 @@ static void pp_addrinfo_WRK ( Addr a, const AddrInfo* ai, Bool mc,
       }
 
       case Addr_DataSym:
-         VG_(emit)( "%sAddress 0x%llx is %llu bytes "
+         VG_(emit)( "%sAddress 0x%lx is %llu bytes "
                     "inside data symbol \"%pS\"%s\n",
-                    xpre,
-                    (ULong)a,
+                    xpre, a,
                     (ULong)ai->Addr.DataSym.offset,
                     ai->Addr.DataSym.name,
                     xpost );
@@ -573,9 +595,8 @@ static void pp_addrinfo_WRK ( Addr a, const AddrInfo* ai, Bool mc,
          break;
 
       case Addr_SectKind:
-         VG_(emit)( "%sAddress 0x%llx is in the %pS segment of %pS%s\n",
-                    xpre,
-                    (ULong)a,
+         VG_(emit)( "%sAddress 0x%lx is in the %pS segment of %pS%s\n",
+                    xpre, a,
                     VG_(pp_SectKind)(ai->Addr.SectKind.kind),
                     ai->Addr.SectKind.objname,
                     xpost );
@@ -586,11 +607,29 @@ static void pp_addrinfo_WRK ( Addr a, const AddrInfo* ai, Bool mc,
          }
          break;
 
+      case Addr_BrkSegment:
+         if (a < ai->Addr.BrkSegment.brk_limit)
+            VG_(emit)( "%sAddress 0x%lx is in the brk data segment"
+                       " 0x%lx-0x%lx%s\n",
+                       xpre, a,
+                       VG_(brk_base),
+                       ai->Addr.BrkSegment.brk_limit - 1,
+                       xpost );
+         else
+            VG_(emit)( "%sAddress 0x%lx is %lu bytes after "
+                       "the brk data segment limit"
+                       " 0x%lx%s\n",
+                       xpre, a,
+                       a - ai->Addr.BrkSegment.brk_limit,
+                       ai->Addr.BrkSegment.brk_limit,
+                       xpost );
+         break;
+
       case Addr_SegmentKind:
-         VG_(emit)( "%sAddress 0x%llx is in "
+         VG_(emit)( "%sAddress 0x%lx is in "
                     "a %s%s%s %s%s%pS segment%s\n",
                     xpre,
-                    (ULong)a,
+                    a,
                     ai->Addr.SegmentKind.hasR ? "r" : "-",
                     ai->Addr.SegmentKind.hasW ? "w" : "-",
                     ai->Addr.SegmentKind.hasX ? "x" : "-",

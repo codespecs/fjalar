@@ -1,17 +1,28 @@
 
 include $(top_srcdir)/Makefile.tool-tests.am
 
-dist_noinst_SCRIPTS = filter_cpuid filter_stderr gen_insn_test.pl
+dist_noinst_SCRIPTS = filter_cpuid filter_inf_nan filter_stderr gen_insn_test.pl
 
 CLEANFILES = $(addsuffix .c,$(INSN_TESTS))
 
-INSN_TESTS = insn_basic insn_fpu insn_cmov insn_mmx insn_mmxext \
-		insn_sse insn_sse2
-if BUILD_SSE3_TESTS
-   INSN_TESTS += insn_sse3
-endif
+INSN_TESTS = insn_basic insn_cmov insn_mmx insn_mmxext
+
+if !COMPILER_IS_CLANG
+   INSN_TESTS += insn_sse insn_sse2
 if BUILD_SSSE3_TESTS
    INSN_TESTS += insn_ssse3
+endif
+if BUILD_SSE3_TESTS
+if !SOLARIS_SUN_STUDIO_AS
+# Sun Studio assembler fails to build some tests (illegal mnemonic).
+   INSN_TESTS += insn_sse3
+endif
+endif
+endif
+
+if !SOLARIS_SUN_STUDIO_AS
+# Sun Studio assembler fails to build some tests (illegal mnemonic).
+   INSN_TESTS += insn_fpu
 endif
 
 # Explicitly include insn_sse3 even if ! BUILD_SSE3_TESTS, 
@@ -22,7 +33,8 @@ endif
 
 EXTRA_DIST = \
 	aad_aam.stdout.exp aad_aam.stderr.exp aad_aam.vgtest \
-	badseg.stderr.exp badseg.stdout.exp badseg.vgtest \
+	badseg.stderr.exp badseg.stdout.exp badseg.stdout.exp-solaris \
+	badseg.vgtest \
 	bt_everything.stderr.exp bt_everything.stdout.exp bt_everything.vgtest \
 	bt_literal.stderr.exp bt_literal.stdout.exp bt_literal.vgtest \
 	bug125959-x86.stderr.exp bug125959-x86.stdout.exp bug125959-x86.vgtest \
@@ -46,6 +58,9 @@ EXTRA_DIST = \
 	$(addsuffix .stderr.exp,$(INSN_TESTS)) \
 	$(addsuffix .stdout.exp,$(INSN_TESTS)) \
 	$(addsuffix .vgtest,$(INSN_TESTS)) \
+	insn_fpu.stdout.exp insn_fpu.stderr.exp insn_fpu.vgtest \
+	insn_sse.stdout.exp insn_sse.stderr.exp insn_sse.vgtest \
+	insn_sse2.stdout.exp insn_sse2.stderr.exp insn_sse2.vgtest \
 	insn_sse3.stdout.exp insn_sse3.stderr.exp insn_sse3.vgtest \
 	insn_ssse3.stdout.exp insn_ssse3.stderr.exp insn_ssse3.vgtest \
 	jcxz.stdout.exp jcxz.stderr.exp jcxz.vgtest \
@@ -79,6 +94,7 @@ check_PROGRAMS = \
 	bug152818-x86 \
 	cmpxchg8b \
 	cpuid \
+	cse_fail \
 	fcmovnu \
 	fpu_lazy_eflags \
 	fxtract \
@@ -90,7 +106,6 @@ check_PROGRAMS = \
 	lahf \
 	looper \
 	movx \
-	pushpopseg \
 	sbbmisc \
 	shift_ndep \
 	smc1 \
@@ -104,11 +119,22 @@ endif
 if BUILD_LZCNT_TESTS
  check_PROGRAMS += lzcnt32
 endif
-if !VGCONF_OS_IS_DARWIN
- check_PROGRAMS += cse_fail faultstatus
-endif
 if BUILD_MOVBE_TESTS
  check_PROGRAMS += movbe
+endif
+if !VGCONF_OS_IS_DARWIN
+if !SOLARIS_SUN_STUDIO_AS
+# Sun Studio assembler fails to assemble the bound instruction
+if !COMPILER_IS_CLANG
+# clang errors out complaining that %eax as the 1st operand in the bound
+# insn is an invalid operand.
+ check_PROGRAMS += faultstatus
+endif
+endif
+endif
+if !SOLARIS_SUN_STUDIO_AS
+# Sun Studio assembler fails to assemble pushw %fs, popw %fs
+ check_PROGRAMS += pushpopseg
 endif
 
 

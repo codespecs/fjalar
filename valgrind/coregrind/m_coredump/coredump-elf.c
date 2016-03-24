@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward 
+   Copyright (C) 2000-2015 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -42,7 +42,6 @@
 #include "pub_core_libcproc.h"    // VG_(geteuid), VG_(getegid)
 #include "pub_core_libcassert.h"  // VG_(exit), vg_assert
 #include "pub_core_mallocfree.h"  // VG_(malloc), VG_(free)
-#include "pub_core_libcsetjmp.h"  // to keep _threadstate.h happy
 #include "pub_core_threadstate.h"
 #include "pub_core_xarray.h"
 #include "pub_core_clientstate.h"
@@ -195,8 +194,6 @@ static void write_note(Int fd, const struct note *n)
 static void fill_prpsinfo(const ThreadState *tst,
                           struct vki_elf_prpsinfo *prpsinfo)
 {
-   const HChar *name;
-
    VG_(memset)(prpsinfo, 0, sizeof(*prpsinfo));
 
    switch(tst->status) {
@@ -222,16 +219,7 @@ static void fill_prpsinfo(const ThreadState *tst,
    prpsinfo->pr_uid = 0;
    prpsinfo->pr_gid = 0;
    
-   if (VG_(resolve_filename)(VG_(cl_exec_fd), &name)) {
-      const HChar *n = name + VG_(strlen)(name) - 1;
-
-      while (n > name && *n != '/')
-	 n--;
-      if (n != name)
-	 n++;
-
-      VG_(strncpy)(prpsinfo->pr_fname, n, sizeof(prpsinfo->pr_fname));
-   }
+   VG_(client_fname)(prpsinfo->pr_fname, sizeof(prpsinfo->pr_fname), False);
 }
 
 static void fill_prstatus(const ThreadState *tst, 
@@ -358,8 +346,8 @@ static void fill_prstatus(const ThreadState *tst,
    regs->orig_gpr3 = arch->vex.guest_GPR3;
    regs->ctr = arch->vex.guest_CTR;
    regs->link = arch->vex.guest_LR;
-   regs->xer = LibVEX_GuestPPC64_get_XER( &((ThreadArchState*)arch)->vex );
-   regs->ccr = LibVEX_GuestPPC64_get_CR( &((ThreadArchState*)arch)->vex );
+   regs->xer = LibVEX_GuestPPC64_get_XER( &(arch->vex) );
+   regs->ccr = LibVEX_GuestPPC64_get_CR( &(arch->vex) );
    /* regs->mq = 0; */
    regs->trap = 0;
    regs->dar = 0; /* should be fault address? */
@@ -419,7 +407,17 @@ static void fill_prstatus(const ThreadState *tst,
 #  undef DO
    regs->MIPS_hi   = arch->vex.guest_HI;
    regs->MIPS_lo   = arch->vex.guest_LO;
-
+#elif defined(VGP_tilegx_linux)
+#  define DO(n)  regs->regs[n] = arch->vex.guest_r##n
+   DO(0);  DO(1);  DO(2);  DO(3);  DO(4);  DO(5);  DO(6);  DO(7);
+   DO(8);  DO(9);  DO(10); DO(11); DO(12); DO(13); DO(14); DO(15);
+   DO(16); DO(17); DO(18); DO(19); DO(20); DO(21); DO(22); DO(23);
+   DO(24); DO(25); DO(26); DO(27); DO(28); DO(29); DO(30); DO(31);
+   DO(32); DO(33); DO(34); DO(35); DO(36); DO(37); DO(38); DO(39);
+   DO(40); DO(41); DO(42); DO(43); DO(44); DO(45); DO(46); DO(47);
+   DO(48); DO(49); DO(50); DO(51); DO(52); DO(53); DO(54); DO(55);
+   regs->pc = arch->vex.guest_pc;
+   regs->orig_r0 =  arch->vex.guest_r0;
 #else
 #  error Unknown ELF platform
 #endif
@@ -492,7 +490,7 @@ static void fill_fpu(const ThreadState *tst, vki_elf_fpregset_t *fpu)
    DO(24); DO(25); DO(26); DO(27); DO(28); DO(29); DO(30); DO(31);
 #  undef DO
 
-#elif defined(VGP_arm_linux)
+#elif defined(VGP_arm_linux) || defined(VGP_tilegx_linux)
    // umm ...
 
 #elif defined(VGP_arm64_linux)
@@ -599,9 +597,8 @@ void make_elf_coredump(ThreadId tid, const vki_siginfo_t *si, ULong max_size)
 
    if (VG_(clo_log_fname_expanded) != NULL) {
       coreext = ".core";
-      basename = VG_(expand_file_name)(
-                    "--log-file (while creating core filename)",
-                    VG_(clo_log_fname_expanded));
+      basename = VG_(expand_file_name)("--log-file",
+                                       VG_(clo_log_fname_expanded));
    }
 
    vg_assert(coreext);
@@ -636,8 +633,9 @@ void make_elf_coredump(ThreadId tid, const vki_siginfo_t *si, ULong max_size)
 	 return;		/* can't create file */
    }
 
-   /* Get the segments */
-   seg_starts = VG_(get_segment_starts)(&n_seg_starts);
+   /* Get the client segments */
+   seg_starts = VG_(get_segment_starts)(SkFileC | SkAnonC | SkShmC,
+                                        &n_seg_starts);
 
    /* First, count how many memory segments to dump */
    num_phdrs = 1;		/* start with notes */

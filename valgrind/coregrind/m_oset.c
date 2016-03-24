@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2005-2013 Nicholas Nethercote
+   Copyright (C) 2005-2015 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -117,7 +117,7 @@ struct _OSet {
    OSetFree_t  free_fn;    // deallocator
    PoolAlloc*  node_pa;    // (optional) pool allocator for nodes.
    SizeT       maxEltSize; // for node_pa, must be > 0. Otherwise unused.
-   Word        nElems;     // number of elements in the tree
+   UInt        nElems;     // number of elements in the tree
    AvlNode*    root;       // root node
 
    AvlNode*    nodeStack[STACK_MAX];   // Iterator node stack
@@ -383,7 +383,7 @@ void VG_(OSetGen_Destroy)(AvlTree* t)
    if (!has_node_pa || VG_(releasePA)(t->node_pa) > 0) {
       AvlNode* n = NULL;
       Int i = 0;
-      Word sz = 0;
+      UWord sz = 0;
    
       stackClear(t);
       if (t->root)
@@ -912,7 +912,7 @@ void VG_(OSetGen_ResetIterAt)(AvlTree* oset, const void* k)
 /*--- Miscellaneous operations                                     ---*/
 /*--------------------------------------------------------------------*/
 
-Word VG_(OSetGen_Size)(const AvlTree* t)
+UInt VG_(OSetGen_Size)(const AvlTree* t)
 {
    vg_assert(t);
    return t->nElems;

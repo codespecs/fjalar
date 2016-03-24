@@ -6,6 +6,14 @@
 #include <machine/endian.h>
 #define __BYTE_ORDER    BYTE_ORDER
 #define __LITTLE_ENDIAN LITTLE_ENDIAN
+#elif defined(__sun)
+#define __LITTLE_ENDIAN 1234
+#define __BIG_ENDIAN    4321
+#  if defined(_LITTLE_ENDIAN)
+#  define __BYTE_ORDER    __LITTLE_ENDIAN
+#  else
+#  define __BYTE_ORDER    __BIG_ENDIAN
+#  endif
 #else
 #include <endian.h>
 #endif
@@ -408,9 +416,11 @@ concat_vbits(vbits_t v1, vbits_t v2)
    vbits_t new = { .num_bits = v1.num_bits * 2 };
 
    switch (v1.num_bits) {
-   case 8:   new.bits.u16 = (v1.bits.u8 << 8)    | v2.bits.u8;  break;
-   case 16:  new.bits.u32 = (v1.bits.u16 << 16)  | v2.bits.u16; break;
-   case 32:  new.bits.u64 =  v1.bits.u32;
+   case 8:   new.bits.u16 = v1.bits.u8;
+             new.bits.u16 = (new.bits.u16 << 8)  | v2.bits.u8;  break;
+   case 16:  new.bits.u32 = v1.bits.u16;
+             new.bits.u32 = (new.bits.u32 << 16) | v2.bits.u16; break;
+   case 32:  new.bits.u64 = v1.bits.u32;
              new.bits.u64 = (new.bits.u64 << 32) | v2.bits.u32; break;
    case 64:
       if (__BYTE_ORDER == __LITTLE_ENDIAN) {

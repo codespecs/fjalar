@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2013 OpenWorks LLP
+   Copyright (C) 2004-2015 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -51,7 +51,7 @@ __attribute__ ((noreturn))
 extern void (*vex_failure_exit) ( void );
 
 /* logging output function */
-extern void (*vex_log_bytes) ( HChar*, Int nbytes );
+extern void (*vex_log_bytes) ( const HChar*, SizeT nbytes );
 
 /* debug paranoia level */
 extern Int vex_debuglevel;

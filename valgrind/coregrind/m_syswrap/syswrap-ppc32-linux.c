@@ -7,8 +7,8 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2005-2013 Nicholas Nethercote <njn@valgrind.org>
-   Copyright (C) 2005-2013 Cerion Armour-Brown <cerion@open-works.co.uk>
+   Copyright (C) 2005-2015 Nicholas Nethercote <njn@valgrind.org>
+   Copyright (C) 2005-2015 Cerion Armour-Brown <cerion@open-works.co.uk>
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -33,7 +33,6 @@
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
 #include "pub_core_vkiscnums.h"
-#include "pub_core_libcsetjmp.h"    // to keep _threadstate.h happy
 #include "pub_core_threadstate.h"
 #include "pub_core_aspacemgr.h"
 #include "pub_core_debuglog.h"
@@ -49,7 +48,6 @@
 #include "pub_core_syscall.h"
 #include "pub_core_syswrap.h"
 #include "pub_core_tooliface.h"
-#include "pub_core_stacks.h"        // VG_(register_stack)
 
 #include "priv_types_n_macros.h"
 #include "priv_syswrap-generic.h"   /* for decls of generic wrappers */
@@ -223,7 +221,7 @@ static void setup_child ( ThreadArchState*, ThreadArchState* );
 
 /* 
    When a client clones, we need to keep track of the new thread.  This means:
-   1. allocate a ThreadId+ThreadState+stack for the the thread
+   1. allocate a ThreadId+ThreadState+stack for the thread
 
    2. initialize the thread's new VCPU state
 
@@ -406,8 +404,8 @@ PRE(sys_mmap)
 {
    SysRes r;
 
-   PRINT("sys_mmap ( %#lx, %llu, %ld, %ld, %ld, %ld )",
-         ARG1, (ULong)ARG2, ARG3, ARG4, ARG5, ARG6 );
+   PRINT("sys_mmap ( %#lx, %lu, %lu, %lu, %lu, %lu )",
+         ARG1, ARG2, ARG3, ARG4, ARG5, ARG6 );
    PRE_REG_READ6(long, "mmap",
                  unsigned long, start, unsigned long, length,
                  unsigned long, prot,  unsigned long, flags,
@@ -425,8 +423,8 @@ PRE(sys_mmap2)
    // Exactly like old_mmap() except:
    //  - the file offset is specified in 4K units rather than bytes,
    //    so that it can be used for files bigger than 2^32 bytes.
-   PRINT("sys_mmap2 ( %#lx, %llu, %ld, %ld, %ld, %ld )",
-         ARG1, (ULong)ARG2, ARG3, ARG4, ARG5, ARG6 );
+   PRINT("sys_mmap2 ( %#lx, %lu, %lu, %lu, %lu, %lu )",
+         ARG1, ARG2, ARG3, ARG4, ARG5, ARG6 );
    PRE_REG_READ6(long, "mmap2",
                  unsigned long, start, unsigned long, length,
                  unsigned long, prot,  unsigned long, flags,
@@ -456,7 +454,7 @@ POST(sys_stat64)
 
 PRE(sys_lstat64)
 {
-   PRINT("sys_lstat64 ( %#lx(%s), %#lx )",ARG1,(char*)ARG1,ARG2);
+   PRINT("sys_lstat64 ( %#lx(%s), %#lx )", ARG1, (HChar*)ARG1, ARG2);
    PRE_REG_READ2(long, "lstat64", char *, file_name, struct stat64 *, buf);
    PRE_MEM_RASCIIZ( "lstat64(file_name)", ARG1 );
    PRE_MEM_WRITE( "lstat64(buf)", ARG2, sizeof(struct vki_stat64) );
@@ -472,7 +470,8 @@ POST(sys_lstat64)
 
 PRE(sys_fstatat64)
 {
-  PRINT("sys_fstatat64 ( %ld, %#lx(%s), %#lx )",ARG1,ARG2,(char*)ARG2,ARG3);
+   PRINT("sys_fstatat64 ( %ld, %#lx(%s), %#lx )", SARG1, ARG2, (HChar*)ARG2,
+         ARG3);
    PRE_REG_READ3(long, "fstatat64",
                  int, dfd, char *, file_name, struct stat64 *, buf);
    PRE_MEM_RASCIIZ( "fstatat64(file_name)", ARG2 );
@@ -486,7 +485,7 @@ POST(sys_fstatat64)
 
 PRE(sys_fstat64)
 {
-  PRINT("sys_fstat64 ( %ld, %#lx )",ARG1,ARG2);
+  PRINT("sys_fstat64 ( %lu, %#lx )", ARG1, ARG2);
   PRE_REG_READ2(long, "fstat64", unsigned long, fd, struct stat64 *, buf);
   PRE_MEM_WRITE( "fstat64(buf)", ARG2, sizeof(struct vki_stat64) );
 }
@@ -810,7 +809,7 @@ PRE(sys_sigsuspend)
       that takes a pointer to the signal mask so supports more signals.
     */
    *flags |= SfMayBlock;
-   PRINT("sys_sigsuspend ( %ld )", ARG1 );
+   PRINT("sys_sigsuspend ( %lu )", ARG1 );
    PRE_REG_READ1(int, "sigsuspend", vki_old_sigset_t, mask);
 }
 
@@ -1251,14 +1250,18 @@ static SyscallTableEntry syscall_table[] = {
    LINX_(__NR_shutdown,          sys_shutdown),         // 338
    LINX_(__NR_setsockopt,        sys_setsockopt),       // 339
 
+   LINXY(__NR_recvmmsg,          sys_recvmmsg),         // 343
    LINXY(__NR_accept4,           sys_accept4),          // 344
 
    LINX_(__NR_clock_adjtime,     sys_clock_adjtime),    // 347
+   LINX_(__NR_syncfs,            sys_syncfs),           // 348
+   LINXY(__NR_sendmmsg,          sys_sendmmsg),         // 349
 
    LINXY(__NR_process_vm_readv,  sys_process_vm_readv), // 351
    LINX_(__NR_process_vm_writev, sys_process_vm_writev),// 352
 
-   LINXY(__NR_getrandom,         sys_getrandom)         // 359
+   LINXY(__NR_getrandom,         sys_getrandom),        // 359
+   LINXY(__NR_memfd_create,      sys_memfd_create)      // 360
 };
 
 SyscallTableEntry* ML_(get_linux_syscall_entry) ( UInt sysno )

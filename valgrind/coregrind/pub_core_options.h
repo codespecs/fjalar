@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward
+   Copyright (C) 2000-2015 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -88,10 +88,6 @@ extern const HChar *VG_(clo_vgdb_prefix);
    shadow registers */
 extern Bool  VG_(clo_vgdb_shadow_registers);
 
-/* Enquire about whether to attach to a debugger at errors?   default: NO */
-extern Bool  VG_(clo_db_attach);
-/* The debugger command?  default: whatever gdb ./configure found */
-extern const HChar* VG_(clo_db_command);
 /* Generating a suppression for each error?   default: 0 (NO)
    Other values: 1 (yes, but ask user), 2 (yes, don't ask user) */
 extern Int   VG_(clo_gen_suppressions);
@@ -220,6 +216,7 @@ extern Int   VG_(clo_dump_error);
 typedef
    enum {
       SimHint_lax_ioctls,
+      SimHint_lax_doors,
       SimHint_fuse_compatible,
       SimHint_enable_outer,
       SimHint_no_inner_prefix,
@@ -295,6 +292,10 @@ extern Word VG_(clo_max_stackframe);
    be? */
 extern Word VG_(clo_main_stacksize);
 
+/* The maximum number of threads we support. */
+#define MAX_THREADS_DEFAULT 500
+extern UInt VG_(clo_max_threads);
+
 /* If the same IP is found twice in a backtrace in a sequence of max
    VG_(clo_merge_recursive_frames) frames, then the recursive call
    is merged in the backtrace.
@@ -306,9 +307,17 @@ extern Int VG_(clo_merge_recursive_frames);
 /* Max number of sectors that will be used by the translation code cache. */
 extern UInt VG_(clo_num_transtab_sectors);
 
+/* Average size of a transtab code entry. 0 means to use the tool
+   provided default. */
+extern UInt VG_(clo_avg_transtab_entry_size);
+
 /* Only client requested fixed mapping can be done below 
    VG_(clo_aspacem_minAddr). */
 extern Addr VG_(clo_aspacem_minAddr);
+
+/* How large the Valgrind thread stacks should be. 
+   Will be rounded up to a page.. */
+extern Word VG_(clo_valgrind_stacksize);
 
 /* Delay startup to allow GDB to be attached?  Default: NO */
 extern Bool VG_(clo_wait_for_gdb);

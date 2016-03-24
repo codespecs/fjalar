@@ -18,7 +18,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2013 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2006-2015 OpenWorks LLP.  All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions
@@ -417,6 +417,7 @@ static __inline__ Bool count_from_Status( /*OUT*/int* recv_count,
    int err = PMPI_Get_count(status, datatype, &n);
    if (cONFIG_DER) VALGRIND_ENABLE_ERROR_REPORTING;
    if (err == MPI_SUCCESS) {
+      VALGRIND_MAKE_MEM_DEFINED(&n, sizeof(n));
       *recv_count = n;
       return True;
    } else {

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward
+   Copyright (C) 2000-2015 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -65,6 +65,9 @@
 #elif defined(VGA_ppc32) || defined(VGA_ppc64be) || defined(VGA_ppc64le) \
       || defined(VGA_mips32) || defined(VGA_mips64) || defined(VGA_arm64)
 #  define VG_TT_FAST_HASH(_addr)  ((((UWord)(_addr)) >> 2) & VG_TT_FAST_MASK)
+
+#elif defined(VGA_tilegx)
+#  define VG_TT_FAST_HASH(_addr)  ((((UWord)(_addr)) >> 3) & VG_TT_FAST_MASK)
 
 #else
 #  error "VG_TT_FAST_HASH: unknown platform"

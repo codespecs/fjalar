@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward
+   Copyright (C) 2000-2015 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -62,11 +62,6 @@ extern UInt VG_(snprintf) ( HChar* buf, Int size,
 extern UInt VG_(vsnprintf)( HChar* buf, Int size, 
                                        const HChar *format, va_list vargs )
                           PRINTF_CHECK(3, 0);
-
-// Percentify n/m with d decimal places.  Includes the '%' symbol at the end.
-// Right justifies in 'buf'.
-extern void VG_(percentify)(ULong n, ULong m, UInt d, Int n_buf, HChar buf[]);
-
 
 /* ---------------------------------------------------------------------
    Output-printing functions
@@ -158,6 +153,11 @@ extern UInt VG_(dmsg)( const HChar* format, ... ) PRINTF_CHECK(1, 2);
 
 /* Flush any output cached by previous calls to VG_(message) et al. */
 extern void VG_(message_flush) ( void );
+
+/* Return a textual representation of a SysRes value in a statically
+   allocated buffer. The buffer will be overwritten with the next 
+   invocation. */
+extern const HChar *VG_(sr_as_string) ( SysRes sr );
 
 #endif   // __PUB_TOOL_LIBCPRINT_H
 

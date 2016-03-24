@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
-#include <malloc.h>
+#include "tests/malloc.h"
 
 typedef  unsigned char           UChar;
 typedef  unsigned int            UInt;
@@ -56,13 +56,14 @@ void randBlock ( Block* b )
    operands only %ymm6, %ymm7, %ymm8, %ymm9 and %r14.  The mem form of
    the insn may mention as operands only (%rax), %ymm7, %ymm8, %ymm9
    and %r14.  It's OK for the insn to clobber ymm0, as this is needed
-   for testing PCMPxSTRx. */
+   for testing PCMPxSTRx, and ymm6, as this is needed for testing
+   MOVMASK variants. */
 
 #define GEN_test_RandM(_name, _reg_form, _mem_form)   \
     \
     __attribute__ ((noinline)) static void test_##_name ( void )   \
     { \
-       Block* b = memalign(32, sizeof(Block)); \
+       Block* b = memalign32(sizeof(Block)); \
        randBlock(b); \
        printf("%s(reg)\n", #_name); \
        showBlock("before", b); \
@@ -99,7 +100,8 @@ void randBlock ( Block* b )
           "movq    %%r14, 128(%0)"  "\n\t" \
           : /*OUT*/  \
           : /*IN*/"r"(b) \
-          : /*TRASH*/"xmm0","xmm8","xmm7","xmm9","r14","rax","memory","cc" \
+          : /*TRASH*/"xmm6", \
+                     "xmm0","xmm8","xmm7","xmm9","r14","rax","memory","cc" \
        ); \
        showBlock("after", b); \
        printf("\n"); \
@@ -227,15 +229,45 @@ GEN_test_RandM(VCMPSD_128_0xD,
 GEN_test_RandM(VCMPSD_128_0xE,
                "vcmpsd $0xE, %%xmm6,  %%xmm8, %%xmm7",
                "vcmpsd $0xE, (%%rax), %%xmm8, %%xmm7")
+GEN_test_RandM(VCMPSD_128_0x10,
+               "vcmpsd $0x10, %%xmm6,  %%xmm8, %%xmm7",
+               "vcmpsd $0x10, (%%rax), %%xmm8, %%xmm7")
 GEN_test_RandM(VCMPSD_128_0x11,
                "vcmpsd $0x11, %%xmm6,  %%xmm8, %%xmm7",
                "vcmpsd $0x11, (%%rax), %%xmm8, %%xmm7")
 GEN_test_RandM(VCMPSD_128_0x12,
                "vcmpsd $0x12, %%xmm6,  %%xmm8, %%xmm7",
                "vcmpsd $0x12, (%%rax), %%xmm8, %%xmm7")
+GEN_test_RandM(VCMPSD_128_0x13,
+               "vcmpsd $0x13, %%xmm6,  %%xmm8, %%xmm7",
+               "vcmpsd $0x13, (%%rax), %%xmm8, %%xmm7")
+GEN_test_RandM(VCMPSD_128_0x14,
+               "vcmpsd $0x14, %%xmm6,  %%xmm8, %%xmm7",
+               "vcmpsd $0x14, (%%rax), %%xmm8, %%xmm7")
+GEN_test_RandM(VCMPSD_128_0x15,
+               "vcmpsd $0x15, %%xmm6,  %%xmm8, %%xmm7",
+               "vcmpsd $0x15, (%%rax), %%xmm8, %%xmm7")
 GEN_test_RandM(VCMPSD_128_0x16,
                "vcmpsd $0x16, %%xmm6,  %%xmm8, %%xmm7",
                "vcmpsd $0x16, (%%rax), %%xmm8, %%xmm7")
+GEN_test_RandM(VCMPSD_128_0x17,
+               "vcmpsd $0x17, %%xmm6,  %%xmm8, %%xmm7",
+               "vcmpsd $0x17, (%%rax), %%xmm8, %%xmm7")
+GEN_test_RandM(VCMPSD_128_0x18,
+               "vcmpsd $0x18, %%xmm6,  %%xmm8, %%xmm7",
+               "vcmpsd $0x18, (%%rax), %%xmm8, %%xmm7")
+GEN_test_RandM(VCMPSD_128_0x19,
+               "vcmpsd $0x19, %%xmm6,  %%xmm8, %%xmm7",
+               "vcmpsd $0x19, (%%rax), %%xmm8, %%xmm7")
+GEN_test_RandM(VCMPSD_128_0x1A,
+               "vcmpsd $0x1A, %%xmm6,  %%xmm8, %%xmm7",
+               "vcmpsd $0x1A, (%%rax), %%xmm8, %%xmm7")
+GEN_test_RandM(VCMPSD_128_0x1C,
+               "vcmpsd $0x1C, %%xmm6,  %%xmm8, %%xmm7",
+               "vcmpsd $0x1C, (%%rax), %%xmm8, %%xmm7")
+GEN_test_RandM(VCMPSD_128_0x1D,
+               "vcmpsd $0x1D, %%xmm6,  %%xmm8, %%xmm7",
+               "vcmpsd $0x1D, (%%rax), %%xmm8, %%xmm7")
 GEN_test_RandM(VCMPSD_128_0x1E,
                "vcmpsd $0x1E, %%xmm6,  %%xmm8, %%xmm7",
                "vcmpsd $0x1E, (%%rax), %%xmm8, %%xmm7")
@@ -641,15 +673,45 @@ GEN_test_RandM(VCMPSS_128_0xD,
 GEN_test_RandM(VCMPSS_128_0xE,
                "vcmpss $0xE, %%xmm6,  %%xmm8, %%xmm7",
                "vcmpss $0xE, (%%rax), %%xmm8, %%xmm7")
+GEN_test_RandM(VCMPSS_128_0x10,
+               "vcmpss $0x10, %%xmm6,  %%xmm8, %%xmm7",
+               "vcmpss $0x10, (%%rax), %%xmm8, %%xmm7")
 GEN_test_RandM(VCMPSS_128_0x11,
                "vcmpss $0x11, %%xmm6,  %%xmm8, %%xmm7",
                "vcmpss $0x11, (%%rax), %%xmm8, %%xmm7")
 GEN_test_RandM(VCMPSS_128_0x12,
                "vcmpss $0x12, %%xmm6,  %%xmm8, %%xmm7",
                "vcmpss $0x12, (%%rax), %%xmm8, %%xmm7")
+GEN_test_RandM(VCMPSS_128_0x13,
+               "vcmpss $0x13, %%xmm6,  %%xmm8, %%xmm7",
+               "vcmpss $0x13, (%%rax), %%xmm8, %%xmm7")
+GEN_test_RandM(VCMPSS_128_0x14,
+               "vcmpss $0x14, %%xmm6,  %%xmm8, %%xmm7",
+               "vcmpss $0x14, (%%rax), %%xmm8, %%xmm7")
+GEN_test_RandM(VCMPSS_128_0x15,
+               "vcmpss $0x15, %%xmm6,  %%xmm8, %%xmm7",
+               "vcmpss $0x15, (%%rax), %%xmm8, %%xmm7")
 GEN_test_RandM(VCMPSS_128_0x16,
                "vcmpss $0x16, %%xmm6,  %%xmm8, %%xmm7",
                "vcmpss $0x16, (%%rax), %%xmm8, %%xmm7")
+GEN_test_RandM(VCMPSS_128_0x17,
+               "vcmpss $0x17, %%xmm6,  %%xmm8, %%xmm7",
+               "vcmpss $0x17, (%%rax), %%xmm8, %%xmm7")
+GEN_test_RandM(VCMPSS_128_0x18,
+               "vcmpss $0x18, %%xmm6,  %%xmm8, %%xmm7",
+               "vcmpss $0x18, (%%rax), %%xmm8, %%xmm7")
+GEN_test_RandM(VCMPSS_128_0x19,
+               "vcmpss $0x19, %%xmm6,  %%xmm8, %%xmm7",
+               "vcmpss $0x19, (%%rax), %%xmm8, %%xmm7")
+GEN_test_RandM(VCMPSS_128_0x1A,
+               "vcmpss $0x1A, %%xmm6,  %%xmm8, %%xmm7",
+               "vcmpss $0x1A, (%%rax), %%xmm8, %%xmm7")
+GEN_test_RandM(VCMPSS_128_0x1C,
+               "vcmpss $0x1C, %%xmm6,  %%xmm8, %%xmm7",
+               "vcmpss $0x1C, (%%rax), %%xmm8, %%xmm7")
+GEN_test_RandM(VCMPSS_128_0x1D,
+               "vcmpss $0x1D, %%xmm6,  %%xmm8, %%xmm7",
+               "vcmpss $0x1D, (%%rax), %%xmm8, %%xmm7")
 GEN_test_RandM(VCMPSS_128_0x1E,
                "vcmpss $0x1E, %%xmm6,  %%xmm8, %%xmm7",
                "vcmpss $0x1E, (%%rax), %%xmm8, %%xmm7")
@@ -2155,11 +2217,33 @@ GEN_test_Monly(VMASKMOVPD_256_LoadForm,
                "vxorpd %%ymm6, %%ymm6, %%ymm6;"
                "vmaskmovpd (%%rax,%%rax,4), %%ymm6, %%ymm9")
 
+GEN_test_Monly(VMASKMOVPS_128_StoreForm,
+               "vmaskmovps %%xmm8, %%xmm7, (%%rax);"
+               "vxorps %%xmm6, %%xmm6, %%xmm6;"
+               "vmaskmovps %%xmm9, %%xmm6, (%%rax,%%rax,4)")
+
+GEN_test_Monly(VMASKMOVPS_256_StoreForm,
+               "vmaskmovps %%ymm8, %%ymm7, (%%rax);"
+               "vxorps %%ymm6, %%ymm6, %%ymm6;"
+               "vmaskmovps %%ymm9, %%ymm6, (%%rax,%%rax,4)")
+
+GEN_test_Monly(VMASKMOVPD_128_StoreForm,
+               "vmaskmovpd %%xmm8, %%xmm7, (%%rax);"
+               "vxorpd %%xmm6, %%xmm6, %%xmm6;"
+               "vmaskmovpd %%xmm9, %%xmm6, (%%rax,%%rax,4)")
+
+GEN_test_Monly(VMASKMOVPD_256_StoreForm,
+               "vmaskmovpd %%ymm8, %%ymm7, (%%rax);"
+               "vxorpd %%ymm6, %%ymm6, %%ymm6;"
+               "vmaskmovpd %%ymm9, %%ymm6, (%%rax,%%rax,4)")
+
 /* Comment duplicated above, for convenient reference:
    Allowed operands in test insns:
      Reg form:  %ymm6,  %ymm7, %ymm8, %ymm9 and %r14.
      Mem form:  (%rax), %ymm7, %ymm8, %ymm9 and %r14.
    Imm8 etc fields are also allowed, where they make sense.
+   Both forms may use ymm0 as scratch.  Mem form may also use
+   ymm6 as scratch.
 */
 
 #define N_DEFAULT_ITERS 3
@@ -2214,12 +2298,21 @@ int main ( void )
    DO_D( VCMPSS_128_0x8 );
    DO_D( VCMPSS_128_0xA );
    DO_D( VCMPSS_128_0xC );
-   DO_D( VCMPSS_128_0xC );
    DO_D( VCMPSS_128_0xD );
    DO_D( VCMPSS_128_0xE );
+   DO_D( VCMPSS_128_0x10 );
    DO_D( VCMPSS_128_0x11 );
-   DO_D( VCMPSS_128_0x12);
+   DO_D( VCMPSS_128_0x12 );
+   DO_D( VCMPSS_128_0x13 );
+   DO_D( VCMPSS_128_0x14 );
+   DO_D( VCMPSS_128_0x15 );
    DO_D( VCMPSS_128_0x16 );
+   DO_D( VCMPSS_128_0x17 );
+   DO_D( VCMPSS_128_0x18 );
+   DO_D( VCMPSS_128_0x19 );
+   DO_D( VCMPSS_128_0x1A );
+   DO_D( VCMPSS_128_0x1C );
+   DO_D( VCMPSS_128_0x1D );
    DO_D( VCMPSS_128_0x1E );
    DO_D( VMOVDDUP_XMMorMEM64_to_XMM );
    DO_D( VMOVD_IREGorMEM32_to_XMM );
@@ -2307,7 +2400,7 @@ int main ( void )
    DO_D( VANDNPS_128 );
    DO_D( VORPS_128 );
    DO_D( VSQRTSD_128 );
-   /* Test all CMPSS variants; this code is tricky. */
+   /* Test all CMPSD variants; this code is tricky. */
    DO_D( VCMPSD_128_0x0 );
    DO_D( VCMPSD_128_0x1 );
    DO_D( VCMPSD_128_0x2 );
@@ -2321,9 +2414,19 @@ int main ( void )
    DO_D( VCMPSD_128_0xC );
    DO_D( VCMPSD_128_0xD );
    DO_D( VCMPSD_128_0xE );
+   DO_D( VCMPSD_128_0x10 );
    DO_D( VCMPSD_128_0x11 );
    DO_D( VCMPSD_128_0x12 );
+   DO_D( VCMPSD_128_0x13 );
+   DO_D( VCMPSD_128_0x14 );
+   DO_D( VCMPSD_128_0x15 );
    DO_D( VCMPSD_128_0x16 );
+   DO_D( VCMPSD_128_0x17 );
+   DO_D( VCMPSD_128_0x18 );
+   DO_D( VCMPSD_128_0x19 );
+   DO_D( VCMPSD_128_0x1A );
+   DO_D( VCMPSD_128_0x1C );
+   DO_D( VCMPSD_128_0x1D );
    DO_D( VCMPSD_128_0x1E );
    DO_D( VPSHUFB_128 );
    DO_D( VCVTTSD2SI_32 );
@@ -2701,6 +2804,10 @@ int main ( void )
    DO_D( VMASKMOVPS_256_LoadForm );
    DO_D( VMASKMOVPD_128_LoadForm );
    DO_D( VMASKMOVPD_256_LoadForm );
+   DO_D( VMASKMOVPS_128_StoreForm );
+   DO_D( VMASKMOVPS_256_StoreForm );
+   DO_D( VMASKMOVPD_128_StoreForm );
+   DO_D( VMASKMOVPD_256_StoreForm );
    return 0;
 }
 

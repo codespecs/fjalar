@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2013 OpenWorks LLP
+   Copyright (C) 2004-2015 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -229,7 +229,7 @@ typedef
       /* 1216 */ UInt guest_REDIR_SP;
       /* 1220 */ UInt guest_REDIR_STACK[VEX_GUEST_PPC32_REDIR_STACK_SIZE];
 
-      /* Needed for AIX (but mandated for all guest architectures):
+      /* Needed for Darwin (but mandated for all guest architectures):
          CIA at the last SC insn.  Used when backing up to restart a
          syscall that has been interrupted by a signal. */
       /* 1348 */ UInt guest_IP_AT_SYSCALL;
@@ -241,10 +241,12 @@ typedef
       /* 1360 */ ULong guest_TFHAR;     // Transaction Failure Handler Address Register 
       /* 1368 */ ULong guest_TEXASR;    // Transaction EXception And Summary Register
       /* 1376 */ ULong guest_TFIAR;     // Transaction Failure Instruction Address Register
-
+      /* 1384 */ ULong guest_PPR;       // Program Priority register
+      /* 1392 */ UInt  guest_TEXASRU;   // Transaction EXception And Summary Register Upper
+      /* 1396 */ UInt  guest_PSPB;      // Problem State Priority Boost register
       /* Padding to make it have an 16-aligned size */
-      /* 1384 */ UInt  padding2;
-
+      /* 1400 */ UInt  padding2;
+      /* 1404 */ UInt  padding3;
    }
    VexGuestPPC32State;
 

@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2014-2014 Mozilla Foundation
+   Copyright (C) 2014-2015 Mozilla Foundation
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -123,10 +123,12 @@ void VG_(lookupRangeMap) ( /*OUT*/UWord* key_min, /*OUT*/UWord* key_max,
    *val     = rng->val;
 }
 
-Word VG_(sizeRangeMap) ( const RangeMap* rm )
+UInt VG_(sizeRangeMap) ( const RangeMap* rm )
 {
    vg_assert(rm && rm->ranges);
-   return VG_(sizeXA)(rm->ranges);
+   Word size = VG_(sizeXA)(rm->ranges);
+   vg_assert(size >= 0);
+   return size;
 }
 
 void VG_(indexRangeMap) ( /*OUT*/UWord* key_min, /*OUT*/UWord* key_max,

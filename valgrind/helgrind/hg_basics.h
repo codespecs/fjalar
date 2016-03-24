@@ -8,7 +8,7 @@
    This file is part of Helgrind, a Valgrind tool for detecting errors
    in threaded programs.
 
-   Copyright (C) 2007-2013 OpenWorks Ltd
+   Copyright (C) 2007-2015 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -80,7 +80,7 @@ extern Bool HG_(clo_cmp_race_err_addrs);
 
    1: "approx": collect one stack trace per (notional) segment, that
       is, collect a stack trace for a thread every time its vector
-      clock changes.  This faciliates showing the bounds of the
+      clock changes.  This facilitates showing the bounds of the
       conflicting segment(s), with relatively small overhead.
 
    2: "full": collect a stack trace every time the constraints for a
@@ -101,7 +101,7 @@ extern UWord HG_(clo_conflict_cache_size);
 
 /* Sanity check level.  This is an or-ing of
    SCE_{THREADS,LOCKS,BIGRANGE,ACCESS,LAOG}. */
-extern Word HG_(clo_sanity_flags);
+extern UWord HG_(clo_sanity_flags);
 
 /* Treat heap frees as if the memory was written immediately prior to
    the free.  This shakes out races in which memory is referenced by

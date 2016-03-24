@@ -222,7 +222,8 @@ int main(void)
 
    GO_UNIMP(110, "old sigsetmask");
 
-   // __NR_sigsuspend 111
+   GO(__NR_sigsuspend, 111, "ignore");
+   // (I don't know how to test this...)
 
    GO_UNIMP(112, "old sigstack");
 
@@ -259,7 +260,10 @@ int main(void)
    GO_UNIMP(130, "old ftruncate");
 
    // __NR_flock 131
-   // __NR_mkfifo 132
+
+   GO(__NR_mkfifo, 132, "2s 1m");
+   SY(__NR_mkfifo, x0, x0); FAIL;
+
    // __NR_sendto 133
    // __NR_shutdown 134
    // __NR_socketpair 135
@@ -585,7 +589,9 @@ int main(void)
    GO(__NR___pthread_kill, 328, "2s 0m");
    SY(__NR___pthread_kill, x0, x0); FAIL;
 
-   // __NR___pthread_sigmask 329
+   GO(__NR___pthread_sigmask, 329, "3s 0m");
+   SY(__NR___pthread_sigmask, x0, x0, x0); SUCC;
+
    // __NR___sigwait 330
    // __NR_sigwait 330) // GrP fixme hack
    // __NR___disable_threadsignal 331

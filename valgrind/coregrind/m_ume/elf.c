@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward 
+   Copyright (C) 2000-2015 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -28,7 +28,7 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-#if defined(VGO_linux)
+#if defined(VGO_linux) || defined(VGO_solaris)
 
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
@@ -47,10 +47,15 @@
 #include "priv_ume.h"
 
 /* --- !!! --- EXTERNAL HEADERS start --- !!! --- */
-#define _GNU_SOURCE
-#define _FILE_OFFSET_BITS 64
+#if defined(VGO_linux)
+#  define _GNU_SOURCE
+#  define _FILE_OFFSET_BITS 64
+#endif
 /* This is for ELF types etc, and also the AT_ constants. */
 #include <elf.h>
+#if defined(VGO_solaris)
+#  include <sys/fasttrap.h> // PT_SUNWDTRACE_SIZE
+#endif
 /* --- !!! --- EXTERNAL HEADERS end --- !!! --- */
 
 
@@ -244,7 +249,7 @@ ESZ(Addr) mapelf(struct elfinfo *e, ESZ(Addr) base)
    return elfbrk;
 }
 
-Bool VG_(match_ELF)(const void *hdr, Int len)
+Bool VG_(match_ELF)(const void *hdr, SizeT len)
 {
    const ESZ(Ehdr) *e = hdr;
    return (len > sizeof(*e)) && VG_(memcmp)(&e->e_ident[0], ELFMAG, SELFMAG) == 0;
@@ -307,6 +312,9 @@ Int VG_(load_ELF)(Int fd, const HChar* name, /*MOD*/ExeInfo* info)
    Int i;
    void *entry;
    ESZ(Addr) ebase = 0;
+#  if defined(VGO_solaris)
+   ESZ(Addr) thrptr_addr = 0;
+#  endif
 
 #  if defined(HAVE_PIE)
    ebase = info->exe_base;
@@ -342,6 +350,11 @@ Int VG_(load_ELF)(Int fd, const HChar* name, /*MOD*/ExeInfo* info)
       if (ebase < hacky_load_address)
          ebase = hacky_load_address;
 #     endif
+
+#     if defined(VGO_solaris)
+      /* Record for later use in AT_BASE. */
+      info->interp_offset = ebase;
+#     endif
    }
 
    info->phnum = e->e.e_phnum;
@@ -355,6 +368,9 @@ Int VG_(load_ELF)(Int fd, const HChar* name, /*MOD*/ExeInfo* info)
       switch(ph->p_type) {
       case PT_PHDR:
          info->phdr = ph->p_vaddr + ebase;
+#        if defined(VGO_solaris)
+         info->real_phdr_present = True;
+#        endif
          break;
 
       case PT_LOAD:
@@ -363,6 +379,18 @@ Int VG_(load_ELF)(Int fd, const HChar* name, /*MOD*/ExeInfo* info)
          if (ph->p_vaddr+ph->p_memsz > maxaddr)
             maxaddr = ph->p_vaddr+ph->p_memsz;
          break;
+
+#     if defined(VGO_solaris)
+      case PT_SUNWDTRACE:
+         if (ph->p_memsz < PT_SUNWDTRACE_SIZE ||
+             (ph->p_flags & (PF_R | PF_W | PF_X)) != (PF_R | PF_W | PF_X)) {
+            VG_(printf)("valgrind: m_ume.c: too small SUNWDTRACE size\n");
+            return VKI_ENOEXEC;
+         }
+
+         info->init_thrptr = ph->p_vaddr + ebase;
+         break;
+#     endif
                         
       case PT_INTERP: {
          HChar *buf = VG_(malloc)("ume.LE.1", ph->p_filesz+1);
@@ -392,6 +420,21 @@ Int VG_(load_ELF)(Int fd, const HChar* name, /*MOD*/ExeInfo* info)
             ESZ(Phdr) *iph = &interp->p[j];
             ESZ(Addr) end;
 
+#           if defined(VGO_solaris)
+            if (iph->p_type == PT_SUNWDTRACE) {
+               if (iph->p_memsz < PT_SUNWDTRACE_SIZE ||
+                   (iph->p_flags & (PF_R | PF_W | PF_X))
+                      != (PF_R | PF_W | PF_X)) {
+                  VG_(printf)("valgrind: m_ume.c: too small SUNWDTRACE size\n");
+                  return VKI_ENOEXEC;
+               }
+
+               /* Store the thrptr value into a temporary because we do not
+                  know yet where the interpreter is mapped. */
+               thrptr_addr = iph->p_vaddr;
+            }
+#           endif
+
             if (iph->p_type != PT_LOAD || iph->p_memsz == 0)
                continue;
             
@@ -408,20 +451,39 @@ Int VG_(load_ELF)(Int fd, const HChar* name, /*MOD*/ExeInfo* info)
                interp_size = end;
          }
          break;
+         }
 
+#     if defined(PT_GNU_STACK) || defined(PT_SUNWSTACK)
 #     if defined(PT_GNU_STACK)
       /* Android's elf.h doesn't appear to have PT_GNU_STACK. */
       case PT_GNU_STACK:
+#     endif
+#     if defined(PT_SUNWSTACK)
+      /* Solaris-specific program header. */
+      case PT_SUNWSTACK:
+#     endif
          if ((ph->p_flags & PF_X) == 0) info->stack_prot &= ~VKI_PROT_EXEC;
          if ((ph->p_flags & PF_W) == 0) info->stack_prot &= ~VKI_PROT_WRITE;
          if ((ph->p_flags & PF_R) == 0) info->stack_prot &= ~VKI_PROT_READ;
          break;
 #     endif
 
+#     if defined(PT_SUNW_SYSSTAT)
+      /* Solaris-specific program header which requires link-time support. */
+      case PT_SUNW_SYSSTAT:
+         VG_(unimplemented)("Support for program header PT_SUNW_SYSSTAT.");
+         break;
+#     endif
+#     if defined(PT_SUNW_SYSSTAT_ZONE)
+      /* Solaris-specific program header which requires link-time support. */
+      case PT_SUNW_SYSSTAT_ZONE:
+         VG_(unimplemented)("Support for program header PT_SUNW_SYSSTAT_ZONE.");
+         break;
+#     endif
+
       default:
          // do nothing
          break;
-      }
       }
    }
 
@@ -494,11 +556,21 @@ Int VG_(load_ELF)(Int fd, const HChar* name, /*MOD*/ExeInfo* info)
       entry = (void *)(advised - interp_addr + interp->e.e_entry);
 
       info->interp_offset = advised - interp_addr;
+#     if defined(VGO_solaris)
+      if (thrptr_addr)
+         info->init_thrptr = thrptr_addr + info->interp_offset;
+#     endif
 
       VG_(free)(interp->p);
       VG_(free)(interp);
-   } else
+   } else {
       entry = (void *)(ebase + e->e.e_entry);
+
+#     if defined(VGO_solaris)
+      if (e->e.e_type == ET_DYN)
+         info->ldsoexec = True;
+#     endif
+   }
 
    info->exe_base = minaddr + ebase;
    info->exe_end  = maxaddr + ebase;
@@ -526,7 +598,7 @@ Int VG_(load_ELF)(Int fd, const HChar* name, /*MOD*/ExeInfo* info)
    return 0;
 }
 
-#endif // defined(VGO_linux)
+#endif // defined(VGO_linux) || defined(VGO_solaris)
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

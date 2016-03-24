@@ -6,7 +6,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2014-2014 Philippe Waroquiers philippe.waroquiers@skynet.be
+   Copyright (C) 2014-2015 Philippe Waroquiers philippe.waroquiers@skynet.be
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -177,16 +177,19 @@ static void ddpa_add_new_pool_or_grow ( DedupPoolAlloc* ddpa )
    }
 }
 
+/* Compare function for 'gen' hash table. No need to compare the key
+   in this function, as the hash table already does it for us,
+   and that in any case, if the data is equal, the keys must also be
+   equal. */
 static Word cmp_pool_elt (const void* node1, const void* node2 )
 {
    const ht_node* hnode1 = node1;
    const ht_node* hnode2 = node2;
 
-   if (hnode1->key < hnode2->key)
-      return -1;
-   else if (hnode1->key > hnode2->key)
-      return 1;
-   else if (hnode1->eltSzB == hnode2->eltSzB)
+   /* As this function is called by hashtable, that has already checked
+      for key equality, it is likely that it is the 'good' element.
+      So, we handle the equal case first. */
+   if (hnode1->eltSzB == hnode2->eltSzB)
       return VG_(memcmp) (hnode1->elt, hnode2->elt, hnode1->eltSzB);
    else if (hnode1->eltSzB < hnode2->eltSzB)
       return -1;
@@ -198,7 +201,7 @@ static Word cmp_pool_elt (const void* node1, const void* node2 )
 static void print_stats (DedupPoolAlloc *ddpa)
 {
    VG_(message)(Vg_DebugMsg,
-                "dedupPA:%s %ld allocs (%d uniq)"
+                "dedupPA:%s %ld allocs (%u uniq)"
                 " %ld pools (%ld bytes free in last pool)\n",
                 ddpa->cc,
                 (long int) ddpa->nr_alloc_calls,
@@ -231,6 +234,19 @@ void VG_(freezeDedupPA) (DedupPoolAlloc *ddpa,
    ddpa->ht_node_pa = NULL;
 }
 
+
+// hash function used by gawk and SDBM.
+static UInt sdbm_hash (const UChar* buf, UInt len )
+{
+  UInt h;
+  UInt i;
+
+  h = 0;
+  for (i = 0; i < len; i++)
+    h = *buf++ + (h<<6) + (h<<16) - h;
+  return h;
+}
+
 const void* VG_(allocEltDedupPA) (DedupPoolAlloc *ddpa, SizeT eltSzB,
                                   const void *elt)
 {
@@ -243,14 +259,7 @@ const void* VG_(allocEltDedupPA) (DedupPoolAlloc *ddpa, SizeT eltSzB,
 
    ddpa->nr_alloc_calls++;
 
-   // Currently using adler32 as hash function.
-   // Many references tells adler32 is bad as a hash function.
-   // And effectively, some tests on dwarf debug string shows
-   // a lot of collisions (at least for short elements).
-   // (A lot can be 10% of the elements colliding, even on
-   // small nr of elements such as 10_000).
-   ht_elt.key = VG_(adler32) (0, NULL, 0);
-   ht_elt.key = VG_(adler32) (ht_elt.key, elt, eltSzB);
+   ht_elt.key = sdbm_hash (elt, eltSzB);
 
    ht_elt.eltSzB = eltSzB;
    ht_elt.elt = elt;

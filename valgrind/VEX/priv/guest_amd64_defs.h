@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2013 OpenWorks LLP
+   Copyright (C) 2004-2015 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -51,15 +51,15 @@
    bb_to_IR.h. */
 extern
 DisResult disInstr_AMD64 ( IRSB*        irbb,
-                           Bool         (*resteerOkFn) ( void*, Addr64 ),
+                           Bool         (*resteerOkFn) ( void*, Addr ),
                            Bool         resteerCisOk,
                            void*        callback_opaque,
                            const UChar* guest_code,
                            Long         delta,
-                           Addr64       guest_IP,
+                           Addr         guest_IP,
                            VexArch      guest_arch,
-                           VexArchInfo* archinfo,
-                           VexAbiInfo*  abiinfo,
+                           const VexArchInfo* archinfo,
+                           const VexAbiInfo*  abiinfo,
                            VexEndness   host_endness,
                            Bool         sigill_diag );
 
@@ -74,7 +74,8 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
    precise memory exceptions.  This is logically part of the guest
    state description. */
 extern 
-Bool guest_amd64_state_requires_precise_mem_exns ( Int, Int );
+Bool guest_amd64_state_requires_precise_mem_exns ( Int, Int,
+                                                   VexRegisterUpdates );
 
 extern
 VexGuestLayout amd64guest_layout;
@@ -159,21 +160,27 @@ extern ULong amd64g_calculate_pdep  ( ULong, ULong );
 
 /* --- DIRTY HELPERS --- */
 
-extern ULong amd64g_dirtyhelper_loadF80le  ( ULong/*addr*/ );
+extern ULong amd64g_dirtyhelper_loadF80le  ( Addr/*addr*/ );
 
-extern void  amd64g_dirtyhelper_storeF80le ( ULong/*addr*/, ULong/*data*/ );
+extern void  amd64g_dirtyhelper_storeF80le ( Addr/*addr*/, ULong/*data*/ );
 
 extern void  amd64g_dirtyhelper_CPUID_baseline ( VexGuestAMD64State* st );
 extern void  amd64g_dirtyhelper_CPUID_sse3_and_cx16 ( VexGuestAMD64State* st );
 extern void  amd64g_dirtyhelper_CPUID_sse42_and_cx16 ( VexGuestAMD64State* st );
 extern void  amd64g_dirtyhelper_CPUID_avx_and_cx16 ( VexGuestAMD64State* st );
+extern void  amd64g_dirtyhelper_CPUID_avx2 ( VexGuestAMD64State* st );
 
 extern void  amd64g_dirtyhelper_FINIT ( VexGuestAMD64State* );
 
-extern void      amd64g_dirtyhelper_FXSAVE_ALL_EXCEPT_XMM
-                    ( VexGuestAMD64State*, HWord );
-extern VexEmNote amd64g_dirtyhelper_FXRSTOR_ALL_EXCEPT_XMM
-                    ( VexGuestAMD64State*, HWord );
+extern void amd64g_dirtyhelper_XSAVE_COMPONENT_0
+               ( VexGuestAMD64State* gst, HWord addr );
+extern void amd64g_dirtyhelper_XSAVE_COMPONENT_1_EXCLUDING_XMMREGS 
+               ( VexGuestAMD64State* gst, HWord addr );
+
+extern VexEmNote amd64g_dirtyhelper_XRSTOR_COMPONENT_0
+                    ( VexGuestAMD64State* gst, HWord addr );
+extern VexEmNote amd64g_dirtyhelper_XRSTOR_COMPONENT_1_EXCLUDING_XMMREGS 
+                    ( VexGuestAMD64State* gst, HWord addr );
 
 extern ULong amd64g_dirtyhelper_RDTSC ( void );
 extern void  amd64g_dirtyhelper_RDTSCP ( VexGuestAMD64State* st );
@@ -314,6 +321,15 @@ extern void amd64g_dirtyhelper_AESKEYGENASSIST (
 #define AMD64G_CC_MASK_A    (1ULL << AMD64G_CC_SHIFT_A)
 #define AMD64G_CC_MASK_C    (1ULL << AMD64G_CC_SHIFT_C)
 #define AMD64G_CC_MASK_P    (1ULL << AMD64G_CC_SHIFT_P)
+
+/* additional rflags masks */
+#define AMD64G_CC_SHIFT_ID  21
+#define AMD64G_CC_SHIFT_AC  18
+#define AMD64G_CC_SHIFT_D   10
+
+#define AMD64G_CC_MASK_ID   (1ULL << AMD64G_CC_SHIFT_ID)
+#define AMD64G_CC_MASK_AC   (1ULL << AMD64G_CC_SHIFT_AC)
+#define AMD64G_CC_MASK_D    (1ULL << AMD64G_CC_SHIFT_D)
 
 /* FPU flag masks */
 #define AMD64G_FC_SHIFT_C3   14

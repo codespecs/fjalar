@@ -8,7 +8,7 @@
    This file is part of Helgrind, a Valgrind tool for detecting errors
    in threaded programs.
 
-   Copyright (C) 2007-2013 OpenWorks Ltd
+   Copyright (C) 2007-2015 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -61,6 +61,14 @@ void HG_(record_error_UnlockForeign)  ( Thread*, Thread*, Lock* );
 void HG_(record_error_UnlockBogus)    ( Thread*, Addr );
 void HG_(record_error_PthAPIerror)    ( Thread*, const HChar*, Word,
                                         const HChar* );
+
+/* Function for printing the details about an access */
+void HG_(print_access) (StackTrace ips, UInt n_ips,
+                        Thr*  thr_a,
+                        Addr  ga,
+                        SizeT SzB,
+                        Bool  isW,
+                        WordSetID locksHeldW );
 
 /* see the implementation for meaning of these params */
 void HG_(record_error_LockOrder)      ( Thread*, Lock*, Lock*,

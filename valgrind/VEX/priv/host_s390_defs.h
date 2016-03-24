@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright IBM Corp. 2010-2013
+   Copyright IBM Corp. 2010-2015
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -40,6 +40,8 @@
 
 /* --------- Registers --------- */
 const HChar *s390_hreg_as_string(HReg);
+HReg s390_hreg_gpr(UInt regno);
+HReg s390_hreg_fpr(UInt regno);
 
 /* Dedicated registers */
 HReg s390_hreg_guest_state_pointer(void);
@@ -240,7 +242,10 @@ typedef enum {
    S390_BFP_F128_TO_U32,
    S390_BFP_F128_TO_U64,
    S390_BFP_F128_TO_F32,
-   S390_BFP_F128_TO_F64
+   S390_BFP_F128_TO_F64,
+   S390_BFP_F32_TO_F32I,
+   S390_BFP_F64_TO_F64I,
+   S390_BFP_F128_TO_F128I
 } s390_bfp_conv_t;
 
 /* Type conversion operations: to and/or from decimal floating point */
@@ -656,6 +661,9 @@ s390_insn *s390_insn_bfp_unop(UChar size, s390_bfp_unop_t tag, HReg dst,
 s390_insn *s390_insn_bfp_compare(UChar size, HReg dst, HReg op1, HReg op2);
 s390_insn *s390_insn_bfp_convert(UChar size, s390_bfp_conv_t tag, HReg dst,
                                  HReg op, s390_bfp_round_t);
+s390_insn *s390_insn_bfp128_convert(UChar size, s390_bfp_conv_t tag, HReg dst_hi,
+                                    HReg dst_lo, HReg op_hi, HReg op_lo,
+                                    s390_bfp_round_t rounding_mode);
 s390_insn *s390_insn_bfp128_binop(UChar size, s390_bfp_binop_t, HReg dst_hi,
                                   HReg dst_lo, HReg op2_hi, HReg op2_lo);
 s390_insn *s390_insn_bfp128_unop(UChar size, s390_bfp_unop_t, HReg dst_hi,
@@ -726,7 +734,7 @@ const HChar *s390_insn_as_string(const s390_insn *);
 /* --- Interface exposed to VEX                       --- */
 /*--------------------------------------------------------*/
 
-void ppS390AMode(s390_amode *);
+void ppS390AMode(const s390_amode *);
 void ppS390Instr(const s390_insn *, Bool mode64);
 void ppHRegS390(HReg);
 
@@ -738,14 +746,14 @@ Bool  isMove_S390Instr     ( const s390_insn *, HReg *, HReg * );
 Int   emit_S390Instr       ( Bool *, UChar *, Int, const s390_insn *, Bool,
                              VexEndness, const void *, const void *,
                              const void *, const void *);
-void  getAllocableRegs_S390( Int *, HReg **, Bool );
+const RRegUniverse *getRRegUniverse_S390( void );
 void  genSpill_S390        ( HInstr **, HInstr **, HReg , Int , Bool );
 void  genReload_S390       ( HInstr **, HInstr **, HReg , Int , Bool );
-HInstrArray *iselSB_S390   ( IRSB *, VexArch, const VexArchInfo *,
-                             const VexAbiInfo *, Int, Int, Bool, Bool, Addr64);
+HInstrArray *iselSB_S390   ( const IRSB *, VexArch, const VexArchInfo *,
+                             const VexAbiInfo *, Int, Int, Bool, Bool, Addr);
 
 /* Return the number of bytes of code needed for an event check */
-Int evCheckSzB_S390(VexEndness endness_host);
+Int evCheckSzB_S390(void);
 
 /* Perform a chaining and unchaining of an XDirect jump. */
 VexInvalRange chainXDirect_S390(VexEndness endness_host,

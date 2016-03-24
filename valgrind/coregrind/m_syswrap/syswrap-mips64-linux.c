@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2010-2013 RT-RK
+   Copyright (C) 2010-2015 RT-RK
       mips-valgrind@rt-rk.com
 
    This program is free software; you can redistribute it and/or
@@ -32,7 +32,6 @@
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
 #include "pub_core_vkiscnums.h"
-#include "pub_core_libcsetjmp.h"   /* to keep _threadstate.h happy */
 #include "pub_core_threadstate.h"
 #include "pub_core_aspacemgr.h"
 #include "pub_core_debuglog.h"
@@ -48,7 +47,6 @@
 #include "pub_core_syscall.h"
 #include "pub_core_syswrap.h"
 #include "pub_core_tooliface.h"
-#include "pub_core_stacks.h"       /* VG_(register_stack) */
 #include "pub_core_transtab.h"     /* VG_(discard_translations) */
 #include "priv_types_n_macros.h"
 #include "priv_syswrap-generic.h"  /* for decls of generic wrappers */
@@ -187,7 +185,7 @@ static void setup_child ( ThreadArchState *, ThreadArchState *);
 static SysRes sys_set_tls ( ThreadId tid, Addr tlsptr);
 
 /* When a client clones, we need to keep track of the new thread. This means:
-   1. allocate a ThreadId+ThreadState+stack for the the thread
+   1. allocate a ThreadId+ThreadState+stack for the thread
 
    2. initialize the thread's new VCPU state
 
@@ -322,15 +320,15 @@ DECL_TEMPLATE (mips_linux, sys_pipe);
 
 PRE(sys_tee)
 {
-   PRINT("sys_tee ( %ld, %ld, %ld, %ld )", ARG1, ARG2, ARG3, ARG4);
+   PRINT("sys_tee ( %ld, %ld, %lu, %#lx )", SARG1, SARG2, ARG3, ARG4);
    PRE_REG_READ4(long, "sys_tee", int, fdin, int, fdout, vki_size_t, len,
                  int, flags);
 }
 
 PRE(sys_splice)
 {
-   PRINT("sys_splice ( %ld, %ld, %ld, %ld, %ld, %ld )", ARG1, ARG2, ARG3,
-                                                        ARG4, ARG5, ARG6);
+   PRINT("sys_splice ( %ld, %#lx, %ld, %#lx, %lu, %#lx )",
+         SARG1, ARG2, SARG3, ARG4, ARG5, ARG6);
 
    PRE_REG_READ6(long, "sys_splice", int, fdin, vki_loff_t, sizein, int,
                  fdout, vki_loff_t, sizeout, vki_size_t, len, int, flags);
@@ -338,34 +336,34 @@ PRE(sys_splice)
 
 PRE(sys_vmsplice)
 {
-   PRINT("sys_vmsplice ( %ld, %ld, %ld, %ld )", ARG1, ARG2, ARG3, ARG4);
+   PRINT("sys_vmsplice ( %ld, %#lx, %lu, %ld )", SARG1, ARG2, ARG3, SARG4);
    PRE_REG_READ4(long, "sys_vmsplice", int, fdin, struct vki_iovec *, v,
                  vki_size_t, len, int, flags);
 }
 
 PRE(sys_unshare)
 {
-   PRINT("sys_unshare ( %ld )", ARG1);
-   PRE_REG_READ1(long, "sys_unshare", int, flags);
+   PRINT("sys_unshare ( %lu )", ARG1);
+   PRE_REG_READ1(long, "sys_unshare", unsigned long, flags);
 }
 
 PRE(sys_sched_rr_get_interval)
 {
-   PRINT("sys_sched_rr_get_interval ( %ld, %#lx)", ARG1, ARG2);
-   PRE_REG_READ2(long, "sched_rr_get_interval", int, flags,
+   PRINT("sys_sched_rr_get_interval ( %ld, %#lx)", SARG1, ARG2);
+   PRE_REG_READ2(long, "sched_rr_get_interval", vki_pid_t, pid,
                  struct timespec *, timer);
    *flags |= SfMayBlock;
 }
 
 PRE(sys_ustat)
 {
-   PRINT("sys_ustat ( %ld, %#lx)", ARG1, ARG2);
+   PRINT("sys_ustat ( %#lx, %#lx)", ARG1, ARG2);
    PRE_REG_READ2(long, "ustat", int, flags, const void *, path);
 }
 
 PRE(sys_swapon)
 {
-   PRINT("sys_swapon ( %#lx, %ld )", ARG1, ARG2);
+   PRINT("sys_swapon ( %#lx, %#lx )", ARG1, ARG2);
    PRE_REG_READ2(long, "swapon", const void *, path, int, flags);
 }
 
@@ -377,7 +375,7 @@ PRE(sys_swapoff)
 
 PRE(sys_sysfs)
 {
-   PRINT("sys_sysfs ( %ld, %ld, %#lx )", ARG1, ARG2, ARG3);
+   PRINT("sys_sysfs ( %ld, %#lx, %#lx )", SARG1, ARG2, ARG3);
    PRE_REG_READ3(long, "sysfs", int, flags, int, desc, const void *, path);
 }
 
@@ -386,36 +384,41 @@ PRE(sys_cacheflush)
 {
    PRINT("cacheflush (%lx, %lx, %lx)", ARG1, ARG2, ARG3);
    PRE_REG_READ3(long, "cacheflush", unsigned long, addr,
-                 int, nbytes, int, cache);
-   VG_ (discard_translations) ((Addr64) ARG1, ((ULong) ARG2),
+                 unsigned long, nbytes, unsigned int, cache);
+   VG_ (discard_translations) ((Addr)ARG1, (ULong) ARG2,
                                "PRE(sys_cacheflush)");
    SET_STATUS_Success(0);
 }
 
 PRE(sys_reboot)
 {
-   PRINT("sys_reboot ( %ld )", ARG1);
-   PRE_REG_READ1(int, "reboot", int, flags);
+   PRINT("sys_reboot ( %ld, %ld, %lu, %#lx )", SARG1, ARG2, ARG3, ARG4);
+   // An approximation. ARG4 is only read conditionally by the kernel
+   PRE_REG_READ4(int, "reboot",
+                 int, magic1, int, magic2, unsigned int, cmd,
+                 void *, arg);
+   
    *flags |= SfMayBlock;
 }
 
 PRE(sys_setdomainname)
 {
-   PRINT ("sys_setdomainname ( %#lx, %ld )", ARG1, ARG2);
+   PRINT ("sys_setdomainname ( %#lx, %ld )", ARG1, SARG2);
    PRE_REG_READ2 (long, "setdomainname", const void *, name, int, len);
 }
 
 PRE(sys_sethostname)
 {
-   PRINT ("sys_sethostname ( %ld, %ld )", ARG1, ARG2);
+   PRINT ("sys_sethostname ( %#lx, %ld )", ARG1, SARG2);
    PRE_REG_READ2 (long, "sethostname", const void *, name, int, len);
 }
 
 PRE(sys_ptrace)
 {
-   PRINT("sys_ptrace ( %ld, %ld, %#lx, %#lx )", ARG1, ARG2, ARG3, ARG4);
-   PRE_REG_READ4(int, "ptrace", long, request, long, pid, long, addr,
-                 long, data);
+   PRINT("sys_ptrace ( %ld, %ld, %#lx, %#lx )", SARG1, SARG2, ARG3, ARG4);
+   PRE_REG_READ4(int, "ptrace",
+                 long, request, long, pid, unsigned long, addr,
+                 unsigned long, data);
    switch (ARG1) {
       case VKI_PTRACE_PEEKTEXT:
       case VKI_PTRACE_PEEKDATA:
@@ -464,8 +467,8 @@ POST(sys_ptrace)
 PRE (sys_mmap)
 {
    SysRes r;
-   PRINT("sys_mmap ( %#lx, %llu, %lu, %lu, %lu, %ld )", ARG1, (ULong)ARG2,
-                                                        ARG3, ARG4, ARG5, ARG6);
+   PRINT("sys_mmap ( %#lx, %lu, %ld, %ld, %ld, %lu )",
+         ARG1, ARG2, SARG3, SARG4, SARG5, ARG6);
    PRE_REG_READ6(long, "mmap", unsigned long, start, vki_size_t, length,
                  int, prot, int, flags, int, fd, unsigned long, offset);
    r = ML_(generic_PRE_sys_mmap)(tid, ARG1, ARG2, ARG3, ARG4, ARG5,
@@ -910,7 +913,9 @@ static SyscallTableEntry syscall_main_table[] = {
    LINXY (__NR_clock_adjtime, sys_clock_adjtime),
    LINXY (__NR_process_vm_readv, sys_process_vm_readv),
    LINX_ (__NR_process_vm_writev, sys_process_vm_writev),
-   LINXY(__NR_getrandom, sys_getrandom)
+   LINXY(__NR_getrandom, sys_getrandom),
+   LINXY(__NR_memfd_create, sys_memfd_create),
+   LINX_(__NR_syncfs, sys_syncfs)
 };
 
 SyscallTableEntry * ML_(get_linux_syscall_entry) ( UInt sysno )

@@ -47,11 +47,8 @@ usage: valgrind [options] prog-and-args
                               load default suppressions [yes]
     --suppressions=<filename> suppress errors described in <filename>
     --gen-suppressions=no|yes|all    print suppressions for errors? [no]
-    --db-attach=no|yes        start debugger when errors detected? [no]
-                              Note: deprecated feature
-    --db-command=<command>    command to start debugger [... -nw %f %p]
     --input-fd=<number>       file descriptor for input [0=stdin]
-    --dsymutil=no|yes         run dsymutil on Mac OS X when helpful? [no]
+    --dsymutil=no|yes         run dsymutil on Mac OS X when helpful? [yes]
     --max-stackframe=<number> assume stack switch for SP changes larger
                               than <number> bytes [2000000]
     --main-stacksize=<number> set size of main thread's stack (in bytes)
@@ -77,13 +74,13 @@ usage: valgrind [options] prog-and-args
     --allow-mismatched-debuginfo=no|yes  [no]
                               for the above two flags only, accept debuginfo
                               objects that don't "match" the main object
-    --smc-check=none|stack|all|all-non-file [stack]
+    --smc-check=none|stack|all|all-non-file [all-non-file]
                               checks for self-modifying code: none, only for
                               code found in stacks, for all code, or for all
                               code except that from file-backed mappings
     --read-inline-info=yes|no read debug info about inlined function calls
                               and use it to do better stack traces.  [yes]
-                              on Linux/Android for Memcheck/Helgrind/DRD
+                              on Linux/Android/Solaris for Memcheck/Helgrind/DRD
                               only.  [no] for all other tools and platforms.
     --read-var-info=yes|no    read debug info on stack and global variables
                               and use it to print better error messages in
@@ -95,7 +92,7 @@ usage: valgrind [options] prog-and-args
     --run-libc-freeres=no|yes free up glibc memory at exit on Linux? [yes]
     --sim-hints=hint1,hint2,...  activate unusual sim behaviours [none] 
          where hint is one of:
-           lax-ioctls fuse-compatible enable-outer
+           lax-ioctls lax-doors fuse-compatible enable-outer
            no-inner-prefix no-nptl-pthread-stackcache none
     --fair-sched=no|yes|try   schedule threads fairly on multicore systems [no]
     --kernel-variant=variant1,variant2,...
@@ -107,7 +104,11 @@ usage: valgrind [options] prog-and-args
            program counters in max <number> frames) [0]
     --num-transtab-sectors=<number> size of translated code cache [16]
            more sectors may increase performance, but use more memory.
+    --avg-transtab-entry-size=<number> avg size in bytes of a translated
+           basic block [0, meaning use tool provided default]
     --aspace-minaddr=0xPP     avoid mapping memory below 0xPP [guessed]
+    --valgrind-stacksize=<number> size of valgrind (host) thread's stack
+                               (in bytes) [1048576]
     --show-emwarns=no|yes     show warnings about emulation limits? [no]
     --require-text-symbol=:sonamepattern:symbolpattern    abort run if the
                               stated shared object doesn't have the stated
@@ -125,6 +126,8 @@ usage: valgrind [options] prog-and-args
                   recovered by stack scanning [5]
     --resync-filter=no|yes|verbose [yes on MacOS, no on other OSes]
               attempt to avoid expensive address-space-resync operations
+    --max-threads=<number>    maximum number of threads that valgrind can
+                              handle [500]
 
   user options for Nulgrind:
     (none)
@@ -159,26 +162,34 @@ usage: valgrind [options] prog-and-args
   Vex options for all Valgrind tools:
     --vex-iropt-verbosity=<0..9>           [0]
     --vex-iropt-level=<0..2>               [2]
-    --vex-iropt-register-updates=sp-at-mem-access
-                                |unwindregs-at-mem-access
-                                |allregs-at-mem-access
-                                |allregs-at-each-insn  [unwindregs-at-mem-access]
     --vex-iropt-unroll-thresh=<0..400>     [120]
     --vex-guest-max-insns=<1..100>         [50]
     --vex-guest-chase-thresh=<0..99>       [10]
     --vex-guest-chase-cond=no|yes          [no]
-    --trace-flags and --profile-flags values (omit the middle space):
-       1000 0000   show conversion into IR
-       0100 0000   show after initial opt
-       0010 0000   show after instrumentation
-       0001 0000   show after second opt
-       0000 1000   show after tree building
-       0000 0100   show selecting insns
-       0000 0010   show after reg-alloc
-       0000 0001   show final assembly
-       0000 0000   show summary profile only
-      (Nb: you need --trace-notbelow and/or --trace-notabove
-           with --trace-flags for full details)
+    Precise exception control.  Possible values for 'mode' are as follows
+      and specify the minimum set of registers guaranteed to be correct
+      immediately prior to memory access instructions:
+         sp-at-mem-access          stack pointer only
+         unwindregs-at-mem-access  registers needed for stack unwinding
+         allregs-at-mem-access     all registers
+         allregs-at-each-insn      all registers are always correct
+      Default value for all 3 following flags is [unwindregs-at-mem-access].
+      --vex-iropt-register-updates=mode   setting to use by default
+      --px-default=mode      synonym for --vex-iropt-register-updates
+      --px-file-backed=mode  optional setting for file-backed (non-JIT) code
+    Tracing and profile control:
+      --trace-flags and --profile-flags values (omit the middle space):
+         1000 0000   show conversion into IR
+         0100 0000   show after initial opt
+         0010 0000   show after instrumentation
+         0001 0000   show after second opt
+         0000 1000   show after tree building
+         0000 0100   show selecting insns
+         0000 0010   show after reg-alloc
+         0000 0001   show final assembly
+         0000 0000   show summary profile only
+        (Nb: you need --trace-notbelow and/or --trace-notabove
+             with --trace-flags for full details)
 
   debugging options for Valgrind tools that report errors
     --dump-error=<number>     show translation for basic block associated
@@ -192,9 +203,9 @@ usage: valgrind [options] prog-and-args
 
   Extra options read from ~/.valgrindrc, $VALGRIND_OPTS, ./.valgrindrc
 
-  Nulgrind is Copyright (C) 2002-2013, and GNU GPL'd, by Nicholas Nethercote.
-  Valgrind is Copyright (C) 2000-2013, and GNU GPL'd, by Julian Seward et al.
-  LibVEX is Copyright (C) 2004-2013, and GNU GPL'd, by OpenWorks LLP et al.
+  Nulgrind is Copyright (C) 2002-2015, and GNU GPL'd, by Nicholas Nethercote.
+  Valgrind is Copyright (C) 2000-2015, and GNU GPL'd, by Julian Seward et al.
+  LibVEX is Copyright (C) 2004-2015, and GNU GPL'd, by OpenWorks LLP et al.
 
   Bug reports, feedback, admiration, abuse, etc, to: www.valgrind.org.
 

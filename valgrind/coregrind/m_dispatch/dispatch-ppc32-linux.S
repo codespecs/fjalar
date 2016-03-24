@@ -8,7 +8,7 @@
   This file is part of Valgrind, a dynamic binary instrumentation
   framework.
 
-  Copyright (C) 2005-2013 Cerion Armour-Brown <cerion@open-works.co.uk>
+  Copyright (C) 2005-2015 Cerion Armour-Brown <cerion@open-works.co.uk>
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -158,7 +158,7 @@ LafterFP1:
         li      6,128
         stvx    25,6,1
         li      6,112
-        stvx    25,6,1
+        stvx    24,6,1
         li      6,96
         stvx    23,6,1
         li      6,80

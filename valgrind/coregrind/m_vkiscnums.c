@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2013 OpenWorks LLP
+   Copyright (C) 2006-2015 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -52,6 +52,19 @@ const HChar* VG_(sysnum_string)(Word sysnum)
    return buf;
 }
 
+/* include/pub_tool_basics.h hardcodes the following syscall numbers
+   on mips{32,64}-linux so as to avoid a module cycle.  We make that
+   safe here by causing the build to fail if those numbers should ever
+   change.  See comments in function sr_EQ in the mips{32,64}-linux
+   section of include/pub_tool_basics.h for more details. */
+#if defined(VGP_mips32_linux)
+STATIC_ASSERT(__NR_pipe  == 4042);
+STATIC_ASSERT(__NR_pipe2 == 4328);
+#elif defined(VGP_mips64_linux)
+STATIC_ASSERT(__NR_pipe  == 5021);
+STATIC_ASSERT(__NR_pipe2 == 5287);
+#endif
+
 //---------------------------------------------------------------------------
 #elif defined(VGO_darwin)
 //---------------------------------------------------------------------------
@@ -69,6 +82,24 @@ const HChar* VG_(sysnum_string)(Word sysnum)
       default: classname = "UNKNOWN"; break;
    }
    VG_(sprintf)(buf, "%s:%ld", classname, VG_DARWIN_SYSNO_INDEX(sysnum));
+   return buf;
+}
+
+//---------------------------------------------------------------------------
+#elif defined(VGO_solaris)
+//---------------------------------------------------------------------------
+
+const HChar *VG_(sysnum_string)(Word sysnum)
+{
+   static HChar buf[8+20+1];   // large enough
+
+   const HChar* classname = NULL;
+   switch (VG_SOLARIS_SYSNO_CLASS(sysnum)) {
+      case VG_SOLARIS_SYSCALL_CLASS_CLASSIC: classname = ""; break;
+      case VG_SOLARIS_SYSCALL_CLASS_FASTTRAP: classname = "fast:"; break;
+      default: classname = "UNKNOWN:"; break;
+   }
+   VG_(sprintf)(buf, "%s%ld", classname, VG_SOLARIS_SYSNO_INDEX(sysnum));
    return buf;
 }
 

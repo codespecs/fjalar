@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward
+   Copyright (C) 2000-2015 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -36,16 +36,17 @@
 //--------------------------------------------------------------
 // Definition of address-space segments
 
-/* Describes segment kinds. */
+/* Describes segment kinds. Enumerators are one-hot encoded so they
+   can be or'ed together. */
 typedef
    enum {
-      SkFree,   // unmapped space
-      SkAnonC,  // anonymous mapping belonging to the client
-      SkAnonV,  // anonymous mapping belonging to valgrind
-      SkFileC,  // file mapping belonging to the client
-      SkFileV,  // file mapping belonging to valgrind
-      SkShmC,   // shared memory segment belonging to the client
-      SkResvn   // reservation
+      SkFree  = 0x01,  // unmapped space
+      SkAnonC = 0x02,  // anonymous mapping belonging to the client
+      SkAnonV = 0x04,  // anonymous mapping belonging to valgrind
+      SkFileC = 0x08,  // file mapping belonging to the client
+      SkFileV = 0x10,  // file mapping belonging to valgrind
+      SkShmC  = 0x20,  // shared memory segment belonging to the client
+      SkResvn = 0x40   // reservation
    }
    SegKind;
 
@@ -71,7 +72,6 @@ typedef
 
      kind == SkFile{C,V}:
         // smode==SmFixed
-        moveLo == moveHi == NotMovable, maxlen == 0
         // there is an associated file
         // segment may have permissions
 
@@ -86,15 +86,15 @@ typedef
         // there's no associated file:
         dev==ino==foff = 0, fnidx == -1
         // segment has no permissions
-        hasR==hasW==hasX==anyTranslated == False
+        hasR==hasW==hasX == False
 
-     Also: anyTranslated==True is only allowed in SkFileV and SkAnonV
+     Also: hasT==True is only allowed in SkFileC, SkAnonC, and SkShmC
            (viz, not allowed to make translations from non-client areas)
 */
 typedef
    struct {
       SegKind kind;
-      /* Extent (SkFree, SkAnon{C,V}, SkFile{C,V}, SkResvn) */
+      /* Extent */
       Addr    start;    // lowest address in range
       Addr    end;      // highest address in range
       /* Shrinkable? (SkResvn only) */
@@ -112,13 +112,12 @@ typedef
       Bool    hasT;     // True --> translations have (or MAY have)
                         // been taken from this segment
       Bool    isCH;     // True --> is client heap (SkAnonC ONLY)
-      /* Admin */
-      Bool    mark;
    }
    NSegment;
 
 
-/* Collect up the start addresses of all non-free, non-resvn segments.
+/* Collect up the start addresses of segments whose kind matches one of
+   the kinds specified in kind_mask.
    The interface is a bit strange in order to avoid potential
    segment-creation races caused by dynamic allocation of the result
    buffer *starts.
@@ -131,20 +130,27 @@ typedef
 
    Correct use of this function may mean calling it multiple times in
    order to establish a suitably-sized buffer. */
-extern Int VG_(am_get_segment_starts)( Addr* starts, Int nStarts );
+extern Int VG_(am_get_segment_starts)( UInt kind_mask, Addr* starts,
+                                       Int nStarts );
 
-
-// See pub_core_aspacemgr.h for description.
+/* Finds the segment containing 'a'.  Only returns file/anon/resvn
+   segments.  This returns a 'NSegment const *' - a pointer to
+   readonly data. */
 extern NSegment const * VG_(am_find_nsegment) ( Addr a ); 
 
-// See pub_core_aspacemgr.h for description.
-extern HChar* VG_(am_get_filename)( NSegment const * );
+/* Get the filename corresponding to this segment, if known and if it
+   has one. The function may return NULL if the file name is not known. */
+extern const HChar* VG_(am_get_filename)( NSegment const * );
 
-// See pub_core_aspacemgr.h for description.
+/* Is the area [start .. start+len-1] validly accessible by the 
+   client with at least the permissions 'prot' ?  To find out
+   simply if said area merely belongs to the client, pass 
+   VKI_PROT_NONE as 'prot'.  Will return False if any part of the
+   area does not belong to the client or does not have at least
+   the stated permissions. */
 extern Bool VG_(am_is_valid_for_client) ( Addr start, SizeT len, 
                                           UInt prot );
 
-// See pub_core_aspacemgr.h for description.
 /* Really just a wrapper around VG_(am_mmap_anon_float_valgrind). */
 extern void* VG_(am_shadow_alloc)(SizeT size);
 

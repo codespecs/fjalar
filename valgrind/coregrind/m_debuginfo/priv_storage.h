@@ -9,7 +9,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward 
+   Copyright (C) 2000-2015 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -333,6 +333,19 @@ typedef
       Int   fp_off;
    }
    DiCfSI_m;
+#elif defined(VGA_tilegx)
+typedef
+   struct {
+      UChar cfa_how; /* a CFIC_IA value */
+      UChar ra_how;  /* a CFIR_ value */
+      UChar sp_how;  /* a CFIR_ value */
+      UChar fp_how;  /* a CFIR_ value */
+      Int   cfa_off;
+      Int   ra_off;
+      Int   sp_off;
+      Int   fp_off;
+   }
+   DiCfSI_m;
 #else
 #  error "Unknown arch"
 #endif
@@ -382,8 +395,15 @@ typedef
       Creg_ARM_R14,
       Creg_ARM_R7,
       Creg_ARM64_X30,
-      Creg_S390_R14,
-      Creg_MIPS_RA
+      Creg_S390_IA,
+      Creg_S390_SP,
+      Creg_S390_FP,
+      Creg_S390_LR,
+      Creg_MIPS_RA,
+      Creg_TILEGX_IP,
+      Creg_TILEGX_SP,
+      Creg_TILEGX_BP,
+      Creg_TILEGX_LR
    }
    CfiReg;
 
@@ -1108,8 +1128,8 @@ extern DebugInfoMapping* ML_(find_rx_mapping) ( DebugInfo* di,
 
 /* ------ Misc ------ */
 
-/* Show a non-fatal debug info reading error.  Use vg_panic if
-   terminal.  'serious' errors are always shown, not 'serious' ones
+/* Show a non-fatal debug info reading error.  Use VG_(core_panic) for
+   fatal errors.  'serious' errors are always shown, not 'serious' ones
    are shown only at verbosity level 2 and above. */
 extern 
 void ML_(symerr) ( const DebugInfo* di, Bool serious, const HChar* msg );

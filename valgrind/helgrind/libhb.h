@@ -9,7 +9,7 @@
    This file is part of LibHB, a library for implementing and checking
    the happens-before relationship in concurrent programs.
 
-   Copyright (C) 2008-2013 OpenWorks Ltd
+   Copyright (C) 2008-2015 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -131,6 +131,13 @@ void libhb_srange_untrack  ( Thr*, Addr, SizeT );
 void libhb_srange_noaccess_NoFX ( Thr*, Addr, SizeT ); /* IS IGNORED */
 void libhb_srange_noaccess_AHAE ( Thr*, Addr, SizeT ); /* IS NOT IGNORED */
 
+/* Counts the nr of bytes addressable in the range [a, a+len[
+   (so a+len excluded) and returns the nr of addressable bytes found.
+   If abits /= NULL, abits must point to a block of memory of length len.
+   In this array, each addressable byte will be indicated with 0xff.
+   Non-addressable bytes are indicated with 0x00. */
+UWord libhb_srange_get_abits (Addr a, /*OUT*/UChar *abits, SizeT len);
+
 /* Get and set the hgthread (pointer to corresponding Thread
    structure). */
 Thread* libhb_get_Thr_hgthread ( Thr* );
@@ -151,6 +158,16 @@ Bool libhb_event_map_lookup ( /*OUT*/ExeContext** resEC,
                               /*OUT*/Bool*        resIsW,
                               /*OUT*/WordSetID*   locksHeldW,
                               Thr* thr, Addr a, SizeT szB, Bool isW );
+
+typedef void (*Access_t) (StackTrace ips, UInt n_ips,
+                          Thr*  Thr_a,
+                          Addr  ga,
+                          SizeT SzB,
+                          Bool  isW,
+                          WordSetID locksHeldW );
+/* Call fn for each recorded access history that overlaps with range [a, a+szB[.
+   fn is first called for oldest access.*/
+void libhb_event_map_access_history ( Addr a, SizeT szB, Access_t fn );
 
 /* ------ Exported from hg_main.c ------ */
 /* Yes, this is a horrible tangle.  Sigh. */

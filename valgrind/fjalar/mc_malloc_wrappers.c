@@ -20,7 +20,7 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2000-2013 Julian Seward 
+   Copyright (C) 2000-2015 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -694,7 +694,7 @@ void MC_(create_mempool)(Addr pool, UInt rzB, Bool is_zeroed)
    MC_Mempool* mp;
 
    if (VG_(clo_verbosity) > 2) {
-      VG_(message)(Vg_UserMsg, "create_mempool(0x%lx, %d, %d)\n",
+      VG_(message)(Vg_UserMsg, "create_mempool(0x%lx, %u, %d)\n",
                                pool, rzB, is_zeroed);
       VG_(get_and_pp_StackTrace)
          (VG_(get_running_tid)(), MEMPOOL_DEBUG_STACKTRACE_DEPTH);
@@ -793,7 +793,7 @@ check_mempool_sane(MC_Mempool* mp)
 	 }
 	 
          VG_(message)(Vg_UserMsg, 
-                      "Total mempools active: %d pools, %d chunks\n", 
+                      "Total mempools active: %u pools, %u chunks\n", 
 		      total_pools, total_chunks);
 	 tick = 0;
        }
@@ -806,7 +806,7 @@ check_mempool_sane(MC_Mempool* mp)
    for (i = 0; i < n_chunks-1; i++) {
       if (chunks[i]->data > chunks[i+1]->data) {
          VG_(message)(Vg_UserMsg, 
-                      "Mempool chunk %d / %d is out of order "
+                      "Mempool chunk %u / %u is out of order "
                       "wrt. its successor\n", 
                       i+1, n_chunks);
          bad = 1;
@@ -817,7 +817,7 @@ check_mempool_sane(MC_Mempool* mp)
    for (i = 0; i < n_chunks-1; i++) {
       if (chunks[i]->data + chunks[i]->szB > chunks[i+1]->data ) {
          VG_(message)(Vg_UserMsg, 
-                      "Mempool chunk %d / %d overlaps with its successor\n", 
+                      "Mempool chunk %u / %u overlaps with its successor\n", 
                       i+1, n_chunks);
          bad = 1;
       }
@@ -825,11 +825,11 @@ check_mempool_sane(MC_Mempool* mp)
 
    if (bad) {
          VG_(message)(Vg_UserMsg, 
-                "Bad mempool (%d chunks), dumping chunks for inspection:\n",
+                "Bad mempool (%u chunks), dumping chunks for inspection:\n",
                 n_chunks);
          for (i = 0; i < n_chunks; ++i) {
             VG_(message)(Vg_UserMsg, 
-                         "Mempool chunk %d / %d: %ld bytes "
+                         "Mempool chunk %u / %u: %lu bytes "
                          "[%lx,%lx), allocated:\n",
                          i+1, 
                          n_chunks, 
@@ -848,7 +848,7 @@ void MC_(mempool_alloc)(ThreadId tid, Addr pool, Addr addr, SizeT szB)
    MC_Mempool* mp;
 
    if (VG_(clo_verbosity) > 2) {     
-      VG_(message)(Vg_UserMsg, "mempool_alloc(0x%lx, 0x%lx, %ld)\n",
+      VG_(message)(Vg_UserMsg, "mempool_alloc(0x%lx, 0x%lx, %lu)\n",
                                pool, addr, szB);
       VG_(get_and_pp_StackTrace) (tid, MEMPOOL_DEBUG_STACKTRACE_DEPTH);
    }
@@ -898,7 +898,7 @@ void MC_(mempool_free)(Addr pool, Addr addr)
 
    if (VG_(clo_verbosity) > 2) {
       VG_(message)(Vg_UserMsg, 
-		   "mempool_free(0x%lx, 0x%lx) freed chunk of %ld bytes\n",
+		   "mempool_free(0x%lx, 0x%lx) freed chunk of %lu bytes\n",
 		   pool, addr, mc->szB + 0UL);
    }
 
@@ -916,7 +916,7 @@ void MC_(mempool_trim)(Addr pool, Addr addr, SizeT szB)
    VgHashNode** chunks;
 
    if (VG_(clo_verbosity) > 2) {
-      VG_(message)(Vg_UserMsg, "mempool_trim(0x%lx, 0x%lx, %ld)\n",
+      VG_(message)(Vg_UserMsg, "mempool_trim(0x%lx, 0x%lx, %lu)\n",
                                pool, addr, szB);
       VG_(get_and_pp_StackTrace) (tid, MEMPOOL_DEBUG_STACKTRACE_DEPTH);
    }
@@ -1050,7 +1050,7 @@ void MC_(mempool_change)(Addr pool, Addr addrA, Addr addrB, SizeT szB)
    ThreadId     tid = VG_(get_running_tid)();
 
    if (VG_(clo_verbosity) > 2) {
-      VG_(message)(Vg_UserMsg, "mempool_change(0x%lx, 0x%lx, 0x%lx, %ld)\n",
+      VG_(message)(Vg_UserMsg, "mempool_change(0x%lx, 0x%lx, 0x%lx, %lu)\n",
                    pool, addrA, addrB, szB);
       VG_(get_and_pp_StackTrace) (tid, MEMPOOL_DEBUG_STACKTRACE_DEPTH);
    }

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2013 OpenWorks LLP
+   Copyright (C) 2004-2015 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -51,9 +51,10 @@
    MByte/sec.  Once the size increases enough to fall out of the cache
    into memory, the rate falls by about a factor of 3. 
 */
+
 #define N_TEMPORARY_BYTES 5000000
 
-static HChar  temporary[N_TEMPORARY_BYTES] __attribute__((aligned(8)));
+static HChar  temporary[N_TEMPORARY_BYTES] __attribute__((aligned(REQ_ALIGN)));
 static HChar* temporary_first = &temporary[0];
 static HChar* temporary_curr  = &temporary[0];
 static HChar* temporary_last  = &temporary[N_TEMPORARY_BYTES-1];
@@ -62,14 +63,14 @@ static ULong  temporary_bytes_allocd_TOT = 0;
 
 #define N_PERMANENT_BYTES 10000
 
-static HChar  permanent[N_PERMANENT_BYTES] __attribute__((aligned(8)));
+static HChar  permanent[N_PERMANENT_BYTES] __attribute__((aligned(REQ_ALIGN)));
 static HChar* permanent_first = &permanent[0];
 static HChar* permanent_curr  = &permanent[0];
 static HChar* permanent_last  = &permanent[N_PERMANENT_BYTES-1];
 
-static HChar* private_LibVEX_alloc_first = &temporary[0];
-static HChar* private_LibVEX_alloc_curr  = &temporary[0];
-static HChar* private_LibVEX_alloc_last  = &temporary[N_TEMPORARY_BYTES-1];
+HChar* private_LibVEX_alloc_first = &temporary[0];
+HChar* private_LibVEX_alloc_curr  = &temporary[0];
+HChar* private_LibVEX_alloc_last  = &temporary[N_TEMPORARY_BYTES-1];
 
 
 static VexAllocMode mode = VexAllocModeTEMP;
@@ -155,7 +156,7 @@ VexAllocMode vexGetAllocMode ( void )
 }
 
 __attribute__((noreturn))
-static void private_LibVEX_alloc_OOM(void)
+void private_LibVEX_alloc_OOM(void)
 {
    const HChar* pool = "???";
    if (private_LibVEX_alloc_first == &temporary[0]) pool = "TEMP";
@@ -196,51 +197,6 @@ void vexSetAllocModeTEMP_and_clear ( void )
 
 /* Exported to library client. */
 
-/* Allocate in Vex's temporary allocation area.  Be careful with this.
-   You can only call it inside an instrumentation or optimisation
-   callback that you have previously specified in a call to
-   LibVEX_Translate.  The storage allocated will only stay alive until
-   translation of the current basic block is complete.
- */
-
-void* LibVEX_Alloc ( Int nbytes )
-{
-   struct align {
-      char c;
-      union {
-         char c;
-         short s;
-         int i;
-         long l;
-         long long ll;
-         float f;
-         double d;
-         /* long double is currently not used and would increase alignment
-            unnecessarily. */
-         /* long double ld; */
-         void *pto;
-         void (*ptf)(void);
-      } x;
-   };
-
-#if 0
-  /* Nasty debugging hack, do not use. */
-  return malloc(nbytes);
-#else
-   HChar* curr;
-   HChar* next;
-   Int    ALIGN;
-   ALIGN  = offsetof(struct align,x) - 1;
-   nbytes = (nbytes + ALIGN) & ~ALIGN;
-   curr   = private_LibVEX_alloc_curr;
-   next   = curr + nbytes;
-   if (next >= private_LibVEX_alloc_last)
-      private_LibVEX_alloc_OOM();
-   private_LibVEX_alloc_curr = next;
-   return curr;
-#endif
-}
-
 void LibVEX_ShowAllocStats ( void )
 {
    vex_printf("vex storage: T total %lld bytes allocated\n",
@@ -249,6 +205,10 @@ void LibVEX_ShowAllocStats ( void )
               (Long)(permanent_curr - permanent_first) );
 }
 
+void *LibVEX_Alloc ( SizeT nbytes )
+{
+   return LibVEX_Alloc_inline(nbytes);
+}
 
 /*---------------------------------------------------------*/
 /*--- Bombing out                                       ---*/
@@ -263,6 +223,7 @@ void vex_assert_fail ( const HChar* expr,
    (*vex_failure_exit)();
 }
 
+/* To be used in assert-like (i.e. should never ever happen) situations */
 __attribute__ ((noreturn))
 void vpanic ( const HChar* str )
 {
@@ -279,9 +240,9 @@ void vpanic ( const HChar* str )
    New code for vex_util.c should go above this point. */
 #include <stdarg.h>
 
-Int vex_strlen ( const HChar* str )
+SizeT vex_strlen ( const HChar* str )
 {
-   Int i = 0;
+   SizeT i = 0;
    while (str[i] != 0) i++;
    return i;
 }
@@ -298,9 +259,9 @@ Bool vex_streq ( const HChar* s1, const HChar* s2 )
    }
 }
 
-void vex_bzero ( void* sV, UInt n )
+void vex_bzero ( void* sV, SizeT n )
 {
-   UInt i;
+   SizeT i;
    UChar* s = (UChar*)sV;
    /* No laughing, please.  Just don't call this too often.  Thank you
       for your attention. */
@@ -376,9 +337,10 @@ UInt vprintf_wrk ( void(*sink)(HChar),
       while (0)
 
    const HChar* saved_format;
-   Bool   longlong, ljustify;
+   Bool   longlong, ljustify, is_sizet;
    HChar  padchar;
-   Int    fwidth, nout, len1, len2, len3;
+   Int    fwidth, nout, len1, len3;
+   SizeT  len2;
    HChar  intbuf[100];  /* big enough for a 64-bit # in base 2 */
 
    nout = 0;
@@ -396,7 +358,7 @@ UInt vprintf_wrk ( void(*sink)(HChar),
       }
 
       saved_format = format;
-      longlong = False;
+      longlong = is_sizet = False;
       ljustify = False;
       padchar = ' ';
       fwidth = 0;
@@ -412,6 +374,7 @@ UInt vprintf_wrk ( void(*sink)(HChar),
       }
       if (*format == '*') {
          fwidth = va_arg(ap, Int);
+         vassert(fwidth >= 0);
          format++;
       } else {
          while (*format >= '0' && *format <= '9') {
@@ -423,8 +386,11 @@ UInt vprintf_wrk ( void(*sink)(HChar),
          format++;
          if (*format == 'l') {
             format++;
-           longlong = True;
+            longlong = True;
          }
+      } else if (*format == 'z') {
+         format++;
+         is_sizet = True;
       }
 
       switch (*format) {
@@ -453,6 +419,7 @@ UInt vprintf_wrk ( void(*sink)(HChar),
          }
          case 'd': {
             Long l;
+            vassert(is_sizet == False); // %zd is obscure; we don't allow it
             if (longlong) {
                l = va_arg(ap, Long);
             } else {
@@ -473,7 +440,9 @@ UInt vprintf_wrk ( void(*sink)(HChar),
             Int   base = *format == 'u' ? 10 : 16;
             Bool  hexcaps = True; /* *format == 'X'; */
             ULong l;
-            if (longlong) {
+            if (is_sizet) {
+               l = (ULong)va_arg(ap, SizeT);
+            } else if (longlong) {
                l = va_arg(ap, ULong);
             } else {
                l = (ULong)va_arg(ap, UInt);
@@ -489,7 +458,7 @@ UInt vprintf_wrk ( void(*sink)(HChar),
          case 'p': 
          case 'P': {
             Bool hexcaps = toBool(*format == 'P');
-            ULong l = Ptr_to_ULong( va_arg(ap, void*) );
+            ULong l = (Addr)va_arg(ap, void*);
             convert_int(intbuf, l, 16/*base*/, False/*unsigned*/, hexcaps);
             len1 = len3 = 0;
             len2 = vex_strlen(intbuf)+2;
@@ -543,11 +512,9 @@ static void add_to_myprintf_buf ( HChar c )
    }
 }
 
-UInt vex_printf ( const HChar* format, ... )
+static UInt vex_vprintf ( const HChar* format, va_list vargs )
 {
    UInt ret;
-   va_list vargs;
-   va_start(vargs,format);
    
    n_myprintf_buf = 0;
    myprintf_buf[n_myprintf_buf] = 0;      
@@ -557,11 +524,33 @@ UInt vex_printf ( const HChar* format, ... )
       (*vex_log_bytes)( myprintf_buf, n_myprintf_buf );
    }
 
+   return ret;
+}
+
+UInt vex_printf ( const HChar* format, ... )
+{
+   UInt ret;
+   va_list vargs;
+   va_start(vargs, format);
+   ret = vex_vprintf(format, vargs);
    va_end(vargs);
 
    return ret;
 }
 
+/* Use this function to communicate to users that a (legitimate) situation
+   occured that we cannot handle (yet). */
+__attribute__ ((noreturn))
+void vfatal ( const HChar* format, ... )
+{
+   va_list vargs;
+   va_start(vargs, format);
+   vex_vprintf( format, vargs );
+   va_end(vargs);
+   vex_printf("Cannot continue. Good-bye\n\n");
+
+   (*vex_failure_exit)();
+}
 
 /* A general replacement for sprintf(). */
 
@@ -588,6 +577,59 @@ UInt vex_sprintf ( HChar* buf, const HChar *format, ... )
 
    vassert(vex_strlen(buf) == ret);
    return ret;
+}
+
+
+/*---------------------------------------------------------*/
+/*--- Misaligned memory access support                  ---*/
+/*---------------------------------------------------------*/
+
+UInt read_misaligned_UInt_LE ( void* addr )
+{
+   UChar* p = (UChar*)addr;
+   UInt   w = 0;
+   w = (w << 8) | p[3];
+   w = (w << 8) | p[2];
+   w = (w << 8) | p[1];
+   w = (w << 8) | p[0];
+   return w;
+}
+
+ULong read_misaligned_ULong_LE ( void* addr )
+{
+   UChar* p = (UChar*)addr;
+   ULong  w = 0;
+   w = (w << 8) | p[7];
+   w = (w << 8) | p[6];
+   w = (w << 8) | p[5];
+   w = (w << 8) | p[4];
+   w = (w << 8) | p[3];
+   w = (w << 8) | p[2];
+   w = (w << 8) | p[1];
+   w = (w << 8) | p[0];
+   return w;
+}
+
+void write_misaligned_UInt_LE ( void* addr, UInt w )
+{
+   UChar* p = (UChar*)addr;
+   p[0] = (w & 0xFF); w >>= 8;
+   p[1] = (w & 0xFF); w >>= 8;
+   p[2] = (w & 0xFF); w >>= 8;
+   p[3] = (w & 0xFF); w >>= 8;
+}
+
+void write_misaligned_ULong_LE ( void* addr, ULong w )
+{
+   UChar* p = (UChar*)addr;
+   p[0] = (w & 0xFF); w >>= 8;
+   p[1] = (w & 0xFF); w >>= 8;
+   p[2] = (w & 0xFF); w >>= 8;
+   p[3] = (w & 0xFF); w >>= 8;
+   p[4] = (w & 0xFF); w >>= 8;
+   p[5] = (w & 0xFF); w >>= 8;
+   p[6] = (w & 0xFF); w >>= 8;
+   p[7] = (w & 0xFF); w >>= 8;
 }
 
 

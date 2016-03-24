@@ -9,7 +9,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2012-2013  Florian Krohm   (britzel@acm.org)
+   Copyright (C) 2012-2015  Florian Krohm   (britzel@acm.org)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -141,7 +141,7 @@ store_aux(IRSB *irsb, IREndness endian, IRExpr *addr, IRExpr *data)
 
 /* Store a value to memory. If a value requires more than 8 bytes a series
    of 8-byte stores will be generated. */
-static void __inline__
+static __inline__ void
 store(IRSB *irsb, IREndness endian, HWord haddr, IRExpr *data)
 {
    IROp high, low;

@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2014-2014 Mozilla Foundation
+   Copyright (C) 2014-2015 Mozilla Foundation
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -205,7 +205,7 @@ typedef
 
 
 /* Helper function for fishing bits out of the EXIDX representation. */
-static void* Prel31ToAddr(const void* addr)
+static const void* Prel31ToAddr(const void* addr)
 {
    UInt offset32 = *(const UInt*)addr;
    // sign extend offset32[30:0] to 64 bits -- copy bit 30 to positions
@@ -215,7 +215,7 @@ static void* Prel31ToAddr(const void* addr)
       offset64 |= 0xFFFFFFFF80000000ULL;
    else
       offset64 &= 0x000000007FFFFFFFULL;
-   return ((UChar*)addr) + (UWord)offset64;
+   return ((const UChar*)addr) + (UWord)offset64;
 }
 
 
@@ -242,9 +242,9 @@ ExExtractResult ExtabEntryExtract ( MemoryRange* mr_exidx,
            buf[(*buf_used)++] = (_byte); } while (0)
 
 #  define GET_EX_U32(_lval, _addr, _mr) \
-      do { if (!MemoryRange__covers((_mr), (void*)(_addr), 4)) \
+      do { if (!MemoryRange__covers((_mr), (const void*)(_addr), 4)) \
               return ExInBufOverflow; \
-           (_lval) = *(UInt*)(_addr); } while (0)
+           (_lval) = *(const UInt*)(_addr); } while (0)
 
 #  define GET_EXIDX_U32(_lval, _addr) \
       GET_EX_U32(_lval, _addr, mr_exidx)
@@ -263,7 +263,7 @@ ExExtractResult ExtabEntryExtract ( MemoryRange* mr_exidx,
    UInt  pers;          // personality number
    UInt  extra;         // number of extra data words required
    UInt  extra_allowed; // number of extra data words allowed
-   UInt* extbl_data;    // the handler entry, if not inlined
+   const UInt* extbl_data;    // the handler entry, if not inlined
 
    if (data & ARM_EXIDX_COMPACT) {
       // The handler table entry has been inlined into the index table entry.
@@ -283,11 +283,11 @@ ExExtractResult ExtabEntryExtract ( MemoryRange* mr_exidx,
       // The index table entry is a pointer to the handler entry.  Note
       // that Prel31ToAddr will read the given address, but we already
       // range-checked above.
-      extbl_data = (UInt*)(Prel31ToAddr(&entry->data));
+      extbl_data = Prel31ToAddr(&entry->data);
       GET_EXTAB_U32(data, extbl_data);
       if (!(data & ARM_EXIDX_COMPACT)) {
          // This denotes a "generic model" handler.  That will involve
-         // executing arbitary machine code, which is something we
+         // executing arbitrary machine code, which is something we
          // can't represent here; hence reject it.
          return ExCantRepresent;
       }
@@ -299,9 +299,9 @@ ExExtractResult ExtabEntryExtract ( MemoryRange* mr_exidx,
       extbl_data++;
    }
 
-   // Now look at the the handler table entry.  The first word is
-   // |data| and subsequent words start at |*extbl_data|.  The number
-   // of extra words to use is |extra|, provided that the personality
+   // Now look at the handler table entry.  The first word is |data|
+   // and subsequent words start at |*extbl_data|.  The number of
+   // extra words to use is |extra|, provided that the personality
    // allows extra words.  Even if it does, none may be available --
    // extra_allowed is the maximum number of extra words allowed. */
    if (pers == 0) {
@@ -388,7 +388,7 @@ typedef
    ExtabData;
 
 static void ppExtabData ( const ExtabData* etd ) {
-   VG_(printf)("ExtabData{%12s 0x%08x}", showExtabCmd(etd->cmd), etd->data);
+   VG_(printf)("ExtabData{%-12s 0x%08x}", showExtabCmd(etd->cmd), etd->data);
 }
 
 
@@ -554,7 +554,7 @@ Int ExtabEntryDecode(/*OUT*/SummState* state, const UChar* buf, SizeT buf_size)
 
       if (0)
          VG_(printf)("  edata:  cmd %08x  data %08x\n",
-                     (UInt)edata.cmd, (UInt)edata.data);
+                     (UInt)edata.cmd, edata.data);
 
       Int ret = TranslateCmd ( state, &edata );
       if (ret < 0) return ret;
@@ -673,7 +673,7 @@ Bool setCFAfromCFIR( /*MOD*/DiCfSI_m* cfi, XArray*/*CfiExpr*/ cfsi_exprs,
       default:
          break;
    }
-   VG_(printf)("setCFAfromCFIR: FAIL: how %d off %d\n", (Int)how, (Int)off);
+   VG_(printf)("setCFAfromCFIR: FAIL: how %d off %d\n", how, off);
    vg_assert(0);
    return False;
 }
@@ -941,7 +941,7 @@ void ML_(read_exidx) ( /*MOD*/DebugInfo* di,
       VG_(printf)("BEGIN ML_(read_exidx) exidx_img=[%p, +%lu) "
                   "extab_img=[%p, +%lu) text_last_svma=%lx text_bias=%lx\n",
                   exidx_img, exidx_size, extab_img, extab_size,
-                  text_last_svma, text_bias);
+                  text_last_svma, (UWord)text_bias);
    Bool ok;
    MemoryRange mr_exidx, mr_extab;
    ok =       MemoryRange__init(&mr_exidx, exidx_img, exidx_size);
@@ -970,8 +970,8 @@ void ML_(read_exidx) ( /*MOD*/DebugInfo* di,
       // associated with.
       Addr avma = (Addr)Prel31ToAddr(&entry_img->addr);
       if (di->trace_cfi)
-         VG_(printf)("XXX1 entry: entry->addr 0x%lx, avma 0x%lx\n",
-                     (UWord)entry_img->addr, avma);
+         VG_(printf)("XXX1 entry: entry->addr 0x%x, avma 0x%lx\n",
+                     entry_img->addr, avma);
 
       Addr next_avma;
       if (entry_img < end_img - 1) {
@@ -1006,8 +1006,8 @@ void ML_(read_exidx) ( /*MOD*/DebugInfo* di,
          if (!plausible && avma != text_last_avma + 1) {
             HChar buf[100];
             VG_(snprintf)(buf, sizeof(buf),
-                          "Implausible EXIDX last entry size %u"
-                          "; using 1 instead.", (UInt)(text_last_avma - avma));
+                          "Implausible EXIDX last entry size %lu"
+                          "; using 1 instead.", text_last_avma - avma);
             buf[sizeof(buf)-1] = 0;
             complain(buf);
          }

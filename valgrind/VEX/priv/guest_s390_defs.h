@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright IBM Corp. 2010-2013
+   Copyright IBM Corp. 2010-2015
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -41,15 +41,15 @@
 /* Convert one s390 insn to IR.  See the type DisOneInstrFn in
    bb_to_IR.h. */
 DisResult disInstr_S390 ( IRSB*        irbb,
-                          Bool         (*resteerOkFn) ( void*, Addr64 ),
+                          Bool         (*resteerOkFn) ( void*, Addr ),
                           Bool         resteerCisOk,
                           void*        callback_opaque,
                           const UChar* guest_code,
                           Long         delta,
-                          Addr64       guest_IP,
+                          Addr         guest_IP,
                           VexArch      guest_arch,
-                          VexArchInfo* archinfo,
-                          VexAbiInfo*  abiinfo,
+                          const VexArchInfo* archinfo,
+                          const VexAbiInfo*  abiinfo,
                           VexEndness   host_endness,
                           Bool         sigill_diag );
 
@@ -60,10 +60,11 @@ IRExpr* guest_s390x_spechelper ( const HChar *function_name,
                                  Int n_precedingStmts);
 
 
-/* Describes to the optimser which part of the guest state require
+/* Describes to the optimiser which part of the guest state require
    precise memory exceptions.  This is logically part of the guest
    state description. */
-Bool guest_s390x_state_requires_precise_mem_exns ( Int, Int );
+Bool guest_s390x_state_requires_precise_mem_exns ( Int, Int,
+                                                   VexRegisterUpdates );
 
 extern VexGuestLayout s390xGuest_layout;
 

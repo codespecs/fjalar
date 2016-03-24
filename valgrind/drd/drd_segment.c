@@ -1,7 +1,7 @@
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2013 Bart Van Assche <bvanassche@acm.org>.
+  Copyright (C) 2006-2015 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -97,7 +97,7 @@ static void sg_init(Segment* const sg,
       HChar* vc;
 
       vc = DRD_(vc_aprint)(&sg->vc);
-      VG_(message)(Vg_DebugMsg, "New segment for thread %d with vc %s\n",
+      VG_(message)(Vg_DebugMsg, "New segment for thread %u with vc %s\n",
                    created, vc);
       VG_(free)(vc);
    }

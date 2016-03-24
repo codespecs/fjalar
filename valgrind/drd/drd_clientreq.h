@@ -1,7 +1,7 @@
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2013 Bart Van Assche <bvanassche@acm.org>.
+  Copyright (C) 2006-2015 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -226,6 +226,15 @@ enum {
    VG_USERREQ__POST_RWLOCK_UNLOCK
    /* args: Addr rwlock, RwLockT, Bool unlocked */
 
+#if defined(VGO_solaris)
+   ,
+   /* To notify the drd tool of a bind_guard call from runtime linker. */
+   VG_USERREQ__RTLD_BIND_GUARD,
+   /* args: Int flags */
+   /* To notify the drd tool of a bind_clear call from runtime linker. */
+   VG_USERREQ__RTLD_BIND_CLEAR
+   /* args: Int flags */
+#endif /* VGO_solaris */
 };
 
 /**

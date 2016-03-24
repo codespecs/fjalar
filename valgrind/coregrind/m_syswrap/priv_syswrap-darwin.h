@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2005-2013 Apple Inc.
+   Copyright (C) 2005-2015 Apple Inc.
       Greg Parker  gparker@apple.com
 
    This program is free software; you can redistribute it and/or
@@ -189,7 +189,7 @@ DECL_TEMPLATE(darwin, getsockopt);              // 118
 // old truncate
 // old ftruncate
 // GEN flock 131
-// NYI mkfifo 132
+DECL_TEMPLATE(darwin, mkfifo);                  // 132
 DECL_TEMPLATE(darwin, sendto);                  // 133
 DECL_TEMPLATE(darwin, shutdown);                // 134
 DECL_TEMPLATE(darwin, socketpair);              // 135
@@ -335,7 +335,7 @@ DECL_TEMPLATE(darwin, sem_post);                // 273
 
 #if DARWIN_VERS < DARWIN_10_10
 // NYI sem_getvalue 274
-#elif DARWIN_VERS == DARWIN_10_10
+#elif DARWIN_VERS >= DARWIN_10_10
 DECL_TEMPLATE(darwin, sysctlbyname);            // 274
 #endif
 
@@ -350,7 +350,7 @@ DECL_TEMPLATE(darwin, chmod_extended);          // 282
 DECL_TEMPLATE(darwin, fchmod_extended);         // 283
 DECL_TEMPLATE(darwin, access_extended);         // 284
 DECL_TEMPLATE(darwin, settid);                  // 285
-#if DARWIN_VERS >= DARWIN_10_7
+#if DARWIN_VERS >= DARWIN_10_6
 DECL_TEMPLATE(darwin, gettid);                  // 286
 #endif
 // NYI setsgroups 287
@@ -362,23 +362,44 @@ DECL_TEMPLATE(darwin, gettid);                  // 286
 // NYI identitysvc 293
 // NYI shared_region_check_np 294
 // NYI shared_region_map_np 295
+#if DARWIN_VERS >= DARWIN_10_6
+// NYI vm_pressure_monitor 296
+// NYI psynch_rw_longrdlock 297
+// NYI psynch_rw_yieldwrlock 298
+// NYI psynch_rw_downgrade 299
+// NYI psynch_rw_upgrade 300
+DECL_TEMPLATE(darwin, psynch_mutexwait);       // 301
+DECL_TEMPLATE(darwin, psynch_mutexdrop);       // 302
+DECL_TEMPLATE(darwin, psynch_cvbroad);         // 303
+DECL_TEMPLATE(darwin, psynch_cvsignal);        // 304
+DECL_TEMPLATE(darwin, psynch_cvwait);          // 305
+DECL_TEMPLATE(darwin, psynch_rw_rdlock);       // 306
+DECL_TEMPLATE(darwin, psynch_rw_wrlock);       // 307
+DECL_TEMPLATE(darwin, psynch_rw_unlock);       // 308
+// NYI psynch_rw_unlock2 309
+#else
 // old load_shared_file
 // old reset_shared_file
 // old new_system_shared_regions
 // old shared_region_map_file_np
 // old shared_region_make_private_np
-DECL_TEMPLATE(darwin, psynch_mutexwait);       // 301 // new in 10.7 ?
-DECL_TEMPLATE(darwin, psynch_mutexdrop);       // 302 // new in 10.7 ?
-DECL_TEMPLATE(darwin, psynch_cvbroad);         // 303 // new in 10.7 ?
-DECL_TEMPLATE(darwin, psynch_cvsignal);        // 304 // new in 10.7 ?
-DECL_TEMPLATE(darwin, psynch_cvwait);          // 305 // new in 10.7 ?
-DECL_TEMPLATE(darwin, psynch_rw_rdlock);       // 306 // new in 10.7 ?
-DECL_TEMPLATE(darwin, psynch_rw_wrlock);       // 307 // new in 10.7 ?
-DECL_TEMPLATE(darwin, psynch_rw_unlock);       // 308 // new in 10.7 ?
+// NYI __pthread_mutex_destroy 301
+// NYI __pthread_mutex_init 302
+// NYI __pthread_mutex_lock 303
+// NYI __pthread_mutex_trylock 304
+// NYI __pthread_mutex_unlock 305
+// NYI __pthread_cond_init 306
+// NYI __pthread_cond_destroy 307
+// NYI __pthread_cond_broadcast 308
 // NYI __pthread_cond_signal 309
+#endif
 // NYI getsid 310
 // NYI settid_with_pid 311
-DECL_TEMPLATE(darwin, psynch_cvclrprepost);    // 312 // new in 10.7 ?
+#if DARWIN_VERS >= DARWIN_10_7
+DECL_TEMPLATE(darwin, psynch_cvclrprepost);    // 312
+#else
+// NYI __pthread_cond_timedwait 312
+#endif
 // NYI aio_fsync 313
 DECL_TEMPLATE(darwin, aio_return);             // 314
 DECL_TEMPLATE(darwin, aio_suspend);            // 315
@@ -402,9 +423,7 @@ DECL_TEMPLATE(darwin, __pthread_markcancel);    // 332
 DECL_TEMPLATE(darwin, __pthread_canceled);      // 333
 DECL_TEMPLATE(darwin, __semwait_signal);        // 334
 // old utrace
-#if DARWIN_VERS >= DARWIN_10_6
 DECL_TEMPLATE(darwin, proc_info);               // 336
-#endif
 DECL_TEMPLATE(darwin, sendfile);                // 337
 DECL_TEMPLATE(darwin, stat64);                  // 338
 DECL_TEMPLATE(darwin, fstat64);                 // 339
@@ -416,8 +435,8 @@ DECL_TEMPLATE(darwin, getdirentries64);         // 344
 DECL_TEMPLATE(darwin, statfs64);                // 345
 DECL_TEMPLATE(darwin, fstatfs64);               // 346
 DECL_TEMPLATE(darwin, getfsstat64);             // 347
-// NYI __pthread_chdir 348
-// NYI __pthread_fchdir 349
+DECL_TEMPLATE(darwin, __pthread_chdir);         // 348
+DECL_TEMPLATE(darwin, __pthread_fchdir);        // 349
 // NYI audit 350
 DECL_TEMPLATE(darwin, auditon);                 // 351
 // 352
@@ -425,9 +444,7 @@ DECL_TEMPLATE(darwin, auditon);                 // 351
 // NYI setauid 354
 // NYI getaudit 355
 // NYI setaudit 356
-#if DARWIN_VERS >= DARWIN_10_7
 DECL_TEMPLATE(darwin, getaudit_addr)            // 357
-#endif
 // NYI setaudit_addr 358
 // NYI auditctl 359
 DECL_TEMPLATE(darwin, bsdthread_create);        // 360
@@ -442,7 +459,9 @@ DECL_TEMPLATE(darwin, workq_ops);               // 368
 DECL_TEMPLATE(darwin, kevent64);                // 369
 // 370
 // 371
+#if DARWIN_VERS >= DARWIN_10_6
 DECL_TEMPLATE(darwin, __thread_selfid);         // 372
+#endif
 // 373
 // 374
 // 375
@@ -506,10 +525,10 @@ DECL_TEMPLATE(darwin, fileport_makeport);        // 430
 // NYI audit_session_port 432
 // NYI pid_suspend 433
 // NYI pid_resume 434
-#if DARWIN_VERS == DARWIN_10_10
+#if DARWIN_VERS >= DARWIN_10_10
 // NYI pid_hibernate 435
 // NYI pid_shutdown_sockets 436
-#endif /* DARWIN_VERS == DARWIN_10_10 */
+#endif /* DARWIN_VERS >= DARWIN_10_10 */
 // old old shared_region_slide_np 437
 // NYI shared_region_map_and_slide_np            // 438
 // NYI kas_info                                  // 439
@@ -529,7 +548,7 @@ DECL_TEMPLATE(darwin, disconnectx);              // 448
 // NYI memorystatus_get_level // 453
 // NYI system_override // 454
 // NYI vfs_purge // 455
-#if DARWIN_VERS == DARWIN_10_10
+#if DARWIN_VERS >= DARWIN_10_10
 // NYI sfi_ctl         // 456
 // NYI sfi_pidctl      // 457
 // NYI coalition       // 458
@@ -547,7 +566,7 @@ DECL_TEMPLATE(darwin, getattrlistbulk);          // 461
 // NYI fstatat64       // 470
 // NYI linkat          // 471
 // NYI unlinkat        // 472
-// NYI readlinkat      // 473
+DECL_TEMPLATE(darwin, readlinkat);               // 473
 // NYI symlinkat       // 474
 // NYI mkdirat         // 475
 // NYI getattrlistat   // 476
@@ -558,13 +577,13 @@ DECL_TEMPLATE(darwin, bsdthread_ctl);            // 478
 // NYI sendmsg_x       // 481
 // NYI thread_selfusage  // 482
 // NYI csrctl          // 483
-// NYI guarded_open_dprotected_np  // 484
-// NYI guarded_write_np  // 485
-// NYI guarded_pwrite_np  // 486
-// NYI guarded_writev_np  // 487
+DECL_TEMPLATE(darwin, guarded_open_dprotected_np);  // 484
+DECL_TEMPLATE(darwin, guarded_write_np);            // 485
+DECL_TEMPLATE(darwin, guarded_pwrite_np);           // 486
+DECL_TEMPLATE(darwin, guarded_writev_np);           // 487
 // NYI rename_ext      // 488
 // NYI mremap_encrypted  // 489
-#endif /* DARWIN_VERS == DARWIN_10_10 */
+#endif /* DARWIN_VERS >= DARWIN_10_10 */
 
 // Mach message helpers
 DECL_TEMPLATE(darwin, mach_port_set_context);
@@ -573,6 +592,8 @@ DECL_TEMPLATE(darwin, host_page_size);
 DECL_TEMPLATE(darwin, host_get_io_master);
 DECL_TEMPLATE(darwin, host_get_clock_service);
 DECL_TEMPLATE(darwin, host_request_notification);
+DECL_TEMPLATE(darwin, host_create_mach_voucher);
+DECL_TEMPLATE(darwin, host_get_special_port);
 DECL_TEMPLATE(darwin, mach_port_type);
 DECL_TEMPLATE(darwin, mach_port_extract_member);
 DECL_TEMPLATE(darwin, mach_port_allocate);
@@ -589,11 +610,15 @@ DECL_TEMPLATE(darwin, mach_port_get_attributes);
 DECL_TEMPLATE(darwin, mach_port_set_attributes);
 DECL_TEMPLATE(darwin, mach_port_insert_member);
 DECL_TEMPLATE(darwin, task_get_special_port);
+DECL_TEMPLATE(darwin, task_set_special_port);
 DECL_TEMPLATE(darwin, task_get_exception_ports);
 DECL_TEMPLATE(darwin, semaphore_create);
 DECL_TEMPLATE(darwin, semaphore_destroy);
 DECL_TEMPLATE(darwin, task_policy_set);
+DECL_TEMPLATE(darwin, mach_ports_register);
 DECL_TEMPLATE(darwin, mach_ports_lookup);
+DECL_TEMPLATE(darwin, task_info);
+DECL_TEMPLATE(darwin, task_set_info);
 DECL_TEMPLATE(darwin, task_threads);
 DECL_TEMPLATE(darwin, task_suspend);
 DECL_TEMPLATE(darwin, task_resume);

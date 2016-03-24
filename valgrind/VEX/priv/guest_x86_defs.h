@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2013 OpenWorks LLP
+   Copyright (C) 2004-2015 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -51,15 +51,15 @@
    bb_to_IR.h. */
 extern
 DisResult disInstr_X86 ( IRSB*        irbb,
-                         Bool         (*resteerOkFn) ( void*, Addr64 ),
+                         Bool         (*resteerOkFn) ( void*, Addr ),
                          Bool         resteerCisOk,
                          void*        callback_opaque,
                          const UChar* guest_code,
                          Long         delta,
-                         Addr64       guest_IP,
+                         Addr         guest_IP,
                          VexArch      guest_arch,
-                         VexArchInfo* archinfo,
-                         VexAbiInfo*  abiinfo,
+                         const VexArchInfo* archinfo,
+                         const VexAbiInfo*  abiinfo,
                          VexEndness   host_endness,
                          Bool         sigill_diag );
 
@@ -74,7 +74,8 @@ IRExpr* guest_x86_spechelper ( const HChar* function_name,
    precise memory exceptions.  This is logically part of the guest
    state description. */
 extern 
-Bool guest_x86_state_requires_precise_mem_exns ( Int, Int );
+Bool guest_x86_state_requires_precise_mem_exns ( Int, Int,
+                                                 VexRegisterUpdates );
 
 extern
 VexGuestLayout x86guest_layout;
@@ -139,14 +140,15 @@ extern ULong x86g_calculate_mmx_psadbw   ( ULong, ULong );
 
 /* --- DIRTY HELPERS --- */
 
-extern ULong x86g_dirtyhelper_loadF80le  ( UInt );
+extern ULong x86g_dirtyhelper_loadF80le  ( Addr );
 
-extern void  x86g_dirtyhelper_storeF80le ( UInt, ULong );
+extern void  x86g_dirtyhelper_storeF80le ( Addr, ULong );
 
 extern void  x86g_dirtyhelper_CPUID_sse0 ( VexGuestX86State* );
 extern void  x86g_dirtyhelper_CPUID_mmxext ( VexGuestX86State* );
 extern void  x86g_dirtyhelper_CPUID_sse1 ( VexGuestX86State* );
 extern void  x86g_dirtyhelper_CPUID_sse2 ( VexGuestX86State* );
+extern void  x86g_dirtyhelper_CPUID_sse3 ( VexGuestX86State* );
 
 extern void  x86g_dirtyhelper_FINIT ( VexGuestX86State* );
 
@@ -191,6 +193,15 @@ extern VexEmNote
 #define X86G_CC_MASK_A    (1 << X86G_CC_SHIFT_A)
 #define X86G_CC_MASK_C    (1 << X86G_CC_SHIFT_C)
 #define X86G_CC_MASK_P    (1 << X86G_CC_SHIFT_P)
+
+/* additional eflags masks */
+#define X86G_CC_SHIFT_ID  21
+#define X86G_CC_SHIFT_AC  18
+#define X86G_CC_SHIFT_D   10
+
+#define X86G_CC_MASK_ID   (1 << X86G_CC_SHIFT_ID)
+#define X86G_CC_MASK_AC   (1 << X86G_CC_SHIFT_AC)
+#define X86G_CC_MASK_D    (1 << X86G_CC_SHIFT_D)
 
 /* FPU flag masks */
 #define X86G_FC_SHIFT_C3   14

@@ -9,7 +9,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2013 OpenWorks LLP
+   Copyright (C) 2006-2015 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -158,7 +158,8 @@ SysRes VG_(am_do_mmap_NO_NOTIFY)( Addr start, SizeT length, UInt prot,
 #  elif defined(VGP_amd64_linux) \
         || defined(VGP_ppc64be_linux)  || defined(VGP_ppc64le_linux) \
         || defined(VGP_s390x_linux) || defined(VGP_mips32_linux) \
-        || defined(VGP_mips64_linux) || defined(VGP_arm64_linux)
+        || defined(VGP_mips64_linux) || defined(VGP_arm64_linux) \
+        || defined(VGP_tilegx_linux)
    res = VG_(do_syscall6)(__NR_mmap, (UWord)start, length, 
                          prot, flags, fd, offset);
 #  elif defined(VGP_x86_darwin)
@@ -173,6 +174,18 @@ SysRes VG_(am_do_mmap_NO_NOTIFY)( Addr start, SizeT length, UInt prot,
    }
    res = VG_(do_syscall6)(__NR_mmap, (UWord)start, length,
                           prot, flags, (UInt)fd, offset);
+#  elif defined(VGP_x86_solaris)
+   /* MAP_ANON with fd==0 is EINVAL. */
+   if (fd == 0 && (flags & VKI_MAP_ANONYMOUS))
+      fd = -1;
+   res = VG_(do_syscall7)(__NR_mmap64, (UWord)start, length, prot, flags,
+                          (UInt)fd, offset & 0xffffffff, offset >> 32);
+#  elif defined(VGP_amd64_solaris)
+   /* MAP_ANON with fd==0 is EINVAL. */
+   if (fd == 0 && (flags & VKI_MAP_ANONYMOUS))
+      fd = -1;
+   res = VG_(do_syscall6)(__NR_mmap, (UWord)start, length, prot, flags,
+                          (UInt)fd, offset);
 #  else
 #    error Unknown platform
 #  endif
@@ -245,8 +258,16 @@ SysRes ML_(am_open) ( const HChar* pathname, Int flags, Int mode )
    /* ARM64 wants to use __NR_openat rather than __NR_open. */
    SysRes res = VG_(do_syscall4)(__NR_openat,
                                  VKI_AT_FDCWD, (UWord)pathname, flags, mode);
-#  else
+#  elif defined(VGP_tilegx_linux)
+   SysRes res = VG_(do_syscall4)(__NR_openat, VKI_AT_FDCWD, (UWord)pathname,
+                                 flags, mode);
+#  elif defined(VGO_linux) || defined(VGO_darwin)
    SysRes res = VG_(do_syscall3)(__NR_open, (UWord)pathname, flags, mode);
+#  elif defined(VGO_solaris)
+   SysRes res = VG_(do_syscall4)(__NR_openat, VKI_AT_FDCWD, (UWord)pathname,
+                                 flags, mode);
+#  else
+#    error Unknown OS
 #  endif
    return res;
 }
@@ -268,15 +289,23 @@ Int ML_(am_readlink)(const HChar* path, HChar* buf, UInt bufsiz)
 #  if defined(VGP_arm64_linux)
    res = VG_(do_syscall4)(__NR_readlinkat, VKI_AT_FDCWD,
                                            (UWord)path, (UWord)buf, bufsiz);
-#  else
+#  elif defined(VGP_tilegx_linux)
+   res = VG_(do_syscall4)(__NR_readlinkat, VKI_AT_FDCWD, (UWord)path,
+                          (UWord)buf, bufsiz);
+#  elif defined(VGO_linux) || defined(VGO_darwin)
    res = VG_(do_syscall3)(__NR_readlink, (UWord)path, (UWord)buf, bufsiz);
+#  elif defined(VGO_solaris)
+   res = VG_(do_syscall4)(__NR_readlinkat, VKI_AT_FDCWD, (UWord)path,
+                          (UWord)buf, bufsiz);
+#  else
+#    error Unknown OS
 #  endif
    return sr_isError(res) ? -1 : sr_Res(res);
 }
 
 Int ML_(am_fcntl) ( Int fd, Int cmd, Addr arg )
 {
-#  if defined(VGO_linux)
+#  if defined(VGO_linux) || defined(VGO_solaris)
    SysRes res = VG_(do_syscall3)(__NR_fcntl, fd, cmd, arg);
 #  elif defined(VGO_darwin)
    SysRes res = VG_(do_syscall3)(__NR_fcntl_nocancel, fd, cmd, arg);
@@ -292,6 +321,7 @@ Bool ML_(am_get_fd_d_i_m)( Int fd,
                            /*OUT*/ULong* dev, 
                            /*OUT*/ULong* ino, /*OUT*/UInt* mode )
 {
+#  if defined(VGO_linux) || defined(VGO_darwin)
    SysRes          res;
    struct vki_stat buf;
 #  if defined(VGO_linux) && defined(__NR_fstat64)
@@ -315,13 +345,33 @@ Bool ML_(am_get_fd_d_i_m)( Int fd,
       return True;
    }
    return False;
+#  elif defined(VGO_solaris)
+#  if defined(VGP_x86_solaris)
+   struct vki_stat64 buf64;
+   SysRes res = VG_(do_syscall4)(__NR_fstatat64, fd, 0, (UWord)&buf64, 0);
+#  elif defined(VGP_amd64_solaris)
+   struct vki_stat buf64;
+   SysRes res = VG_(do_syscall4)(__NR_fstatat, fd, 0, (UWord)&buf64, 0);
+#  else
+#    error "Unknown platform"
+#  endif
+   if (!sr_isError(res)) {
+      *dev  = (ULong)buf64.st_dev;
+      *ino  = (ULong)buf64.st_ino;
+      *mode = (UInt) buf64.st_mode;
+      return True;
+   }
+   return False;
+#  else
+#    error Unknown OS
+#  endif
 }
 
 Bool ML_(am_resolve_filename) ( Int fd, /*OUT*/HChar* buf, Int nbuf )
 {
 #if defined(VGO_linux)
    Int i;
-   HChar tmp[64];
+   HChar tmp[64];    // large enough
    for (i = 0; i < nbuf; i++) buf[i] = 0;
    ML_(am_sprintf)(tmp, "/proc/self/fd/%d", fd);
    if (ML_(am_readlink)(tmp, buf, nbuf) > 0 && buf[0] == '/')
@@ -340,6 +390,16 @@ Bool ML_(am_resolve_filename) ( Int fd, /*OUT*/HChar* buf, Int nbuf )
    }
    return False;
 
+#elif defined(VGO_solaris)
+   Int i;
+   HChar tmp[64];
+   for (i = 0; i < nbuf; i++) buf[i] = 0;
+   ML_(am_sprintf)(tmp, "/proc/self/path/%d", fd);
+   if (ML_(am_readlink)(tmp, buf, nbuf) > 0 && buf[0] == '/')
+      return True;
+   else
+      return False;
+
 #  else
 #     error Unknown OS
 #  endif
@@ -353,6 +413,11 @@ Bool ML_(am_resolve_filename) ( Int fd, /*OUT*/HChar* buf, Int nbuf )
 /*--- Manage stacks for Valgrind itself.                        ---*/
 /*---                                                           ---*/
 /*-----------------------------------------------------------------*/
+struct _VgStack {
+   HChar bytes[1];
+   // We use a fake size of 1. A bigger size is allocated
+   // by VG_(am_alloc_VgStack).
+};
 
 /* Allocate and initialise a VgStack (anonymous valgrind space).
    Protect the stack active area and the guard areas appropriately.
@@ -370,13 +435,13 @@ VgStack* VG_(am_alloc_VgStack)( /*OUT*/Addr* initial_sp )
 
    /* Allocate the stack. */
    szB = VG_STACK_GUARD_SZB 
-         + VG_STACK_ACTIVE_SZB + VG_STACK_GUARD_SZB;
+         + VG_(clo_valgrind_stacksize) + VG_STACK_GUARD_SZB;
 
    sres = VG_(am_mmap_anon_float_valgrind)( szB );
    if (sr_isError(sres))
       return NULL;
 
-   stack = (VgStack*)(AddrH)sr_Res(sres);
+   stack = (VgStack*)(Addr)sr_Res(sres);
 
    aspacem_assert(VG_IS_PAGE_ALIGNED(szB));
    aspacem_assert(VG_IS_PAGE_ALIGNED(stack));
@@ -393,12 +458,12 @@ VgStack* VG_(am_alloc_VgStack)( /*OUT*/Addr* initial_sp )
    );
 
    sres = local_do_mprotect_NO_NOTIFY( 
-             (Addr) &stack->bytes[VG_STACK_GUARD_SZB + VG_STACK_ACTIVE_SZB], 
+             (Addr) &stack->bytes[VG_STACK_GUARD_SZB + VG_(clo_valgrind_stacksize)], 
              VG_STACK_GUARD_SZB, VKI_PROT_NONE 
           );
    if (sr_isError(sres)) goto protect_failed;
    VG_(am_notify_mprotect)( 
-      (Addr) &stack->bytes[VG_STACK_GUARD_SZB + VG_STACK_ACTIVE_SZB],
+      (Addr) &stack->bytes[VG_STACK_GUARD_SZB + VG_(clo_valgrind_stacksize)],
       VG_STACK_GUARD_SZB, VKI_PROT_NONE 
    );
 
@@ -406,14 +471,15 @@ VgStack* VG_(am_alloc_VgStack)( /*OUT*/Addr* initial_sp )
       tell how much got used. */
 
    p = (UInt*)&stack->bytes[VG_STACK_GUARD_SZB];
-   for (i = 0; i < VG_STACK_ACTIVE_SZB/sizeof(UInt); i++)
+   for (i = 0; i < VG_(clo_valgrind_stacksize)/sizeof(UInt); i++)
       p[i] = 0xDEADBEEF;
 
-   *initial_sp = (Addr)&stack->bytes[VG_STACK_GUARD_SZB + VG_STACK_ACTIVE_SZB];
+   *initial_sp = (Addr)&stack->bytes[VG_STACK_GUARD_SZB + VG_(clo_valgrind_stacksize)];
    *initial_sp -= 8;
    *initial_sp &= ~((Addr)0x1F); /* 32-align it */
 
-   VG_(debugLog)( 1,"aspacem","allocated thread stack at 0x%llx size %d\n",
+   VG_(debugLog)( 1,"aspacem",
+                  "allocated valgrind thread stack at 0x%llx size %d\n",
                   (ULong)(Addr)stack, szB);
    ML_(am_do_sanity_check)();
    return stack;
@@ -436,7 +502,7 @@ SizeT VG_(am_get_VgStack_unused_szB)( const VgStack* stack, SizeT limit )
    const UInt* p;
 
    p = (const UInt*)&stack->bytes[VG_STACK_GUARD_SZB];
-   for (i = 0; i < VG_STACK_ACTIVE_SZB/sizeof(UInt); i++) {
+   for (i = 0; i < VG_(clo_valgrind_stacksize)/sizeof(UInt); i++) {
       if (p[i] != 0xDEADBEEF)
          break;
       if (i * sizeof(UInt) >= limit)

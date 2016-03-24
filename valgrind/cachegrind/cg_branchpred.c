@@ -7,7 +7,7 @@
    This file is part of Cachegrind, a Valgrind tool for cache
    profiling programs.
 
-   Copyright (C) 2002-2013 Nicholas Nethercote
+   Copyright (C) 2002-2015 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -51,6 +51,8 @@
 #  define N_IADDR_LO_ZERO_BITS 0
 #elif defined(VGA_s390x) || defined(VGA_arm)
 #  define N_IADDR_LO_ZERO_BITS 1
+#elif defined(VGA_tilegx)
+#  define N_IADDR_LO_ZERO_BITS 3
 #else
 #  error "Unsupported architecture"
 #endif

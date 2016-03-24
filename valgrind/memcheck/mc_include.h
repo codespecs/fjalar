@@ -8,7 +8,7 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2000-2013 Julian Seward 
+   Copyright (C) 2000-2015 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -207,26 +207,129 @@ IRType MC_(get_otrack_reg_array_equiv_int_type) ( IRRegArray* arr );
 
 /* Define to collect detailed performance info. */
 /* #define MC_PROFILE_MEMORY */
-
 #ifdef MC_PROFILE_MEMORY
-#  define N_PROF_EVENTS 500
 
-UInt   MC_(event_ctr)[N_PROF_EVENTS];
-HChar* MC_(event_ctr_name)[N_PROF_EVENTS];
+/* Order of enumerators does not matter. But MCPE_LAST has to be the 
+   last entry in the list as it is used as an array bound. */
+enum {
+   MCPE_LOADV8,
+   MCPE_LOADV8_SLOW1,
+   MCPE_LOADV8_SLOW2,
+   MCPE_LOADV16,
+   MCPE_LOADV16_SLOW1,
+   MCPE_LOADV16_SLOW2,
+   MCPE_LOADV32,
+   MCPE_LOADV32_SLOW1,
+   MCPE_LOADV32_SLOW2,
+   MCPE_LOADV64,
+   MCPE_LOADV64_SLOW1,
+   MCPE_LOADV64_SLOW2,
+   MCPE_LOADV_128_OR_256,
+   MCPE_LOADV_128_OR_256_SLOW_LOOP,
+   MCPE_LOADV_128_OR_256_SLOW1,
+   MCPE_LOADV_128_OR_256_SLOW2,
+   MCPE_LOADVN_SLOW,
+   MCPE_LOADVN_SLOW_LOOP,
+   MCPE_STOREV8,
+   MCPE_STOREV8_SLOW1,
+   MCPE_STOREV8_SLOW2,
+   MCPE_STOREV8_SLOW3,
+   MCPE_STOREV8_SLOW4,
+   MCPE_STOREV16,
+   MCPE_STOREV16_SLOW1,
+   MCPE_STOREV16_SLOW2,
+   MCPE_STOREV16_SLOW3,
+   MCPE_STOREV16_SLOW4,
+   MCPE_STOREV32,
+   MCPE_STOREV32_SLOW1,
+   MCPE_STOREV32_SLOW2,
+   MCPE_STOREV32_SLOW3,
+   MCPE_STOREV32_SLOW4,
+   MCPE_STOREV64,
+   MCPE_STOREV64_SLOW1,
+   MCPE_STOREV64_SLOW2,
+   MCPE_STOREV64_SLOW3,
+   MCPE_STOREV64_SLOW4,
+   MCPE_STOREVN_SLOW,
+   MCPE_STOREVN_SLOW_LOOP,
+   MCPE_MAKE_ALIGNED_WORD32_UNDEFINED,
+   MCPE_MAKE_ALIGNED_WORD32_UNDEFINED_SLOW,
+   MCPE_MAKE_ALIGNED_WORD64_UNDEFINED,
+   MCPE_MAKE_ALIGNED_WORD64_UNDEFINED_SLOW,
+   MCPE_MAKE_ALIGNED_WORD32_NOACCESS,
+   MCPE_MAKE_ALIGNED_WORD32_NOACCESS_SLOW,
+   MCPE_MAKE_ALIGNED_WORD64_NOACCESS,
+   MCPE_MAKE_ALIGNED_WORD64_NOACCESS_SLOW,
+   MCPE_MAKE_MEM_NOACCESS,
+   MCPE_MAKE_MEM_UNDEFINED,
+   MCPE_MAKE_MEM_UNDEFINED_W_OTAG,
+   MCPE_MAKE_MEM_DEFINED,
+   MCPE_CHEAP_SANITY_CHECK,
+   MCPE_EXPENSIVE_SANITY_CHECK,
+   MCPE_COPY_ADDRESS_RANGE_STATE,
+   MCPE_COPY_ADDRESS_RANGE_STATE_LOOP1,
+   MCPE_COPY_ADDRESS_RANGE_STATE_LOOP2,
+   MCPE_CHECK_MEM_IS_NOACCESS,
+   MCPE_CHECK_MEM_IS_NOACCESS_LOOP,
+   MCPE_IS_MEM_ADDRESSABLE,
+   MCPE_IS_MEM_ADDRESSABLE_LOOP,
+   MCPE_IS_MEM_DEFINED,
+   MCPE_IS_MEM_DEFINED_LOOP,
+   MCPE_IS_MEM_DEFINED_COMPREHENSIVE,
+   MCPE_IS_MEM_DEFINED_COMPREHENSIVE_LOOP,
+   MCPE_IS_DEFINED_ASCIIZ,
+   MCPE_IS_DEFINED_ASCIIZ_LOOP,
+   MCPE_FIND_CHUNK_FOR_OLD,
+   MCPE_FIND_CHUNK_FOR_OLD_LOOP,
+   MCPE_SET_ADDRESS_RANGE_PERMS,
+   MCPE_SET_ADDRESS_RANGE_PERMS_SINGLE_SECMAP,
+   MCPE_SET_ADDRESS_RANGE_PERMS_STARTOF_SECMAP,
+   MCPE_SET_ADDRESS_RANGE_PERMS_MULTIPLE_SECMAPS,
+   MCPE_SET_ADDRESS_RANGE_PERMS_DIST_SM1,
+   MCPE_SET_ADDRESS_RANGE_PERMS_DIST_SM2,
+   MCPE_SET_ADDRESS_RANGE_PERMS_DIST_SM1_QUICK,
+   MCPE_SET_ADDRESS_RANGE_PERMS_DIST_SM2_QUICK,
+   MCPE_SET_ADDRESS_RANGE_PERMS_LOOP1A,
+   MCPE_SET_ADDRESS_RANGE_PERMS_LOOP1B,
+   MCPE_SET_ADDRESS_RANGE_PERMS_LOOP1C,
+   MCPE_SET_ADDRESS_RANGE_PERMS_LOOP8A,
+   MCPE_SET_ADDRESS_RANGE_PERMS_LOOP8B,
+   MCPE_SET_ADDRESS_RANGE_PERMS_LOOP64K,
+   MCPE_SET_ADDRESS_RANGE_PERMS_LOOP64K_FREE_DIST_SM,
+   MCPE_NEW_MEM_STACK,
+   MCPE_NEW_MEM_STACK_4,
+   MCPE_NEW_MEM_STACK_8,
+   MCPE_NEW_MEM_STACK_12,
+   MCPE_NEW_MEM_STACK_16,
+   MCPE_NEW_MEM_STACK_32,
+   MCPE_NEW_MEM_STACK_112,
+   MCPE_NEW_MEM_STACK_128,
+   MCPE_NEW_MEM_STACK_144,
+   MCPE_NEW_MEM_STACK_160,
+   MCPE_DIE_MEM_STACK,
+   MCPE_DIE_MEM_STACK_4,
+   MCPE_DIE_MEM_STACK_8,
+   MCPE_DIE_MEM_STACK_12,
+   MCPE_DIE_MEM_STACK_16,
+   MCPE_DIE_MEM_STACK_32,
+   MCPE_DIE_MEM_STACK_112,
+   MCPE_DIE_MEM_STACK_128,
+   MCPE_DIE_MEM_STACK_144,
+   MCPE_DIE_MEM_STACK_160,
+   /* Do not add enumerators past this line. */
+   MCPE_LAST
+};
 
-#  define PROF_EVENT(ev, name)                                \
-   do { tl_assert((ev) >= 0 && (ev) < N_PROF_EVENTS);         \
-        /* crude and inaccurate check to ensure the same */   \
-        /* event isn't being used with > 1 name */            \
-        if (MC_(event_ctr_name)[ev])                         \
-           tl_assert(name == MC_(event_ctr_name)[ev]);       \
-        MC_(event_ctr)[ev]++;                                \
-        MC_(event_ctr_name)[ev] = (name);                    \
+extern ULong MC_(event_ctr)[MCPE_LAST];
+
+#  define PROF_EVENT(ev)                           \
+   do { tl_assert((ev) >= 0 && (ev) < MCPE_LAST);  \
+      MC_(event_ctr)[ev]++;                        \
    } while (False);
 
 #else
 
-#  define PROF_EVENT(ev, name) /* */
+#  define PROF_EVENT(ev)    /* */
 
 #endif   /* MC_PROFILE_MEMORY */
 
@@ -357,10 +460,16 @@ extern UInt MC_(leak_search_gen);
 // maintains the lcp.deltamode given in the last call to detect_memory_leaks
 extern LeakCheckDeltaMode MC_(detect_memory_leaks_last_delta_mode);
 
-// prints the list of blocks corresponding to the given loss_record_nr.
-// Returns True if loss_record_nr identifies a correct loss record from last
-// leak search, returns False otherwise.
-Bool MC_(print_block_list) ( UInt loss_record_nr);
+// prints the list of blocks corresponding to the given loss_record_nr slice
+// (from/to) (up to maximum max_blocks)
+// Returns True if loss_record_nr_from identifies a correct loss record
+// from last leak search, returns False otherwise.
+// Note that loss_record_nr_to can be bigger than the nr of loss records. All
+// loss records after from will then be examined and maybe printed.
+// If heuristics != 0, print only the loss records/blocks found via
+// one of the heuristics in the set.
+Bool MC_(print_block_list) ( UInt loss_record_nr_from, UInt loss_record_nr_to,
+                             UInt max_blocks, UInt heuristics);
 
 // Prints the addresses/registers/... at which a pointer to
 // the given range [address, address+szB[ is found.
@@ -533,7 +642,7 @@ typedef
 #define HiS(h,s) ((s) & H2S(h))
 
 /* Heuristics set to use for the leak search.
-   Default : no heuristic. */
+   Default : all heuristics. */
 extern UInt MC_(clo_leak_check_heuristics);
 
 /* Assume accesses immediately below %esp are due to gcc-2.96 bugs.
@@ -591,6 +700,9 @@ extern Int MC_(clo_mc_level);
 /* Should we show mismatched frees?  Default: YES */
 extern Bool MC_(clo_show_mismatched_frees);
 
+/* Should we use expensive definedness checking for add/sub and compare
+   operations? Default: NO */
+extern Bool MC_(clo_expensive_definedness_checks);
 
 /*------------------------------------------------------------*/
 /*--- Instrumentation                                      ---*/

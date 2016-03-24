@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2005-2013 Apple Inc.
+   Copyright (C) 2005-2015 Apple Inc.
       Greg Parker  gparker@apple.com
 
    This program is free software; you can redistribute it and/or
@@ -33,7 +33,6 @@
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
 #include "pub_core_vkiscnums.h"
-#include "pub_core_libcsetjmp.h"   // to keep _threadstate.h happy
 #include "pub_core_threadstate.h"
 #include "pub_core_aspacemgr.h"
 #include "pub_core_xarray.h"
@@ -92,8 +91,8 @@ static VgSchedReturnCode thread_wrapper(Word /*ThreadId*/ tidW)
    ThreadState* tst = VG_(get_ThreadState)(tid);
 
    VG_(debugLog)(1, "syswrap-darwin", 
-                    "thread_wrapper(tid=%lld): entry\n", 
-                    (ULong)tidW);
+                    "thread_wrapper(tid=%u): entry\n", 
+                    tid);
 
    vg_assert(tst->status == VgTs_Init);
 
@@ -101,8 +100,8 @@ static VgSchedReturnCode thread_wrapper(Word /*ThreadId*/ tidW)
    VG_(acquire_BigLock)(tid, "thread_wrapper");
 
    if (0)
-      VG_(printf)("thread tid %d started: stack = %p\n",
-                  tid, &tid);
+      VG_(printf)("thread tid %u started: stack = %p\n",
+                  tid, (void *)&tid);
 
    /* Make sure error reporting is enabled in the new thread. */
    tst->err_disablement_level = 0;
@@ -123,8 +122,8 @@ static VgSchedReturnCode thread_wrapper(Word /*ThreadId*/ tidW)
    vg_assert(VG_(is_running_thread)(tid));
 
    VG_(debugLog)(1, "syswrap-darwin", 
-                    "thread_wrapper(tid=%lld): done\n", 
-                    (ULong)tidW);
+                    "thread_wrapper(tid=%u): done\n", 
+                    tid);
 
    /* Return to caller, still holding the lock. */
    return ret;
@@ -162,7 +161,7 @@ Addr allocstack ( ThreadId tid )
       }
    }
 
-   VG_(debugLog)( 2, "syswrap-darwin", "stack for tid %d at %p; init_SP=%p\n",
+   VG_(debugLog)( 2, "syswrap-darwin", "stack for tid %u at %p; init_SP=%p\n",
                    tid, 
                    (void*)tst->os_state.valgrind_stack_base, 
                    (void*)tst->os_state.valgrind_stack_init_SP );
@@ -190,8 +189,8 @@ static void run_a_thread_NORETURN ( Word tidW )
    ThreadState*      tst;
 
    VG_(debugLog)(1, "syswrap-darwin", 
-                    "run_a_thread_NORETURN(tid=%lld): pre-thread_wrapper\n",
-                    (ULong)tidW);
+                    "run_a_thread_NORETURN(tid=%u): pre-thread_wrapper\n",
+                    tid);
 
    tst = VG_(get_ThreadState)(tid);
    vg_assert(tst);
@@ -200,8 +199,8 @@ static void run_a_thread_NORETURN ( Word tidW )
    src = thread_wrapper(tid);  
 
    VG_(debugLog)(1, "syswrap-darwin", 
-                    "run_a_thread_NORETURN(tid=%lld): post-thread_wrapper\n",
-                    (ULong)tidW);
+                    "run_a_thread_NORETURN(tid=%u): post-thread_wrapper\n",
+                    tid);
 
    c = VG_(count_living_threads)();
    vg_assert(c >= 1); /* stay sane */
@@ -223,9 +222,9 @@ static void run_a_thread_NORETURN ( Word tidW )
       );
       VG_(debugLog)(
          1, "syswrap-linux", 
-            "run_a_thread_NORETURN(tid=%lld): "
+            "run_a_thread_NORETURN(tid=%u): "
             "WARNING: exiting thread has err_disablement_level = %u\n",
-            (ULong)tidW, tst->err_disablement_level
+            tid, tst->err_disablement_level
       );
    }
    tst->err_disablement_level = 0;
@@ -233,9 +232,9 @@ static void run_a_thread_NORETURN ( Word tidW )
    if (c == 1) {
 
       VG_(debugLog)(1, "syswrap-darwin", 
-                       "run_a_thread_NORETURN(tid=%lld): "
+                       "run_a_thread_NORETURN(tid=%u): "
                           "last one standing\n",
-                          (ULong)tidW);
+                          tid);
 
       /* We are the last one standing.  Keep hold of the lock and
          carry on to show final tool results, then exit the entire system. 
@@ -247,9 +246,9 @@ static void run_a_thread_NORETURN ( Word tidW )
       mach_msg_header_t msg;
 
       VG_(debugLog)(1, "syswrap-darwin", 
-                       "run_a_thread_NORETURN(tid=%lld): "
+                       "run_a_thread_NORETURN(tid=%u): "
                           "not last one standing\n",
-                          (ULong)tidW);
+                          tid);
 
       /* OK, thread is dead, but others still exist.  Just exit. */
 
@@ -647,22 +646,23 @@ void VG_(show_open_ports)(void)
    OpenPort *i;
    
    VG_(message)(Vg_UserMsg, 
-                "MACH PORTS: %d open at exit.", allocated_port_count);
+                "MACH PORTS: %d open at exit.\n", allocated_port_count);
 
    for (i = allocated_ports; i; i = i->next) {
       if (i->name) {
-         VG_(message)(Vg_UserMsg, "Open Mach port 0x%x: %s", i->port, i->name);
+         VG_(message)(Vg_UserMsg, "Open Mach port 0x%x: %s\n", i->port,
+                      i->name);
       } else {
-         VG_(message)(Vg_UserMsg, "Open Mach port 0x%x", i->port);
+         VG_(message)(Vg_UserMsg, "Open Mach port 0x%x\n", i->port);
       }
 
       if (i->where) {
          VG_(pp_ExeContext)(i->where);
-         VG_(message)(Vg_UserMsg, "");
+         VG_(message)(Vg_UserMsg, "\n");
       }
    }
 
-   VG_(message)(Vg_UserMsg, "");
+   VG_(message)(Vg_UserMsg, "\n");
 }
 
 
@@ -997,8 +997,8 @@ Bool ML_(sync_mappings)(const HChar* when, const HChar* where, UWord num)
 
    if (0 || VG_(clo_trace_syscalls)) {
        VG_(debugLog)(0, "syswrap-darwin",
-                     "sync_mappings (%s) (\"%s\", \"%s\", 0x%llx)\n", 
-                     show_CheckHowOften(check), when, where, (ULong)num);
+                     "sync_mappings (%s) (\"%s\", \"%s\", 0x%lx)\n", 
+                     show_CheckHowOften(check), when, where, num);
    }
 
    // 16 is enough for most cases, but small enough that overflow happens
@@ -1101,15 +1101,19 @@ PRE(ioctl)
    switch (ARG2 /* request */) {
    case VKI_TIOCSCTTY:
    case VKI_TIOCEXCL:
+   case VKI_TIOCSBRK:
+   case VKI_TIOCCBRK:
    case VKI_TIOCPTYGRANT:
    case VKI_TIOCPTYUNLK:
    case VKI_DTRACEHIOC_REMOVE: 
-      PRINT("ioctl ( %ld, 0x%lx )",ARG1,ARG2);
+   case VKI_BIOCFLUSH:
+   case VKI_BIOCPROMISC:
+      PRINT("ioctl ( %lu, 0x%lx )", ARG1, ARG2);
       PRE_REG_READ2(long, "ioctl",
                     unsigned int, fd, unsigned int, request);
       return;
    default:
-      PRINT("ioctl ( %ld, 0x%lx, %#lx )",ARG1,ARG2,ARG3);
+      PRINT("ioctl ( %lu, 0x%lx, %#lx )", ARG1, ARG2, ARG3);
       PRE_REG_READ3(long, "ioctl",
                     unsigned int, fd, unsigned int, request, unsigned long, arg);
    }
@@ -1289,6 +1293,71 @@ PRE(ioctl)
    case VKI_FIONCLEX:
        break;
 
+       // net/bpf.h
+   case VKI_BIOCSETF:            /* set BPF filter               */
+      /*
+       * struct bpf_program has a 32-bit count of instructions,
+       * followed by a pointer to an array of those instructions.
+       * In 64-bit mode, there's padding between those two elements.
+       *
+       * So that we don't bogusly complain about the padding bytes,
+       * we just report that we read bf_len and and bf_insns.
+       *
+       * We then make sure that what bf_insns points to is valid.
+       */
+      PRE_MEM_READ( "ioctl(BIOCSETF)",
+                     (Addr)&((struct vki_bpf_program *)ARG3)->vki_bf_len,
+                     sizeof(((struct vki_bpf_program *)ARG3)->vki_bf_len) );
+      PRE_MEM_READ( "ioctl(BIOCSETF)",
+                     (Addr)&((struct vki_bpf_program *)ARG3)->vki_bf_insns,
+                     sizeof(((struct vki_bpf_program *)ARG3)->vki_bf_insns) );
+      if ( ARG3 ) {
+         /* bf_len * sizeof (*bf_insns) */
+         struct vki_bpf_program *bp = (struct vki_bpf_program *)ARG3;
+         if ( bp->bf_insns != NULL )
+           PRE_MEM_READ( "ioctl(BIOCSETF) points to a struct bpf_program whose bf_insns member",
+                          (Addr)(bp->vki_bf_insns),
+                          bp->vki_bf_len * sizeof(*bp->vki_bf_insns) );
+      }
+      break;
+   case VKI_BIOCSETIF:           /* set BPF interface            */
+      PRE_MEM_RASCIIZ( "ioctl(BIOCSETIF)",
+                     (Addr)((struct vki_ifreq *)ARG3)->vki_ifr_name );
+      break;
+   case VKI_BIOCSRTIMEOUT:       /* set BPF timeout              */
+      /*
+       * 64-bit struct timeval starts with a 64-bit "seconds since the
+       * Epoch" value, followed by a 32-bit microseconds value.  The
+       * resulting structure is padded to a multiple of 8 bytes, so
+       * there are 4 padding bytes at the end.
+       *
+       * So that we don't bogusly complain about the padding bytes,
+       * we just report that we read tv_sec and tv_usec.
+       */
+      PRE_MEM_READ( "ioctl(BIOCSRTIMEOUT)",
+                     (Addr)&((struct vki_timeval *)ARG3)->vki_tv_sec,
+                     sizeof(((struct vki_timeval *)ARG3)->vki_tv_sec) );
+      PRE_MEM_READ( "ioctl(BIOCSRTIMEOUT)",
+                     (Addr)&((struct vki_timeval *)ARG3)->vki_tv_usec,
+                     sizeof(((struct vki_timeval *)ARG3)->vki_tv_usec) );
+      break;
+   case VKI_BIOCGDLTLIST:        /* get list of BPF DLTs         */
+      PRE_MEM_READ( "ioctl(BIOCGDLTLIST).bfl_len",
+                     (Addr)&((struct vki_bpf_dltlist *)ARG3)->vki_bfl_list,
+                     sizeof(((struct vki_bpf_dltlist *)ARG3)->vki_bfl_list) );
+      if ( ARG3 ) {
+         /* bfl_len * sizeof (*bfl_list) */
+         struct vki_bpf_dltlist *bdl = (struct vki_bpf_dltlist *)ARG3;
+         if ( bdl->bfl_list != NULL )
+           PRE_MEM_READ( "ioctl(BIOCGDLTLIST).bfl_len",
+                          (Addr)&((struct vki_bpf_dltlist *)ARG3)->vki_bfl_len,
+                          sizeof(((struct vki_bpf_dltlist *)ARG3)->vki_bfl_len) );
+           PRE_MEM_WRITE( "ioctl(BIOCGDLTLIST) points to a struct bpf_dltlist whose bfl_list member",
+                          (Addr)(bdl->vki_bfl_list),
+                          bdl->bfl_len * sizeof(*bdl->vki_bfl_list) );
+      }
+      break;
+
    default: 
       ML_(PRE_unknown_ioctl)(tid, ARG2, ARG3);
       break;
@@ -1409,11 +1478,25 @@ POST(ioctl)
    case VKI_TIOCPTYGNAME:
        POST_MEM_WRITE( ARG3, 128);
        break;
+   case VKI_TIOCSBRK:           /* set break bit                 */
+   case VKI_TIOCCBRK:           /* clear break bit               */
    case VKI_TIOCPTYGRANT:
    case VKI_TIOCPTYUNLK:
        break;
 
+       // bpf.h
+   case VKI_BIOCGDLTLIST:        /* get list of BPF DLTs         */
+      if (RES == 0 && ARG3 ) {
+         /* bfl_len * sizeof (*bfl_list) */
+         struct vki_bpf_dltlist *bdl = (struct vki_bpf_dltlist *)ARG3;
+         if ( bdl->vki_bfl_list != NULL )
+           POST_MEM_WRITE( (Addr)(bdl->vki_bfl_list),
+                           bdl->bfl_len * sizeof(*bdl->vki_bfl_list) );
+      }
+      break;
+
    default:
+      ML_(POST_unknown_ioctl)(tid, RES, ARG2, ARG3);
       break;
    }
 }
@@ -1446,6 +1529,11 @@ static const HChar *name_for_fcntl(UWord cmd) {
 #     if DARWIN_VERS >= DARWIN_10_9
       F(F_ADDFILESIGS);
 #     endif
+#     if DARWIN_VERS >= DARWIN_10_11
+      F(F_ADDFILESIGS_FOR_DYLD_SIM);
+      F(F_BARRIERFSYNC);
+      F(F_ADDFILESIGS_RETURN);
+#     endif
    default:
       return "UNKNOWN";
    }
@@ -1459,7 +1547,7 @@ PRE(fcntl)
    case VKI_F_GETFD:
    case VKI_F_GETFL:
    case VKI_F_GETOWN:
-      PRINT("fcntl ( %ld, %ld )", ARG1,ARG2);
+      PRINT("fcntl ( %lu, %lu )", ARG1,ARG2);
       PRE_REG_READ2(long, "fcntl", unsigned int, fd, unsigned int, cmd);
       break;
 
@@ -1468,7 +1556,7 @@ PRE(fcntl)
    case VKI_F_SETFD:
    case VKI_F_SETFL:
    case VKI_F_SETOWN:
-      PRINT("fcntl[ARG3=='arg'] ( %ld, %ld, %ld )", ARG1,ARG2,ARG3);
+      PRINT("fcntl[ARG3=='arg'] ( %lu, %lu, %lu )", ARG1,ARG2,ARG3);
       PRE_REG_READ3(long, "fcntl",
                     unsigned int, fd, unsigned int, cmd, unsigned long, arg);
       break;
@@ -1477,7 +1565,7 @@ PRE(fcntl)
    case VKI_F_GETLK:
    case VKI_F_SETLK:
    case VKI_F_SETLKW:
-      PRINT("fcntl[ARG3=='lock'] ( %ld, %ld, %#lx )", ARG1,ARG2,ARG3);
+      PRINT("fcntl[ARG3=='lock'] ( %lu, %lu, %#lx )", ARG1,ARG2,ARG3);
       PRE_REG_READ3(long, "fcntl",
                     unsigned int, fd, unsigned int, cmd,
                     struct flock64 *, lock);
@@ -1485,6 +1573,15 @@ PRE(fcntl)
       if (ARG2 == VKI_F_SETLKW) 
          *flags |= SfMayBlock;
       break;
+#  if DARWIN_VERS >= DARWIN_10_10
+   case VKI_F_SETLKWTIMEOUT:
+      PRINT("fcntl[ARG3=='locktimeout'] ( %lu, %lu, %#lx )", ARG1,ARG2,ARG3);
+      PRE_REG_READ3(long, "fcntl",
+                    unsigned int, fd, unsigned int, cmd,
+                    struct flocktimeout *, lock);
+      *flags |= SfMayBlock;
+      break;
+#  endif
 
        // none
    case VKI_F_CHKCLEAN:
@@ -1494,13 +1591,13 @@ PRE(fcntl)
    case VKI_F_FREEZE_FS:
    case VKI_F_THAW_FS:
    case VKI_F_GLOBAL_NOCACHE:
-      PRINT("fcntl ( %ld, %s )", ARG1, name_for_fcntl(ARG1));
+      PRINT("fcntl ( %lu, %s, %lu )", ARG1, name_for_fcntl(ARG1), ARG2);
       PRE_REG_READ2(long, "fcntl", unsigned int, fd, unsigned int, cmd);
       break;
 
        // struct fstore
    case VKI_F_PREALLOCATE:
-      PRINT("fcntl ( %ld, %s, %#lx )", ARG1, name_for_fcntl(ARG2), ARG3);
+      PRINT("fcntl ( %lu, %s, %#lx )", ARG1, name_for_fcntl(ARG2), ARG3);
       PRE_REG_READ3(long, "fcntl",
                     unsigned int, fd, unsigned int, cmd,
                     struct fstore *, fstore);
@@ -1521,7 +1618,7 @@ PRE(fcntl)
 
        // off_t
    case VKI_F_SETSIZE:
-      PRINT("fcntl ( %ld, %s, %#lx )", ARG1, name_for_fcntl(ARG2), ARG3);
+      PRINT("fcntl ( %lu, %s, %#lx )", ARG1, name_for_fcntl(ARG2), ARG3);
       PRE_REG_READ3(long, "fcntl",
                     unsigned int, fd, unsigned int, cmd,
                     vki_off_t *, offset);
@@ -1529,7 +1626,7 @@ PRE(fcntl)
 
        // struct radvisory
    case VKI_F_RDADVISE:
-      PRINT("fcntl ( %ld, %s, %#lx )", ARG1, name_for_fcntl(ARG2), ARG3);
+      PRINT("fcntl ( %lu, %s, %#lx )", ARG1, name_for_fcntl(ARG2), ARG3);
       PRE_REG_READ3(long, "fcntl",
                     unsigned int, fd, unsigned int, cmd,
                     struct vki_radvisory *, radvisory);
@@ -1546,7 +1643,7 @@ PRE(fcntl)
        // struct fbootstraptransfer
    case VKI_F_READBOOTSTRAP:
    case VKI_F_WRITEBOOTSTRAP:
-      PRINT("fcntl ( %ld, %s, %#lx )", ARG1, name_for_fcntl(ARG2), ARG3);
+      PRINT("fcntl ( %lu, %s, %#lx )", ARG1, name_for_fcntl(ARG2), ARG3);
       PRE_REG_READ3(long, "fcntl",
                     unsigned int, fd, unsigned int, cmd,
                     struct fbootstraptransfer *, bootstrap);
@@ -1557,7 +1654,7 @@ PRE(fcntl)
 
        // struct log2phys (out)
    case VKI_F_LOG2PHYS:
-      PRINT("fcntl ( %ld, %s, %#lx )", ARG1, name_for_fcntl(ARG2), ARG3);
+      PRINT("fcntl ( %lu, %s, %#lx )", ARG1, name_for_fcntl(ARG2), ARG3);
       PRE_REG_READ3(long, "fcntl",
                     unsigned int, fd, unsigned int, cmd,
                     struct log2phys *, l2p);
@@ -1567,7 +1664,7 @@ PRE(fcntl)
 
        // char[maxpathlen] (out)
    case VKI_F_GETPATH:
-      PRINT("fcntl ( %ld, %s, %#lx )", ARG1, name_for_fcntl(ARG2), ARG3);
+      PRINT("fcntl ( %lu, %s, %#lx )", ARG1, name_for_fcntl(ARG2), ARG3);
       PRE_REG_READ3(long, "fcntl",
                     unsigned int, fd, unsigned int, cmd,
                     char *, pathbuf);
@@ -1577,8 +1674,8 @@ PRE(fcntl)
 
        // char[maxpathlen] (in)
    case VKI_F_PATHPKG_CHECK:
-      PRINT("fcntl ( %ld, %s, %#lx '%s')", ARG1, name_for_fcntl(ARG2), ARG3,
-          (char *)ARG3);
+      PRINT("fcntl ( %lu, %s, %#lx '%s')", ARG1, name_for_fcntl(ARG2), ARG3,
+            (HChar *)ARG3);
       PRE_REG_READ3(long, "fcntl",
                     unsigned int, fd, unsigned int, cmd,
                     char *, pathbuf);
@@ -1586,7 +1683,7 @@ PRE(fcntl)
       break;
 
    case VKI_F_ADDSIGS: /* Add detached signatures (for code signing) */
-      PRINT("fcntl ( %ld, %s )", ARG1, name_for_fcntl(ARG2));
+      PRINT("fcntl ( %lu, %s )", ARG1, name_for_fcntl(ARG2));
       PRE_REG_READ3(long, "fcntl",
                     unsigned int, fd, unsigned int, cmd,
                     vki_fsignatures_t *, sigs);
@@ -1605,7 +1702,7 @@ PRE(fcntl)
       break;
 
    case VKI_F_ADDFILESIGS: /* Add signature from same file (used by dyld for shared libs) */
-      PRINT("fcntl ( %ld, %s )", ARG1, name_for_fcntl(ARG2));
+      PRINT("fcntl ( %lu, %s, %#lx )", ARG1, name_for_fcntl(ARG2), ARG3);
       PRE_REG_READ3(long, "fcntl",
                     unsigned int, fd, unsigned int, cmd,
                     vki_fsignatures_t *, sigs);
@@ -1619,9 +1716,25 @@ PRE(fcntl)
       }
       break;
 
+#  if DARWIN_VERS >= DARWIN_10_11
+   case VKI_F_ADDFILESIGS_FOR_DYLD_SIM: /* Add signature from same file, only if it is signed
+                                           by Apple used by dyld for simulator */
+      // FIXME: RK
+      break;
+
+   case VKI_F_BARRIERFSYNC: /* fsync + issue barrier to drive */
+      // FIXME: RK
+      break;
+
+   case VKI_F_ADDFILESIGS_RETURN: /* Add signature from same file, return end offset in 
+                                     structure on success */
+      // FIXME: RK
+      break;
+#  endif
+
    default:
-      PRINT("fcntl ( %ld, %ld [??] )", ARG1, ARG2);
-      log_decaying("UNKNOWN fcntl %ld!", ARG2);
+      PRINT("fcntl ( %lu, %lu [??] )", ARG1, ARG2);
+      log_decaying("UNKNOWN fcntl %lu!", ARG2);
       break;
    }
 }
@@ -1649,7 +1762,10 @@ POST(fcntl)
    case VKI_F_GETLK:
    case VKI_F_SETLK:
    case VKI_F_SETLKW:
+#  if DARWIN_VERS >= DARWIN_10_10
+   case VKI_F_SETLKWTIMEOUT:
        break;
+#  endif
 
    case VKI_F_PREALLOCATE:
       {
@@ -1679,7 +1795,7 @@ POST(fcntl)
 
 PRE(futimes)
 {
-   PRINT("futimes ( %ld, %#lx )", ARG1,ARG2);
+   PRINT("futimes ( %ld, %#lx )", SARG1, ARG2);
    PRE_REG_READ2(long, "futimes", int, fd, struct timeval *, tvp);
    if (!ML_(fd_allowed)(ARG1, "futimes", tid, False)) {
       SET_STATUS_Failure( VKI_EBADF );
@@ -1691,14 +1807,14 @@ PRE(futimes)
 
 PRE(semget)
 {
-   PRINT("semget ( %ld, %ld, %ld )",ARG1,ARG2,ARG3);
+   PRINT("semget ( %ld, %ld, %ld )", SARG1, SARG2, SARG3);
    PRE_REG_READ3(long, "semget", vki_key_t, key, int, nsems, int, semflg);
 }
 
 PRE(semop)
 {
    *flags |= SfMayBlock;
-   PRINT("semop ( %ld, %#lx, %lu )",ARG1,ARG2,ARG3);
+   PRINT("semop ( %ld, %#lx, %lu )", SARG1, ARG2, ARG3);
    PRE_REG_READ3(long, "semop",
                  int, semid, struct sembuf *, sops, vki_size_t, nsoops);
    ML_(generic_PRE_sys_semop)(tid, ARG1,ARG2,ARG3);
@@ -1709,23 +1825,23 @@ PRE(semctl)
    switch (ARG3) {
    case VKI_IPC_STAT:
    case VKI_IPC_SET:
-      PRINT("semctl ( %ld, %ld, %ld, %#lx )",ARG1,ARG2,ARG3,ARG4);
+      PRINT("semctl ( %ld, %ld, %ld, %#lx )", SARG1, SARG2, SARG3, ARG4);
       PRE_REG_READ4(long, "semctl",
                     int, semid, int, semnum, int, cmd, struct semid_ds *, arg);
       break;
    case VKI_GETALL:
    case VKI_SETALL:
-      PRINT("semctl ( %ld, %ld, %ld, %#lx )",ARG1,ARG2,ARG3,ARG4);
+      PRINT("semctl ( %ld, %ld, %ld, %#lx )", SARG1, SARG2, SARG3, ARG4);
       PRE_REG_READ4(long, "semctl",
                     int, semid, int, semnum, int, cmd, unsigned short *, arg);
       break;
    case VKI_SETVAL:
-      PRINT("semctl ( %ld, %ld, %ld, %#lx )",ARG1,ARG2,ARG3,ARG4);
+      PRINT("semctl ( %ld, %ld, %ld, %#lx )", SARG1, SARG2, SARG3, ARG4);
       PRE_REG_READ4(long, "semctl",
                     int, semid, int, semnum, int, cmd, int, arg);
       break;
    default:
-      PRINT("semctl ( %ld, %ld, %ld )",ARG1,ARG2,ARG3);
+      PRINT("semctl ( %ld, %ld, %ld )", SARG1, SARG2, SARG3);
       PRE_REG_READ3(long, "semctl",
                     int, semid, int, semnum, int, cmd);
       break;
@@ -1741,14 +1857,14 @@ PRE(sem_open)
 {
    if (ARG2 & VKI_O_CREAT) {
       // 4-arg version
-      PRINT("sem_open ( %#lx(%s), %ld, %ld, %ld )",
-            ARG1,(char*)ARG1,ARG2,ARG3,ARG4);
+      PRINT("sem_open ( %#lx(%s), %ld, %lu, %lu )",
+            ARG1, (HChar*)ARG1, SARG2, ARG3, ARG4);
       PRE_REG_READ4(vki_sem_t *, "sem_open",
                     const char *, name, int, oflag, vki_mode_t, mode,
                     unsigned int, value);
    } else {
       // 2-arg version
-      PRINT("sem_open ( %#lx(%s), %ld )",ARG1,(char*)ARG1,ARG2);
+      PRINT("sem_open ( %#lx(%s), %ld )", ARG1, (HChar*)ARG1, SARG2);
       PRE_REG_READ2(vki_sem_t *, "sem_open",
                     const char *, name, int, oflag);
    }
@@ -1766,7 +1882,7 @@ PRE(sem_close)
 
 PRE(sem_unlink)
 {
-   PRINT("sem_unlink(  %#lx(%s) )", ARG1,(char*)ARG1);
+   PRINT("sem_unlink(  %#lx(%s) )", ARG1, (HChar*)ARG1);
    PRE_REG_READ1(int, "sem_unlink", const char *, name);
    PRE_MEM_RASCIIZ( "sem_unlink(name)", ARG1 );
 }
@@ -1787,7 +1903,7 @@ PRE(sem_destroy)
 
 PRE(sem_init)
 {
-  PRINT("sem_init( %#lx, %ld, %ld )", ARG1, ARG2, ARG3);
+  PRINT("sem_init( %#lx, %ld, %lu )", ARG1, SARG2, ARG3);
   PRE_REG_READ3(int, "sem_init", vki_sem_t *, sem,
                 int, pshared, unsigned int, value);
   PRE_MEM_WRITE("sem_init(sem)", ARG1, sizeof(vki_sem_t));
@@ -1831,7 +1947,7 @@ POST(kqueue)
 
 PRE(fileport_makeport)
 {
-    PRINT("guarded_open_np(fd:%#lx, portnamep:%#lx) FIXME",
+    PRINT("fileport_makeport(fd:%#lx, portnamep:%#lx) FIXME",
       ARG1, ARG2);
 }
 
@@ -1887,7 +2003,7 @@ PRE(disconnectx)
 PRE(kevent)
 {
    PRINT("kevent( %ld, %#lx, %ld, %#lx, %ld, %#lx )", 
-         ARG1, ARG2, ARG3, ARG4, ARG5, ARG6);
+         SARG1, ARG2, ARG3, ARG4, ARG5, ARG6);
    PRE_REG_READ6(int,"kevent", int,kq, 
                  const struct vki_kevent *,changelist, int,nchanges, 
                  struct vki_kevent *,eventlist, int,nevents, 
@@ -1913,7 +2029,7 @@ POST(kevent)
 PRE(kevent64)
 {
    PRINT("kevent64( %ld, %#lx, %ld, %#lx, %ld, %#lx )",
-         ARG1, ARG2, ARG3, ARG4, ARG5, ARG6);
+         SARG1, ARG2, SARG3, ARG4, SARG5, ARG6);
    PRE_REG_READ6(int,"kevent64", int,kq,
                  const struct vki_kevent64 *,changelist, int,nchanges,
                  struct vki_kevent64 *,eventlist, int,nevents,
@@ -1981,8 +2097,8 @@ static const HChar *workqop_name(int op)
 
 PRE(workq_ops)
 {
-   PRINT("workq_ops( %ld(%s), %#lx, %ld )", ARG1, workqop_name(ARG1), ARG2,
-      ARG3);
+   PRINT("workq_ops( %ld(%s), %#lx, %ld )", SARG1, workqop_name(ARG1), ARG2,
+         SARG3);
    PRE_REG_READ3(int,"workq_ops", int,"options", void *,"item", 
                  int,"priority");
 
@@ -2042,7 +2158,7 @@ POST(workq_ops)
 PRE(__mac_syscall)
 {
    PRINT("__mac_syscall( %#lx(%s), %ld, %#lx )",
-         ARG1, (HChar*)ARG1, ARG2, ARG3);
+         ARG1, (HChar*)ARG1, SARG2, ARG3);
    PRE_REG_READ3(int,"__mac_syscall", char *,"policy", 
                  int,"call", void *,"arg");
 
@@ -2058,7 +2174,7 @@ PRE(exit)
    ThreadId     t;
    ThreadState* tst;
 
-   PRINT("darwin exit( %ld )", ARG1);
+   PRINT("darwin exit( %ld )", SARG1);
    PRE_REG_READ1(void, "exit", int, status);
 
    tst = VG_(get_ThreadState)(tid);
@@ -2086,7 +2202,7 @@ PRE(exit)
 
 PRE(sigaction)
 {
-   PRINT("sigaction ( %ld, %#lx, %#lx )", ARG1,ARG2,ARG3);
+   PRINT("sigaction ( %ld, %#lx, %#lx )", SARG1, ARG2, ARG3);
    PRE_REG_READ3(long, "sigaction",
                  int, signum, vki_sigaction_toK_t *, act,
                  vki_sigaction_fromK_t *, oldact);
@@ -2119,18 +2235,52 @@ POST(sigaction)
 
 PRE(__pthread_kill)
 {
-   PRINT("__pthread_kill ( %ld, %ld )", ARG1, ARG2);
+   PRINT("__pthread_kill ( %#lx, %ld )", ARG1, SARG2);
    PRE_REG_READ2(long, "__pthread_kill", vki_pthread_t*, thread, int, sig);
 }
 
 
 PRE(__pthread_sigmask)
 {
-   // GrP fixme
-   // JRS: arguments are identical to sigprocmask 
-   // (how, sigset_t*, sigset_t*).  Perhaps behave identically?
-   log_decaying("UNKNOWN __pthread_sigmask is unsupported.");
-   SET_STATUS_Success( 0 );
+    // arguments are identical to sigprocmask (how, sigset_t*, sigset_t*).
+    UWord arg1;
+    PRINT("__pthread_sigmask ( %ld, %#lx, %#lx )", SARG1, ARG2, ARG3);
+    PRE_REG_READ3(long, "__pthread_sigmask",
+                  int, how, vki_sigset_t *, set, vki_sigset_t *, oldset);
+    if (ARG2 != 0)
+        PRE_MEM_READ( "__pthread_sigmask(set)", ARG2, sizeof(vki_sigset_t));
+    if (ARG3 != 0)
+        PRE_MEM_WRITE( "__pthread_sigmask(oldset)", ARG3, sizeof(vki_sigset_t));
+    
+    /* Massage ARG1 ('how').  If ARG2 (the new mask) is NULL then the
+     value of 'how' is irrelevant, and it appears that Darwin's libc
+     passes zero, which is not equal to any of
+     SIG_{BLOCK,UNBLOCK,SETMASK}.  This causes
+     VG_(do_sys_sigprocmask) to complain, since it checks the 'how'
+     value independently of the other args.  Solution: in this case,
+     simply pass a valid (but irrelevant) value for 'how'. */
+    /* Also, in this case the new set is passed to the kernel by
+     reference, not value, as in some other sigmask related Darwin
+     syscalls. */
+    arg1 = ARG1;
+    if (ARG2 == 0  /* the new-set is NULL */
+        && ARG1 != VKI_SIG_BLOCK
+        && ARG1 != VKI_SIG_UNBLOCK && ARG1 != VKI_SIG_SETMASK) {
+        arg1 = VKI_SIG_SETMASK;
+    }
+    SET_STATUS_from_SysRes(
+                           VG_(do_sys_sigprocmask) ( tid, arg1, (vki_sigset_t*)ARG2,
+                                                    (vki_sigset_t*)ARG3 )
+                           );
+    
+    if (SUCCESS)
+        *flags |= SfPollAfter;
+}
+POST(__pthread_sigmask)
+{
+    vg_assert(SUCCESS);
+    if (RES == 0 && ARG3 != 0)
+        POST_MEM_WRITE( ARG3, sizeof(vki_sigset_t));
 }
 
 
@@ -2139,7 +2289,7 @@ PRE(__pthread_canceled)
    *flags |= SfMayBlock; /* might kill this thread??? */
    /* I don't think so -- I think it just changes the cancellation
       state.  But taking no chances. */
-   PRINT("__pthread_canceled ( %ld )", ARG1);
+   PRINT("__pthread_canceled ( %#lx )", ARG1);
    PRE_REG_READ1(long, "__pthread_canceled", void*, arg1);
 }
 
@@ -2156,7 +2306,7 @@ PRE(__pthread_markcancel)
 PRE(__disable_threadsignal)
 {
    vki_sigset_t set;
-   PRINT("__disable_threadsignal(%ld, %ld, %ld)", ARG1, ARG2, ARG3);
+   PRINT("__disable_threadsignal(%ld, %ld, %ld)", SARG1, SARG2, SARG3);
    /* I don't think this really looks at its arguments.  So don't
       bother to check them. */
 
@@ -2173,10 +2323,26 @@ PRE(__disable_threadsignal)
 }
 
 
+PRE(__pthread_chdir)
+{
+    PRINT("__pthread_chdir ( %#lx(%s) )", ARG1, (HChar*)ARG1);
+    PRE_REG_READ1(long, "__pthread_chdir", const char *, path);
+    PRE_MEM_RASCIIZ( "__pthread_chdir(path)", ARG1 );
+}
+
+
+
+PRE(__pthread_fchdir)
+{
+    PRINT("__pthread_fchdir ( %lu )", ARG1);
+    PRE_REG_READ1(long, "__pthread_fchdir", unsigned int, fd);
+}
+
+
 PRE(kdebug_trace)
 {
    PRINT("kdebug_trace(%ld, %ld, %ld, %ld, %ld, %ld)", 
-         ARG1, ARG2, ARG3, ARG4, ARG5, ARG6);
+         SARG1, SARG2, SARG3, SARG4, SARG5, SARG6);
    /*
      Don't check anything - some clients pass fewer arguments.
    PRE_REG_READ6(long, "kdebug_trace", 
@@ -2188,20 +2354,20 @@ PRE(kdebug_trace)
 
 PRE(seteuid)
 {
-    PRINT("seteuid(%ld)", ARG1);
+    PRINT("seteuid(%lu)", ARG1);
     PRE_REG_READ1(long, "seteuid", vki_uid_t, "uid");
 }
 
 
 PRE(setegid)
 {
-    PRINT("setegid(%ld)", ARG1);
+    PRINT("setegid(%lu)", ARG1);
     PRE_REG_READ1(long, "setegid", vki_uid_t, "uid");
 }
 
 PRE(settid)
 {
-    PRINT("settid(%ld, %ld)", ARG1, ARG2);
+    PRINT("settid(%lu, %lu)", ARG1, ARG2);
     PRE_REG_READ2(long, "settid", vki_uid_t, "uid", vki_gid_t, "gid");
 }
 
@@ -2259,7 +2425,7 @@ PRE(modwatch)
 PRE(getxattr)
 {
    PRINT("getxattr(%#lx(%s), %#lx(%s), %#lx, %lu, %lu, %ld)",
-         ARG1, (char *)ARG1, ARG2, (char *)ARG2, ARG3, ARG4, ARG5, ARG6);
+         ARG1, (HChar *)ARG1, ARG2, (HChar *)ARG2, ARG3, ARG4, ARG5, SARG6);
 
    PRE_REG_READ6(vki_ssize_t, "getxattr",
                 const char *, path, char *, name, void *, value,
@@ -2280,7 +2446,7 @@ POST(getxattr)
 PRE(fgetxattr)
 {
    PRINT("fgetxattr(%ld, %#lx(%s), %#lx, %lu, %lu, %ld)",
-      ARG1, ARG2, (char *)ARG2, ARG3, ARG4, ARG5, ARG6);
+         SARG1, ARG2, (HChar *)ARG2, ARG3, ARG4, ARG5, SARG6);
 
    PRE_REG_READ6(vki_ssize_t, "fgetxattr",
                  int, fd, char *, name, void *, value,
@@ -2298,7 +2464,7 @@ POST(fgetxattr)
 PRE(setxattr)
 {
    PRINT("setxattr ( %#lx(%s), %#lx(%s), %#lx, %lu, %lu, %ld )", 
-         ARG1, (char *)ARG1, ARG2, (char*)ARG2, ARG3, ARG4, ARG5, ARG6 );
+         ARG1, (HChar *)ARG1, ARG2, (HChar*)ARG2, ARG3, ARG4, ARG5, SARG6 );
    PRE_REG_READ6(int, "setxattr", 
                  const char *,"path", char *,"name", void *,"value", 
                  vki_size_t,"size", uint32_t,"position", int,"options" );
@@ -2312,7 +2478,7 @@ PRE(setxattr)
 PRE(fsetxattr)
 {
    PRINT( "fsetxattr ( %ld, %#lx(%s), %#lx, %lu, %lu, %ld )", 
-          ARG1, ARG2, (char*)ARG2, ARG3, ARG4, ARG5, ARG6 );
+          SARG1, ARG2, (HChar*)ARG2, ARG3, ARG4, ARG5, SARG6 );
    PRE_REG_READ6(int, "fsetxattr", 
                  int,"fd", char *,"name", void *,"value", 
                  vki_size_t,"size", uint32_t,"position", int,"options" );
@@ -2325,7 +2491,7 @@ PRE(fsetxattr)
 PRE(removexattr)
 {
    PRINT( "removexattr ( %#lx(%s), %#lx(%s), %ld )",
-          ARG1, (HChar*)ARG1, ARG2, (HChar*)ARG2, ARG3 );
+          ARG1, (HChar*)ARG1, ARG2, (HChar*)ARG2, SARG3 );
    PRE_REG_READ3(int, "removexattr",
                  const char*, "path", char*, "attrname", int, "options");
    PRE_MEM_RASCIIZ( "removexattr(path)", ARG1 );
@@ -2336,7 +2502,7 @@ PRE(removexattr)
 PRE(fremovexattr)
 {
    PRINT( "fremovexattr ( %ld, %#lx(%s), %ld )",
-          ARG1, ARG2, (HChar*)ARG2, ARG3 );
+          SARG1, ARG2, (HChar*)ARG2, SARG3 );
    PRE_REG_READ3(int, "fremovexattr",
                  int, "fd", char*, "attrname", int, "options");
    PRE_MEM_RASCIIZ( "removexattr(attrname)", ARG2 );
@@ -2346,7 +2512,7 @@ PRE(fremovexattr)
 PRE(listxattr)
 {
    PRINT( "listxattr ( %#lx(%s), %#lx, %lu, %ld )", 
-          ARG1, (char *)ARG1, ARG2, ARG3, ARG4 );
+          ARG1, (HChar *)ARG1, ARG2, ARG3, SARG4 );
    PRE_REG_READ4 (long, "listxattr", 
                  const char *,"path", char *,"namebuf", 
                  vki_size_t,"size", int,"options" );
@@ -2366,7 +2532,7 @@ POST(listxattr)
 PRE(flistxattr)
 {
    PRINT( "flistxattr ( %ld, %#lx, %lu, %ld )", 
-          ARG1, ARG2, ARG3, ARG4 );
+          SARG1, ARG2, ARG3, SARG4 );
    PRE_REG_READ4 (long, "flistxattr", 
                   int, "fd", char *,"namebuf", 
                  vki_size_t,"size", int,"options" );
@@ -2384,7 +2550,7 @@ POST(flistxattr)
 PRE(shmat)
 {
    UWord arg2tmp;
-   PRINT("shmat ( %ld, %#lx, %ld )",ARG1,ARG2,ARG3);
+   PRINT("shmat ( %ld, %#lx, %ld )", SARG1, ARG2, SARG3);
    PRE_REG_READ3(long, "shmat",
                  int, shmid, const void *, shmaddr, int, shmflg);
    arg2tmp = ML_(generic_PRE_sys_shmat)(tid, ARG1,ARG2,ARG3);
@@ -2400,7 +2566,7 @@ POST(shmat)
 
 PRE(shmctl)
 {
-   PRINT("shmctl ( %ld, %ld, %#lx )",ARG1,ARG2,ARG3);
+   PRINT("shmctl ( %ld, %ld, %#lx )", SARG1, SARG2, ARG3);
    PRE_REG_READ3(long, "shmctl",
                  int, shmid, int, cmd, struct vki_shmid_ds *, buf);
    ML_(generic_PRE_sys_shmctl)(tid, ARG1,ARG2,ARG3);
@@ -2424,13 +2590,13 @@ POST(shmdt)
 
 PRE(shmget)
 {
-   PRINT("shmget ( %ld, %ld, %ld )",ARG1,ARG2,ARG3);
+   PRINT("shmget ( %ld, %lu, %ld )", SARG1, ARG2, SARG3);
    PRE_REG_READ3(long, "shmget", vki_key_t, key, vki_size_t, size, int, shmflg);
 }
 
 PRE(shm_open)
 {
-   PRINT("shm_open(%#lx(%s), %ld, %ld)", ARG1, (char *)ARG1, ARG2, ARG3);
+   PRINT("shm_open(%#lx(%s), %ld, %lu)", ARG1, (HChar *)ARG1, SARG2, ARG3);
    PRE_REG_READ3(long, "shm_open",
                  const char *,"name", int,"flags", vki_mode_t,"mode");
 
@@ -2446,14 +2612,14 @@ POST(shm_open)
       SET_STATUS_Failure( VKI_EMFILE );
    } else {
       if (VG_(clo_track_fds))
-         ML_(record_fd_open_with_given_name)(tid, RES, (char*)ARG1);
+         ML_(record_fd_open_with_given_name)(tid, RES, (HChar*)ARG1);
    }
 }
 
 PRE(shm_unlink)
 {
    *flags |= SfMayBlock;
-   PRINT("shm_unlink ( %#lx(%s) )", ARG1,(char*)ARG1);
+   PRINT("shm_unlink ( %#lx(%s) )", ARG1, (HChar*)ARG1);
    PRE_REG_READ1(long, "shm_unlink", const char *, pathname);
    PRE_MEM_RASCIIZ( "shm_unlink(pathname)", ARG1 );
 }
@@ -2469,7 +2635,7 @@ POST(shm_unlink)
 PRE(stat_extended)
 {
    PRINT("stat_extended( %#lx(%s), %#lx, %#lx, %#lx )",
-      ARG1, (char *)ARG1, ARG2, ARG3, ARG4);
+         ARG1, (HChar *)ARG1, ARG2, ARG3, ARG4);
    PRE_REG_READ4(int, "stat_extended", char *, file_name, struct stat *, buf, 
                  void *, fsacl, vki_size_t *, fsacl_size);
    PRE_MEM_RASCIIZ( "stat_extended(file_name)",  ARG1 );
@@ -2490,7 +2656,7 @@ POST(stat_extended)
 PRE(lstat_extended)
 {
    PRINT("lstat_extended( %#lx(%s), %#lx, %#lx, %#lx )",
-      ARG1, (char *)ARG1, ARG2, ARG3, ARG4);
+         ARG1, (HChar *)ARG1, ARG2, ARG3, ARG4);
    PRE_REG_READ4(int, "lstat_extended", char *, file_name, struct stat *, buf, 
                  void *, fsacl, vki_size_t *, fsacl_size);
    PRE_MEM_RASCIIZ( "lstat_extended(file_name)",  ARG1 );
@@ -2511,7 +2677,7 @@ POST(lstat_extended)
 PRE(fstat_extended)
 {
    PRINT("fstat_extended( %ld, %#lx, %#lx, %#lx )",
-      ARG1, ARG2, ARG3, ARG4);
+         SARG1, ARG2, ARG3, ARG4);
    PRE_REG_READ4(int, "fstat_extended", int, fd, struct stat *, buf, 
                  void *, fsacl, vki_size_t *, fsacl_size);
    PRE_MEM_WRITE(   "fstat_extended(buf)",        ARG2, sizeof(struct vki_stat) );
@@ -2531,7 +2697,7 @@ POST(fstat_extended)
 PRE(stat64_extended)
 {
    PRINT("stat64_extended( %#lx(%s), %#lx, %#lx, %#lx )",
-      ARG1, (char *)ARG1, ARG2, ARG3, ARG4);
+         ARG1, (HChar *)ARG1, ARG2, ARG3, ARG4);
    PRE_REG_READ4(int, "stat64_extended", char *, file_name, struct stat64 *, buf, 
                  void *, fsacl, vki_size_t *, fsacl_size);
    PRE_MEM_RASCIIZ( "stat64_extended(file_name)",  ARG1 );
@@ -2552,7 +2718,7 @@ POST(stat64_extended)
 PRE(lstat64_extended)
 {
    PRINT("lstat64_extended( %#lx(%s), %#lx, %#lx, %#lx )",
-      ARG1, (char *)ARG1, ARG2, ARG3, ARG4);
+         ARG1, (HChar *)ARG1, ARG2, ARG3, ARG4);
    PRE_REG_READ4(int, "lstat64_extended", char *, file_name, struct stat64 *, buf, 
                  void *, fsacl, vki_size_t *, fsacl_size);
    PRE_MEM_RASCIIZ( "lstat64_extended(file_name)",  ARG1 );
@@ -2573,7 +2739,7 @@ POST(lstat64_extended)
 PRE(fstat64_extended)
 {
    PRINT("fstat64_extended( %ld, %#lx, %#lx, %#lx )",
-      ARG1, ARG2, ARG3, ARG4);
+         SARG1, ARG2, ARG3, ARG4);
    PRE_REG_READ4(int, "fstat64_extended", int, fd, struct stat64 *, buf, 
                  void *, fsacl, vki_size_t *, fsacl_size);
    PRE_MEM_WRITE(   "fstat64_extended(buf)",        ARG2, sizeof(struct vki_stat64) );
@@ -2594,7 +2760,7 @@ PRE(fchmod_extended)
 {
    /* DDD: Note: this is not really correct.  Handling of
       chmod_extended is broken in the same way. */
-   PRINT("fchmod_extended ( %ld, %ld, %ld, %ld, %#lx )",
+   PRINT("fchmod_extended ( %lu, %lu, %lu, %lu, %#lx )",
          ARG1, ARG2, ARG3, ARG4, ARG5);
    PRE_REG_READ5(long, "fchmod_extended", 
                  unsigned int, fildes, 
@@ -2637,9 +2803,9 @@ PRE(open_extended)
 {
    /* DDD: Note: this is not really correct.  Handling of
       {,f}chmod_extended is broken in the same way. */
-   PRINT("open_extended ( %#lx(%s), 0x%lx, %ld, %ld, %ld, %#lx )",
+   PRINT("open_extended ( %#lx(%s), %ld, %lu, %lu, %lu, %#lx )",
          ARG1, ARG1 ? (HChar*)ARG1 : "(null)",
-	 ARG2, ARG3, ARG4, ARG5, ARG6);
+	 SARG2, ARG3, ARG4, ARG5, ARG6);
    PRE_REG_READ6(long, "open_extended", 
                  char*, path,
                  int,   flags,
@@ -2682,7 +2848,7 @@ PRE(open_extended)
 PRE(access_extended)
 {
    PRINT("access_extended( %#lx(%s), %lu, %#lx, %lu )",
-      ARG1, (char *)ARG1, ARG2, ARG3, ARG4);
+         ARG1, (HChar *)ARG1, ARG2, ARG3, ARG4);
    // XXX: the accessx_descriptor struct contains padding, so this can cause
    // unnecessary undefined value errors.  But you arguably shouldn't be
    // passing undefined values to the kernel anyway...
@@ -2742,7 +2908,7 @@ POST(access_extended)
 
 PRE(chflags)
 {
-   PRINT("chflags ( %#lx(%s), %lu )", ARG1, (char *)ARG1, ARG2);
+   PRINT("chflags ( %#lx(%s), %lu )", ARG1, (HChar *)ARG1, ARG2);
    PRE_REG_READ2(int, "chflags", const char *,path, unsigned int,flags);
    PRE_MEM_RASCIIZ("chflags(path)", ARG1);
 
@@ -2751,7 +2917,7 @@ PRE(chflags)
 
 PRE(fchflags)
 {
-   PRINT("fchflags ( %ld, %lu )", ARG1, ARG2);
+   PRINT("fchflags ( %ld, %lu )", SARG1, ARG2);
    PRE_REG_READ2(int, "fchflags", int,fd, unsigned int,flags);
 
    // GrP fixme sanity-check flags value?
@@ -2759,7 +2925,7 @@ PRE(fchflags)
 
 PRE(stat64)
 {
-   PRINT("stat64 ( %#lx(%s), %#lx )", ARG1, (char *)ARG1, ARG2);
+   PRINT("stat64 ( %#lx(%s), %#lx )", ARG1, (HChar *)ARG1, ARG2);
    PRE_REG_READ2(long, "stat", const char *,path, struct stat64 *,buf);
    PRE_MEM_RASCIIZ("stat64(path)", ARG1);
    PRE_MEM_WRITE( "stat64(buf)", ARG2, sizeof(struct vki_stat64) );
@@ -2771,7 +2937,7 @@ POST(stat64)
 
 PRE(lstat64)
 {
-   PRINT("lstat64 ( %#lx(%s), %#lx )", ARG1, (char *)ARG1, ARG2);
+   PRINT("lstat64 ( %#lx(%s), %#lx )", ARG1, (HChar *)ARG1, ARG2);
    PRE_REG_READ2(long, "stat", const char *,path, struct stat64 *,buf);
    PRE_MEM_RASCIIZ("lstat64(path)", ARG1);
    PRE_MEM_WRITE( "lstat64(buf)", ARG2, sizeof(struct vki_stat64) );
@@ -2783,7 +2949,7 @@ POST(lstat64)
 
 PRE(fstat64)
 {
-   PRINT("fstat64 ( %ld, %#lx )", ARG1,ARG2);
+   PRINT("fstat64 ( %lu, %#lx )", ARG1,ARG2);
    PRE_REG_READ2(long, "fstat", unsigned int, fd, struct stat64 *, buf);
    PRE_MEM_WRITE( "fstat64(buf)", ARG2, sizeof(struct vki_stat64) );
 }
@@ -2794,7 +2960,7 @@ POST(fstat64)
 
 PRE(getfsstat)
 {
-   PRINT("getfsstat(%#lx, %ld, %ld)", ARG1, ARG2, ARG3);
+   PRINT("getfsstat(%#lx, %ld, %ld)", ARG1, SARG2, SARG3);
    PRE_REG_READ3(int, "getfsstat",
                  struct vki_statfs *, buf, int, bufsize, int, flags);
    if (ARG1) {
@@ -2812,7 +2978,7 @@ POST(getfsstat)
 
 PRE(getfsstat64)
 {
-   PRINT("getfsstat64(%#lx, %ld, %ld)", ARG1, ARG2, ARG3);
+   PRINT("getfsstat64(%#lx, %ld, %ld)", ARG1, SARG2, SARG3);
    PRE_REG_READ3(int, "getfsstat64",
                  struct vki_statfs64 *, buf, int, bufsize, int, flags);
    if (ARG1) {
@@ -2835,7 +3001,7 @@ PRE(mount)
    // by 'data'.
    *flags |= SfMayBlock;
    PRINT("sys_mount( %#lx(%s), %#lx(%s), %#lx, %#lx )",
-         ARG1,(char*)ARG1, ARG2,(char*)ARG2, ARG3, ARG4);
+         ARG1, (HChar*)ARG1, ARG2, (HChar*)ARG2, ARG3, ARG4);
    PRE_REG_READ4(long, "mount",
                  const char *, type, const char *, dir,
                  int, flags, void *, data);
@@ -3025,7 +3191,7 @@ static void set1attr(ThreadId tid, void *attrData, SizeT attrDataSize)
 PRE(getattrlist)
 {
    PRINT("getattrlist(%#lx(%s), %#lx, %#lx, %lu, %lu)", 
-         ARG1, (char *)ARG1, ARG2, ARG3, ARG4, ARG5);
+         ARG1, (HChar *)ARG1, ARG2, ARG3, ARG4, ARG5);
    PRE_REG_READ5(int, "getattrlist", 
                  const char *,path, struct vki_attrlist *,attrList, 
                  void *,attrBuf, vki_size_t,attrBufSize, unsigned int,options);
@@ -3053,7 +3219,7 @@ POST(getattrlist)
 PRE(setattrlist)
 {
    PRINT("setattrlist(%#lx(%s), %#lx, %#lx, %lu, %lu)", 
-         ARG1, (char *)ARG1, ARG2, ARG3, ARG4, ARG5);
+         ARG1, (HChar *)ARG1, ARG2, ARG3, ARG4, ARG5);
    PRE_REG_READ5(int, "setattrlist", 
                  const char *,path, struct vki_attrlist *,attrList, 
                  void *,attrBuf, vki_size_t,attrBufSize, unsigned int,options);
@@ -3065,8 +3231,8 @@ PRE(setattrlist)
 
 PRE(getdirentriesattr)
 {
-   PRINT("getdirentriesattr(%ld, %#lx, %#lx, %ld, %#lx, %#lx, %#lx, %ld)", 
-         ARG1, ARG2, ARG3, ARG4, ARG5, ARG6, ARG7, ARG8);
+   PRINT("getdirentriesattr(%ld, %#lx, %#lx, %lu, %#lx, %#lx, %#lx, %lu)", 
+         SARG1, ARG2, ARG3, ARG4, ARG5, ARG6, ARG7, ARG8);
    PRE_REG_READ8(int, "getdirentriesattr", 
                  int,fd, struct vki_attrlist *,attrList, 
                  void *,attrBuf, size_t,attrBufSize, 
@@ -3105,51 +3271,10 @@ POST(getdirentriesattr)
          count, (Addr)p-(Addr)ARG3, ARG4);
 }
 
-
-PRE(fsgetpath)
-{
-#if VG_WORDSIZE == 4
-   PRINT("fsgetpath(%#lx, %ld, %#lx {%u,%u}, %llu)", 
-         ARG1, ARG2, ARG3,
-         ((unsigned int *)ARG3)[0], ((unsigned int *)ARG3)[1],
-         LOHI64(ARG4, ARG5));
-   PRE_REG_READ5(ssize_t, "fsgetpath", 
-                 void*,"buf", size_t,"bufsize", 
-                 fsid_t *,"fsid",
-                 vki_uint32_t, "objid_low32", vki_uint32_t, "objid_high32");
-#else
-   PRINT("fsgetpath(%#lx, %ld, %#lx {%u,%u}, %lu)", 
-         ARG1, ARG2, ARG3,
-         ((unsigned int *)ARG3)[0],
-         ((unsigned int *)ARG3)[1], ARG4);
-   PRE_REG_READ4(ssize_t, "fsgetpath", 
-                 void*,"buf", size_t,"bufsize", 
-                 fsid_t *,"fsid", uint64_t,"objid");
-#endif
-   PRE_MEM_READ("fsgetpath(fsid)", ARG3, sizeof(fsid_t));
-   PRE_MEM_WRITE("fsgetpath(buf)", ARG1, ARG2);
-}
-
-POST(fsgetpath)
-{
-   POST_MEM_WRITE(ARG1, RES);
-}
-
-PRE(audit_session_self)
-{
-  PRINT("audit_session_self()");
-}
-
-POST(audit_session_self)
-{
-  record_named_port(tid, RES, MACH_PORT_RIGHT_SEND, "audit-session-%p");
-  PRINT("audit-session %#lx", RES);
-}
-
 PRE(exchangedata)
 {
    PRINT("exchangedata(%#lx(%s), %#lx(%s), %lu)",
-         ARG1, (char*)ARG1, ARG2, (char*)ARG2, ARG3);
+         ARG1, (HChar*)ARG1, ARG2, (HChar*)ARG2, ARG3);
    PRE_REG_READ3(int, "exchangedata", 
                  char *, path1, char *, path2, unsigned long, options);
    PRE_MEM_RASCIIZ( "exchangedata(path1)", ARG1 );
@@ -3158,8 +3283,8 @@ PRE(exchangedata)
 
 PRE(fsctl)
 {
-   PRINT("fsctl ( %#lx(%s), %ld, %#lx, %ld )",
-      ARG1, (char *)ARG1, ARG2, ARG3, ARG4);
+   PRINT("fsctl ( %#lx(%s), %lu, %#lx, %lu )",
+         ARG1, (HChar *)ARG1, ARG2, ARG3, ARG4);
    PRE_REG_READ4( long, "fsctl", 
                   char *,"path", unsigned int,"request", 
                   void *,"data", unsigned int,"options");
@@ -3217,7 +3342,7 @@ POST(fsctl)
 
 PRE(initgroups)
 {
-    PRINT("initgroups(%s, %#lx, %lu)", (char *)ARG1, ARG2, ARG3);
+    PRINT("initgroups(%s, %#lx, %lu)", (HChar *)ARG1, ARG2, ARG3);
     PRE_REG_READ3(long, "initgroups",
         int, setlen, vki_gid_t *, gidset, vki_uid_t, gmuid);
     PRE_MEM_READ("gidset", ARG2, ARG1 * sizeof(vki_gid_t));
@@ -3385,7 +3510,7 @@ PRE(posix_spawn)
    } else {
       envp = VG_(env_clone)( (HChar**)ARG5 );
       vg_assert(envp);
-      VG_(env_remove_valgrind_env_stuff)( envp );
+      VG_(env_remove_valgrind_env_stuff)( envp, /* ro_strings */ False, NULL);
    }
 
    if (trace_this_child) {
@@ -3475,7 +3600,7 @@ POST(posix_spawn)
 
 PRE(socket)
 {
-   PRINT("socket ( %ld, %ld, %ld )",ARG1,ARG2,ARG3);
+   PRINT("socket ( %ld, %ld, %ld )", SARG1, SARG2, SARG3);
    PRE_REG_READ3(long, "socket", int, domain, int, type, int, protocol);
 }
 
@@ -3491,7 +3616,7 @@ POST(socket)
 PRE(setsockopt)
 {
    PRINT("setsockopt ( %ld, %ld, %ld, %#lx, %ld )",
-      ARG1,ARG2,ARG3,ARG4,ARG5);
+          SARG1, SARG2, SARG3, ARG4, SARG5);
    PRE_REG_READ5(long, "setsockopt",
                  int, s, int, level, int, optname,
                  const void *, optval, vki_socklen_t, optlen);
@@ -3504,7 +3629,7 @@ PRE(getsockopt)
    Addr optval_p = ARG4;
    Addr optlen_p = ARG5;
    PRINT("getsockopt ( %ld, %ld, %ld, %#lx, %#lx )",
-      ARG1,ARG2,ARG3,ARG4,ARG5);
+          SARG1, SARG2, SARG3, ARG4, ARG5);
    PRE_REG_READ5(long, "getsockopt",
                  int, s, int, level, int, optname,
                  void *, optval, vki_socklen_t *, optlen);
@@ -3537,7 +3662,7 @@ POST(getsockopt)
 PRE(connect)
 {
    *flags |= SfMayBlock;
-   PRINT("connect ( %ld, %#lx, %ld )",ARG1,ARG2,ARG3);
+   PRINT("connect ( %ld, %#lx, %ld )", SARG1, ARG2, SARG3);
    PRE_REG_READ3(long, "connect",
                  int, sockfd, struct sockaddr *, serv_addr, int, addrlen);
    ML_(generic_PRE_sys_connect)(tid, ARG1,ARG2,ARG3);
@@ -3547,9 +3672,9 @@ PRE(connect)
 PRE(accept)
 {
    *flags |= SfMayBlock;
-   PRINT("accept ( %ld, %#lx, %ld )",ARG1,ARG2,ARG3);
+   PRINT("accept ( %ld, %#lx, %#lx )", SARG1, ARG2, SARG3);
    PRE_REG_READ3(long, "accept",
-                 int, s, struct sockaddr *, addr, int, *addrlen);
+                 int, s, struct sockaddr *, addr, int *, addrlen);
    ML_(generic_PRE_sys_accept)(tid, ARG1,ARG2,ARG3);
 }
 
@@ -3562,12 +3687,31 @@ POST(accept)
    SET_STATUS_from_SysRes(r);
 }
 
+PRE(mkfifo)
+{
+   *flags |= SfMayBlock;
+   PRINT("mkfifo ( %#lx(%s), %lx )", ARG1, (HChar *)ARG1, ARG2);
+   PRE_REG_READ2(long, "mkfifo", const char *, path, vki_mode_t, mode);
+   PRE_MEM_RASCIIZ( "mkfifo(path)", ARG1 );
+}
+
+POST(mkfifo)
+{
+   vg_assert(SUCCESS);
+   if (!ML_(fd_allowed)(RES, "mkfifo", tid, True)) {
+      VG_(close)(RES);
+      SET_STATUS_Failure( VKI_EMFILE );
+   } else {
+      if (VG_(clo_track_fds))
+         ML_(record_fd_open_with_given_name)(tid, RES, (HChar*)ARG1);
+   }
+}
 
 PRE(sendto)
 {
    *flags |= SfMayBlock;
    PRINT("sendto ( %ld, %s, %ld, %lu, %#lx, %ld )",
-      ARG1,(char *)ARG2,ARG3,ARG4,ARG5,ARG6);
+         SARG1, (HChar *)ARG2, SARG3, ARG4, ARG5, SARG6);
    PRE_REG_READ6(long, "sendto",
                  int, s, const void *, msg, int, len, 
                  unsigned int, flags, 
@@ -3579,7 +3723,7 @@ PRE(sendfile)
 {
 #if VG_WORDSIZE == 4
    PRINT("sendfile(%ld, %ld, %llu, %#lx, %#lx, %ld)",
-         ARG1, ARG2, LOHI64(ARG3, ARG4), ARG5, ARG6, ARG7);
+         SARG1, SARG2, LOHI64(ARG3, ARG4), ARG5, ARG6, SARG7);
 
    PRE_REG_READ7(long, "sendfile",
       int, fromfd, int, tofd,
@@ -3588,8 +3732,8 @@ PRE(sendfile)
    PRE_MEM_WRITE("sendfile(nwritten)", ARG5, sizeof(vki_uint64_t));
    if (ARG6) PRE_MEM_WRITE("sendfile(sf_header)", ARG6, sizeof(struct sf_hdtr));
 #else
-   PRINT("sendfile(%ld, %ld, %ld, %#lx, %#lx, %ld)",
-      ARG1, ARG2, ARG3, ARG4, ARG5, ARG6);
+   PRINT("sendfile(%ld, %ld, %lu, %#lx, %#lx, %ld)",
+         SARG1, SARG2, ARG3, ARG4, ARG5, SARG6);
 
    PRE_REG_READ6(long, "sendfile",
       int, fromfd, int, tofd,
@@ -3616,7 +3760,7 @@ PRE(recvfrom)
 {
    *flags |= SfMayBlock;
    PRINT("recvfrom ( %ld, %#lx, %ld, %lu, %#lx, %#lx )",
-      ARG1,ARG2,ARG3,ARG4,ARG5,ARG6);
+          SARG1, ARG2, SARG3, ARG4, ARG5, ARG6);
    PRE_REG_READ6(long, "recvfrom",
                  int, s, void *, buf, int, len, unsigned int, flags,
                  struct sockaddr *, from, int *, fromlen);
@@ -3634,7 +3778,7 @@ POST(recvfrom)
 PRE(sendmsg)
 {
    *flags |= SfMayBlock;
-   PRINT("sendmsg ( %ld, %#lx, %ld )",ARG1,ARG2,ARG3);
+   PRINT("sendmsg ( %ld, %#lx, %ld )", SARG1, ARG2, SARG3);
    PRE_REG_READ3(long, "sendmsg",
                  int, s, const struct msghdr *, msg, int, flags);
    ML_(generic_PRE_sys_sendmsg)(tid, "msg", (struct vki_msghdr *)ARG2);
@@ -3644,7 +3788,7 @@ PRE(sendmsg)
 PRE(recvmsg)
 {
    *flags |= SfMayBlock;
-   PRINT("recvmsg ( %ld, %#lx, %ld )",ARG1,ARG2,ARG3);
+   PRINT("recvmsg ( %ld, %#lx, %ld )", SARG1, ARG2, SARG3);
    PRE_REG_READ3(long, "recvmsg", int, s, struct msghdr *, msg, int, flags);
    ML_(generic_PRE_sys_recvmsg)(tid, "msg", (struct vki_msghdr *)ARG2);
 }
@@ -3658,14 +3802,14 @@ POST(recvmsg)
 PRE(shutdown)
 {
    *flags |= SfMayBlock;
-   PRINT("shutdown ( %ld, %ld )",ARG1,ARG2);
+   PRINT("shutdown ( %ld, %ld )", SARG1, SARG2);
    PRE_REG_READ2(int, "shutdown", int, s, int, how);
 }
 
 
 PRE(bind)
 {
-   PRINT("bind ( %ld, %#lx, %ld )",ARG1,ARG2,ARG3);
+   PRINT("bind ( %ld, %#lx, %ld )", SARG1, ARG2, SARG3);
    PRE_REG_READ3(long, "bind",
                  int, sockfd, struct sockaddr *, my_addr, int, addrlen);
    ML_(generic_PRE_sys_bind)(tid, ARG1,ARG2,ARG3);
@@ -3674,14 +3818,14 @@ PRE(bind)
 
 PRE(listen)
 {
-   PRINT("listen ( %ld, %ld )",ARG1,ARG2);
+   PRINT("listen ( %ld, %ld )", SARG1, SARG2);
    PRE_REG_READ2(long, "listen", int, s, int, backlog);
 }
 
 
 PRE(getsockname)
 {
-   PRINT("getsockname ( %ld, %#lx, %#lx )",ARG1,ARG2,ARG3);
+   PRINT("getsockname ( %ld, %#lx, %#lx )", SARG1, ARG2, ARG3);
    PRE_REG_READ3(long, "getsockname",
                  int, s, struct sockaddr *, name, int *, namelen);
    ML_(generic_PRE_sys_getsockname)(tid, ARG1,ARG2,ARG3);
@@ -3697,7 +3841,7 @@ POST(getsockname)
 
 PRE(getpeername)
 {
-   PRINT("getpeername ( %ld, %#lx, %#lx )",ARG1,ARG2,ARG3);
+   PRINT("getpeername ( %ld, %#lx, %#lx )", SARG1, ARG2, ARG3);
    PRE_REG_READ3(long, "getpeername",
                  int, s, struct sockaddr *, name, int *, namelen);
    ML_(generic_PRE_sys_getpeername)(tid, ARG1,ARG2,ARG3);
@@ -3713,7 +3857,7 @@ POST(getpeername)
 
 PRE(socketpair)
 {
-   PRINT("socketpair ( %ld, %ld, %ld, %#lx )",ARG1,ARG2,ARG3,ARG4);
+   PRINT("socketpair ( %ld, %ld, %ld, %#lx )", SARG1, SARG2, SARG3, ARG4);
    PRE_REG_READ4(long, "socketpair",
                  int, d, int, type, int, protocol, int *, sv);
    ML_(generic_PRE_sys_socketpair)(tid, ARG1,ARG2,ARG3,ARG4);
@@ -3776,7 +3920,7 @@ POST(pipe)
 
 PRE(getlogin)
 {
-   PRINT("getlogin ( %#lx, %ld )", ARG1, ARG2);
+   PRINT("getlogin ( %#lx, %lu )", ARG1, ARG2);
    PRE_REG_READ2(long, "getlogin", 
                  char *,"namebuf", unsigned int,"namelen");
 
@@ -3791,7 +3935,7 @@ POST(getlogin)
 
 PRE(ptrace)
 {
-   PRINT("ptrace ( %ld, %ld, %#lx, %ld )", ARG1, ARG2, ARG3, ARG4);
+   PRINT("ptrace ( %ld, %ld, %#lx, %ld )", SARG1, SARG2, ARG3, SARG4);
    PRE_REG_READ4(long, "ptrace", 
                  int,"request", vki_pid_t,"pid", 
                  vki_caddr_t,"addr", int,"data");
@@ -3823,7 +3967,7 @@ POST(getdtablesize)
 
 PRE(lseek)
 {
-   PRINT("lseek ( %ld, %ld, %ld )", ARG1,ARG2,ARG3);
+   PRINT("lseek ( %lu, %ld, %ld )", ARG1, SARG2, SARG3);
    PRE_REG_READ4(vki_off_t, "lseek",
                  unsigned int,fd, int,offset_hi, int,offset_lo, 
                  unsigned int,whence);
@@ -3832,7 +3976,7 @@ PRE(lseek)
 
 PRE(pathconf)
 {
-   PRINT("pathconf(%#lx(%s), %ld)", ARG1,(char *)ARG1,ARG2);
+   PRINT("pathconf(%#lx(%s), %ld)", ARG1, (HChar *)ARG1, SARG2);
    PRE_REG_READ2(long,"pathconf", const char *,"path", int,"name");
    PRE_MEM_RASCIIZ("pathconf(path)", ARG1);
 }
@@ -3840,7 +3984,7 @@ PRE(pathconf)
 
 PRE(fpathconf)
 {
-   PRINT("fpathconf(%ld, %ld)", ARG1,ARG2);
+   PRINT("fpathconf(%ld, %ld)",  SARG1, SARG2);
    PRE_REG_READ2(long,"fpathconf", int,"fd", int,"name");
 
    if (!ML_(fd_allowed)(ARG1, "fpathconf", tid, False))
@@ -3850,7 +3994,7 @@ PRE(fpathconf)
 
 PRE(getdirentries)
 {
-   PRINT("getdirentries(%ld, %#lx, %ld, %#lx)", ARG1, ARG2, ARG3, ARG4);
+   PRINT("getdirentries(%ld, %#lx, %ld, %#lx)", SARG1, ARG2, SARG3, ARG4);
    PRE_REG_READ4(int, "getdirentries", 
                  int, fd, char *, buf, int, nbytes, long *, basep);
    PRE_MEM_WRITE("getdirentries(basep)", ARG4, sizeof(long));
@@ -3867,7 +4011,7 @@ POST(getdirentries)
 
 PRE(getdirentries64)
 {
-   PRINT("getdirentries64(%ld, %#lx, %lu, %#lx)", ARG1, ARG2, ARG3, ARG4);
+   PRINT("getdirentries64(%ld, %#lx, %lu, %#lx)", SARG1, ARG2, ARG3, ARG4);
    PRE_REG_READ4(vki_ssize_t, "getdirentries", 
                  int,fd, char *,buf, vki_size_t,nbytes, vki_off_t *,basep);
    /* JRS 18-Nov-2014: it appears that sometimes |basep| doesn't point
@@ -3892,7 +4036,7 @@ POST(getdirentries64)
 
 PRE(statfs64)
 {
-   PRINT("statfs64 ( %#lx(%s), %#lx )",ARG1,(char *)ARG1,ARG2);
+   PRINT("statfs64 ( %#lx(%s), %#lx )", ARG1, (HChar *)ARG1, ARG2);
    PRE_REG_READ2(long, "statfs64", const char *, path, struct statfs64 *, buf);
    PRE_MEM_RASCIIZ( "statfs64(path)", ARG1 );
    PRE_MEM_WRITE( "statfs64(buf)", ARG2, sizeof(struct vki_statfs64) );
@@ -3905,7 +4049,7 @@ POST(statfs64)
 
 PRE(fstatfs64)
 {
-   PRINT("fstatfs64 ( %ld, %#lx )",ARG1,ARG2);
+   PRINT("fstatfs64 ( %lu, %#lx )", ARG1, ARG2);
    PRE_REG_READ2(long, "fstatfs64",
                  unsigned int, fd, struct statfs *, buf);
    PRE_MEM_WRITE( "fstatfs64(buf)", ARG2, sizeof(struct vki_statfs64) );
@@ -3917,7 +4061,7 @@ POST(fstatfs64)
 
 PRE(csops)
 {
-   PRINT("csops ( %ld, %#lx, %#lx, %lu )", ARG1, ARG2, ARG3, ARG4);
+   PRINT("csops ( %ld, %#lx, %#lx, %lu )", SARG1, ARG2, ARG3, ARG4);
    PRE_REG_READ4(int, "csops",
                  vki_pid_t, pid, uint32_t, ops,
                  void *, useraddr, vki_size_t, usersize);
@@ -3942,7 +4086,7 @@ POST(csops)
 
 PRE(auditon)
 {
-   PRINT("auditon ( %ld, %#lx, %ld )", ARG1, ARG2, ARG3);
+   PRINT("auditon ( %ld, %#lx, %lu )", SARG1, ARG2, ARG3);
    PRE_REG_READ3(int,"auditon", 
                  int,"cmd", void*,"data", unsigned int,"length");
 
@@ -3997,7 +4141,7 @@ PRE(auditon)
       break;
 
    default:
-      VG_(message)(Vg_UserMsg, "UNKNOWN auditon cmd %ld", ARG1);
+      VG_(message)(Vg_UserMsg, "UNKNOWN auditon cmd %ld\n", ARG1);
       break;
    }
 }
@@ -4056,6 +4200,17 @@ POST(auditon)
    }    
 }
 
+PRE(getaudit_addr)
+{
+   PRINT("getaudit_addr(%#lx, %ld)", ARG1, SARG2);
+   PRE_REG_READ1(void*, "auditinfo_addr", int, "length");
+   PRE_MEM_WRITE("getaudit_addr(auditinfo_addr)", ARG1, ARG2);
+}
+POST(getaudit_addr)
+{
+   POST_MEM_WRITE(ARG1, ARG2);
+}
+
 
 PRE(mmap)
 {
@@ -4063,8 +4218,8 @@ PRE(mmap)
    if (0) VG_(am_do_sync_check)("(PRE_MMAP)",__FILE__,__LINE__);
 
 #if VG_WORDSIZE == 4
-   PRINT("mmap ( %#lx, %lu, %ld, %ld, %ld, %lld )",
-         ARG1, ARG2, ARG3, ARG4, ARG5, LOHI64(ARG6, ARG7) );
+   PRINT("mmap ( %#lx, %lu, %ld, %ld, %ld, %llu )",
+         ARG1, ARG2, SARG3, SARG4, SARG5, LOHI64(ARG6, ARG7) );
    PRE_REG_READ7(Addr, "mmap",
                  Addr,start, vki_size_t,length, int,prot, int,flags, int,fd, 
                  unsigned long,offset_hi, unsigned long,offset_lo);
@@ -4074,7 +4229,7 @@ PRE(mmap)
    // (Off64T)LOHI64(ARG6, ARG7) );
 #else
    PRINT("mmap ( %#lx, %lu, %ld, %ld, %ld, %ld )",
-         ARG1, ARG2, ARG3, ARG4, ARG5, ARG6 );
+         ARG1, ARG2, SARG3, SARG4, SARG5, SARG6 );
    PRE_REG_READ6(long, "mmap",
                  Addr,start, vki_size_t,length, int,prot, int,flags, int,fd, 
                  Off64T,offset);
@@ -4171,7 +4326,7 @@ PRE(__sysctl)
    UWord newp    = ARG5;
    UWord newlen  = ARG6;
 
-   PRINT( "__sysctl ( %#lx, %ld, %#lx, %#lx, %#lx, %ld )", 
+   PRINT( "__sysctl ( %#lx, %lu, %#lx, %#lx, %#lx, %#lx )", 
           name, namelen, oldp, oldlenp, newp, newlen );
 
    PRE_REG_READ6(int, "__sysctl", int*, name, unsigned int, namelen, 
@@ -4233,7 +4388,7 @@ POST(sigpending)
 PRE(sigprocmask)
 {
    UWord arg1;
-   PRINT("sigprocmask ( %ld, %#lx, %#lx )", ARG1, ARG2, ARG3);
+   PRINT("sigprocmask ( %ld, %#lx, %#lx )", SARG1, ARG2, ARG3);
    PRE_REG_READ3(long, "sigprocmask",
                  int, how, vki_sigset_t *, set, vki_sigset_t *, oldset);
    if (ARG2 != 0)
@@ -4301,7 +4456,6 @@ PRE(sigsuspend)
                  uint32_t flavor, uint64_t arg,
                  user_addr_t buffer, int32_t buffersize)
 */
-#if DARWIN_VERS >= DARWIN_10_6
 PRE(proc_info)
 {
 #if VG_WORDSIZE == 4
@@ -4367,7 +4521,6 @@ POST(proc_info)
 #endif
 }
 
-#endif /* DARWIN_VERS >= DARWIN_10_6 */
 
 /* ---------------------------------------------------------------------
    aio_*
@@ -4790,7 +4943,7 @@ POST(host_page_size)
    Reply *reply = (Reply *)ARG1;
 
    if (!reply->RetCode) {
-     PRINT("page size %llu", (ULong)reply->out_page_size);
+      PRINT("page size %llu", (ULong)reply->out_page_size);
    } else {
       PRINT("mig return %d", reply->RetCode);
    }
@@ -4911,6 +5064,154 @@ PRE(host_request_notification)
    assign_port_name(req->notify_port.name, "host_notify-%p");
 }
 
+
+PRE(host_create_mach_voucher)
+{
+#pragma pack(4)
+    typedef struct {
+        mach_msg_header_t Head;
+        NDR_record_t NDR;
+        mach_msg_type_number_t recipesCnt;
+        uint8_t recipes[5120];
+    } Request;
+#pragma pack()
+    
+    Request *req = (Request *)ARG1;
+
+    PRINT("host_create_mach_voucher(count %u)",
+          req->recipesCnt);
+    
+    AFTER = POST_FN(host_create_mach_voucher);
+}
+
+
+POST(host_create_mach_voucher)
+{
+#pragma pack(4)
+    typedef struct {
+        mach_msg_header_t Head;
+        /* start of the kernel processed data */
+        mach_msg_body_t msgh_body;
+        mach_msg_port_descriptor_t voucher;
+        /* end of the kernel processed data */
+    } Reply;
+#pragma pack()
+    
+    Reply *reply = (Reply *)ARG1;
+
+    // RK fixme properly parse this return type
+    PRINT("got voucher %#x ", reply->voucher.name);
+}
+
+
+PRE(host_get_special_port)
+{
+#pragma pack(4)
+    typedef struct {
+        mach_msg_header_t Head;
+        NDR_record_t NDR;
+        int node;
+        int which;
+    } Request;
+#pragma pack()
+    
+    Request *req = (Request *)ARG1;
+
+    PRINT("host_get_special_port(node %d)", req->node);
+    
+    switch (req->which) {
+        case HOST_PORT:
+            PRINT("host_get_special_port(%s, HOST_PORT)",
+                  name_for_port(MACH_REMOTE));
+            break;
+        case HOST_PRIV_PORT:
+            PRINT("host_get_special_port(%s, HOST_PRIV_PORT)",
+                  name_for_port(MACH_REMOTE));
+            break;
+        case HOST_IO_MASTER_PORT:
+            PRINT("host_get_special_port(%s, HOST_IO_MASTER_PORT)",
+                  name_for_port(MACH_REMOTE));
+            break;
+        // Not provided by kernel
+        case HOST_DYNAMIC_PAGER_PORT:
+            PRINT("host_get_special_port(%s, HOST_DYNAMIC_PAGER_PORT)",
+                  name_for_port(MACH_REMOTE));
+            break;
+        case HOST_AUDIT_CONTROL_PORT:
+            PRINT("host_get_special_port(%s, HOST_AUDIT_CONTROL_PORT)",
+                  name_for_port(MACH_REMOTE));
+            break;
+        case HOST_USER_NOTIFICATION_PORT:
+            PRINT("host_get_special_port(%s, HOST_USER_NOTIFICATION_PORT)",
+                  name_for_port(MACH_REMOTE));
+            break;
+        // ...
+
+        default:
+            PRINT("host_get_special_port(%s, %d)",
+                  name_for_port(MACH_REMOTE), req->which);
+            break;
+    }
+    
+    MACH_ARG(host_get_special_port.which) = req->which;
+    
+    AFTER = POST_FN(host_get_special_port);
+}
+
+
+POST(host_get_special_port)
+{
+#pragma pack(4)
+    typedef struct {
+        mach_msg_header_t Head;
+        /* start of the kernel processed data */
+        mach_msg_body_t msgh_body;
+        mach_msg_port_descriptor_t port;
+        /* end of the kernel processed data */
+    } Reply;
+#pragma pack()
+    
+    Reply *reply = (Reply *)ARG1;
+    
+    PRINT("got port %#x ", reply->port.name);
+
+    /* The required entry in the allocated_ports list (mapping) might
+     not exist, due perhaps to broken syscall wrappers (mach__N etc).
+     Create a minimal entry so that assign_port_name below doesn't
+     cause an assertion. */
+    if (!port_exists(reply->port.name)) {
+        port_create_vanilla(reply->port.name);
+    }
+    
+    switch (MACH_ARG(host_get_special_port.which)) {
+        case HOST_PORT:
+            assign_port_name(reply->port.name, "port-%p");
+            break;
+        case HOST_PRIV_PORT:
+            assign_port_name(reply->port.name, "priv-%p");
+            break;
+        case HOST_IO_MASTER_PORT:
+            assign_port_name(reply->port.name, "io-master-%p");
+            break;
+        // Not provided by kernel
+        case HOST_DYNAMIC_PAGER_PORT:
+            assign_port_name(reply->port.name, "dynamic-pager-%p");
+            break;
+        case HOST_AUDIT_CONTROL_PORT:
+            assign_port_name(reply->port.name, "audit-control-%p");
+            break;
+        case HOST_USER_NOTIFICATION_PORT:
+            assign_port_name(reply->port.name, "user-notification-%p");
+            break;
+        // ...
+
+        default:
+            assign_port_name(reply->port.name, "special-%p");
+            break;
+    }
+    
+    PRINT("%s", name_for_port(reply->port.name));
+}
 
 /* ---------------------------------------------------------------------
    mach_msg: messages to a task
@@ -5652,6 +5953,48 @@ POST(task_get_special_port)
 }
 
 
+PRE(task_set_special_port)
+{
+#pragma pack(4)
+    typedef struct {
+        mach_msg_header_t Head;
+        /* start of the kernel processed data */
+        mach_msg_body_t msgh_body;
+        mach_msg_port_descriptor_t special_port;
+        /* end of the kernel processed data */
+        NDR_record_t NDR;
+        int which_port;
+    } Request;
+#pragma pack()
+    
+    Request *req = (Request *)ARG1;
+
+    PRINT("got port %#x ", req->special_port.name);
+    
+    // MACH_ARG(task_set_special_port.which_port) = req->which_port;
+    PRINT("%s", name_for_port(req->special_port.name));
+    
+    AFTER = POST_FN(task_set_special_port);
+}
+
+POST(task_set_special_port)
+{
+#pragma pack(4)
+    typedef struct {
+        mach_msg_header_t Head;
+        NDR_record_t NDR;
+        kern_return_t RetCode;
+    } Reply;
+#pragma pack()
+    
+    Reply *reply = (Reply *)ARG1;
+    if (!reply->RetCode) {
+    } else {
+        PRINT("mig return %d", reply->RetCode);
+    }
+}
+
+
 PRE(semaphore_create)
 {
 #pragma pack(4)
@@ -5746,7 +6089,7 @@ PRE(task_policy_set)
 
    Request *req = (Request *)ARG1;
 
-   PRINT("task_policy_set(%s) flacor:%d", name_for_port(MACH_REMOTE), req->flavor);
+   PRINT("task_policy_set(%s) flavor:%d", name_for_port(MACH_REMOTE), req->flavor);
 
    AFTER = POST_FN(task_policy_set);
 }
@@ -5767,6 +6110,46 @@ POST(task_policy_set)
       PRINT("mig return %d", reply->RetCode);
    }
 }
+
+
+PRE(mach_ports_register)
+{
+#pragma pack(4)
+    typedef struct {
+       mach_msg_header_t Head;
+       /* start of the kernel processed data */
+       mach_msg_body_t msgh_body;
+       mach_msg_ool_ports_descriptor_t init_port_set;
+       /* end of the kernel processed data */
+       NDR_record_t NDR;
+       mach_msg_type_number_t init_port_setCnt;
+    } Request;
+#pragma pack()
+    
+    // Request *req = (Request *)ARG1;
+    
+    PRINT("mach_ports_register(%s)", name_for_port(MACH_REMOTE));
+    
+    AFTER = POST_FN(mach_ports_register);
+}
+
+POST(mach_ports_register)
+{
+#pragma pack(4)
+    typedef struct {
+       mach_msg_header_t Head;
+       NDR_record_t NDR;
+       kern_return_t RetCode;
+    } Reply;
+#pragma pack()
+    
+    Reply *reply = (Reply *)ARG1;
+    if (!reply->RetCode) {
+    } else {
+        PRINT("mig return %d", reply->RetCode);
+    }
+}
+
 
 PRE(mach_ports_lookup)
 {
@@ -5800,6 +6183,80 @@ POST(mach_ports_lookup)
     // Reply *reply = (Reply *)ARG1;
 }
 
+
+PRE(task_info)
+{
+#pragma pack(4)
+    typedef struct {
+        mach_msg_header_t Head;
+        NDR_record_t NDR;
+        task_flavor_t flavor;
+        mach_msg_type_number_t task_info_outCnt;
+    } Request;
+#pragma pack()
+    
+    Request *req = (Request *)ARG1;
+    
+    PRINT("task_info(%s) flavor:%d", name_for_port(MACH_REMOTE), req->flavor);
+    
+    AFTER = POST_FN(task_info);
+}
+
+POST(task_info)
+{
+#pragma pack(4)
+    typedef struct {
+        mach_msg_header_t Head;
+        NDR_record_t NDR;
+        kern_return_t RetCode;
+        mach_msg_type_number_t task_info_outCnt;
+        integer_t task_info_out[52];
+    } Reply;
+#pragma pack()
+    
+    Reply *reply = (Reply *)ARG1;
+    if (!reply->RetCode) {
+    } else {
+        PRINT("mig return %d", reply->RetCode);
+    }
+}
+
+
+PRE(task_set_info)
+{
+#pragma pack(4)
+    typedef struct {
+        mach_msg_header_t Head;
+        NDR_record_t NDR;
+        task_flavor_t flavor;
+        mach_msg_type_number_t task_info_inCnt;
+        integer_t task_info_in[52];
+    } Request;
+#pragma pack()
+    
+    Request *req = (Request *)ARG1;
+    
+    PRINT("task_set_info(%s) flavor:%d", name_for_port(MACH_REMOTE), req->flavor);
+    
+    AFTER = POST_FN(task_set_info);
+}
+
+POST(task_set_info)
+{
+#pragma pack(4)
+    typedef struct {
+        mach_msg_header_t Head;
+        NDR_record_t NDR;
+        kern_return_t RetCode;
+    } Reply;
+#pragma pack()
+    
+    Reply *reply = (Reply *)ARG1;
+    if (!reply->RetCode) {
+    } else {
+        PRINT("mig return %d", reply->RetCode);
+    }
+}
 
 PRE(task_threads)
 {
@@ -5893,7 +6350,7 @@ PRE(vm_allocate)
 
    Request *req = (Request *)ARG1;
 
-   PRINT("vm_allocate (%s, at %#llx, size %lld, flags %#x)", 
+   PRINT("vm_allocate (%s, at %#llx, size %llu, flags %#x)", 
          name_for_port(MACH_REMOTE), 
          (ULong)req->address, (ULong)req->size, req->flags);
 
@@ -5950,7 +6407,7 @@ PRE(vm_deallocate)
    
    Request *req = (Request *)ARG1;
    
-   PRINT("vm_deallocate(%s, at %#llx, size %lld)", 
+   PRINT("vm_deallocate(%s, at %#llx, size %llu)", 
          name_for_port(MACH_REMOTE), 
          (ULong)req->address, (ULong)req->size);
    
@@ -6008,7 +6465,7 @@ PRE(vm_protect)
    
    Request *req = (Request *)ARG1;
    
-   PRINT("vm_protect(%s, at %#llx, size %lld, set_max %d, prot %d)", 
+   PRINT("vm_protect(%s, at %#llx, size %llu, set_max %d, prot %d)", 
          name_for_port(MACH_REMOTE),
          (ULong)req->address, (ULong)req->size, 
          req->set_maximum, req->new_protection);
@@ -6069,7 +6526,7 @@ PRE(vm_inherit)
    
    Request *req = (Request *)ARG1;
    
-   PRINT("vm_inherit(%s, at %#llx, size %lld, value %d)", 
+   PRINT("vm_inherit(%s, at %#llx, size %llu, value %d)", 
          name_for_port(MACH_REMOTE), 
          (ULong)req->address, (ULong)req->size, 
          req->new_inheritance);
@@ -6323,7 +6780,7 @@ PRE(vm_map)
    Request *req = (Request *)ARG1;
 
    // GrP fixme check these
-   PRINT("vm_map(in %s, at %#llx, size %lld, from %s ...)", 
+   PRINT("vm_map(in %s, at %#llx, size %llu, from %s ...)", 
          name_for_port(MACH_REMOTE), 
          (ULong)req->address, (ULong)req->size, 
          name_for_port(req->object.name));
@@ -6391,12 +6848,12 @@ PRE(vm_remap)
       mach_port_name_t source_task = req->src_task.name;
       if (source_task == mach_task_self()) {
          PRINT("vm_remap(mach_task_self(), "
-               "to %#llx size %lld, from mach_task_self() at %#llx, ...)",
+               "to %#llx size %llu, from mach_task_self() at %#llx, ...)",
                (ULong)req->target_address,
                (ULong)req->size, (ULong)req->src_address);
       } else {
          PRINT("vm_remap(mach_task_self(), "
-               "to %#llx size %lld, from task %u at %#llx, ...)",
+               "to %#llx size %llu, from task %u at %#llx, ...)",
                (ULong)req->target_address, (ULong)req->size, 
                source_task, (ULong)req->src_address);
       }
@@ -6547,7 +7004,7 @@ PRE(mach_vm_purgable_control)
 
    PRINT("mach_vm_purgable_control(%s, 0x%llx, %d, %d)", 
          name_for_port(MACH_REMOTE), 
-         (unsigned long long)req->address, req->control, req->state);
+         (ULong)req->address, req->control, req->state);
 
    // GrP fixme verify address?
 
@@ -6588,7 +7045,7 @@ PRE(mach_vm_allocate)
 
    Request *req = (Request *)ARG1;
 
-   PRINT("mach_vm_allocate (%s, at 0x%llx, size %lld, flags 0x%x)", 
+   PRINT("mach_vm_allocate (%s, at 0x%llx, size %llu, flags 0x%x)", 
          name_for_port(MACH_REMOTE), 
          req->address, req->size, req->flags);
 
@@ -6644,7 +7101,7 @@ PRE(mach_vm_deallocate)
    
    Request *req = (Request *)ARG1;
    
-   PRINT("mach_vm_deallocate(%s, at 0x%llx, size %lld)", 
+   PRINT("mach_vm_deallocate(%s, at 0x%llx, size %llu)", 
          name_for_port(MACH_REMOTE), 
          req->address, req->size);
    
@@ -6702,7 +7159,7 @@ PRE(mach_vm_protect)
    
    Request *req = (Request *)ARG1;
    
-   PRINT("mach_vm_protect(%s, at 0x%llx, size %lld, set_max %d, prot %d)", 
+   PRINT("mach_vm_protect(%s, at 0x%llx, size %llu, set_max %d, prot %d)", 
          name_for_port(MACH_REMOTE), req->address, req->size, 
          req->set_maximum, req->new_protection);
    
@@ -7098,12 +7555,23 @@ PRE(thread_terminate)
       // and SET_STATUS_Success creates a UNIX-class syscall result.
       // Hence we have to laboriously construct the full SysRes "by hand"
       // and use that to set the syscall return status.
+#if defined(VGA_x86)
       SET_STATUS_from_SysRes(
          VG_(mk_SysRes_x86_darwin)(
             VG_DARWIN_SYSCALL_CLASS_MACH,
             False/*success*/, 0, 0
          )
       );
+#elif defined(VGA_amd64)
+       SET_STATUS_from_SysRes(
+         VG_(mk_SysRes_amd64_darwin)(
+            VG_DARWIN_SYSCALL_CLASS_MACH,
+            False/*success*/, 0, 0
+         )
+      );
+#else
+#error unknown architecture
+#endif
       *flags &= ~SfMayBlock;  // clear flag set by PRE(mach_msg)
    } else {
       // Terminating some other thread.
@@ -7610,6 +8078,13 @@ PRE(mach_msg_host)
    case 217:
       CALL_PRE(host_request_notification);
       return;
+   case 222:
+      CALL_PRE(host_create_mach_voucher);
+      return;
+           
+   case 412:
+      CALL_PRE(host_get_special_port);
+      return;
 
    default:
       // unknown message to host self
@@ -7683,19 +8158,29 @@ PRE(mach_msg_task)
    case 3402:
       CALL_PRE(task_threads);
       return;
+   case 3403:
+      CALL_PRE(mach_ports_register);
+      return;
    case 3404:
       CALL_PRE(mach_ports_lookup);
       return;
-
+   case 3405:
+      CALL_PRE(task_info);
+      return;
+   case 3406:
+      CALL_PRE(task_set_info);
+      return;
    case 3407:
       CALL_PRE(task_suspend);
       return;
    case 3408:
       CALL_PRE(task_resume);
       return;
-      
    case 3409:
       CALL_PRE(task_get_special_port);
+      return;
+   case 3410:
+      CALL_PRE(task_set_special_port);
       return;
    case 3411:
       CALL_PRE(thread_create);
@@ -7901,8 +8386,10 @@ PRE(mach_msg)
       // GrP fixme handle sender-specified message trailer
       // (but is this only for too-secure processes?)
       // JRS 11 Nov 2014: this assertion is OK for <= 10.9 but fails on 10.10
-#     if DARWIN_VERS == DARWIN_10_10
-      log_decaying("UNKNOWN mach_msg unhandled MACH_SEND_TRAILER option");
+#     if DARWIN_VERS >= DARWIN_10_10
+      if (mh->msgh_bits & MACH_SEND_TRAILER) {
+         log_decaying("UNKNOWN mach_msg unhandled MACH_SEND_TRAILER option");
+      }
 #     else
       vg_assert(! (mh->msgh_bits & MACH_SEND_TRAILER));
 #     endif
@@ -8184,7 +8671,7 @@ POST(mach_task_self)
 PRE(syscall_thread_switch)
 {
    PRINT("syscall_thread_switch(%s, %ld, %ld)",
-      name_for_port(ARG1), ARG2, ARG3);
+      name_for_port(ARG1), SARG2, SARG3);
    PRE_REG_READ3(long, "syscall_thread_switch", 
                  mach_port_t,"thread", int,"option", natural_t,"timeout");
 
@@ -8269,7 +8756,7 @@ PRE(__semwait_signal)
                  int timeout, int relative,
                  time_t tv_sec, time_t tv_nsec */
    PRINT("__semwait_signal(wait %s, signal %s, %ld, %ld, %lds:%ldns)", 
-         name_for_port(ARG1), name_for_port(ARG2), ARG3, ARG4, ARG5, ARG6);
+         name_for_port(ARG1), name_for_port(ARG2), SARG3, SARG4, SARG5, SARG6);
    PRE_REG_READ6(long, "__semwait_signal", 
                  int,"cond_sem", int,"mutex_sem",
                  int,"timeout", int,"relative", 
@@ -8299,15 +8786,9 @@ PRE(__semwait_signal)
 //}
 
 
-PRE(__thread_selfid)
-{
-   PRINT("__thread_selfid ()");
-   PRE_REG_READ0(vki_uint64_t, "__thread_selfid");
-}
-
 PRE(task_for_pid)
 {
-   PRINT("task_for_pid(%s, %ld, %#lx)", name_for_port(ARG1), ARG2, ARG3);
+   PRINT("task_for_pid(%s, %ld, %#lx)", name_for_port(ARG1), SARG2, ARG3);
    PRE_REG_READ3(long, "task_for_pid", 
                  mach_port_t,"target", 
                  vki_pid_t, "pid", mach_port_t *,"task");
@@ -8463,7 +8944,7 @@ PRE(swtch)
 
 PRE(swtch_pri)
 {
-   PRINT("swtch_pri ( %ld )", ARG1);
+   PRINT("swtch_pri ( %ld )", SARG1);
    PRE_REG_READ1(long, "swtch_pri", int,"pri");
 
    *flags |= SfMayBlock;
@@ -8635,7 +9116,7 @@ PRE(thread_fast_set_cthread_self)
    {
       ThreadState *tst = VG_(get_ThreadState)(tid);
       tst->os_state.pthread = ARG1;
-      tst->arch.vex.guest_GS_0x60 = ARG1;
+      tst->arch.vex.guest_GS_CONST = ARG1;
       // SET_STATUS_Success(0x60);
       // see comments on x86 case just above
       SET_STATUS_from_SysRes(
@@ -8653,21 +9134,10 @@ PRE(thread_fast_set_cthread_self)
 
 
 /* ---------------------------------------------------------------------
-   Added for OSX 10.7 (Lion)
+   Added for OSX 10.6 (Snow Leopard)
    ------------------------------------------------------------------ */
 
-#if DARWIN_VERS >= DARWIN_10_7
-
-PRE(getaudit_addr)
-{
-   PRINT("getaudit_addr(%#lx, %lu)", ARG1, ARG2);
-   PRE_REG_READ1(void*, "auditinfo_addr", int, "length");
-   PRE_MEM_WRITE("getaudit_addr(auditinfo_addr)", ARG1, ARG2);
-}
-POST(getaudit_addr)
-{
-   POST_MEM_WRITE(ARG1, ARG2);
-}
+#if DARWIN_VERS >= DARWIN_10_6
 
 PRE(psynch_mutexwait)
 {
@@ -8737,6 +9207,60 @@ PRE(psynch_rw_unlock)
 POST(psynch_rw_unlock)
 {
 }
+
+PRE(__thread_selfid)
+{
+   PRINT("__thread_selfid ()");
+   PRE_REG_READ0(vki_uint64_t, "__thread_selfid");
+}
+
+PRE(fsgetpath)
+{
+#if VG_WORDSIZE == 4
+   PRINT("fsgetpath(%#lx, %ld, %#lx {%u,%u}, %llu)", 
+         ARG1, ARG2, ARG3,
+         ((unsigned int *)ARG3)[0], ((unsigned int *)ARG3)[1],
+         LOHI64(ARG4, ARG5));
+   PRE_REG_READ5(ssize_t, "fsgetpath", 
+                 void*,"buf", size_t,"bufsize", 
+                 fsid_t *,"fsid",
+                 vki_uint32_t, "objid_low32", vki_uint32_t, "objid_high32");
+#else
+   PRINT("fsgetpath(%#lx, %ld, %#lx {%u,%u}, %lu)", 
+         ARG1, ARG2, ARG3,
+         ((unsigned int *)ARG3)[0],
+         ((unsigned int *)ARG3)[1], ARG4);
+   PRE_REG_READ4(ssize_t, "fsgetpath", 
+                 void*,"buf", size_t,"bufsize", 
+                 fsid_t *,"fsid", uint64_t,"objid");
+#endif
+   PRE_MEM_READ("fsgetpath(fsid)", ARG3, sizeof(fsid_t));
+   PRE_MEM_WRITE("fsgetpath(buf)", ARG1, ARG2);
+}
+
+POST(fsgetpath)
+{
+   POST_MEM_WRITE(ARG1, RES);
+}
+
+PRE(audit_session_self)
+{
+  PRINT("audit_session_self()");
+}
+POST(audit_session_self)
+{
+  record_named_port(tid, RES, MACH_PORT_RIGHT_SEND, "audit-session-%p");
+  PRINT("audit-session %#lx", RES);
+}
+
+#endif /* DARWIN_VERS >= DARWIN_10_6 */
+
+
+/* ---------------------------------------------------------------------
+   Added for OSX 10.7 (Lion)
+   ------------------------------------------------------------------ */
+
+#if DARWIN_VERS >= DARWIN_10_7
 
 PRE(psynch_cvclrprepost)
 {
@@ -9083,7 +9607,7 @@ PRE(necp_match_policy)
 {
    // int necp_match_policy(uint8_t *parameters, size_t parameters_size,
    //                       struct necp_aggregate_result *returned_result)
-   PRINT("necp_match_policy(FIXME)(%lx,%ld, %lx)", ARG1, ARG2, ARG3);
+   PRINT("necp_match_policy(FIXME)(%lx,%lu, %lx)", ARG1, ARG2, ARG3);
    PRE_REG_READ3(int, "necp_match_policy", uint8_t*, parameters,
                  size_t, parameters_size, struct necp_aggregate_result*,
                  returned_result);
@@ -9101,14 +9625,14 @@ PRE(sysctlbyname)
    UWord oldp    = ARG3;
    UWord oldlenp = ARG4;
    UWord newp    = ARG5;
-   UWord newlen  = ARG6;
+   UWord newlen  = ARG6;  // FIXME: or newlenp ??
 
-   PRINT( "sysctlbyname ( %#lx,%ld, %#lx,%#lx, %#lx,%ld )", 
+   PRINT( "sysctlbyname ( %#lx,%lu, %#lx,%#lx, %#lx,%lu )", 
           name, namelen, oldp, oldlenp, newp, newlen );
 
    PRE_REG_READ6(int, "sysctlbyname", char*, name, size_t, namelen,
                  void*, oldp, vki_size_t *, oldlenp, 
-                 void*, newp, vki_size_t *, newlenp);
+                 void*, newp, vki_size_t *, newlenp);  //  <---<<
 
    // reads name[0..namelen-1]
    PRE_MEM_READ("sysctlbyname(name)", name, namelen);
@@ -9152,7 +9676,7 @@ PRE(getattrlistbulk)
    //                     uint64_t options);
    // Presumably the last arg is value-pair in the 32 bit case.
    PRINT("getattrlistbulk(FIXME)(%ld, %lx, %lx,%lu, %lu)",
-         ARG1, ARG2, ARG3, ARG4, ARG5);
+         SARG1, ARG2, ARG3, ARG4, ARG5);
    PRE_REG_READ5(int, "getattrlistbulk", int, dirfd, void*, list,
                  void*, attributeBuffer, size_t, bufferSize,
                  uint32_t, options_lo32);
@@ -9170,6 +9694,29 @@ POST(getattrlistbulk)
       POST_MEM_WRITE(ARG3, ARG4);
 }
 
+PRE(readlinkat)
+{
+    Word  saved = SYSNO;
+    
+    PRINT("readlinkat ( %ld, %#lx(%s), %#lx, %ld )",
+          SARG1, ARG2, (HChar*)ARG2, ARG3, SARG4);
+    PRE_REG_READ4(long, "readlinkat",
+                  int, dfd, const char *, path, char *, buf, int, bufsiz);
+    PRE_MEM_RASCIIZ( "readlinkat(path)", ARG2 );
+    PRE_MEM_WRITE( "readlinkat(buf)", ARG3,ARG4 );
+    
+    /*
+     * Refer to coregrind/m_syswrap/syswrap-linux.c
+     */
+    {
+        /* Normal case */
+        SET_STATUS_from_SysRes( VG_(do_syscall4)(saved, ARG1, ARG2, ARG3, ARG4));
+    }
+    
+    if (SUCCESS && RES > 0)
+        POST_MEM_WRITE( ARG3, RES );
+}
+
 PRE(bsdthread_ctl)
 {
    // int bsdthread_ctl(user_addr_t cmd, user_addr_t arg1, 
@@ -9177,6 +9724,32 @@ PRE(bsdthread_ctl)
    PRINT("bsdthread_ctl(FIXME)(%lx,%lx,%lx,%lx)", ARG1, ARG2, ARG3, ARG4);
    PRE_REG_READ4(int, "bsdthreadctl",
                  void*, cmd, void*, arg1, void*, arg2, void*, arg3);
+}
+
+PRE(guarded_open_dprotected_np)
+{
+    PRINT("guarded_open_dprotected_np("
+        "path:%#lx(%s), guard:%#lx, guardflags:%#lx, flags:%#lx, "
+        "dpclass:%#lx, dpflags: %#lx) FIXME",
+        ARG1, (HChar*)ARG1, ARG2, ARG3, ARG4, ARG5, ARG6);
+}
+
+PRE(guarded_write_np)
+{
+    PRINT("guarded_write_np(fd:%ld, guard:%#lx, cbuf:%#lx, nbyte:%llu) FIXME",
+        ARG1, ARG2, ARG3, (ULong)ARG4);
+}
+
+PRE(guarded_pwrite_np)
+{
+    PRINT("guarded_pwrite_np(fd:%ld, guard:%#lx, buf:%#lx, nbyte:%llu, offset:%lld) FIXME",
+        ARG1, ARG2, ARG3, (ULong)ARG4, (Long)ARG5);
+}
+
+PRE(guarded_writev_np)
+{
+    PRINT("guarded_writev_np(fd:%ld, guard:%#lx, iovp:%#lx, iovcnt:%llu) FIXME",
+        ARG1, ARG2, ARG3, (ULong)ARG4);
 }
 
 #endif /* DARWIN_VERS >= DARWIN_10_10 */
@@ -9250,7 +9823,11 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    GENXY(__NR_dup,         sys_dup), 
    MACXY(__NR_pipe,        pipe), 
    GENX_(__NR_getegid,     sys_getegid), 
-// _____(__NR_profil), 
+#if DARWIN_VERS >= DARWIN_10_7
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(44)),    // old profil
+#else
+// _____(__NR_profil),
+#endif
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(45)),    // old ktrace
    MACXY(__NR_sigaction,   sigaction), 
    GENX_(__NR_getgid,      sys_getgid), 
@@ -9338,7 +9915,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(129)),   // old truncate
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(130)),   // old ftruncate
    GENX_(__NR_flock,       sys_flock), 
-// _____(__NR_mkfifo), 
+   MACXY(__NR_mkfifo,      mkfifo),
    MACX_(__NR_sendto,      sendto), 
    MACX_(__NR_shutdown,    shutdown), 
    MACXY(__NR_socketpair,  socketpair), 
@@ -9525,13 +10102,10 @@ const SyscallTableEntry ML_(syscall_table)[] = {
 // _____(__NR_shared_region_map_np), 
 #if DARWIN_VERS >= DARWIN_10_6
 // _____(__NR_vm_pressure_monitor), 
-#else
-   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(296)),   // old load_shared_file 
-#endif
-   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(297)),   // old reset_shared_file 
-   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(298)),   // old new_system_shared_regions 
-   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(299)),   // old shared_region_map_file_np 
-   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(300)),   // old shared_region_make_private_np
+// _____(__NR_psynch_rw_longrdlock), 
+// _____(__NR_psynch_rw_yieldwrlock), 
+// _____(__NR_psynch_rw_downgrade), 
+// _____(__NR_psynch_rw_upgrade), 
    MACXY(__NR_psynch_mutexwait, psynch_mutexwait), // 301
    MACXY(__NR_psynch_mutexdrop, psynch_mutexdrop), // 302
    MACXY(__NR_psynch_cvbroad,   psynch_cvbroad),   // 303
@@ -9540,10 +10114,30 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    MACXY(__NR_psynch_rw_rdlock, psynch_rw_rdlock), // 306
    MACXY(__NR_psynch_rw_wrlock, psynch_rw_wrlock), // 307
    MACXY(__NR_psynch_rw_unlock, psynch_rw_unlock), // 308
-   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(309)),   // ???
+// _____(__NR_psynch_rw_unlock2), 
+#else
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(296)),   // old load_shared_file 
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(297)),   // old reset_shared_file 
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(298)),   // old new_system_shared_regions 
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(299)),   // old shared_region_map_file_np 
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(300)),   // old shared_region_make_private_np
+// _____(__NR___pthread_mutex_destroy), 
+// _____(__NR___pthread_mutex_init), 
+// _____(__NR___pthread_mutex_lock), 
+// _____(__NR___pthread_mutex_trylock), 
+// _____(__NR___pthread_mutex_unlock), 
+// _____(__NR___pthread_cond_init), 
+// _____(__NR___pthread_cond_destroy), 
+// _____(__NR___pthread_cond_broadcast), 
+// _____(__NR___pthread_cond_signal), 
+#endif
 // _____(__NR_getsid), 
 // _____(__NR_settid_with_pid), 
+#if DARWIN_VERS >= DARWIN_10_7
    MACXY(__NR_psynch_cvclrprepost, psynch_cvclrprepost), // 312
+#else
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(308)),   // old __pthread_cond_timedwait
+#endif
 // _____(__NR_aio_fsync), 
    MACXY(__NR_aio_return,     aio_return), 
    MACX_(__NR_aio_suspend,    aio_suspend), 
@@ -9573,9 +10167,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    MACX_(__NR___pthread_canceled,      __pthread_canceled),
    MACX_(__NR___semwait_signal,        __semwait_signal), 
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(335)),   // old utrace
-#if DARWIN_VERS >= DARWIN_10_6
    MACXY(__NR_proc_info,               proc_info),  // 336
-#endif
    MACXY(__NR_sendfile,    sendfile), 
    MACXY(__NR_stat64,      stat64), 
    MACXY(__NR_fstat64,     fstat64), 
@@ -9587,8 +10179,8 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    MACXY(__NR_statfs64,    statfs64), 
    MACXY(__NR_fstatfs64,   fstatfs64), 
    MACXY(__NR_getfsstat64, getfsstat64), 
-// _____(__NR___pthread_chdir), 
-// _____(__NR___pthread_fchdir), 
+   MACX_(__NR___pthread_chdir,  __pthread_chdir),
+   MACX_(__NR___pthread_fchdir, __pthread_fchdir),
 // _____(__NR_audit), 
    MACXY(__NR_auditon,     auditon), 
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(352)),   // ???
@@ -9596,9 +10188,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
 // _____(__NR_setauid), 
 // _____(__NR_getaudit), 
 // _____(__NR_setaudit), 
-#if DARWIN_VERS >= DARWIN_10_7
    MACXY(__NR_getaudit_addr, getaudit_addr),
-#endif
 // _____(__NR_setaudit_addr), 
 // _____(__NR_auditctl), 
    MACXY(__NR_bsdthread_create,     bsdthread_create),   // 360
@@ -9660,7 +10250,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    GENX_(__NR_select_nocancel,   sys_select),
    GENX_(__NR_fsync_nocancel,    sys_fsync),
    MACX_(__NR_connect_nocancel,  connect),
-// _____(__NR_sigsuspend_nocancel),
+   MACX_(__NR_sigsuspend_nocancel, sigsuspend),
    GENXY(__NR_readv_nocancel,    sys_readv),
    GENX_(__NR_writev_nocancel,   sys_writev),
    MACX_(__NR_sendto_nocancel,   sendto),
@@ -9695,7 +10285,14 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    MACXY(__NR_sysctlbyname,        sysctlbyname),       // 274
    MACXY(__NR_necp_match_policy,   necp_match_policy),  // 460
    MACXY(__NR_getattrlistbulk,     getattrlistbulk),    // 461
+   MACX_(__NR_readlinkat,          readlinkat),         // 473
    MACX_(__NR_bsdthread_ctl,       bsdthread_ctl),      // 478
+   MACX_(__NR_guarded_open_dprotected_np, guarded_open_dprotected_np),  // 484
+   MACX_(__NR_guarded_write_np, guarded_write_np),      // 485
+   MACX_(__NR_guarded_pwrite_np, guarded_pwrite_np),    // 486
+   MACX_(__NR_guarded_writev_np, guarded_writev_np),    // 487
+// _____(__NR___rename_ext),                            // 488
+// _____(__NR___mremap_encrypted),                      // 489
 #endif
 // _____(__NR_MAXSYSCALL)
    MACX_(__NR_DARWIN_FAKE_SIGRETURN, FAKE_SIGRETURN)
@@ -9791,17 +10388,27 @@ const SyscallTableEntry ML_(mach_trap_table)[] = {
    MACX_(__NR_semaphore_timedwait_signal_trap, semaphore_timedwait_signal), 
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(40)),    // -40
 
-#if defined(VGA_x86)
-// _____(__NR_init_process), 
-   _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(42)), 
-// _____(__NR_map_fd), 
-#else
 #  if DARWIN_VERS >= DARWIN_10_9
    MACX_(__NR_kernelrpc_mach_port_guard_trap, kernelrpc_mach_port_guard_trap),
    MACX_(__NR_kernelrpc_mach_port_unguard_trap, kernelrpc_mach_port_unguard_trap),
+#  else
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(41)),
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(42)),
 #  endif
-   _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(43)), 
-#endif
+
+#  if DARWIN_VERS >= DARWIN_10_10
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(43)),
+#  else
+#    if DARWIN_VERS == DARWIN_10_9
+// _____(__NR_map_fd),
+#    else
+#      if defined(VGA_x86)
+// _____(__NR_map_fd), 
+#      else
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(43)),
+#      endif
+#    endif
+#  endif
 
 // _____(__NR_task_name_for_pid), 
    MACXY(__NR_task_for_pid, task_for_pid), 

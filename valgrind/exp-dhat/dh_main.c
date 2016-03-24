@@ -7,7 +7,7 @@
    This file is part of DHAT, a Valgrind tool for profiling the
    heap usage of programs.
 
-   Copyright (C) 2010-2013 Mozilla Inc
+   Copyright (C) 2010-2015 Mozilla Inc
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -494,7 +494,7 @@ void* new_block ( ThreadId tid, void* p, SizeT req_szB, SizeT req_alignB,
 
    intro_Block(bk);
 
-   if (0) VG_(printf)("ALLOC %ld -> %p\n", req_szB, p);
+   if (0) VG_(printf)("ALLOC %lu -> %p\n", req_szB, p);
 
    return p;
 }
@@ -537,7 +537,7 @@ void die_block ( void* p, Bool custom_free )
 static
 void* renew_block ( ThreadId tid, void* p_old, SizeT new_req_szB )
 {
-   if (0) VG_(printf)("REALL %p %ld\n", p_old, new_req_szB);
+   if (0) VG_(printf)("REALL %p %lu\n", p_old, new_req_szB);
    void* p_new = NULL;
 
    tl_assert(new_req_szB > 0); // map 0 to 1
@@ -1348,7 +1348,7 @@ static void dh_pre_clo_init(void)
    VG_(details_version)         (NULL);
    VG_(details_description)     ("a dynamic heap analysis tool");
    VG_(details_copyright_author)(
-      "Copyright (C) 2010-2013, and GNU GPL'd, by Mozilla Inc");
+      "Copyright (C) 2010-2015, and GNU GPL'd, by Mozilla Inc");
    VG_(details_bug_reports_to)  (VG_BUGS_TO);
 
    // Basic functions.

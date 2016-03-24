@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward
+   Copyright (C) 2000-2015 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -41,12 +41,12 @@
 #include "pub_core_basics.h"      // UnwindStartRegs
 
 // XXX: this is *really* the wrong spot for these things
-#if defined(VGP_x86_linux)
+#if defined(VGP_x86_linux) || defined(VGP_x86_solaris)
 #  define VG_ELF_DATA2XXX     ELFDATA2LSB
 #  define VG_ELF_MACHINE      EM_386
 #  define VG_ELF_CLASS        ELFCLASS32
 #  undef  VG_PLAT_USES_PPCTOC
-#elif defined(VGP_amd64_linux)
+#elif defined(VGP_amd64_linux) || defined(VGP_amd64_solaris)
 #  define VG_ELF_DATA2XXX     ELFDATA2LSB
 #  define VG_ELF_MACHINE      EM_X86_64
 #  define VG_ELF_CLASS        ELFCLASS64
@@ -108,6 +108,14 @@
 #  define VG_ELF_MACHINE      EM_MIPS
 #  define VG_ELF_CLASS        ELFCLASS64
 #  undef  VG_PLAT_USES_PPCTOC
+#elif defined(VGP_tilegx_linux)
+#  define VG_ELF_DATA2XXX     ELFDATA2LSB
+   #ifndef EM_TILEGX
+   #define EM_TILEGX 191
+   #endif
+#  define VG_ELF_MACHINE      EM_TILEGX
+#  define VG_ELF_CLASS        ELFCLASS64
+#  undef  VG_PLAT_USES_PPCTOC
 #else
 #  error Unknown platform
 #endif
@@ -165,6 +173,10 @@
 #  define VG_INSTR_PTR        guest_PC
 #  define VG_STACK_PTR        guest_r29
 #  define VG_FRAME_PTR        guest_r30
+#elif defined(VGA_tilegx)
+#  define VG_INSTR_PTR        guest_pc
+#  define VG_STACK_PTR        guest_r54
+#  define VG_FRAME_PTR        guest_r52
 #else
 #  error Unknown arch
 #endif
@@ -173,6 +185,7 @@
 // Offsets for the Vex state
 #define VG_O_STACK_PTR        (offsetof(VexGuestArchState, VG_STACK_PTR))
 #define VG_O_INSTR_PTR        (offsetof(VexGuestArchState, VG_INSTR_PTR))
+#define VG_O_FRAME_PTR        (offsetof(VexGuestArchState, VG_FRAME_PTR))
 #define VG_O_FPC_REG          (offsetof(VexGuestArchState, VG_FPC_REG))
 
 

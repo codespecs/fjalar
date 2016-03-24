@@ -123,6 +123,24 @@
    fun:_st_tzset_basic
 }
 
+# See https://bugs.kde.org/show_bug.cgi?id=188572 about this;  it's
+# unavoidable due to BSD setenv() semantics.
+{
+   macos-__setenv-leak-see-our-bug-188572
+   Memcheck:Leak
+   match-leak-kinds: definite
+   fun:malloc
+   fun:_owned_ptr_alloc
+   fun:setenv
+}
+
+# See https://bugs.kde.org/show_bug.cgi?id=196528
+{
+   macos-__pthread_rwlock_init-see-our-bug-196528
+   Memcheck:Cond
+   fun:pthread_rwlock_init
+}
+
 ############################################
 ## Non-leak errors
 

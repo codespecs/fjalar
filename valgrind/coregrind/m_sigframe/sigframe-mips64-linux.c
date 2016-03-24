@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2010-2013 RT-RK 
+   Copyright (C) 2010-2015 RT-RK 
       mips-valgrind@rt-rk.com 
 
    This program is free software; you can redistribute it and/or
@@ -34,7 +34,6 @@
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
 #include "pub_core_vkiscnums.h"
-#include "pub_core_libcsetjmp.h"  /* to keep _threadstate.h happy */
 #include "pub_core_threadstate.h"
 #include "pub_core_aspacemgr.h"
 #include "pub_core_libcbase.h"
@@ -46,7 +45,7 @@
 #include "pub_core_signals.h"
 #include "pub_core_tooliface.h"
 #include "pub_core_trampoline.h"
-#include "pub_core_transtab.h"  /* VG_(discard_translations) */
+#include "priv_sigframe.h"
 
 struct vg_sig_private {
    UInt magicPI;
@@ -71,44 +70,6 @@ struct rt_sigframe {
    struct vg_sig_private priv;
 };
 
-/* Extend the stack segment downwards if needed so as to ensure the new signal
-   frames are mapped to something. Return a Bool indicating whether or not the
-   operation was successful.
-*/
-static Bool extend ( ThreadState *tst, Addr addr, SizeT size )
-{
-   ThreadId tid = tst->tid;
-   NSegment const* stackseg = NULL;
-
-   if (VG_(extend_stack)(addr, tst->client_stack_szB)) {
-      stackseg = VG_(am_find_nsegment)(addr);
-   }
-
-   if (stackseg == NULL || !stackseg->hasR || !stackseg->hasW) {
-      VG_(message)(Vg_UserMsg,
-         "Can't extend stack to %#lx during signal delivery for thread %d:\n",
-         addr, tid);
-      if (stackseg == NULL)
-         VG_(message)(Vg_UserMsg, " no stack segment\n");
-      else
-         VG_(message)(Vg_UserMsg, " too small or bad protection modes\n");
-
-      /* set SIGSEGV to default handler */
-      VG_(set_default_handler)(VKI_SIGSEGV);
-      VG_(synth_fault_mapping)(tid, addr);
-
-      /* The whole process should be about to die, since the default
-         action of SIGSEGV to kill the whole process. */
-      return False;
-   }
-
-   /* For tracking memory events, indicate the entire frame has been
-      allocated. */
-   VG_TRACK(new_mem_stack_signal, addr - VG_STACK_REDZONE_SZB,
-            size + VG_STACK_REDZONE_SZB, tid);
-
-   return True;
-}
 
 static void setup_sigcontext ( ThreadState* tst, struct vki_sigcontext **sc1,
                                const vki_siginfo_t *si)
@@ -155,6 +116,7 @@ static void setup_sigcontext ( ThreadState* tst, struct vki_sigcontext **sc1,
 
 /* EXPORTED */
 void VG_(sigframe_create) ( ThreadId tid,
+                            Bool on_altstack,
                             Addr sp_top_of_frame,
                             const vki_siginfo_t *siginfo,
                             const struct vki_ucontext *siguc,
@@ -173,7 +135,7 @@ void VG_(sigframe_create) ( ThreadId tid,
    sp = sp_top_of_frame - sizeof(struct rt_sigframe);
 
    tst = VG_(get_ThreadState)(tid);
-   if (!extend(tst, sp, sp_top_of_frame - sp))
+   if (! ML_(sf_maybe_extend_stack)(tst, sp, sp_top_of_frame - sp, flags))
       return;
 
    sp = VG_ROUNDDN(sp, 16);
@@ -304,7 +266,7 @@ void VG_(sigframe_destroy) ( ThreadId tid, Bool isRT )
    VG_TRACK(die_mem_stack_signal, sp, frame_size);
    if (VG_(clo_trace_signals))
       VG_(message)(Vg_DebugMsg,
-         "VG_(signal_return) (thread %d): isRT=%d valid magic; EIP=%#llx\n",
+         "VG_(signal_return) (thread %u): isRT=%d valid magic; EIP=%#llx\n",
          tid, isRT, tst->arch.vex.guest_PC);
    /* tell the tools */
    VG_TRACK( post_deliver_signal, tid, sigNo );

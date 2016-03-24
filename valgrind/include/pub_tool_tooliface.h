@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward
+   Copyright (C) 2000-2015 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -64,8 +64,8 @@ extern void (*VG_(tl_pre_clo_init)) ( void );
 */
 typedef 
    struct {
-      Addr64   nraddr; /* non-redirected guest address */
-      Addr64   readdr; /* redirected guest address */
+      Addr     nraddr; /* non-redirected guest address */
+      Addr     readdr; /* redirected guest address */
       ThreadId tid;    /* tid requesting translation */
    }
    VgCallbackClosure;
@@ -381,7 +381,7 @@ extern void VG_(needs_superblock_discards) (
    //   translation, and so could be covered by the "extents" of more than
    //   one call to this function.
    // Doing it the first way (as eg. Cachegrind does) is probably easier.
-   void (*discard_superblock_info)(Addr64 orig_addr, VexGuestExtents extents)
+   void (*discard_superblock_info)(Addr orig_addr, VexGuestExtents extents)
 );
 
 /* Tool defines its own command line options? */
@@ -630,6 +630,16 @@ void VG_(track_post_reg_write)(void(*f)(CorePart part, ThreadId tid,
 /* This one is called for malloc() et al if they are replaced by a tool. */
 void VG_(track_post_reg_write_clientcall_return)(
       void(*f)(ThreadId tid, PtrdiffT guest_state_offset, SizeT size, Addr f));
+
+/* Mem-to-reg or reg-to-mem copy functions, these ones occur around syscalls
+   and signal handling when the VCPU state is saved to (or restored from) the
+   client memory. */
+void VG_(track_copy_mem_to_reg)(void(*f)(CorePart part, ThreadId tid,
+                                         Addr a, PtrdiffT guest_state_offset,
+                                         SizeT size));
+void VG_(track_copy_reg_to_mem)(void(*f)(CorePart part, ThreadId tid,
+                                         PtrdiffT guest_state_offset,
+                                         Addr a, SizeT size));
 
 
 /* Scheduler events (not exhaustive) */

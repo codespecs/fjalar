@@ -6,7 +6,7 @@
 /*
    This file is part of Callgrind, a Valgrind tool for call tracing.
 
-   Copyright (C) 2002-2013, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2015, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -429,7 +429,7 @@ Bool CLG_(get_debug_info)(Addr instr_addr,
                           const HChar **fn_name, UInt* line_num,
                           DebugInfo** pDebugInfo)
 {
-  Bool found_file_line, found_fn, found_dirname, result = True;
+  Bool found_file_line, found_fn, result = True;
   UInt line;
   
   CLG_DEBUG(6, "  + get_debug_info(%#lx)\n", instr_addr);
@@ -443,7 +443,6 @@ Bool CLG_(get_debug_info)(Addr instr_addr,
    found_file_line = VG_(get_filename_linenum)(instr_addr,
 					       file,
 					       dir,
-					       &found_dirname,
 					       &line);
    found_fn = VG_(get_fnname)(instr_addr, fn_name);
 
@@ -509,10 +508,10 @@ fn_node* CLG_(get_fn_node)(BB* bb)
         static HChar buf[32];  // for sure large enough
 	/* Use address as found in library */
 	if (sizeof(Addr) == 4)
-	    p = VG_(sprintf)(buf, "%#08lx", bb->offset);
+          p = VG_(sprintf)(buf, "%#08lx", (UWord)bb->offset);
 	else 	    
 	    // 64bit address
-	    p = VG_(sprintf)(buf, "%#016lx", bb->offset);
+          p = VG_(sprintf)(buf, "%#016lx", (UWord)bb->offset);
 
 	VG_(sprintf)(buf + p, "%s", 
 		     (bb->sect_kind == Vg_SectData) ? " [Data]" :
@@ -573,7 +572,7 @@ fn_node* CLG_(get_fn_node)(BB* bb)
 	      VG_(message)(Vg_DebugMsg, "Symbol match: found runtime_resolve:"
                                         " %s +%#lx=%#lx\n",
 		      bb->obj->name + bb->obj->last_slash_pos,
-		      bb->offset, bb_addr(bb));
+                      (UWord)bb->offset, bb_addr(bb));
       }
 
       fn->is_malloc  = (VG_(strcmp)(fn->name, "malloc")==0);
@@ -664,12 +663,12 @@ void CLG_(set_current_fn_array)(fn_array* a)
 static void resize_fn_array(void)
 {
     UInt* new_array;
-    Int i, newsize;
+    Int i;
 
-    newsize = current_fn_active.size;
+    UInt newsize = current_fn_active.size;
     while (newsize <= CLG_(stat).distinct_fns) newsize *=2;
 
-    CLG_DEBUG(0, "Resize fn_active_array: %d => %d\n",
+    CLG_DEBUG(0, "Resize fn_active_array: %u => %u\n",
 	     current_fn_active.size, newsize);
 
     new_array = (UInt*) CLG_MALLOC("cl.fn.rfa.1", newsize * sizeof(UInt));

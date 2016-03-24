@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2007-2013 OpenWorks LLP
+   Copyright (C) 2007-2015 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -103,6 +103,13 @@ extern Bool VG_(lookupXA_UNSAFE) ( const XArray* xao, const void* key,
 
 /* How elements are there in this XArray now? */
 extern Word VG_(sizeXA) ( const XArray* );
+
+/* If you know how many elements an XArray will have, you can
+   optimise memory usage and number of reallocation needed
+   to insert these elements. The call to VG_(hintSizeXA) must be
+   done just after the call to VG_(newXA), before any element
+   has been inserted. */
+extern void VG_(hintSizeXA) ( XArray*, Word);
 
 /* Index into the XArray.  Checks bounds and bombs if the index is
    invalid.  What this returns is the address of the specified element

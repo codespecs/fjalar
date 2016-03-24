@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2010-2013 RT-RK
+   Copyright (C) 2010-2015 RT-RK
       mips-valgrind@rt-rk.com
 
    This program is free software; you can redistribute it and/or
@@ -32,7 +32,6 @@
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
 #include "pub_core_vkiscnums.h"
-#include "pub_core_libcsetjmp.h"    // to keep _threadstate.h happy
 #include "pub_core_threadstate.h"
 #include "pub_core_aspacemgr.h"
 #include "pub_core_debuglog.h"
@@ -48,7 +47,6 @@
 #include "pub_core_syscall.h"
 #include "pub_core_syswrap.h"
 #include "pub_core_tooliface.h"
-#include "pub_core_stacks.h"        // VG_(register_stack)
 #include "pub_core_transtab.h"      // VG_(discard_translations)
 #include "priv_types_n_macros.h"
 #include "priv_syswrap-generic.h"   /* for decls of generic wrappers */
@@ -229,7 +227,7 @@ static SysRes mips_PRE_sys_mmap (ThreadId tid,
                                  UWord arg4, UWord arg5, Off64T arg6);
 /* 
    When a client clones, we need to keep track of the new thread.  This means:
-   1. allocate a ThreadId+ThreadState+stack for the the thread
+   1. allocate a ThreadId+ThreadState+stack for the thread
    2. initialize the thread's new VCPU state
    3. create the thread using the same args as the client requested,
    but using the scheduler entrypoint for IP, and a separate stack
@@ -365,7 +363,7 @@ static void notify_core_of_mmap(Addr a, SizeT len, UInt prot,
    d = VG_(am_notify_client_mmap)( a, len, prot, flags, fd, offset );
 
    if (d)
-      VG_(discard_translations)( (Addr64)a, (ULong)len,
+      VG_(discard_translations)( a, (ULong)len,
                                  "notify_core_of_mmap" );
 }
 
@@ -535,8 +533,8 @@ PRE(sys_mmap2)
      units rather than bytes, so that it can be used for files bigger than
      2^32 bytes. */
   SysRes r;
-  PRINT("sys_mmap2 ( %#lx, %llu, %ld, %ld, %ld, %ld )", ARG1, (ULong) ARG2,
-                                                        ARG3, ARG4, ARG5, ARG6);
+  PRINT("sys_mmap2 ( %#lx, %lu, %lu, %lu, %lu, %lu )",
+        ARG1, ARG2, SARG3, SARG4, SARG5, SARG6);
   PRE_REG_READ6(long, "mmap2", unsigned long, start, unsigned long, length,
                 unsigned long, prot, unsigned long, flags,
                 unsigned long, fd, unsigned long, offset);
@@ -548,8 +546,8 @@ PRE(sys_mmap2)
 PRE(sys_mmap) 
 {
   SysRes r;
-  PRINT("sys_mmap ( %#lx, %llu, %lu, %lu, %lu, %ld )", ARG1, (ULong) ARG2,
-                                                       ARG3, ARG4, ARG5, ARG6);
+  PRINT("sys_mmap ( %#lx, %lu, %ld, %ld, %ld, %lu )",
+        ARG1, ARG2, SARG3, SARG4, SARG5, ARG6);
   PRE_REG_READ6(long, "mmap", unsigned long, start, vki_size_t, length,
                 int, prot, int, flags, int, fd, unsigned long, offset);
   r = mips_PRE_sys_mmap(tid, ARG1, ARG2, ARG3, ARG4, ARG5, (Off64T) ARG6);
@@ -563,7 +561,7 @@ PRE(sys_mmap)
  
 PRE (sys_lstat64) 
 {
-  PRINT ("sys_lstat64 ( %#lx(%s), %#lx )", ARG1, (char *) ARG1, ARG2);
+  PRINT ("sys_lstat64 ( %#lx(%s), %#lx )", ARG1, (HChar *) ARG1, ARG2);
   PRE_REG_READ2 (long, "lstat64", char *, file_name, struct stat64 *, buf);
   PRE_MEM_RASCIIZ ("lstat64(file_name)", ARG1);
   PRE_MEM_WRITE ("lstat64(buf)", ARG2, sizeof (struct vki_stat64));
@@ -580,7 +578,7 @@ POST (sys_lstat64)
 
 PRE (sys_stat64) 
 {
-  PRINT ("sys_stat64 ( %#lx(%s), %#lx )", ARG1, (char *) ARG1, ARG2);
+  PRINT ("sys_stat64 ( %#lx(%s), %#lx )", ARG1, (HChar *) ARG1, ARG2);
   PRE_REG_READ2 (long, "stat64", char *, file_name, struct stat64 *, buf);
   PRE_MEM_RASCIIZ ("stat64(file_name)", ARG1);
   PRE_MEM_WRITE ("stat64(buf)", ARG2, sizeof (struct vki_stat64));
@@ -593,10 +591,12 @@ POST (sys_stat64)
 
 PRE (sys_fstatat64)
 {
-  PRINT ("sys_fstatat64 ( %ld, %#lx(%s), %#lx )", ARG1, ARG2, (char *) ARG2,
-                                                  ARG3);
-  PRE_REG_READ3 (long, "fstatat64", int, dfd, char *, file_name,
-                 struct stat64 *, buf);
+  // ARG4 =  int flags;  Flags are or'ed together, therefore writing them
+  // as a hex constant is more meaningful.
+  PRINT("sys_fstatat64 ( %ld, %#lx(%s), %#lx, %#lx )",
+        SARG1, ARG2, (HChar*)ARG2, ARG3, ARG4);
+  PRE_REG_READ4(long, "fstatat64",
+                 int, dfd, char *, file_name, struct stat64 *, buf, int, flags);
   PRE_MEM_RASCIIZ ("fstatat64(file_name)", ARG2);
   PRE_MEM_WRITE ("fstatat64(buf)", ARG3, sizeof (struct vki_stat64));
 }
@@ -608,7 +608,7 @@ POST (sys_fstatat64)
 
 PRE (sys_fstat64)
 {
-  PRINT ("sys_fstat64 ( %ld, %#lx )", ARG1, ARG2);
+  PRINT ("sys_fstat64 ( %lu, %#lx )", SARG1, ARG2);
   PRE_REG_READ2 (long, "fstat64", unsigned long, fd, struct stat64 *, buf);
   PRE_MEM_WRITE ("fstat64(buf)", ARG2, sizeof (struct vki_stat64));
 }
@@ -749,10 +749,10 @@ PRE (sys_set_thread_area)
 /* Very much MIPS specific */
 PRE (sys_cacheflush)
 {
-  PRINT ("cacheflush (%lx, %lx, %lx)", ARG1, ARG2, ARG3);
+  PRINT ("cacheflush (%lx, %ld, %ld)", ARG1, SARG2, SARG3);
   PRE_REG_READ3(long, "cacheflush", unsigned long, addr,
                 int, nbytes, int, cache);
-  VG_ (discard_translations) ((Addr64) ARG1, ((ULong) ARG2),
+  VG_ (discard_translations) ((Addr)ARG1, (ULong) ARG2,
                               "PRE(sys_cacheflush)");
   SET_STATUS_Success (0);
 }
@@ -1114,11 +1114,13 @@ static SyscallTableEntry syscall_main_table[] = {
    LINXY (__NR_prlimit64,              sys_prlimit64),               // 338
    //..
    LINXY (__NR_clock_adjtime,          sys_clock_adjtime),           // 341
+   LINX_ (__NR_syncfs,                 sys_syncfs),                  // 342
    //..
    LINXY (__NR_process_vm_readv,       sys_process_vm_readv),        // 345
    LINX_ (__NR_process_vm_writev,      sys_process_vm_writev),       // 346
    //..
-   LINXY(__NR_getrandom,               sys_getrandom)                // 353
+   LINXY(__NR_getrandom,               sys_getrandom),               // 353
+   LINXY(__NR_memfd_create,            sys_memfd_create)             // 354
 };
 
 SyscallTableEntry* ML_(get_linux_syscall_entry) (UInt sysno)

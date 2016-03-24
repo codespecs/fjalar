@@ -1,7 +1,7 @@
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2013 Bart Van Assche <bvanassche@acm.org>.
+  Copyright (C) 2006-2015 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -68,7 +68,8 @@ void DRD_(clientreq_init)(void)
  * DRD's handler for Valgrind client requests. The code below handles both
  * DRD's public and tool-internal client requests.
  */
-#if defined(VGP_mips32_linux) || defined(VGP_mips64_linux)
+#if defined(VGP_mips32_linux) || defined(VGP_mips64_linux) || \
+    defined(VGP_tilegx_linux)
  /* There is a cse related issue in gcc for MIPS. Optimization level
     has to be lowered, so cse related optimizations are not
     included. */
@@ -613,6 +614,16 @@ static Bool handle_client_request(ThreadId vg_tid, UWord* arg, UWord* ret)
                                  &UICR);
       }
       break;
+
+#if defined(VGO_solaris)
+   case VG_USERREQ__RTLD_BIND_GUARD:
+      DRD_(thread_entering_rtld_bind_guard)(drd_tid, arg[1]);
+      break;
+
+   case VG_USERREQ__RTLD_BIND_CLEAR:
+      DRD_(thread_leaving_rtld_bind_clear)(drd_tid, arg[1]);
+      break;
+#endif /* VGO_solaris */
 
    default:
 #if 0

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward
+   Copyright (C) 2000-2015 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -33,6 +33,7 @@
 
 #include "pub_core_basics.h"        // VG_ macro
 #include "pub_core_threadstate.h"   // ThreadArchState
+#include "pub_core_tooliface.h"     // CorePart
 
 //--------------------------------------------------------------------
 // PURPOSE: This module contains all the syscall junk:  mostly PRE/POST
@@ -50,13 +51,22 @@ extern void VG_(post_syscall)   ( ThreadId tid );
 /* Clear this module's private state for thread 'tid' */
 extern void VG_(clear_syscallInfo) ( Int tid );
 
+// Returns True if the given thread is currently in a system call
+extern Bool VG_(is_in_syscall) ( Int tid );
+
 // Fix up a thread's state when syscall is interrupted by a signal.
 extern void VG_(fixup_guest_state_after_syscall_interrupted)(
                ThreadId tid,
                Addr     ip, 
                SysRes   sysret,
-               Bool     restart
+               Bool     restart,
+               struct vki_ucontext *uc
             );
+
+#if defined(VGO_solaris)
+// Determine if in a blocking syscall.
+extern Bool VG_(is_ip_in_blocking_syscall)(ThreadId tid, Addr ip);
+#endif
 
 // Wait until all other threads are dead
 extern void VG_(reap_threads)(ThreadId self);
@@ -76,6 +86,16 @@ extern void VG_(show_open_fds) ( const HChar* when );
 // m_main to become part of a module cycle, which is silly.
 extern void (* VG_(address_of_m_main_shutdown_actions_NORETURN) )
             (ThreadId,VgSchedReturnCode);
+
+#if defined(VGO_solaris)
+extern void VG_(save_context)(ThreadId tid, vki_ucontext_t *uc,
+                              CorePart part);
+extern void VG_(restore_context)(ThreadId tid, vki_ucontext_t *uc,
+                                 CorePart part, Bool esp_is_thrptr);
+extern void VG_(syswrap_init)(void);
+extern Bool VG_(setup_client_dataseg)(void);
+extern void VG_(track_client_dataseg)(ThreadId tid);
+#endif
 
 #endif   // __PUB_CORE_SYSWRAP_H
 

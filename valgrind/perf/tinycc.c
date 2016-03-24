@@ -3080,7 +3080,7 @@ enum tcc_token {
  DEF_FP(mul)
 
  DEF_ASM(fcom)
- DEF_ASM(fcom_1) /* non existant op, just to have a regular table */
+ DEF_ASM(fcom_1) /* non existent op, just to have a regular table */
  DEF_FP1(com)
 
  DEF_FP(comp)
@@ -4412,7 +4412,7 @@ static const char tcc_keywords[] =
  DEF_FP(mul)
 
  DEF_ASM(fcom)
- DEF_ASM(fcom_1) /* non existant op, just to have a regular table */
+ DEF_ASM(fcom_1) /* non existent op, just to have a regular table */
  DEF_FP1(com)
 
  DEF_FP(comp)
@@ -10433,7 +10433,7 @@ int gv(int rc)
         bit_pos = (vtop->type.t >> VT_STRUCT_SHIFT) & 0x3f;
         bit_size = (vtop->type.t >> (VT_STRUCT_SHIFT + 6)) & 0x3f;
         /* remove bit field info to avoid loops */
-        vtop->type.t &= ~(VT_BITFIELD | (-1 << VT_STRUCT_SHIFT));
+        vtop->type.t &= ~(VT_BITFIELD | (~0U << VT_STRUCT_SHIFT));
         /* generate shifts */
         vpushi(32 - (bit_pos + bit_size));
         gen_op(TOK_SHL);
@@ -11930,7 +11930,7 @@ void vstore(void)
         bit_pos = (ft >> VT_STRUCT_SHIFT) & 0x3f;
         bit_size = (ft >> (VT_STRUCT_SHIFT + 6)) & 0x3f;
         /* remove bit field info to avoid loops */
-        vtop[-1].type.t = ft & ~(VT_BITFIELD | (-1 << VT_STRUCT_SHIFT));
+        vtop[-1].type.t = ft & ~(VT_BITFIELD | (~0U << VT_STRUCT_SHIFT));
 
         /* duplicate destination */
         vdup();
@@ -16970,7 +16970,7 @@ static void subst_asm_operand(CString *add_str,
     }
 }
 
-/* generate prolog and epilog code for asm statment */
+/* generate prolog and epilog code for asm statement */
 static void asm_gen_code(ASMOperand *operands, int nb_operands, 
                          int nb_outputs, int is_output,
                          uint8_t *clobber_regs,
@@ -21285,7 +21285,7 @@ static int64_t getclock_us(void)
 
 void help(void)
 {
-    printf("tcc version " TCC_VERSION " - Tiny C Compiler - Copyright (C) 2001-2013 Fabrice Bellard\n"
+    printf("tcc version " TCC_VERSION " - Tiny C Compiler - Copyright (C) 2001-2015 Fabrice Bellard\n"
            "usage: tcc [-v] [-c] [-o outfile] [-Bdir] [-bench] [-Idir] [-Dsym[=val]] [-Usym]\n"
            "           [-Wwarn] [-g] [-b] [-bt N] [-Ldir] [-llib] [-shared] [-static]\n"
            "           [infile1 infile2...] [-run infile args...]\n"

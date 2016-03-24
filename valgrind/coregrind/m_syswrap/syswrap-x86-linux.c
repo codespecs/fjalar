@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Nicholas Nethercote
+   Copyright (C) 2000-2015 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -38,7 +38,6 @@
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
 #include "pub_core_vkiscnums.h"
-#include "pub_core_libcsetjmp.h"    // to keep _threadstate.h happy
 #include "pub_core_threadstate.h"
 #include "pub_core_aspacemgr.h"
 #include "pub_core_debuglog.h"
@@ -55,7 +54,6 @@
 #include "pub_core_syscall.h"
 #include "pub_core_syswrap.h"
 #include "pub_core_tooliface.h"
-#include "pub_core_stacks.h"        // VG_(register_stack)
 
 #include "priv_types_n_macros.h"
 #include "priv_syswrap-generic.h"    /* for decls of generic wrappers */
@@ -197,7 +195,7 @@ static SysRes sys_set_thread_area ( ThreadId, vki_modify_ldt_t* );
 
 /* 
    When a client clones, we need to keep track of the new thread.  This means:
-   1. allocate a ThreadId+ThreadState+stack for the the thread
+   1. allocate a ThreadId+ThreadState+stack for the thread
 
    2. initialize the thread's new VCPU state
 
@@ -288,7 +286,7 @@ static SysRes do_clone ( ThreadId ptid,
 
    if (flags & VKI_CLONE_SETTLS) {
       if (debug)
-	 VG_(printf)("clone child has SETTLS: tls info at %p: idx=%d "
+	 VG_(printf)("clone child has SETTLS: tls info at %p: idx=%u "
                      "base=%#lx limit=%x; esp=%#x fs=%x gs=%x\n",
 		     tlsinfo, tlsinfo->entry_number, 
                      tlsinfo->base_addr, tlsinfo->limit,
@@ -398,7 +396,7 @@ void translate_to_hw_format ( /* IN  */ vki_modify_ldt_t* inn,
    vg_assert(8 == sizeof(VexGuestX86SegDescr));
 
    if (0)
-      VG_(printf)("translate_to_hw_format: base %#lx, limit %d\n",
+      VG_(printf)("translate_to_hw_format: base %#lx, limit %u\n",
                   inn->base_addr, inn->limit );
 
    /* Allow LDTs to be cleared by the user. */
@@ -522,7 +520,7 @@ SysRes read_ldt ( ThreadId tid, UChar* ptr, UInt bytecount )
    UChar* ldt;
 
    if (0)
-      VG_(printf)("read_ldt: tid = %d, ptr = %p, bytecount = %d\n",
+      VG_(printf)("read_ldt: tid = %u, ptr = %p, bytecount = %u\n",
                   tid, ptr, bytecount );
 
    vg_assert(sizeof(HWord) == sizeof(VexGuestX86SegDescr*));
@@ -555,8 +553,8 @@ SysRes write_ldt ( ThreadId tid, void* ptr, UInt bytecount, Int oldmode )
    vki_modify_ldt_t* ldt_info; 
 
    if (0)
-      VG_(printf)("write_ldt: tid = %d, ptr = %p, "
-                  "bytecount = %d, oldmode = %d\n",
+      VG_(printf)("write_ldt: tid = %u, ptr = %p, "
+                  "bytecount = %u, oldmode = %d\n",
                   tid, ptr, bytecount, oldmode );
 
    vg_assert(8 == sizeof(VexGuestX86SegDescr));
@@ -810,7 +808,7 @@ PRE(old_select)
       a4 = arg_struct[3];
       a5 = arg_struct[4];
 
-      PRINT("old_select ( %d, %#x, %#x, %#x, %#x )", a1,a2,a3,a4,a5);
+      PRINT("old_select ( %d, %#x, %#x, %#x, %#x )", (Int)a1,a2,a3,a4,a5);
       if (a2 != (Addr)NULL)
          PRE_MEM_READ( "old_select(readfds)",   a2, a1/8 /* __FD_SETSIZE/8 */ );
       if (a3 != (Addr)NULL)
@@ -1023,7 +1021,7 @@ PRE(sys_rt_sigreturn)
 
 PRE(sys_modify_ldt)
 {
-   PRINT("sys_modify_ldt ( %ld, %#lx, %ld )", ARG1,ARG2,ARG3);
+   PRINT("sys_modify_ldt ( %ld, %#lx, %lu )", SARG1, ARG2, ARG3);
    PRE_REG_READ3(int, "modify_ldt", int, func, void *, ptr,
                  unsigned long, bytecount);
    
@@ -1075,9 +1073,10 @@ PRE(sys_get_thread_area)
 // space, and we should therefore not check anything it points to.
 PRE(sys_ptrace)
 {
-   PRINT("sys_ptrace ( %ld, %ld, %#lx, %#lx )", ARG1,ARG2,ARG3,ARG4);
+   PRINT("sys_ptrace ( %ld, %ld, %#lx, %#lx )", SARG1, SARG2, ARG3, ARG4);
    PRE_REG_READ4(int, "ptrace", 
-                 long, request, long, pid, long, addr, long, data);
+                 long, request, long, pid, unsigned long, addr,
+                 unsigned long, data);
    switch (ARG1) {
    case VKI_PTRACE_PEEKTEXT:
    case VKI_PTRACE_PEEKDATA:
@@ -1198,8 +1197,8 @@ PRE(old_mmap)
    a5 = args[5-1];
    a6 = args[6-1];
 
-   PRINT("old_mmap ( %#lx, %llu, %ld, %ld, %ld, %ld )",
-         a1, (ULong)a2, a3, a4, a5, a6 );
+   PRINT("old_mmap ( %#lx, %lu, %ld, %ld, %ld, %ld )",
+         a1, a2, (Word)a3, (Word)a4, (Word)a5, (Word)a6 );
 
    r = ML_(generic_PRE_sys_mmap)( tid, a1, a2, a3, a4, a5, (Off64T)a6 );
    SET_STATUS_from_SysRes(r);
@@ -1216,8 +1215,8 @@ PRE(sys_mmap2)
    // pagesize or 4K-size units in offset?  For ppc32/64-linux, this is
    // 4K-sized.  Assert that the page size is 4K here for safety.
    vg_assert(VKI_PAGE_SIZE == 4096);
-   PRINT("sys_mmap2 ( %#lx, %llu, %ld, %ld, %ld, %ld )",
-         ARG1, (ULong)ARG2, ARG3, ARG4, ARG5, ARG6 );
+   PRINT("sys_mmap2 ( %#lx, %lu, %lu, %lu, %lu, %lu )",
+         ARG1, ARG2, ARG3, ARG4, ARG5, ARG6 );
    PRE_REG_READ6(long, "mmap2",
                  unsigned long, start, unsigned long, length,
                  unsigned long, prot,  unsigned long, flags,
@@ -1234,7 +1233,7 @@ PRE(sys_mmap2)
 // things, eventually, I think.  --njn
 PRE(sys_lstat64)
 {
-   PRINT("sys_lstat64 ( %#lx(%s), %#lx )",ARG1,(char*)ARG1,ARG2);
+   PRINT("sys_lstat64 ( %#lx(%s), %#lx )", ARG1, (HChar*)ARG1, ARG2);
    PRE_REG_READ2(long, "lstat64", char *, file_name, struct stat64 *, buf);
    PRE_MEM_RASCIIZ( "lstat64(file_name)", ARG1 );
    PRE_MEM_WRITE( "lstat64(buf)", ARG2, sizeof(struct vki_stat64) );
@@ -1251,7 +1250,7 @@ POST(sys_lstat64)
 PRE(sys_stat64)
 {
    FUSE_COMPATIBLE_MAY_BLOCK();
-   PRINT("sys_stat64 ( %#lx(%s), %#lx )",ARG1,(char*)ARG1,ARG2);
+   PRINT("sys_stat64 ( %#lx(%s), %#lx )", ARG1, (HChar*)ARG1, ARG2);
    PRE_REG_READ2(long, "stat64", char *, file_name, struct stat64 *, buf);
    PRE_MEM_RASCIIZ( "stat64(file_name)", ARG1 );
    PRE_MEM_WRITE( "stat64(buf)", ARG2, sizeof(struct vki_stat64) );
@@ -1265,9 +1264,12 @@ POST(sys_stat64)
 PRE(sys_fstatat64)
 {
    FUSE_COMPATIBLE_MAY_BLOCK();
-   PRINT("sys_fstatat64 ( %ld, %#lx(%s), %#lx )",ARG1,ARG2,(char*)ARG2,ARG3);
-   PRE_REG_READ3(long, "fstatat64",
-                 int, dfd, char *, file_name, struct stat64 *, buf);
+   // ARG4 =  int flags;  Flags are or'ed together, therefore writing them
+   // as a hex constant is more meaningful.
+   PRINT("sys_fstatat64 ( %ld, %#lx(%s), %#lx, %#lx )",
+         SARG1, ARG2, (HChar*)ARG2, ARG3, ARG4);
+   PRE_REG_READ4(long, "fstatat64",
+                 int, dfd, char *, file_name, struct stat64 *, buf, int, flags);
    PRE_MEM_RASCIIZ( "fstatat64(file_name)", ARG2 );
    PRE_MEM_WRITE( "fstatat64(buf)", ARG3, sizeof(struct vki_stat64) );
 }
@@ -1279,7 +1281,7 @@ POST(sys_fstatat64)
 
 PRE(sys_fstat64)
 {
-   PRINT("sys_fstat64 ( %ld, %#lx )",ARG1,ARG2);
+   PRINT("sys_fstat64 ( %lu, %#lx )", ARG1, ARG2);
    PRE_REG_READ2(long, "fstat64", unsigned long, fd, struct stat64 *, buf);
    PRE_MEM_WRITE( "fstat64(buf)", ARG2, sizeof(struct vki_stat64) );
 }
@@ -1303,7 +1305,7 @@ PRE(sys_sigsuspend)
       that takes a pointer to the signal mask so supports more signals.
     */
    *flags |= SfMayBlock;
-   PRINT("sys_sigsuspend ( %ld, %ld, %ld )", ARG1,ARG2,ARG3 );
+   PRINT("sys_sigsuspend ( %ld, %ld, %lu )", SARG1, SARG2, ARG3 );
    PRE_REG_READ3(int, "sigsuspend",
                  int, history0, int, history1,
                  vki_old_sigset_t, mask);
@@ -1323,7 +1325,7 @@ POST(sys_vm86old)
 
 PRE(sys_vm86)
 {
-   PRINT("sys_vm86 ( %ld, %#lx )", ARG1,ARG2);
+   PRINT("sys_vm86 ( %lu, %#lx )", ARG1, ARG2);
    PRE_REG_READ2(int, "vm86", unsigned long, fn, struct vm86plus_struct *, v86);
    if (ARG1 == VKI_VM86_ENTER || ARG1 == VKI_VM86_ENTER_NO_BYPASS)
       PRE_MEM_WRITE( "vm86(v86)", ARG2, sizeof(struct vki_vm86plus_struct));
@@ -1807,7 +1809,7 @@ static SyscallTableEntry syscall_table[] = {
    LINXY(__NR_name_to_handle_at, sys_name_to_handle_at),// 341
    LINXY(__NR_open_by_handle_at, sys_open_by_handle_at),// 342
    LINXY(__NR_clock_adjtime,     sys_clock_adjtime),    // 343
-//   LINX_(__NR_syncfs,            sys_ni_syscall),       // 344
+   LINX_(__NR_syncfs,            sys_syncfs),           // 344
 
    LINXY(__NR_sendmmsg,          sys_sendmmsg),         // 345
 //   LINX_(__NR_setns,             sys_ni_syscall),       // 346
@@ -1821,8 +1823,8 @@ static SyscallTableEntry syscall_table[] = {
 //   LIN__(__NR_renameat2,         sys_ni_syscall),       // 353
 //   LIN__(__NR_seccomp,           sys_ni_syscall),       // 354
 
-   LINXY(__NR_getrandom,         sys_getrandom)         // 355
-//   LIN__(__NR_memfd_create,      sys_ni_syscall),       // 356
+   LINXY(__NR_getrandom,         sys_getrandom),        // 355
+   LINXY(__NR_memfd_create,      sys_memfd_create)      // 356
 //   LIN__(__NR_bpf,               sys_ni_syscall)        // 357
 };
 

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward 
+   Copyright (C) 2000-2015 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -30,8 +30,8 @@
 
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
-#include "pub_core_libcsetjmp.h"    // to keep _threadstate.h happy
 #include "pub_core_threadstate.h"
+#include "pub_core_mallocfree.h"    // VG_(malloc)
 #include "pub_core_libcassert.h"
 #include "pub_core_inner.h"
 #if defined(ENABLE_INNER_CLIENT_REQUEST)
@@ -44,7 +44,8 @@
 
 ThreadId VG_(running_tid) = VG_INVALID_THREADID;
 
-ThreadState VG_(threads)[VG_N_THREADS] __attribute__((aligned(16)));
+ThreadState *VG_(threads);
+UInt VG_N_THREADS;
 
 /*------------------------------------------------------------*/
 /*--- Operations.                                          ---*/
@@ -53,6 +54,10 @@ ThreadState VG_(threads)[VG_N_THREADS] __attribute__((aligned(16)));
 void VG_(init_Threads)(void)
 {
    ThreadId tid;
+
+   VG_(threads) = VG_(arena_memalign) (VG_AR_CORE, "init_Threads",
+                                       LibVEX_GUEST_STATE_ALIGN,
+                                       VG_N_THREADS * sizeof VG_(threads)[0]);
 
    for (tid = 1; tid < VG_N_THREADS; tid++) {
       INNER_REQUEST(

@@ -6,7 +6,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2011-2013 Philippe Waroquiers
+   Copyright (C) 2011-2015 Philippe Waroquiers
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -290,7 +290,7 @@ void *invoke_gdbserver_in_valgrind(void *v_pid)
                last invoke. */
             if (invoked_written != written_by_vgdb_before_sleep) {
                if (invoker_invoke_gdbserver(pid)) {
-                  /* If invoke succesful, no need to invoke again
+                  /* If invoke successful, no need to invoke again
                      for the same value of written_by_vgdb_before_sleep. */
                   invoked_written = written_by_vgdb_before_sleep;
                }
@@ -1062,37 +1062,44 @@ void standalone_send_commands(int pid,
 }
 
 /* report to user the existence of a vgdb-able valgrind process 
-   with given pid */
+   with given pid.
+   Note: this function does not use XERROR if an error is encountered
+   while producing the command line for pid, as this is not critical
+   and at least on MacOS, reading cmdline is not available. */
 static
 void report_pid (int pid, Bool on_stdout)
 {
-   char cmdline_file[100];
-   char cmdline[1000];
-   int fd;
-   int i, sz;
+   char cmdline_file[50];   // large enough
+   int fd, i;
+   FILE *out = on_stdout ? stdout : stderr;
+
+   fprintf(out, "use --pid=%d for ", pid);
 
    sprintf(cmdline_file, "/proc/%d/cmdline", pid);
    fd = open (cmdline_file, O_RDONLY);
    if (fd == -1) {
       DEBUG(1, "error opening cmdline file %s %s\n", 
             cmdline_file, strerror(errno));
-      sprintf(cmdline, "(could not open process command line)");
+      fprintf(out, "(could not open process command line)\n");
    } else {
-      sz = read(fd, cmdline, 1000);
-      for (i = 0; i < sz; i++)
-         if (cmdline[i] == 0)
-            cmdline[i] = ' ';
-      if (sz >= 0)
+      char cmdline[100];
+      ssize_t sz;
+      while ((sz = read(fd, cmdline, sizeof cmdline - 1)) != 0) {
+         for (i = 0; i < sz; i++)
+            if (cmdline[i] == 0)
+               cmdline[i] = ' ';
          cmdline[sz] = 0;
-      else {
+         fprintf(out, "%s", cmdline);
+      }
+      if (sz == -1) {
          DEBUG(1, "error reading cmdline file %s %s\n", 
                cmdline_file, strerror(errno));
-         sprintf(cmdline, "(could not read process command line)");
+         fprintf(out, "(error reading process command line)");
       }
+      fprintf(out, "\n");
       close (fd);
    }  
-   fprintf((on_stdout ? stdout : stderr), "use --pid=%d for %s\n", pid, cmdline);
-   fflush((on_stdout ? stdout : stderr));
+   fflush(out);
 }
 
 static

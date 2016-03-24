@@ -8,12 +8,13 @@ EXTRA_DIST = \
 	alloc-fns-B.post.exp alloc-fns-B.stderr.exp alloc-fns-B.vgtest \
 	basic.post.exp basic.stderr.exp basic.vgtest \
 	basic2.post.exp basic2.stderr.exp basic2.vgtest \
-	big-alloc.post.exp big-alloc.post.exp-64bit \
+	big-alloc.post.exp big-alloc.post.exp-64bit big-alloc.post.exp-ppc64 \
 	big-alloc.stderr.exp big-alloc.vgtest \
 	deep-A.post.exp deep-A.stderr.exp deep-A.vgtest \
 	deep-B.post.exp deep-B.stderr.exp deep-B.vgtest \
 	deep-C.post.exp deep-C.stderr.exp deep-C.vgtest \
 	deep-D.post.exp deep-D.stderr.exp deep-D.vgtest \
+	deep-D.post.exp-ppc64 \
         culling1.stderr.exp culling1.vgtest \
         culling2.stderr.exp culling2.vgtest \
 	custom_alloc.post.exp custom_alloc.stderr.exp custom_alloc.vgtest \
@@ -33,12 +34,18 @@ EXTRA_DIST = \
 	peak.post.exp peak.stderr.exp peak.vgtest \
 	peak2.post.exp peak2.stderr.exp peak2.vgtest \
 	realloc.post.exp realloc.stderr.exp realloc.vgtest \
-	thresholds_0_0.post.exp   thresholds_0_0.stderr.exp   thresholds_0_0.vgtest \
-	thresholds_0_10.post.exp  thresholds_0_10.stderr.exp  thresholds_0_10.vgtest \
-	thresholds_10_0.post.exp  thresholds_10_0.stderr.exp  thresholds_10_0.vgtest \
-	thresholds_5_0.post.exp   thresholds_5_0.stderr.exp   thresholds_5_0.vgtest \
-	thresholds_5_10.post.exp  thresholds_5_10.stderr.exp  thresholds_5_10.vgtest \
-	thresholds_10_10.post.exp thresholds_10_10.stderr.exp thresholds_10_10.vgtest \
+	thresholds_0_0.post.exp \
+	thresholds_0_0.stderr.exp   thresholds_0_0.vgtest \
+	thresholds_0_10.post.exp    thresholds_0_10.stderr.exp \
+	thresholds_0_10.vgtest \
+	thresholds_10_0.post.exp \
+	thresholds_10_0.stderr.exp  thresholds_10_0.vgtest \
+	thresholds_5_0.post.exp  \
+	thresholds_5_0.stderr.exp   thresholds_5_0.vgtest \
+	thresholds_5_10.post.exp \
+	thresholds_5_10.stderr.exp  thresholds_5_10.vgtest \
+	thresholds_10_10.post.exp \
+	thresholds_10_10.stderr.exp thresholds_10_10.vgtest \
 	zero1.post.exp zero1.stderr.exp zero1.vgtest \
 	zero2.post.exp zero2.stderr.exp zero2.vgtest
 

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward 
+   Copyright (C) 2000-2015 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -38,11 +38,59 @@
    Building syscall return values.
    ------------------------------------------------------------------ */
 
-#if defined(VGO_linux)
-
 /* Make a SysRes value from a syscall return value.  This is
-   Linux-specific.
+   platform specific. */
 
+#if defined(VGP_mips32_linux) || defined(VGP_mips64_linux)
+
+SysRes VG_(mk_SysRes_mips32_linux) ( UWord v0, UWord v1, UWord a3 ) {
+   /* MIPS uses a3 != 0 to flag an error */
+   SysRes res;
+   res._isError = (a3 != (UWord)0);
+   res._val     = v0;
+   res._valEx   = v1;
+   return res;
+}
+
+SysRes VG_(mk_SysRes_mips64_linux) ( ULong v0, ULong v1, ULong a3 ) {
+   /* MIPS uses a3 != 0 to flag an error */
+   SysRes res;
+   res._isError = (a3 != (ULong)0);
+   res._val     = v0;
+   res._valEx   = v1;
+   return res;
+}
+
+/* Generic constructors. */
+SysRes VG_(mk_SysRes_Error) ( UWord err ) {
+   SysRes r;
+   r._isError = True;
+   r._val     = err;
+   r._valEx   = 0;
+   return r;
+}
+
+SysRes VG_(mk_SysRes_Success) ( UWord res ) {
+   SysRes r;
+   r._isError = False;
+   r._val     = res;
+   r._valEx   = 0;
+   return r;
+}
+
+SysRes VG_(mk_SysRes_SuccessEx) ( UWord res, UWord resEx ) {
+   SysRes r;
+   r._isError = False;
+   r._val     = res;
+   r._valEx   = resEx;
+   return r;
+}
+
+
+#elif defined(VGO_linux) \
+      && !defined(VGP_mips32_linux) && !defined(VGP_mips64_linux)
+
+/*
    From:
    http://sources.redhat.com/cgi-bin/cvsweb.cgi/libc/sysdeps/unix/sysv/
    linux/i386/sysdep.h?
@@ -62,7 +110,6 @@
 
 SysRes VG_(mk_SysRes_x86_linux) ( Int val ) {
    SysRes res;
-   res._valEx   = 0; /* unused except on mips-linux */
    res._isError = val >= -4095 && val <= -1;
    if (res._isError) {
       res._val = (UInt)(-val);
@@ -75,7 +122,6 @@ SysRes VG_(mk_SysRes_x86_linux) ( Int val ) {
 /* Similarly .. */
 SysRes VG_(mk_SysRes_amd64_linux) ( Long val ) {
    SysRes res;
-   res._valEx   = 0; /* unused except on mips-linux */
    res._isError = val >= -4095 && val <= -1;
    if (res._isError) {
       res._val = (ULong)(-val);
@@ -85,11 +131,21 @@ SysRes VG_(mk_SysRes_amd64_linux) ( Long val ) {
    return res;
 }
 
+SysRes VG_(mk_SysRes_tilegx_linux) ( Long val ) {
+  SysRes res;
+  res._isError = val >= -4095 && val <= -1;
+  if (res._isError) {
+    res._val = (ULong)(-val);
+  } else {
+    res._val = (ULong)val;
+  }
+  return res;
+}
+
 /* PPC uses the CR7.SO bit to flag an error (CR0 in IBM-speak) */
 /* Note this must be in the bottom bit of the second arg */
 SysRes VG_(mk_SysRes_ppc32_linux) ( UInt val, UInt cr0so ) {
    SysRes res;
-   res._valEx   = 0; /* unused except on mips-linux */
    res._isError = (cr0so & 1) != 0;
    res._val     = val;
    return res;
@@ -98,7 +154,6 @@ SysRes VG_(mk_SysRes_ppc32_linux) ( UInt val, UInt cr0so ) {
 /* As per ppc32 version, cr0.so must be in l.s.b. of 2nd arg */
 SysRes VG_(mk_SysRes_ppc64_linux) ( ULong val, ULong cr0so ) {
    SysRes res;
-   res._valEx   = 0; /* unused except on mips-linux */
    res._isError = (cr0so & 1) != 0;
    res._val     = val;
    return res;
@@ -106,7 +161,6 @@ SysRes VG_(mk_SysRes_ppc64_linux) ( ULong val, ULong cr0so ) {
 
 SysRes VG_(mk_SysRes_s390x_linux) ( Long val ) {
    SysRes res;
-   res._valEx   = 0; /* unused except on mips-linux */
    res._isError = val >= -4095 && val <= -1;
    if (res._isError) {
       res._val = -val;
@@ -118,7 +172,6 @@ SysRes VG_(mk_SysRes_s390x_linux) ( Long val ) {
 
 SysRes VG_(mk_SysRes_arm_linux) ( Int val ) {
    SysRes res;
-   res._valEx   = 0; /* unused except on mips-linux */
    res._isError = val >= -4095 && val <= -1;
    if (res._isError) {
       res._val = (UInt)(-val);
@@ -130,7 +183,6 @@ SysRes VG_(mk_SysRes_arm_linux) ( Int val ) {
 
 SysRes VG_(mk_SysRes_arm64_linux) ( Long val ) {
    SysRes res;
-   res._valEx   = 0; /* unused except on mips-linux */
    res._isError = val >= -4095 && val <= -1;
    if (res._isError) {
       res._val = (ULong)(-val);
@@ -140,28 +192,9 @@ SysRes VG_(mk_SysRes_arm64_linux) ( Long val ) {
    return res;
 }
 
-/* MIPS uses a3 != 0 to flag an error */
-SysRes VG_(mk_SysRes_mips32_linux) ( UWord v0, UWord v1, UWord a3 ) {
-   SysRes res;
-   res._isError = (a3 != (UWord)0);
-   res._val     = v0;
-   res._valEx   = v1;
-   return res;
-}
-
-/* MIPS uses a3 != 0 to flag an error */
-SysRes VG_(mk_SysRes_mips64_linux) ( ULong v0, ULong v1, ULong a3 ) {
-   SysRes res;
-   res._isError = (a3 != (ULong)0);
-   res._val     = v0;
-   res._valEx   = v1;
-   return res;
-}
-
 /* Generic constructors. */
 SysRes VG_(mk_SysRes_Error) ( UWord err ) {
    SysRes r;
-   r._valEx   = 0; /* unused except on mips-linux */
    r._isError = True;
    r._val     = err;
    return r;
@@ -169,7 +202,6 @@ SysRes VG_(mk_SysRes_Error) ( UWord err ) {
 
 SysRes VG_(mk_SysRes_Success) ( UWord res ) {
    SysRes r;
-   r._valEx   = 0; /* unused except on mips-linux */
    r._isError = False;
    r._val     = res;
    return r;
@@ -265,6 +297,51 @@ SysRes VG_(mk_SysRes_Success) ( UWord res ) {
 }
 
 
+#elif defined(VGO_solaris)
+
+/* Generic constructors. */
+SysRes VG_(mk_SysRes_Error) ( UWord err ) {
+   SysRes r;
+   r._val     = err;
+   r._val2    = 0;
+   r._isError = True;
+   return r;
+}
+
+SysRes VG_(mk_SysRes_Success) ( UWord res ) {
+   SysRes r;
+   r._val     = res;
+   r._val2    = 0;
+   r._isError = False;
+   return r;
+}
+
+SysRes VG_(mk_SysRes_x86_solaris) ( Bool isErr, UInt val, UInt val2 )
+{
+   SysRes res;
+
+   // stay sane
+   vg_assert(isErr == True || isErr == False);
+
+   res._val  = val;
+   res._val2 = val2;
+   res._isError = isErr;
+   return res;
+}
+
+SysRes VG_(mk_SysRes_amd64_solaris) ( Bool isErr, ULong val, ULong val2 )
+{
+   SysRes res;
+
+   // stay sane
+   vg_assert(isErr == True || isErr == False);
+
+   res._val  = val;
+   res._val2 = val2;
+   res._isError = isErr;
+   return res;
+}
+
 #else
 #  error "Unknown OS"
 #endif
@@ -295,10 +372,19 @@ asm(
 ".text\n"
 ".globl do_syscall_WRK\n"
 "do_syscall_WRK:\n"
+"	.cfi_startproc\n"
 "	push	%esi\n"
+"	.cfi_adjust_cfa_offset 4\n"
+"	.cfi_offset %esi, -8\n"
 "	push	%edi\n"
+"	.cfi_adjust_cfa_offset 4\n"
+"	.cfi_offset %edi, -12\n"
 "	push	%ebx\n"
+"	.cfi_adjust_cfa_offset 4\n"
+"	.cfi_offset %ebx, -16\n"
 "	push	%ebp\n"
+"	.cfi_adjust_cfa_offset 4\n"
+"	.cfi_offset %ebp, -20\n"
 "	movl	16+ 4(%esp),%eax\n"
 "	movl	16+ 8(%esp),%ebx\n"
 "	movl	16+12(%esp),%ecx\n"
@@ -308,10 +394,19 @@ asm(
 "	movl	16+28(%esp),%ebp\n"
 "	int	$0x80\n"
 "	popl	%ebp\n"
+"	.cfi_adjust_cfa_offset -4\n"
+"	.cfi_restore %ebp\n"
 "	popl	%ebx\n"
+"	.cfi_adjust_cfa_offset -4\n"
+"	.cfi_restore %ebx\n"
 "	popl	%edi\n"
+"	.cfi_adjust_cfa_offset -4\n"
+"	.cfi_restore %edi\n"
 "	popl	%esi\n"
+"	.cfi_adjust_cfa_offset -4\n"
+"	.cfi_restore %esi\n"
 "	ret\n"
+"	.cfi_endproc\n"
 ".previous\n"
 );
 
@@ -733,6 +828,114 @@ asm (
 ".previous\n"
 );
 
+#elif defined(VGP_tilegx_linux)
+extern UWord do_syscall_WRK (
+          UWord syscall_no, 
+          UWord a1, UWord a2, UWord a3,
+          UWord a4, UWord a5, UWord a6
+       );
+asm(
+    ".text\n"
+    "do_syscall_WRK:\n"
+    "move  r10, r0\n"
+    "move  r0,  r1\n"
+    "move  r1,  r2\n"
+    "move  r2,  r3\n"
+    "move  r3,  r4\n"
+    "move  r4,  r5\n"
+    "move  r5,  r6\n"
+    "swint1\n"
+    "jrp   lr\n"
+    ".previous\n"
+    );
+
+#elif defined(VGP_x86_solaris)
+
+extern ULong
+do_syscall_WRK(UWord a1, UWord a2, UWord a3,    /* 4(esp)..12(esp) */
+               UWord a4, UWord a5, UWord a6,    /* 16(esp)..24(esp) */
+               UWord a7, UWord a8,              /* 28(esp)..32(esp) */
+               UWord syscall_no,                /* 36(esp) */
+               /*OUT*/UInt *errflag);           /* 40(esp) */
+/* Classic unix syscall.. parameters on the stack, an unused (by the kernel)
+   return address at 0(esp), a sysno in eax, a result in edx:eax, the carry
+   flag set on error. */
+__asm__ (
+".text\n"
+".globl do_syscall_WRK\n"
+"do_syscall_WRK:\n"
+"       movl    40(%esp), %ecx\n"       /* assume syscall success */
+"       movl    $0, (%ecx)\n"
+"       movl    36(%esp), %eax\n"
+"       int     $0x91\n"
+"       jnc     1f\n"                   /* jump if success */
+"       movl    40(%esp), %ecx\n"       /* syscall failed - set *errflag */
+"       movl    $1, (%ecx)\n"
+"1:     ret\n"
+".previous\n"
+);
+
+extern ULong
+do_syscall_fast_WRK(UWord syscall_no);          /* 4(esp) */
+/* Fasttrap syscall.. no parameters, a sysno in eax, a result in edx:eax,
+   never fails (if the sysno is valid). */
+__asm__ (
+".text\n"
+".globl do_syscall_fast_WRK\n"
+"do_syscall_fast_WRK:\n"
+"       movl    4(%esp), %eax\n"
+"       int     $0xD2\n"
+"       ret\n"
+".previous\n"
+);
+
+#elif defined(VGP_amd64_solaris)
+
+extern ULong
+do_syscall_WRK(UWord a1, UWord a2, UWord a3,    /* rdi, rsi, rdx */
+               UWord a4, UWord a5, UWord a6,    /* rcx, r8, r9 */
+               UWord a7, UWord a8,              /* 8(rsp), 16(rsp) */
+               UWord syscall_no,                /* 24(rsp) */
+               /*OUT*/ULong *errflag,           /* 32(rsp) */
+               /*OUT*/ULong *res2);             /* 40(rsp) */
+/* First 6 parameters in registers rdi, rsi, rdx, r10, r8, r9, next
+   2 parameters on the stack, an unused (by the kernel) return address at
+   0(rsp), a sysno in rax, a result in rdx:rax, the carry flag set on
+   error. */
+__asm__ (
+".text\n"
+".globl do_syscall_WRK\n"
+"do_syscall_WRK:\n"
+"       movq    %rcx, %r10\n"           /* pass rcx in r10 instead */
+"       movq    32(%rsp), %rcx\n"       /* assume syscall success */
+"       movq    $0, (%rcx)\n"
+"       movq    24(%rsp), %rax\n"
+"       syscall\n"
+"       jnc     1f\n"                   /* jump if success */
+"       movq    32(%rsp), %rcx\n"       /* syscall failed - set *errflag */
+"       movq    $1, (%rcx)\n"
+"1:     movq    40(%rsp), %rcx\n"       /* save 2nd result word */
+"       movq    %rdx, (%rcx)\n"
+"       ret\n"
+".previous\n"
+);
+
+extern ULong
+do_syscall_fast_WRK(UWord syscall_no,           /* rdi */
+                    /*OUT*/ULong *res2);        /* rsi */
+/* Fasttrap syscall.. no parameters, a sysno in rax, a result in rdx:rax,
+   never fails (if the sysno is valid). */
+__asm__ (
+".text\n"
+".globl do_syscall_fast_WRK\n"
+"do_syscall_fast_WRK:\n"
+"       movq    %rdi, %rax\n"
+"       int     $0xD2\n"
+"       movq    %rdx, (%rsi)\n"         /* save 2nd result word */
+"       ret\n"
+".previous\n"
+);
+
 #else
 #  error Unknown platform
 #endif
@@ -860,6 +1063,67 @@ SysRes VG_(do_syscall) ( UWord sysno, UWord a1, UWord a2, UWord a3,
    ULong V1 = (ULong)v1_a3[0];
    ULong A3 = (ULong)v1_a3[1];
    return VG_(mk_SysRes_mips64_linux)( V0, V1, A3 );
+
+#  elif defined(VGP_tilegx_linux)
+   UWord val = do_syscall_WRK(sysno,a1,a2,a3,a4,a5,a6);
+
+   return VG_(mk_SysRes_tilegx_linux)( val );
+
+#  elif defined(VGP_x86_solaris)
+   UInt val, val2, err = False;
+   Bool restart;
+   ULong u64;
+   UChar ssclass = VG_SOLARIS_SYSNO_CLASS(sysno);
+
+   switch (ssclass) {
+      case VG_SOLARIS_SYSCALL_CLASS_CLASSIC:
+         /* The Solaris kernel does not restart syscalls automatically so it
+            is done here. */
+         do {
+            u64 = do_syscall_WRK(a1,a2,a3,a4,a5,a6,a7,a8,
+                                 VG_SOLARIS_SYSNO_INDEX(sysno), &err);
+            val = (UInt)u64;
+            restart = err && (val == VKI_EINTR || val == VKI_ERESTART);
+         } while (restart);
+         break;
+      case VG_SOLARIS_SYSCALL_CLASS_FASTTRAP:
+         u64 = do_syscall_fast_WRK(VG_SOLARIS_SYSNO_INDEX(sysno));
+         break;
+      default:
+         vg_assert(0);
+         break;
+   }
+
+   val = (UInt)u64;
+   val2 = (UInt)(u64 >> 32);
+   return VG_(mk_SysRes_x86_solaris)(err ? True : False, val,
+                                     err ? 0 : val2);
+
+#  elif defined(VGP_amd64_solaris)
+   ULong val, val2, err = False;
+   Bool restart;
+   UChar ssclass = VG_SOLARIS_SYSNO_CLASS(sysno);
+
+   switch (ssclass) {
+      case VG_SOLARIS_SYSCALL_CLASS_CLASSIC:
+         /* The Solaris kernel does not restart syscalls automatically so it
+            is done here. */
+         do {
+            val = do_syscall_WRK(a1,a2,a3,a4,a5,a6,a7,a8,
+                                 VG_SOLARIS_SYSNO_INDEX(sysno), &err, &val2);
+            restart = err && (val == VKI_EINTR || val == VKI_ERESTART);
+         } while (restart);
+         break;
+      case VG_SOLARIS_SYSCALL_CLASS_FASTTRAP:
+         val = do_syscall_fast_WRK(VG_SOLARIS_SYSNO_INDEX(sysno), &val2);
+         break;
+      default:
+         vg_assert(0);
+         break;
+   }
+
+   return VG_(mk_SysRes_amd64_solaris)(err ? True : False, val,
+                                       err ? 0 : val2);
 
 #else
 #  error Unknown platform

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2013 OpenWorks LLP
+   Copyright (C) 2004-2015 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -58,7 +58,7 @@ void failure_exit ( void )
 }
 
 static
-void log_bytes ( HChar* bytes, Int nbytes )
+void log_bytes ( const HChar* bytes, SizeT nbytes )
 {
    fwrite ( bytes, 1, nbytes, stdout );
 }
@@ -84,10 +84,11 @@ IRSB* mc_instrument ( void* closureV,
                       IRType gWordTy, IRType hWordTy );
 #endif
 
-static Bool chase_into_not_ok ( void* opaque, Addr64 dst ) {
+static Bool chase_into_not_ok ( void* opaque, Addr dst ) {
    return False;
 }
-static UInt needs_self_check ( void* opaque, VexGuestExtents* vge ) {
+static UInt needs_self_check ( void *closureV, VexRegisterUpdates *pxControl,
+                               const VexGuestExtents *vge ) {
    return 0;
 }
 
@@ -102,7 +103,7 @@ int main ( int argc, char** argv )
    VexTranslateResult tres;
    VexControl vcon;
    VexGuestExtents vge;
-   VexArchInfo vai_x86, vai_amd64, vai_ppc32, vai_arm;
+   VexArchInfo vai_x86, vai_amd64, vai_ppc32, vai_arm, vai_mips32, vai_mips64;
    VexAbiInfo vbi;
    VexTranslateArgs vta;
 
@@ -169,11 +170,13 @@ int main ( int argc, char** argv )
 
       /* FIXME: put sensible values into the .hwcaps fields */
       LibVEX_default_VexArchInfo(&vai_x86);
-      vai_x86.hwcaps = VEX_HWCAPS_X86_SSE1
+      vai_x86.hwcaps = VEX_HWCAPS_X86_MMXEXT | VEX_HWCAPS_X86_SSE1
                        | VEX_HWCAPS_X86_SSE2 | VEX_HWCAPS_X86_SSE3;
+      vai_x86.endness = VexEndnessLE;
 
       LibVEX_default_VexArchInfo(&vai_amd64);
       vai_amd64.hwcaps = 0;
+      vai_amd64.endness = VexEndnessLE;
 
       LibVEX_default_VexArchInfo(&vai_ppc32);
       vai_ppc32.hwcaps = 0;
@@ -182,6 +185,13 @@ int main ( int argc, char** argv )
       LibVEX_default_VexArchInfo(&vai_arm);
       vai_arm.hwcaps = VEX_HWCAPS_ARM_VFP3 | VEX_HWCAPS_ARM_NEON | 7;
 
+      LibVEX_default_VexArchInfo(&vai_mips32);
+      vai_mips32.endness = VexEndnessLE;
+      vai_mips32.hwcaps = VEX_PRID_COMP_MIPS;
+
+      LibVEX_default_VexArchInfo(&vai_mips64);
+      vai_mips64.endness = VexEndnessLE;
+
       LibVEX_default_VexAbiInfo(&vbi);
       vbi.guest_stack_redzone_size = 128;
 
@@ -189,7 +199,7 @@ int main ( int argc, char** argv )
 
       vta.abiinfo_both    = vbi;
       vta.guest_bytes     = &origbuf[18];
-      vta.guest_bytes_addr = (Addr64)orig_addr;
+      vta.guest_bytes_addr = orig_addr;
       vta.callback_opaque = NULL;
       vta.chase_into_ok   = chase_into_not_ok;
       vta.guest_extents   = &vge;
@@ -215,7 +225,19 @@ int main ( int argc, char** argv )
       vta.arch_host      = VexArchX86;
       vta.archinfo_host  = vai_x86;
 #endif
-#if 1 /* arm -> arm */
+#if 1 /* x86 -> mips32 */
+      vta.arch_guest     = VexArchX86;
+      vta.archinfo_guest = vai_x86;
+      vta.arch_host      = VexArchMIPS32;
+      vta.archinfo_host  = vai_mips32;
+#endif
+#if 0 /* amd64 -> mips64 */
+      vta.arch_guest     = VexArchAMD64;
+      vta.archinfo_guest = vai_amd64;
+      vta.arch_host      = VexArchMIPS64;
+      vta.archinfo_host  = vai_mips64;
+#endif
+#if 0 /* arm -> arm */
       vta.arch_guest     = VexArchARM;
       vta.archinfo_guest = vai_arm;
       vta.arch_host      = VexArchARM;
@@ -223,7 +245,7 @@ int main ( int argc, char** argv )
       /* ARM/Thumb only hacks, that are needed to keep the ITstate
          analyser in the front end happy.  */
       vta.guest_bytes     = &origbuf[18 +1];
-      vta.guest_bytes_addr = (Addr64)(&origbuf[18 +1]);
+      vta.guest_bytes_addr = (Addr) &origbuf[18 +1];
 #endif
 
 #if 1 /* no instrumentation */
@@ -494,7 +516,7 @@ static void MC_helperc_value_check4_fail( void ) { }
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2000-2013 Julian Seward 
+   Copyright (C) 2000-2015 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -650,9 +672,9 @@ static Bool isShadowAtom ( MCEnv* mce, IRAtom* a1 )
    are identically-kinded. */
 static Bool sameKindedAtoms ( IRAtom* a1, IRAtom* a2 )
 {
-   if (a1->tag == Iex_RdTmp && a1->tag == Iex_RdTmp)
+   if (a1->tag == Iex_RdTmp && a2->tag == Iex_RdTmp)
       return True;
-   if (a1->tag == Iex_Const && a1->tag == Iex_Const)
+   if (a1->tag == Iex_Const && a2->tag == Iex_Const)
       return True;
    return False;
 }
@@ -1949,13 +1971,12 @@ IRExpr* expr2vbits_Unop ( MCEnv* mce, IROp op, IRAtom* atom )
          return unary64F0x2(mce, vatom);
 
       case Iop_Sqrt32Fx4:
-      case Iop_RSqrt32Fx4:
-      case Iop_Recip32Fx4:
+      case Iop_RecipEst32Fx4:
          return unary32Fx4(mce, vatom);
 
       case Iop_Sqrt32F0x4:
-      case Iop_RSqrt32F0x4:
-      case Iop_Recip32F0x4:
+      case Iop_RSqrtEst32F0x4:
+      case Iop_RecipEst32F0x4:
          return unary32F0x4(mce, vatom);
 
       case Iop_32UtoV128:

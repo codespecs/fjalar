@@ -2,7 +2,7 @@
 
 prog: gone
 args: abort
-vgopts: --tool=none --vgdb=yes --vgdb-error=0 --vgdb-prefix=./vgdb-prefix-nlgone-abrt
+vgopts: -q --tool=none --vgdb=yes --vgdb-error=0 --vgdb-prefix=./vgdb-prefix-nlgone-abrt
 stderr_filter: filter_stderr
 prereq: test -e gdb
 progB: gdb
@@ -10,3 +10,4 @@ argsB: --quiet -l 60 --nx ./gone
 stdinB: nlgone_abrt.stdinB.gdb
 stdoutB_filter: filter_gdb
 stderrB_filter: filter_gdb
+cleanup: rm -f vgcore.*

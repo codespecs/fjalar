@@ -1,5 +1,5 @@
 # connect gdb to Valgrind gdbserver:
-target remote | ./vgdb --wait=60 --vgdb-prefix=./vgdb-prefix-nlvgdbsigqueue -d -d 2>vgdb.stderr.out
+target remote | ./vgdb --wait=60 --vgdb-prefix=./vgdb-prefix-nlvgdbsigqueue
 echo vgdb launched process attached\n
 monitor v.set vgdb-error 999999
 #

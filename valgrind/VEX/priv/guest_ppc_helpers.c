@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2013 OpenWorks LLP
+   Copyright (C) 2004-2015 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -68,7 +68,7 @@
 /* Reads a complete, consistent 64-bit TB value. */
 ULong ppcg_dirtyhelper_MFTB ( void )
 {
-#  if defined(__powerpc__) || defined(_AIX)
+#  if defined(__powerpc__)
    ULong res;
    UInt  lo, hi1, hi2;
    while (1) {
@@ -93,7 +93,7 @@ ULong ppcg_dirtyhelper_MFTB ( void )
 /* DIRTY HELPER (non-referentially transparent) */
 UInt ppc32g_dirtyhelper_MFSPR_268_269 ( UInt r269 )
 {
-#  if defined(__powerpc__) || defined(_AIX)
+#  if defined(__powerpc__)
    UInt spr;
    if (r269) {
       __asm__ __volatile__("mfspr %0,269" : "=b"(spr));
@@ -111,7 +111,7 @@ UInt ppc32g_dirtyhelper_MFSPR_268_269 ( UInt r269 )
 /* DIRTY HELPER (I'm not really sure what the side effects are) */
 UInt ppc32g_dirtyhelper_MFSPR_287 ( void )
 {
-#  if defined(__powerpc__) || defined(_AIX)
+#  if defined(__powerpc__)
    UInt spr;
    __asm__ __volatile__("mfspr %0,287" : "=b"(spr));
    return spr;
@@ -521,6 +521,8 @@ void LibVEX_GuestPPC32_initialise ( /*OUT*/VexGuestPPC32State* vex_state )
 
    vex_state->guest_IP_AT_SYSCALL = 0;
    vex_state->guest_SPRG3_RO = 0;
+   vex_state->guest_PPR = 0x4ULL << 50;  // medium priority
+   vex_state->guest_PSPB = 0x100;  // an arbitrary non-zero value to start with
 
    vex_state->padding1 = 0;
    vex_state->padding2 = 0;
@@ -691,6 +693,8 @@ void LibVEX_GuestPPC64_initialise ( /*OUT*/VexGuestPPC64State* vex_state )
    vex_state->guest_TFHAR  = 0;
    vex_state->guest_TFIAR  = 0;
    vex_state->guest_TEXASR = 0;
+   vex_state->guest_PPR = 0x4ULL << 50;  // medium priority
+   vex_state->guest_PSPB = 0x100;  // an arbitrary non-zero value to start with
 }
 
 
@@ -711,8 +715,9 @@ void LibVEX_GuestPPC64_initialise ( /*OUT*/VexGuestPPC64State* vex_state )
 
    Only R1 is needed in mode VexRegUpdSpAtMemAccess.   
 */
-Bool guest_ppc32_state_requires_precise_mem_exns ( Int minoff, 
-                                                   Int maxoff )
+Bool guest_ppc32_state_requires_precise_mem_exns (
+        Int minoff, Int maxoff, VexRegisterUpdates pxControl
+     )
 {
    Int lr_min  = offsetof(VexGuestPPC32State, guest_LR);
    Int lr_max  = lr_min + 4 - 1;
@@ -723,7 +728,7 @@ Bool guest_ppc32_state_requires_precise_mem_exns ( Int minoff,
 
    if (maxoff < r1_min || minoff > r1_max) {
       /* no overlap with R1 */
-      if (vex_control.iropt_register_updates == VexRegUpdSpAtMemAccess)
+      if (pxControl == VexRegUpdSpAtMemAccess)
          return False; // We only need to check stack pointer.
    } else {
       return True;
@@ -744,8 +749,9 @@ Bool guest_ppc32_state_requires_precise_mem_exns ( Int minoff,
    return False;
 }
 
-Bool guest_ppc64_state_requires_precise_mem_exns ( Int minoff, 
-                                                   Int maxoff )
+Bool guest_ppc64_state_requires_precise_mem_exns (
+        Int minoff, Int maxoff, VexRegisterUpdates pxControl
+     )
 {
    /* Given that R2 is a Big Deal in the ELF ppc64 ABI, it seems
       prudent to be conservative with it, even though thus far there
@@ -762,7 +768,7 @@ Bool guest_ppc64_state_requires_precise_mem_exns ( Int minoff,
 
    if (maxoff < r1_min || minoff > r1_max) {
       /* no overlap with R1 */
-      if (vex_control.iropt_register_updates == VexRegUpdSpAtMemAccess)
+      if (pxControl == VexRegUpdSpAtMemAccess)
          return False; // We only need to check stack pointer.
    } else {
       return True;

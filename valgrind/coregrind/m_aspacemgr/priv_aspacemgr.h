@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2013 OpenWorks LLP
+   Copyright (C) 2006-2015 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -67,7 +67,9 @@
 
 __attribute__ ((noreturn))
 extern void   ML_(am_exit) ( Int status );
+__attribute__ ((noreturn))
 extern void   ML_(am_barf) ( const HChar* what );
+__attribute__ ((noreturn))
 extern void   ML_(am_barf_toolow) ( const HChar* what );
 
 __attribute__ ((noreturn))
@@ -128,6 +130,29 @@ Bool ML_(am_resolve_filename) ( Int fd, /*OUT*/HChar* buf, Int nbuf );
 /* Do a sanity check (/proc/self/maps sync check) */
 extern void ML_(am_do_sanity_check)( void );
 
+
+/* ------ Implemented in aspacemgr-segnames.c ------ */
+void ML_(am_segnames_init)(void);
+void ML_(am_show_segnames)(Int logLevel, const HChar *prefix);
+
+/* Put NAME into the string table of segment names. Return index for
+   future reference. A return value of -1 indicates that the segment name
+   could not be stored. Basically an out-of-memory situation. */
+Int ML_(am_allocate_segname)(const HChar *name);
+
+/* Increment / decrement the reference counter for this segment name. */
+void ML_(am_inc_refcount)(Int);
+void ML_(am_dec_refcount)(Int);
+
+/* Check whether the segname index is sane. */
+Bool ML_(am_sane_segname)(Int fnIdx);
+
+/* Return the segment name for the given index. Maybe return NULL, if the
+   segment does not have a name. */
+const HChar *ML_(am_get_segname)(Int fnIdx);
+
+/* Return the sequence number of the segment name */
+Int ML_(am_segname_get_seqnr)(Int fnIdx);
 
 #endif   // __PRIV_ASPACEMGR_H
 

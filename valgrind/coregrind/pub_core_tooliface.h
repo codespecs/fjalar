@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward
+   Copyright (C) 2000-2015 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -133,7 +133,7 @@ typedef struct {
    void  (*tool_update_extra_suppression_use) (const Error*, const Supp*);
 
    // VG_(needs).superblock_discards
-   void (*tool_discard_superblock_info)(Addr64, VexGuestExtents);
+   void (*tool_discard_superblock_info)(Addr, VexGuestExtents);
 
    // VG_(needs).command_line_options
    Bool (*tool_process_cmd_line_option)(const HChar*);
@@ -232,6 +232,9 @@ typedef struct {
    void (*track_post_reg_write)(CorePart, ThreadId,               PtrdiffT, SizeT);
    void (*track_post_reg_write_clientcall_return)(ThreadId, PtrdiffT, SizeT,
                                                   Addr);
+
+   void (*track_copy_mem_to_reg)(CorePart, ThreadId, Addr, PtrdiffT, SizeT);
+   void (*track_copy_reg_to_mem)(CorePart, ThreadId, PtrdiffT, Addr, SizeT);
 
    void (*track_start_client_code)(ThreadId, ULong);
    void (*track_stop_client_code) (ThreadId, ULong);

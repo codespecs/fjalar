@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Nicholas Nethercote
+   Copyright (C) 2000-2015 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -285,6 +285,9 @@ DECL_TEMPLATE(linux, sys_fanotify_mark);
 
 // Linux-specific (new in Linux 3.17)
 DECL_TEMPLATE(linux, sys_getrandom);
+DECL_TEMPLATE(linux, sys_memfd_create);
+
+DECL_TEMPLATE(linux, sys_syncfs);
 
 /* ---------------------------------------------------------------------
    Wrappers for sockets and ipc-ery.  These are split into standalone
@@ -304,6 +307,10 @@ extern void ML_(linux_POST_sys_msgctl)     ( TId, UW, UW, UW, UW );
 extern void ML_(linux_PRE_sys_getsockopt)  ( TId, UW, UW, UW, UW, UW );
 extern void ML_(linux_POST_sys_getsockopt) ( TId, SR, UW, UW, UW, UW, UW );
 extern void ML_(linux_PRE_sys_setsockopt)  ( TId, UW, UW, UW, UW, UW );
+extern void ML_(linux_PRE_sys_recvmmsg)    ( TId, UW, UW, UW, UW, UW );
+extern void ML_(linux_POST_sys_recvmmsg)   ( TId, UW, UW, UW, UW, UW, UW );
+extern void ML_(linux_PRE_sys_sendmmsg)    ( TId, UW, UW, UW, UW );
+extern void ML_(linux_POST_sys_sendmmsg)   ( TId, UW, UW, UW, UW, UW );
 
 // Linux-specific (but non-arch-specific) ptrace wrapper helpers
 extern void ML_(linux_PRE_getregset) ( ThreadId, long, long );

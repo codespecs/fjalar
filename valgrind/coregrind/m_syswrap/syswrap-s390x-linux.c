@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright IBM Corp. 2010-2013
+   Copyright IBM Corp. 2010-2015
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -34,7 +34,6 @@
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
 #include "pub_core_vkiscnums.h"
-#include "pub_core_libcsetjmp.h"    // to keep _threadstate.h happy
 #include "pub_core_threadstate.h"
 #include "pub_core_aspacemgr.h"
 #include "pub_core_debuglog.h"
@@ -51,7 +50,6 @@
 #include "pub_core_syscall.h"
 #include "pub_core_syswrap.h"
 #include "pub_core_tooliface.h"
-#include "pub_core_stacks.h"        // VG_(register_stack)
 
 #include "priv_types_n_macros.h"
 #include "priv_syswrap-generic.h"    /* for decls of generic wrappers */
@@ -196,7 +194,7 @@ static void setup_child ( /*OUT*/ ThreadArchState *child,
 
 /*
    When a client clones, we need to keep track of the new thread.  This means:
-   1. allocate a ThreadId+ThreadState+stack for the the thread
+   1. allocate a ThreadId+ThreadState+stack for the thread
 
    2. initialize the thread's new VCPU state
 
@@ -250,7 +248,7 @@ static SysRes do_clone ( ThreadId ptid,
    ctst->arch.vex.guest_r2 = 0;
 
    if (sp != 0)
-      ctst->arch.vex.guest_r15 = sp;
+      ctst->arch.vex.guest_SP = sp;
 
    ctst->os_state.parent = ptid;
 
@@ -333,9 +331,10 @@ DECL_TEMPLATE(s390x_linux, sys_fadvise64);
 
 PRE(sys_ptrace)
 {
-   PRINT("sys_ptrace ( %ld, %ld, %#lx, %#lx )", ARG1,ARG2,ARG3,ARG4);
+   PRINT("sys_ptrace ( %ld, %ld, %#lx, %#lx )", SARG1, SARG2, ARG3, ARG4);
    PRE_REG_READ4(int, "ptrace",
-                 long, request, long, pid, long, addr, long, data);
+                 long, request, long, pid, unsigned long, addr,
+                 unsigned long, data);
    switch (ARG1) {
    case VKI_PTRACE_PEEKTEXT:
    case VKI_PTRACE_PEEKDATA:
@@ -446,8 +445,8 @@ PRE(sys_mmap)
    a4 = args[4];
    a5 = args[5];
 
-   PRINT("sys_mmap ( %#lx, %llu, %ld, %ld, %ld, %ld )",
-         a0, (ULong)a1, a2, a3, a4, a5 );
+   PRINT("sys_mmap ( %#lx, %lu, %ld, %ld, %ld, %ld )",
+         a0, a1, (Word)a2, (Word)a3, (Word)a4, (Word)a5 );
 
    r = ML_(generic_PRE_sys_mmap)( tid, a0, a1, a2, a3, a4, (Off64T)a5 );
    SET_STATUS_from_SysRes(r);
@@ -525,11 +524,11 @@ PRE(sys_clone)
 
    default:
       /* should we just ENOSYS? */
-      VG_(message)(Vg_UserMsg, "Unsupported clone() flags: 0x%lx", ARG2);
-      VG_(message)(Vg_UserMsg, "");
-      VG_(message)(Vg_UserMsg, "The only supported clone() uses are:");
-      VG_(message)(Vg_UserMsg, " - via a threads library (NPTL)");
-      VG_(message)(Vg_UserMsg, " - via the implementation of fork or vfork");
+      VG_(message)(Vg_UserMsg, "Unsupported clone() flags: 0x%lx\n", ARG2);
+      VG_(message)(Vg_UserMsg, "\n");
+      VG_(message)(Vg_UserMsg, "The only supported clone() uses are:\n");
+      VG_(message)(Vg_UserMsg, " - via a threads library (NPTL)\n");
+      VG_(message)(Vg_UserMsg, " - via the implementation of fork or vfork\n");
       VG_(unimplemented)
          ("Valgrind does not support general clone().");
    }
@@ -607,7 +606,7 @@ PRE(sys_rt_sigreturn)
 /* we cant use the LINX_ version for 64 bit */
 PRE(sys_fadvise64)
 {
-   PRINT("sys_fadvise64 ( %ld, %ld, %ld, %ld )", ARG1,ARG2,ARG3,ARG4);
+   PRINT("sys_fadvise64 ( %ld, %ld, %ld, %ld )", SARG1, SARG2, SARG3, SARG4);
    PRE_REG_READ4(long, "fadvise64",
                  int, fd, vki_loff_t, offset, vki_loff_t, len, int, advice);
 }
@@ -1037,7 +1036,7 @@ static SyscallTableEntry syscall_table[] = {
    LINXY(__NR_name_to_handle_at, sys_name_to_handle_at),              // 335
    LINXY(__NR_open_by_handle_at, sys_open_by_handle_at),              // 336
    LINXY(__NR_clock_adjtime, sys_clock_adjtime),                      // 337
-// ?????(__NR_syncfs, ),                                              // 338
+   LINX_(__NR_syncfs, sys_syncfs),                                    // 338
 // ?????(__NR_setns, ),                                               // 339
 
    LINXY(__NR_process_vm_readv, sys_process_vm_readv),                // 340
@@ -1050,9 +1049,9 @@ static SyscallTableEntry syscall_table[] = {
 // ?????(__NR_sched_getattr, ),                                       // 346
 // ?????(__NR_renameat2, ),                                           // 347
 // ?????(__NR_seccomp, ),                                             // 348
-   LINXY(__NR_getrandom, sys_getrandom)                               // 349
+   LINXY(__NR_getrandom, sys_getrandom),                              // 349
 
-// ?????(__NR_memfd_create, ),                                        // 350
+   LINXY(__NR_memfd_create, sys_memfd_create)                         // 350
 };
 
 SyscallTableEntry* ML_(get_linux_syscall_entry) ( UInt sysno )

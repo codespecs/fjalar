@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Nicholas Nethercote
+   Copyright (C) 2000-2015 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -38,12 +38,16 @@
 #include "pub_core_libcproc.h"
 #include "pub_core_mallocfree.h"
 #include "pub_core_seqmatch.h"     // VG_(string_match)
+#include "pub_core_aspacemgr.h"
 
 // See pub_{core,tool}_options.h for explanations of all these.
 
 
 /* Define, and set defaults. */
+
 VexControl VG_(clo_vex_control);
+VexRegisterUpdates VG_(clo_px_file_backed) = VexRegUpd_INVALID;
+
 Bool   VG_(clo_error_limit)    = True;
 Int    VG_(clo_error_exitcode) = 0;
 HChar *VG_(clo_error_markers)[2] = {NULL, NULL};
@@ -63,8 +67,6 @@ const HChar *VG_(clo_vgdb_prefix)    = NULL;
 const HChar *VG_(arg_vgdb_prefix)    = NULL;
 Bool   VG_(clo_vgdb_shadow_registers) = False;
 
-Bool   VG_(clo_db_attach)      = False;
-const HChar*  VG_(clo_db_command)     = GDB_PATH " -nw %f %p";
 Int    VG_(clo_gen_suppressions) = 0;
 Int    VG_(clo_sanity_level)   = 1;
 Int    VG_(clo_verbosity)      = 1;
@@ -123,14 +125,29 @@ Bool   VG_(clo_track_fds)      = False;
 Bool   VG_(clo_show_below_main)= False;
 Bool   VG_(clo_show_emwarns)   = False;
 Word   VG_(clo_max_stackframe) = 2000000;
+UInt   VG_(clo_max_threads)    = MAX_THREADS_DEFAULT;
 Word   VG_(clo_main_stacksize) = 0; /* use client's rlimit.stack */
+Word   VG_(clo_valgrind_stacksize) = VG_DEFAULT_STACK_ACTIVE_SZB;
 Bool   VG_(clo_wait_for_gdb)   = False;
-VgSmc  VG_(clo_smc_check)      = Vg_SmcStack;
 UInt   VG_(clo_kernel_variant) = 0;
-Bool   VG_(clo_dsymutil)       = False;
+Bool   VG_(clo_dsymutil)       = True;
 Bool   VG_(clo_sigill_diag)    = True;
 UInt   VG_(clo_unw_stack_scan_thresh) = 0; /* disabled by default */
 UInt   VG_(clo_unw_stack_scan_frames) = 5;
+
+// Set clo_smc_check so that it provides transparent self modifying
+// code support for "correct" programs at the smallest achievable
+// expense for this arch.
+#if defined(VGA_x86) || defined(VGA_amd64) || defined(VGA_s390x)
+VgSmc VG_(clo_smc_check) = Vg_SmcAllNonFile;
+#elif defined(VGA_ppc32) || defined(VGA_ppc64be) || defined(VGA_ppc64le) \
+      || defined(VGA_arm) || defined(VGA_arm64) \
+      || defined(VGA_mips32) || defined(VGA_mips64) \
+      || defined(VGA_tilegx)
+VgSmc VG_(clo_smc_check) = Vg_SmcStack;
+#else
+#  error "Unknown arch"
+#endif
 
 #if defined(VGO_darwin)
 UInt VG_(clo_resync_filter) = 1; /* enabled, but quiet */
@@ -150,12 +167,13 @@ HChar* VG_(expand_file_name)(const HChar* option_name, const HChar* format)
    const HChar *base_dir;
    Int len, i = 0, j = 0;
    HChar* out;
+   const HChar *message = NULL;
 
    base_dir = VG_(get_startup_wd)();
 
    if (VG_STREQ(format, "")) {
       // Empty name, bad.
-      VG_(fmsg)("%s: filename is empty", option_name);
+      message = "No filename given\n";
       goto bad;
    }
    
@@ -164,13 +182,11 @@ HChar* VG_(expand_file_name)(const HChar* option_name, const HChar* format)
    // that we don't allow a legitimate filename beginning with '~' but that
    // seems very unlikely.
    if (format[0] == '~') {
-      VG_(fmsg)(
-         "%s: filename begins with '~'\n"
+      message = 
+         "Filename begins with '~'\n"
          "You probably expected the shell to expand the '~', but it\n"
          "didn't.  The rules for '~'-expansion vary from shell to shell.\n"
-         "You might have more luck using $HOME instead.\n",
-         option_name
-      );
+         "You might have more luck using $HOME instead.\n";
       goto bad;
    }
 
@@ -212,7 +228,7 @@ HChar* VG_(expand_file_name)(const HChar* option_name, const HChar* format)
                Int begin_qualname = ++i;
                while (True) {
                   if (0 == format[i]) {
-                     VG_(fmsg)("%s: malformed %%q specifier\n", option_name);
+                     message = "Missing '}' in %q specifier\n";
                      goto bad;
                   } else if ('}' == format[i]) {
                      Int qualname_len = i - begin_qualname;
@@ -222,8 +238,14 @@ HChar* VG_(expand_file_name)(const HChar* option_name, const HChar* format)
                      qualname[qualname_len] = '\0';
                      qual = VG_(getenv)(qualname);
                      if (NULL == qual) {
-                        VG_(fmsg)("%s: environment variable %s is not set\n",
-                                  option_name, qualname);
+                        // This memory will leak, But we don't care because
+                        // VG_(fmsg_bad_option) will terminate the process.
+                        HChar *str = VG_(malloc)("options.efn.3",
+                                                 100 + qualname_len);
+                        VG_(sprintf)(str,
+                                     "Environment variable '%s' is not set\n",
+                                     qualname);
+                        message = str;
                         goto bad;
                      }
                      i++;
@@ -234,14 +256,13 @@ HChar* VG_(expand_file_name)(const HChar* option_name, const HChar* format)
                ENSURE_THIS_MUCH_SPACE(VG_(strlen)(qual));
                j += VG_(sprintf)(&out[j], "%s", qual);
             } else {
-               VG_(fmsg)("%s: expected '{' after '%%q'\n", option_name);
+               message = "Expected '{' after '%q'\n";
                goto bad;
             }
          } 
          else {
             // Something else, abort.
-            VG_(fmsg)("%s: expected 'p' or 'q' or '%%' after '%%'\n",
-                      option_name);
+            message = "Expected 'p' or 'q' or '%' after '%'\n";
             goto bad;
          }
       }
@@ -264,13 +285,11 @@ HChar* VG_(expand_file_name)(const HChar* option_name, const HChar* format)
    return out;
 
   bad: {
-   HChar* opt =    // 2:  1 for the '=', 1 for the NUL.
-      VG_(malloc)( "options.efn.3",
-                   VG_(strlen)(option_name) + VG_(strlen)(format) + 2 );
-   VG_(strcpy)(opt, option_name);
-   VG_(strcat)(opt, "=");
-   VG_(strcat)(opt, format);
-   VG_(fmsg_bad_option)(opt, "");
+   vg_assert(message != NULL);
+   // 2:  1 for the '=', 1 for the NUL.
+   HChar opt[VG_(strlen)(option_name) + VG_(strlen)(format) + 2];
+   VG_(sprintf)(opt, "%s=%s", option_name, format);
+   VG_(fmsg_bad_option)(opt, "%s", message);
   }
 }
 
@@ -292,7 +311,7 @@ static HChar const* consume_field ( HChar const* c ) {
    return c;
 }
 
-/* Should we trace into this child executable (across execve etc) ?
+/* Should we trace into this child executable (across execve, spawn etc) ?
    This involves considering --trace-children=,
    --trace-children-skip=, --trace-children-skip-by-arg=, and the name
    of the executable.  'child_argv' must not include the name of the

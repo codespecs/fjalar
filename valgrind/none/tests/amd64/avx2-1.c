@@ -2,14 +2,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
-#include <malloc.h>
+#include "tests/malloc.h"
 
 typedef  unsigned char           UChar;
 typedef  unsigned int            UInt;
 typedef  unsigned long int       UWord;
 typedef  unsigned long long int  ULong;
 
+#if defined(VGO_darwin)
 UChar randArray[1027] __attribute__((used));
+#else
+UChar _randArray[1027] __attribute__((used));
+#endif
 
 #define IS_32_ALIGNED(_ptr) (0 == (0x1F & (UWord)(_ptr)))
 
@@ -58,13 +62,14 @@ void randBlock ( Block* b )
    operands only %ymm6, %ymm7, %ymm8, %ymm9 and %r14.  The mem form of
    the insn may mention as operands only (%rax), %ymm7, %ymm8, %ymm9
    and %r14.  It's OK for the insn to clobber ymm0, as this is needed
-   for testing PCMPxSTRx. */
+   for testing PCMPxSTRx, and ymm6, as this is needed for testing
+   MOVMASK variants. */
 
 #define GEN_test_RandM(_name, _reg_form, _mem_form)   \
     \
     __attribute__ ((noinline)) static void test_##_name ( void )   \
     { \
-       Block* b = memalign(32, sizeof(Block)); \
+       Block* b = memalign32(sizeof(Block)); \
        randBlock(b); \
        printf("%s(reg)\n", #_name); \
        showBlock("before", b); \
@@ -101,7 +106,8 @@ void randBlock ( Block* b )
           "movq    %%r14, 128(%0)"  "\n\t" \
           : /*OUT*/  \
           : /*IN*/"r"(b) \
-          : /*TRASH*/"xmm0","xmm8","xmm7","xmm9","r14","rax","memory","cc" \
+          : /*TRASH*/"xmm6", \
+                     "xmm0","xmm8","xmm7","xmm9","r14","rax","memory","cc" \
        ); \
        showBlock("after", b); \
        printf("\n"); \
@@ -949,11 +955,31 @@ GEN_test_Monly(VPMASKMOVQ_256_LoadForm,
                "vxorpd %%ymm6, %%ymm6, %%ymm6;"
                "vpmaskmovq (%%rax,%%rax,4), %%ymm6, %%ymm9")
 
+GEN_test_Monly(VPMASKMOVD_128_StoreForm,
+               "vpmaskmovd %%xmm8, %%xmm7, (%%rax);"
+               "vxorps %%xmm6, %%xmm6, %%xmm6;"
+               "vpmaskmovd %%xmm9, %%xmm6, (%%rax,%%rax,4)")
+
+GEN_test_Monly(VPMASKMOVD_256_StoreForm,
+               "vpmaskmovd %%ymm8, %%ymm7, (%%rax);"
+               "vxorps %%ymm6, %%ymm6, %%ymm6;"
+               "vpmaskmovd %%ymm9, %%ymm6, (%%rax,%%rax,4)")
+
+GEN_test_Monly(VPMASKMOVQ_128_StoreForm,
+               "vpmaskmovq %%xmm8, %%xmm7, (%%rax);"
+               "vxorpd %%xmm6, %%xmm6, %%xmm6;"
+               "vpmaskmovq %%xmm9, %%xmm6, (%%rax,%%rax,4)")
+
+GEN_test_Monly(VPMASKMOVQ_256_StoreForm,
+               "vpmaskmovq %%ymm8, %%ymm7, (%%rax);"
+               "vxorpd %%ymm6, %%ymm6, %%ymm6;"
+               "vpmaskmovq %%ymm9, %%ymm6, (%%rax,%%rax,4)")
+
 GEN_test_Ronly(VGATHERDPS_128,
                "vpslld $25, %%xmm7, %%xmm8;"
                "vpsrld $25, %%xmm8, %%xmm8;"
                "vblendvps %%xmm6, %%xmm8, %%xmm7, %%xmm8;"
-               "leaq randArray(%%rip), %%r14;"
+               "leaq _randArray(%%rip), %%r14;"
                "vgatherdps %%xmm6, 3(%%r14,%%xmm8,4), %%xmm9;"
                "xorl %%r14d, %%r14d")
 
@@ -961,7 +987,7 @@ GEN_test_Ronly(VGATHERDPS_256,
                "vpslld $25, %%ymm7, %%ymm8;"
                "vpsrld $25, %%ymm8, %%ymm8;"
                "vblendvps %%ymm6, %%ymm8, %%ymm7, %%ymm8;"
-               "leaq randArray(%%rip), %%r14;"
+               "leaq _randArray(%%rip), %%r14;"
                "vgatherdps %%ymm6, 3(%%r14,%%ymm8,4), %%ymm9;"
                "xorl %%r14d, %%r14d")
 
@@ -971,7 +997,7 @@ GEN_test_Ronly(VGATHERQPS_128_1,
                "vpmovsxdq %%xmm6, %%xmm9;"
                "vblendvpd %%xmm9, %%xmm8, %%xmm7, %%xmm8;"
                "vmovdqa 96(%0), %%ymm9;"
-               "leaq randArray(%%rip), %%r14;"
+               "leaq _randArray(%%rip), %%r14;"
                "vgatherqps %%xmm6, 3(%%r14,%%xmm8,4), %%xmm9;"
                "xorl %%r14d, %%r14d")
 
@@ -981,7 +1007,7 @@ GEN_test_Ronly(VGATHERQPS_256_1,
                "vpmovsxdq %%xmm6, %%ymm9;"
                "vblendvpd %%ymm9, %%ymm8, %%ymm7, %%ymm8;"
                "vmovdqa 96(%0), %%ymm9;"
-               "leaq randArray(%%rip), %%r14;"
+               "leaq _randArray(%%rip), %%r14;"
                "vgatherqps %%xmm6, 3(%%r14,%%ymm8,4), %%xmm9;"
                "xorl %%r14d, %%r14d")
 
@@ -991,7 +1017,7 @@ GEN_test_Ronly(VGATHERQPS_128_2,
                "vpmovsxdq %%xmm6, %%xmm9;"
                "vblendvpd %%xmm9, %%xmm8, %%xmm7, %%xmm8;"
                "vmovdqa 96(%0), %%ymm9;"
-               "leaq randArray(%%rip), %%r14;"
+               "leaq _randArray(%%rip), %%r14;"
                "vmovq %%r14, %%xmm7;"
                "vpsllq $2, %%xmm8, %%xmm8;"
                "vpbroadcastq %%xmm7, %%xmm7;"
@@ -1007,7 +1033,7 @@ GEN_test_Ronly(VGATHERQPS_256_2,
                "vpmovsxdq %%xmm6, %%ymm9;"
                "vblendvpd %%ymm9, %%ymm8, %%ymm7, %%ymm8;"
                "vmovdqa 96(%0), %%ymm9;"
-               "leaq randArray(%%rip), %%r14;"
+               "leaq _randArray(%%rip), %%r14;"
                "vmovq %%r14, %%xmm7;"
                "vpsllq $2, %%ymm8, %%ymm8;"
                "vpbroadcastq %%xmm7, %%ymm7;"
@@ -1023,7 +1049,7 @@ GEN_test_Ronly(VGATHERDPD_128,
                "vshufps $13, %%xmm6, %%xmm6, %%xmm9;"
                "vblendvps %%xmm9, %%xmm8, %%xmm7, %%xmm8;"
                "vmovdqa 96(%0), %%ymm9;"
-               "leaq randArray(%%rip), %%r14;"
+               "leaq _randArray(%%rip), %%r14;"
                "vgatherdpd %%xmm6, 3(%%r14,%%xmm8,8), %%xmm9;"
                "xorl %%r14d, %%r14d")
 
@@ -1034,7 +1060,7 @@ GEN_test_Ronly(VGATHERDPD_256,
                "vshufps $221, %%ymm9, %%ymm6, %%ymm9;"
                "vblendvps %%ymm9, %%ymm8, %%ymm7, %%ymm8;"
                "vmovdqa 96(%0), %%ymm9;"
-               "leaq randArray(%%rip), %%r14;"
+               "leaq _randArray(%%rip), %%r14;"
                "vgatherdpd %%ymm6, 3(%%r14,%%xmm8,8), %%ymm9;"
                "xorl %%r14d, %%r14d")
 
@@ -1042,7 +1068,7 @@ GEN_test_Ronly(VGATHERQPD_128_1,
                "vpsllq $58, %%xmm7, %%xmm8;"
                "vpsrlq $58, %%xmm8, %%xmm8;"
                "vblendvpd %%xmm6, %%xmm8, %%xmm7, %%xmm8;"
-               "leaq randArray(%%rip), %%r14;"
+               "leaq _randArray(%%rip), %%r14;"
                "vgatherqpd %%xmm6, 3(%%r14,%%xmm8,8), %%xmm9;"
                "xorl %%r14d, %%r14d")
 
@@ -1050,7 +1076,7 @@ GEN_test_Ronly(VGATHERQPD_256_1,
                "vpsllq $58, %%ymm7, %%ymm8;"
                "vpsrlq $58, %%ymm8, %%ymm8;"
                "vblendvpd %%ymm6, %%ymm8, %%ymm7, %%ymm8;"
-               "leaq randArray(%%rip), %%r14;"
+               "leaq _randArray(%%rip), %%r14;"
                "vgatherqpd %%ymm6, 3(%%r14,%%ymm8,8), %%ymm9;"
                "xorl %%r14d, %%r14d")
 
@@ -1058,7 +1084,7 @@ GEN_test_Ronly(VGATHERQPD_128_2,
                "vpsllq $58, %%xmm7, %%xmm8;"
                "vpsrlq $58, %%xmm8, %%xmm8;"
                "vblendvpd %%xmm6, %%xmm8, %%xmm7, %%xmm8;"
-               "leaq randArray(%%rip), %%r14;"
+               "leaq _randArray(%%rip), %%r14;"
                "vmovq %%r14, %%xmm7;"
                "vpsllq $2, %%xmm8, %%xmm8;"
                "vpbroadcastq %%xmm7, %%xmm7;"
@@ -1072,7 +1098,7 @@ GEN_test_Ronly(VGATHERQPD_256_2,
                "vpsllq $58, %%ymm7, %%ymm8;"
                "vpsrlq $58, %%ymm8, %%ymm8;"
                "vblendvpd %%ymm6, %%ymm8, %%ymm7, %%ymm8;"
-               "leaq randArray(%%rip), %%r14;"
+               "leaq _randArray(%%rip), %%r14;"
                "vmovq %%r14, %%xmm7;"
                "vpsllq $2, %%ymm8, %%ymm8;"
                "vpbroadcastq %%xmm7, %%ymm7;"
@@ -1086,7 +1112,7 @@ GEN_test_Ronly(VPGATHERDD_128,
                "vpslld $25, %%xmm7, %%xmm8;"
                "vpsrld $25, %%xmm8, %%xmm8;"
                "vblendvps %%xmm6, %%xmm8, %%xmm7, %%xmm8;"
-               "leaq randArray(%%rip), %%r14;"
+               "leaq _randArray(%%rip), %%r14;"
                "vpgatherdd %%xmm6, 3(%%r14,%%xmm8,4), %%xmm9;"
                "xorl %%r14d, %%r14d")
 
@@ -1094,7 +1120,7 @@ GEN_test_Ronly(VPGATHERDD_256,
                "vpslld $25, %%ymm7, %%ymm8;"
                "vpsrld $25, %%ymm8, %%ymm8;"
                "vblendvps %%ymm6, %%ymm8, %%ymm7, %%ymm8;"
-               "leaq randArray(%%rip), %%r14;"
+               "leaq _randArray(%%rip), %%r14;"
                "vpgatherdd %%ymm6, 3(%%r14,%%ymm8,4), %%ymm9;"
                "xorl %%r14d, %%r14d")
 
@@ -1104,7 +1130,7 @@ GEN_test_Ronly(VPGATHERQD_128_1,
                "vpmovsxdq %%xmm6, %%xmm9;"
                "vblendvpd %%xmm9, %%xmm8, %%xmm7, %%xmm8;"
                "vmovdqa 96(%0), %%ymm9;"
-               "leaq randArray(%%rip), %%r14;"
+               "leaq _randArray(%%rip), %%r14;"
                "vpgatherqd %%xmm6, 3(%%r14,%%xmm8,4), %%xmm9;"
                "xorl %%r14d, %%r14d")
 
@@ -1114,7 +1140,7 @@ GEN_test_Ronly(VPGATHERQD_256_1,
                "vpmovsxdq %%xmm6, %%ymm9;"
                "vblendvpd %%ymm9, %%ymm8, %%ymm7, %%ymm8;"
                "vmovdqa 96(%0), %%ymm9;"
-               "leaq randArray(%%rip), %%r14;"
+               "leaq _randArray(%%rip), %%r14;"
                "vpgatherqd %%xmm6, 3(%%r14,%%ymm8,4), %%xmm9;"
                "xorl %%r14d, %%r14d")
 
@@ -1124,7 +1150,7 @@ GEN_test_Ronly(VPGATHERQD_128_2,
                "vpmovsxdq %%xmm6, %%xmm9;"
                "vblendvpd %%xmm9, %%xmm8, %%xmm7, %%xmm8;"
                "vmovdqa 96(%0), %%ymm9;"
-               "leaq randArray(%%rip), %%r14;"
+               "leaq _randArray(%%rip), %%r14;"
                "vmovq %%r14, %%xmm7;"
                "vpsllq $2, %%xmm8, %%xmm8;"
                "vpbroadcastq %%xmm7, %%xmm7;"
@@ -1140,7 +1166,7 @@ GEN_test_Ronly(VPGATHERQD_256_2,
                "vpmovsxdq %%xmm6, %%ymm9;"
                "vblendvpd %%ymm9, %%ymm8, %%ymm7, %%ymm8;"
                "vmovdqa 96(%0), %%ymm9;"
-               "leaq randArray(%%rip), %%r14;"
+               "leaq _randArray(%%rip), %%r14;"
                "vmovq %%r14, %%xmm7;"
                "vpsllq $2, %%ymm8, %%ymm8;"
                "vpbroadcastq %%xmm7, %%ymm7;"
@@ -1156,7 +1182,7 @@ GEN_test_Ronly(VPGATHERDQ_128,
                "vshufps $13, %%xmm6, %%xmm6, %%xmm9;"
                "vblendvps %%xmm9, %%xmm8, %%xmm7, %%xmm8;"
                "vmovdqa 96(%0), %%ymm9;"
-               "leaq randArray(%%rip), %%r14;"
+               "leaq _randArray(%%rip), %%r14;"
                "vpgatherdq %%xmm6, 3(%%r14,%%xmm8,8), %%xmm9;"
                "xorl %%r14d, %%r14d")
 
@@ -1167,7 +1193,7 @@ GEN_test_Ronly(VPGATHERDQ_256,
                "vshufps $221, %%ymm9, %%ymm6, %%ymm9;"
                "vblendvps %%ymm9, %%ymm8, %%ymm7, %%ymm8;"
                "vmovdqa 96(%0), %%ymm9;"
-               "leaq randArray(%%rip), %%r14;"
+               "leaq _randArray(%%rip), %%r14;"
                "vpgatherdq %%ymm6, 3(%%r14,%%xmm8,8), %%ymm9;"
                "xorl %%r14d, %%r14d")
 
@@ -1175,7 +1201,7 @@ GEN_test_Ronly(VPGATHERQQ_128_1,
                "vpsllq $58, %%xmm7, %%xmm8;"
                "vpsrlq $58, %%xmm8, %%xmm8;"
                "vblendvpd %%xmm6, %%xmm8, %%xmm7, %%xmm8;"
-               "leaq randArray(%%rip), %%r14;"
+               "leaq _randArray(%%rip), %%r14;"
                "vpgatherqq %%xmm6, 3(%%r14,%%xmm8,8), %%xmm9;"
                "xorl %%r14d, %%r14d")
 
@@ -1183,7 +1209,7 @@ GEN_test_Ronly(VPGATHERQQ_256_1,
                "vpsllq $58, %%ymm7, %%ymm8;"
                "vpsrlq $58, %%ymm8, %%ymm8;"
                "vblendvpd %%ymm6, %%ymm8, %%ymm7, %%ymm8;"
-               "leaq randArray(%%rip), %%r14;"
+               "leaq _randArray(%%rip), %%r14;"
                "vpgatherqq %%ymm6, 3(%%r14,%%ymm8,8), %%ymm9;"
                "xorl %%r14d, %%r14d")
 
@@ -1191,7 +1217,7 @@ GEN_test_Ronly(VPGATHERQQ_128_2,
                "vpsllq $58, %%xmm7, %%xmm8;"
                "vpsrlq $58, %%xmm8, %%xmm8;"
                "vblendvpd %%xmm6, %%xmm8, %%xmm7, %%xmm8;"
-               "leaq randArray(%%rip), %%r14;"
+               "leaq _randArray(%%rip), %%r14;"
                "vmovq %%r14, %%xmm7;"
                "vpsllq $2, %%xmm8, %%xmm8;"
                "vpbroadcastq %%xmm7, %%xmm7;"
@@ -1205,7 +1231,7 @@ GEN_test_Ronly(VPGATHERQQ_256_2,
                "vpsllq $58, %%ymm7, %%ymm8;"
                "vpsrlq $58, %%ymm8, %%ymm8;"
                "vblendvpd %%ymm6, %%ymm8, %%ymm7, %%ymm8;"
-               "leaq randArray(%%rip), %%r14;"
+               "leaq _randArray(%%rip), %%r14;"
                "vmovq %%r14, %%xmm7;"
                "vpsllq $2, %%ymm8, %%ymm8;"
                "vpbroadcastq %%xmm7, %%ymm7;"
@@ -1220,6 +1246,8 @@ GEN_test_Ronly(VPGATHERQQ_256_2,
      Reg form:  %ymm6,  %ymm7, %ymm8, %ymm9 and %r14.
      Mem form:  (%rax), %ymm7, %ymm8, %ymm9 and %r14.
    Imm8 etc fields are also allowed, where they make sense.
+   Both forms may use ymm0 as scratch.  Mem form may also use
+   ymm6 as scratch.
 */
 
 #define N_DEFAULT_ITERS 3
@@ -1438,7 +1466,15 @@ int main ( void )
    DO_D( VPMASKMOVD_256_LoadForm );
    DO_D( VPMASKMOVQ_128_LoadForm );
    DO_D( VPMASKMOVQ_256_LoadForm );
+   DO_D( VPMASKMOVD_128_StoreForm );
+   DO_D( VPMASKMOVD_256_StoreForm );
+   DO_D( VPMASKMOVQ_128_StoreForm );
+   DO_D( VPMASKMOVQ_256_StoreForm );
+#if defined(VGO_darwin)
    { int i; for (i = 0; i < sizeof(randArray); i++) randArray[i] = randUChar(); }
+#else
+   { int i; for (i = 0; i < sizeof(_randArray); i++) _randArray[i] = randUChar(); }
+#endif
    DO_D( VGATHERDPS_128 );
    DO_D( VGATHERDPS_256 );
    DO_D( VGATHERQPS_128_1 );

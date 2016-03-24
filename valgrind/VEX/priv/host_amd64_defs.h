@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2013 OpenWorks LLP
+   Copyright (C) 2004-2015 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -46,44 +46,42 @@
    float regs, and 16 real vector regs.
 */
 
+#define ST_IN static inline
+ST_IN HReg hregAMD64_RSI   ( void ) { return mkHReg(False, HRcInt64,   6,  0); }
+ST_IN HReg hregAMD64_RDI   ( void ) { return mkHReg(False, HRcInt64,   7,  1); }
+ST_IN HReg hregAMD64_R8    ( void ) { return mkHReg(False, HRcInt64,   8,  2); }
+ST_IN HReg hregAMD64_R9    ( void ) { return mkHReg(False, HRcInt64,   9,  3); }
+ST_IN HReg hregAMD64_R12   ( void ) { return mkHReg(False, HRcInt64,  12,  4); }
+ST_IN HReg hregAMD64_R13   ( void ) { return mkHReg(False, HRcInt64,  13,  5); }
+ST_IN HReg hregAMD64_R14   ( void ) { return mkHReg(False, HRcInt64,  14,  6); }
+ST_IN HReg hregAMD64_R15   ( void ) { return mkHReg(False, HRcInt64,  15,  7); }
+ST_IN HReg hregAMD64_RBX   ( void ) { return mkHReg(False, HRcInt64,   3,  8); }
+
+ST_IN HReg hregAMD64_XMM3  ( void ) { return mkHReg(False, HRcVec128,  3,  9); }
+ST_IN HReg hregAMD64_XMM4  ( void ) { return mkHReg(False, HRcVec128,  4, 10); }
+ST_IN HReg hregAMD64_XMM5  ( void ) { return mkHReg(False, HRcVec128,  5, 11); }
+ST_IN HReg hregAMD64_XMM6  ( void ) { return mkHReg(False, HRcVec128,  6, 12); }
+ST_IN HReg hregAMD64_XMM7  ( void ) { return mkHReg(False, HRcVec128,  7, 13); }
+ST_IN HReg hregAMD64_XMM8  ( void ) { return mkHReg(False, HRcVec128,  8, 14); }
+ST_IN HReg hregAMD64_XMM9  ( void ) { return mkHReg(False, HRcVec128,  9, 15); }
+ST_IN HReg hregAMD64_XMM10 ( void ) { return mkHReg(False, HRcVec128, 10, 16); }
+ST_IN HReg hregAMD64_XMM11 ( void ) { return mkHReg(False, HRcVec128, 11, 17); }
+ST_IN HReg hregAMD64_XMM12 ( void ) { return mkHReg(False, HRcVec128, 12, 18); }
+
+ST_IN HReg hregAMD64_R10   ( void ) { return mkHReg(False, HRcInt64,  10, 19); }
+
+ST_IN HReg hregAMD64_RAX   ( void ) { return mkHReg(False, HRcInt64,   0, 20); }
+ST_IN HReg hregAMD64_RCX   ( void ) { return mkHReg(False, HRcInt64,   1, 21); }
+ST_IN HReg hregAMD64_RDX   ( void ) { return mkHReg(False, HRcInt64,   2, 22); }
+ST_IN HReg hregAMD64_RSP   ( void ) { return mkHReg(False, HRcInt64,   4, 23); }
+ST_IN HReg hregAMD64_RBP   ( void ) { return mkHReg(False, HRcInt64,   5, 24); }
+ST_IN HReg hregAMD64_R11   ( void ) { return mkHReg(False, HRcInt64,  11, 25); }
+
+ST_IN HReg hregAMD64_XMM0  ( void ) { return mkHReg(False, HRcVec128,  0, 26); }
+ST_IN HReg hregAMD64_XMM1  ( void ) { return mkHReg(False, HRcVec128,  1, 27); }
+#undef ST_IN
+
 extern void ppHRegAMD64 ( HReg );
-
-extern HReg hregAMD64_RAX ( void );
-extern HReg hregAMD64_RBX ( void );
-extern HReg hregAMD64_RCX ( void );
-extern HReg hregAMD64_RDX ( void );
-extern HReg hregAMD64_RSP ( void );
-extern HReg hregAMD64_RBP ( void );
-extern HReg hregAMD64_RSI ( void );
-extern HReg hregAMD64_RDI ( void );
-extern HReg hregAMD64_R8  ( void );
-extern HReg hregAMD64_R9  ( void );
-extern HReg hregAMD64_R10 ( void );
-extern HReg hregAMD64_R11 ( void );
-extern HReg hregAMD64_R12 ( void );
-extern HReg hregAMD64_R13 ( void );
-extern HReg hregAMD64_R14 ( void );
-extern HReg hregAMD64_R15 ( void );
-
-extern HReg hregAMD64_FAKE0 ( void );
-extern HReg hregAMD64_FAKE1 ( void );
-extern HReg hregAMD64_FAKE2 ( void );
-extern HReg hregAMD64_FAKE3 ( void );
-extern HReg hregAMD64_FAKE4 ( void );
-extern HReg hregAMD64_FAKE5 ( void );
-
-extern HReg hregAMD64_XMM0  ( void );
-extern HReg hregAMD64_XMM1  ( void );
-extern HReg hregAMD64_XMM3  ( void );
-extern HReg hregAMD64_XMM4  ( void );
-extern HReg hregAMD64_XMM5  ( void );
-extern HReg hregAMD64_XMM6  ( void );
-extern HReg hregAMD64_XMM7  ( void );
-extern HReg hregAMD64_XMM8  ( void );
-extern HReg hregAMD64_XMM9  ( void );
-extern HReg hregAMD64_XMM10 ( void );
-extern HReg hregAMD64_XMM11 ( void );
-extern HReg hregAMD64_XMM12 ( void );
 
 
 /* --------- Condition codes, AMD encoding. --------- */
@@ -367,7 +365,9 @@ typedef
       Ain_XDirect,     /* direct transfer to GA */
       Ain_XIndir,      /* indirect transfer to GA */
       Ain_XAssisted,   /* assisted transfer to GA */
-      Ain_CMov64,      /* conditional move */
+      Ain_CMov64,      /* conditional move, 64-bit reg-reg only */
+      Ain_CLoad,       /* cond. load to int reg, 32 bit ZX or 64 bit only */
+      Ain_CStore,      /* cond. store from int reg, 32 or 64 bit only */
       Ain_MovxLQ,      /* reg-reg move, zx-ing/sx-ing top half */
       Ain_LoadEX,      /* mov{s,z}{b,w,l}q from mem to reg */
       Ain_Store,       /* store 32/16/8 bit value in memory */
@@ -390,6 +390,8 @@ typedef
       Ain_SseSDSS,     /* scalar float32 to/from float64 */
       Ain_SseLdSt,     /* SSE load/store 32/64/128 bits, no alignment
                           constraints, upper 96/64/0 bits arbitrary */
+      Ain_SseCStore,   /* SSE conditional store, 128 bit only, any alignment */
+      Ain_SseCLoad,    /* SSE conditional load, 128 bit only, any alignment */
       Ain_SseLdzLO,    /* SSE load low 32/64 bits, zero remainder of reg */
       Ain_Sse32Fx4,    /* SSE binary, 32Fx4 */
       Ain_Sse32FLo,    /* SSE binary, 32F in lowest lane only */
@@ -502,9 +504,25 @@ typedef
             be the bogus Acc_ALWAYS. */
          struct {
             AMD64CondCode cond;
-            AMD64RM*      src;
+            HReg          src;
             HReg          dst;
          } CMov64;
+         /* conditional load to int reg, 32 bit ZX or 64 bit only.
+            cond may not be Acc_ALWAYS. */
+         struct {
+            AMD64CondCode cond;
+            UChar         szB; /* 4 or 8 only */
+            AMD64AMode*   addr;
+            HReg          dst;
+         } CLoad;
+         /* cond. store from int reg, 32 or 64 bit only.
+            cond may not be Acc_ALWAYS. */
+         struct {
+            AMD64CondCode cond;
+            UChar         szB; /* 4 or 8 only */
+            HReg          src;
+            AMD64AMode*   addr;
+         } CStore;
          /* reg-reg move, sx-ing/zx-ing top half */
          struct {
             Bool syned;
@@ -626,6 +644,16 @@ typedef
             AMD64AMode* addr;
          } SseLdSt;
          struct {
+            AMD64CondCode cond; /* may not be Acc_ALWAYS */
+            HReg          src;
+            AMD64AMode*   addr;
+         } SseCStore;
+         struct {
+            AMD64CondCode cond; /* may not be Acc_ALWAYS */
+            AMD64AMode*   addr;
+            HReg          dst;
+         } SseCLoad;
+         struct {
             Int         sz; /* 4 or 8 only */
             HReg        reg;
             AMD64AMode* addr;
@@ -709,7 +737,11 @@ extern AMD64Instr* AMD64Instr_XIndir     ( HReg dstGA, AMD64AMode* amRIP,
                                            AMD64CondCode cond );
 extern AMD64Instr* AMD64Instr_XAssisted  ( HReg dstGA, AMD64AMode* amRIP,
                                            AMD64CondCode cond, IRJumpKind jk );
-extern AMD64Instr* AMD64Instr_CMov64     ( AMD64CondCode, AMD64RM* src, HReg dst );
+extern AMD64Instr* AMD64Instr_CMov64     ( AMD64CondCode, HReg src, HReg dst );
+extern AMD64Instr* AMD64Instr_CLoad      ( AMD64CondCode cond, UChar szB,
+                                           AMD64AMode* addr, HReg dst );
+extern AMD64Instr* AMD64Instr_CStore     ( AMD64CondCode cond, UChar szB,
+                                           HReg src, AMD64AMode* addr );
 extern AMD64Instr* AMD64Instr_MovxLQ     ( Bool syned, HReg src, HReg dst );
 extern AMD64Instr* AMD64Instr_LoadEX     ( UChar szSmall, Bool syned,
                                            AMD64AMode* src, HReg dst );
@@ -731,6 +763,8 @@ extern AMD64Instr* AMD64Instr_SseSI2SF   ( Int szS, Int szD, HReg src, HReg dst 
 extern AMD64Instr* AMD64Instr_SseSF2SI   ( Int szS, Int szD, HReg src, HReg dst );
 extern AMD64Instr* AMD64Instr_SseSDSS    ( Bool from64, HReg src, HReg dst );
 extern AMD64Instr* AMD64Instr_SseLdSt    ( Bool isLoad, Int sz, HReg, AMD64AMode* );
+extern AMD64Instr* AMD64Instr_SseCStore  ( AMD64CondCode, HReg, AMD64AMode* );
+extern AMD64Instr* AMD64Instr_SseCLoad   ( AMD64CondCode, AMD64AMode*, HReg );
 extern AMD64Instr* AMD64Instr_SseLdzLO   ( Int sz, HReg, AMD64AMode* );
 extern AMD64Instr* AMD64Instr_Sse32Fx4   ( AMD64SseOp, HReg, HReg );
 extern AMD64Instr* AMD64Instr_Sse32FLo   ( AMD64SseOp, HReg, HReg );
@@ -768,8 +802,9 @@ extern void genSpill_AMD64  ( /*OUT*/HInstr** i1, /*OUT*/HInstr** i2,
 extern void genReload_AMD64 ( /*OUT*/HInstr** i1, /*OUT*/HInstr** i2,
                               HReg rreg, Int offset, Bool );
 
-extern void         getAllocableRegs_AMD64 ( Int*, HReg** );
-extern HInstrArray* iselSB_AMD64           ( IRSB*, 
+extern const RRegUniverse* getRRegUniverse_AMD64 ( void );
+
+extern HInstrArray* iselSB_AMD64           ( const IRSB*, 
                                              VexArch,
                                              const VexArchInfo*,
                                              const VexAbiInfo*,
@@ -777,14 +812,14 @@ extern HInstrArray* iselSB_AMD64           ( IRSB*,
                                              Int offs_Host_EvC_FailAddr,
                                              Bool chainingAllowed,
                                              Bool addProfInc,
-                                             Addr64 max_ga );
+                                             Addr max_ga );
 
 /* How big is an event check?  This is kind of a kludge because it
    depends on the offsets of host_EvC_FAILADDR and host_EvC_COUNTER,
    and so assumes that they are both <= 128, and so can use the short
    offset encoding.  This is all checked with assertions, so in the
    worst case we will merely assert at startup. */
-extern Int evCheckSzB_AMD64 ( VexEndness endness_host );
+extern Int evCheckSzB_AMD64 (void);
 
 /* Perform a chaining and unchaining of an XDirect jump. */
 extern VexInvalRange chainXDirect_AMD64 ( VexEndness endness_host,

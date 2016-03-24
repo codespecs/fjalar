@@ -16,8 +16,8 @@ define checkstep
 end
 #
 # break1 and break2
-break t.c:112
-break t.c:117
+break t.c:113
+break t.c:118
 #
 continue
 # first break encountered.
@@ -51,9 +51,9 @@ print sleeps=1
 print whoami("after next: inferior call pushed from mcbreak.stdinB.gdb")
 continue
 #
-# encountered second break
-step
-finish
+# encountered second break. Ensure we stop on line 120 : if (argc > 1)
+break 120
+continue
 # delete all breaks
 delete
 continue

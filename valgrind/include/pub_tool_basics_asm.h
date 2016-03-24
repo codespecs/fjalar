@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward 
+   Copyright (C) 2000-2015 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -48,7 +48,7 @@
 
 #define VGAPPEND(str1,str2) str1##str2
  
-#if defined(VGO_linux)
+#if defined(VGO_linux) || defined(VGO_solaris)
 #  define VG_(str)    VGAPPEND( vgPlain_,          str)
 #  define ML_(str)    VGAPPEND( vgModuleLocal_,    str)
 #elif defined(VGO_darwin)

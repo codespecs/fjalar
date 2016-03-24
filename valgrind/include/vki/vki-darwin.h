@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2007-2013 Apple Inc.
+   Copyright (C) 2007-2015 Apple Inc.
       Greg Parker  gparker@apple.com
 
    This program is free software; you can redistribute it and/or
@@ -33,6 +33,12 @@
 
 #ifndef __VKI_DARWIN_H
 #define __VKI_DARWIN_H
+
+/* struct __darwin_ucontext isn't fully declared without
+ * this definition.  It's crazy but there it is.  */
+#ifndef _XOPEN_SOURCE
+#define _XOPEN_SOURCE 0500
+#endif
 
 #include <stdint.h>
 
@@ -106,6 +112,8 @@ typedef uint32_t vki_u32;
 
 #define vki_timeval timeval
 #define vki_timeval32 timeval32
+#define vki_tv_sec tv_sec
+#define vki_tv_usec tv_usec
 #define vki_timespec timespec
 #define vki_itimerval itimerval
 #define vki_timezone timezone
@@ -278,6 +286,9 @@ typedef uint32_t vki_u32;
 #define	VKI_F_GETLK	F_GETLK
 #define	VKI_F_SETLK	F_SETLK
 #define	VKI_F_SETLKW	F_SETLKW
+#if DARWIN_VERS >= DARWIN_10_10
+#define	VKI_F_SETLKWTIMEOUT F_SETLKWTIMEOUT
+#endif
 
 #define VKI_F_CHKCLEAN	F_CHKCLEAN
 #define VKI_F_PREALLOCATE	F_PREALLOCATE
@@ -292,6 +303,11 @@ typedef uint32_t vki_u32;
 #define VKI_F_ADDSIGS	F_ADDSIGS
 #if DARWIN_VERS >= DARWIN_10_9
 # define VKI_F_ADDFILESIGS  F_ADDFILESIGS
+#endif
+#if DARWIN_VERS >= DARWIN_10_11
+# define VKI_F_ADDFILESIGS_FOR_DYLD_SIM  F_ADDFILESIGS_FOR_DYLD_SIM
+# define VKI_F_BARRIERFSYNC              F_BARRIERFSYNC
+# define VKI_F_ADDFILESIGS_RETURN        F_ADDFILESIGS_RETURN
 #endif
 #define VKI_F_FULLFSYNC	F_FULLFSYNC
 #define VKI_F_PATHPKG_CHECK	F_PATHPKG_CHECK
@@ -990,6 +1006,23 @@ struct ByteRangeLockPB2
 
 #define VKI_DTRACEHIOC_REMOVE   DTRACEHIOC_REMOVE
 #define VKI_DTRACEHIOC_ADDDOF   DTRACEHIOC_ADDDOF
+
+
+#include <net/bpf.h>
+
+#define vki_bpf_program bpf_program
+#define vki_bf_len bf_len
+#define vki_bf_insns bf_insns
+#define vki_bpf_dltlist bpf_dltlist
+#define vki_bfl_len bfl_len
+#define vki_bfl_list bfl_list
+
+#define VKI_BIOCSETF        BIOCSETF
+#define VKI_BIOCFLUSH       BIOCFLUSH
+#define VKI_BIOCPROMISC     BIOCPROMISC
+#define VKI_BIOCSETIF       BIOCSETIF
+#define VKI_BIOCSRTIMEOUT   BIOCSRTIMEOUT
+#define VKI_BIOCGDLTLIST    BIOCGDLTLIST
 
 
 #include <sys/ucontext.h>

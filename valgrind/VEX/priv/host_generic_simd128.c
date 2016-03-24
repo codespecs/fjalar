@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2010-2013 OpenWorks GbR
+   Copyright (C) 2010-2015 OpenWorks GbR
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -44,7 +44,7 @@
 
 static inline UInt mul32 ( Int xx, Int yy )
 {
-   Int t = ((Int)xx) * ((Int)yy);
+   Long t = ((Long)xx) * ((Long)yy);
    return toUInt(t);
 }
 

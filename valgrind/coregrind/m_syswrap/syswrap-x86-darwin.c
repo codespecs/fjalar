@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2005-2013 Apple Inc.
+   Copyright (C) 2005-2015 Apple Inc.
       Greg Parker  gparker@apple.com
 
    This program is free software; you can redistribute it and/or
@@ -32,7 +32,6 @@
 
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
-#include "pub_core_libcsetjmp.h"   // to keep _threadstate.h happy
 #include "pub_core_threadstate.h"
 #include "pub_core_aspacemgr.h"
 #include "pub_core_xarray.h"
@@ -397,20 +396,44 @@ void wqthread_hijack(Addr self, Addr kport, Addr stackaddr, Addr workitem,
       lock. */
    VG_(acquire_BigLock_LL)("wqthread_hijack");
 
+   if (0) VG_(printf)(
+             "wqthread_hijack: self %#lx, kport %#lx, "
+             "stackaddr %#lx, workitem %#lx, reuse/flags %x, sp %#lx\n",
+             self, kport, stackaddr, workitem, reuse, sp);
+
    /* Start the thread with all signals blocked.  VG_(scheduler) will
       set the mask correctly when we finally get there. */
    VG_(sigfillset)(&blockall);
    VG_(sigprocmask)(VKI_SIG_SETMASK, &blockall, NULL);
 
-   if (reuse) {
+   /* For 10.7 and earlier, |reuse| appeared to be used as a simple
+      boolean.  In 10.8 and later its name changed to |flags| and has
+      various other bits OR-d into it too, so it's necessary to fish
+      out just the relevant parts.  Hence: */
+#  if DARWIN_VERS <= DARWIN_10_7
+   Bool is_reuse = reuse != 0;
+#  elif DARWIN_VERS > DARWIN_10_7
+   Bool is_reuse = (reuse & 0x20000 /* == WQ_FLAG_THREAD_REUSE */) != 0;
+#  else
+#    error "Unsupported Darwin version"
+#  endif
+
+   if (is_reuse) {
 
       /* For whatever reason, tst->os_state.pthread appear to have a
          constant offset of 72 on 10.7, but zero on 10.6 and 10.5.  No
          idea why. */
 #     if DARWIN_VERS <= DARWIN_10_6
       UWord magic_delta = 0;
-#     elif DARWIN_VERS >= DARWIN_10_7
+#     elif DARWIN_VERS == DARWIN_10_7 || DARWIN_VERS == DARWIN_10_8
       UWord magic_delta = 0x48;
+#     elif DARWIN_VERS == DARWIN_10_9 || DARWIN_VERS == DARWIN_10_10
+      UWord magic_delta = 0xB0;
+#     elif DARWIN_VERS == DARWIN_10_11
+      UWord magic_delta = 0x100;
+#     else
+#       error "magic_delta: to be computed on new OS version"
+        // magic_delta = tst->os_state.pthread - self
 #     endif
 
       // This thread already exists; we're merely re-entering 
@@ -423,7 +446,7 @@ void wqthread_hijack(Addr self, Addr kport, Addr stackaddr, Addr workitem,
 
       tst = VG_(get_ThreadState)(tid);
 
-      if (0) VG_(printf)("wqthread_hijack reuse %s: tid %d, tst %p, "
+      if (0) VG_(printf)("wqthread_hijack reuse %s: tid %u, tst %p, "
                          "tst->os_state.pthread %#lx, self %#lx\n",
                          tst->os_state.pthread == self ? "SAME" : "DIFF",
                          tid, tst, tst->os_state.pthread, self);
@@ -454,7 +477,7 @@ void wqthread_hijack(Addr self, Addr kport, Addr stackaddr, Addr workitem,
    stacksize = 512*1024;  // wq stacks are always DEFAULT_STACK_SIZE
    stack = VG_PGROUNDUP(sp) - stacksize;
 
-   if (reuse) {
+   if (is_reuse) {
        // Continue V's thread back in the scheduler. 
        // The client thread is of course in another location entirely.
 
