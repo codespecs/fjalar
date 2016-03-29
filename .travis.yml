@@ -22,7 +22,9 @@ before_install:
 # # --split=chapter command-line argument but texi2html does.
 # env: TEXI2HTML=texi2html
 
-notifications:
-  email:
-    - markro@cs.washington.edu
-    - mernst@cs.washington.edu
+## Disable so that we are not notified of build failures in forks.
+## Use Travis default: send mail to author and committer of breaking commit.
+# notifications:
+#   email:
+#     - markro@cs.washington.edu
+#     - mernst@cs.washington.edu
