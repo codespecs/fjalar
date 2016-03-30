@@ -96,10 +96,10 @@ void printFunctionEntryStack(void);
 
 // The stack should never grow this deep!
 #define FN_STACK_SIZE 1000
-#define MAX_THREADS_DEFAULT 100
 
-FunctionExecutionState FunctionExecutionStateStack[MAX_THREADS_DEFAULT][FN_STACK_SIZE];
-int fn_stack_first_free_index[MAX_THREADS_DEFAULT];
+typedef FunctionExecutionState FunctionExecutionStateStack1d[FN_STACK_SIZE];
+FunctionExecutionStateStack1d *FunctionExecutionStateStack;
+int *fn_stack_first_free_index;
 
 // "Pushes" a new entry onto the stack by returning a pointer to it
 // and incrementing fn_stack_first_free_index (Notice that this has

@@ -180,12 +180,13 @@ extern void setNOBUF(FILE *stream);
 // this into an array of pointers. Have one stack for
 // each thread. We'll be wasteful and just have the maximum number
 // of threads.
-FunctionExecutionState FunctionExecutionStateStack[MAX_THREADS_DEFAULT][FN_STACK_SIZE];
+typedef FunctionExecutionState FunctionExecutionStateStack1d[FN_STACK_SIZE];
+FunctionExecutionStateStack1d *FunctionExecutionStateStack;
 
 
 // The first free slot in FunctionExecutionStateStack
 // right above the top element:
-int fn_stack_first_free_index[MAX_THREADS_DEFAULT];
+int *fn_stack_first_free_index;
 
 // The top element of the stack is:
 // FunctionExecutionStateStack[fn_stack_first_free_index - 1]
@@ -989,6 +990,9 @@ static void outputAuxiliaryFilesAndExit(void) {
 // This is called before command-line options are processed
 void fjalar_pre_clo_init()
 {
+   fn_stack_first_free_index = VG_(malloc)("fjalar_main.c: fjalar_pre_clo_init1", VG_N_THREADS * sizeof fn_stack_first_free_index[0]);
+   FunctionExecutionStateStack = VG_(malloc)("fjalar_main.c: fjalar_pre_clo_init2", VG_N_THREADS * FN_STACK_SIZE * sizeof FunctionExecutionStateStack[0][0]);
+
   // Clear FunctionExecutionStateStack
 /*   VG_(memset)(FunctionExecutionStateStack, 0, */
 /* 	      FN_STACK_SIZE * sizeof(*FunctionExecutionStateStack)); */
