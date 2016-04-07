@@ -25,13 +25,12 @@ make doc
 ## overall target only fails if the set of failing tests is different.
 # make test
 
-## Kvasir does not currently pass all its tests on Ubuntu 14.04 which is
-## used by Travis.  So, "make daikon-test" fails.  Reinstate "daikon-test"
-## as soon as we have improved Kvasir and/or its test suite so that "make
-## daikon-test" passes.
+## "make daikon-test" is disabled; see immediately below
 # make daikon-test
-
+## Kvasir does not currently pass all its tests on Ubuntu 14.04 which is
+## used by Travis.  Reinstate "make daikon-test" fails.  Reinstate "daikon-test"
+## as soon as we have improved Kvasir and/or its test suite.  In the meanwhile,
 # TEMP-daikon-test is a temporary substitute for daikon-test that runs
-# a subset of kvasir-tests.  This is to verify the general test process.
+# a subset of kvasir-tests.
 make TEMP-daikon-test
 
