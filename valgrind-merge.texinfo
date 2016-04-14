@@ -188,23 +188,6 @@ flex-pristine/flex-pristine.comp
 flex-rothermel/felx-rothermel.comp
 @end example
 
-Next, we need to run the Valgrind regression tests to obtain a set of
-baseline results prior to the source merge.  These tests are very sensitive
-to the system software on the host machine.  In most cases, there will be
-some failures. (Currently, 4 of 629 tests do not pass on a standard UW/CSE
-system running Fedora 22.) Rather, it is important to capture the results
-as they should be identical after the source merge.
-
-@example
-cd $INV/fjalar
-make test
-@end example
-
-@noindent
-The test results will be written to @file{stdout}.  Make a note of the tests that
-did not pass and save a copy of the associated @file{.diff} file.  These
-will be used in @ref{Compiling and Testing} to help verify the source merge process.
-
 At this point, the source trees are ready for the merge.
 However, the Fjalar repository contains
 @command{automake/autoconf} generated files to simplify things for the end user;
@@ -373,6 +356,7 @@ verification later.
 * Memcheck Merge::
 * Memcheck Conflicts::
 * Updating Fjalar/Kvasir::
+* Get New Valgrind Regtest Baseline Results::
 @end menu
 
 
@@ -531,11 +515,55 @@ to be explicitly supported by DynComp. Please see Appendix C for
 guidelines on supporting new VEX instructions.
 
 
+@node Get New Valgrind Regtest Baseline Results
+@section Get New Valgrind Regtest Baseline Results
+
+Valgrind has a set of verification tests known as @command{regtest}.  We want
+to run these tests on a clean version of Valgrind to establish a
+baseline set of results for partial verification of the merge process.
+Since running these tests generate a lot of additional files, we wait
+until after we have done the source merge update to run this test.
+This keeps the files used during the source merge update to a minimum.
+
+These tests are very sensitive
+to the system software on the host machine.  In most cases, there will be
+some failures. (Currently, 4 of 656 tests do not pass on a standard UW/CSE
+system running Fedora 22.) Rather, it is important to capture the results
+as they should be identical after the source merge.
+
+Here is a copy of the summary from the latest run of these tests (04/14/2016):
+
+@example
+== 656 tests, 1 stderr failure, 0 stdout failures, 0 stderrB failures,
+                                        1 stdoutB failure, 2 post failures ==
+
+gdbserver_tests/hgtls                    (stdoutB)
+memcheck/tests/leak_cpp_interior         (stderr)
+massif/tests/new-cpp                     (post)
+massif/tests/overloaded-new              (post)
+@end example
+
+Return to the root of your @file{valgrind-new} directory.  Then run
+the following commands:
+
+@example
+./configure --prefix=`pwd`/inst
+make all install
+make regtest > test.log 2>&1
+@end example
+
+@noindent
+This will take about 10-15 minutes.  A summary of the @command{regtest}
+results will be at the end of the log file.  We will use these results in
+@ref{Testing Valgrind}.
+
+
 @node Updating Readelf from Binutils
 @chapter Updating Readelf from Binutils
 
 @menu
 * Overview::
+* Get Current Valgrind Regtest Baseline Results::
 * Creating the binutils patch and diff files::
 * Merging the binutils changes::
 * Hints to modifing dwarf.c and readelf.c::
@@ -560,6 +588,32 @@ information from an ELF format object file.  Fjalar does not use this
 binary directly, rather a portion of the source code for Fjalar contains
 a modified version of the source used to build @command{readelf}.
 
+
+@node Get Current Valgrind Regtest Baseline Results
+@section Get Current Valgrind Regtest Baseline Results
+
+Just as is done for a Valgrind source update
+(@ref{Get New Valgrind Regtest Baseline Results}),
+we want to run the Valgrind @command{regtest} regression tests to
+establish a baseline set of results for partial verification of the
+@command{readelf} update process.  However, in this case we want
+to run the tests prior to the source update as we will use the
+current Fjalar sources.
+
+@example
+cd $INV/fjalar
+make test >test.log 2>&1
+@end example
+
+@noindent
+As noted in @ref{Get New Valgrind Regtest Baseline Results},
+we do not expect all the tests to pass.  We will use the results in
+@ref{Testing Valgrind}.
+
+@noindent
+Note: If there have been no operating system updates, we would expect
+the results to be identical to the ones obtained the last time a
+full Valgrind update was done.
 
 
 @node Creating the binutils patch and diff files
@@ -826,8 +880,10 @@ make test
 
 @noindent
 While a few tests may not pass, the results should be identical to
-the results obtained when running these tests prior to the source
-merge as described in @ref{Verify current sources pass the regression tests}.
+the results obtained when running these tests
+as described in @ref{Get New Valgrind Regtest Baseline Results}
+or @ref{Get Current Valgrind Regtest Baseline Results} - as appropriate
+for the type of  Fjalar update you are doing.
 
 
 @node Testing Fjalar
