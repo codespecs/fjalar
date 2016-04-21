@@ -180,7 +180,6 @@ extern void setNOBUF(FILE *stream);
 // this into an array of pointers. Have one stack for
 // each thread. We'll be wasteful and just have the maximum number
 // of threads.
-typedef FunctionExecutionState FunctionExecutionStateStack1d[FN_STACK_SIZE];
 FunctionExecutionStateStack1d *FunctionExecutionStateStack;
 
 

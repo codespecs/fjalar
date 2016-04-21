@@ -96,6 +96,8 @@
 #endif
 
 #include "bfd.h"
+// some versions of bfd.h do not include stat.h (markro)
+#include <sys/stat.h>
 #include "bucomm.h"
 #include "elfcomm.h"
 
