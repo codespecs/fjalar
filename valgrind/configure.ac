@@ -209,7 +209,7 @@ case "${host_cpu}" in
 
      *) 
 	AC_MSG_RESULT([no (${host_cpu})])
-	AC_MSG_ERROR([Unsupported host architecture. Sorry])
+	AC_MSG_ERROR([Unsupported host architecture. Only X86_64 is supported.])
 	;;
 esac
 
