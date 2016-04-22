@@ -201,77 +201,10 @@ AC_MSG_CHECKING([for a supported CPU])
 # Little Endian.
 
 case "${host_cpu}" in
-     i?86) 
-	AC_MSG_RESULT([ok (${host_cpu})])
-        ARCH_MAX="x86"
-        ;;
 
      x86_64) 
         AC_MSG_RESULT([ok (${host_cpu})])
         ARCH_MAX="amd64"
-        ;;
-
-     powerpc64)
-     # this only referrs to 64-bit Big Endian
-        AC_MSG_RESULT([ok (${host_cpu})])
-        ARCH_MAX="ppc64be"
-        ;;
-
-     powerpc64le)
-     # this only referrs to 64-bit Little Endian
-        AC_MSG_RESULT([ok (${host_cpu})])
-        ARCH_MAX="ppc64le"
-        ;;
-
-     powerpc)
-        # On Linux this means only a 32-bit capable CPU.
-        AC_MSG_RESULT([ok (${host_cpu})])
-        ARCH_MAX="ppc32"
-        ;;
-
-     s390x)
-        AC_MSG_RESULT([ok (${host_cpu})])
-        ARCH_MAX="s390x"
-        ;;
-
-     armv7*)
-	AC_MSG_RESULT([ok (${host_cpu})])
-	ARCH_MAX="arm"
-	;;
-
-     aarch64*)
-       AC_MSG_RESULT([ok (${host_cpu})])
-       ARCH_MAX="arm64"
-       ;;
-
-     mips)
-        AC_MSG_RESULT([ok (${host_cpu})])
-        ARCH_MAX="mips32"
-        ;;
-
-     mipsel)
-        AC_MSG_RESULT([ok (${host_cpu})])
-        ARCH_MAX="mips32"
-        ;;
-
-     mipsisa32r2)
-        AC_MSG_RESULT([ok (${host_cpu})])
-        ARCH_MAX="mips32"
-        ;;
-
-     mips64*)
-        AC_MSG_RESULT([ok (${host_cpu})])
-        ARCH_MAX="mips64"
-        ;;
-
-     mipsisa64*)
-        AC_MSG_RESULT([ok (${host_cpu})])
-        ARCH_MAX="mips64"
-        ;;
-
-     tilegx)
-        AC_MSG_RESULT([ok (${host_cpu})])
-        ARCH_MAX="tilegx"
         ;;
 
      *) 
