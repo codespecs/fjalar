@@ -53,6 +53,7 @@ void destroy_ppt_structures(DaikonFunctionEntry* funcPtr, char isEnter);
 
 void DC_post_process_for_variable(DaikonFunctionEntry* funcPtr,
                                   char isEnter,
+                                  VariableOrigin varOrigin,
                                   int daikonVarIndex,
                                   Addr a);
 

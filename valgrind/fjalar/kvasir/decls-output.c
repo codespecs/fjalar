@@ -27,6 +27,7 @@
 #include "decls-output.h"
 #include "kvasir_main.h"
 #include "dyncomp_runtime.h"
+#include "dyncomp_main.h"
 
 #include "pub_tool_libcbase.h" // For VG_STREQ
 #include "pub_tool_libcprint.h"
@@ -60,6 +61,7 @@ struct genhashtable* typeNameStrTable = NULL;
 // Similar to the above table. Used for functions. C/C++ programs can
 // Occasionally have duplicate symbols in their symbol tables. This
 // However causes problems if a ppt or variable name is printed twice
+// markro 5/19/2106 - isn't being used
 struct genhashtable* funcNameTable = NULL;
 
 // We need one more table in addition to the above. The above is for
@@ -323,6 +325,8 @@ void outputDeclsFile(char faux_decls)
   }
 }
 
+static TraversalAction printDeclsEntryAction;
+
 // Print .decls at the end of program execution and then close it
 // (Only used when DynComp is on)
 void DC_outputDeclsAtEnd() {
@@ -336,6 +340,24 @@ void DC_outputDeclsAtEnd() {
     DPRINTF("Object PPTs enabled, attemtping to harvest inheritence heirarchy\n");
     harvestAllFunctionObjects();
   }
+
+  if (fjalar_dump_globals) {
+    // Create hash table for all variables printed for an individual ppt
+    varsDeclaredTable =
+      genallocatehashtable((unsigned int (*)(void *)) &hashString,
+                           (int (*)(void *,void *)) &equivalentStrings);
+    // print global tag values
+    fputs("ppt GLOBALS\n", decls_fp);
+    visitVariableGroup(GLOBAL_VAR,
+                       0,
+                       0,
+                       0,
+                       0,
+                       &printDeclsEntryAction);
+    fputs("\n", decls_fp);
+    genfreehashtable(varsDeclaredTable);
+  }
+
   printAllFunctionDecls(0);
   printAllObjectPPTDecls();
 
@@ -584,14 +606,13 @@ printDeclsEntryAction(VariableEntry* var,
 
        int enclosing_len;
 
-
        // We need to ensure we get enclosing variables right when using short supers
        // This means we need to remove var->isSuperMember * 2 elements from the full
        // name stack(fully documented in fjalar_traversal.c.) The fullNameStack contains
        // one array element for each element of the name. for example outer.middle.inner,
        // would be represented as a 5 elements array {"outer",".", "middle", "." "inner"}
        if(0) {
-         /*  if(shortSuper) {
+         /*  if(shortSuper) { //  } make vi happy
                   const HChar* enclosingVar =  stringArrayFlatten(fullNameStackPtr, 0, fullNameStackSize-2*var->isSuperMember-2);
           if(enclosingVar && gencontains(varsDeclaredTable, enclosingVar)) {
             fputs("    enclosing-var ", decls_fp);
@@ -935,13 +956,21 @@ printDeclsEntryAction(VariableEntry* var,
         // tags are UNSIGNED INTEGERS so be careful of overflows
         // which result in negative numbers, which are useless
         // since Daikon ignores them.
-        cur_var_name = varName;
-        int comp_number = DC_get_comp_number_for_var((DaikonFunctionEntry*)varFuncInfo,
-                                                     isEnter,
-                                                   g_variableIndex);
+        if (varFuncInfo == NULL) {
+          // get the tag for a global - which is not a comp_number
+          // but want to look at it for debugging
+          UInt tag = val_uf_find_leader(get_tag(pValue));
+          fprintf(decls_fp, "    tag: %u  leader: %u\n", get_tag(pValue), tag);
+          DPRINTF("    tag %u\n", tag);
+        } else {
+          cur_var_name = varName;
+          int comp_number = DC_get_comp_number_for_var((DaikonFunctionEntry*)varFuncInfo,
+                                                       isEnter,
+                                                       g_variableIndex);
 
-        fprintf(decls_fp, "    comparability %d\n", comp_number);
-        DPRINTF("    comparability %d\n", comp_number);
+          fprintf(decls_fp, "    comparability %d\n", comp_number);
+          DPRINTF("    comparability %d\n", comp_number);
+        }
       }
     }
     else {
@@ -1274,9 +1303,7 @@ printDeclsEntryAction(VariableEntry* var,
             genputtable(typeNameStrTable, type->typeName, (void *)1);
           }
 
-
-
-
+/*           { added to make vi happy */
 /*           struct geniterator* typeNameStrIt = 0; */
 
 /*           // Maps strings to a junk number 1 - simply here to prevent */
@@ -1461,13 +1488,6 @@ printDeclsEntryAction(VariableEntry* var,
   {
     FuncIterator* funcIt = newFuncIterator();
 
-    if(!funcNameTable) {
-      funcNameTable  =
-        genallocatehashtable((unsigned int (*)(void *)) &hashString,
-                             (int (*)(void *,void *)) &equivalentStrings);
-    }
-
-
     while (hasNextFunc(funcIt)) {
       FunctionEntry* cur_entry = nextFunc(funcIt);
 
@@ -1488,12 +1508,6 @@ printDeclsEntryAction(VariableEntry* var,
     }
 
     deleteFuncIterator(funcIt);
-
-   if(funcNameTable) {
-     genfreehashtable(funcNameTable);
-     funcNameTable = 0;
-   }
-
   }
 
 
@@ -1691,6 +1705,34 @@ printDeclsEntryAction(VariableEntry* var,
   }
 
 
+  void debug_print_decls() {
+    FILE *saved_decls_fp = decls_fp;
+    decls_fp = stdout;
+    doing_debug_print = True;
+
+    // Create hash table for all variables printed for an individual ppt
+    varsDeclaredTable =
+      genallocatehashtable((unsigned int (*)(void *)) &hashString,
+                           (int (*)(void *,void *)) &equivalentStrings);
+
+    // print global tag values
+    fputs("ppt GLOBALS\n", decls_fp);
+    visitVariableGroup(GLOBAL_VAR,
+                       0,
+                       0,
+                       0,
+                       0,
+                       &printDeclsEntryAction);
+    fputs("\n", decls_fp);
+    genfreehashtable(varsDeclaredTable);
+
+    // print function entry/exit global tag values
+    printAllFunctionDecls(0);
+
+    doing_debug_print = False;
+    fflush(decls_fp);
+    decls_fp = saved_decls_fp;
+  }
 
 
  // Gets all types that this variable may be used to reference

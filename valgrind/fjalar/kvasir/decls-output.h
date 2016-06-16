@@ -44,6 +44,7 @@ void initDecls(void);
 void cleanupDecls(void);
 void outputDeclsFile(char faux_decls);
 void DC_outputDeclsAtEnd(void);
+void debug_print_decls(void);
 
 DaikonRepType decTypeToDaikonRepType(DeclaredType decType,
                                      char isString);

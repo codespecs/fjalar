@@ -25,6 +25,7 @@
 #include "union_find.h"
 #include "kvasir_main.h"
 
+// caller guarantees that object is non-NULL
 uf_name uf_find(uf_object *object) {
   uf_object *root, *next;
 
@@ -32,22 +33,28 @@ uf_name uf_find(uf_object *object) {
   for(root=object; root->parent!=root; root=root->parent);
 
   // Path-compression:
-  if(!dyncomp_no_path_compression) {
-    for(next=object->parent; next!=root; object=next, next=object->parent) {
-      object->parent=root;
-    }
+  for(next=object->parent; next!=root; object=next, next=object->parent) {
+    object->parent=root;
   }
 
+  DYNCOMP_TPRINTF("[DynComp] uf_find: %p, %d, %p, %d \n", object, object->tag, root, root->tag);
   return root;
 }
 
-// parent might not be NULL; should we free it? (if so, check for ourself)
+// parent might not be NULL; should we free it?
+// no - these objects are allocated two different ways:
+// for values: they are not allocated individually, but within a large
+// block of objects - just go ahead and overwrite
+// for variables: they are allocated individually, but this routine is
+// always called with a freshly allocated pointer.
 void uf_make_set(uf_object *new_object, unsigned int t) {
+  DYNCOMP_TPRINTF("[DynComp] uf_make_set: %p, %u\n", new_object, t);
   new_object->parent = new_object;
   new_object->rank = 0;
   new_object->tag = t;
 }
 
+// caller guarantees that obj1 and obj2 are non-NULL
 // Returns the new leader (uf_name)
 // Stupid question: Is there any problems that arise
 // when uf_union is called multiple times on the same objects?
@@ -55,6 +62,8 @@ void uf_make_set(uf_object *new_object, unsigned int t) {
 uf_name uf_union(uf_object *obj1, uf_object *obj2) {
   uf_name class1 = uf_find(obj1);
   uf_name class2 = uf_find(obj2);
+  DYNCOMP_TPRINTF("[DynComp] union_find1: %p, %d, %p, %d %d\n", obj1, obj1->tag, class1, class1->tag, class1->rank);
+  DYNCOMP_TPRINTF("[DynComp] union_find2: %p, %d, %p, %d %d\n", obj2, obj2->tag, class2, class2->tag, class2->rank);
   
   // Union-by-rank:
 
@@ -64,13 +73,12 @@ uf_name uf_union(uf_object *obj1, uf_object *obj2) {
     return class1;
   }
 
-  if(class1->rank < class2->rank) {
+  if (class1->rank < class2->rank) {
     class1->parent = class2;
     return class2;
-  }
-  else {
+  } else {
     class2->parent = class1;
-    if(class1->rank == class2->rank) {
+    if (class1->rank == class2->rank) {
       (class1->rank)++;
     }
     return class1;

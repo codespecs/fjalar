@@ -750,9 +750,6 @@ Bool fjalar_tool_process_cmd_line_option(const HChar* arg)
   else if VG_YESNO_CLO(arg, "separate-entry-exit-comp",
 		       dyncomp_separate_entry_exit_comp) {}
   else if VG_YESNO_CLO(arg, "dyncomp-trace-startup", dyncomp_trace_startup) {}
-  else if VG_YESNO_CLO(arg, "no-path-compression", dyncomp_no_path_compression) {}
-  else if VG_YESNO_CLO(arg, "no-var-leader", dyncomp_no_var_leader) {}
-  else if VG_YESNO_CLO(arg, "no-val-leader", dyncomp_no_val_leader) {}
   else
     return False;   // If no options match, return False so that an error
                     // message can be reported by the Valgrind core.
@@ -802,7 +799,7 @@ void fjalar_tool_finish() {
       printf("MERGE_3_TAGS calls = %u\n", merge3TagsCount);
       printf("MERGE_4_TAGS calls = %u\n", merge4TagsCount);
       printf("MERGE_TAGS_RETURN_0 calls = %u\n", mergeTagsReturn0Count);
-      printf("total num. tags = %u\n", totalNumTagsAssigned);
+      printf("next tag = %u, total assigned = %u\n", nextTag, totalNumTagsAssigned);
     }
 
   }

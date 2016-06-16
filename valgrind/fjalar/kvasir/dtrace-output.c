@@ -55,7 +55,6 @@ const HChar* cur_var_name = NULL;
 const HChar* UNINIT = "nonsensical";
 const HChar* NONSENSICAL = "nonsensical";
 const HChar* func_name = 0;
-int is_enter = 0;
 
 UWord nonce[300];
 
@@ -1133,6 +1132,7 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
       }
       DC_post_process_for_variable((DaikonFunctionEntry*)varFuncInfo,
                                    isEnter,
+                                   varOrigin,
                                    g_variableIndex,
                                    a);
     }
@@ -1177,13 +1177,25 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
     printDtraceFunctionHeader(funcPtr, isEnter);
   }
 
-  /* if( (VG_(strstr)(f_state->func->fjalar_name, "main") != 0) ) { */
-  /*   print_info = 1; */
-  /* } */
-
-  if(isEnter)
-    is_enter = 1;
-
+#if 0 // debugging code
+extern void dump_all_function_exit_var_map(void);
+static int enter_count = 0;
+static int exit_count = 0;
+  if(isEnter) {
+    enter_count++;
+    if ((enter_count > 522) && (enter_count < 525) ) {
+        printf("var_map state at enter of %s:\n", f_state->func->fjalar_name);
+        dump_all_function_exit_var_map();
+    }
+  } else {
+    exit_count++;
+    //if (VG_(strcmp)(f_state->func->fjalar_name, "..gen_NUL_trans()") == 0) { //}
+    if ((exit_count > 517) && (exit_count < 520) ) {
+        printf("var_map state at exit of %s:\n", f_state->func->fjalar_name);
+        dump_all_function_exit_var_map();
+    }
+  }
+#endif
 
   // Print out globals:
   visitVariableGroup(GLOBAL_VAR,
@@ -1192,7 +1204,6 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
                      0,
                      0,
                      &printDtraceEntryAction);
-  is_enter = 0;
   //  print_info = 0;
 
   // Print out function formal parameters:

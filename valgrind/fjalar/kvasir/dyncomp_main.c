@@ -124,7 +124,7 @@ UInt val_uf_tag_union(UInt tag1, UInt tag2);
 void copy_tags(  Addr src, Addr dst, SizeT len ) {
   SizeT i;
   for (i = 0; i < len; i++) {
-    UInt leader = (dyncomp_no_val_leader)?get_tag(src+i):val_uf_find_leader(get_tag(src + i));
+    UInt leader = val_uf_find_leader(get_tag(src + i));
     set_tag (src + i, leader);
     set_tag (dst + i, leader);
   }
@@ -200,10 +200,6 @@ UInt val_uf_tag_union(UInt tag1, UInt tag2) {
     DYNCOMP_TPRINTF("[DynComp-v1] Merging %u with %u to get %u at %s\n",
                     tag1, tag2, leader->tag, eip_info);
 
-    if(dyncomp_no_val_leader){
-      return tag1;
-    }
-
     return leader->tag;
   }
   else {
@@ -214,7 +210,7 @@ UInt val_uf_tag_union(UInt tag1, UInt tag2) {
 // Write tag into all addresses in the range [a, a+len)
 static __inline__ void set_tag_for_range(Addr a, SizeT len, UInt tag) {
   Addr curAddr;
-  UInt leader = (dyncomp_no_val_leader)?tag:val_uf_find_leader(tag);
+  UInt leader = val_uf_find_leader(tag);
 
   for (curAddr = a; curAddr < (a+len); curAddr++) {
     set_tag(curAddr, leader);
@@ -401,7 +397,7 @@ DYNCOMP_TPRINTF("MLR debug val_uf_union_tags_in_range addr=%p, tag=%u\n", (void 
       }
     }
     // Find out the canonical tag
-    canonicalTag = (dyncomp_no_val_leader)?tagToMerge:val_uf_find_leader(tagToMerge);
+    canonicalTag = val_uf_find_leader(tagToMerge);
 
     DYNCOMP_TPRINTF("[DynComp] (above) val_uf_union_tags_in_range(%p, %p) canonicalTag=%u\n",
                   (void *)a, (void *)(a+len), canonicalTag);
@@ -456,7 +452,7 @@ UInt MC_(helperc_LOAD_TAG_2) ( Addr a ) {
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_1: %p => %u\n", (void *)a, get_tag(a));
-  return get_tag(a);
+  return val_uf_union_tags_in_range(a, 1);
 }
 
 // Make this const so gcc can eliminate dead code to improve
