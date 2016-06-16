@@ -6212,8 +6212,14 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
       any block that is part of the loader.  mlr 10/30/2015
     */
 
-   if (closure->nraddr != closure->readdr) {
-      DYNCOMP_DPRINTF("Redirect: %p => %p\n", (void*)closure->nraddr, (void*)closure->readdr);
+   if (dyncomp_print_debug_info) {
+      const HChar *fnname;
+      Bool ok = VG_(get_fnname)(closure->readdr, &fnname);
+      if (!ok) fnname = "UNKNOWN_FUNCTION";
+      if (closure->nraddr != closure->readdr) {
+         DYNCOMP_DPRINTF("Redirect: %p => %p\n", (void*)closure->nraddr, (void*)closure->readdr);
+      }
+      DYNCOMP_DPRINTF("address: %p fnname: %s\n", (void*)closure->readdr, fnname);
    }
 
    static Bool first_time = True;
@@ -6232,8 +6238,8 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
       if (di) {
          objname = VG_(DebugInfo_get_filename)(di);
       }
-      DYNCOMP_DPRINTF("objname: %s\n", objname);
-      // if its not the loader, go ahead and process
+      DYNCOMP_DPRINTF("objname: %s\n\n", objname);
+      // if its not part of the loader, go ahead and process
       if (VG_(strcmp)(objname, loader_name)) {
          do_dyncomp = kvasir_with_dyncomp;
       }

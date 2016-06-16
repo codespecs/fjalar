@@ -61,6 +61,7 @@ Bool fjalar_with_gdb = False;
 Bool fjalar_ignore_constants = False;
 Bool fjalar_merge_constants = False;
 Bool fjalar_ignore_globals = False;
+Bool fjalar_dump_globals = False;
 Bool fjalar_ignore_static_vars = False;
 Bool fjalar_all_static_vars = False;
 Bool fjalar_default_disambig = False;
@@ -86,6 +87,9 @@ const HChar* fjalar_trace_prog_pts_filename = 0;
 const HChar* fjalar_trace_vars_filename = 0;
 const HChar* fjalar_disambig_filename = 0;
 const HChar* fjalar_xml_output_filename = 0;
+
+// Are we printing decls because we are debugging?
+Bool doing_debug_print = False;
 
 // The filename of the target executable:
 const HChar* executable_filename = 0;
@@ -635,7 +639,6 @@ void enter_function(FunctionEntry* f)
   newEntry->invocation_nonce = cur_nonce++;
   newEntry->func->nonce = newEntry->invocation_nonce;
 
-
   // FJALAR VIRTUAL STACK
   // Fjalar maintains a virtual stack for invocation a function. This
   // allows Fjalar to provide tools with unaltered values of formal
@@ -661,7 +664,7 @@ void enter_function(FunctionEntry* f)
   // Let's be conservative in how much we copy over to the Virtual stack. Due to the
   // stack alignment operations in main, we may need  as much as 16 bytes over the above.
   size = local_stack + f->formalParamStackByteSize + sizeof(Addr)*2 + 32;/* plus stuff in caller's*/
-  FJALAR_DPRINTF("local_stack: %p, arg_size: %x\n", (void *)(frame_ptr - f->formalParamLowerStackByteSize),
+  FJALAR_DPRINTF("local_stack: %p, arg_size: %d\n", (void *)(frame_ptr - f->formalParamLowerStackByteSize),
                                                     f->formalParamLowerStackByteSize);
   int delta = stack_ptr - (frame_ptr - f->formalParamLowerStackByteSize);
   if (delta < 0 )
@@ -726,7 +729,6 @@ void exit_function(FunctionEntry* f)
 
   FJALAR_DPRINTF("Exit function: %s\n", f->fjalar_name);
 
-
   top->func->guestStackStart = top->lowSP - VG_STACK_REDZONE_SZB;
   top->func->guestStackEnd = top->func->guestStackStart + top->virtualStackByteSize;
   top->func->lowestVirtSP = (Addr)top->virtualStack;
@@ -775,7 +777,7 @@ void exit_function(FunctionEntry* f)
   xAXshadow = VG_(get_shadow_xAX)(currentTID);
   xDXshadow = VG_(get_shadow_xDX)(currentTID);
 
-  FJALAR_DPRINTF("Value of eax: %d, edx: %d\n",(int)xAX, (int)xDX);
+  FJALAR_DPRINTF("Value of eax: %x, edx: %x\n",(int)xAX, (int)xDX);
 
   FJALAR_DPRINTF("Exit function: %s\n", f->fjalar_name);
 
@@ -1142,6 +1144,7 @@ Bool fjalar_process_cmd_line_option(const HChar* arg)
   else if VG_YESNO_CLO(arg, "fjalar-print-ir", fjalar_print_IR) {}
   else if VG_YESNO_CLO(arg, "with-gdb", fjalar_with_gdb) {}
   else if VG_YESNO_CLO(arg, "ignore-globals", fjalar_ignore_globals) {}
+  else if VG_YESNO_CLO(arg, "dump-globals", fjalar_dump_globals) {}
   else if VG_YESNO_CLO(arg, "ignore-constants", fjalar_ignore_constants) {}
   else if VG_YESNO_CLO(arg, "merge-constants", fjalar_merge_constants) {}
   else if VG_YESNO_CLO(arg, "ignore-static-vars", fjalar_ignore_static_vars) {}

@@ -1067,6 +1067,7 @@ Bool fjalar_with_gdb;                      // --with-gdb
 Bool fjalar_ignore_constants;              // --ignore-constants
 Bool fjalar_merge_constants;               // --merge-constants
 Bool fjalar_ignore_globals;                // --ignore-globals
+Bool fjalar_dump_globals;                  // --dump-globals
 Bool fjalar_ignore_static_vars;            // --ignore-static-vars
 Bool fjalar_all_static_vars;               // --all-static-vars
 Bool fjalar_default_disambig;              // --disambig
@@ -1096,6 +1097,9 @@ const HChar* fjalar_xml_output_filename;          // --xml-output-file
 /*********************************************************************
 Misc.
 **********************************************************************/
+
+// Are we printing decls because we are debugging?
+Bool doing_debug_print;
 
 // The filename of the target executable:
 const HChar* executable_filename;
