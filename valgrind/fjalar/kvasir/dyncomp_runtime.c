@@ -43,9 +43,14 @@
 
 #include "libvex_guest_x86.h"
 
-extern int print_info, is_enter;
 extern char* func_name;
 extern char* cur_var_name;
+
+static void dump_function_exit_var_map(DaikonFunctionEntry*);
+static void dump_all_function_exit_var_map(void);
+static uf_name val_uf_tag(UInt);
+static struct genhashtable* regenerate_var_uf_map(UInt, UInt*, struct genhashtable*, UInt*);
+static void reassign_tag(UInt*, UInt, UInt*);
 
 // Cast an intger to a void pointer in a architecture independent way. (markro)
 #define VoidPtr(arg)  (void*)(ptrdiff_t)(arg)
@@ -75,6 +80,7 @@ int g_curCompNumber = 1;
 // tag is invalid)
 UInt* g_oldToNewMap = 0;
 
+int is_enter;
 static TraversalAction dyncompExtraPropAction;
 
 // Initialize hash tables for DynComp
@@ -188,21 +194,25 @@ void destroy_ppt_structures(DaikonFunctionEntry* funcPtr, char isEnter) {
 
 // Variable comparability set map (var_uf_map) operations:
 
+static uf_name var_uf_map_find(struct genhashtable* var_uf_map, UInt tag) {
+  if (!tag) {
+    return NULL;
+  }
+  return (uf_object*)gengettable(var_uf_map, VoidPtr(tag));
+}
+
 static UInt var_uf_map_find_leader(struct genhashtable* var_uf_map, UInt tag) {
   if (!tag) {
     return 0;
-  }
-  else {
+  } else {
     uf_object* uf_obj = (uf_object*)gengettable(var_uf_map, VoidPtr(tag));
     if (uf_obj) {
       return (uf_find(uf_obj))->tag;
-    }
-    else {
+    } else {
       return 0;
     }
   }
 }
-
 
 // Pre: tag is not a KEY in var_uf_map, tag is not zero
 // Inserts a new entry in var_uf_map with tag as the KEY and a
@@ -221,7 +231,6 @@ static uf_object* var_uf_map_insert_and_make_set(struct genhashtable* var_uf_map
   genputtable(var_uf_map, VoidPtr(tag), (void*)new_obj);
   return new_obj;
 }
-
 
 // Unions the uf_objects corresponding to tags tag1 and tag2 in
 // var_uf_map and returns the leader:
@@ -265,32 +274,24 @@ static UInt var_uf_map_union(struct genhashtable* var_uf_map,
 
 
 // Pre: The variable indexed by daikonVarIndex located at address 'a'
-//      has been observed and the proper tags have been merged in memory
-//      (handled in dtrace-output.c)
+//      has been observed and the proper tags have been merged in memory.
 // Performs post-processing after observing a variable's value when
 // printing out .dtrace information.  This roughly follows the
-// algorithm created by SMcC in the comparability design document.
-// Shown in comments are SMcC's current algorithm for propagating
-// value comparability to variable comparability sets at each program
-// point (annotated by pgbovine).
+// algorithm described in Philip Guo's and/or Robert Rudd's Master Thesis.
 /*
 for each variable indexed by v {
-  // Update from any val_uf merges that have occurred for variables on
-  // previous executions of this program point.
-
-  // Make sure that the degenerate behavior of this line is that it
-  // returns 0 so we don't do anything when there's no previous info.
-  // to update
+  // Update to account for any val_uf merges that have occurred for a
+  // variable's previously observed values.  I.e., changes that have
+  // occured between the previous program point (for this function) and
+  // the current program point.
   tag leader = val_uf.find(var_tags[v]);
   if (leader != var_tags[v]) {
     var_tags[v] = var_uf_map.union(leader, var_tags[v]);
   }
 
-
   // Make sure that an entry is created in var_uf_map for the tag
-  // associated with the new value that we observe from the
-  // memory-level layer
-  tag new_leader = val_uf.find(new_tags[v]);
+  // associated with the value that we observe for this program point.
+  tag new_leader = val_uf.find(val_tags[address of v]);
   if (!var_uf_map.exists(new_leader)) {
     var_uf_map.insert(new_leader, make_set(new uf_object));
   }
@@ -299,15 +300,17 @@ for each variable indexed by v {
   // variable at this program point with the new value that we just
   // observed
   var_tags[v] = var_uf_map.union(var_tags[v], new_leader);
-}
-
-If --dyncomp-detailed-mode is on, then instead we run an O(n^2)
-algorithm which marks 2 variables as comparable if they are currently
-holding tags that belong in the same set (have the same leader).
-
 */
- void DC_post_process_for_variable(DaikonFunctionEntry* funcPtr,
+
+// IMPORTANT ADDENDUM:
+// While the first step described above is necessary, it is not
+// sufficient.  You must check for any val tag changes in all
+// members of the var set, not just the leader.
+// (markro June 2016)
+
+void DC_post_process_for_variable(DaikonFunctionEntry* funcPtr,
                                   char isEnter,
+                                  VariableOrigin varOrigin,
                                   int daikonVarIndex,
                                   Addr a) {
 
@@ -319,6 +322,7 @@ holding tags that belong in the same set (have the same leader).
   DYNCOMP_DPRINTF("DC_post_process_for_variable - %p\n", (void *)a);
   // Remember to use only the EXIT structures unless
   // isEnter and --separate-entry-exit-comp are both True
+  is_enter = isEnter;
   if (dyncomp_separate_entry_exit_comp && isEnter) {
     var_uf_map = funcPtr->ppt_entry_var_uf_map;
     var_tags = funcPtr->ppt_entry_var_tags;
@@ -349,33 +353,62 @@ holding tags that belong in the same set (have the same leader).
       return;
     }
 
-  // Update from any val_uf merges that have occurred for variables on
-  // previous executions of this program point.
-
-  // Make sure that the degenerate behavior of this step is that it
-  // returns 0 so we don't do anything when there's no previous info.
+  // Update to account for any val_uf merges that have occurred for a
+  // variable's previously observed values.
   var_tags_v = var_tags[daikonVarIndex];
+  if (var_tags_v) {
+    uf_object* uf_leader = (uf_object*)gengettable(var_uf_map, VoidPtr(var_tags_v));
+    tl_assert(uf_leader);
 
-  leader = val_uf_find_leader(var_tags_v);
-  if (leader != var_tags_v) {
-    UInt old_leader = var_uf_map_union(var_uf_map, leader, var_tags_v);
+    // See if the associated val set has changed since the last observation.
+    leader = val_uf_find_leader(var_uf_map_find_leader(var_uf_map, var_tags_v));
+    if (leader != var_tags_v) {
+      // If it has, union old with new
+      DYNCOMP_TPRINTF("Dyncomp] leader != var_tags_v. var_tags_v: %u, leader: %u\n", var_tags_v, leader);
+      leader = var_uf_map_union(var_uf_map, leader, var_tags_v);
+      DYNCOMP_TPRINTF("         new leader: %u\n", leader);
+    }
 
-    var_tags[daikonVarIndex] = (dyncomp_no_var_leader)?var_tags_v:old_leader;
-    var_tags_v = var_tags[daikonVarIndex];
+    // (This next section is the correction described in the addendum.)
+    // We need to iterate through the members of the var set for var_tags_v.
+    // No easy way to do this, so check all members of the var_uf_map to
+    // see if they qualify.
+    struct genpointerlist* var_item = var_uf_map->list;
+    while (var_item) {
+      uf_object* uf_obj = (uf_object*)(var_item->object);
+      // If member of the same var set, then we need to process
+      // (but not if its the leader, that was already processed)
+      if ((uf_leader == uf_obj->parent) && (uf_leader != uf_obj)) {
+        // See if the associated val set has changed since the last observation.
+        UInt t = val_uf_find_leader(uf_obj->tag);
+        DYNCOMP_TPRINTF("         %p %8d %u\n", uf_obj, uf_obj->tag, t);
+        if (t !=  uf_obj->tag) {
+          // It has, union our current leader with new val set.
+          leader = var_uf_map_union(var_uf_map, leader, t);
+          DYNCOMP_TPRINTF("         new leader: %u\n", leader);
+        }
+      }
+      var_item = var_item->inext;
+    }
+
+    // If any of the associated val sets have changed we need
+    // to update the leader stored in the var_tags array.
+    if (leader != var_tags_v) {
+      DYNCOMP_TPRINTF("Dyncomp] new leader != var_tags_v. var_tags_v: %u, new leader: %u\n", var_tags_v, leader);
+      var_tags[daikonVarIndex] = leader;
+      var_tags_v = leader;
+    }
   }
 
   // Make sure that an entry is created in var_uf_map for the tag
-  // associated with the new value that we observe from the
-  // memory-level layer
+  // associated with the value that we observe for this program point.
   new_tags_v = get_tag(a);
+  new_leader = val_uf_find_leader(new_tags_v);
 
   DYNCOMP_TPRINTF("\n[DynComp] OBSERVATION POINT: %s - %u (%s - %s invocation %u)\n",
-                  cur_var_name,  new_tags_v, isEnter?"ENTRY":"EXIT", func_name, funcPtr->num_invocations);
-
-
-  new_leader = val_uf_find_leader(new_tags_v);
-  DYNCOMP_TPRINTF("post_process_for_variable - address: %p, tag: %d, leader: %d, new-tag: %d, new-leader: %d \n",
-            (void *)a, var_tags_v, leader, new_tags_v, new_leader);
+                  cur_var_name,  new_leader, isEnter?"ENTRY":"EXIT", func_name, funcPtr->num_invocations);
+  DYNCOMP_TPRINTF("post_process_for_variable - address: %p, current var tag: %u, new val tag: %u, new val leader: %u \n",
+            (void *)a, var_tags_v, new_tags_v, new_leader);
 
   if (new_leader && // We don't want to insert 0 tags into the union find structure
       !gengettable(var_uf_map, VoidPtr(new_leader))) {
@@ -385,30 +418,21 @@ holding tags that belong in the same set (have the same leader).
   // Merge the sets of all values that were observed before for this
   // variable at this program point with the new value that we just
   // observed
+//if (varOrigin != FUNCTION_RETURN_VAR) {
   new_leader = var_uf_map_union(var_uf_map, var_tags_v, new_leader);
+//}
+
+  DYNCOMP_TPRINTF("[DynComp] %s new var tag[%d]: %u\n", cur_var_name, daikonVarIndex, new_leader);
   var_tags[daikonVarIndex] = new_leader;
-
-
-
-
-  DYNCOMP_TPRINTF("[DynComp] %s new_tags[%d]: %u, var_uf_map_union(new_leader: %u, var_tags_v (old): %u) ==> var_tags[%d]: %u (a: %p)\n",
-                  cur_var_name,
-                  daikonVarIndex,
-                  new_tags_v,
-                  new_leader,
-                  var_tags_v,
-                  daikonVarIndex,
-                  var_tags[daikonVarIndex],
-                  (void *)a);
-
   }
- }
+}
 
-// This runs once for every Daikon variable at the END of the target
-// program's execution
 
 // This is a simplified version of the algorithm in
-// DC_post_process_for_variable()
+// DC_post_process_for_variable() that runs once
+// for every Daikon variable at the END of the target
+// program's execution.
+// NOTE: The same addendum applies here. (markro)
 void DC_extra_propagation_post_process(DaikonFunctionEntry* funcPtr,
                                        char isEnter,
                                        int daikonVarIndex) {
@@ -421,6 +445,7 @@ void DC_extra_propagation_post_process(DaikonFunctionEntry* funcPtr,
   if (dyncomp_detailed_mode) {
     return;
   }
+  is_enter = isEnter;
 
   // Remember to use only the EXIT structures unless
   // isEnter and --separate-entry-exit-comp are both True
@@ -432,18 +457,50 @@ void DC_extra_propagation_post_process(DaikonFunctionEntry* funcPtr,
     var_uf_map = funcPtr->ppt_exit_var_uf_map;
     var_tags = funcPtr->ppt_exit_var_tags;
   }
-  // Update from any val_uf merges that have occurred for variables on
-  // previous executions of this program point.
 
-  // Make sure that the degenerate behavior of this line is that it
-  // returns 0 so we don't do anything when there's no previous info.
-  // to update
+  // Update to account for any val_uf merges that have occurred for a
+  // variable's previously observed values.
   var_tags_v = var_tags[daikonVarIndex];
-  leader = val_uf_find_leader(var_tags_v);
-  if (leader != var_tags_v) {
-    DYNCOMP_TPRINTF("extra-post_process: %d, %d \n", var_tags_v, leader);
-    var_tags[daikonVarIndex] = var_uf_map_union(var_uf_map,
-                                                leader, var_tags_v);
+  if (var_tags_v) {
+    uf_object* uf_leader = (uf_object*)gengettable(var_uf_map, VoidPtr(var_tags_v));
+    tl_assert(uf_leader);
+
+    // See if the associated val set has changed since the last observation.
+    leader = val_uf_find_leader(var_uf_map_find_leader(var_uf_map, var_tags_v));
+    if (leader != var_tags_v) {
+      // If it has, union old with new
+      DYNCOMP_TPRINTF("extra-post_process (leader): %u, %u \n", var_tags_v, leader);
+      leader = var_uf_map_union(var_uf_map, leader, var_tags_v);
+      DYNCOMP_TPRINTF("               new leader: %u\n", leader);
+    }
+
+    // (This next section is the correction described in the addendum.)
+    // We need to iterate through the members of the var set for var_tags_v.
+    // No easy way to do this, so check all members of the var_uf_map to
+    // see if they qualify.
+    struct genpointerlist* var_item = var_uf_map->list;
+    while (var_item) {
+      uf_object* uf_obj = (uf_object*)(var_item->object);
+      // If member of the same var set, then we need to process
+      // (but not if its the leader, that was already processed)
+      if ((uf_leader == uf_obj->parent) && (uf_leader != uf_obj)) {
+        // See if the associated val set has changed since the last observation.
+        UInt t = val_uf_find_leader(uf_obj->tag);
+        DYNCOMP_TPRINTF("  %p %8d %u\n", uf_obj, uf_obj->tag, t);
+        if (t !=  uf_obj->tag) {
+          // It has, union our current leader with new val set.
+          leader = var_uf_map_union(var_uf_map, leader, t);
+          DYNCOMP_TPRINTF("extra-post_process (set member): %u \n", leader);
+        }
+      }
+      var_item = var_item->inext;
+    }
+
+    // If any of the associated val sets have changed we need
+    // to update the leader stored in the var_tags array.
+    if (leader != var_tags_v) {
+      var_tags[daikonVarIndex] = leader;
+    }
   }
 
   DYNCOMP_TPRINTF("[DynComp] Variable processing in %s[%d]: merging distinct values "
@@ -452,12 +509,10 @@ void DC_extra_propagation_post_process(DaikonFunctionEntry* funcPtr,
 		  var_tags_v, leader, var_tags[daikonVarIndex]);
 }
 
-
 // Super-trivial key comparison method -
 int equivalentTags(UInt t1, UInt t2) {
   return (t1 == t2);
 }
-
 
 // Return the comparability number for the variable as a SIGNED
 // INTEGER (because Daikon expects a signed integer).
@@ -528,7 +583,10 @@ int DC_get_comp_number_for_var(DaikonFunctionEntry* funcPtr,
       // numbers because the leaders represent the distinctive sets.
       UInt leader = val_uf_find_leader(var_uf_map_find_leader(var_uf_map, tag));
 
-      var_tags[daikonVarIndex] = leader;
+      // If we are debugging, don't change any state.
+      if (!doing_debug_print) {
+        var_tags[daikonVarIndex] = leader;
+      }
       if (gencontains(g_compNumberMap, VoidPtr(leader))) {
         comp_number = (ptrdiff_t)gengettable(g_compNumberMap, VoidPtr(leader));
       }
@@ -604,7 +662,6 @@ static TraversalResult dyncompExtraPropAction(VariableEntry* var,
   return DISREGARD_PTR_DEREFS;
 }
 
-
 // char isEnter = 1 for function ENTER, 0 for EXIT
 static void DC_extra_propagate_one_function(FunctionEntry* funcPtr,
                                             char isEnter)
@@ -649,16 +706,17 @@ static void DC_extra_propagate_one_function(FunctionEntry* funcPtr,
   }
 }
 
-
 // Do one extra round of value-to-variable tag comparability set
 // propagations at the end of program execution
 void DC_extra_propagate_val_to_var_sets() {
   FuncIterator* funcIt = newFuncIterator();
   DYNCOMP_DPRINTF("DC_extra_propagate_val_to_var_sets()\n");
 
+  //dump_all_function_exit_var_map();
   while (hasNextFunc(funcIt)) {
     FunctionEntry* cur_entry = nextFunc(funcIt);
     tl_assert(cur_entry);
+    DYNCOMP_DPRINTF("Function: %s\n", cur_entry->name);
     // Remember to only propagate through the functions to be traced
     // if kvasir_trace_prog_pts_filename is on:
     if (!fjalar_trace_prog_pts_filename ||
@@ -670,6 +728,7 @@ void DC_extra_propagate_val_to_var_sets() {
         prog_pts_tree_entry_found(cur_entry)) {
       DC_extra_propagate_one_function(cur_entry, 1);
       DC_extra_propagate_one_function(cur_entry, 0);
+      //dump_all_function_exit_var_map();
     }
   }
   deleteFuncIterator(funcIt);
@@ -773,6 +832,201 @@ int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
   offsetof(VexGuestX86State, guest_CMLEN)
 };
 
+static uf_name val_uf_tag(UInt tag) {
+  if (IS_ZERO_TAG(tag) || IS_SECONDARY_UF_NULL(tag)) {
+     return NULL;
+  } else {
+     return uf_find(GET_UF_OBJECT_PTR(tag));
+  }
+}
+
+static void dump_function_exit_var_map(DaikonFunctionEntry* funcPtr) {
+  int daikonVarIndex;
+  UInt var_tag1, var_tag2, var_tag3;
+  UInt val_tag1, val_tag2;
+  struct genhashtable* var_uf_map;
+  struct genhashtable* var_set_map;
+  uf_name uf_var1, uf_var2;
+  uf_name uf_val1, uf_val2;
+  UInt set_number;
+  UInt* var_tags;
+  int comp_number;
+
+    printf("Function: %s, raw map table:\n", funcPtr->funcEntry.name);
+    struct genpointerlist* exit_var_item = funcPtr->ppt_exit_var_uf_map->list;
+    while (exit_var_item) {
+      uf_object* uf_obj = (uf_object*)(exit_var_item->object);
+      if (uf_obj == uf_obj->parent) {
+        printf("  %p %8d %4d\n", uf_obj, uf_obj->tag, uf_obj->rank);
+      } else {
+        uf_object* uf_obj2 = uf_obj;
+        int depth = 0;
+        while (uf_obj2 != uf_obj2->parent) {
+          depth++;
+          uf_obj2 = uf_obj2->parent;
+        }
+        printf("  %p %8d %4d %p %2d %8d\n", uf_obj, uf_obj->tag, uf_obj->rank, uf_obj->parent, depth, uf_obj2->tag);
+      }
+      exit_var_item = exit_var_item->inext;
+    }
+
+    printf("\nFunction: %s, num_vars: %d\n", funcPtr->funcEntry.name, funcPtr->num_exit_daikon_vars);
+
+    var_set_map = genallocatehashtable(NULL, // no hash function needed for u_int keys
+                                       (int (*)(void *,void *)) &equivalentIDs);
+
+    var_uf_map = funcPtr->ppt_exit_var_uf_map;
+    var_tags = funcPtr->ppt_exit_var_tags;
+    set_number = 1;
+
+    for (daikonVarIndex = 0; daikonVarIndex < funcPtr->num_exit_daikon_vars; daikonVarIndex++) {
+
+      var_tag1 = var_tags[daikonVarIndex];
+      uf_var1 = var_uf_map_find(var_uf_map, var_tag1);
+      if (uf_var1) {
+        var_tag2 = uf_var1->tag;
+        uf_var2  = uf_find(uf_var1);
+        var_tag3 = uf_var2->tag;
+      } else {
+        var_tag2 = 0;
+        uf_var2  = NULL;
+        var_tag3 = 0;
+      }
+
+      uf_val1 = val_uf_tag(var_tag3);
+      if (uf_val1) {
+        val_tag1 = uf_val1->tag;
+        uf_val2  = uf_find(uf_val1);
+        val_tag2 = uf_val2->tag;
+      } else {
+        val_tag1 = 0;
+        uf_val2  = NULL;
+        val_tag2 = 0;
+      }
+
+      if (0 == var_tag1) {
+        comp_number = set_number;
+        set_number++;
+      }
+      else {
+        if (gencontains(var_set_map, VoidPtr(val_tag2))) {
+          comp_number = (ptrdiff_t)gengettable(var_set_map, VoidPtr(val_tag2));
+        }
+        else {
+          comp_number = set_number;
+          set_number++;
+          genputtable(var_set_map, VoidPtr(val_tag2), VoidPtr(comp_number));
+        }
+      }
+
+#if 0
+      printf(" var-index: [%d]: set: %d\n", daikonVarIndex, comp_number);
+#else
+      printf(" var-index: [%d]: var-tag1: %u,\tuf-var1: %p,\tvar-tag2: %u\tset: %d\n",
+             daikonVarIndex, var_tag1, uf_var1, var_tag2, comp_number);
+      if (var_tag1 != var_tag2) {
+          printf("   PROBLEM! var_tag1 != var_tag2\n");
+      }
+      if (var_tag1 != var_tag3) {
+          printf("            [%d]: var-tag1: %u,\tuf-var2: %p,\tvar-tag3: %u\n",
+                 daikonVarIndex, var_tag1, uf_var2, var_tag3);
+      }
+      if (var_tag1 != val_tag1) {
+          printf("            [%d]: var-tag1: %u,\tuf-val1: %p,\tval-tag1: %u\n",
+                 daikonVarIndex, var_tag1, uf_val1, val_tag1);
+      }
+      if (val_tag1 != val_tag2) {
+          printf("  val_tag2  [%d]: var-tag1: %u,\tuf-val2: %p,\tval-tag2: %u\n",
+                 daikonVarIndex, var_tag1, uf_val2, val_tag2);
+      }
+#endif
+    }
+    genfreehashtable(var_set_map);
+}
+
+static Addr alist[] = {};
+static int alist_size = (sizeof alist) / (sizeof alist[0]);
+
+static void dump_all_function_exit_var_map() {
+  int i;
+  Addr a;
+
+  printf("partial val leaders:\n");
+  for (i = 0; i < alist_size; i++) {
+    a = alist[i];
+    printf("  %p %8d\n", (void*)a, val_uf_find_leader(get_tag(a)));
+  }
+  printf("\n");
+
+  FuncIterator* funcIt = newFuncIterator();
+  while (hasNextFunc(funcIt)) {
+    DaikonFunctionEntry* funcPtr = (DaikonFunctionEntry*)nextFunc(funcIt);
+    tl_assert(funcPtr);
+    dump_function_exit_var_map(funcPtr);
+  }
+  deleteFuncIterator(funcIt);
+}
+
+// Pre: the ppt_entry/exit_var_tags array has been updated to reflect
+// the changes in the val tag numbers.
+// Now we must rebuild the ppt_entry/exit_var_uf_map in a similar
+// manner - updating all the var tags to be the new value for the
+// corresponding val tags.
+static struct genhashtable* regenerate_var_uf_map(UInt num_daikon_vars,
+                                                  UInt* ppt_var_tags,
+                                                  struct genhashtable* ppt_var_uf_map,
+                                                  UInt* p_newTagNumber) {
+  UInt ind;
+  struct genhashtable* new_var_uf_map =
+    genallocateSMALLhashtable((unsigned int (*)(void *)) 0,
+                              (int (*)(void *,void *)) &equivalentTags);
+
+  // First, copy new leaders into new map
+  for (ind = 0; ind < num_daikon_vars; ind++) {
+    UInt leader_tag = ppt_var_tags[ind];
+    if (leader_tag && !gencontains(new_var_uf_map, VoidPtr(leader_tag))) {
+      //printf("create uf var number: %d\n", ind);
+      var_uf_map_insert_and_make_set(new_var_uf_map, leader_tag);
+    }
+  }
+
+  // Next, copy non-leaders from old map items to new map, updating tags
+  struct genpointerlist* current_var_item = ppt_var_uf_map->list;
+  while (current_var_item) {
+    UInt new_tag;
+    UInt new_parent_tag;
+    uf_object* uf_obj = (uf_object*)(current_var_item->object);
+    // if leader, then already done
+    if (uf_obj != uf_obj->parent) {
+      //printf("process var map tag: %lu %p %p\n", (long unsigned int)current_var_item->src, uf_obj, uf_obj->parent);
+      reassign_tag(&new_tag, val_uf_find_leader(uf_obj->tag), p_newTagNumber);
+      // I don't think we need to call reassign_tag, the argument has already
+      // been processed in the reasign_tag loop above. The following
+      // should work, I will test later.
+      // new_parent_tag = g_oldToNewMap[val_uf_find_leader(var_uf_map_find_leader(ppt_var_uf_map, uf_obj->parent->tag))];
+      reassign_tag(&new_parent_tag,
+                   val_uf_find_leader(var_uf_map_find_leader(ppt_var_uf_map, uf_obj->parent->tag)),
+                   p_newTagNumber);
+      //printf("new tag: %u, new parent tag: %u\n", new_tag, new_parent_tag);
+      var_uf_map_union(new_var_uf_map, new_tag, new_parent_tag);
+
+    }
+    current_var_item = current_var_item->inext;
+  }
+
+  // Now update the var_tags, as they may no longer be the leader
+  // of their var set due to loop above.
+  for (ind = 0; ind < num_daikon_vars; ind++) {
+    UInt leader_tag = ppt_var_tags[ind];
+    if (leader_tag) {
+      ppt_var_tags[ind] = var_uf_map_find_leader(new_var_uf_map, leader_tag);
+      //printf("update var: %d: %u to %u\n", ind, leader_tag, ppt_var_tags[ind]);
+    }
+  }
+
+  return new_var_uf_map;
+}
+
 
 // Try to find leaderTag's entry in g_oldToNewMap (map from old tags to
 // new tags).  If it does not exist, then write *p_newTagNumber in the
@@ -798,6 +1052,7 @@ static void reassign_tag(UInt* addr,
     g_oldToNewMap[leaderTag] = *p_newTagNumber;
     (*p_newTagNumber)++;
   }
+  //printf("tag: %u now: %u\n", leaderTag, *addr);
 }
 
 
@@ -807,8 +1062,10 @@ void garbage_collect_tags() {
   FuncIterator* funcIt;
   ThreadId currentTID;
   UInt curTag, i;
-
   UInt* addr;
+
+  Bool dyncomp_trace = dyncomp_print_trace_info;
+  dyncomp_print_trace_info = False;
 
   // Monotonically increases from 1 to whatever is necessary to map
   // old tags to new tags that are as small as possible (held as
@@ -822,6 +1079,9 @@ void garbage_collect_tags() {
 
   printf("  Start garbage collecting (next tag = %u, total assigned = %u)\n",
               nextTag, totalNumTagsAssigned);
+
+  //debug_print_decls();
+  //dump_all_function_exit_var_map();
 
   // This algorithm goes through all places where tags are kept, finds
   // the leader for each one, and 'compresses' the set of tags in use
@@ -862,6 +1122,7 @@ void garbage_collect_tags() {
   // 1.) Shadow memory:
   for (primaryIndex = 0; primaryIndex < PRIMARY_SIZE; primaryIndex++) {
     if (primary_tag_map[primaryIndex]) {
+      //printf("  primary address: %lx\n", ((Addr)primaryIndex) << SECONDARY_SHIFT);
       for (secondaryIndex = 0; secondaryIndex < SECONDARY_SIZE; secondaryIndex++) {
         addr = &primary_tag_map[primaryIndex][secondaryIndex];
 
@@ -873,7 +1134,6 @@ void garbage_collect_tags() {
       }
     }
   }
-
 
   // 2.) Per program point:
 
@@ -888,13 +1148,17 @@ void garbage_collect_tags() {
   // re-assign it to a lower tag number using oldToNewMap.
   funcIt = newFuncIterator();
 
+  dyncomp_print_trace_info = dyncomp_trace;
+
   while (hasNextFunc(funcIt)) {
     UInt ind;
     DaikonFunctionEntry* cur_entry = (DaikonFunctionEntry*)nextFunc(funcIt);
     tl_assert(cur_entry);
 
-    if (dyncomp_separate_entry_exit_comp) {
+    //dump_function_exit_var_map(cur_entry);
+    //printf("compress var map for function: %s\n", cur_entry->funcEntry.name);
 
+    if (dyncomp_separate_entry_exit_comp) {
       for (ind = 0; ind < cur_entry->num_entry_daikon_vars; ind++) {
         UInt* p_entry_tag = &cur_entry->ppt_entry_var_tags[ind];
 
@@ -912,6 +1176,7 @@ void garbage_collect_tags() {
       UInt* p_exit_tag = &cur_entry->ppt_exit_var_tags[ind];
 
       if (*p_exit_tag) { // Remember to ignore 0 tags
+        //printf("process var number: %d\n", ind);
         reassign_tag(p_exit_tag,
                      // We need to first find the leader in var_uf_map,
                      // then find the leader of that in val_uf:
@@ -920,97 +1185,36 @@ void garbage_collect_tags() {
       }
     }
 
-
+    // At his point we have updated the tag values in the var_tags array(s).
+    // We now need to rebuild the var_uf_map(s) to reflect the updated values.
     if (dyncomp_separate_entry_exit_comp) {
-
-      // Free everything in ppt_entry_var_uf_map and create singleton
-      // sets for all of the new re-assigned leader entries
       if (cur_entry->ppt_entry_var_uf_map) {
-
-        // The slow way to clear all entries in the hash table:
-
-/*         UInt key = 1; */
-
-/*         struct geniterator* entry_var_uf_map_it = */
-/*           gengetiterator(cur_entry->ppt_entry_var_uf_map); */
-
-/*         // For some really bizarre reason, gennext() can return 0 */
-/*         // and infinite loop even while 'finished' is not set, */
-/*         // so I am also including 'key' in the while loop termination */
-/*         // condition to prevent these nasty infinite loops ... */
-/*         // this still feels uneasy, though ... */
-/*         while (key && !entry_var_uf_map_it->finished) { */
-/*           key = (UInt)(gennext(entry_var_uf_map_it)); */
-/*           if (key) { */
-/*             genfreekey(cur_entry->ppt_entry_var_uf_map, (void*)key); */
-/*           } */
-/*         } */
-
-        // Clear the hashtable and generate a new one:
-        // (Hopefully this won't cause memory leaks or weird crashes)
+        struct genhashtable* new_entry_map =
+            regenerate_var_uf_map(cur_entry->num_entry_daikon_vars,
+                                  cur_entry->ppt_entry_var_tags,
+                                  cur_entry->ppt_entry_var_uf_map,
+                                  &newTagNumber);
+        // free the old map and switch to the new map.
         genfreehashtableandvalues(cur_entry->ppt_entry_var_uf_map);
-
-        cur_entry->ppt_entry_var_uf_map =
-          genallocateSMALLhashtable((unsigned int (*)(void *)) 0,
-                                    (int (*)(void *,void *)) &equivalentTags);
-
-        for (ind = 0; ind < cur_entry->num_entry_daikon_vars; ind++) {
-          UInt leader_tag = cur_entry->ppt_entry_var_tags[ind];
-          if (leader_tag &&
-              !gencontains(cur_entry->ppt_entry_var_uf_map,VoidPtr(leader_tag))) {
-            var_uf_map_insert_and_make_set(cur_entry->ppt_entry_var_uf_map, leader_tag);
-          }
-        }
-
-        //        genfreeiterator(entry_var_uf_map_it);
+        cur_entry->ppt_entry_var_uf_map = new_entry_map;
       }
     }
-
 
     if (cur_entry->ppt_exit_var_uf_map) {
-
-      // The  slow way to clear all entries in the hash table:
-
-/*       UInt key = 1; */
-
-/*       // ditto for ppt_exit_var_uf_map */
-/*       struct geniterator* exit_var_uf_map_it = */
-/*       gengetiterator(cur_entry->ppt_exit_var_uf_map); */
-
-/*       // For some really bizarre reason, gennext() can return 0 */
-/*       // and infinite loop even while 'finished' is not set, */
-/*       // so I am also including 'key' in the while loop termination */
-/*       // condition to prevent these nasty infinite loops ... */
-/*       // this still feels uneasy, though ... */
-/*       while (key && !exit_var_uf_map_it->finished) { */
-/*         key = (UInt)(gennext(exit_var_uf_map_it)); */
-/*         if (key) { */
-/*           genfreekey(cur_entry->ppt_exit_var_uf_map, (void*)key); */
-/*         } */
-/*       } */
-
-      // Clear the hashtable and generate a new one:
-      // (Hopefully this won't cause memory leaks or weird crashes)
+      struct genhashtable* new_exit_map =
+          regenerate_var_uf_map(cur_entry->num_exit_daikon_vars,
+                                cur_entry->ppt_exit_var_tags,
+                                cur_entry->ppt_exit_var_uf_map,
+                                &newTagNumber);
+      // free the old map and switch to the new map.
       genfreehashtableandvalues(cur_entry->ppt_exit_var_uf_map);
-
-      cur_entry->ppt_exit_var_uf_map =
-        genallocateSMALLhashtable((unsigned int (*)(void *)) 0,
-                                  (int (*)(void *,void *)) &equivalentTags);
-
-      for (ind = 0; ind < cur_entry->num_exit_daikon_vars; ind++) {
-        UInt leader_tag = cur_entry->ppt_exit_var_tags[ind];
-        if (leader_tag &&
-            !gencontains(cur_entry->ppt_exit_var_uf_map, VoidPtr(leader_tag))) {
-          var_uf_map_insert_and_make_set(cur_entry->ppt_exit_var_uf_map, leader_tag);
-        }
-      }
-
-      //      genfreeiterator(exit_var_uf_map_it);
+      cur_entry->ppt_exit_var_uf_map = new_exit_map;
     }
+
+    //dump_function_exit_var_map(cur_entry);
   }
 
   deleteFuncIterator(funcIt);
-
 
   // 3.) Guest state:
 
@@ -1030,13 +1234,14 @@ void garbage_collect_tags() {
     addr =
       VG_(get_tag_ptr_for_guest_offset)(currentTID,
 					 x86_guest_state_offsets[i]);
+    //printf("  gc shadow addr: %p\n", addr);
+    //printf("%u %u %u %u\n", *addr, *(addr+1), *(addr+2), *(addr+3));
     if ((*addr) > 0) {
       reassign_tag(addr,
                    val_uf_find_leader(*addr),
                    &newTagNumber);
     }
   }
-
 
   // Now that all tags in use have been re-assigned to newer
   // (hopefully smaller) values as denoted by the running counter
@@ -1050,15 +1255,15 @@ void garbage_collect_tags() {
     val_uf_make_set_for_tag(curTag);
   }
 
-
   // For the grand finale, set nextTag = newTagNumber, thus completing
   // the garbage collection.
   nextTag = newTagNumber;
 
-
   printf("   Done garbage collecting (next tag = %u, total assigned = %u)\n",
               nextTag, totalNumTagsAssigned);
 
+  //debug_print_decls();
+  //dump_all_function_exit_var_map();
 }
 
 
