@@ -9,6 +9,7 @@ set -e
 # Get some system info for debugging.
 cat /proc/version
 gcc --version
+make --version
 ls -l /lib/x86_64-linux-gnu/libc-*
 
 # TODO: The tests ought to work even if $DAIKONDIR is not set.
