@@ -415,6 +415,11 @@ void DC_post_process_for_variable(DaikonFunctionEntry* funcPtr,
     var_uf_map_insert_and_make_set(var_uf_map, new_leader);
   }
 
+  // While I still feel there is something not quite right with how
+  // we process the special function 'return' variable, the changes
+  // I have tried do not look better.  I am leaving this part of
+  // the alogorithm unchanged for now.  markro 6/27/2016.
+  //
   // Merge the sets of all values that were observed before for this
   // variable at this program point with the new value that we just
   // observed
