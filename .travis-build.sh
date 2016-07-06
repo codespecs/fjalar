@@ -26,12 +26,11 @@ make doc
 ## overall target only fails if the set of failing tests is different.
 # make test
 
-## "make daikon-test" is disabled; see immediately below
-# make daikon-test
 ## Kvasir does not currently pass all its tests on Ubuntu 14.04 which is
-## used by Travis.  Reinstate "make daikon-test" fails.  Reinstate "daikon-test"
-## as soon as we have improved Kvasir and/or its test suite.  In the meanwhile,
-# TEMP-daikon-test is a temporary substitute for daikon-test that runs
-# a subset of kvasir-tests.
-make TEMP-daikon-test
-
+## used by Travis.  We get around this for now by comparing the list of
+## failures with an expected list.
+## If Travis moves to Ubuntu 16.04, or we can make it work using Docker,
+## we should be able to remove this step.
+make daikon-test 2>&1 | tee test.log
+grep FAILED test.log > travis-fail
+diff travis-fail travis-fail.goal

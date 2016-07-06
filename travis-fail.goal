@@ -1,0 +1,10 @@
+FAILED  ArraysInStructTest.invs.diff
+FAILED  flex-rothermel.comp.diff
+FAILED  flex-pristine.comp.diff
+FAILED  bzip2.comp.diff
+FAILED  md5.comp.diff
+FAILED  space.comp.diff
+FAILED  space.invs.diff
+FAILED  gtest.comp.diff
+FAILED  Dstr.comp.diff
+FAILED  partial-init.out.diff
