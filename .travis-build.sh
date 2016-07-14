@@ -16,7 +16,9 @@ set -e
 cat /proc/version
 gcc --version
 make --version
-ls -l /lib/x86_64-linux-gnu/libc-*
+# This only works on Ubuntu.  Should make it conditional, or at least not fail.
+# ls -l /lib/x86_64-linux-gnu/libc-*
+echo "end of debugging information"
 
 # TODO: The tests ought to work even if $DAIKONDIR is not set.
 export DAIKONDIR=`pwd`/../daikon
