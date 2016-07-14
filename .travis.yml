@@ -1,26 +1,24 @@
-language: c
+sudo: false
 
-script: ./.travis-build.sh
+language: generic
 
-# Version for Ubuntu 14.04 Trusty.
-sudo: required
-dist: trusty
-before_install:
-  - sudo apt-get update -qq
-  # need binutils-dev to get bfd.h
-  # need texinfo and texlive for makeinfo program
-  - sudo apt-get install -qq binutils-dev texinfo texlive
+services:
+  - docker
 
-## Version for container-based infrastructure.
-## Commented out because Ubuntu 12.04 Precise is too old and gives spurious test failures.
-# addons:
-#   apt:
-#     packages:
-#     # need binutils-dev to get bfd.h
-#     - binutils-dev
-# # On Travis-CI's Ubuntu 12.04 infrastructure, makeinfo does not take the
-# # --split=chapter command-line argument but texi2html does.
-# env: TEXI2HTML=texi2html
+# jdkany contains extra packages that permit it to be used to build the manual
+env:
+  - OS=ubuntu JDKVER=jdkany
+## It's not trivial to install jdk7 on current fedora.
+#  - OS=fedora JDKVER=jdk7
+  - OS=fedora JDKVER=jdkany
+# Not yet built, maybe:
+#  - OS=fedora23 JDKVER=jdkany
+
+before_script:
+- docker pull mdernst/$OS-for-daikon-$JDKVER > /dev/null
+
+script:
+- docker run mdernst/$OS-for-daikon-$JDKVER /bin/sh -c "export JAVA_HOME=\`which javac|xargs readlink -f|xargs dirname|xargs dirname\` && git clone --quiet --depth 3 https://github.com/codespecs/fjalar.git fjalar && cd fjalar && ./.travis-build.sh $GROUP"
 
 git:
   depth: 3

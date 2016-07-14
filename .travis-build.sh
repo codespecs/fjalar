@@ -1,7 +1,13 @@
-#!/bin/bash -v
+#!/bin/bash
 
 # Fail the whole script if any command fails
 set -e
+
+## Useful for debugging and sometimes for interpreting the script.
+# # Output lines of this script as they are read.
+# set -o verbose
+# # Output expanded lines of this script as they are executed.
+# set -o xtrace
 
 # Doing this causes Travis to mysteriously fail, so don't do this.
 # export SHELLOPTS
@@ -11,6 +17,13 @@ cat /proc/version
 gcc --version
 make --version
 ls -l /lib/x86_64-linux-gnu/libc-*
+
+# TODO: The tests ought to work even if $DAIKONDIR is not set.
+export DAIKONDIR=`pwd`/../daikon
+
+make build
+
+make doc
 
 # TODO: The tests ought to work even if $DAIKONDIR is not set.
 export DAIKONDIR=`pwd`/../daikon
