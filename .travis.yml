@@ -11,8 +11,7 @@ env:
 ## It's not trivial to install jdk7 on current fedora.
 #  - OS=fedora JDKVER=jdk7
   - OS=fedora JDKVER=jdkany
-# Not yet built, maybe:
-#  - OS=fedora23 JDKVER=jdkany
+  - OS=fedora23 JDKVER=jdkany
 
 before_script:
 - docker pull mdernst/$OS-for-daikon-$JDKVER > /dev/null
