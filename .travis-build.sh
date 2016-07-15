@@ -46,6 +46,6 @@ make doc
 ## failures with an expected list.
 ## If Travis moves to Ubuntu 16.04, or we can make it work using Docker,
 ## we should be able to remove this step.
-make daikon-test 2>&1 | tee test.log
+make MPARG=-j1 daikon-test 2>&1 | tee test.log
 grep FAILED test.log > travis-fail
 diff travis-fail travis-fail.goal
