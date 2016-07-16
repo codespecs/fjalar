@@ -17,9 +17,11 @@ help:
 build:
 	bash ./auto-everything.sh
 
+# Valgrind tests
 test:
 	cd valgrind && $(MAKE) regtest
 
+# Kvasir tests
 daikon-test: ../daikon
 	$(MAKE) -C ../daikon compile daikon.jar kvasir
 	$(MAKE) -C ../daikon/tests/kvasir-tests clean-all regression-tests
