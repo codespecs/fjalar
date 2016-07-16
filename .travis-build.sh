@@ -18,7 +18,7 @@ gcc --version
 make --version
 # This only works on Ubuntu.  Should make it conditional, or at least not fail.
 # ls -l /lib/x86_64-linux-gnu/libc-*
-echo "end of debugging information"
+echo "end of system info"
 
 # TODO: The tests ought to work even if $DAIKONDIR is not set.
 export DAIKONDIR=`pwd`/../daikon
@@ -27,13 +27,7 @@ make build
 
 make doc
 
-# TODO: The tests ought to work even if $DAIKONDIR is not set.
-export DAIKONDIR=`pwd`/../daikon
-
-make build
-
-make doc
-
+## Valgrind tests
 ## Valgrind doesn't pass its own tests ("make test").  So we should have a
 ## version of the target that determines the current operating system,
 ## compares the observed failures to the expected failures (those suffered
@@ -41,6 +35,7 @@ make doc
 ## overall target only fails if the set of failing tests is different.
 # make test
 
+## Kvasir tests
 ## Kvasir does not currently pass all its tests on Ubuntu 14.04 which is
 ## used by Travis.  We get around this for now by comparing the list of
 ## failures with an expected list.
