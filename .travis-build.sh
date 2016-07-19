@@ -16,8 +16,8 @@ set -e
 cat /proc/version
 gcc --version
 make --version
-find /lib/ | grep "libc-"
-find /lib64/ | grep "libc-"
+find /lib/ | grep -s "libc-"
+find /lib64/ | grep -s "libc-"
 echo "end of system info"
 
 # TODO: The tests ought to work even if $DAIKONDIR is not set.
