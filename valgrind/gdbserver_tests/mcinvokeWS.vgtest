@@ -1,7 +1,7 @@
 # test that vgdb can invoke a process when all threads are in WaitSys mode.
 # If the test goes wrong, it might be blocked during 10000 seconds.
 prog: sleepers
-args: 1 10000000 0 -S-S-S-S
+args: 1 10000 0 -S-S-S-S
 vgopts: --tool=memcheck --vgdb=yes --vgdb-prefix=./vgdb-prefix-mcinvokeWS
 stderr_filter: filter_make_empty
 prereq: test -f vgdb.invoker
