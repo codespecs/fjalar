@@ -8,6 +8,8 @@
 @codequotebacktick on
 @exampleindent 1
 
+@finalout
+
 @titlepage
 @sp 10
 @center @titlefont{Merging newer versions of Valgrind into Fjalar}
@@ -602,7 +604,7 @@ current Fjalar sources.
 
 @example
 cd $INV/fjalar
-make test >test.log 2>&1
+make build test >test.log 2>&1
 @end example
 
 @noindent
