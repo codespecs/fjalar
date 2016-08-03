@@ -8,6 +8,8 @@
 @codequotebacktick on
 @exampleindent 1
 
+@finalout
+
 @titlepage
 @sp 10
 @center @titlefont{Merging newer versions of Valgrind into Fjalar}
