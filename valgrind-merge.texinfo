@@ -604,7 +604,8 @@ current Fjalar sources.
 
 @example
 cd $INV/fjalar
-make build test >test.log 2>&1
+make build
+make test 2>&1 | tee test.log
 @end example
 
 @noindent
