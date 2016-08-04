@@ -1,2 +1,4 @@
-prereq: test -e ../../helgrind/tests/bar_bad && ./supported_libpthread
+# disabled
+# prereq: test -e ../../helgrind/tests/bar_bad && ./supported_libpthread
+prereq: false
 prog: ../../helgrind/tests/bar_bad

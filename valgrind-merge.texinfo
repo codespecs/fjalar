@@ -171,7 +171,7 @@ push them, then start over from the beginning.
 @node Verify current sources pass the regression tests
 @section Verify current sources pass the regression tests
 
-Re-compile Fjalar, then run the tests. (The tests take about 20 minutes.)
+Re-compile Fjalar, then run Daikon's Kvasir tests. (The tests take about 20 minutes.)
 
 @example
 # Optional, to verify Daikon
@@ -631,10 +631,11 @@ actual readelf files.
 @c   git clone git://sourceware.org/git/binutils-gdb.git
 
 @example
-# Get old version number from file @url{valgrind/REVISION}.
 # Get new version number from @uref{http://ftp.gnu.org/gnu/binutils/?C=M;O=D}
-export BUOLDVER=2.25.1
-export BUNEWVER=2.26
+export BUNEWVER=2.26.1
+
+source $INV/fjalar/valgrind/REVISION
+export BUOLDVER=$BINUTILS_VERSION
 
 export BUOLD=binutils-$BUOLDVER
 export BUNEW=binutils-$BUNEWVER
@@ -666,10 +667,9 @@ diff -ub ~/tmp/$BUOLD/binutils/readelf.c readelf.c > readelf-binutils-vs-fjalar.
 @node Merging the binutils changes
 @section Merging the binutils changes
 
-Before applying any patches, ensure that the tests pass (run these lines one at a time):
+Before applying any patches, run Daikon's Kvasir tests:
 
 @example
-  make -C $INV/fjalar build test
   make -C $INV/daikon/tests/kvasir-tests nightly-summary-w-daikon
 @end example
 

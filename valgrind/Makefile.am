@@ -76,7 +76,8 @@ default.supp: $(DEFAULT_SUPP_FILES)
 ## Ensure make exits with error if PERL fails or post_regtest_checks fails.
 regtest: check
 	$(top_srcdir)/gdbserver_tests/make_local_links $(GDB)
-	if @PERL@ tests/vg_regtest gdbserver_tests $(TOOLS) $(EXP_TOOLS) ; then \
+#	if @PERL@ tests/vg_regtest gdbserver_tests $(TOOLS) $(EXP_TOOLS) ; then
+	if @PERL@ tests/vg_regtest $(TOOLS) $(EXP_TOOLS) ; then \
 	   tests/post_regtest_checks $(abs_top_srcdir) gdbserver_tests $(TOOLS) $(EXP_TOOLS); \
 	else \
 	   tests/post_regtest_checks $(abs_top_srcdir) gdbserver_tests $(TOOLS) $(EXP_TOOLS); \
