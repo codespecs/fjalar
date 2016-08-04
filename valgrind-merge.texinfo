@@ -117,7 +117,7 @@ Clone a copy of Daikon and Fjalar from our GitHub
 repositories:
 
 @example
-export $INV=`pwd`
+export INV=`pwd`
 git clone https://github.com/codespecs/daikon.git
 git clone https://github.com/codespecs/fjalar.git
 @end example
@@ -380,7 +380,7 @@ cd $INV/fjalar/valgrind
 patch -p1 -lu < $INV/coregrind.patch --dry-run
 @end example
 
-There may be a few "failed hunks" (conflicts) - this is all right, we
+There may be a few "failed hunks" (conflicts) --- this is all right, we
 will explain how to deal with these shortly.  If there are massive
 numbers of conflicts or some other indication of failure,
 there might have been a problem in the previous diffing step.
@@ -825,6 +825,8 @@ Within @file{dwarf.c} there is a large section of code from about
 line 1100 to line 2560 that uses the following:
 @example
 #define printf(...) do @{if(ok_to_print) printf(__VA_ARGS__);@} while (0)
+...
+#undef printf
 @end example
 @noindent
 This allows the @code{printf} statements within this section of code
@@ -923,7 +925,8 @@ It can be run using the following commands (takes about 20 minutes):
 
 @example
 cd $INV/daikon/tests/kvasir-tests
-make nightly-summary-w-daikon
+make clean-all
+make regression-tests
 @end example
 
 @noindent
