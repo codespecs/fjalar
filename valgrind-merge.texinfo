@@ -630,10 +630,11 @@ actual readelf files.
 @c   git clone git://sourceware.org/git/binutils-gdb.git
 
 @example
-# Get old version number from file @url{valgrind/REVISION}.
 # Get new version number from @uref{http://ftp.gnu.org/gnu/binutils/?C=M;O=D}
-export BUOLDVER=2.25.1
-export BUNEWVER=2.26
+export BUNEWVER=2.26.1
+
+source $INV/fjalar/valgrind/REVISION
+export BUOLDVER=$BINUTILS_VERSION
 
 export BUOLD=binutils-$BUOLDVER
 export BUNEW=binutils-$BUNEWVER
