@@ -695,9 +695,9 @@ a dry run.  (The @command{lines-notbetween} command is from
 @example
 cd $INV/fjalar/valgrind/fjalar
 patch -p1 -lu -f < ~/tmp/include.patch --dry-run \
-  | lines-notbetween "can't find file to patch" "No file to patch.  Skipping patch."
+  | lines-notbetween --inclusive "can't find file to patch" "No file to patch.  Skipping patch."
 patch -p2 -lu -f -F3 < ~/tmp/binutils.patch --dry-run \
-  | lines-notbetween "can't find file to patch" "No file to patch.  Skipping patch."
+  | lines-notbetween --inclusive "can't find file to patch" "No file to patch.  Skipping patch."
 @end example
 
 If there are problems other than as noted above, it might be indicative
