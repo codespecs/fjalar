@@ -171,7 +171,7 @@ push them, then start over from the beginning.
 @node Verify current sources pass the regression tests
 @section Verify current sources pass the regression tests
 
-Re-compile Fjalar, then run the tests. (The tests take about 20 minutes.)
+Re-compile Fjalar, then run Daikon's Kvasir tests. (The tests take about 20 minutes.)
 
 @example
 # Optional, to verify Daikon
@@ -666,10 +666,9 @@ diff -ub ~/tmp/$BUOLD/binutils/readelf.c readelf.c > readelf-binutils-vs-fjalar.
 @node Merging the binutils changes
 @section Merging the binutils changes
 
-Before applying any patches, ensure that the tests pass (run these lines one at a time):
+Before applying any patches, run Daikon's Kvasir tests:
 
 @example
-  make -C $INV/fjalar build test
   make -C $INV/daikon/tests/kvasir-tests nightly-summary-w-daikon
 @end example
 
