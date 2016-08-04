@@ -183,11 +183,15 @@ make -C $INV/daikon/tests/kvasir-tests nightly-summary-w-daikon
 
 The tests should pass. If any tests fail, fix them, then start over from
 the beginning.
-Currently, all tests pass on a standard UW/CSE machine running Fedora 22.
-However, on a Ubuntu 15.10 based machine two tests fail:
+As of August 3, 2016, all tests pass on a standard UW/CSE machine running Fedora 22.
+They also pass on Fedora 23 and Ubuntu 16.04.  (We use Travis/Docker to run
+these configurations.)
+However, on Fedora 24 four tests currently fail:
 @example
+SimpleClassesTest/SimpleClassesTest.decls
 flex-pristine/flex-pristine.comp
-flex-rothermel/felx-rothermel.comp
+gtest/gtest.comp
+gzip/gzip.comp
 @end example
 
 At this point, the source trees are ready for the merge.
@@ -376,9 +380,13 @@ cd $INV/fjalar/valgrind
 patch -p1 -lu < $INV/coregrind.patch --dry-run
 @end example
 
-If the patch fails, it might be indicative of problems in the above diffing.
+There may be a few "failed hunks" (conflicts) - this is all right, we
+will explain how to deal with these shortly.  If there are massive
+numbers of conflicts or some other indication of failure,
+there might have been a problem in the previous diffing step.
 
-When you are ready to apply the patch run:
+When you are satisfied with the results of the dry run,
+continue with the actual merge:
 
 @example
 cd $INV/fjalar/valgrind
@@ -431,12 +439,19 @@ cd $INV/fjalar/valgrind/fjalar
 patch -p2 -lu < $INV/memcheck.patch --dry-run
 @end example
 
-You should experiment with the fuzz factor option.  I find
-that @option{-F3} often increases the success rate, but this is
-dangerous as it ignores all the context in the patch file, which
+There may be a few "failed hunks" (conflicts) - this is all right, we
+will explain how to deal with these shortly.  If there are massive
+numbers of conflicts or some other indication of failure,
+there might have been a problem in the previous diffing step.
+
+You may wish to experiment with the fuzz factor option.  I find
+that @option{-F3} often increases the success rate (reduces the
+number of conflicts), but this can be
+dangerous as it ignores more of the context in the patch file, which
 increases the odds of a faulty patch.
 
-If the patch output looks sane, continue with the actual merge:
+When you are satisfied with the results of the dry run,
+continue with the actual merge:
 
 @example
 cd $INV/fjalar/valgrind/fjalar
@@ -527,23 +542,30 @@ Since running these tests generate a lot of additional files, we wait
 until after we have done the source merge update to run this test.
 This keeps the files used during the source merge update to a minimum.
 
-These tests are very sensitive
+You will need to make sure @command{gdb} is installed on your machine
+to run these tests. Also, they are very sensitive
 to the system software on the host machine.  In most cases, there will be
-some failures. (Currently, 4 of 656 tests do not pass on a standard UW/CSE
+some failures. (Currently, 6 of 656 tests do not pass on a standard UW/CSE
 system running Fedora 22.) Rather, it is important to capture the results
 as they should be identical after the source merge.
 
 Here is a copy of the summary from the latest run of these tests (04/14/2016):
 
 @example
-== 656 tests, 1 stderr failure, 0 stdout failures, 0 stderrB failures,
+== 656 tests, 3 stderr failure, 0 stdout failures, 0 stderrB failures,
                                         1 stdoutB failure, 2 post failures ==
 
 gdbserver_tests/hgtls                    (stdoutB)
+memcheck/tests/badfree3                  (stderr)
 memcheck/tests/leak_cpp_interior         (stderr)
+memcheck/tests/varinfo5                  (stderr)
 massif/tests/new-cpp                     (post)
 massif/tests/overloaded-new              (post)
 @end example
+
+(@command{badfree3} and @command{varinfo5} seem to be sensitive to the
+current directory pathname - they often pass when run in a clean
+Valgrind directory, but fail when run as part of a fjalar enlistment.)
 
 Return to the root of your @file{valgrind-new} directory.  Then run
 the following commands:
@@ -700,10 +722,13 @@ patch -p2 -lu -f -F3 < ~/tmp/binutils.patch --dry-run \
   | lines-notbetween "can't find file to patch" "No file to patch.  Skipping patch."
 @end example
 
-If there are problems other than as noted above, it might be indicative
-of problems in the patch creation.
+There may be a few "failed hunks" (conflicts) - this is all right, we
+will explain how to deal with these shortly.  If there are massive
+numbers of conflicts or some other indication of failure,
+there might have been a problem in the previous diffing step.
 
-When you are ready to apply the patch run:
+When you are satisfied with the results of the dry run,
+continue with the actual merge:
 
 @example
 cd $INV/fjalar/valgrind/fjalar
