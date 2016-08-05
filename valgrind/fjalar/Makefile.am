@@ -169,4 +169,3 @@ endif
 # on which CFI based unwinding is not the "normal" case and so is
 # sometimes fragile.
 mc_replace_strmem.o: CFLAGS += -fno-omit-frame-pointer
-
