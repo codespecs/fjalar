@@ -728,7 +728,11 @@ numbers of conflicts or some other indication of failure,
 there might have been a problem in the previous diffing step.
 
 When you are satisfied with the results of the dry run,
-continue with the actual merge:
+continue with the actual merge.  Here are two ways to do it.
+
+@itemize
+@item
+This command:
 
 @example
 cd $INV/fjalar/valgrind/fjalar
@@ -736,12 +740,29 @@ patch -p1 -lu -f < ~/tmp/include.patch
 patch -p2 -lu -f -F3 < ~/tmp/binutils.patch
 @end example
 
-Handle any conflicts. They are listed in the patch output, or run this
-command:
+@noindent
+puts conflicts in @file{.rej} files.  The cenflicts are listed in the patch
+output, or run this command to find them:
 
 @example
 find -name '*.rej'
 @end example
+
+@item
+Alternately, this command:
+
+@example
+cd $INV/fjalar/valgrind/fjalar
+patch -p1 -lu -f --merge=diff3 < ~/tmp/include.patch
+patch -p2 -lu -f -F3 --merge=diff3 < ~/tmp/binutils.patch
+@end example
+
+@noindent
+puts conflicts inline in the file; @command{git status} will list them.
+
+@end itemize
+
+Now, handle the conflicts.
 
 For every change in the file you will need to examine both the changed
 code as well as our original code and determine if it needs to be hand
@@ -809,29 +830,6 @@ a test of one of the Fjalar debug options.  In particular,
 and @code{fjalar_debug_dump} for the output of the contents of
 the binary file being processed.
 
-A couple of preprocessor short cuts have been used to help with the process.
-@example
-if (fjalar_debug) printf (<print data>);
-@end example
-@noindent
-may be replaced with:
-@example
-FJALAR_DPRINTF(<print data>);
-@end example
-@noindent
-This shortcut is used extensively in @file{readelf.c}.
-
-Within @file{dwarf.c} there is a large section of code from about
-line 1100 to line 2560 that uses the following:
-@example
-#define printf(...) do @{if(ok_to_print) printf(__VA_ARGS__);@} while (0)
-...
-#undef printf
-@end example
-@noindent
-This allows the @code{printf} statements within this section of code
-to be used without modification.
-
 @need 2000
 Please note that these @code{if} guards on the @code{printf} statements
 lead to a
@@ -858,11 +856,34 @@ printf (_("size: %s "),
 data += bytes_read;
 @end example
 
+A couple of preprocessor short cuts have been used to help with the process.
+@example
+if (fjalar_debug) printf (<print data>);
+@end example
 @noindent
-Unfortunately, there are many occurrences of this and similar
-constructs in the Binutils code base.
+may be replaced with:
+@example
+FJALAR_DPRINTF(<print data>);
+@end example
+@noindent
+This shortcut is used extensively in @file{readelf.c}.
 
-As in the case of a missed @code{VG_(..)} wrapper, missing a @code{printf}
+Within @file{dwarf.c} there is a large section of code from about
+line 1100 to line 2560 that uses the following:
+@example
+#define printf(...) do @{if(ok_to_print) printf(__VA_ARGS__);@} while (0)
+...
+#undef printf
+@end example
+@noindent
+This allows the @code{printf} statements within this section of code
+to be used without modification.
+
+TODO:  This trick could be applied elsewhere.  For instance,  
+dwarf.c's display_loc_list routine could use the #define trick (for 3 output
+routines, not just printf).
+
+A missed @code{VG_(..)} wrapper or a missing @code{printf}
 that needs to be protected should not be a big problem.  Typically, the
 Fjalar tool will operate as expected but contain superfluous information
 in its output.  This will likely be caught as a diff in a @file{.out}
