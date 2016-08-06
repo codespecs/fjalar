@@ -896,6 +896,9 @@ make build
 The build target should @command{autogen} the @file{config} and @file{Makefiles}
 and compile Fjalar. Fix any compilation errors.
 
+Once you have run @command{make build} once, thereafter you can just run
+@command{make -C $INV/fjalar/valgrind/fjalar}.
+
 
 @node Testing Valgrind
 @section Testing Valgrind
