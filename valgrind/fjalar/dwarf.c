@@ -5047,7 +5047,7 @@ display_loc_list (struct dwarf_section *section,
 	}
 
       if (fjalar_debug_dump)
-      printf ("    %8.8lx ");
+      printf ("    %8.8lx ", off);
 
       SAFE_BYTE_GET_AND_INC (begin, start, pointer_size, section_end);
       SAFE_BYTE_GET_AND_INC (end, start, pointer_size, section_end);
