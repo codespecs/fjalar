@@ -741,7 +741,7 @@ patch -p2 -lu -f -F3 < ~/tmp/binutils.patch
 @end example
 
 @noindent
-puts conflicts in @file{.rej} files.  The cenflicts are listed in the patch
+puts conflicts in @file{.rej} files.  The conflicts are listed in the patch
 output, or run this command to find them:
 
 @example
@@ -880,8 +880,8 @@ This allows the @code{printf} statements within this section of code
 to be used without modification.
 
 TODO:  This trick could be applied elsewhere.  For instance,  
-dwarf.c's display_loc_list routine could use the #define trick (for 3 output
-routines, not just printf).
+the routine @code{display_loc_list} in @file{dwarf.c} could use the #define trick (for 3 output
+routines, not just @code{printf}).
 
 A missed @code{VG_(..)} wrapper or a missing @code{printf}
 that needs to be protected should not be a big problem.  Typically, the

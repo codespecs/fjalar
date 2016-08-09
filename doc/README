@@ -1,0 +1,21 @@
+The file dyncomp-notes.docx is a Word document that describes
+some of the basic data structures and algorithms used in
+DynComp to calculate comparability sets.
+
+The docment contains a single diagram that was generated
+in PowerPoint.  The work flow is as follows:
+
+1) Use PowerPoint to modify the diagram on the single
+   slide in the file dyncomp-diagram.pptx.
+2) Save the slide but also do a 'Save As' selecting
+   the Enhanced Windows Metafile format.  This generates
+   dyncomp-diagram.emf.
+3) Open dyncomp-notes.docx with Word.  Make any required
+   changes to the document.
+4) Locate the current diagram in the text and delete it.  Use
+   'Insert Picture' to embed the new diagram in the document.
+5) Save the revised word document.
+
+If you are only modifing the text of the document, you
+need only to do steps (3) and (5).
+   
