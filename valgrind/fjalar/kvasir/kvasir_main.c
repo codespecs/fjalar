@@ -48,7 +48,7 @@ const HChar* kvasir_dtrace_filename = 0;
 const HChar* kvasir_program_stdout_filename = 0;
 const HChar* kvasir_program_stderr_filename = 0;
 Bool kvasir_dtrace_append = False;
-Bool kvasir_dtrace_no_decs = False;
+Bool kvasir_dtrace_no_decls = False;
 Bool kvasir_dtrace_gzip = False;
 Bool kvasir_output_fifo = False;
 Bool kvasir_decls_only = False;
@@ -56,16 +56,9 @@ Bool kvasir_print_debug_info = False;
 Bool actually_output_separate_decls_dtrace = 0;
 Bool print_declarations = 1;
 
-// Temporary - only to be used during the transition period from the
-// old .decls format to the new format (designed in April 2006):
-Bool kvasir_old_decls_format = False;
-Bool kvasir_parent_records = False;
-Bool kvasir_transitioning = False;
-Bool kvasir_unambiguous_fields = False;
-
 Bool kvasir_with_dyncomp = False;
 Bool dyncomp_no_gc = False;
-Bool dyncomp_fast_mode = False;
+Bool dyncomp_approximate_literals = False;
 Bool dyncomp_detailed_mode = False;
 int  dyncomp_gc_after_n_tags = 10000000;
 Bool dyncomp_without_dtrace = False;
@@ -73,7 +66,7 @@ Bool dyncomp_print_debug_info = False;
 Bool dyncomp_print_trace_info = False;
 Bool dyncomp_print_trace_all = False;
 Bool dyncomp_print_incremental = False;
-Bool dyncomp_separate_entry_exit_comp = False;
+Bool dyncomp_separate_entry_exit = False;
 Bool dyncomp_trace_startup = False;
 Bool dyncomp_delayed_print_IR = True;
 Bool dyncomp_delayed_trace = True;
@@ -534,11 +527,9 @@ void fjalar_tool_pre_clo_init(void)
 void fjalar_tool_post_clo_init(void)
 {
 
-  fjalar_output_struct_vars = False;
-
-  // RUDD 2.0 to make transition testing easier
-  if(kvasir_transitioning)
-    fjalar_output_struct_vars = True;
+  if (dyncomp_gc_after_n_tags == 0) {
+      dyncomp_no_gc = True;
+  }
 
   // If we're printing all trace info, we want
   // all debugging info also.
@@ -598,17 +589,15 @@ void fjalar_tool_post_clo_init(void)
      dyncomp_without_dtrace = True;
   }
 
-  // If we are only printing .dtrace and have --dtrace-no-decs,
+  // If we are only printing .dtrace and have --dtrace-no-decls,
   // then do not print out declarations
-  if (!actually_output_separate_decls_dtrace && kvasir_dtrace_no_decs) {
+  if (!actually_output_separate_decls_dtrace && kvasir_dtrace_no_decls) {
      print_declarations = 0;
   }
 
-  if (!kvasir_old_decls_format) {
-    // Set fjalar_output_struct_vars to True if using new .decls
-    // format so that we can derive all possible variables.
-    fjalar_output_struct_vars = True;
-  }
+  // Set fjalar_output_struct_vars to True for new .decls
+  // format so that we can derive all possible variables.
+  fjalar_output_struct_vars = True;
 
   createDeclsAndDtraceFiles(executable_filename);
 
@@ -636,8 +625,9 @@ void fjalar_tool_post_clo_init(void)
   // decls files if the decls file is 2.0. Jeff is working on a fix
   // for this but it can be circumvented temporarily by putting the
   // 2.0 decls header at the top of the dtrace.
+  // Is this still an issue?  markro 08/10/16
 
-  if (!kvasir_old_decls_format && dtrace_fp && !kvasir_dtrace_append) {
+  if (dtrace_fp && !kvasir_dtrace_append) {
 
       fputs("input-language C/C++\n", dtrace_fp);
 
@@ -666,12 +656,13 @@ void fjalar_tool_print_usage()
 "    --decls-only             Exit after creating .decls file [--no-decls-only]\n"
 "    --dtrace-file=<string>   The output .dtrace file location\n"
 "                             [daikon-output/PROGRAM_NAME.dtrace]\n"
-"    --dtrace-no-decs         Do not include declarations in .dtrace file\n"
-"                             [--no-dtrace-no-decs]\n"
+"    --dtrace-no-decls        Do not include declarations in .dtrace file\n"
+"                             [--no-dtrace-no-decls]\n"
 "    --dtrace-append          Appends .dtrace data to the end of an existing .dtrace file\n"
 "                             [--no-dtrace-append]\n"
 "    --dtrace-gzip            Compresses .dtrace data [--no-dtrace-gzip]\n"
 "                             (Automatically ON if --dtrace-file string ends in '.gz')\n"
+"    --object-ppts            Enables printing of object program points for structs and classes\n"
 "    --output-fifo            Create output files as named pipes [--no-output-fifo]\n"
 "    --program-stdout=<file>  Redirect instrumented program stdout to file\n"
 "                             [Kvasir's stdout, or /dev/tty if --dtrace-file=-]\n"
@@ -679,23 +670,24 @@ void fjalar_tool_print_usage()
 
 "\n  DynComp dynamic comparability analysis\n"
 "    --with-dyncomp           Enables DynComp comparability analysis\n"
-"    --gc-num-tags            The number of tags that get assigned between successive runs\n"
-"                             of the garbage collector (between 1 and INT_MAX)\n"
+"    --dyncomp-gc-num-tags=<number>  The number of tags that get assigned between successive runs\n"
+"                             of the garbage collector (between 0 and INT_MAX)\n"
 "                             (The default is to garbage collect every 10,000,000 tags created)\n"
-"    --no-dyncomp-gc          Do NOT use the tag garbage collector for DynComp.  (Faster\n"
-"                             but may run out of memory for long-running programs)\n"
-"    --dyncomp-fast-mode      Approximates the handling of literals for comparability.\n"
-"                             (Loses some precision but faster and takes less memory)\n"
+"                             0 is a special case that turns off the garbage collector.\n"
+"                             (Faster but may run out of memory for long-running programs)\n"
+"    --dyncomp-approximate-literals  Approximates the handling of literals for comparability.\n"
+"                                    (Loses some precision but faster and takes less memory)\n"
 "    --dyncomp-detailed-mode  Uses an O(n^2) space/time algorithm for determining\n"
 "                             variable comparability, which is potentially more precise\n"
 "                             but takes up more resources than the O(n) default algorithm\n"
-"    --separate-entry-exit-comp  Allows variables to have distinct comparability\n"
-"                                numbers at function entrance/exit when run with\n"
-"                                DynComp.  This provides more accuracy, but may\n"
-"                                sometimes lead to output that Daikon cannot accept.\n"
-"    --dyncomp-units          Only counts interactions that are consistent with units\n"
-"    --dyncomp-dataflow-only  Tracks no interactions, just dataflow\n"
-"    --dyncomp-dataflow-comp  Only counts comparison operations as interactions\n"
+"    --dyncomp-separate-entry-exit  Allows variables to have distinct comparability\n"
+"                                   numbers at function entrance/exit when run with\n"
+"                                   DynComp.  This provides more accuracy, but may\n"
+"                                   sometimes lead to output that Daikon cannot accept.\n"
+"    --dyncomp-interactions=all          Counts all binary operations as interactions (default)\n"
+"    --dyncomp-interactions=units        Only counts interactions that are consistent with units\n"
+"    --dyncomp-interactions=comparisons  Only counts comparison operations as interactions\n"
+"    --dyncomp-interactions=none         Tracks no interactions, just dataflow\n"
 "\n  Debugging:\n"
 "    --kvasir-debug           Print Kvasir-internal debug messages [--no-debug]\n"
 "    --dyncomp-debug          Print DynComp debug messages (--with-dyncomp must also be on)\n"
@@ -708,10 +700,7 @@ void fjalar_tool_print_usage()
 "                             [default is don't start trace until 'main']\n"
 "    --dyncomp-print-inc      Print DynComp comp. numbers at the execution of every program\n"
 "                             point - requires separate dtrace file (for debug only)\n"
-"    --old-decls-format       Use the old(1.0) decls format\n\n"
-"    --no-path-compression    Turns off path compression in DynComp's union-find structures\n"
-"    --no-var-leader          Turns off variable tag leader optimizations\n"
-"    --no-val-leader          Turns off value tag leader optimizatoins\n"
+"\n"
    );
 }
 
@@ -722,33 +711,33 @@ Bool fjalar_tool_process_cmd_line_option(const HChar* arg)
   else if VG_STR_CLO(arg, "--dtrace-file", kvasir_dtrace_filename) {}
   else if VG_YESNO_CLO(arg, "dtrace-append",    kvasir_dtrace_append) {}
   else if VG_YESNO_CLO(arg, "object-ppts",      kvasir_object_ppts) {}
-  else if VG_YESNO_CLO(arg, "dtrace-no-decs",   kvasir_dtrace_no_decs) {}
+  else if VG_YESNO_CLO(arg, "dtrace-no-decls",  kvasir_dtrace_no_decls) {}
   else if VG_YESNO_CLO(arg, "dtrace-gzip",      kvasir_dtrace_gzip) {}
   else if VG_YESNO_CLO(arg, "output-fifo",      kvasir_output_fifo) {}
   else if VG_YESNO_CLO(arg, "decls-only",       kvasir_decls_only) {}
-  else if VG_YESNO_CLO(arg, "old-decls-format", kvasir_old_decls_format) {}
-  else if VG_YESNO_CLO(arg, "parent-records",   kvasir_parent_records) {}
   else if VG_YESNO_CLO(arg, "kvasir-debug",     kvasir_print_debug_info) {}
   else if VG_STR_CLO(arg, "--program-stdout", kvasir_program_stdout_filename){}
   else if VG_STR_CLO(arg, "--program-stderr", kvasir_program_stderr_filename){}
-
   else if VG_YESNO_CLO(arg, "with-dyncomp",   kvasir_with_dyncomp) {}
-  else if VG_YESNO_CLO(arg, "no-dyncomp-gc",     dyncomp_no_gc) {}
-  else if VG_YESNO_CLO(arg, "dyncomp-fast-mode", dyncomp_fast_mode) {}
+  else if VG_YESNO_CLO(arg, "dyncomp-approximate-literals", dyncomp_approximate_literals) {}
   else if VG_YESNO_CLO(arg, "dyncomp-detailed-mode", dyncomp_detailed_mode) {}
-  else if VG_BINT_CLO(arg, "--gc-num-tags", dyncomp_gc_after_n_tags,
-		      1, 0x7fffffff) {}
-  else if VG_YESNO_CLO(arg, "dyncomp-units",         dyncomp_units_mode) {}
-  else if VG_YESNO_CLO(arg, "dyncomp-dataflow-only",
-		       dyncomp_dataflow_only_mode) {}
-  else if VG_YESNO_CLO(arg, "dyncomp-dataflow-comp",
-		       dyncomp_dataflow_comparisons_mode) {}
+  else if VG_BINT_CLO(arg, "--dyncomp-gc-num-tags", dyncomp_gc_after_n_tags,
+                      0, 0x7fffffff) {}
+  else if VG_XACT_CLO(arg, "--dyncomp-interactions=none",
+                      dyncomp_dataflow_only_mode,        True) {}
+  else if VG_XACT_CLO(arg, "--dyncomp-interactions=comparisons",
+                      dyncomp_dataflow_comparisons_mode, True) {}
+  else if VG_XACT_CLO(arg, "--dyncomp-interactions=units",
+                      dyncomp_units_mode,                True) {}
+  else if VG_XACT_CLO(arg, "--dyncomp-interactions=all",
+                      dyncomp_dataflow_only_mode,        False) {
+                      dyncomp_dataflow_comparisons_mode = dyncomp_units_mode = False; }
   else if VG_YESNO_CLO(arg, "dyncomp-debug",  dyncomp_print_debug_info) {}
   else if VG_YESNO_CLO(arg, "dyncomp-trace",  dyncomp_print_trace_all) {}
   else if VG_YESNO_CLO(arg, "dyncomp-trace-merge",  dyncomp_print_trace_info) {}
   else if VG_YESNO_CLO(arg, "dyncomp-print-inc",  dyncomp_print_incremental) {}
-  else if VG_YESNO_CLO(arg, "separate-entry-exit-comp",
-		       dyncomp_separate_entry_exit_comp) {}
+  else if VG_YESNO_CLO(arg, "dyncomp-separate-entry-exit",
+                       dyncomp_separate_entry_exit) {}
   else if VG_YESNO_CLO(arg, "dyncomp-trace-startup", dyncomp_trace_startup) {}
   else
     return False;   // If no options match, return False so that an error
@@ -769,7 +758,7 @@ static void kvasir_late_init(void) {
 /*       Addr got_addr = VG_(seginfo_sect_start)(si, Vg_SectGOT); */
 /*       SizeT got_size = VG_(seginfo_sect_size)(si, Vg_SectGOT); */
 /*       if (got_size) { */
-/* 	set_tag_for_GOT(got_addr, got_size); */
+/*         set_tag_for_GOT(got_addr, got_size); */
 /*       } */
 /*     } */
 /*   } */

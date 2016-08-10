@@ -2177,10 +2177,10 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
 
       case Iex_Const:
 
-         // Fast mode implementation - create a special reserved
+         // Approximate literals implementation - create a special reserved
          // WEAKE_FRESH_TAG tag one tag for each static instance of a
          // program literal:
-         if (dyncomp_fast_mode) {
+         if (dyncomp_approximate_literals) {
 	    return IRExpr_Const(IRConst_UWord(WEAK_FRESH_TAG));
          }
          else {

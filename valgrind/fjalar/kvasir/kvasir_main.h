@@ -61,7 +61,7 @@ typedef struct {
   // and just use those because Daikon expects variables to belong to
   // the same comparability sets at the entry and exit program points.
   // We will only use the ENTRY structures when the
-  // --separate-entry-exit-comp option is invoked.
+  // --dyncomp-separate-entry-exit option is invoked.
   // (We choose to use the EXIT structures by default because
   //  it contains all of the variables present at ENTRY plus the
   //  return value derived variables)
@@ -85,7 +85,7 @@ typedef struct {
   // var_uf_map is the variable analogue to val_uf, which is the union-find
   // for all values ever created in a program.
   // (null if --dyncomp-detailed-mode is on)
-  struct genhashtable* ppt_entry_var_uf_map; // Inactive unless --separate-entry-exit-comp is on
+  struct genhashtable* ppt_entry_var_uf_map; // Inactive unless --dyncomp-separate-entry-exit is on
   struct genhashtable* ppt_exit_var_uf_map;
 
   // var_tags: A fixed-sized array (indexed by the serial # of Daikon
@@ -95,7 +95,7 @@ typedef struct {
   // (If --dyncomp-detailed-mode is on, this is used to store the results
   //  of the conversion of relations from bitmatrix to sets, as performed
   //  in DC_convert_bitmatrix_to_sets().)
-  UInt* ppt_entry_var_tags; // Inactive unless --separate-entry-exit-comp is on
+  UInt* ppt_entry_var_tags; // Inactive unless --dyncomp-separate-entry-exit is on
   UInt* ppt_exit_var_tags;
 
   // bitmatrix: For DynComp detailed mode (see the relevant section in
@@ -103,7 +103,7 @@ typedef struct {
   // are comparable based upon comparable values they shared
   // throughout execution.  (Only non-null if --dyncomp-detailed-mode
   // is on.)
-  UChar* ppt_entry_bitmatrix; // Inactive unless --separate-entry-exit-comp is on
+  UChar* ppt_entry_bitmatrix; // Inactive unless --dyncomp-separate-entry-exit is on
   UChar* ppt_exit_bitmatrix;
 
   // new_tag_leaders: A fixed-sized array (also indexed by # of Daikon
@@ -113,7 +113,7 @@ typedef struct {
   // querying val_uf with the address of the variable's value being
   // observed and getting back the tag.  (Only non-null if
   // --dyncomp-detailed-mode is on)
-  UInt* ppt_entry_new_tag_leaders; // Inactive unless --separate-entry-exit-comp is on
+  UInt* ppt_entry_new_tag_leaders; // Inactive unless --dyncomp-separate-entry-exit is on
   UInt* ppt_exit_new_tag_leaders;
 
   // The size of var_tags and new_tags can be initialized during the .decls
@@ -127,7 +127,7 @@ typedef struct {
   // This tells the sizes of ppt_[entry|exit]_[var|new]_tags
   // I think that num_exit_daikon_vars >= num_entry_daikon_vars
   // because at exit points, there are return values
-  UInt num_entry_daikon_vars; // Inactive unless --separate-entry-exit-comp is on
+  UInt num_entry_daikon_vars; // Inactive unless --dyncomp-separate-entry-exit is on
   UInt num_exit_daikon_vars;
 
   // The number of invocations of this function
@@ -142,7 +142,7 @@ const HChar* kvasir_dtrace_filename;
 const HChar* kvasir_program_stdout_filename;
 const HChar* kvasir_program_stderr_filename;
 Bool kvasir_dtrace_append;
-Bool kvasir_dtrace_no_decs;
+Bool kvasir_dtrace_no_decls;
 Bool kvasir_dtrace_gzip;
 Bool kvasir_output_fifo;
 Bool kvasir_decls_only;
@@ -151,29 +151,9 @@ Bool actually_output_separate_decls_dtrace;
 Bool print_declarations;
 Bool kvasir_object_ppts;
 
-// Temporary - only to be used during the transition period from the
-// old .decls format to the new format (designed in April 2006):
-Bool kvasir_old_decls_format;
-
-
-Bool kvasir_transitioning;
-
-// Parent Records is by default off. The issue is the current implementaiton
-// of Fjalar treats structs and classes relatively similarly. The latter is
-// well supported, however structs takes some hacking to get into the correct
-// format. In general it's safe to use it for C++, however.
-Bool kvasir_parent_records;
-
-// Kvasir by default will print field names as how they would be accessed,
-// I.E. this->var even if var is a field of a superclass. However, this
-// can cause errors in the case of multiple inheritence. Since in general
-// cases like that are avoided due to their confusing nature, I've decided
-// to make this not the default.
-Bool kvasir_unambiguous_fields;
-
 Bool kvasir_with_dyncomp;
 Bool dyncomp_no_gc;
-Bool dyncomp_fast_mode;
+Bool dyncomp_approximate_literals;
 Bool dyncomp_detailed_mode;
 int  dyncomp_gc_after_n_tags;
 Bool dyncomp_without_dtrace;
@@ -181,7 +161,7 @@ Bool dyncomp_print_debug_info;
 Bool dyncomp_print_trace_info;
 Bool dyncomp_print_trace_all;
 Bool dyncomp_print_incremental;
-Bool dyncomp_separate_entry_exit_comp;
+Bool dyncomp_separate_entry_exit;
 Bool dyncomp_trace_startup;
 Bool dyncomp_delayed_print_IR;
 Bool dyncomp_delayed_trace;
