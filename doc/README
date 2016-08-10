@@ -1,8 +1,9 @@
+08/09/16
 The file dyncomp-notes.docx is a Word document that describes
 some of the basic data structures and algorithms used in
 DynComp to calculate comparability sets.
 
-The docment contains a single diagram that was generated
+The document contains a single diagram that was generated
 in PowerPoint.  The work flow is as follows:
 
 1) Use PowerPoint to modify the diagram on the single
@@ -16,6 +17,13 @@ in PowerPoint.  The work flow is as follows:
    'Insert Picture' to embed the new diagram in the document.
 5) Save the revised word document.
 
-If you are only modifing the text of the document, you
+If you are only modifying the text of the document, you
 need only to do steps (3) and (5).
-   
+
+08/10/16
+I have verified that you can edit the document on Linux
+using LibreOffice Writer.  The diagram does not print as
+cleanly as it does on Word, but given its origin that does
+not surprise me.  I have not yet looked at using the Draw
+tool for the diagram.
+
