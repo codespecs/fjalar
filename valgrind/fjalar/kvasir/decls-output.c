@@ -130,7 +130,6 @@ static void printDeclaredType(const char* name, FILE* fp) {
 
 // Use this function to print out a function name for .decls/.dtrace.
 void printDaikonFunctionName(FunctionEntry* f, FILE* fp) {
-  if (!kvasir_old_decls_format) {
     char* name = f->fjalar_name;
 
     // Spaces in program point names must be backslashed,
@@ -151,10 +150,6 @@ void printDaikonFunctionName(FunctionEntry* f, FILE* fp) {
       }
       name++;
     }
-  }
-  else {
-    fputs(f->fjalar_name, fp);
-  }
 }
 
 
@@ -185,8 +180,6 @@ void printDaikonExternalVarName(VariableEntry* var, const HChar* fjalarName, FIL
   const HChar* working_name;
   Bool alreadyPrintedBrackets = False; // Only print out one set of "[..]" max.
   (void) var;
-
-  tl_assert(!kvasir_old_decls_format);
 
   for (i = 0; i < len; i++) {
     if (fjalarName[i] == '/') {
@@ -477,7 +470,6 @@ printDeclsEntryAction(VariableEntry* var,
   DaikonRepType rType = decTypeToDaikonRepType(dType, IS_STRING(var));
   UInt layers;
   int i;
-  char printingFirstAnnotation = 1;
   char alreadyPutDerefOnLine3;
   char printAsSequence = isSequence;
 //Bool shortSuper = 0;
@@ -501,7 +493,6 @@ printDeclsEntryAction(VariableEntry* var,
       }
   DPRINTF("Address %p \n", (void *)pValue);
 
-  if (!kvasir_old_decls_format) {
     int len = VG_(strlen)(varName);
     const HChar *shortName;
     Bool special_zeroth_elt_var = False;
@@ -552,7 +543,6 @@ printDeclsEntryAction(VariableEntry* var,
     // levles of superclasses up this variable is.
 
     // RUDD Beautification. Not for release
-    //if(var->isSuperMember && !kvasir_unambiguous_fields)
     if(0) {
 //    shortSuper = 1; //Flag to denote this is a shortened name
       shortName = removeSuperElements((char**)fullNameStack.stack, var);
@@ -669,8 +659,6 @@ printDeclsEntryAction(VariableEntry* var,
       // ****** Rep. type ******
       fputs("    rep-type ", decls_fp);
 
-      // This code is copied and pasted from code in the 'else' branch
-      // (old .decls format)
       alreadyPutDerefOnLine3 = 0;
 
       // Print out rep. type as hashcode when you are not done dereferencing
@@ -713,8 +701,6 @@ printDeclsEntryAction(VariableEntry* var,
       // ****** Declared type ******
       fputs("    dec-type ", decls_fp);
 
-      // This code is copied and pasted from code in the 'else' branch
-      // (old .decls format)
       if (OVERRIDE_STRING_AS_INT_ARRAY == disambigOverride) {
         fputs(DaikonRepTypeString[R_INT], decls_fp);
         fputs(DEREFERENCE, decls_fp);
@@ -972,149 +958,6 @@ printDeclsEntryAction(VariableEntry* var,
           DPRINTF("    comparability %d\n", comp_number);
         }
       }
-    }
-    else {
-      // Line 1: Variable name
-      fprintf(decls_fp, "%s\n", varName);
-
-      // Line 2: Declared type
-      if (OVERRIDE_STRING_AS_INT_ARRAY == disambigOverride) {
-        fputs(DaikonRepTypeString[R_INT], decls_fp);
-        fputs(DEREFERENCE, decls_fp);
-      }
-      else if (OVERRIDE_STRING_AS_ONE_INT == disambigOverride) {
-        fputs(DaikonRepTypeString[R_INT], decls_fp);
-      }
-      // named struct/union or enumeration
-      else if (((dType == D_ENUMERATION) || (dType == D_STRUCT_CLASS) || (dType == D_UNION)) &&
-               var->varType->typeName) {
-        fputs(var->varType->typeName, decls_fp);
-      }
-      else {
-        // Normal type (or unnamed struct/union/enum)
-        fputs(DeclaredTypeString[dType], decls_fp);
-        // If we have a string, print it as char* because the dType of
-        // string is "char" so we need to append a "*" to it
-        if (IS_STRING(var)) {
-          fputs(STAR, decls_fp);
-        }
-      }
-
-      // For the declared type, print out one level of '*' for every
-      // layer above base to denote pointer types
-      for (layers = 0; layers < layersBeforeBase; layers++) {
-        fputs(STAR, decls_fp);
-      }
-
-      // If we print this as a sequence, then we must append '[]'
-      if (printAsSequence) {
-        fputs(DEREFERENCE, decls_fp);
-      }
-
-      // Add annotations as comments in .decls file
-      // (The first one is preceded by ' # ' and all subsequent ones are
-      // preceded by ',')
-
-      // Original vars in function parameter lists have "isParam=true"
-
-      if (varOrigin == FUNCTION_FORMAL_PARAM) {
-        if (printingFirstAnnotation) {fputs(" # ", decls_fp);}
-        else {fputs(",", decls_fp);}
-
-        fputs("isParam=true", decls_fp);
-        printingFirstAnnotation = False;
-      }
-
-      // Struct variables are annotated with "isStruct=true"
-      // in order to notify Daikon that the hashcode values printed
-      // out for that variable have no semantic meaning
-      if (fjalar_output_struct_vars &&
-          (layersBeforeBase == 0) &&
-          (IS_AGGREGATE_TYPE(var->varType))) {
-        if (printingFirstAnnotation) {fputs(" # ", decls_fp);}
-        else {fputs(",", decls_fp);}
-
-        fputs("isStruct=true", decls_fp);
-        printingFirstAnnotation = False;
-      }
-
-      // Hashcode variables that can never be null has "hasNull=false".
-      // (e.g., statically-allocated arrays)
-      if (IS_STATIC_ARRAY_VAR(var) && (layersBeforeBase == 1)) {
-        if (printingFirstAnnotation) {fputs(" # ", decls_fp);}
-        else {fputs(",", decls_fp);}
-
-        fputs("hasNull=false", decls_fp);
-        printingFirstAnnotation = False;
-      }
-
-      fputs("\n", decls_fp);
-
-
-      // Line 3: Rep. type
-      alreadyPutDerefOnLine3 = 0;
-
-      // Print out rep. type as hashcode when you are not done dereferencing
-      // pointer layers:
-      if (layersBeforeBase > 0) {
-        fputs(DaikonRepTypeString[R_HASHCODE], decls_fp);
-      }
-      else {
-        // Special handling for strings and 'C' chars in .disambig
-        if (OVERRIDE_STRING_AS_INT_ARRAY == disambigOverride) {
-          fputs(DaikonRepTypeString[R_INT], decls_fp);
-          fputs(DEREFERENCE, decls_fp);
-          alreadyPutDerefOnLine3 = 1;
-        }
-        else if (OVERRIDE_STRING_AS_ONE_INT == disambigOverride) {
-          fputs(DaikonRepTypeString[R_INT], decls_fp);
-        }
-        else if ((IS_STRING(var)) ||
-                 (OVERRIDE_CHAR_AS_STRING == disambigOverride)) {
-          fputs(DaikonRepTypeString[R_STRING], decls_fp);
-        }
-        else {
-          tl_assert(rType != 0);
-          fputs(DaikonRepTypeString[rType], decls_fp);
-        }
-      }
-
-      // Append "[]" onto the end of the rep. type if necessary
-      if (!alreadyPutDerefOnLine3 &&
-          printAsSequence) {
-        fputs(DEREFERENCE, decls_fp);
-      }
-
-      fputs("\n", decls_fp);
-
-
-      // Line 4: Comparability number
-
-      // If we are outputting a REAL .decls with DynComp, that means
-      // that the program has already finished execution so that all
-      // of the comparability information would be already updated:
-      if (kvasir_with_dyncomp) {
-        DaikonFunctionEntry *entry = (DaikonFunctionEntry *)varFuncInfo;
-        // Remember that comp_number is a SIGNED INTEGER but the
-        // tags are UNSIGNED INTEGERS so be careful of overflows
-        // which result in negative numbers, which are useless
-        // since Daikon ignores them.
-        int comp_number = DC_get_comp_number_for_var((DaikonFunctionEntry*)varFuncInfo,
-                                                     isEnter,
-                                                   g_variableIndex);
-
-        DYNCOMP_TPRINTF("[DynComp] %s[%d](%s) value tag is %d\n",
-                        entry->funcEntry.name, g_variableIndex, varName,
-                        entry->ppt_exit_var_tags[g_variableIndex]);
-        fprintf(decls_fp, "%d", comp_number);
-        fputs("\n", decls_fp);
-      }
-      else {
-        // Otherwise, print out unknown comparability type "22"
-        fputs("22", decls_fp);
-        fputs("\n", decls_fp);
-      }
-    }
 
     //Insert this variable into the declared vars table
     genputtable(varsDeclaredTable, (void*)varName, (void *)1);
@@ -1127,7 +970,6 @@ printDeclsEntryAction(VariableEntry* var,
   // activated or not
   static void printDeclsHeader(void)
   {
-    if (!kvasir_old_decls_format) {
       // These are the global records that go at the top of the .decls file
 
       // (comment added 2008)  
@@ -1147,18 +989,6 @@ printDeclsEntryAction(VariableEntry* var,
         fputs("var-comparability none\n", decls_fp);
       }
       fputs("\n", decls_fp);
-    }
-    else {
-      if (kvasir_with_dyncomp) {
-        // VarComparability implicit is the DEFAULT so we don't need to
-        // write anything here:
-        //    fputs("VarComparability\nimplicit\n\n", decls_fp);
-      }
-      else {
-        fputs("VarComparability\nnone\n\n", decls_fp);
-      }
-    }
-
   }
 
   // Print out one individual function declaration
@@ -1190,7 +1020,6 @@ printDeclsEntryAction(VariableEntry* var,
     DPRINTF("Printing ppt for %s\n", funcPtr->name);
 
     if (!faux_decls) {
-      if (!kvasir_old_decls_format) {
         struct genhashtable* usedObjTable = NULL;
         struct geniterator* usedObjIt = NULL;
         // The format: (entries in brackets are optional, indentation
@@ -1276,7 +1105,6 @@ printDeclsEntryAction(VariableEntry* var,
         // the printing of duplicates:
         if(kvasir_object_ppts)
         {
-
           usedObjTable = gengettable(funcObjectTable, funcPtr);
           tl_assert(usedObjTable);
 
@@ -1302,103 +1130,7 @@ printDeclsEntryAction(VariableEntry* var,
             fputs("\n", decls_fp);
             genputtable(typeNameStrTable, type->typeName, (void *)1);
           }
-
-/*           { added to make vi happy */
-/*           struct geniterator* typeNameStrIt = 0; */
-
-/*           // Maps strings to a junk number 1 - simply here to prevent */
-/*           // duplicates: */
-/*           typeNameStrTable = */
-/*             genallocateSMALLhashtable((unsigned int (*)(void *)) &hashString, */
-/*                                  (int (*)(void *,void *)) &equivalentStrings); */
-
-/*           if (funcPtr->formalParameters.numVars > 0) { */
-/*             VarNode* n; */
-/*             for (n = funcPtr->formalParameters.first; */
-/*                  n != 0; */
-/*                  n = n->next) { */
-/*               VariableEntry* v = n->var; */
-/*               if (IS_AGGREGATE_TYPE(v->varType)) { */
-/*                 tl_assert(v->varType->typeName); */
-
-
-/*                 nestedTraversalTable = */
-/*                   genallocateSMALLhashtable((unsigned int (*)(void *)) &hashString, */
-/*                                        (int (*)(void *,void *)) &equivalentStrings); */
-
-/*                 getUsedObjects(v, typeNameStrTable); */
-/*                 genfreehashtable(nestedTraversalTable); */
-
-/*                 if (!gencontains(typeNameStrTable, v->varType->typeName) && */
-/*                     v->varType->aggType->memberVarList && */
-/*                     (v->varType->aggType->memberVarList->numVars > 0)) { */
-/*                   genputtable(typeNameStrTable, v->varType->typeName, (void *)1); */
-/*                 } */
-/*               } */
-/*             } */
-/*           } */
-/*           if (globalVars.numVars > 0) { */
-/*             VarNode* n; */
-/*             for (n = globalVars.first; */
-/*                  n != 0; */
-/*                  n = n->next) { */
-/*               VariableEntry* v = n->var; */
-/*               if (IS_AGGREGATE_TYPE(v->varType)) { */
-/*                 tl_assert(v->varType->typeName); */
-
-/*                 nestedTraversalTable = */
-/*                   genallocateSMALLhashtable((unsigned int (*)(void *)) &hashString, */
-/*                                        (int (*)(void *,void *)) &equivalentStrings); */
-
-/*                 getUsedObjects(v, typeNameStrTable); */
-/*                 genfreehashtable(nestedTraversalTable); */
-
-/*                 if (!gencontains(typeNameStrTable, v->varType->typeName) && */
-/*                     v->varType->aggType->memberVarList && */
-/*                     (v->varType->aggType->memberVarList->numVars > 0)) { */
-/*                   genputtable(typeNameStrTable, v->varType->typeName, (void *)1); */
-/*                 } */
-/*               } */
-/*             } */
-/*           } */
-/*           typeNameStrIt = gengetiterator(typeNameStrTable); */
-/*           // Print everything out, without duplicates! */
-/*           while (!typeNameStrIt->finished) { */
-/*             char* typeName = (char*)gennext(typeNameStrIt); */
-
-/*             // Don't duplicate ... */
-/*             if ((kvasir_parent_records && */
-/*                  (!funcPtr->parentClass || (!VG_STREQ(funcPtr->parentClass->typeName, typeName))))) { */
-/*               char* ppt_par_id = getParentId(typeName); */
-/*               fputs("  parent parent ", decls_fp); */
-/*               fputs(typeName, decls_fp); */
-/*               fputs(OBJECT_PPT, decls_fp); */
-/*               fputs(" ", decls_fp); */
-/*               fputs(ppt_par_id, decls_fp); */
-/*               fputs("\n", decls_fp); */
-/*             } */
-/*           } */
-
-/*           genfreeiterator(typeNameStrIt); */
-/*         } */
-
         }
-      }
-      else {
-        fputs("DECLARE\n", decls_fp);
-        printDaikonFunctionName(funcPtr, decls_fp);
-        if (isEnter) {
-          fputs(ENTER_PPT, decls_fp);
-          fputs("\n", decls_fp);
-        }
-        else {
-          fputs(EXIT_PPT, decls_fp);
-          fputs("\n", decls_fp);
-        }
-
-
-
-      }
 
       // For outputting real .decls when running with DynComp,
       // initialize a global hashtable which associates tags with
@@ -1474,7 +1206,7 @@ printDeclsEntryAction(VariableEntry* var,
       }
     }
 
-    if (!faux_decls && !kvasir_old_decls_format) {
+    if (!faux_decls) {
       if(typeNameStrTable) {
         genfreehashtable(typeNameStrTable);
       }
@@ -1531,8 +1263,7 @@ printDeclsEntryAction(VariableEntry* var,
 
 
     // Object records aren't needed in new decls format unless parent relations are used
-    //    if (!kvasir_parent_records && !kvasir_old_decls_format)
-    if (!kvasir_object_ppts && !kvasir_old_decls_format)
+    if (!kvasir_object_ppts)
       return;
 
     // (comment added 2005)  
@@ -1551,18 +1282,6 @@ printDeclsEntryAction(VariableEntry* var,
 
       if (IS_AGGREGATE_TYPE(cur_type)) {
 
-        // If we are using the old .decls format (before April 2006):
-
-        // Only print out .decls for :::OBJECT program points if there
-        // is at least 1 member function.  Otherwise, don't bother
-        // because object program points will never be printed out for
-        // this class in the .dtrace file.  Also, only print it out if
-        // there is at least 1 member variable, or else there is no
-        // point.
-
-        // If we are using the new .decls format (after April 2006) with
-        // --new-decls-format flag active:
-
         // Print :::OBJECT program points for all structs and classes
         // with at least 1 member var.
 
@@ -1572,14 +1291,10 @@ printDeclsEntryAction(VariableEntry* var,
         // subclasses a class B, which has no fields, we will still need
         // to have an OBJECT ppt for it.
 
-        if ((!kvasir_old_decls_format ||
-             (cur_type->aggType->memberFunctionList &&
-              (cur_type->aggType->memberFunctionList->numElts > 0)))&&
-            (cur_type->aggType->memberVarList && (cur_type->aggType->memberVarList->numVars > 0)) &&
+        if ((cur_type->aggType->memberVarList && (cur_type->aggType->memberVarList->numVars > 0)) &&
             cur_type->typeName) {
           tl_assert(cur_type->typeName);
 
-          if (!kvasir_old_decls_format) {
             struct geniterator* typeNameStrIt = 0;
             VarNode *n;
 
@@ -1648,13 +1363,6 @@ printDeclsEntryAction(VariableEntry* var,
             }
 
             genfreeiterator(typeNameStrIt);
-          }
-          else {
-            fputs("DECLARE\n", decls_fp);
-            fputs(cur_type->typeName, decls_fp);
-            fputs(OBJECT_PPT, decls_fp);
-            fputs("\n", decls_fp);
-          }
 
           stringStackPush(&fullNameStack, "this");
           stringStackPush(&fullNameStack, ARROW);
@@ -1677,10 +1385,8 @@ printDeclsEntryAction(VariableEntry* var,
 
           fputs("\n", decls_fp);
 
-          if (!kvasir_old_decls_format) {
-            genfreehashtable(typeNameStrTable);
-            typeNameStrTable = 0;
-          }
+          genfreehashtable(typeNameStrTable);
+          typeNameStrTable = 0;
 
           // (comment added 2005)  
           // TODO: What do we do about static member vars?

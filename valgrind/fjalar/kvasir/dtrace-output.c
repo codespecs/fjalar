@@ -1030,17 +1030,12 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
 
 
   // Line 1: Variable name
-  if (kvasir_old_decls_format) {
-    DTRACE_PRINTF("%s\n", varName);
-  }
-  else {
     // The DTRACE_PRINTF() macro had this condition, so we should
     // follow it too ...
     if (!dyncomp_without_dtrace) {
       printDaikonExternalVarName(var, varName, dtrace_fp);
       fputs("\n", dtrace_fp);
     }
-  }
 
   // Lines 2 & 3: Value and modbit
   if (isSequence) {

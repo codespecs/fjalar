@@ -75,7 +75,8 @@ int print_merge = 1;
    it to memory, a fresh tag is stored instead, and when you load it
    from memory, you get a fresh tag instead (those are the fresh
    part). This tag is used for the stack pointer, the frame pointer,
-   the contents of the GOT, and literals when fast mode is enabled. */
+   the contents of the GOT, and literals when
+   dyncomp-approximate-literals is enabled. */
 /* The tag valued 0 is also special; if you wanted to give it a
    symbolic name, it would be something like "NO_TAG". It's even
    weaker than WEAK_FRESH_TAG, but otherwise propagates freely, and
@@ -239,13 +240,13 @@ UInt MC_(helperc_TAG_NOP) ( UInt tag ) {
 // When we're requesting to store tags for X bytes,
 // we will write the tag into all X bytes.
 
-// When kvasir_dyncomp_fast_mode is on, check whether
+// When dyncomp_approximate_literals is on, check whether
 // the tag to be stored is WEAK_FRESH_TAG.  If it is, create
 // a new tag and store that in memory instead of WEAK_FRESH_TAG.
-// (We don't need to do a check for kvasir_dyncomp_fast_mode
-//  because WEAK_FRESH_TAG should never be used for regular real tags
-//  regardless of whether kvasir_dyncomp_fast_mode is on or not.
-//  Real tags are in the range of [1, LARGEST_REAL_TAG])
+// (We don't need to do a check for dyncomp_approximate_literals
+// because WEAK_FRESH_TAG should never be used for regular real tags
+// regardless of whether dyncomp_approximate_literals is on or not.
+// Real tags are in the range of [1, LARGEST_REAL_TAG])
 
 // For some reason, 64-bit stuff needs REGPARM(1) (Look in
 // mc_translate.c) - this is very important for some reason
@@ -347,11 +348,11 @@ UInt val_uf_union_tags_in_range(Addr a, SizeT len) {
   UInt curTag;
   print_merge = 0;
 
-  // If kvasir_dyncomp_fast_mode is on, then if all of the tags
+  // If dyncomp_approximate_literals is on, then if all of the tags
   // in range are WEAK_FRESH_TAG, then create a new tag and copy
   // it into all of those locations
   // (This is currently turned off because it loses too much precision)
-/*   if (kvasir_dyncomp_fast_mode) { */
+/*   if (dyncomp_approximate_literals) { */
 /*     char allLiteralTags = 1; */
 /*     for (curAddr = a; curAddr < (a + len); curAddr++) { */
 /*       if (get_tag(curAddr) != WEAK_FRESH_TAG) { */

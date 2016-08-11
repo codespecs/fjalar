@@ -93,12 +93,12 @@ void allocate_ppt_structures(DaikonFunctionEntry* funcPtr,
                              char isEnter,
                              int numDaikonVars) {
   // Don't do anything if we are attempting to allocate for enter and
-  // are not using --separate-entry-exit-comp
-  if (isEnter && !dyncomp_separate_entry_exit_comp) {
+  // are not using --dyncomp-separate-entry-exit
+  if (isEnter && !dyncomp_separate_entry_exit) {
     return;
   }
 
-  if (dyncomp_separate_entry_exit_comp && isEnter) {
+  if (dyncomp_separate_entry_exit && isEnter) {
     if (dyncomp_detailed_mode) {
       UInt bitarray_size = bitarraySize(numDaikonVars);
       if (bitarray_size > 0) {
@@ -156,12 +156,12 @@ void allocate_ppt_structures(DaikonFunctionEntry* funcPtr,
 
 void destroy_ppt_structures(DaikonFunctionEntry* funcPtr, char isEnter) {
   // Don't do anything if we are attempting to free for enter and are
-  // not using --separate-entry-exit-comp
-  if (isEnter && !dyncomp_separate_entry_exit_comp) {
+  // not using --dyncomp-separate-entry-exit
+  if (isEnter && !dyncomp_separate_entry_exit) {
     return;
   }
 
-  if (dyncomp_separate_entry_exit_comp && isEnter) {
+  if (dyncomp_separate_entry_exit && isEnter) {
     if (dyncomp_detailed_mode) {
       VG_(free)(funcPtr->ppt_entry_bitmatrix);
       funcPtr->ppt_entry_bitmatrix = 0;
@@ -321,9 +321,9 @@ void DC_post_process_for_variable(DaikonFunctionEntry* funcPtr,
 
   DYNCOMP_DPRINTF("DC_post_process_for_variable - %p\n", (void *)a);
   // Remember to use only the EXIT structures unless
-  // isEnter and --separate-entry-exit-comp are both True
+  // isEnter and --dyncomp-separate-entry-exit are both True
   is_enter = isEnter;
-  if (dyncomp_separate_entry_exit_comp && isEnter) {
+  if (dyncomp_separate_entry_exit && isEnter) {
     var_uf_map = funcPtr->ppt_entry_var_uf_map;
     var_tags = funcPtr->ppt_entry_var_tags;
     new_tag_leaders = funcPtr->ppt_entry_new_tag_leaders;
@@ -453,8 +453,8 @@ void DC_extra_propagation_post_process(DaikonFunctionEntry* funcPtr,
   is_enter = isEnter;
 
   // Remember to use only the EXIT structures unless
-  // isEnter and --separate-entry-exit-comp are both True
-  if (dyncomp_separate_entry_exit_comp && isEnter) {
+  // isEnter and --dyncomp-separate-entry-exit are both True
+  if (dyncomp_separate_entry_exit && isEnter) {
     var_uf_map = funcPtr->ppt_entry_var_uf_map;
     var_tags = funcPtr->ppt_entry_var_tags;
   }
@@ -536,7 +536,7 @@ int equivalentTags(UInt t1, UInt t2) {
 //   to it, add that entry to g_compNumberMap, and
 //   increment g_curCompNumber
 //
-// If the --use-exit-comp-num option is on, then
+// If the --dyncomp-separate-entry-exit option is not on, then
 // always grab the comparability numbers from the exit ppt
 // of the function in order to ensure that the comparability
 // numbers from the entrance/exit always matches.
@@ -550,8 +550,8 @@ int DC_get_comp_number_for_var(DaikonFunctionEntry* funcPtr,
   UInt *var_tags;
 
   // Remember to use only the EXIT structures unless
-  // isEnter and --separate-entry-exit-comp are both True
-  if (dyncomp_separate_entry_exit_comp && isEnter) {
+  // isEnter and --dyncomp-separate-entry-exit are both True
+  if (dyncomp_separate_entry_exit && isEnter) {
     var_uf_map = funcPtr->ppt_entry_var_uf_map;
     var_tags = funcPtr->ppt_entry_var_tags;
   }
@@ -1163,7 +1163,7 @@ void garbage_collect_tags() {
     //dump_function_exit_var_map(cur_entry);
     //printf("compress var map for function: %s\n", cur_entry->funcEntry.name);
 
-    if (dyncomp_separate_entry_exit_comp) {
+    if (dyncomp_separate_entry_exit) {
       for (ind = 0; ind < cur_entry->num_entry_daikon_vars; ind++) {
         UInt* p_entry_tag = &cur_entry->ppt_entry_var_tags[ind];
 
@@ -1192,7 +1192,7 @@ void garbage_collect_tags() {
 
     // At his point we have updated the tag values in the var_tags array(s).
     // We now need to rebuild the var_uf_map(s) to reflect the updated values.
-    if (dyncomp_separate_entry_exit_comp) {
+    if (dyncomp_separate_entry_exit) {
       if (cur_entry->ppt_entry_var_uf_map) {
         struct genhashtable* new_entry_map =
             regenerate_var_uf_map(cur_entry->num_entry_daikon_vars,
@@ -1422,8 +1422,8 @@ void DC_detailed_mode_process_ppt_execution(DaikonFunctionEntry* funcPtr,
   tl_assert(dyncomp_detailed_mode);
 
   // Remember to use only the EXIT structures unless
-  // isEnter and --separate-entry-exit-comp are both True
-  if (dyncomp_separate_entry_exit_comp && isEnter) {
+  // isEnter and --dyncomp-separate-entry-exit are both True
+  if (dyncomp_separate_entry_exit && isEnter) {
     bitmatrix = funcPtr->ppt_entry_bitmatrix;
     new_tag_leaders = funcPtr->ppt_entry_new_tag_leaders;
     num_daikon_vars = funcPtr->num_entry_daikon_vars;
@@ -1512,8 +1512,8 @@ void DC_convert_bitmatrix_to_sets(DaikonFunctionEntry* funcPtr,
   tl_assert(dyncomp_detailed_mode);
 
   // Remember to use only the EXIT structures unless
-  // isEnter and --separate-entry-exit-comp are both True
-  if (dyncomp_separate_entry_exit_comp && isEnter) {
+  // isEnter and --dyncomp-separate-entry-exit are both True
+  if (dyncomp_separate_entry_exit && isEnter) {
     bitmatrix = funcPtr->ppt_entry_bitmatrix;
     num_daikon_vars = funcPtr->num_entry_daikon_vars;
 
