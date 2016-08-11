@@ -670,7 +670,7 @@ tar xzf binutils-$BUNEWVER.tar.gz
 diff -ur $BUOLD/include $BUNEW/include > include.patch
 diff -u  $BUOLD/libiberty/dwarfnames.c \
          $BUNEW/libiberty/dwarfnames.c >> include.patch
-diff -u -xMakefile $BUOLD/binutils $BUNEW/binutils > binutils.patch
+diff -u -xMakefile* $BUOLD/binutils $BUNEW/binutils > binutils.patch
 @end example
 
 Next, create diff files comparing the old Binutils to the current
@@ -704,20 +704,37 @@ The patch files probably include files that Fjalar does not use.
 Running @command{patch}
 will produce a warning message including the line ``can't find file to
 patch''.  It is safe to ignore these messages.
+The @command{lines-notbetween} command used below will prevent these
+messages from appearing.  These unused files will also produce a message
+of the form ``<number> out of <number> hunks ignored''.  These may also
+be ignored.  A patch failure is indicated by the message ``Hunk #<number>
+FAILED at <number>''.  These lines identify patch conflicts and will
+need to be corrected as described below.
 @file{include.patch} should apply with few, if any, conflicts.
 @file{binutils.patch} will probably work on all but @file{dwarf.c} and
 @file{readelf.c}.
 For these two, a visual merge tool (such as @command{meld}) will be
 helpful.
+If you plan to use such a tool, you should make copies of these
+two files prior to applying the patch.
+
+@example
+cp dwarf.c dwarf.c.orig
+cp readelf.c readelf.c.orig
+@end example
 
 It can be difficult to undo a patch operation, so you should first attempt
-a dry run.  (The @command{lines-notbetween} command is from
+a dry run.  It is recommended that you only do one of the patches at a
+time in order to make review of the output easier.
+(The @command{lines-notbetween} command is from
 @uref{http://mernst.github.io/plume-lib/, plume-lib}.)
 
 @example
 cd $INV/fjalar/valgrind/fjalar
 patch -p1 -lu -f < ~/tmp/include.patch --dry-run \
   | lines-notbetween --inclusive "can't find file to patch" "No file to patch.  Skipping patch."
+
+cd $INV/fjalar/valgrind/fjalar
 patch -p2 -lu -f -F3 < ~/tmp/binutils.patch --dry-run \
   | lines-notbetween --inclusive "can't find file to patch" "No file to patch.  Skipping patch."
 @end example
@@ -771,9 +788,24 @@ merged or if the change is not relevant.
 As noted above, @file{dwarf.c} and @file{readelf.c} will probably
 have several conflicts.  As you edit the new files, you may wish to
 review the diffs in the previous versions as the new diffs should be similar.
-Again, a visual merge tool can make this process easier.
 @xref{Hints to modifing dwarf.c and readelf.c} for more source details
 that may help you with the merge process.
+
+Again, a visual merge tool can make this process easier. Here is one
+method for doing so.  As noted above, you will need to have made copies
+of @file{dwarf.c} and @file{readelf.c} prior to applying the patch. We
+will do a 3-way merge with the new Binutils file on the left, the original
+fjalar version on the right and our new fjalar version in the center.
+Look at @file{dwarf.c.rej} and note the line numbers of the failed
+patches.
+
+@example
+meld $BUNEW/binutils/dwarf.c dwarf.c dwarf.c.orig
+@end example
+
+Using the line numbers noted above, locate the problem areas and modify
+the target (center) version of dwarf.c as needed to correct the merge
+issues.  Repeat this process for @file{readelf.c}.
 
 After you have completed the source merge,
 update the ``@code{export BINUTILS_VERSION=}'' line in @file{fjalar/valgrind/REVISION}.
