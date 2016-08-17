@@ -1,0 +1,51 @@
+<!DOCTYPE html 
+     PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+     "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+  <title>Fjalar</title>
+  <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />
+</head>
+<body>
+<h1>Fjalar</h1>
+
+<p>
+Fjalar is a framework that facilitates the construction of dynamic analysis
+tools for programs written in C and C++. It is often difficult to build
+robust and scalable dynamic analyses for C and C++ programs due to the lack
+of memory and type safety in these languages. For instance, the run time
+system does not keep track of array sizes or whether values have been
+initialized. Existing frameworks based on source-to-source transformation
+often suffer from scalability and robustness problems due to the difficulty
+of adding instrumentation source code to track memory usage and
+initialization. Frameworks that operate purely at the binary level cannot
+provide rich language-level information about data structures that are
+useful for many kinds of analyses. Fjalar combines aspects of both source-
+and binary-based approaches and allows tools built upon it to safely access
+rich information at both the language and machine levels during run time.
+</p>
+
+<p>
+Fjalar can be used to build tools that dynamically instrument un-modified
+x86/Linux executables compiled with DWARF2 debugging information. The
+ability to operate on executables rather than source code places less
+burden on the tool's users, because there is no need to deal with complex
+configuration and Makefile options to determine which source files to
+instrument. It also achieves greater scalability by not having to deal with
+the difficulties of parsing and instrumenting complex C and C++ source code
+constructs. Fjalar has been tested to work on executables of programs on
+the order of 1 million lines of code, including gcc, xemacs, Apache, and
+CTAS. However, because Fjalar is built upon the Valgrind binary
+instrumentation framework, it shares many of Valgrind's limitations. In
+particular, Fjalar can only work on x86 and x86-64 executables on the Linux
+platform, and imposes around a 100X slowdown while executing the
+instrumented program.
+</p>
+
+<p>
+The Fjalar source code repository appears at
+<a href="https://github.com/codespecs/fjalar">https://github.com/codespecs/fjalar</a>.
+</p>
+
+</body>
+</html>
