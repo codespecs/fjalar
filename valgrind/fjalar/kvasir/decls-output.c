@@ -636,6 +636,59 @@ printDeclsEntryAction(VariableEntry* var,
                                          decls_fp);
             }
           fputs("\n", decls_fp);
+        } else {
+          // There doesn't appear to be an enclosing var (i.e, parent or containing var).
+          // However, this check was based on a parse of the full variable name and that
+          // doesn't deal correctly with class name qualifiers. So at this point, we do
+          // a bit of a hack and look to see if the full variable name is of the form:
+          // <non empty partial variable name>.<classname>.<var we are currently processing>
+          // or:
+          // this-><classname>.<var we are currently processing>
+          //
+          // Directly above we looked to see if "<non empty partial variable name>.<classname>"
+          // or "this-><classname>" was in the varsDeclaredTable (and failed).
+          // Now we will strip off ".<classname." or "-><classname>" and try again.
+          // There could be a class heirarchy involved, so this is an iterative process.
+          // I.e., for "this-><class1>.<class2>.<var>"
+          // we want to strip off both <class2> and <class1>.
+          //
+          // UNDONE: Could we simplify and combine code with section above?
+          //
+          // index of the outermost enclosing VarName
+          int j = enclosingVarNamesStack.size - 1;
+          // index of the last element of the full path - this is the "var we are currently processing"
+          i = fullNameStack.size - 1;
+          // Are there enough components to the full name so that there might be a ".<classname>"?
+          while ((i > 3) && (j > 0)) {
+            if ((VG_(strcmp)(".", fullNameStack.stack[i-3])==0) ||
+                (VG_(strcmp)("->", fullNameStack.stack[i-3])==0)) {
+              DPRINTF("fullNameStack[%d] = %s\n", i-2,  fullNameStack.stack[i-2]);
+              // we have ".<something>" or "-><something>"
+              // let's see if <something> is a class name.
+              TypeEntry *te = getTypeEntry((char *)fullNameStack.stack[i-2]);
+              if ((te != NULL) && (te->decType == D_STRUCT_CLASS)) {
+                DPRINTF("found a struct/class: %s\n", te->typeName);
+                DPRINTF("enclosingVarNamesStack[%d] = %s\n", j-1, enclosingVarNamesStack.stack[j-1]);
+                if (gencontains(varsDeclaredTable, (void*)enclosingVarNamesStack.stack[j-1])) {
+                  // success
+                  fputs("    enclosing-var ", decls_fp);
+                  printDaikonExternalVarName(var, enclosingVarNamesStack.stack[j-1], decls_fp);
+                  fputs("\n", decls_fp);
+                  break;
+                }
+                // it was a class name, but no luck finding the preceeding string in the
+                // varsDeclaredTable; maybe we need to remove another class name
+                i = i - 2;
+                j = j - 1;
+              } else {
+                // it wasn't a class name so we're done
+                break;
+              }
+            } else {
+              // no "." or "->" prior to symbol so it isn't a class name and we're done
+              break;
+            }
+          }
         }
       }
 
