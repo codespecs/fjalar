@@ -578,7 +578,8 @@ printDeclsEntryAction(VariableEntry* var,
     else if (numDereferences > 0) {
       fputs("array", decls_fp);
     }
-    else if (IS_MEMBER_VAR(var)) {
+    // IS_GLOBAL_VAR is true for static member vars
+    else if (IS_MEMBER_VAR(var) && !(IS_GLOBAL_VAR(var))) {
       fputs("field ", decls_fp);
       // Print out just this variable's name as the field name
       fputs(var->name, decls_fp);
