@@ -637,6 +637,9 @@ printDeclsEntryAction(VariableEntry* var,
                                          decls_fp);
             }
           fputs("\n", decls_fp);
+        } else if (cur_type_for_printing_object_ppt != NULL) {
+          // every item in an object ppt has an enclosing-var of 'this'
+          fputs("    enclosing-var this\n", decls_fp);
         } else {
           // There doesn't appear to be an enclosing var (i.e, parent or containing var).
           // However, this check was based on a parse of the full variable name and that
@@ -1359,14 +1362,11 @@ printDeclsEntryAction(VariableEntry* var,
                                    (int (*)(void *,void *)) &equivalentStrings);
 
             // Example output:
-            //   ppt Stack
+            // ppt Stack:::OBJECT
             //   ppt-type object
             fputs("ppt ", decls_fp);
             printDaikonExternalVarName(NULL, cur_type->typeName, decls_fp);
-            //            fputs(cur_type->typeName, decls_fp);
             fputs(OBJECT_PPT, decls_fp);
-            //fputs(" ", decls_fp);
-            //            fputs(ppt_par_id, decls_fp);
             fputs("\n  ppt-type object\n", decls_fp);
 
             // Now comes time to print the 'parent user' entries.  We
@@ -1424,6 +1424,16 @@ printDeclsEntryAction(VariableEntry* var,
           // Print out regular member vars.
           cur_type_for_printing_object_ppt = cur_type;
 
+          // Fjalar does not generate a 'this' variable for object
+          // ppts but Daikon wants one.  We output the appropriate
+          // entry for the decls file here.
+          fputs("  variable this\n", decls_fp);
+          fputs("    var-kind variable\n", decls_fp);
+          fputs("    rep-type hashcode\n", decls_fp);
+          fputs("    dec-type ", decls_fp);
+          printDaikonExternalVarName(NULL, cur_type->typeName, decls_fp);
+          fputs("*\n", decls_fp);
+
           // Create table for all variables printed over a single ppt
           varsDeclaredTable =
             genallocateSMALLhashtable((unsigned int (*)(void *)) &hashString,
@@ -1454,8 +1464,6 @@ printDeclsEntryAction(VariableEntry* var,
     }
 
     deleteTypeIterator(typeIt);
-
-    cur_type_for_printing_object_ppt = 0;
 
     // (comment added 2008)  
     // HACK ALERT! Remember to restore original state
