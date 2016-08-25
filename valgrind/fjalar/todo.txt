@@ -1,9 +1,7 @@
 This file contains some tasks that we have no immediate plans for
 implementing but would like to see done at some point.
 
-Last updated: 2009-09-14
-
-From Philip Guo (also listed on the Fjalar web page):
+From Philip Guo:
 
 * Fjalar currently only supports traversals to variables that are
   reachable from globals and function formal parameters and return
@@ -14,16 +12,10 @@ From Philip Guo (also listed on the Fjalar web page):
   many C++ programs. We support all of the important core C++
   features, but bug fixes and support for additional features are
   desirable.
-  ** Robert Rudd is currently working on testing Fjalar/Kvasir with large
-     C++ programs
 
 * We would like to design and implement a more general method for
   precisely controlling how to traverse inside of data structures at
   run time, perhaps implemented in the form of a query language
-
-* We would like to extend Fjalar to work on additional platforms that
-  Valgrind now supports, such as the PowerPC. 
-  ** Robert Rudd is currently working on AMD64 port.
 
 
 Code maintenance related:
@@ -34,17 +26,6 @@ Code maintenance related:
    decls files at the end of a dtrace run as opposed to before, but
    this code duplication seems unnecessary
 
-* Our in-tree version of readelf could use an update. readelf is a
-   binary in GNU binutils for read ELF binaries. It can be used to
-   output the contents of the DWARF debugging sections of an ELF
-   binary into a textual form. We currently hook most of text output
-   functions to harvest relevant data structure for Fjalar. Our
-   in-tree readelf is about 4 years out of sync with upstream. There's
-   not a terrible urgency to upgrade this as readelf updates are
-   usually infrequent and uninteresting, however it's always nice to
-   keep things up to date. Also, we never know when an interesting
-   DWARF feature will begin being used that is unsupported by our
-   current version of readelf (It's worth noting that has yet to occur)
 
 Features
 
@@ -113,4 +94,17 @@ Features
   magnitude over programs run under Fjalar/Memcheck. It would be nice
   if  we could get this down. A good start would be finding any
   hotspots in the DynComp code
+
+* Support for multiple variables in a single register
+  The gcc generated code for the adm64 architecture (aka x86_64) may
+  place multiple items in a single register - as part of doing a
+  structure copy, for example. The current implementation of Dyncomp
+  (within Kvasir) uses a single identification tag per register. This
+  can cause, for example, adjacent members of a structure to be placed,
+  incorrectly, in the same comparability group. The fix is to allocate
+  one tag for each machine byte of a register. This is already the model
+  for regular memory accesses. This is a major design change and the
+  time to implement cannot be estimated with much accuracy.
+  Section 3.3 "Architectural Limitations" of Robert Rudd's mater thesis
+  dicusses the issue with an example.
 
