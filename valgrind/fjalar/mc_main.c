@@ -67,6 +67,8 @@
 #include "kvasir/kvasir_main.h"
 #include "kvasir/dyncomp_main.h"
 #include "fjalar_main.h"
+#include "../coregrind/pub_core_aspacemgr.h"  // needed for am_is_valid_for_client
+#include "pub_tool_vki.h"  // needed for VKI_PROT_ defines
 
 #include "mc_include.h"
 #include "memcheck.h"   /* for client requests */
@@ -849,6 +851,8 @@ Bool get_vbits8 ( Addr a, UChar* vbits8 )
    return ok;
 }
 
+// code added for Fjalar
+
 // pgbovine
 // Rudd - memcheck merge, minor interface function to make things a bit eaier
 #define VGM_BIT_VALID       0
@@ -912,7 +916,15 @@ Bool mc_check_writable (Addr a, SizeT len, Addr* bad_addr) {
 }
 
 MC_ReadResult mc_check_readable ( Addr a, SizeT len, Addr* bad_addr ) {
-  return is_mem_defined( a, len, bad_addr, NULL);
+  MC_ReadResult result = is_mem_defined( a, len, bad_addr, NULL);
+  if (result != MC_Ok) return result;
+  // Unfortunately, the test above lets through references to memory
+  // marked executable.  Thanks to Philippe Waroquiers of the Valgrind
+  // team for a way to detect this case.
+  int vResult = VG_(am_is_valid_for_client)(a, len, VKI_PROT_READ) |
+                VG_(am_is_valid_for_valgrind)(a, len, VKI_PROT_READ);
+  if (vResult == 0) return MC_AddrErr;
+  return MC_Ok;
 }
 
 // PG - pgbovine - Returns true if ANY of the v-bits are set for the
@@ -941,6 +953,8 @@ void mc_make_noaccess ( Addr a, SizeT len )
 {
   MC_(make_mem_noaccess) ( a, len );
 }
+
+// end of code added for Fjalar
 
 /* --------------- Secondary V bit table ------------ */
 
