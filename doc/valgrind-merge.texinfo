@@ -989,6 +989,14 @@ make regression-tests
 @xref{Verify current sources pass the regression tests} for the expected
 results of running these tests.
 
+If tests fail with differences that contain "<STACK_ADDR>", "<STATIC_ADDR>" or
+"<HEAP_ADDR>" on the goal file side and hexadecimal values on the new file
+side, it might be due to compiler changes or platform changes that
+caused code or data to reside at different memory addresses.  Compare the
+address ranges in @file{$DAIKONDIR/tests/kvasir-tests/clean-output.pl}
+with those in the new binaries and see if changes to
+@file{clean-output.pl} are required.
+
 
 @node Documenting Changes
 @section Documenting Changes
