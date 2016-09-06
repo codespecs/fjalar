@@ -709,7 +709,8 @@ printDeclsEntryAction(VariableEntry* var,
       // Note that currently Daikon does not support more than 1 level
       // of sequences so the only possible (non-default) value for this
       // is 'array 1'.
-      if (isSequence) {
+      // Need to check disambig override that forces an array.
+      if (isSequence || (OVERRIDE_STRING_AS_INT_ARRAY == disambigOverride)) {
         fputs("    array 1\n", decls_fp);
       }
 
