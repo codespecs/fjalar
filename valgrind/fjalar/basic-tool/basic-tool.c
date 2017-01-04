@@ -19,6 +19,8 @@
 // by Philip Guo, Dec. 2005
 // updated for Fjalar 1.3 interfaces: Stephen McCamant, Aug 2007
 
+#include "../my_libc.h"
+
 // Only implements the functions required by fjalar_tool.h
 #include "../fjalar_tool.h"
 
@@ -50,8 +52,8 @@ void fjalar_tool_finish() {
 
 // This simple callback function prints out variable names, and if
 // it's a sequence, the number of elements
-TraversalResult basicAction(VariableEntry* var,
-                              char* varName,
+static TraversalResult basicAction(VariableEntry* var,
+                              const HChar* varName,
                               VariableOrigin varOrigin,
                               UInt numDereferences,
                               UInt layersBeforeBase,
