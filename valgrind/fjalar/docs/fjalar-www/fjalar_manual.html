@@ -95,7 +95,9 @@ directory and place all of your tool's source files in there.
 	other variables in that file.  For instance, you can adjust
 	<tt>AM_CFLAGS_X86_LINUX</tt> to add optimizations to boost
   run-time performance.  The default is to turn off all optimizations
-  in order to ease debugging.)
+  in order to ease debugging.) IMPORTANT: you must also remove the line
+  <tt>kvasir/kvasir_main.c \</tt> from the file list.  In essence, you
+  are replacing the kvasir tool with your own.
 
 <li>Run <tt>auto-everything.sh</tt> to create a new <tt>Makefile</tt>
 	from your modified <tt>Makefile.am</tt> and re-compile

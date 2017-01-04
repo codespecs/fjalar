@@ -7,10 +7,10 @@ dynamic analysis tools.  You can learn more about Valgrind by
 visiting its home page at:
   http://www.valgrind.org
 
-The document valgrind-merge.texinfo, located in the root directory of
+The document valgrind-merge.texinfo, located in the doc sub-directory of
 the Fjalar repository, describes how to obtain the latest version of
 Valgrind and merge it into our Fjalar system.  You can format it with
-either of the following commands (run in the Fjalar root directory):
+either of the following commands (run in the doc sub-directory):
   make html
   make pdf
 
@@ -19,8 +19,8 @@ contains two related projects, Fjalar and Kvasir.
 
 Fjalar, a Valgrind tool that provides additional abstractions and APIs for
 building dynamic anaylsis tools, appears in the ./valgrind/fjalar directory.
-Please consult the Fjalar webpage for information about the Fjalar
-framework and tools.  A local copy of the Fjalar webpage appears here:
+Please consult the local copy of the Fjalar webpage for information about
+the Fjalar framework and tools.  It may be found here:
   ./valgrind/fjalar/docs/fjalar-www/index.html
 For developer documentation, start here:
   ./valgrind/fjalar/README_DEVELOPERS

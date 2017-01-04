@@ -1,10 +1,11 @@
 Fjalar developer documentation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Developer documentation is located in ./valgrind/fjalar/README_DEVELOPERS .
+Developer documentation is located in ./valgrind/fjalar/README_DEVELOPERS.
 Additional developer's notes can be found in the ./valgrind/fjalar/notes
 directory.
+
 Documentation for how to merge a new release of Valgrind into Fjalar appears
-at $DAIKONDIR/doc/valgrind-merge.html and $DAIKONDIR/doc/valgrind-merge.pdf .
+in the ./doc directory.
 
 Repository structure
 --------------------- 
@@ -15,19 +16,19 @@ Repository structure
     Contains the source for the Fjalar framework.
 
 ./valgrind/fjalar/basic-tool 
-    Contains the source for a simple tool built upon Fjalar. It is included
-    with the distribution on the Fjalar webpage.
+    Contains the source for a simple example tool built upon Fjalar.
 
 ./valgrind/fjalar/docs 
-    Contains a local copy of the Fjalar webpage.
+    Contains material about how to use the Fjalar framework to build
+    dynamic program analysis tools. A good starting place is:
+      ./valgrind/fjalar/docs/fjalar-www/fjalar_manual.html
 
 ./valgrind/fjalar/kvasir
     Contains the source for Kvasir and DynComp.
 
 ./valgrind/fjalar/notes 
     Contains various developmental notes on Fjalar including notes kept
-    by Philip Guo, the Fjalar design document, and the webpage containing
-    instructions for merging new versions of Valgrind into Fjalar.
+    by Philip Guo, as well as a Fjalar design document.
 
 ./valgrind/fjalar/tools	
     Contains a tool for debugging DynComp comparability errors.
