@@ -56,7 +56,7 @@ Bool kvasir_print_debug_info = False;
 Bool actually_output_separate_decls_dtrace = 0;
 Bool print_declarations = 1;
 
-Bool kvasir_with_dyncomp = False;
+Bool kvasir_with_dyncomp = True;
 Bool dyncomp_no_gc = False;
 Bool dyncomp_approximate_literals = False;
 Bool dyncomp_detailed_mode = False;
