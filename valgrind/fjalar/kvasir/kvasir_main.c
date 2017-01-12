@@ -669,7 +669,8 @@ void fjalar_tool_print_usage()
 "    --program-stderr=<file>  Redirect instrumented program stderr to file\n"
 
 "\n  DynComp dynamic comparability analysis\n"
-"    --with-dyncomp           Enables DynComp comparability analysis\n"
+"    --dyncomp                Enables DynComp comparability analysis\n"
+"                             [default on; turn off with --no-dyncomp]\n"
 "    --dyncomp-gc-num-tags=<number>  The number of tags that get assigned between successive runs\n"
 "                             of the garbage collector (between 0 and INT_MAX)\n"
 "                             (The default is to garbage collect every 10,000,000 tags created)\n"
@@ -690,7 +691,7 @@ void fjalar_tool_print_usage()
 "    --dyncomp-interactions=none         Tracks no interactions, just dataflow\n"
 "\n  Debugging:\n"
 "    --kvasir-debug           Print Kvasir-internal debug messages [--no-debug]\n"
-"    --dyncomp-debug          Print DynComp debug messages (--with-dyncomp must also be on)\n"
+"    --dyncomp-debug          Print DynComp debug messages (--dyncomp must also be on)\n"
 "                             [--no-dyncomp-debug]\n"
 "    --dyncomp-trace-merge    Similar, but more detailed\n"
 "                             [--no-dyncomp-trace-merge]\n"
@@ -716,9 +717,9 @@ Bool fjalar_tool_process_cmd_line_option(const HChar* arg)
   else if VG_YESNO_CLO(arg, "output-fifo",      kvasir_output_fifo) {}
   else if VG_YESNO_CLO(arg, "decls-only",       kvasir_decls_only) {}
   else if VG_YESNO_CLO(arg, "kvasir-debug",     kvasir_print_debug_info) {}
-  else if VG_STR_CLO(arg, "--program-stdout", kvasir_program_stdout_filename){}
-  else if VG_STR_CLO(arg, "--program-stderr", kvasir_program_stderr_filename){}
-  else if VG_YESNO_CLO(arg, "with-dyncomp",   kvasir_with_dyncomp) {}
+  else if VG_STR_CLO(arg, "--program-stdout",   kvasir_program_stdout_filename){}
+  else if VG_STR_CLO(arg, "--program-stderr",   kvasir_program_stderr_filename){}
+  else if VG_YESNO_CLO(arg, "dyncomp",          kvasir_with_dyncomp) {}
   else if VG_YESNO_CLO(arg, "dyncomp-approximate-literals", dyncomp_approximate_literals) {}
   else if VG_YESNO_CLO(arg, "dyncomp-detailed-mode", dyncomp_detailed_mode) {}
   else if VG_BINT_CLO(arg, "--dyncomp-gc-num-tags", dyncomp_gc_after_n_tags,

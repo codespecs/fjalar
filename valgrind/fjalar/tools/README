@@ -59,7 +59,7 @@ Example run
 
 3. Run Kvasir with DynComp with tracing turned on
 
-       kvasir-dtrace --with-dyncomp --dyncomp-trace ./wordplay -f words.txt 'daikon dynamic invariant detector' > wordplay.trace 2>&1
+       kvasir-dtrace --dyncomp --dyncomp-trace ./wordplay -f words.txt 'daikon dynamic invariant detector' > wordplay.trace 2>&1
 
 
 4. Run merge_tracker on the produced trace file     
