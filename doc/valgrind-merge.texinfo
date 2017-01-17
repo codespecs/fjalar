@@ -545,27 +545,35 @@ This keeps the files used during the source merge update to a minimum.
 You will need to make sure @command{gdb} is installed on your machine
 to run these tests. Also, they are very sensitive
 to the system software on the host machine.  In most cases, there will be
-some failures. (Currently, 6 of 656 tests do not pass on a standard UW/CSE
-system running Fedora 22.) Rather, it is important to capture the results
+some failures. (Currently, 7 of 654 tests do not pass on a standard UW/CSE
+system running CentOS 7.3.1611.) Rather, it is important to capture the results
 as they should be identical after the source merge.
 
-Here is a copy of the summary from the latest run of these tests (04/14/2016):
+Here is a copy of the last few lines from the latest run of these tests (01/17/2017):
 
 @example
-== 656 tests, 3 stderr failure, 0 stdout failures, 0 stderrB failures,
-                                        1 stdoutB failure, 2 post failures ==
-
+== 654 tests, 2 stderr failures, 0 stdout failures, 1 stderrB failure,
+                                  4 stdoutB failures, 0 post failures ==
+gdbserver_tests/hginfo                   (stdoutB)
 gdbserver_tests/hgtls                    (stdoutB)
+gdbserver_tests/mcinfcallWSRU            (stderrB)
+gdbserver_tests/nlcontrolc               (stdoutB)
+gdbserver_tests/nlvgdbsigqueue           (stdoutB)
 memcheck/tests/badfree3                  (stderr)
-memcheck/tests/leak_cpp_interior         (stderr)
 memcheck/tests/varinfo5                  (stderr)
-massif/tests/new-cpp                     (post)
-massif/tests/overloaded-new              (post)
+
+...checking makefile consistency
+...checking header files and include directives
+*** File fjalar/mc_main.c must not include ../coregrind/pub_core_aspacemgr.h
+make: *** [regtest] Error 1
 @end example
 
-(@command{badfree3} and @command{varinfo5} seem to be sensitive to the
+(Almost all the @command{gsbserver_test} failures are a simple string 
+difference, apparently due to CentOS.
+@command{badfree3} and @command{varinfo5} seem to be sensitive to the
 current directory pathname - they often pass when run in a clean
-Valgrind directory, but fail when run as part of a fjalar enlistment.)
+Valgrind directory, but fail when run as part of a fjalar enlistment.
+Note also the final include file failure - this is expected behavior.)
 
 Return to the root of your @file{valgrind-new} directory.  Then run
 the following commands:
@@ -729,15 +737,15 @@ time in order to make review of the output easier.
 (The @command{lines-notbetween} command is from
 @uref{http://mernst.github.io/plume-lib/, plume-lib}.)
 
-@example
+@smallexample
 cd $INV/fjalar/valgrind/fjalar
 patch -p1 -lu -f < ~/tmp/include.patch --dry-run \
-  | lines-notbetween --inclusive "can't find file to patch" "No file to patch.  Skipping patch."
+ | lines-notbetween --inclusive "can't find file to patch" "No file to patch.  Skipping patch."
 
 cd $INV/fjalar/valgrind/fjalar
 patch -p2 -lu -f -F3 < ~/tmp/binutils.patch --dry-run \
-  | lines-notbetween --inclusive "can't find file to patch" "No file to patch.  Skipping patch."
-@end example
+ | lines-notbetween --inclusive "can't find file to patch" "No file to patch.  Skipping patch."
+@end smallexample
 
 There may be a few "failed hunks" (conflicts) - this is all right, we
 will explain how to deal with these shortly.  If there are massive
@@ -968,8 +976,9 @@ make test
 While a few tests may not pass, the results should be identical to
 the results obtained when running these tests
 as described in @ref{Get New Valgrind Regtest Baseline Results}
-or @ref{Get Current Valgrind Regtest Baseline Results} - as appropriate
-for the type of  Fjalar update you are doing.
+(for a Valgrind update)
+or @ref{Get Current Valgrind Regtest Baseline Results}
+(for a Binutils update).
 
 
 @node Testing Fjalar
