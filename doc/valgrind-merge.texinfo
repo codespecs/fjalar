@@ -634,8 +634,7 @@ current Fjalar sources.
 
 @example
 cd $INV/fjalar
-make build
-make test 2>&1 | tee test.log
+make clean build && make test 2>&1 | tee test.log
 @end example
 
 @noindent
@@ -705,7 +704,8 @@ Before applying any patches, run Daikon's Kvasir tests:
 
 @noindent
 @xref{Verify current sources pass the regression tests} for the expected
-results of running these tests.
+results of running these tests (but don't follow any of the other
+instructions in that section).
 
 Now we can merge the changes by applying the patch files.
 The patch files probably include files that Fjalar does not use.
@@ -727,8 +727,8 @@ If you plan to use such a tool, you should make copies of these
 two files prior to applying the patch.
 
 @example
-cp dwarf.c dwarf.c.orig
-cp readelf.c readelf.c.orig
+cp -pf dwarf.c dwarf.c.orig
+cp -pf readelf.c readelf.c.orig
 @end example
 
 It can be difficult to undo a patch operation, so you should first attempt
@@ -747,7 +747,7 @@ patch -p2 -lu -f -F3 < ~/tmp/binutils.patch --dry-run \
  | lines-notbetween --inclusive "can't find file to patch" "No file to patch.  Skipping patch."
 @end smallexample
 
-There may be a few "failed hunks" (conflicts) - this is all right, we
+There may be a few "failed hunks" (conflicts) --- this is all right, we
 will explain how to deal with these shortly.  If there are massive
 numbers of conflicts or some other indication of failure,
 there might have been a problem in the previous diffing step.
