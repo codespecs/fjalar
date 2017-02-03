@@ -126,7 +126,6 @@ If your operating system is Ubuntu, run
 @example
 sudo apt-get install binutils-dev
 @end example
-@c (but, the Kvasir tests do not pass on Ubuntu as of 9/2015!)
 
 
 @node Ensure your source is up to date
@@ -183,16 +182,9 @@ make -C $INV/daikon/tests/kvasir-tests nightly-summary-w-daikon
 
 The tests should pass. If any tests fail, fix them, then start over from
 the beginning.
-As of August 3, 2016, all tests pass on a standard UW/CSE machine running Fedora 22.
-They also pass on Fedora 23 and Ubuntu 16.04.  (We use Travis/Docker to run
+As of February 3, 2017, all tests pass on a standard UW/CSE machine running CentOS 7.3.1611.
+They also pass on Fedora 23, 24, 25 and Ubuntu 16.04.  (We use Travis/Docker to run
 these configurations.)
-However, on Fedora 24 four tests currently fail:
-@example
-SimpleClassesTest/SimpleClassesTest.decls
-flex-pristine/flex-pristine.comp
-gtest/gtest.comp
-gzip/gzip.comp
-@end example
 
 At this point, the source trees are ready for the merge.
 However, the Fjalar repository contains
@@ -545,14 +537,30 @@ This keeps the files used during the source merge update to a minimum.
 You will need to make sure @command{gdb} is installed on your machine
 to run these tests. Also, they are very sensitive
 to the system software on the host machine.  In most cases, there will be
-some failures. (Currently, 7 of 654 tests do not pass on a standard UW/CSE
+some failures. (Currently, 7 of 657 tests do not pass on a standard UW/CSE
 system running CentOS 7.3.1611.) Rather, it is important to capture the results
 as they should be identical after the source merge.
 
-Here is a copy of the last few lines from the latest run of these tests (01/17/2017):
+To run the @command{regtest} verification tests,
+return to the root of your @file{valgrind-new} directory.  Then run
+the following commands:
 
 @example
-== 654 tests, 2 stderr failures, 0 stdout failures, 1 stderrB failure,
+./configure --prefix=`pwd`/inst
+make all install
+make regtest > test.log 2>&1
+@end example
+
+@noindent
+This will take about 10-15 minutes.  A summary of the @command{regtest}
+results will be at the end of the log file.  We will use these results in
+@ref{Testing Valgrind}.
+
+Here is a copy of the last few lines from the latest run of these tests (01/17/2017)
+on a UW/CSE CentOS based system:
+
+@example
+== 657 tests, 2 stderr failures, 0 stdout failures, 1 stderrB failure,
                                   4 stdoutB failures, 0 post failures ==
 gdbserver_tests/hginfo                   (stdoutB)
 gdbserver_tests/hgtls                    (stdoutB)
@@ -575,19 +583,6 @@ current directory pathname - they often pass when run in a clean
 Valgrind directory, but fail when run as part of a fjalar enlistment.
 Note also the final include file failure - this is expected behavior.)
 
-Return to the root of your @file{valgrind-new} directory.  Then run
-the following commands:
-
-@example
-./configure --prefix=`pwd`/inst
-make all install
-make regtest > test.log 2>&1
-@end example
-
-@noindent
-This will take about 10-15 minutes.  A summary of the @command{regtest}
-results will be at the end of the log file.  We will use these results in
-@ref{Testing Valgrind}.
 
 
 @node Updating Readelf from Binutils
