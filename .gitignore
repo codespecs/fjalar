@@ -79,6 +79,7 @@ valgrind/drd/tests/annotate_smart_pointer
 valgrind/drd/tests/annotate_static
 valgrind/drd/tests/annotate_trace_memory
 valgrind/drd/tests/atomic_var
+valgrind/drd/tests/boost_thread
 valgrind/drd/tests/bug-235681
 valgrind/drd/tests/circular_buffer
 valgrind/drd/tests/concurrent_close
