@@ -8017,7 +8017,7 @@ static void mc_pre_clo_init(void)
    VG_(details_name)            ("kvasir");
    /* This next line is automatically updated by the toplevel Daikon
       distribution Makefile; be careful with its formatting -SMcC */
-   VG_(details_version)         ("5.5.1");
+   VG_(details_version)         ("5.5.2");
    VG_(details_description)     ("C/C++ Language Front-End for Daikon with DynComp comparability analysis tool.");
    VG_(details_copyright_author)(
    "Copyright (C) 2007-2016, University of Washington CSE PLSE Group");
