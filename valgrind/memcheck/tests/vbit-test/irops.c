@@ -1,4 +1,29 @@
+
 /* -*- mode: C; c-basic-offset: 3; -*- */
+
+/*
+   This file is part of MemCheck, a heavyweight Valgrind tool for
+   detecting memory errors.
+
+   Copyright (C) 2012-2015  Florian Krohm
+
+   This program is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 2 of the
+   License, or (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful, but
+   WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
+   02111-1307, USA.
+
+   The GNU General Public License is contained in the file COPYING.
+*/
 
 #include <stdio.h>    // fprintf
 #include <stdlib.h>   // exit
@@ -214,6 +239,10 @@ static irop_t irops[] = {
   { DEFOP(Iop_SubF128,       UNDEF_ALL), .s390x = 1, .amd64 = 0, .x86 = 0, .arm = 0, .ppc64 = 0, .ppc32 = 0, .mips32 = 0, .mips64 = 0, .tilegx = 0 },
   { DEFOP(Iop_MulF128,       UNDEF_ALL), .s390x = 1, .amd64 = 0, .x86 = 0, .arm = 0, .ppc64 = 0, .ppc32 = 0, .mips32 = 0, .mips64 = 0, .tilegx = 0 },
   { DEFOP(Iop_DivF128,       UNDEF_ALL), .s390x = 1, .amd64 = 0, .x86 = 0, .arm = 0, .ppc64 = 0, .ppc32 = 0, .mips32 = 0, .mips64 = 0, .tilegx = 0 },
+  { DEFOP(Iop_MAddF128,    UNDEF_ALL), .s390x = 0, .amd64 = 0, .x86 = 0, .arm = 0, .ppc64 = 0, .ppc32 = 0, .mips32 = 0, .mips64 = 0, .tilegx = 0 },
+  { DEFOP(Iop_MSubF128,    UNDEF_ALL), .s390x = 0, .amd64 = 0, .x86 = 0, .arm = 0, .ppc64 = 0, .ppc32 = 0, .mips32 = 0, .mips64 = 0, .tilegx = 0 },
+  { DEFOP(Iop_NegMAddF128, UNDEF_ALL), .s390x = 0, .amd64 = 0, .x86 = 0, .arm = 0, .ppc64 = 0, .ppc32 = 0, .mips32 = 0, .mips64 = 0, .tilegx = 0 },
+  { DEFOP(Iop_NegMSubF128, UNDEF_ALL), .s390x = 0, .amd64 = 0, .x86 = 0, .arm = 0, .ppc64 = 0, .ppc32 = 0, .mips32 = 0, .mips64 = 0, .tilegx = 0 },
   { DEFOP(Iop_NegF128,       UNDEF_ALL), .s390x = 1, .amd64 = 0, .x86 = 0, .arm = 0, .ppc64 = 0, .ppc32 = 0, .mips32 = 0, .mips64 = 0, .tilegx = 0 },
   { DEFOP(Iop_AbsF128,       UNDEF_ALL), .s390x = 1, .amd64 = 0, .x86 = 0, .arm = 0, .ppc64 = 0, .ppc32 = 0, .mips32 = 0, .mips64 = 0, .tilegx = 0 },
   { DEFOP(Iop_SqrtF128,      UNDEF_ALL), .s390x = 1, .amd64 = 0, .x86 = 0, .arm = 0, .ppc64 = 0, .ppc32 = 0, .mips32 = 0, .mips64 = 0, .tilegx = 0 },
@@ -227,8 +256,14 @@ static irop_t irops[] = {
   { DEFOP(Iop_F128toI64S,    UNDEF_ALL), .s390x = 1, .amd64 = 0, .x86 = 0, .arm = 0, .ppc64 = 0, .ppc32 = 0, .mips32 = 0, .mips64 = 0, .tilegx = 0 },
   { DEFOP(Iop_F128toI32U,    UNDEF_ALL), .s390x = 1, .amd64 = 0, .x86 = 0, .arm = 0, .ppc64 = 0, .ppc32 = 0, .mips32 = 0, .mips64 = 0, .tilegx = 0 },
   { DEFOP(Iop_F128toI64U,    UNDEF_ALL), .s390x = 1, .amd64 = 0, .x86 = 0, .arm = 0, .ppc64 = 0, .ppc32 = 0, .mips32 = 0, .mips64 = 0, .tilegx = 0 },
+  { DEFOP(Iop_F128toI128S,    UNDEF_ALL), .s390x = 0, .amd64 = 0, .x86 = 0, .arm = 0, .ppc64 = 0, .ppc32 = 0, .mips32 = 0, .mips64 = 0, .tilegx = 0 },
   { DEFOP(Iop_F128toF64,     UNDEF_ALL), .s390x = 1, .amd64 = 0, .x86 = 0, .arm = 0, .ppc64 = 0, .ppc32 = 0, .mips32 = 0, .mips64 = 0, .tilegx = 0 },
   { DEFOP(Iop_F128toF32,     UNDEF_ALL), .s390x = 1, .amd64 = 0, .x86 = 0, .arm = 0, .ppc64 = 0, .ppc32 = 0, .mips32 = 0, .mips64 = 0, .tilegx = 0 },
+  { DEFOP(Iop_RndF128,        UNDEF_ALL), .s390x = 0, .amd64 = 0, .x86 = 0, .arm = 0, .ppc64 = 0, .ppc32 = 0, .mips32 = 0, .mips64 = 0, .tilegx = 0 },
+  { DEFOP(Iop_TruncF128toI32S,UNDEF_ALL), .s390x = 0, .amd64 = 0, .x86 = 0, .arm = 0, .ppc64 = 0, .ppc32 = 0, .mips32 = 0, .mips64 = 0, .tilegx = 0 },
+  { DEFOP(Iop_TruncF128toI32U,UNDEF_ALL), .s390x = 0, .amd64 = 0, .x86 = 0, .arm = 0, .ppc64 = 0, .ppc32 = 0, .mips32 = 0, .mips64 = 0, .tilegx = 0 },
+  { DEFOP(Iop_TruncF128toI64U,UNDEF_ALL), .s390x = 0, .amd64 = 0, .x86 = 0, .arm = 0, .ppc64 = 0, .ppc32 = 0, .mips32 = 0, .mips64 = 0, .tilegx = 0 },
+  { DEFOP(Iop_TruncF128toI64S,UNDEF_ALL), .s390x = 0, .amd64 = 0, .x86 = 0, .arm = 0, .ppc64 = 0, .ppc32 = 0, .mips32 = 0, .mips64 = 0, .tilegx = 0 },
   { DEFOP(Iop_AtanF64,       UNDEF_ALL), .s390x = 0, .amd64 = 1, .x86 = 1, .arm = 0, .ppc64 = 0, .ppc32 = 0, .mips32 = 0, .mips64 = 0, .tilegx = 0 },
   { DEFOP(Iop_Yl2xF64,       UNDEF_ALL), .s390x = 0, .amd64 = 1, .x86 = 1, .arm = 0, .ppc64 = 0, .ppc32 = 0, .mips32 = 0, .mips64 = 0, .tilegx = 0 },
   { DEFOP(Iop_Yl2xp1F64,     UNDEF_ALL), .s390x = 0, .amd64 = 1, .x86 = 1, .arm = 0, .ppc64 = 0, .ppc32 = 0, .mips32 = 0, .mips64 = 0, .tilegx = 0 },
@@ -600,6 +635,8 @@ static irop_t irops[] = {
   { DEFOP(Iop_Fixed32SToF32x4_RN, UNDEF_UNKNOWN), },
   { DEFOP(Iop_F32toF16x4, UNDEF_UNKNOWN), },
   { DEFOP(Iop_F16toF32x4, UNDEF_UNKNOWN), },
+  { DEFOP(Iop_F64toF16x2, UNDEF_UNKNOWN), },
+  { DEFOP(Iop_F16toF64x2, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Add32F0x4, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Sub32F0x4, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Mul32F0x4, UNDEF_UNKNOWN), },
@@ -705,12 +742,13 @@ static irop_t irops[] = {
   { DEFOP(Iop_MulHi32Ux4, UNDEF_UNKNOWN), },
   { DEFOP(Iop_MulHi16Sx8, UNDEF_UNKNOWN), },
   { DEFOP(Iop_MulHi32Sx4, UNDEF_UNKNOWN), },
-  { DEFOP(Iop_MullEven8Ux16, UNDEF_UNKNOWN), },
-  { DEFOP(Iop_MullEven16Ux8, UNDEF_UNKNOWN), },
-  { DEFOP(Iop_MullEven32Ux4, UNDEF_UNKNOWN), },
-  { DEFOP(Iop_MullEven8Sx16, UNDEF_UNKNOWN), },
-  { DEFOP(Iop_MullEven16Sx8, UNDEF_UNKNOWN), },
-  { DEFOP(Iop_MullEven32Sx4, UNDEF_UNKNOWN), },
+  /* Result of the Iop_MullEvenBxE is 2*BxE/2 */
+  { DEFOP(Iop_MullEven8Ux16, UNDEF_ALL_8x16_EVEN), .ppc64 = 1, .ppc32 = 1 },
+  { DEFOP(Iop_MullEven16Ux8, UNDEF_ALL_16x8_EVEN), .ppc64 = 1, .ppc32 = 1 },
+  { DEFOP(Iop_MullEven32Ux4, UNDEF_ALL_32x4_EVEN), .ppc64 = 1, .ppc32 = 1 },
+  { DEFOP(Iop_MullEven8Sx16, UNDEF_ALL_8x16_EVEN), .ppc64 = 1, .ppc32 = 1 },
+  { DEFOP(Iop_MullEven16Sx8, UNDEF_ALL_16x8_EVEN), .ppc64 = 1, .ppc32 = 1 },
+  { DEFOP(Iop_MullEven32Sx4, UNDEF_ALL_32x4_EVEN), .ppc64 = 1, .ppc32 = 1 },
   { DEFOP(Iop_Mull8Ux8, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Mull8Sx8, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Mull16Ux4, UNDEF_UNKNOWN), },
@@ -748,19 +786,19 @@ static irop_t irops[] = {
   { DEFOP(Iop_Max8Sx16, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Max16Sx8, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Max32Sx4, UNDEF_UNKNOWN), },
-  { DEFOP(Iop_Max64Sx2, UNDEF_UNKNOWN), },
+  { DEFOP(Iop_Max64Sx2, UNDEF_ALL_64x2), .ppc64 = 1, .ppc32 = 1 },
   { DEFOP(Iop_Max8Ux16, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Max16Ux8, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Max32Ux4, UNDEF_UNKNOWN), },
-  { DEFOP(Iop_Max64Ux2, UNDEF_UNKNOWN), },
+  { DEFOP(Iop_Max64Ux2, UNDEF_ALL_64x2), .ppc64 = 1, .ppc32 = 1 },
   { DEFOP(Iop_Min8Sx16, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Min16Sx8, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Min32Sx4, UNDEF_UNKNOWN), },
-  { DEFOP(Iop_Min64Sx2, UNDEF_UNKNOWN), },
+  { DEFOP(Iop_Min64Sx2, UNDEF_ALL_64x2), .ppc64 = 1, .ppc32 = 1 },
   { DEFOP(Iop_Min8Ux16, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Min16Ux8, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Min32Ux4, UNDEF_UNKNOWN), },
-  { DEFOP(Iop_Min64Ux2, UNDEF_UNKNOWN), },
+  { DEFOP(Iop_Min64Ux2, UNDEF_ALL_64x2), .ppc64 = 1, .ppc32 = 1 },
   { DEFOP(Iop_CmpEQ8x16, UNDEF_UNKNOWN), },
   { DEFOP(Iop_CmpEQ16x8, UNDEF_UNKNOWN), },
   { DEFOP(Iop_CmpEQ32x4, UNDEF_UNKNOWN), },
@@ -772,12 +810,16 @@ static irop_t irops[] = {
   { DEFOP(Iop_CmpGT8Ux16, UNDEF_UNKNOWN), },
   { DEFOP(Iop_CmpGT16Ux8, UNDEF_UNKNOWN), },
   { DEFOP(Iop_CmpGT32Ux4, UNDEF_UNKNOWN), },
-  { DEFOP(Iop_CmpGT64Ux2, UNDEF_UNKNOWN), },
+  { DEFOP(Iop_CmpGT64Ux2, UNDEF_ALL_64x2), .ppc64 = 1, .ppc32 = 1 },
   { DEFOP(Iop_Cnt8x16, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Clz8x16, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Clz16x8, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Clz32x4, UNDEF_UNKNOWN), },
-  { DEFOP(Iop_Clz64x2, UNDEF_UNKNOWN), },
+  { DEFOP(Iop_Clz64x2, UNDEF_ALL_64x2), .ppc64 = 1, .ppc32 = 1  },
+  { DEFOP(Iop_Ctz8x16, UNDEF_UNKNOWN), },
+  { DEFOP(Iop_Ctz16x8, UNDEF_UNKNOWN), },
+  { DEFOP(Iop_Ctz32x4, UNDEF_UNKNOWN), },
+  { DEFOP(Iop_Ctz64x2, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Cls8x16, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Cls16x8, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Cls32x4, UNDEF_UNKNOWN), },
@@ -812,7 +854,7 @@ static irop_t irops[] = {
   { DEFOP(Iop_Rol8x16, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Rol16x8, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Rol32x4, UNDEF_UNKNOWN), },
-  { DEFOP(Iop_Rol64x2, UNDEF_UNKNOWN), },
+  { DEFOP(Iop_Rol64x2, UNDEF_64x2_ROTATE), .ppc64 = 1, .ppc32 = 1 },
   { DEFOP(Iop_QShl8x16, UNDEF_UNKNOWN), },
   { DEFOP(Iop_QShl16x8, UNDEF_UNKNOWN), },
   { DEFOP(Iop_QShl32x4, UNDEF_UNKNOWN), },
@@ -893,18 +935,18 @@ static irop_t irops[] = {
   { DEFOP(Iop_QNarrowBin32Uto16Ux8, UNDEF_UNKNOWN), },
   { DEFOP(Iop_NarrowBin16to8x16, UNDEF_UNKNOWN), },
   { DEFOP(Iop_NarrowBin32to16x8, UNDEF_UNKNOWN), },
-  { DEFOP(Iop_NarrowBin64to32x4, UNDEF_UNKNOWN), },
+  { DEFOP(Iop_NarrowBin64to32x4, UNDEF_NARROW256_AtoB), .ppc64 = 1, .ppc32 = 1 },
   { DEFOP(Iop_NarrowUn16to8x8, UNDEF_UNKNOWN), },
   { DEFOP(Iop_NarrowUn32to16x4, UNDEF_UNKNOWN), },
   { DEFOP(Iop_NarrowUn64to32x2, UNDEF_UNKNOWN), },
   { DEFOP(Iop_QNarrowUn16Sto8Sx8, UNDEF_UNKNOWN), },
   { DEFOP(Iop_QNarrowUn32Sto16Sx4, UNDEF_UNKNOWN), },
   { DEFOP(Iop_QNarrowUn64Sto32Sx2, UNDEF_UNKNOWN), },
-  { DEFOP(Iop_QNarrowBin64Sto32Sx4, UNDEF_UNKNOWN), },
+  { DEFOP(Iop_QNarrowBin64Sto32Sx4, UNDEF_NARROW256_AtoB), .ppc64 = 1, .ppc32 = 1 },
   { DEFOP(Iop_QNarrowUn16Sto8Ux8, UNDEF_UNKNOWN), },
   { DEFOP(Iop_QNarrowUn32Sto16Ux4, UNDEF_UNKNOWN), },
   { DEFOP(Iop_QNarrowUn64Sto32Ux2, UNDEF_UNKNOWN), },
-  { DEFOP(Iop_QNarrowBin64Uto32Ux4, UNDEF_UNKNOWN), },
+  { DEFOP(Iop_QNarrowBin64Uto32Ux4, UNDEF_NARROW256_AtoB), .ppc64 = 1, .ppc32 = 1 },
   { DEFOP(Iop_QNarrowUn16Uto8Ux8, UNDEF_UNKNOWN), },
   { DEFOP(Iop_QNarrowUn32Uto16Ux4, UNDEF_UNKNOWN), },
   { DEFOP(Iop_QNarrowUn64Uto32Ux2, UNDEF_UNKNOWN), },
@@ -954,6 +996,11 @@ static irop_t irops[] = {
   { DEFOP(Iop_GetMSBs8x16, UNDEF_UNKNOWN), },
   { DEFOP(Iop_RecipEst32Ux4, UNDEF_UNKNOWN), },
   { DEFOP(Iop_RSqrtEst32Ux4, UNDEF_UNKNOWN), },
+  { DEFOP(Iop_MulI128by10, UNDEF_UNKNOWN), },
+  { DEFOP(Iop_MulI128by10Carry, UNDEF_UNKNOWN), },
+  { DEFOP(Iop_MulI128by10E, UNDEF_UNKNOWN), },
+  { DEFOP(Iop_MulI128by10ECarry, UNDEF_UNKNOWN), },
+
   /* ------------------ 256-bit SIMD Integer. ------------------ */
   { DEFOP(Iop_V256to64_0, UNDEF_UNKNOWN), },
   { DEFOP(Iop_V256to64_1, UNDEF_UNKNOWN), },
@@ -1040,20 +1087,22 @@ static irop_t irops[] = {
   { DEFOP(Iop_Min32Fx8, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Max64Fx4, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Min64Fx4, UNDEF_UNKNOWN), },
-  { DEFOP(Iop_BCDAdd, UNDEF_UNKNOWN), },
-  { DEFOP(Iop_BCDSub, UNDEF_UNKNOWN), },
-  { DEFOP(Iop_PolynomialMulAdd8x16, UNDEF_UNKNOWN), },
-  { DEFOP(Iop_PolynomialMulAdd16x8, UNDEF_UNKNOWN), },
-  { DEFOP(Iop_PolynomialMulAdd32x4, UNDEF_UNKNOWN), },
-  { DEFOP(Iop_PolynomialMulAdd64x2, UNDEF_UNKNOWN), },
-  { DEFOP(Iop_CipherV128,   UNDEF_UNKNOWN), },
-  { DEFOP(Iop_CipherLV128,  UNDEF_UNKNOWN), },
-  { DEFOP(Iop_CipherSV128,  UNDEF_UNKNOWN), },
-  { DEFOP(Iop_NCipherV128,  UNDEF_UNKNOWN), },
-  { DEFOP(Iop_NCipherLV128, UNDEF_UNKNOWN), },
-  { DEFOP(Iop_SHA512, UNDEF_UNKNOWN), },
-  { DEFOP(Iop_SHA256, UNDEF_UNKNOWN), },
-  { DEFOP(Iop_PwBitMtxXpose64x2, UNDEF_UNKNOWN), },
+  { DEFOP(Iop_BCDAdd, UNDEF_ALL), .ppc64 = 1, .ppc32 = 1 },
+  { DEFOP(Iop_BCDSub, UNDEF_ALL), .ppc64 = 1, .ppc32 = 1 },
+  { DEFOP(Iop_I128StoBCD128, UNDEF_UNKNOWN), },
+  { DEFOP(Iop_BCD128toI128S, UNDEF_UNKNOWN), },
+  { DEFOP(Iop_PolynomialMulAdd8x16, UNDEF_ALL_8x16), .ppc64 = 1, .ppc32 = 1 },
+  { DEFOP(Iop_PolynomialMulAdd16x8, UNDEF_ALL_16x8), .ppc64 = 1, .ppc32 = 1 },
+  { DEFOP(Iop_PolynomialMulAdd32x4, UNDEF_ALL_32x4), .ppc64 = 1, .ppc32 = 1 },
+  { DEFOP(Iop_PolynomialMulAdd64x2, UNDEF_ALL_64x2), .ppc64 = 1, .ppc32 = 1 },
+  { DEFOP(Iop_CipherV128,   UNDEF_ALL_64x2), .ppc64 = 1, .ppc32 = 1 },
+  { DEFOP(Iop_CipherLV128,  UNDEF_ALL_64x2), .ppc64 = 1, .ppc32 = 1 },
+  { DEFOP(Iop_CipherSV128,  UNDEF_ALL_64x2), .ppc64 = 1, .ppc32 = 1 },
+  { DEFOP(Iop_NCipherV128,  UNDEF_ALL_64x2), .ppc64 = 1, .ppc32 = 1 },
+  { DEFOP(Iop_NCipherLV128, UNDEF_ALL_64x2), .ppc64 = 1, .ppc32 = 1 },
+  { DEFOP(Iop_SHA512, UNDEF_SOME), .ppc64 = 1, .ppc32 = 1 },
+  { DEFOP(Iop_SHA256, UNDEF_SOME), .ppc64 = 1, .ppc32 = 1 },
+  { DEFOP(Iop_PwBitMtxXpose64x2, UNDEF_64x2_TRANSPOSE), .ppc64 = 1, .ppc32 = 1 },
 };
 
 /* Force compile time failure in case libvex_ir.h::IROp was updated
@@ -1073,6 +1122,8 @@ get_irop(IROp op)
       if (p->op == op) {
 #ifdef __s390x__
 #define S390X_FEATURES "../../../tests/s390x_features"
+        int rc;
+
          switch (op) {
          case Iop_I32StoD64:    // CDFTR
          case Iop_I32StoD128:   // CXFTR
@@ -1098,7 +1149,6 @@ get_irop(IROp op)
          case Iop_F64toI64U:
          case Iop_F128toI32U:
          case Iop_F128toI64U: {
-            int rc;
             /* These IROps require the floating point extension facility */
             rc = system(S390X_FEATURES " s390x-fpext");
             // s390x_features returns 1 if feature does not exist
@@ -1125,8 +1175,8 @@ get_irop(IROp op)
          case Iop_D128toF32:
          case Iop_D128toF64:
          case Iop_D128toF128: {
-            int rc;
-            /* These IROps require the Perform Floating Point Operation facility */
+            /* These IROps require the Perform Floating Point Operation
+               facility */
             rc = system(S390X_FEATURES " s390x-pfpo");
             // s390x_features returns 1 if feature does not exist
             rc /= 256;
@@ -1144,6 +1194,7 @@ get_irop(IROp op)
 #endif
 #ifdef __powerpc__
 #define  MIN_POWER_ISA  "../../../tests/min_power_isa"
+         int rc;
 
          switch (op) {
          case Iop_DivS64E:
@@ -1155,9 +1206,89 @@ get_irop(IROp op)
          case Iop_I64UtoF64:
          case Iop_I64UtoF32:
          case Iop_I64StoD64: {
-            int rc;
-            /* IROps require a processor that supports ISA 2.06 or newer */
+            /* IROps require a processor that supports ISA 2.06 (Power 7) or newer */
             rc = system(MIN_POWER_ISA " 2.06 ");
+            rc /= 256;
+            /* MIN_POWER_ISA returns 0 if underlying HW supports the
+             * specified ISA or newer. Returns 1 if the HW does not support
+             * the specified ISA.  Returns 2 on error.
+             */
+            if (rc == 1) return NULL;
+            if (rc > 2) {
+               panic(" ERROR, min_power_isa() return code is invalid.\n");
+            }
+         }
+         break;
+
+         case Iop_PwBitMtxXpose64x2:
+         case Iop_Clz64x2:
+         case Iop_BCDAdd:
+         case Iop_BCDSub:
+         case Iop_PolynomialMulAdd8x16:
+         case Iop_PolynomialMulAdd16x8:
+         case Iop_PolynomialMulAdd32x4:
+         case Iop_PolynomialMulAdd64x2:
+         case Iop_CipherV128:
+         case Iop_CipherLV128:
+         case Iop_CipherSV128:
+         case Iop_NCipherV128:
+         case Iop_NCipherLV128:
+         case Iop_SHA512:
+         case Iop_SHA256:
+         case Iop_MullEven8Ux16:
+         case Iop_MullEven16Ux8:
+         case Iop_MullEven32Ux4:
+         case Iop_MullEven8Sx16:
+         case Iop_MullEven16Sx8:
+         case Iop_MullEven32Sx4:
+         case Iop_Max64Sx2:
+         case Iop_Max64Ux2:
+         case Iop_Min64Sx2:
+         case Iop_Min64Ux2:
+         case Iop_CmpGT64Ux2:
+         case Iop_Rol64x2:
+         case Iop_QNarrowBin64Sto32Sx4:
+         case Iop_QNarrowBin64Uto32Ux4:
+         case Iop_NarrowBin64to32x4: {
+            /* IROps require a processor that supports ISA 2.07 (Power 8) or newer */
+            rc = system(MIN_POWER_ISA " 2.07 ");
+            rc /= 256;
+            /* MIN_POWER_ISA returns 0 if underlying HW supports the
+             * specified ISA or newer. Returns 1 if the HW does not support
+             * the specified ISA.  Returns 2 on error.
+             */
+            if (rc == 1) return NULL;
+            if (rc > 2) {
+               panic(" ERROR, min_power_isa() return code is invalid.\n");
+            }
+         }
+         break;
+
+         case Iop_MAddF128:
+         case Iop_MSubF128:
+         case Iop_NegMAddF128:
+         case Iop_NegMSubF128:
+         case Iop_F128toI128S:
+         case Iop_RndF128:
+         case Iop_I64UtoF128:
+         case Iop_I64StoF128:
+         case Iop_F64toF128:
+         case Iop_F128toF64:
+         case Iop_F128toF32:
+         case Iop_TruncF128toI32S:
+         case Iop_TruncF128toI32U:
+         case Iop_TruncF128toI64U:
+         case Iop_TruncF128toI64S:
+         case Iop_F16toF32x4:
+         case Iop_F32toF16x4:
+         case Iop_F64toF16x2:
+         case Iop_F16toF64x2:
+         case Iop_MulI128by10:
+         case Iop_MulI128by10Carry:
+         case Iop_MulI128by10E:
+         case Iop_MulI128by10ECarry: {
+            /* IROps require a processor that supports ISA 3.00 (Power 9) or newer */
+            rc = system(MIN_POWER_ISA " 3.00 ");
             rc /= 256;
             /* MIN_POWER_ISA returns 0 if underlying HW supports the
              * specified ISA or newer. Returns 1 if the HW does not support

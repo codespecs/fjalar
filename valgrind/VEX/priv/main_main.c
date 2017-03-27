@@ -916,8 +916,13 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
    irsb = do_iropt_BB ( irsb, specHelper, preciseMemExnsFn, pxControl,
                               vta->guest_bytes_addr,
                               vta->arch_guest );
-   sanityCheckIRSB( irsb, "after initial iropt", 
-                    True/*must be flat*/, guest_word_type );
+
+   // JRS 2016 Aug 03: Sanity checking is expensive, we already checked
+   // the output of the front end, and iropt never screws up the IR by
+   // itself, unless it is being hacked on.  So remove this post-iropt
+   // check in "production" use.
+   // sanityCheckIRSB( irsb, "after initial iropt", 
+   //                  True/*must be flat*/, guest_word_type );
 
    if (vex_traceflags & VEX_TRACE_OPT1) {
       vex_printf("\n------------------------" 
@@ -953,9 +958,12 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
       vex_printf("\n");
    }
 
-   if (vta->instrument1 || vta->instrument2)
-      sanityCheckIRSB( irsb, "after instrumentation",
-                       True/*must be flat*/, guest_word_type );
+   // JRS 2016 Aug 03: as above, this never actually fails in practice.
+   // And we'll sanity check anyway after the post-instrumentation
+   // cleanup pass.  So skip this check in "production" use.
+   // if (vta->instrument1 || vta->instrument2)
+   //    sanityCheckIRSB( irsb, "after instrumentation",
+   //                     True/*must be flat*/, guest_word_type );
 
    /* Do a post-instrumentation cleanup pass. */
    if (vta->instrument1 || vta->instrument2) {
@@ -1547,6 +1555,7 @@ static const HChar* show_hwcaps_ppc32 ( UInt hwcaps )
       { VEX_HWCAPS_PPC32_VX,      "VX"      },
       { VEX_HWCAPS_PPC32_DFP,     "DFP"     },
       { VEX_HWCAPS_PPC32_ISA2_07, "ISA2_07" },
+      { VEX_HWCAPS_PPC32_ISA3_0,  "ISA3_0"  },
    };
    /* Allocate a large enough buffer */
    static HChar buf[sizeof prefix + 
@@ -1577,6 +1586,7 @@ static const HChar* show_hwcaps_ppc64 ( UInt hwcaps )
       { VEX_HWCAPS_PPC64_V,       "vmx"     },
       { VEX_HWCAPS_PPC64_DFP,     "DFP"     },
       { VEX_HWCAPS_PPC64_ISA2_07, "ISA2_07" },
+      { VEX_HWCAPS_PPC64_ISA3_0,  "ISA3_0"  },
    };
    /* Allocate a large enough buffer */
    static HChar buf[sizeof prefix + 
@@ -1706,12 +1716,44 @@ static const HChar* show_hwcaps_mips32 ( UInt hwcaps )
       return "Cavium-baseline";
    }
 
+   /* Ingenic baseline. */
+   if (VEX_MIPS_COMP_ID(hwcaps) == VEX_PRID_COMP_INGENIC_E1) {
+      return "Ingenic-baseline";
+   }
+
+   /* Loongson baseline. */
+   if ((VEX_MIPS_COMP_ID(hwcaps) == VEX_PRID_COMP_LEGACY) &&
+       (VEX_MIPS_PROC_ID(hwcaps) == VEX_PRID_IMP_LOONGSON_64)) {
+      return "Loongson-baseline";
+   }
+
    return "Unsupported baseline";
 }
 
 static const HChar* show_hwcaps_mips64 ( UInt hwcaps )
 {
-   return "mips64-baseline";
+   /* Netlogic baseline. */
+   if (VEX_MIPS_COMP_ID(hwcaps) == VEX_PRID_COMP_NETLOGIC) {
+      return "Netlogic-baseline";
+   }
+
+   /* Cavium baseline. */
+   if (VEX_MIPS_COMP_ID(hwcaps) == VEX_PRID_COMP_CAVIUM) {
+      return "Cavium-baseline";
+   }
+
+   /* Loongson baseline. */
+   if ((VEX_MIPS_COMP_ID(hwcaps) == VEX_PRID_COMP_LEGACY) &&
+       (VEX_MIPS_PROC_ID(hwcaps) == VEX_PRID_IMP_LOONGSON_64)) {
+      return "Loongson-baseline";
+   }
+
+   /* MIPS64 baseline. */
+   if (VEX_MIPS_COMP_ID(hwcaps) == VEX_PRID_COMP_MIPS) {
+      return "mips64-baseline";
+   }
+
+   return "Unsupported baseline";
 }
 
 static const HChar* show_hwcaps_tilegx ( UInt hwcaps )
@@ -1835,6 +1877,12 @@ static void check_hwcaps ( VexArch arch, UInt hwcaps )
                invalid_hwcaps(arch, hwcaps,
                               "ISA2_07 requires DFP capabilities\n");
          }
+
+         /* ISA 3.0 not supported on 32-bit machines */
+         if ((hwcaps & VEX_HWCAPS_PPC32_ISA3_0) != 0) {
+            invalid_hwcaps(arch, hwcaps,
+                           "ISA 3.0 not supported in 32-bit mode \n");
+         }
          return;
       }
 
@@ -1871,13 +1919,30 @@ static void check_hwcaps ( VexArch arch, UInt hwcaps )
                invalid_hwcaps(arch, hwcaps,
                               "ISA2_07 requires DFP capabilities\n");
          }
+
+         /* ISA3_0 requires everything else */
+         if ((hwcaps & VEX_HWCAPS_PPC64_ISA3_0) != 0) {
+            if ( !((hwcaps
+                    & VEX_HWCAPS_PPC64_ISA2_07) == VEX_HWCAPS_PPC64_ISA2_07))
+               invalid_hwcaps(arch, hwcaps,
+                          "ISA3_0 requires ISA2_07 capabilities\n");
+            if ( !has_v_fx_gx)
+               invalid_hwcaps(arch, hwcaps,
+                        "ISA3_0 requires VMX and FX and GX capabilities\n");
+            if ( !(hwcaps & VEX_HWCAPS_PPC64_VX))
+               invalid_hwcaps(arch, hwcaps,
+                              "ISA3_0 requires VX capabilities\n");
+            if ( !(hwcaps & VEX_HWCAPS_PPC64_DFP))
+               invalid_hwcaps(arch, hwcaps,
+                              "ISA3_0 requires DFP capabilities\n");
+         }
          return;
       }
 
       case VexArchARM: {
          Bool NEON  = ((hwcaps & VEX_HWCAPS_ARM_NEON) != 0);
+         Bool VFP3  = ((hwcaps & VEX_HWCAPS_ARM_VFP3) != 0);
          UInt level = VEX_ARM_ARCHLEVEL(hwcaps);
-
          switch (level) {
             case 5:
                if (NEON)
@@ -1890,6 +1955,11 @@ static void check_hwcaps ( VexArch arch, UInt hwcaps )
                           "NEON instructions are not supported for ARMv6.\n");
                return;
             case 7:
+               return;
+            case 8:
+               if (!NEON || !VFP3)
+                  invalid_hwcaps(arch, hwcaps,
+                          "NEON and VFP3 are required for ARMv8.\n");
                return;
             default:
                invalid_hwcaps(arch, hwcaps,
@@ -1908,19 +1978,28 @@ static void check_hwcaps ( VexArch arch, UInt hwcaps )
             invalid_hwcaps(arch, hwcaps,
                            "Host does not have long displacement facility.\n");
          return;
-        
+
       case VexArchMIPS32:
          switch (VEX_MIPS_COMP_ID(hwcaps)) {
             case VEX_PRID_COMP_MIPS:
+            case VEX_PRID_COMP_CAVIUM:
+            case VEX_PRID_COMP_INGENIC_E1:
             case VEX_PRID_COMP_BROADCOM:
             case VEX_PRID_COMP_NETLOGIC:
                return;
             default:
                invalid_hwcaps(arch, hwcaps, "Unsupported baseline\n");
          }
-      
+
       case VexArchMIPS64:
-         return;
+         switch (VEX_MIPS_COMP_ID(hwcaps)) {
+            case VEX_PRID_COMP_MIPS:
+            case VEX_PRID_COMP_CAVIUM:
+            case VEX_PRID_COMP_NETLOGIC:
+               return;
+            default:
+               invalid_hwcaps(arch, hwcaps, "Unsupported baseline\n");
+         }
 
       case VexArchTILEGX:
          return;

@@ -453,7 +453,7 @@ VG_(strtok_r) (HChar* s, const HChar* delim, HChar** saveptr)
       s = *saveptr;
 
    /* Scan leading delimiters.  */
-   s += VG_(strspn (s, delim));
+   s += VG_(strspn) (s, delim);
    if (*s == '\0')
       {
          *saveptr = s;
@@ -462,7 +462,7 @@ VG_(strtok_r) (HChar* s, const HChar* delim, HChar** saveptr)
 
    /* Find the end of the token.  */
    token = s;
-   s = VG_(strpbrk (token, delim));
+   s = VG_(strpbrk) (token, delim);
    if (s == NULL)
       /* This token finishes the string.  */
       *saveptr = token + VG_(strlen) (token);
@@ -515,6 +515,25 @@ Bool VG_(parse_Addr) ( const HChar** ppc, Addr* result )
    }
    if (used == 0)
       return False;
+   return True;
+}
+
+Bool VG_(parse_UInt) ( const HChar** ppc, UInt* result )
+{
+   ULong res64 = 0;
+   Int used, limit = 10;
+   used = 0;
+   while (VG_(isdigit)(**ppc)) {
+      res64 = res64 * 10 + ((ULong)(**ppc)) - (ULong)'0';
+      (*ppc)++;
+      used++;
+      if (used > limit) return False;
+   }
+   if (used == 0)
+      return False;
+   if ((res64 >> 32) != 0)
+      return False;
+   *result = (UInt)res64;
    return True;
 }
 

@@ -30,6 +30,7 @@ EXTRA_DIST = \
 	sh-mem-vec256-plo-yes.vgtest \
 		sh-mem-vec256-plo-yes.stderr.exp \
 		sh-mem-vec256-plo-yes.stdout.exp \
+	shr_edx.stderr.exp shr_edx.stdout.exp shr_edx.vgtest \
 	sse_memory.stderr.exp sse_memory.stdout.exp sse_memory.vgtest \
 	xor-undef-amd64.stderr.exp xor-undef-amd64.stdout.exp \
 	xor-undef-amd64.vgtest \
@@ -53,7 +54,9 @@ if HAVE_ASM_CONSTRAINT_P
 endif
 # clang 3.5.0 barfs about -mfancy-math-387
 if !COMPILER_IS_CLANG
- check_PROGRAMS += more_x87_fp
+ check_PROGRAMS += \
+ 	more_x87_fp \
+ 	shr_edx
 endif
 
 AM_CFLAGS    += @FLAG_M64@

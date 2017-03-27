@@ -32,6 +32,7 @@
 #define __PUB_TOOL_REDIR_H
 
 #include "config.h"           /* DARWIN_VERS */
+#include "pub_tool_basics.h"  // Bool and HChar
 
 /* The following macros facilitate function replacement and wrapping.
 
@@ -344,6 +345,14 @@
 #define VG_SO_SYN(name)       VgSoSyn##name
 #define VG_SO_SYN_PREFIX     "VgSoSyn"
 #define VG_SO_SYN_PREFIX_LEN 7
+
+// Special soname synonym place holder for the malloc symbols that can
+// be replaced using --soname-synonyms.  Otherwise will match all
+// public symbols in any shared library/executable.
+#define SO_SYN_MALLOC VG_SO_SYN(somalloc)
+#define SO_SYN_MALLOC_NAME "VgSoSynsomalloc"
+
+Bool VG_(is_soname_ld_so) (const HChar *soname);
 
 #endif   // __PUB_TOOL_REDIR_H
 

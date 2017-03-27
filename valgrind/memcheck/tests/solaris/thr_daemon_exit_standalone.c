@@ -3,9 +3,13 @@
 
 #include <sys/lwp.h>
 #include <sys/mman.h>
-#include <sys/segments.h>
+#include <sys/regset.h>
 #include <sys/syscall.h>
 #include <sys/ucontext.h>
+
+#if defined(__amd64) || defined(__i386)
+#include <sys/segments.h>
+#endif
 
 extern void bzero(void *ptr, size_t n);
 

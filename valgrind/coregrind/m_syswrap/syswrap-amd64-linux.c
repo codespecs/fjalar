@@ -1018,7 +1018,7 @@ static SyscallTableEntry syscall_table[] = {
    LINX_(__NR_fchmodat,		 sys_fchmodat),         // 268
    LINX_(__NR_faccessat,	 sys_faccessat),        // 269
 
-   LINX_(__NR_pselect6,		 sys_pselect6),         // 270
+   LINXY(__NR_pselect6,		 sys_pselect6),         // 270
    LINXY(__NR_ppoll,		 sys_ppoll),            // 271
    LINX_(__NR_unshare,		 sys_unshare),          // 272
    LINX_(__NR_set_robust_list,	 sys_set_robust_list),  // 273
@@ -1073,7 +1073,7 @@ static SyscallTableEntry syscall_table[] = {
 //   LIN__(__NR_sched_setattr,     sys_ni_syscall),       // 314
 
 //   LIN__(__NR_sched_getattr,     sys_ni_syscall),       // 315
-//   LIN__(__NR_renameat2,         sys_ni_syscall),       // 316
+   LINX_(__NR_renameat2,         sys_renameat2),        // 316
 //   LIN__(__NR_seccomp,           sys_ni_syscall),       // 317
    LINXY(__NR_getrandom,         sys_getrandom),        // 318
    LINXY(__NR_memfd_create,      sys_memfd_create)      // 319

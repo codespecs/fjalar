@@ -29,10 +29,10 @@
   The GNU General Public License is contained in the file COPYING.
 */
 
+#include "pub_core_basics_asm.h"
 
 #if defined(VGP_mips32_linux)
 
-#include "pub_core_basics_asm.h"
 #include "pub_core_dispatch_asm.h"
 #include "pub_core_transtab_asm.h"
 #include "libvex_guest_offsets.h"	/* for OFFSET_mips_PC */
@@ -196,7 +196,7 @@ VG_(disp_cp_xindir):
         addu $13, $13, $14
 
         lw $12, 0($13) /* t3 = VG_(tt_fast)[hash] :: ULong* */
-        addi $13, $13, 4
+        addiu $13, $13, 4
         lw $25, 0($13) /* little-endian, so comparing 1st 32bit word */
         nop
 
@@ -235,11 +235,11 @@ VG_(disp_cp_evcheck_fail):
 
 .size VG_(disp_run_translations), .-VG_(disp_run_translations)
 
-
-/* Let the linker know we do not need an executable stack */
-.section .note.GNU-stack,"",@progbits
-
 #endif // defined(VGP_mips32_linux)
+
+/* Let the linker know we don't need an executable stack */
+MARK_STACK_NO_EXEC
+
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/
 /*--------------------------------------------------------------------*/

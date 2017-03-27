@@ -6401,19 +6401,20 @@ ULong dis_FPU ( /*OUT*/Bool* decode_ok,
                fp_do_op_mem_ST_0 ( addr, "mul", dis_buf, Iop_MulF64, True );
                break;
 
-//..             case 2: /* FCOM double-real */
-//..                DIP("fcoml %s\n", dis_buf);
-//..                /* This forces C1 to zero, which isn't right. */
-//..                put_C3210( 
-//..                    binop( Iop_And32,
-//..                           binop(Iop_Shl32, 
-//..                                 binop(Iop_CmpF64, 
-//..                                       get_ST(0),
-//..                                       loadLE(Ity_F64,mkexpr(addr))),
-//..                                 mkU8(8)),
-//..                           mkU32(0x4500)
-//..                    ));
-//..                break;  
+            case 2: /* FCOM double-real */
+               DIP("fcoml %s\n", dis_buf);
+               /* This forces C1 to zero, which isn't right. */
+               put_C3210(
+                   unop(Iop_32Uto64,
+                   binop( Iop_And32,
+                          binop(Iop_Shl32,
+                                binop(Iop_CmpF64,
+                                      get_ST(0),
+                                      loadLE(Ity_F64,mkexpr(addr))),
+                                mkU8(8)),
+                          mkU32(0x4500)
+                   )));
+               break;
 
             case 3: /* FCOMP double-real */
                DIP("fcompl %s\n", dis_buf);
@@ -12847,8 +12848,10 @@ Long dis_ESC_0F__SSE2 ( Bool* decode_OK,
          IRTemp rmode = newTemp(Ity_I32);
 
          modrm = getUChar(delta);
-         do_MMX_preamble();
          if (epartIsReg(modrm)) {
+            /* Only switch to MMX mode if the source is a MMX register.
+               See comments on CVTPI2PD for details.  Fixes #357059. */
+            do_MMX_preamble();
             assign( arg64, getMMXReg(eregLO3ofRM(modrm)) );
             delta += 1;
             DIP("cvtpi2ps %s,%s\n", nameMMXReg(eregLO3ofRM(modrm)),
@@ -13396,7 +13399,8 @@ Long dis_ESC_0F__SSE2 ( Bool* decode_OK,
    case 0x5A:
       /* 0F 5A = CVTPS2PD -- convert 2 x F32 in low half mem/xmm to 2 x
          F64 in xmm(G). */
-      if (haveNo66noF2noF3(pfx) && sz == 4) {
+      if (haveNo66noF2noF3(pfx)
+          && (sz == 4 || /* ignore redundant REX.W */ sz == 8)) {
          delta = dis_CVTPS2PD_128( vbi, pfx, delta, False/*!isAvx*/ );
          goto decode_success;
       }
@@ -13518,7 +13522,8 @@ Long dis_ESC_0F__SSE2 ( Bool* decode_OK,
          goto decode_success;
       }
       /* F2 0F 5D = MINSD -- min 64F0x2 from R/M to R */
-      if (haveF2no66noF3(pfx) && sz == 4) {
+      if (haveF2no66noF3(pfx)
+          && (sz == 4 || /* ignore redundant REX.W */ sz == 8)) {
          delta = dis_SSE_E_to_G_lo64( vbi, pfx, delta, "minsd", Iop_Min64F0x2 );
          goto decode_success;
       }
@@ -13564,7 +13569,8 @@ Long dis_ESC_0F__SSE2 ( Bool* decode_OK,
          goto decode_success;
       }
       /* F2 0F 5F = MAXSD -- max 64F0x2 from R/M to R */
-      if (haveF2no66noF3(pfx) && sz == 4) {
+      if (haveF2no66noF3(pfx)
+          && (sz == 4 || /* ignore redundant REX.W */ sz == 8)) {
          delta = dis_SSE_E_to_G_lo64( vbi, pfx, delta, "maxsd", Iop_Max64F0x2 );
          goto decode_success;
       }
@@ -18665,16 +18671,25 @@ static Long dis_PCMPxSTRx ( const VexAbiInfo* vbi, Prefix pfx,
       immediate byte.  Is it one we can actually handle? Throw out any
       cases for which the helper function has not been verified. */
    switch (imm) {
-      case 0x00: case 0x02: case 0x08: case 0x0A: case 0x0C: case 0x0E:
-      case 0x12: case 0x14: case 0x18: case 0x1A:
-      case 0x30: case 0x34: case 0x38: case 0x3A:
-      case 0x40: case 0x42: case 0x44: case 0x46: case 0x4A:
+      case 0x00: case 0x02:
+      case 0x08: case 0x0A: case 0x0C: case 0x0E:
+                 case 0x12: case 0x14:
+      case 0x18: case 0x1A:
+      case 0x30:            case 0x34:
+      case 0x38: case 0x3A:
+      case 0x40: case 0x42: case 0x44: case 0x46:
+                 case 0x4A:
+                 case 0x62:
+      case 0x70: case 0x72:
          break;
       // the 16-bit character versions of the above
-      case 0x01: case 0x03: case 0x09: case 0x0B: case 0x0D:
-      case 0x13:                       case 0x1B:
-                            case 0x39: case 0x3B:
-                            case 0x45:            case 0x4B:
+      case 0x01: case 0x03:
+      case 0x09: case 0x0B: case 0x0D:
+                 case 0x13:
+      case 0x19: case 0x1B:
+      case 0x39: case 0x3B:
+                            case 0x45:
+                 case 0x4B:
          break;
       default:
          return delta0; /*FAIL*/
@@ -30085,6 +30100,136 @@ Long dis_ESC_0F38__VEX (
    return delta;
 }
 
+/* operand format:
+ * [0] = dst
+ * [n] = srcn
+ */
+static Long decode_vregW(Int count, Long delta, UChar modrm, Prefix pfx,
+                         const VexAbiInfo* vbi, IRTemp *v, UInt *dst, Int swap)
+{
+   v[0] = newTemp(Ity_V128);
+   v[1] = newTemp(Ity_V128);
+   v[2] = newTemp(Ity_V128);
+   v[3] = newTemp(Ity_V128);
+   IRTemp addr = IRTemp_INVALID;
+   Int    alen = 0;
+   HChar  dis_buf[50];
+
+   *dst = gregOfRexRM(pfx, modrm);
+   assign( v[0], getXMMReg(*dst) );
+
+   if ( epartIsReg( modrm ) ) {
+      UInt ereg = eregOfRexRM(pfx, modrm);
+      assign(swap ? v[count-1] : v[count-2], getXMMReg(ereg) );
+      DIS(dis_buf, "%s", nameXMMReg(ereg));
+   } else {
+      Bool extra_byte = (getUChar(delta - 3) & 0xF) != 9;
+                 addr = disAMode(&alen, vbi, pfx, delta, dis_buf, extra_byte);
+      assign(swap ? v[count-1] : v[count-2], loadLE(Ity_V128, mkexpr(addr)));
+      delta += alen - 1;
+   }
+
+   UInt vvvv = getVexNvvvv(pfx);
+   switch(count) {
+      case 2:
+         DIP( "%s,%s", nameXMMReg(*dst), dis_buf );
+         break;
+      case 3:
+         assign( swap ? v[1] : v[2], getXMMReg(vvvv) );
+         DIP( "%s,%s,%s", nameXMMReg(*dst), nameXMMReg(vvvv), dis_buf );
+         break;
+      case 4:
+         {
+            assign( v[1], getXMMReg(vvvv) );
+            UInt src2 = getUChar(delta + 1) >> 4;
+            assign( swap ? v[2] : v[3], getXMMReg(src2) );
+            DIP( "%s,%s,%s,%s", nameXMMReg(*dst), nameXMMReg(vvvv),
+                                nameXMMReg(src2), dis_buf );
+         }
+         break;
+   }
+   return delta + 1;
+}
+
+static Long dis_FMA4 (Prefix pfx, Long delta, UChar opc,
+                      Bool* uses_vvvv, const VexAbiInfo* vbi )
+{
+   UInt dst;
+   *uses_vvvv = True;
+
+   UChar  modrm   = getUChar(delta);
+
+   Bool zero_64F = False;
+   Bool zero_96F = False;
+   UInt is_F32   = ((opc & 0x01) == 0x00) ? 1 : 0;
+   Bool neg      = (opc & 0xF0) == 0x70;
+   Bool alt      = (opc & 0xF0) == 0x50;
+   Bool sub      = alt ? (opc & 0x0E) != 0x0E : (opc & 0x0C) == 0x0C;
+
+   IRTemp operand[4];
+   switch(opc & 0xF) {
+      case 0x0A: zero_96F = (opc >> 4) != 0x05; break;
+      case 0x0B: zero_64F = (opc >> 4) != 0x05; break;
+      case 0x0E: zero_96F = (opc >> 4) != 0x05; break;
+      case 0x0F: zero_64F = (opc >> 4) != 0x05; break;
+      default: break;
+   }
+   DIP("vfm%s",                  neg ?   "n" : "");
+   if(alt) DIP("%s",             sub ? "add" : "sub");
+   DIP("%s",                     sub ? "sub" : "add");
+   DIP("%c ", (zero_64F || zero_96F) ?   's' : 'p');
+   DIP("%c ",                is_F32  ?   's' : 'd');
+   delta = decode_vregW(4, delta, modrm, pfx, vbi, operand, &dst, getRexW(pfx));
+   DIP("\n");
+   IRExpr *src[3];
+
+   void (*putXMM[2])(UInt,Int,IRExpr*) = {&putXMMRegLane64F, &putXMMRegLane32F};
+
+   IROp size_op[] = {Iop_V128to64, Iop_V128HIto64, Iop_64to32, Iop_64HIto32};
+   IROp neg_op[]  = {Iop_NegF64, Iop_NegF32};
+   int i, j;
+   for(i = 0; i < is_F32 * 2 + 2; i++) {
+      for(j = 0; j < 3; j++) {
+         if(is_F32) {
+            src[j] = unop(Iop_ReinterpI32asF32,
+                        unop(size_op[i%2+2],
+                           unop(size_op[i/2],
+                                 mkexpr(operand[j + 1])
+                              )
+                           ));
+         } else {
+            src[j] = unop(Iop_ReinterpI64asF64,
+                        unop(size_op[i%2],
+                           mkexpr(operand[j + 1])
+                        ));
+         }
+      }
+      putXMM[is_F32](dst, i, IRExpr_Qop(is_F32 ? Iop_MAddF32 : Iop_MAddF64,
+                                             get_FAKE_roundingmode(),
+                                             neg ? unop(neg_op[is_F32], src[0])
+                                                 : src[0],
+                                             src[1],
+                                             sub ? unop(neg_op[is_F32], src[2])
+                                                 : src[2]
+                                          ));
+      if(alt) {
+         sub = !sub;
+      }
+   }
+
+   /* Zero out top bits of ymm/xmm register. */
+   putYMMRegLane128( dst, 1, mkV128(0) );
+
+   if(zero_64F || zero_96F) {
+      putXMMRegLane64( dst, 1, IRExpr_Const(IRConst_U64(0)));
+   }
+
+   if(zero_96F) {
+      putXMMRegLane32( dst, 1, IRExpr_Const(IRConst_U32(0)));
+   }
+
+   return delta+1;
+}
 
 /*------------------------------------------------------------*/
 /*---                                                      ---*/
@@ -31629,6 +31774,16 @@ Long dis_ESC_0F3A__VEX (
          /* else fall though; dis_PCMPxSTRx failed to decode it */
       }
       break;
+   case 0x5C ... 0x5F:
+   case 0x68 ... 0x6F:
+   case 0x78 ... 0x7F:
+      if (have66noF2noF3(pfx) && 0==getVexL(pfx)/*128*/) {
+         Long delta0 = delta;
+         delta = dis_FMA4( pfx, delta, opc, uses_vvvv, vbi );
+         if (delta > delta0) goto decode_success;
+         /* else fall though; dis_FMA4 failed to decode it */
+      }
+      break;
 
    case 0xDF:
       /* VAESKEYGENASSIST imm8, xmm2/m128, xmm1 = VEX.128.66.0F3A.WIG DF /r */
@@ -32074,7 +32229,7 @@ DisResult disInstr_AMD64_WRK (
    /* All decode failures end up here. */
    if (sigill_diag) {
       vex_printf("vex amd64->IR: unhandled instruction bytes: "
-                 "0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x\n",
+                 "0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x\n",
                  getUChar(delta_start+0),
                  getUChar(delta_start+1),
                  getUChar(delta_start+2),
@@ -32082,7 +32237,9 @@ DisResult disInstr_AMD64_WRK (
                  getUChar(delta_start+4),
                  getUChar(delta_start+5),
                  getUChar(delta_start+6),
-                 getUChar(delta_start+7) );
+                 getUChar(delta_start+7),
+                 getUChar(delta_start+8),
+                 getUChar(delta_start+9) );
       vex_printf("vex amd64->IR:   REX=%d REX.W=%d REX.R=%d REX.X=%d REX.B=%d\n",
                  haveREX(pfx) ? 1 : 0, getRexW(pfx), getRexR(pfx),
                  getRexX(pfx), getRexB(pfx));

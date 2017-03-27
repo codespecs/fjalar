@@ -1,4 +1,4 @@
-/* Basic ioctl test. */
+/* Basic ioctl scalar tests. */
 
 #define __EXTENSIONS__ 1
 
@@ -6,6 +6,8 @@
 
 #include <net/if.h>
 #include <sys/crypto/ioctl.h>
+#include <sys/dditypes.h>
+#include <sys/devinfo_impl.h>
 #include <sys/dtrace.h>
 #include <sys/filio.h>
 #include <sys/stat.h>		/* for _ST_FSTYPSZ */
@@ -25,6 +27,46 @@ static void sys_ioctl_POOL_STATUSQ(void)
 }
 
 /* mntio */
+__attribute__((noinline))
+static void sys_ioctl_MNTIOC_GETEXTMNTENT(void)
+{
+   GO(SYS_ioctl, "(MNTIOC_GETEXTMNTENT) 3s 1m");
+   SY(SYS_ioctl, x0 - 1, x0 + MNTIOC_GETEXTMNTENT, x0 + 1); FAIL;
+}
+
+__attribute__((noinline))
+static void sys_ioctl_MNTIOC_GETEXTMNTENT_2(void)
+{
+   struct mntentbuf embuf;
+
+   embuf.mbuf_emp = (void *) (x0 + 1);
+   embuf.mbuf_buf = (void *) (x0 + 1);
+   embuf.mbuf_bufsize = x0 + 1;
+
+   GO(SYS_ioctl, "(MNTIOC_GETEXTMNTENT) 4s 2m");
+   SY(SYS_ioctl, x0 - 1, x0 + MNTIOC_GETEXTMNTENT, &embuf + x0); FAIL;
+}
+
+__attribute__((noinline))
+static void sys_ioctl_MNTIOC_GETEXTMNTENT_3(void)
+{
+   struct extmnttab mnt;
+   struct mntentbuf embuf;
+
+   mnt.mnt_special = (void *) (x0 + 1);
+   mnt.mnt_mountp = (void *) (x0 + 1);
+   mnt.mnt_fstype = (void *) (x0 + 1);
+   mnt.mnt_mntopts = (void *) (x0 + 1);
+   mnt.mnt_time = (void *) (x0 + 1);
+
+   embuf.mbuf_emp = x0 + &mnt;
+   embuf.mbuf_buf = (void *) (x0 + 1);
+   embuf.mbuf_bufsize = x0 + 1;
+
+   GO(SYS_ioctl, "(MNTIOC_GETEXTMNTENT) 5s 6m");
+   SY(SYS_ioctl, x0 - 1, x0 + MNTIOC_GETEXTMNTENT, &embuf + x0); FAIL;
+}
+
 __attribute__((noinline))
 static void sys_ioctl_MNTIOC_GETMNTANY(void)
 {
@@ -159,6 +201,13 @@ static void sys_ioctl_I_PUSH(void)
 }
 
 __attribute__((noinline))
+static void sys_ioctl_I_FLUSH(void)
+{
+   GO(SYS_ioctl, "(I_FLUSH) 3s 0m");
+   SY(SYS_ioctl, x0 - 1, x0 + I_FLUSH, x0 + FLUSHR); FAIL;
+}
+
+__attribute__((noinline))
 static void sys_ioctl_I_STR(void)
 {
    GO(SYS_ioctl, "(I_STR) 3s 1m");
@@ -177,6 +226,13 @@ static void sys_ioctl_I_STR_2(void)
 
    GO(SYS_ioctl, "(I_STR) 4s 1m");
    SY(SYS_ioctl, x0 - 1, x0 + I_STR, &str + x0); FAIL;
+}
+
+__attribute__((noinline))
+static void sys_ioctl_I_FIND(void)
+{
+   GO(SYS_ioctl, "(I_FIND) 3s 1m");
+   SY(SYS_ioctl, x0 - 1, x0 + I_FIND, x0 + 1); FAIL;
 }
 
 __attribute__((noinline))
@@ -211,6 +267,169 @@ static void sys_ioctl_I_CANPUT(void)
 }
 
 /* sockio */
+__attribute__((noinline))
+static void sys_ioctl_SIOCGIFCONF(void)
+{
+   GO(SYS_ioctl, "(SIOCGIFCONF), 3s 2m");
+   SY(SYS_ioctl, x0 - 1, x0 + SIOCGIFCONF, x0 - 1); FAIL;
+}
+
+__attribute__((noinline))
+static void sys_ioctl_SIOCGIFCONF_2(void)
+{
+   struct ifconf ifc;
+   char buf[] = "";
+
+   ifc.ifc_len = x0 + 1;
+   ifc.ifc_buf = (void *) (x0 + buf);
+
+   GO(SYS_ioctl, "(SIOCGIFCONF), 5s 0m");
+   SY(SYS_ioctl, x0 - 1, x0 + SIOCGIFCONF, &ifc + x0); FAIL;
+}
+
+__attribute__((noinline))
+static void sys_ioctl_SIOCGIFFLAGS(void)
+{
+   GO(SYS_ioctl, "(SIOCGIFFLAGS) 3s 2m");
+   SY(SYS_ioctl, x0 - 1, x0 + SIOCGIFFLAGS, x0 - 1); FAIL;
+}
+
+__attribute__((noinline))
+static void sys_ioctl_SIOCGIFFLAGS_2(void)
+{
+   struct ifreq ifr;
+
+   ifr.ifr_name[0] = x0 + 'l';
+   ifr.ifr_name[1] = x0 + 'o';
+   ifr.ifr_name[2] = x0 + '0';
+   ifr.ifr_name[3] = x0 + '\0';
+
+   GO(SYS_ioctl, "(SIOCGIFFLAGS), 4s 0m");
+   SY(SYS_ioctl, x0 - 1, x0 + SIOCGIFFLAGS, &ifr + x0); FAIL;
+}
+
+__attribute__((noinline))
+static void sys_ioctl_SIOCGIFNETMASK(void)
+{
+   GO(SYS_ioctl, "(SIOCGIFNETMASK) 3s 2m");
+   SY(SYS_ioctl, x0 - 1, x0 + SIOCGIFNETMASK, x0 - 1); FAIL;
+}
+
+__attribute__((noinline))
+static void sys_ioctl_SIOCGIFNETMASK_2(void)
+{
+   struct ifreq ifr;
+
+   ifr.ifr_name[0] = x0 + 'l';
+   ifr.ifr_name[1] = x0 + 'o';
+   ifr.ifr_name[2] = x0 + '0';
+   ifr.ifr_name[3] = x0 + '\0';
+
+   GO(SYS_ioctl, "(SIOCGIFNETMASK), 4s 0m");
+   SY(SYS_ioctl, x0 - 1, x0 + SIOCGIFNETMASK, &ifr + x0); FAIL;
+}
+
+__attribute__((noinline))
+static void sys_ioctl_SIOCGIFNUM(void)
+{
+   int ifnum;
+
+   GO(SYS_ioctl, "(SIOCGIFNUM) 3s 0m");
+   SY(SYS_ioctl, x0 - 1, x0 + SIOCGIFNUM, &ifnum + x0); FAIL;
+}
+
+__attribute__((noinline))
+static void sys_ioctl_SIOCGIFNUM_2(void)
+{
+   GO(SYS_ioctl, "(SIOCGIFNUM) 3s 1m");
+   SY(SYS_ioctl, x0 - 1, x0 + SIOCGIFNUM, x0 - 1); FAIL;
+}
+
+__attribute__((noinline))
+static void sys_ioctl_SIOCGLIFBRDADDR(void)
+{
+   GO(SYS_ioctl, "(SIOCGLIFBRDADDR) 3s 2m");
+   SY(SYS_ioctl, x0 - 1, x0 + SIOCGLIFBRDADDR, x0 - 1); FAIL;
+}
+
+__attribute__((noinline))
+static void sys_ioctl_SIOCGLIFBRDADDR_2(void)
+{
+   struct lifreq lifr;
+
+   lifr.lifr_name[0] = x0 + 'l';
+   lifr.lifr_name[1] = x0 + 'o';
+   lifr.lifr_name[2] = x0 + '0';
+   lifr.lifr_name[3] = x0 + '\0';
+
+   GO(SYS_ioctl, "(SIOCGLIFBRDADDR), 4s 0m");
+   SY(SYS_ioctl, x0 - 1, x0 + SIOCGLIFBRDADDR, &lifr + x0); FAIL;
+}
+
+__attribute__((noinline))
+static void sys_ioctl_SIOCGLIFCONF(void)
+{
+   GO(SYS_ioctl, "(SIOCGLIFCONF), 3s 4m");
+   SY(SYS_ioctl, x0 - 1, x0 + SIOCGLIFCONF, x0 - 1); FAIL;
+}
+
+__attribute__((noinline))
+static void sys_ioctl_SIOCGLIFCONF_2(void)
+{
+   struct lifconf lifc;
+   char buf[] = "";
+
+   lifc.lifc_len = x0 + 1;
+   lifc.lifc_buf = (void *) (x0 + buf);
+   lifc.lifc_family = x0 + 1;
+   lifc.lifc_flags = x0 + 0;
+
+   GO(SYS_ioctl, "(SIOCGLIFCONF), 7s 0m");
+   SY(SYS_ioctl, x0 - 1, x0 + SIOCGLIFCONF, &lifc + x0); FAIL;
+}
+
+__attribute__((noinline))
+static void sys_ioctl_SIOCGLIFFLAGS(void)
+{
+   GO(SYS_ioctl, "(SIOCGLIFFLAGS) 3s 2m");
+   SY(SYS_ioctl, x0 - 1, x0 + SIOCGLIFFLAGS, x0 - 1); FAIL;
+}
+
+__attribute__((noinline))
+static void sys_ioctl_SIOCGLIFFLAGS_2(void)
+{
+   struct lifreq lifr;
+
+   lifr.lifr_name[0] = x0 + 'l';
+   lifr.lifr_name[1] = x0 + 'o';
+   lifr.lifr_name[2] = x0 + '0';
+   lifr.lifr_name[3] = x0 + '\0';
+
+   GO(SYS_ioctl, "(SIOCGLIFFLAGS), 4s 0m");
+   SY(SYS_ioctl, x0 - 1, x0 + SIOCGLIFFLAGS, &lifr + x0); FAIL;
+}
+
+__attribute__((noinline))
+static void sys_ioctl_SIOCGLIFNETMASK(void)
+{
+   GO(SYS_ioctl, "(SIOCGLIFNETMASK) 3s 2m");
+   SY(SYS_ioctl, x0 - 1, x0 + SIOCGLIFNETMASK, x0 - 1); FAIL;
+}
+
+__attribute__((noinline))
+static void sys_ioctl_SIOCGLIFNETMASK_2(void)
+{
+   struct lifreq lifr;
+
+   lifr.lifr_name[0] = x0 + 'l';
+   lifr.lifr_name[1] = x0 + 'o';
+   lifr.lifr_name[2] = x0 + '0';
+   lifr.lifr_name[3] = x0 + '\0';
+
+   GO(SYS_ioctl, "(SIOCGLIFNETMASK), 4s 0m");
+   SY(SYS_ioctl, x0 - 1, x0 + SIOCGLIFNETMASK, &lifr + x0); FAIL;
+}
+
 __attribute__((noinline))
 static void sys_ioctl_SIOCGLIFNUM(void)
 {
@@ -281,6 +500,20 @@ static void sys_ioctl_DTRACEHIOC_ADDDOF(void)
    SY(SYS_ioctl, x0 - 1, x0 + DTRACEHIOC_ADDDOF, x0 + &dh); FAIL;
 }
 
+__attribute__((noinline))
+static void sys_ioctl_DINFOUSRLD(void)
+{
+   GO(SYS_ioctl, "(DINFOUSRLD) 3s 0m");
+   SY(SYS_ioctl, x0 - 1, x0 + DINFOUSRLD, x0 + 1); FAIL;
+}
+
+__attribute__((noinline))
+static void sys_ioctl_DINFOIDENT(void)
+{
+   GO(SYS_ioctl, "(DINFOIDENT) 2s 0m");
+   SY(SYS_ioctl, x0 - 1, x0 + DINFOIDENT); FAIL;
+}
+
 int main(void)
 {
    /* Uninitialised, but we know px[0] is 0x0. */
@@ -291,6 +524,9 @@ int main(void)
    sys_ioctl_POOL_STATUSQ();
 
    /* mntio */
+   sys_ioctl_MNTIOC_GETEXTMNTENT();
+   sys_ioctl_MNTIOC_GETEXTMNTENT_2();
+   sys_ioctl_MNTIOC_GETEXTMNTENT_3();
    sys_ioctl_MNTIOC_GETMNTANY();
    sys_ioctl_MNTIOC_GETMNTANY_2();
    sys_ioctl_MNTIOC_GETMNTANY_3();
@@ -311,13 +547,31 @@ int main(void)
 
    /* STREAMS */
    sys_ioctl_I_PUSH();
+   sys_ioctl_I_FLUSH();
    sys_ioctl_I_STR();
    sys_ioctl_I_STR_2();
+   sys_ioctl_I_FIND();
    sys_ioctl_I_PEEK();
    sys_ioctl_I_PEEK_2();
    sys_ioctl_I_CANPUT();
 
    /* sockio */
+   sys_ioctl_SIOCGIFCONF();
+   sys_ioctl_SIOCGIFCONF_2();
+   sys_ioctl_SIOCGIFFLAGS();
+   sys_ioctl_SIOCGIFFLAGS_2();
+   sys_ioctl_SIOCGIFNETMASK();
+   sys_ioctl_SIOCGIFNETMASK_2();
+   sys_ioctl_SIOCGIFNUM();
+   sys_ioctl_SIOCGIFNUM_2();
+   sys_ioctl_SIOCGLIFBRDADDR();
+   sys_ioctl_SIOCGLIFBRDADDR_2();
+   sys_ioctl_SIOCGLIFCONF();
+   sys_ioctl_SIOCGLIFCONF_2();
+   sys_ioctl_SIOCGLIFFLAGS();
+   sys_ioctl_SIOCGLIFFLAGS_2();
+   sys_ioctl_SIOCGLIFNETMASK();
+   sys_ioctl_SIOCGLIFNETMASK_2();
    sys_ioctl_SIOCGLIFNUM();
 
    /* filio */
@@ -331,6 +585,10 @@ int main(void)
    /* dtrace */
    sys_ioctl_DTRACEHIOC_REMOVE();
    sys_ioctl_DTRACEHIOC_ADDDOF();
+
+   /* devinfo */
+   sys_ioctl_DINFOUSRLD();
+   sys_ioctl_DINFOIDENT();
 
    return 0;
 }

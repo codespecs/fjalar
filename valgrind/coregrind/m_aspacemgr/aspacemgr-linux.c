@@ -335,7 +335,7 @@ static Addr aspacem_vStart = 0;
 
 #define AM_SANITY_CHECK                                      \
    do {                                                      \
-      if (VG_(clo_sanity_level >= 3))                        \
+      if (VG_(clo_sanity_level) >= 3)                        \
          aspacem_assert(VG_(am_do_sync_check)                \
             (__PRETTY_FUNCTION__,__FILE__,__LINE__));        \
    } while (0) 
@@ -1082,8 +1082,13 @@ inline static Int find_nsegment_idx ( Addr a )
    static Int  cache_segidx[N_CACHE];
    static Bool cache_inited = False;
 
+#  ifdef N_Q_M_STATS
    static UWord n_q = 0;
    static UWord n_m = 0;
+   n_q++;
+   if (0 == (n_q & 0xFFFF))
+      VG_(debugLog)(0,"xxx","find_nsegment_idx: %lu %lu\n", n_q, n_m);
+#  endif
 
    UWord ix;
 
@@ -1099,10 +1104,6 @@ inline static Int find_nsegment_idx ( Addr a )
 
    ix = (a >> 12) % N_CACHE;
 
-   n_q++;
-   if (0 && 0 == (n_q & 0xFFFF))
-      VG_(debugLog)(0,"xxx","find_nsegment_idx: %lu %lu\n", n_q, n_m);
-
    if ((a >> 12) == cache_pageno[ix]
        && cache_segidx[ix] >= 0
        && cache_segidx[ix] < nsegments_used
@@ -1113,7 +1114,9 @@ inline static Int find_nsegment_idx ( Addr a )
       return cache_segidx[ix];
    }
    /* miss */
+#  ifdef N_Q_M_STATS
    n_m++;
+#  endif
    cache_segidx[ix] = find_nsegment_idx_WRK(a);
    cache_pageno[ix] = a >> 12;
    return cache_segidx[ix];
@@ -1444,6 +1447,15 @@ static void add_segment ( const NSegment* seg )
    aspacem_assert(segment_is_sane);
 
    split_nsegments_lo_and_hi( sStart, sEnd, &iLo, &iHi );
+
+   /* Increase the reference count of SEG's name. We need to do this
+      *before* decreasing the reference count of the names of the replaced
+      segments. Consider the case where the segment name of SEG and one of
+      the replaced segments are the same. If the refcount of that name is 1,
+      then decrementing first would put the slot for that name on the free
+      list. Attempting to increment the refcount later would then fail
+      because the slot is no longer allocated. */
+   ML_(am_inc_refcount)(seg->fnIdx);
 
    /* Now iLo .. iHi inclusive is the range of segment indices which
       seg will replace.  If we're replacing more than one segment,
@@ -2476,7 +2488,7 @@ SysRes VG_(am_mmap_anon_fixed_client) ( Addr start, SizeT length, UInt prot )
 /* Map anonymously at an unconstrained address for the client, and
    update the segment array accordingly.  */
 
-SysRes VG_(am_mmap_anon_float_client) ( SizeT length, Int prot )
+static SysRes am_mmap_anon_float_client ( SizeT length, Int prot, Bool isCH )
 {
    SysRes     sres;
    NSegment   seg;
@@ -2524,12 +2536,17 @@ SysRes VG_(am_mmap_anon_float_client) ( SizeT length, Int prot )
    seg.hasR  = toBool(prot & VKI_PROT_READ);
    seg.hasW  = toBool(prot & VKI_PROT_WRITE);
    seg.hasX  = toBool(prot & VKI_PROT_EXEC);
+   seg.isCH  = isCH;
    add_segment( &seg );
 
    AM_SANITY_CHECK;
    return sres;
 }
 
+SysRes VG_(am_mmap_anon_float_client) ( SizeT length, Int prot )
+{
+   return am_mmap_anon_float_client (length, prot, False /* isCH */);
+}
 
 /* Map anonymously at an unconstrained address for V, and update the
    segment array accordingly.  This is fundamentally how V allocates
@@ -2738,21 +2755,13 @@ SysRes VG_(am_shared_mmap_file_float_valgrind)
                                                   fd, offset );
 }
 
-/* Convenience wrapper around VG_(am_mmap_anon_float_client) which also
+/* Similar to VG_(am_mmap_anon_float_client) but also
    marks the segment as containing the client heap. This is for the benefit
    of the leak checker which needs to be able to identify such segments
    so as not to use them as sources of roots during leak checks. */
 SysRes VG_(am_mmap_client_heap) ( SizeT length, Int prot )
 {
-   SysRes res = VG_(am_mmap_anon_float_client)(length, prot);
-
-   if (! sr_isError(res)) {
-      Addr addr = sr_Res(res);
-      Int ix = find_nsegment_idx(addr);
-
-      nsegments[ix].isCH = True;
-   }
-   return res;
+   return am_mmap_anon_float_client (length, prot, True /* isCH */);
 }
 
 /* --- --- munmap helper --- --- */
@@ -4046,6 +4055,51 @@ static void parse_procselfmaps (
 
    if (record_gap != NULL && gap_start < Addr_MAX)
       (*record_gap)(gap_start, Addr_MAX - gap_start + 1);
+}
+
+/* parse_procselfmaps() callbacks do not allow for easy thread safety. */
+static Addr found_addr;
+static SizeT found_size;
+static UInt found_prot;
+
+/* Reports a new mapping into variables above. */
+static void new_segment_found_callback(Addr addr, SizeT len, UInt prot,
+   ULong dev, ULong ino, Off64T offset, const HChar *filename)
+{
+   aspacem_assert(addr <= addr + len - 1); 
+
+   Int iLo = find_nsegment_idx(addr);
+   Int iHi = find_nsegment_idx(addr + len - 1);
+   aspacem_assert(iLo <= iHi);
+   aspacem_assert(nsegments[iLo].start <= addr);
+   aspacem_assert(nsegments[iHi].end   >= addr + len - 1);
+
+   /* Do not perform any sanity checks. That is done in other places.
+      Just find if a reported mapping is found in aspacemgr's book keeping. */
+   for (Int i = iLo; i <= iHi; i++) {
+      if ((nsegments[i].kind == SkFree) || (nsegments[i].kind == SkResvn)) {
+         found_addr = addr;
+         found_size = len;
+         found_prot = prot;
+         break;
+      }
+   }
+}
+
+/* Returns True if a new segment was found. */
+Bool VG_(am_search_for_new_segment)(Addr *addr, SizeT *size, UInt *prot)
+{
+   found_addr = 0;
+   parse_procselfmaps(new_segment_found_callback, NULL);
+
+   if (found_addr != 0) {
+      *addr = found_addr;
+      *size = found_size;
+      *prot = found_prot;
+      return True;
+   } else {
+      return False;
+   }
 }
 
 #endif // defined(VGO_solaris)

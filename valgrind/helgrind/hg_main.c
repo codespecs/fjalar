@@ -284,7 +284,7 @@ static void lockN_acquire_writer ( Lock* lk, Thread* thr )
          /* 2nd and subsequent locking of a lock by its owner */
          tl_assert(lk->heldW);
          /* assert: lk is only held by one thread .. */
-         tl_assert(VG_(sizeUniqueBag(lk->heldBy)) == 1);
+         tl_assert(VG_(sizeUniqueBag)(lk->heldBy) == 1);
          /* assert: .. and that thread is 'thr'. */
          tl_assert(VG_(elemBag)(lk->heldBy, (UWord)thr)
                    == VG_(sizeTotalBag)(lk->heldBy));
@@ -4589,7 +4589,6 @@ static Bool is_in_dynamic_linker_shared_object( Addr ga )
 {
    DebugInfo* dinfo;
    const HChar* soname;
-   if (0) return False;
 
    dinfo = VG_(find_DebugInfo)( ga );
    if (!dinfo) return False;
@@ -4598,23 +4597,7 @@ static Bool is_in_dynamic_linker_shared_object( Addr ga )
    tl_assert(soname);
    if (0) VG_(printf)("%s\n", soname);
 
-#  if defined(VGO_linux)
-   if (VG_STREQ(soname, VG_U_LD_LINUX_SO_3))        return True;
-   if (VG_STREQ(soname, VG_U_LD_LINUX_SO_2))        return True;
-   if (VG_STREQ(soname, VG_U_LD_LINUX_X86_64_SO_2)) return True;
-   if (VG_STREQ(soname, VG_U_LD64_SO_1))            return True;
-   if (VG_STREQ(soname, VG_U_LD64_SO_2))            return True;
-   if (VG_STREQ(soname, VG_U_LD_SO_1))              return True;
-   if (VG_STREQ(soname, VG_U_LD_LINUX_AARCH64_SO_1)) return True;
-   if (VG_STREQ(soname, VG_U_LD_LINUX_ARMHF_SO_3))  return True;
-#  elif defined(VGO_darwin)
-   if (VG_STREQ(soname, VG_U_DYLD)) return True;
-#  elif defined(VGO_solaris)
-   if (VG_STREQ(soname, VG_U_LD_SO_1)) return True;
-#  else
-#    error "Unsupported OS"
-#  endif
-   return False;
+   return VG_(is_soname_ld_so)(soname);
 }
 
 static
@@ -4919,7 +4902,7 @@ static void print_monitor_help ( void )
 static Bool handle_gdb_monitor_command (ThreadId tid, HChar *req)
 {
    HChar* wcmd;
-   HChar s[VG_(strlen(req))]; /* copy for strtok_r */
+   HChar s[VG_(strlen)(req)]; /* copy for strtok_r */
    HChar *ssaveptr;
    Int   kwdid;
 
@@ -4988,6 +4971,12 @@ static Bool handle_gdb_monitor_command (ThreadId tid, HChar *req)
       {
          Addr address;
          SizeT szB = 1;
+         if (HG_(clo_history_level) < 2) {
+            VG_(gdb_printf)
+               ("helgrind must be started with --history-level=full"
+                " to use accesshistory\n");
+            return True;
+         }
          if (VG_(strtok_get_address_and_size) (&address, &szB, &ssaveptr)) {
             if (szB >= 1) 
                libhb_event_map_access_history (address, szB, HG_(print_access));

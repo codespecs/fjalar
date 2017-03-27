@@ -2017,7 +2017,7 @@ Bool VG_(get_objname) ( Addr a, const HChar** buf )
       knows the name of the file associated with this mapping.  This
       allows us to print the names of exe/dll files in the stack trace
       when running programs under wine. */
-   if ( (seg = VG_(am_find_nsegment(a))) != NULL 
+   if ( (seg = VG_(am_find_nsegment)(a)) != NULL 
         && (filename = VG_(am_get_filename)(seg)) != NULL ) {
      *buf = filename;
       return True;
@@ -2664,17 +2664,20 @@ static inline CFSI_m_CacheEnt* cfsi_m_cache__find ( Addr ip )
 {
    UWord         hash = ip % N_CFSI_M_CACHE;
    CFSI_m_CacheEnt* ce = &cfsi_m_cache[hash];
+#  ifdef N_Q_M_STATS
    static UWord  n_q = 0, n_m = 0;
-
    n_q++;
-   if (0 && 0 == (n_q & 0x1FFFFF))
+   if (0 == (n_q & 0x1FFFFF))
       VG_(printf)("QQQ %lu %lu\n", n_q, n_m);
+#  endif
 
    if (LIKELY(ce->ip == ip) && LIKELY(ce->di != NULL)) {
       /* found an entry in the cache .. */
    } else {
       /* not found in cache.  Search and update. */
+#     ifdef N_Q_M_STATS
       n_m++;
+#     endif
       ce->ip = ip;
       find_DiCfSI( &ce->di, &ce->cfsi_m, ip );
    }
@@ -4306,7 +4309,8 @@ void VG_(DebugInfo_syms_getidx) ( const DebugInfo *si,
                                   /*OUT*/const HChar**   pri_name,
                                   /*OUT*/const HChar***  sec_names,
                                   /*OUT*/Bool*     isText,
-                                  /*OUT*/Bool*     isIFunc )
+                                  /*OUT*/Bool*     isIFunc,
+                                  /*OUT*/Bool*     isGlobal )
 {
    vg_assert(idx >= 0 && idx < si->symtab_used);
    if (avmas)     *avmas     = si->symtab[idx].avmas;
@@ -4315,6 +4319,7 @@ void VG_(DebugInfo_syms_getidx) ( const DebugInfo *si,
    if (sec_names) *sec_names = si->symtab[idx].sec_names;
    if (isText)    *isText    = si->symtab[idx].isText;
    if (isIFunc)   *isIFunc   = si->symtab[idx].isIFunc;
+   if (isGlobal)  *isGlobal  = si->symtab[idx].isGlobal;
 }
 
 

@@ -1816,10 +1816,13 @@ void ms_unrecord_page_mem( Addr a, SizeT len )
    Addr end;
    tl_assert(VG_IS_PAGE_ALIGNED(len));
    tl_assert(len >= VKI_PAGE_SIZE);
+   // Unrecord the first page. This might be the peak, so do a snapshot.
+   unrecord_block((void*)a, /*maybe_snapshot*/True);
+   a += VKI_PAGE_SIZE;
+   // Then unrecord the remaining pages, but without snapshots.
    for (end = a + len - VKI_PAGE_SIZE; a < end; a += VKI_PAGE_SIZE) {
       unrecord_block((void*)a, /*maybe_snapshot*/False);
    }
-   unrecord_block((void*)a, /*maybe_snapshot*/True);
 }
 
 //------------------------------------------------------------//
@@ -2355,7 +2358,7 @@ static void handle_all_snapshots_monitor_command (const HChar *filename)
 static Bool handle_gdb_monitor_command (ThreadId tid, HChar *req)
 {
    HChar* wcmd;
-   HChar s[VG_(strlen(req)) + 1]; /* copy for strtok_r */
+   HChar s[VG_(strlen)(req) + 1]; /* copy for strtok_r */
    HChar *ssaveptr;
 
    VG_(strcpy) (s, req);
@@ -2566,6 +2569,7 @@ static void ms_pre_clo_init(void)
 
    // Needs.
    VG_(needs_libc_freeres)();
+   VG_(needs_cxx_freeres)();
    VG_(needs_command_line_options)(ms_process_cmd_line_option,
                                    ms_print_usage,
                                    ms_print_debug_usage);

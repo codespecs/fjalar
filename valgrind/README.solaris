@@ -12,7 +12,10 @@ Requirements
   automake and autoconf have to be found in the PATH. You should be able to
   install pkg:/developer/build/automake and pkg:/developer/build/autoconf
   packages to fullfil this requirement.
-- System header files and GNU make is also required.
+- System header files are required. On Solaris, these can be installed with:
+    # pkg install system/header
+- GNU make is also required. On Solaris, this can be quickly achieved with:
+    $ PATH=/usr/gnu/bin:$PATH; export PATH
 - For remote debugging support, working GDB is required (see below).
 
 
@@ -47,6 +50,10 @@ Main currently-known incompatibilities:
 - syscall number for unlinkat() is 76 on Solaris 11, but 65 on illumos [2]
 - illumos (in April 2013) changed interface of the accept() and pipe()
   syscalls [3]
+- posix_spawn() functionality is backed up by true spawn() syscall on Solaris 12
+  whereas illumos and Solaris 11 leverage vfork()
+- illumos and older Solaris use utimesys() syscall whereas newer Solaris
+  uses utimensat()
 
 [1] http://docs.oracle.com/cd/E26502_01/html/E28556/gkzlf.html#gkzip
 [2] https://www.illumos.org/issues/521
@@ -79,15 +86,6 @@ Limitations
   possible for Valgrind to arrange mapping of a kernel shared page at the
   address specified in the mapfile for the guest application. There is currently
   no such mechanism in Solaris. Hacky workarounds are possible, though.
-- Guest programs do not contain entries for AT_SUN_SYSSTAT_ADDR and
-  AT_SUN_SYSSTAT_ZONE_ADDR in their auxilliary vectors. There is no direct way
-  how to obtain addresses of these pages shared with the kernel as they are
-  passed in auxv and kernel does not create auxv for statically linked binaries
-  (such as Valgrind analysis tools).
-  Indirect methods, such as scanning 1-page mappings found at Valgrind
-  startup surrounded by reservations, could be possible. But it is hard to tell
-  which page is which because their contents are filled only when a system
-  cyclic is started. See get_hrusec() for reference.
 - When a thread has no stack then all system calls will result in Valgrind
   crash, even though such system calls use just parameters passed in registers.
   This should happen only in pathological situations when a thread is created

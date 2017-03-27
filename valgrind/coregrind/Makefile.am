@@ -66,6 +66,9 @@ if VGCONF_PLATVARIANT_IS_ANDROID
 valgrind_CFLAGS += -static
 valgrind_LDFLAGS   += -Wl,-z,noexecstack
 endif
+if VGCONF_OS_IS_SOLARIS
+valgrind_LDFLAGS   += -Wl,-M,/usr/lib/ld/map.noexstk
+endif
 
 
 vgdb_SOURCES = vgdb.c
@@ -348,11 +351,13 @@ COREGRIND_SOURCES_COMMON = \
 	m_debuginfo/readmacho.c \
 	m_debuginfo/readpdb.c \
 	m_debuginfo/storage.c \
+	m_debuginfo/tinfl.c \
 	m_debuginfo/tytypes.c \
 	m_demangle/cp-demangle.c \
 	m_demangle/cplus-dem.c \
 	m_demangle/demangle.c \
 	m_demangle/dyn-string.c \
+	m_demangle/d-demangle.c \
 	m_demangle/safe-ctype.c \
 	m_dispatch/dispatch-x86-linux.S \
 	m_dispatch/dispatch-amd64-linux.S \
@@ -602,12 +607,17 @@ GDBSERVER_XML_FILES = \
 	m_gdbserver/power64-core-valgrind-s1.xml \
 	m_gdbserver/power64-core-valgrind-s2.xml \
 	m_gdbserver/power64-core.xml \
+	m_gdbserver/power64-core2-valgrind-s1.xml \
+	m_gdbserver/power64-core2-valgrind-s2.xml \
 	m_gdbserver/power64-linux-valgrind-s1.xml \
 	m_gdbserver/power64-linux-valgrind-s2.xml \
 	m_gdbserver/power64-linux.xml \
 	m_gdbserver/power-altivec-valgrind-s1.xml \
 	m_gdbserver/power-altivec-valgrind-s2.xml \
 	m_gdbserver/power-altivec.xml \
+	m_gdbserver/power-vsx-valgrind-s1.xml \
+	m_gdbserver/power-vsx-valgrind-s2.xml \
+	m_gdbserver/power-vsx.xml \
 	m_gdbserver/power-core-valgrind-s1.xml \
 	m_gdbserver/power-core-valgrind-s2.xml \
 	m_gdbserver/power-core.xml \

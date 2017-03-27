@@ -1,5 +1,29 @@
 /* -*- mode: C; c-basic-offset: 3; -*- */
 
+/*
+   This file is part of MemCheck, a heavyweight Valgrind tool for
+   detecting memory errors.
+
+   Copyright (C) 2012-2015  Florian Krohm
+
+   This program is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 2 of the
+   License, or (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful, but
+   WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
+   02111-1307, USA.
+
+   The GNU General Public License is contained in the file COPYING.
+*/
+
 #include <assert.h>
 #include "vtest.h"
 
@@ -24,6 +48,25 @@ check_result_for_ternary(const irop_t *op, const test_data_t *data)
       // SAME with respect to the 1-bits in all operands
       expected_vbits = or_vbits(or_vbits(opnd1->vbits, opnd2->vbits),
                                 opnd3->vbits);
+      break;
+
+   case UNDEF_SOME:
+      expected_vbits.num_bits = result->vbits.num_bits;
+
+      if ((result->vbits.bits.u128[0] != 0) ||
+          (result->vbits.bits.u128[1] != 0)) {
+         expected_vbits.bits.u128[0] = result->vbits.bits.u128[0];
+         expected_vbits.bits.u128[1] = result->vbits.bits.u128[1];
+
+      } else {
+         /* The input had at least one vbit set but the result doesn't have any
+          * bit set.  Set them all so we will trigger the error on the call
+          * to complain().
+          */
+         expected_vbits.bits.u128[0] = ~0x0ULL;
+         expected_vbits.bits.u128[1] = ~0x0ULL;
+      }
+
       break;
 
    default:

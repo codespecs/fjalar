@@ -365,6 +365,7 @@ void read_symtab( /*OUT*/XArray* /* DiSym */ syms,
                          di->text_avma+di->text_size - sym_addr;
       disym.isText     = True;
       disym.isIFunc    = False;
+      disym.isGlobal   = False;
       // Lots of user function names get prepended with an underscore.  Eg. the
       // function 'f' becomes the symbol '_f'.  And the "below main"
       // function is called "start".  So we skip the leading underscore, and
@@ -392,8 +393,8 @@ void read_symtab( /*OUT*/XArray* /* DiSym */ syms,
    the primary name as a secondary sort key. */
 static Int cmp_DiSym_by_start_then_name ( const void* v1, const void* v2 )
 {
-   const DiSym* s1 = (DiSym*)v1;
-   const DiSym* s2 = (DiSym*)v2;
+   const DiSym* s1 = (const DiSym*)v1;
+   const DiSym* s2 = (const DiSym*)v2;
    if (s1->avmas.main < s2->avmas.main) return -1;
    if (s1->avmas.main > s2->avmas.main) return 1;
    return VG_(strcmp)(s1->pri_name, s2->pri_name);
@@ -608,15 +609,15 @@ static DiSlice getsectdata ( DiSlice img,
       if (cmd.cmd == LC_SEGMENT_CMD) {
          struct SEGMENT_COMMAND seg;
          ML_(cur_read_get)(&seg, cur, sizeof(seg));
-         if (0 == VG_(strncmp(&seg.segname[0],
-                              segname, sizeof(seg.segname)))) {
+         if (0 == VG_(strncmp)(&seg.segname[0],
+                               segname, sizeof(seg.segname))) {
             DiCursor sects_cur = ML_(cur_plus)(cur, sizeof(seg));
             Int s;
             for (s = 0; s < seg.nsects; s++) {
                struct SECTION sect;
                ML_(cur_step_get)(&sect, &sects_cur, sizeof(sect));
-               if (0 == VG_(strncmp(sect.sectname, sectname, 
-                                    sizeof(sect.sectname)))) {
+               if (0 == VG_(strncmp)(sect.sectname, sectname, 
+                                     sizeof(sect.sectname))) {
                   DiSlice res = img;
                   res.ioff = sect.offset;
                   res.szB = sect.size;

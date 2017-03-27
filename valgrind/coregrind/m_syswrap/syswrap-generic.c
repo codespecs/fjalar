@@ -1056,15 +1056,19 @@ void msghdr_foreachfield (
 
       VG_(sprintf) ( fieldName, "(%s.msg_iov)", name );
 
-      foreach_func ( tid, True, fieldName, 
-                     (Addr)iov, msg->msg_iovlen * sizeof( struct vki_iovec ) );
+      if (ML_(safe_to_deref)(&msg->msg_iovlen, sizeof (UInt))) {
+         foreach_func ( tid, True, fieldName, (Addr)iov,
+                        msg->msg_iovlen * sizeof( struct vki_iovec ) );
 
-      for ( i = 0; i < msg->msg_iovlen; ++i, ++iov ) {
-         UInt iov_len = iov->iov_len <= length ? iov->iov_len : length;
-         VG_(sprintf) ( fieldName, "(%s.msg_iov[%u])", name, i );
-         foreach_func ( tid, False, fieldName, 
-                        (Addr)iov->iov_base, iov_len );
-         length = length - iov_len;
+         for ( i = 0; i < msg->msg_iovlen && length > 0; ++i, ++iov ) {
+            if (ML_(safe_to_deref)(&iov->iov_len, sizeof (UInt))) {
+               UInt iov_len = iov->iov_len <= length ? iov->iov_len : length;
+               VG_(sprintf) ( fieldName, "(%s.msg_iov[%u])", name, i );
+               foreach_func ( tid, False, fieldName,
+                              (Addr)iov->iov_base, iov_len );
+               length = length - iov_len;
+            }
+         }
       }
    }
 
@@ -1128,12 +1132,20 @@ void pre_mem_read_sockaddr ( ThreadId tid,
    VG_(sprintf) ( outmsg, description, "sa_family" );
    PRE_MEM_READ( outmsg, (Addr) &sa->sa_family, sizeof(vki_sa_family_t));
 
+   /* Don't do any extra checking if we cannot determine the sa_family. */
+   if (! ML_(safe_to_deref) (&sa->sa_family, sizeof(vki_sa_family_t))) {
+      VG_(free) (outmsg);
+      return;
+   }
+
    switch (sa->sa_family) {
                   
       case VKI_AF_UNIX:
-         VG_(sprintf) ( outmsg, description, "sun_path" );
-         PRE_MEM_RASCIIZ( outmsg, (Addr) saun->sun_path );
-         // GrP fixme max of sun_len-2? what about nul char?
+         if (ML_(safe_to_deref) (&saun->sun_path, sizeof (Addr))) {
+            VG_(sprintf) ( outmsg, description, "sun_path" );
+            PRE_MEM_RASCIIZ( outmsg, (Addr) saun->sun_path );
+            // GrP fixme max of sun_len-2? what about nul char?
+         }
          break;
                      
       case VKI_AF_INET:
@@ -1200,7 +1212,7 @@ static UInt deref_UInt ( ThreadId tid, Addr a, const HChar* s )
 {
    UInt* a_p = (UInt*)a;
    PRE_MEM_READ( s, (Addr)a_p, sizeof(UInt) );
-   if (a_p == NULL)
+   if (a_p == NULL || ! ML_(safe_to_deref) (a_p, sizeof(UInt)))
       return 0;
    else
       return *a_p;
@@ -1324,6 +1336,7 @@ static Addr do_brk ( Addr newbrk, ThreadId tid )
       else
          VG_(umsg)("Cannot map memory to grow brk segment in thread #%u "
                    "to %#lx\n", tid, newbrkP);
+      VG_(umsg)("(see section Limitations in user manual)\n");
       goto bad;
    }
 
@@ -3014,9 +3027,6 @@ PRE(sys_execve)
       vg_assert(j == tot_args+1);
    }
 
-   /* restore the DATA rlimit for the child */
-   VG_(setrlimit)(VKI_RLIMIT_DATA, &VG_(client_rlimit_data));
-
    /*
       Set the signal state up for exec.
 
@@ -3267,7 +3277,7 @@ POST(sys_newfstat)
    POST_MEM_WRITE( ARG2, sizeof(struct vki_stat) );
 }
 
-#if !defined(VGO_solaris)
+#if !defined(VGO_solaris) && !defined(VGP_arm64_linux)
 static vki_sigset_t fork_saved_mask;
 
 // In Linux, the sys_fork() function varies across architectures, but we
@@ -3330,7 +3340,7 @@ PRE(sys_fork)
       VG_(sigprocmask)(VKI_SIG_SETMASK, &fork_saved_mask, NULL);
    }
 }
-#endif // !defined(VGO_solaris)
+#endif // !defined(VGO_solaris) && !defined(VGP_arm64_linux)
 
 PRE(sys_ftruncate)
 {

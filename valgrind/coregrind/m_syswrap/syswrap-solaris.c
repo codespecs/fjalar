@@ -28,9 +28,9 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-/* Copyright 2015-2015, Tomas Jedlicka <jedlickat@gmail.com>. */
+/* Copyright 2013-2016, Ivo Raisr <ivosh@ivosh.net>. */
 
-/* Copyright 2013-2015, Ivo Raisr <ivosh@ivosh.net>. */
+/* Copyright 2015-2015, Tomas Jedlicka <jedlickat@gmail.com>. */
 
 /* Copyright 2013, OmniTI Computer Consulting, Inc. All rights reserved. */
 
@@ -71,6 +71,7 @@
 
 #include "priv_types_n_macros.h"
 #include "priv_syswrap-generic.h"
+#include "priv_syswrap-main.h"
 #include "priv_syswrap-solaris.h"
 
 /* Return the number of non-dead and daemon threads.
@@ -426,7 +427,7 @@ static void clean_schedctl_data(ThreadId tid)
          if (a != 0) {
             tst->os_state.schedctl_data = 0;
             a = VG_PGROUNDDN(a);
-            if (VG_(am_find_anon_segment(a)))
+            if (VG_(am_find_anon_segment)(a))
                VG_(am_notify_munmap)(a, VKI_PAGE_SIZE);
          }
       }
@@ -436,6 +437,50 @@ static void clean_schedctl_data(ThreadId tid)
 void VG_(syswrap_init)(void)
 {
    VG_(atfork)(NULL, NULL, clean_schedctl_data);
+}
+
+/* Changes ownership of a memory mapping shared between kernel and the client
+   process. This mapping should have already been pre-arranged during process
+   address space initialization happening in kernel. Valgrind on startup created
+   a segment for this mapping categorized as Valgrind's owned anonymous.
+   Size of this mapping typically varies among Solaris versions but should be
+   page aligned.
+   If 'once_only' is 'True', it is expected this function is called once only
+   and the mapping ownership has not been changed, yet [useful during
+   initialization]. If 'False', this function can be called many times but does
+   change ownership only upon the first invocation [useful in syscall wrappers].
+ */
+void VG_(change_mapping_ownership)(Addr addr, Bool once_only)
+{
+   const NSegment *seg = VG_(am_find_anon_segment)(addr);
+   vg_assert(seg != NULL);
+   vg_assert(seg->start == addr);
+   vg_assert(VG_IS_PAGE_ALIGNED(seg->start));
+   vg_assert(VG_IS_PAGE_ALIGNED(seg->end + 1));
+   SizeT size = seg->end - seg->start + 1;
+   vg_assert(size > 0);
+
+   Bool do_change = False;
+   if (once_only) {
+      vg_assert(VG_(am_is_valid_for_valgrind)(addr, size, VKI_PROT_READ));
+      do_change = True;
+   } else {
+      if (!VG_(am_is_valid_for_client)(addr, size, VKI_PROT_READ))
+         do_change = True;
+   }
+
+   if (do_change) {
+      Bool change_ownership_OK = VG_(am_change_ownership_v_to_c)(addr, size);
+      vg_assert(change_ownership_OK);
+
+      /* Tell the tool about just discovered mapping. */
+      VG_TRACK(new_mem_startup,
+               addr, size,
+               True  /* readable? */,
+               False /* writable? */,
+               False /* executable? */,
+               0     /* di_handle */);
+   }
 }
 
 /* Calculate the Fletcher-32 checksum of a given buffer. */
@@ -781,7 +826,7 @@ static void door_record_client(ThreadId tid, Int fd,
 }
 
 /* Revokes an open door, be it server side or client side. */
-static void door_revoke(ThreadId tid, Int fd)
+static void door_record_revoke(ThreadId tid, Int fd)
 {
    OpenDoor *d = doors_recorded;
 
@@ -805,7 +850,7 @@ static void door_revoke(ThreadId tid, Int fd)
 }
 
 /* Attaches a server door to a filename. */
-static void door_server_fattach(Int fd, HChar *pathname)
+static void door_record_server_fattach(Int fd, HChar *pathname)
 {
    OpenDoor *d = doors_recorded;
 
@@ -906,6 +951,7 @@ DECL_TEMPLATE(solaris, sys_lwp_name);
 #endif /* SOLARIS_LWP_NAME_SYSCALL */
 DECL_TEMPLATE(solaris, sys_privsys);
 DECL_TEMPLATE(solaris, sys_ucredsys);
+DECL_TEMPLATE(solaris, sys_sysfs);
 DECL_TEMPLATE(solaris, sys_getmsg);
 DECL_TEMPLATE(solaris, sys_putmsg);
 DECL_TEMPLATE(solaris, sys_lstat);
@@ -945,12 +991,19 @@ DECL_TEMPLATE(solaris, sys_sysconfig);
 DECL_TEMPLATE(solaris, sys_systeminfo);
 DECL_TEMPLATE(solaris, sys_seteuid);
 DECL_TEMPLATE(solaris, sys_forksys);
+#if defined(SOLARIS_GETRANDOM_SYSCALL)
+DECL_TEMPLATE(solaris, sys_getrandom);
+#endif /* SOLARIS_GETRANDOM_SYSCALL */
 DECL_TEMPLATE(solaris, sys_sigtimedwait);
 DECL_TEMPLATE(solaris, sys_yield);
 DECL_TEMPLATE(solaris, sys_lwp_sema_post);
 DECL_TEMPLATE(solaris, sys_lwp_sema_trywait);
 DECL_TEMPLATE(solaris, sys_lwp_detach);
+DECL_TEMPLATE(solaris, sys_modctl);
 DECL_TEMPLATE(solaris, sys_fchroot);
+#if defined(SOLARIS_SYSTEM_STATS_SYSCALL)
+DECL_TEMPLATE(solaris, sys_system_stats);
+#endif /* SOLARIS_SYSTEM_STATS_SYSCALL */
 DECL_TEMPLATE(solaris, sys_gettimeofday);
 DECL_TEMPLATE(solaris, sys_lwp_create);
 DECL_TEMPLATE(solaris, sys_lwp_exit);
@@ -966,6 +1019,8 @@ DECL_TEMPLATE(solaris, sys_lwp_sigmask);
 DECL_TEMPLATE(solaris, sys_lwp_private);
 DECL_TEMPLATE(solaris, sys_lwp_wait);
 DECL_TEMPLATE(solaris, sys_lwp_mutex_wakeup);
+DECL_TEMPLATE(solaris, sys_lwp_cond_wait);
+DECL_TEMPLATE(solaris, sys_lwp_cond_signal);
 DECL_TEMPLATE(solaris, sys_lwp_cond_broadcast);
 DECL_TEMPLATE(solaris, sys_pread);
 DECL_TEMPLATE(solaris, sys_pwrite);
@@ -988,6 +1043,7 @@ DECL_TEMPLATE(solaris, sys_timer_getoverrun);
 DECL_TEMPLATE(solaris, sys_facl);
 DECL_TEMPLATE(solaris, sys_door);
 DECL_TEMPLATE(solaris, sys_schedctl);
+DECL_TEMPLATE(solaris, sys_pset);
 DECL_TEMPLATE(solaris, sys_resolvepath);
 DECL_TEMPLATE(solaris, sys_lwp_mutex_timedlock);
 DECL_TEMPLATE(solaris, sys_lwp_rwlock_sys);
@@ -1038,13 +1094,21 @@ PRE(sys_exit)
       if (VG_(threads)[t].status == VgTs_Empty)
          continue;
 
-      VG_(threads)[t].exitreason = VgSrc_ExitProcess;
+      /* Assign the exit code, VG_(nuke_all_threads_except) will assign
+         the exitreason. */
       VG_(threads)[t].os_state.exitcode = ARG1;
-
-      /* Unblock it, if blocked. */
-      if (t != tid)
-         VG_(get_thread_out_of_syscall)(t);
    }
+
+   /* Indicate in all other threads that the process is exiting.
+      Then wait using VG_(reap_threads) for these threads to disappear.
+      See comments in syswrap-linux.c, PRE(sys_exit_group) wrapper,
+      for reasoning why this cannot give a deadlock. */
+   VG_(nuke_all_threads_except)(tid, VgSrc_ExitProcess);
+   VG_(reap_threads)(tid);
+   VG_(threads)[tid].exitreason = VgSrc_ExitThread;
+   /* We do assign VgSrc_ExitThread and not VgSrc_ExitProcess, as this thread
+      is the thread calling exit_group and so its registers must be considered
+      as not reachable. See pub_tool_machine.h VG_(apply_to_GP_regs). */
 
    /* We have to claim the syscall already succeeded. */
    SET_STATUS_Success(0);
@@ -1539,20 +1603,11 @@ PRE(sys_spawn)
 #undef COPY_CHAR_TO_ARGENV
 #undef COPY_STRING_TOARGENV
 
-   /* HACK: Temporarily restore the DATA rlimit for spawned child.
-      This is a terrible hack to provide sensible brk limit for child. */
-   VG_(setrlimit)(VKI_RLIMIT_DATA, &VG_(client_rlimit_data));
-
    /* Actual spawn() syscall. */
    SysRes res = VG_(do_syscall5)(__NR_spawn, (UWord) path, (UWord) attrs,
                                  attrs_size, (UWord) argenv, argenv_size);
    SET_STATUS_from_SysRes(res);
    VG_(free)(argenv);
-
-   /* Restore DATA rlimit back to its previous value set in m_main.c. */
-   struct vki_rlimit zero = { 0, 0 };
-   zero.rlim_max = VG_(client_rlimit_data).rlim_max;
-   VG_(setrlimit)(VKI_RLIMIT_DATA, &zero);
 
    if (SUCCESS) {
       PRINT("   spawn: process %d spawned child %ld\n", VG_(getpid)(), RES);
@@ -1728,7 +1783,7 @@ PRE(sys_close)
 POST(sys_close)
 {
    WRAPPER_POST_NAME(generic, sys_close)(tid, arrghs, status);
-   door_revoke(tid, ARG1);
+   door_record_revoke(tid, ARG1);
    /* Possibly an explicitly open'ed client door fd was just closed.
       Generic sys_close wrapper calls this only if VG_(clo_track_fds) = True. */
    if (!VG_(clo_track_fds))
@@ -2223,7 +2278,8 @@ POST(sys_mount)
           (ARG6 == sizeof(struct vki_namefd)) &&
           ML_(safe_to_deref)((void *) ARG5, ARG6)) {
          /* Most likely an fattach() call for a door file descriptor. */
-         door_server_fattach(((struct vki_namefd *) ARG5)->fd, (HChar *) ARG2);
+         door_record_server_fattach(((struct vki_namefd *) ARG5)->fd,
+                                    (HChar *) ARG2);
       }
    }
 }
@@ -2966,6 +3022,7 @@ PRE(sys_ioctl)
 
    switch (cmd /*request*/) {
       /* Handle 2-arg specially here (they do not use ARG3 at all). */
+   case VKI_DINFOIDENT:
    case VKI_TIOCNOTTY:
    case VKI_TIOCSCTTY:
       PRINT("sys_ioctl ( %ld, %#lx )", SARG1, ARG2);
@@ -2985,6 +3042,21 @@ PRE(sys_ioctl)
       break;
 
    /* mntio */
+   case VKI_MNTIOC_GETEXTMNTENT:
+      {
+         PRE_MEM_READ("ioctl(MNTIOC_GETEXTMNTENT)",
+                      ARG3, sizeof(struct vki_mntentbuf));
+
+         struct vki_mntentbuf *embuf = (struct vki_mntentbuf *) ARG3;
+         if (ML_(safe_to_deref(embuf, sizeof(*embuf)))) {
+            PRE_MEM_WRITE("ioctl(MNTIOC_GETEXTMNTENT, embuf->mbuf_emp)",
+                          (Addr) embuf->mbuf_emp, sizeof(struct vki_extmnttab));
+            PRE_MEM_WRITE("ioctl(MNTIOC_GETEXTMNTENT, embuf->mbuf_buf)",
+                          (Addr) embuf->mbuf_buf, embuf->mbuf_bufsize);
+         }
+      }
+      break;
+
    case VKI_MNTIOC_GETMNTANY:
       {
          PRE_MEM_READ("ioctl(MNTIOC_GETMNTANY)",
@@ -2993,13 +3065,11 @@ PRE(sys_ioctl)
          struct vki_mntentbuf *embuf = (struct vki_mntentbuf *) ARG3;
          if (ML_(safe_to_deref(embuf, sizeof(*embuf)))) {
             PRE_MEM_READ("ioctl(MNTIOC_GETMNTANY, embuf->mbuf_emp)",
-                         (Addr) embuf->mbuf_emp,
-                         sizeof(struct vki_mnttab));
+                         (Addr) embuf->mbuf_emp, sizeof(struct vki_mnttab));
             PRE_MEM_WRITE("ioctl(MNTIOC_GETMNTANY, embuf->mbuf_buf)",
-                          (Addr) embuf->mbuf_buf,
-                          embuf->mbuf_bufsize);
-            struct vki_mnttab *mnt
-               = (struct vki_mnttab *) embuf->mbuf_emp;
+                          (Addr) embuf->mbuf_buf, embuf->mbuf_bufsize);
+
+            struct vki_mnttab *mnt = (struct vki_mnttab *) embuf->mbuf_emp;
             if (ML_(safe_to_deref(mnt, sizeof(struct vki_mnttab)))) {
                if (mnt->mnt_special != NULL)
                   PRE_MEM_RASCIIZ("ioctl(MNTIOC_GETMNTANY, mnt->mnt_special)",
@@ -3060,6 +3130,8 @@ PRE(sys_ioctl)
    case VKI_I_PUSH:
       PRE_MEM_RASCIIZ("ioctl(I_PUSH)", ARG3);
       break;
+   case VKI_I_FLUSH:
+      break;
    case VKI_I_STR:
       {
          PRE_MEM_READ("ioctl(I_STR)", ARG3, sizeof(struct vki_strioctl));
@@ -3072,6 +3144,9 @@ PRE(sys_ioctl)
             }
          }
       }
+      break;
+   case VKI_I_FIND:
+      PRE_MEM_RASCIIZ("ioctl(I_FIND)", ARG3);
       break;
    case VKI_I_PEEK:
       {
@@ -3107,6 +3182,80 @@ PRE(sys_ioctl)
       break;
 
    /* sockio */
+   case VKI_SIOCGIFCONF:
+      {
+         struct vki_ifconf *p = (struct vki_ifconf *) ARG3;
+         PRE_FIELD_READ("ioctl(SIOCGIFCONF, ifconf->ifc_len)", p->ifc_len);
+         PRE_FIELD_READ("ioctl(SIOCGIFCONF, ifconf->ifc_buf)", p->ifc_buf);
+         if (ML_(safe_to_deref)(p, sizeof(*p))) {
+            if ((p->ifc_buf != NULL) && (p->ifc_len > 0))
+               PRE_MEM_WRITE("ioctl(SIOCGIFCONF, ifconf->ifc_buf)",
+                             (Addr) p->ifc_buf, p->ifc_len);
+         }
+         /* ifc_len gets also written to during SIOCGIFCONF ioctl. */
+      }
+      break;
+   case VKI_SIOCGIFFLAGS:
+      {
+         struct vki_ifreq *p = (struct vki_ifreq *) ARG3;
+         PRE_FIELD_READ("ioctl(SIOCGIFFLAGS, ifreq->ifr_name)", p->ifr_name);
+         PRE_FIELD_WRITE("ioctl(SIOCGIFFLAGS, ifreq->ifr_flags)", p->ifr_flags);
+      }
+      break;
+   case VKI_SIOCGIFNETMASK:
+      {
+         struct vki_ifreq *p = (struct vki_ifreq *) ARG3;
+         PRE_FIELD_READ("ioctl(SIOCGIFFLAGS, ifreq->ifr_name)", p->ifr_name);
+         PRE_FIELD_WRITE("ioctl(SIOCGIFFLAGS, ifreq->ifr_addr)", p->ifr_addr);
+      }
+      break;
+   case VKI_SIOCGIFNUM:
+      PRE_MEM_WRITE("ioctl(SIOCGIFNUM)", ARG3, sizeof(int));
+      break;
+   case VKI_SIOCGLIFBRDADDR:
+      {
+         struct vki_lifreq *p = (struct vki_lifreq *) ARG3;
+         PRE_FIELD_READ("ioctl(SIOCGLIFBRDADDR, lifreq->lifr_name)",
+                        p->lifr_name);
+         PRE_FIELD_WRITE("ioctl(SIOCGLIFBRDADDR, lifreq->lifr_addr)",
+                         p->lifr_addr);
+      }
+      break;
+   case VKI_SIOCGLIFCONF:
+      {
+         struct vki_lifconf *p = (struct vki_lifconf *) ARG3;
+         PRE_FIELD_READ("ioctl(SIOCGLIFCONF, lifconf->lifc_len)", p->lifc_len);
+         PRE_FIELD_READ("ioctl(SIOCGLIFCONF, lifconf->lifc_buf)", p->lifc_buf);
+         PRE_FIELD_READ("ioctl(SIOCGLIFCONF, lifconf->lifc_family)",
+                        p->lifc_family);
+         PRE_FIELD_READ("ioctl(SIOCGLIFCONF, lifconf->lifc_flags)",
+                        p->lifc_flags);
+         if (ML_(safe_to_deref)(p, sizeof(*p))) {
+            if ((p->lifc_buf != NULL) && (p->lifc_len > 0))
+               PRE_MEM_WRITE("ioctl(SIOCGLIFCONF, lifconf->lifc_buf)",
+                             (Addr) p->lifc_buf, p->lifc_len);
+         }
+         /* lifc_len gets also written to during SIOCGLIFCONF ioctl. */
+      }
+      break;
+   case VKI_SIOCGLIFFLAGS:
+      {
+         struct vki_lifreq *p = (struct vki_lifreq *) ARG3;
+         PRE_FIELD_READ("ioctl(SIOCGLIFFLAGS, lifreq->lifr_name)",
+                        p->lifr_name);
+         PRE_FIELD_WRITE("ioctl(SIOCGLIFFLAGS, lifreq->lifr_flags)",
+                         p->lifr_flags);
+      }
+      break;
+   case VKI_SIOCGLIFNETMASK:
+      {
+         struct vki_lifreq *p = (struct vki_lifreq *) ARG3;
+         PRE_FIELD_READ("ioctl(SIOCGLIFNETMASK, lifreq->lifr_name)",
+                        p->lifr_name);
+         PRE_FIELD_WRITE("ioctl(SIOCGLIFNETMASK, lifreq->lifr_addr)",
+                         p->lifr_addr);
+      }
+      break;
    case VKI_SIOCGLIFNUM:
       {
          struct vki_lifnum *p = (struct vki_lifnum *) ARG3;
@@ -3117,7 +3266,7 @@ PRE(sys_ioctl)
          PRE_FIELD_WRITE("ioctl(SIOCGLIFNUM, lifn->lifn_count)",
                          p->lifn_count);
       }
-      break;  
+      break;
 
    /* filio */
    case VKI_FIOSETOWN:
@@ -3161,6 +3310,13 @@ PRE(sys_ioctl)
       }
       break;
 
+   /* devinfo */
+   case VKI_DINFOUSRLD:
+      /* We should do PRE_MEM_WRITE here but the question is for how many? */
+      break;
+   case VKI_DINFOIDENT:
+      break;
+
    default:
       ML_(PRE_unknown_ioctl)(tid, ARG2, ARG3);
       break;
@@ -3188,6 +3344,32 @@ POST(sys_ioctl)
       break;
 
    /* mntio */
+   case VKI_MNTIOC_GETEXTMNTENT:
+      {
+         struct vki_mntentbuf *embuf = (struct vki_mntentbuf *) ARG3;
+         struct vki_extmnttab *mnt = (struct vki_extmnttab *) embuf->mbuf_emp;
+
+         POST_MEM_WRITE((Addr) mnt, sizeof(struct vki_extmnttab));
+         if (mnt != NULL) {
+            if (mnt->mnt_special != NULL)
+               POST_MEM_WRITE((Addr) mnt->mnt_special,
+                              VG_(strlen)(mnt->mnt_special) + 1);
+            if (mnt->mnt_mountp != NULL)
+               POST_MEM_WRITE((Addr) mnt->mnt_mountp,
+                              VG_(strlen)(mnt->mnt_mountp) + 1);
+            if (mnt->mnt_fstype != NULL)
+               POST_MEM_WRITE((Addr) mnt->mnt_fstype,
+                              VG_(strlen)(mnt->mnt_fstype) + 1);
+            if (mnt->mnt_mntopts != NULL)
+               POST_MEM_WRITE((Addr) mnt->mnt_mntopts,
+                              VG_(strlen)(mnt->mnt_mntopts) + 1);
+            if (mnt->mnt_time != NULL)
+               POST_MEM_WRITE((Addr) mnt->mnt_time,
+                              VG_(strlen)(mnt->mnt_time) + 1);
+         }
+      }
+      break;
+
    case VKI_MNTIOC_GETMNTANY:
       {
          struct vki_mntentbuf *embuf = (struct vki_mntentbuf *) ARG3;
@@ -3247,6 +3429,8 @@ POST(sys_ioctl)
    /* STREAMS */
    case VKI_I_PUSH:
       break;
+   case VKI_I_FLUSH:
+      break;
    case VKI_I_STR:
       {
          struct vki_strioctl *p = (struct vki_strioctl *) ARG3;
@@ -3255,6 +3439,8 @@ POST(sys_ioctl)
          if ((p->ic_dp != NULL) && (p->ic_len > 0))
             POST_MEM_WRITE((Addr) p->ic_dp, p->ic_len);
       }
+      break;
+   case VKI_I_FIND:
       break;
    case VKI_I_PEEK:
       {
@@ -3274,6 +3460,57 @@ POST(sys_ioctl)
       break;
 
    /* sockio */
+   case VKI_SIOCGIFCONF:
+      {
+         struct vki_ifconf *p = (struct vki_ifconf *) ARG3;
+         POST_FIELD_WRITE(p->ifc_len);
+         POST_FIELD_WRITE(p->ifc_req);
+         if ((p->ifc_req != NULL) && (p->ifc_len > 0))
+            POST_MEM_WRITE((Addr) p->ifc_req, p->ifc_len);
+      }
+      break;
+   case VKI_SIOCGIFFLAGS:
+      {
+         struct vki_ifreq *p = (struct vki_ifreq *) ARG3;
+         POST_FIELD_WRITE(p->ifr_flags);
+      }
+      break;
+   case VKI_SIOCGIFNETMASK:
+      {
+         struct vki_ifreq *p = (struct vki_ifreq *) ARG3;
+         POST_FIELD_WRITE(p->ifr_addr);
+      }
+      break;
+   case VKI_SIOCGIFNUM:
+      POST_MEM_WRITE(ARG3, sizeof(int));
+      break;
+   case VKI_SIOCGLIFBRDADDR:
+      {
+         struct vki_lifreq *p = (struct vki_lifreq *) ARG3;
+         POST_FIELD_WRITE(p->lifr_addr);
+      }
+      break;
+   case VKI_SIOCGLIFCONF:
+      {
+         struct vki_lifconf *p = (struct vki_lifconf *) ARG3;
+         POST_FIELD_WRITE(p->lifc_len);
+         POST_FIELD_WRITE(p->lifc_req);
+         if ((p->lifc_req != NULL) && (p->lifc_len > 0))
+            POST_MEM_WRITE((Addr) p->lifc_req, p->lifc_len);
+      }
+      break;
+   case VKI_SIOCGLIFFLAGS:
+      {
+         struct vki_lifreq *p = (struct vki_lifreq *) ARG3;
+         POST_FIELD_WRITE(p->lifr_flags);
+      }
+      break;
+   case VKI_SIOCGLIFNETMASK:
+      {
+         struct vki_lifreq *p = (struct vki_lifreq *) ARG3;
+         POST_FIELD_WRITE(p->lifr_addr);
+      }
+      break;
    case VKI_SIOCGLIFNUM:
       {
          struct vki_lifnum *p = (struct vki_lifnum *) ARG3;
@@ -3306,6 +3543,13 @@ POST(sys_ioctl)
    /* dtrace */
    case VKI_DTRACEHIOC_REMOVE:
    case VKI_DTRACEHIOC_ADDDOF:
+      break;
+
+   /* devinfo */
+   case VKI_DINFOUSRLD:
+      POST_MEM_WRITE(ARG3, RES);
+      break;
+   case VKI_DINFOIDENT:
       break;
 
    default:
@@ -3618,9 +3862,6 @@ PRE(sys_execve)
       ThreadState *tst = VG_(get_ThreadState)(tid);
       VG_(sigprocmask)(VKI_SIG_SETMASK, &tst->sig_mask, NULL);
    }
-
-   /* Restore the DATA rlimit for the child. */
-   VG_(setrlimit)(VKI_RLIMIT_DATA, &VG_(client_rlimit_data));
 
    /* Debug-only printing. */
    if (0) {
@@ -4380,6 +4621,51 @@ POST(sys_ucredsys)
       break;
    }
 }
+
+PRE(sys_sysfs)
+{
+   /* Kernel: int sysfs(int opcode, long a1, long a2); */
+   PRINT("sys_sysfs ( %ld, %ld, %ld )", SARG1, SARG2, ARG3);
+
+   switch (ARG1 /*opcode*/) {
+   case VKI_GETFSIND:
+      /* Libc: int sysfs(int opcode, const char *fsname); */
+      PRE_REG_READ2(long, SC2("sysfs", "getfsind"), int, opcode,
+                    const char *, fsname);
+      PRE_MEM_RASCIIZ("sysfs(fsname)", ARG2);
+      break;
+   case VKI_GETFSTYP:
+      /* Libc: int sysfs(int opcode, int fs_index, char *buf); */
+      PRE_REG_READ3(long, SC2("sysfs", "getfstyp"), int, opcode,
+                    int, fs_index, char *, buf);
+      PRE_MEM_WRITE("sysfs(buf)", ARG3, VKI_FSTYPSZ + 1);
+      break;
+   case VKI_GETNFSTYP:
+      /* Libc: int sysfs(int opcode); */
+      PRE_REG_READ1(long, SC2("sysfs", "getnfstyp"), int, opcode);
+      break;
+   default:
+      VG_(unimplemented)("Syswrap of the sysfs call with opcode %ld.", SARG1);
+      /*NOTREACHED*/
+      break;
+   }
+}
+
+POST(sys_sysfs)
+{
+   switch (ARG1 /*opcode*/) {
+   case VKI_GETFSIND:
+   case VKI_GETNFSTYP:
+      break;
+   case VKI_GETFSTYP:
+      POST_MEM_WRITE(ARG3, VG_(strlen)((HChar *) ARG3) + 1);
+      break;
+   default:
+      vg_assert(0);
+      break;
+   }
+}
+
 
 PRE(sys_getmsg)
 {
@@ -6273,6 +6559,27 @@ PRE(sys_forksys)
       /* vfork */
       if (ARG1 == 2)
          VG_(close)(fds[1]);
+
+#     if defined(SOLARIS_PT_SUNDWTRACE_THRP)
+      /* Kernel can map a new page as a scratch space of the DTrace fasttrap
+         provider. There is no way we can directly get its address - it's all
+         private to the kernel. Fish it the slow way. */
+      Addr addr;
+      SizeT size;
+      UInt prot;
+      Bool found = VG_(am_search_for_new_segment)(&addr, &size, &prot);
+      if (found) {
+         VG_(debugLog)(1, "syswrap-solaris", "PRE(forksys), new segment: "
+                       "vaddr=%#lx, size=%#lx, prot=%#x\n", addr, size, prot);
+         vg_assert(prot == (VKI_PROT_READ | VKI_PROT_EXEC));
+         vg_assert(size == VKI_PAGE_SIZE);
+         ML_(notify_core_and_tool_of_mmap)(addr, size, prot, VKI_MAP_ANONYMOUS,
+                                           -1, 0);
+
+         /* Note: We don't notify the debuginfo reader about this mapping
+            because there is no debug information stored in this segment. */
+      }
+#     endif /* SOLARIS_PT_SUNDWTRACE_THRP */
    }
    else {
       VG_(do_atfork_parent)(tid);
@@ -6297,6 +6604,22 @@ PRE(sys_forksys)
       }
    }
 }
+
+#if defined(SOLARIS_GETRANDOM_SYSCALL)
+PRE(sys_getrandom)
+{
+   /* int getrandom(void *buf, size_t buflen, uint_t flags); */
+   PRINT("sys_getrandom ( %#lx, %lu, %lu )", ARG1, ARG2, ARG3);
+   PRE_REG_READ3(long, "getrandom", void *, buf, vki_size_t, buflen,
+                 vki_uint_t, flags);
+   PRE_MEM_WRITE("getrandom(buf)", ARG1, ARG2);
+}
+
+POST(sys_getrandom)
+{
+   POST_MEM_WRITE(ARG1, RES);
+}
+#endif /* SOLARIS_GETRANDOM_SYSCALL */
 
 PRE(sys_sigtimedwait)
 {
@@ -6378,6 +6701,173 @@ PRE(sys_lwp_detach)
    PRE_REG_READ1(long, "lwp_detach", vki_id_t, lwpid);
 }
 
+PRE(sys_modctl)
+{
+   /* int modctl(int cmd, uintptr_t a1, uintptr_t a2, uintptr_t a3,
+                 uintptr_t a4, uintptr_t a5); */
+   *flags |= SfMayBlock;
+
+   switch (ARG1 /*cmd*/) {
+   case VKI_MODLOAD:
+      /* int modctl_modload(int use_path, char *filename, int *rvp); */
+      PRINT("sys_modctl ( %ld, %ld, %#lx(%s), %#lx )",
+            SARG1, ARG2, ARG3, (HChar *) ARG3, ARG4);
+      PRE_REG_READ4(long, SC2("modctl", "modload"),
+                    int, cmd, int, use_path, char *, filename, int *, rvp);
+      PRE_MEM_RASCIIZ("modctl(filaneme)", ARG3);
+      if (ARG4 != 0) {
+         PRE_MEM_WRITE("modctl(rvp)", ARG4, sizeof(int *));
+      }
+      break;
+   case VKI_MODUNLOAD:
+      /* int modctl_modunload(modid_t id); */
+      PRINT("sys_modctl ( %ld, %ld )", SARG1, SARG2);
+      PRE_REG_READ2(long, SC2("modctl", "modunload"),
+                    int, cmd, vki_modid_t, id);
+      break;
+   case VKI_MODINFO: {
+      /* int modctl_modinfo(modid_t id, struct modinfo *umodi); */
+      PRINT("sys_modctl ( %ld, %ld, %#lx )", SARG1, SARG2, ARG3);
+      PRE_REG_READ3(long, SC2("modctl", "modinfo"),
+                    int, cmd, vki_modid_t, id, struct modinfo *, umodi);
+
+      struct vki_modinfo *umodi = (struct vki_modinfo *) ARG3;
+      PRE_FIELD_READ("modctl(umodi->mi_info)", umodi->mi_info);
+      PRE_FIELD_READ("modctl(umodi->mi_id)", umodi->mi_id);
+      PRE_FIELD_READ("modctl(umodi->mi_nextid)", umodi->mi_nextid);
+      PRE_MEM_WRITE("modctl(umodi)", ARG3, sizeof(struct vki_modinfo));
+      break;
+   }
+
+#  if defined(SOLARIS_MODCTL_MODNVL)
+   case VKI_MODNVL_DEVLINKSYNC:
+      /* int modnvl_devlinksync(sysnvl_op_t a1, uintptr_t a2, uintptr_t a3,
+                                uintptr_t a4); */
+      switch (ARG2 /*op*/) {
+
+#     if defined(HAVE_SYS_SYSNVL_H)
+      case VKI_SYSNVL_OP_GET:
+         PRE_REG_READ5(long, SC3("modctl", "modnvl_devlinksync", "get"),
+                       int, cmd, sysnvl_op_t, a1, char *, bufp,
+                       uint64_t *, buflenp, uint64_t *, genp);
+#     else
+      case VKI_MODCTL_NVL_OP_GET:
+         PRE_REG_READ5(long, SC3("modctl", "modnvl_devlinksync", "get"),
+                       int, cmd, modctl_nvl_op_t, a1, char *, bufp,
+                       uint64_t *, buflenp, uint64_t *, genp);
+#     endif /* HAVE_SYS_SYSNVL_H */
+
+         PRINT("sys_modctl ( %ld, %lu, %#lx, %#lx, %#lx )",
+               SARG1, ARG2, ARG3, ARG4, ARG5);
+         PRE_MEM_WRITE("modctl(buflenp)", ARG4, sizeof(vki_uint64_t));
+         if (ML_(safe_to_deref)((vki_uint64_t *) ARG4, sizeof(vki_uint64_t))) {
+            if (ARG3 != 0) {
+               PRE_MEM_WRITE("modctl(bufp)", ARG3, *(vki_uint64_t *) ARG4);
+            }
+         }
+         if (ARG5 != 0) {
+            PRE_MEM_WRITE("modctl(genp)", ARG5, sizeof(vki_uint64_t));
+         }
+         break;
+
+#     if defined(HAVE_SYS_SYSNVL_H)
+      case VKI_SYSNVL_OP_UPDATE:
+         PRE_REG_READ4(long, SC3("modctl", "modnvl_devlinksync", "update"),
+                       int, cmd, sysnvl_op_t, a1, char *, bufp,
+                       uint64_t *, buflenp);
+#     else
+      case VKI_MODCTL_NVL_OP_UPDATE:
+         PRE_REG_READ4(long, SC3("modctl", "modnvl_devlinksync", "update"),
+                       int, cmd, modctl_nvl_op_t, a1, char *, bufp,
+                       uint64_t *, buflenp);
+#     endif /* HAVE_SYS_SYSNVL_H */
+
+         PRINT("sys_modctl ( %ld, %lu, %#lx, %#lx )", SARG1, ARG2, ARG3, ARG4);
+         PRE_MEM_READ("modctl(buflenp)", ARG4, sizeof(vki_uint64_t));
+         if (ML_(safe_to_deref)((vki_uint64_t *) ARG4, sizeof(vki_uint64_t))) {
+            PRE_MEM_READ("modctl(bufp)", ARG3, *(vki_uint64_t *) ARG4);
+         }
+         break;
+
+      default:
+         VG_(unimplemented)("Syswrap of the modctl call with command "
+                            "MODNVL_DEVLINKSYNC and op %ld.", ARG2);
+         /*NOTREACHED*/
+         break;
+      }
+      break;
+
+   case VKI_MODDEVINFO_CACHE_TS:
+      /* int modctl_devinfo_cache_ts(uint64_t *utsp); */
+      PRINT("sys_modctl ( %ld, %#lx )", SARG1, ARG2);
+      PRE_REG_READ2(long, SC2("modctl", "moddevinfo_cache_ts"),
+                    int, cmd, uint64_t *, utsp);
+      PRE_MEM_WRITE("modctl(utsp)", ARG2, sizeof(vki_uint64_t));
+      break;
+#  endif /* SOLARIS_MODCTL_MODNVL */
+
+   default:
+      VG_(unimplemented)("Syswrap of the modctl call with command %ld.", SARG1);
+      /*NOTREACHED*/
+      break;
+   }
+}
+
+POST(sys_modctl)
+{
+   switch (ARG1 /*cmd*/) {
+   case VKI_MODLOAD:
+      if (ARG4 != 0) {
+         POST_MEM_WRITE(ARG4, sizeof(int *));
+      }
+      break;
+   case VKI_MODUNLOAD:
+      break;
+   case VKI_MODINFO:
+      POST_MEM_WRITE(ARG3, sizeof(struct vki_modinfo));
+      break;
+#  if defined(SOLARIS_MODCTL_MODNVL)
+   case VKI_MODNVL_DEVLINKSYNC:
+      switch (ARG2 /*op*/) {
+
+#     if defined(HAVE_SYS_SYSNVL_H)
+      case VKI_SYSNVL_OP_GET:
+#     else
+      case VKI_MODCTL_NVL_OP_GET:
+#     endif /* HAVE_SYS_SYSNVL_H */
+
+         POST_MEM_WRITE(ARG4, sizeof(vki_uint64_t));
+         if (ARG3 != 0) {
+            POST_MEM_WRITE(ARG3, *(vki_uint64_t *) ARG4);
+         }
+         if (ARG5 != 0) {
+            POST_MEM_WRITE(ARG5, sizeof(vki_uint64_t));
+         }
+         break;
+
+#     if defined(HAVE_SYS_SYSNVL_H)
+      case VKI_SYSNVL_OP_UPDATE:
+#     else
+      case VKI_MODCTL_NVL_OP_UPDATE:
+#     endif /* HAVE_SYS_SYSNVL_H */
+         break;
+
+      default:
+         vg_assert(0);
+         break;
+      }
+      break;
+   case VKI_MODDEVINFO_CACHE_TS:
+      POST_MEM_WRITE(ARG2, sizeof(vki_uint64_t));
+      break;
+#  endif /* SOLARIS_MODCTL_MODNVL */
+
+   default:
+      vg_assert(0);
+      break;
+   }
+}
+
 PRE(sys_fchroot)
 {
    /* int fchroot(int fd); */
@@ -6388,6 +6878,15 @@ PRE(sys_fchroot)
    if (!ML_(fd_allowed)(ARG1, "fchroot", tid, False))
       SET_STATUS_Failure(VKI_EBADF);
 }
+
+#if defined(SOLARIS_SYSTEM_STATS_SYSCALL)
+PRE(sys_system_stats)
+{
+   /* void system_stats(int flag); */
+   PRINT("sys_system_stats ( %ld )", SARG1);
+   PRE_REG_READ1(void, "system_stats", int, flag);
+}
+#endif /* SOLARIS_SYSTEM_STATS_SYSCALL */
 
 PRE(sys_gettimeofday)
 {
@@ -6778,7 +7277,7 @@ PRE(sys_lwp_wait)
    /* int lwp_wait(id_t lwpid, id_t *departed); */
    *flags |= SfMayBlock;
    PRINT("sys_lwp_wait ( %ld, %#lx )", SARG1, ARG2);
-   PRE_REG_READ2(long, "lwp_wait", vki_id_t, lwpid, id_t *, departed);
+   PRE_REG_READ2(long, "lwp_wait", vki_id_t, lwpid, vki_id_t *, departed);
    if (ARG2)
       PRE_MEM_WRITE("lwp_wait(departed)", ARG2, sizeof(vki_id_t));
 }
@@ -6791,11 +7290,11 @@ POST(sys_lwp_wait)
 PRE(sys_lwp_mutex_wakeup)
 {
    /* int lwp_mutex_wakeup(lwp_mutex_t *lp, int release_all); */
-   vki_lwp_mutex_t *lp = (vki_lwp_mutex_t*)ARG1;
    *flags |= SfMayBlock;
    PRINT("sys_lwp_mutex_wakeup ( %#lx, %ld )", ARG1, SARG2);
-   PRE_REG_READ2(long, "lwp_mutex_wakeup", lwp_mutex_t *, lp,
+   PRE_REG_READ2(long, "lwp_mutex_wakeup", vki_lwp_mutex_t *, lp,
                  int, release_all);
+   vki_lwp_mutex_t *lp = (vki_lwp_mutex_t *) ARG1;
    PRE_FIELD_READ("lwp_mutex_wakeup(lp->mutex_type)", lp->vki_mutex_type);
    PRE_FIELD_WRITE("lwp_mutex_wakeup(lp->mutex_waiters)",
                    lp->vki_mutex_waiters);
@@ -6803,18 +7302,67 @@ PRE(sys_lwp_mutex_wakeup)
 
 POST(sys_lwp_mutex_wakeup)
 {
-   vki_lwp_mutex_t *lp = (vki_lwp_mutex_t*)ARG1;
+   vki_lwp_mutex_t *lp = (vki_lwp_mutex_t *) ARG1;
    POST_FIELD_WRITE(lp->vki_mutex_waiters);
+}
+
+PRE(sys_lwp_cond_wait)
+{
+   /* int lwp_cond_wait(lwp_cond_t *cvp, lwp_mutex_t *mp, timespec_t *tsp,
+                        int check_park); */
+   *flags |= SfMayBlock;
+   PRINT("sys_lwp_cond_wait( %#lx, %#lx, %#lx, %ld )", ARG1, ARG2, ARG3, SARG4);
+   PRE_REG_READ4(long, "lwp_cond_wait", vki_lwp_cond_t *, cvp,
+                 vki_lwp_mutex_t *, mp, vki_timespec_t *, tsp, int, check_part);
+
+   vki_lwp_cond_t *cvp = (vki_lwp_cond_t *) ARG1;
+   vki_lwp_mutex_t *mp = (vki_lwp_mutex_t *) ARG2;
+   PRE_FIELD_READ("lwp_cond_wait(cvp->type)", cvp->vki_cond_type);
+   PRE_FIELD_READ("lwp_cond_wait(cvp->waiters_kernel)",
+                  cvp->vki_cond_waiters_kernel);
+   PRE_FIELD_READ("lwp_cond_wait(mp->mutex_type)", mp->vki_mutex_type);
+   PRE_FIELD_WRITE("lwp_cond_wait(mp->mutex_waiters)", mp->vki_mutex_waiters);
+   if (ARG3 != 0)
+      PRE_MEM_READ("lwp_cond_wait(tsp)", ARG3, sizeof(vki_timespec_t));
+}
+
+POST(sys_lwp_cond_wait)
+{
+   vki_lwp_cond_t *cvp = (vki_lwp_cond_t *) ARG1;
+   vki_lwp_mutex_t *mp = (vki_lwp_mutex_t *) ARG2;
+   POST_FIELD_WRITE(cvp->vki_cond_waiters_kernel);
+   POST_FIELD_WRITE(mp->vki_mutex_waiters);
+   if (ARG3 != 0)
+      POST_MEM_WRITE(ARG3, sizeof(vki_timespec_t));
+}
+
+PRE(sys_lwp_cond_signal)
+{
+   /* int lwp_cond_signal(lwp_cond_t *cvp); */
+   *flags |= SfMayBlock;
+   PRINT("sys_lwp_cond_signal( %#lx )", ARG1);
+   PRE_REG_READ1(long, "lwp_cond_signal", vki_lwp_cond_t *, cvp);
+
+   vki_lwp_cond_t *cvp = (vki_lwp_cond_t *) ARG1;
+   PRE_FIELD_READ("lwp_cond_signal(cvp->type)", cvp->vki_cond_type);
+   PRE_FIELD_READ("lwp_cond_signal(cvp->waiters_kernel)",
+                  cvp->vki_cond_waiters_kernel);
+}
+
+POST(sys_lwp_cond_signal)
+{
+   vki_lwp_cond_t *cvp = (vki_lwp_cond_t *) ARG1;
+   POST_FIELD_WRITE(cvp->vki_cond_waiters_kernel);
 }
 
 PRE(sys_lwp_cond_broadcast)
 {
    /* int lwp_cond_broadcast(lwp_cond_t *cvp); */
-   vki_lwp_cond_t *cvp = (vki_lwp_cond_t*)ARG1;
    *flags |= SfMayBlock;
    PRINT("sys_lwp_cond_broadcast ( %#lx )", ARG1);
-   PRE_REG_READ1(long, "lwp_cond_broadcast", lwp_cond_t *, cvp);
+   PRE_REG_READ1(long, "lwp_cond_broadcast", vki_lwp_cond_t *, cvp);
 
+   vki_lwp_cond_t *cvp = (vki_lwp_cond_t *) ARG1;
    PRE_FIELD_READ("lwp_cond_broadcast(cvp->type)", cvp->vki_cond_type);
    PRE_FIELD_READ("lwp_cond_broadcast(cvp->waiters_kernel)",
                   cvp->vki_cond_waiters_kernel);
@@ -6824,7 +7372,7 @@ PRE(sys_lwp_cond_broadcast)
 
 POST(sys_lwp_cond_broadcast)
 {
-   vki_lwp_cond_t *cvp = (vki_lwp_cond_t*)ARG1;
+   vki_lwp_cond_t *cvp = (vki_lwp_cond_t *) ARG1;
    POST_FIELD_WRITE(cvp->vki_cond_waiters_kernel);
 }
 
@@ -7087,7 +7635,7 @@ PRE(sys_pollsys)
    UWord i;
    struct vki_pollfd *ufds = (struct vki_pollfd *)ARG1;
 
-   *flags |= SfMayBlock;
+   *flags |= SfMayBlock | SfPostOnFail;
 
    PRINT("sys_pollsys ( %#lx, %lu, %#lx, %#lx )", ARG1, ARG2, ARG3, ARG4);
    PRE_REG_READ4(long, "poll", pollfd_t *, fds, vki_nfds_t, nfds,
@@ -7103,17 +7651,36 @@ PRE(sys_pollsys)
 
    if (ARG3)
       PRE_MEM_READ("poll(timeout)", ARG3, sizeof(vki_timespec_t));
-   if (ARG4)
+
+   if (ARG4) {
       PRE_MEM_READ("poll(set)", ARG4, sizeof(vki_sigset_t));
+
+      const vki_sigset_t *guest_sigmask = (vki_sigset_t *) ARG4;
+      if (!ML_(safe_to_deref)(guest_sigmask, sizeof(vki_sigset_t))) {
+         ARG4 = 1; /* Something recognisable to POST() hook. */
+      } else {
+         vki_sigset_t *vg_sigmask =
+            VG_(malloc)("syswrap.pollsys.1", sizeof(vki_sigset_t));
+         ARG4 = (Addr) vg_sigmask;
+         *vg_sigmask = *guest_sigmask;
+         VG_(sanitize_client_sigmask)(vg_sigmask);
+      }
+   }
 }
 
 POST(sys_pollsys)
 {
-   if (RES >= 0) {
+   vg_assert(SUCCESS || FAILURE);
+
+   if (SUCCESS && (RES >= 0)) {
       UWord i;
       vki_pollfd_t *ufds = (vki_pollfd_t*)ARG1;
       for (i = 0; i < ARG2; i++)
          POST_FIELD_WRITE(ufds[i].revents);
+   }
+
+   if ((ARG4 != 0) && (ARG4 != 1)) {
+      VG_(free)((vki_sigset_t *) ARG4);
    }
 }
 
@@ -7423,6 +7990,7 @@ PRE(sys_auditsys)
                        long, code, int, cmd, char *, data, int, length);
          PRE_MEM_WRITE("auditsys(data)", ARG3, ARG4);
          break;
+#if defined(SOLARIS_AUDITON_STAT)
       case VKI_A_GETSTAT:
          PRE_REG_READ3(long, SC3("auditsys", "auditctl", "getstat"),
                        long, code, int, cmd, vki_au_stat_t *, stats);
@@ -7433,6 +8001,7 @@ PRE(sys_auditsys)
                        long, code, int, cmd, vki_au_stat_t *, stats);
          PRE_MEM_READ("auditsys(stats)", ARG3, sizeof(vki_au_stat_t));
          break;
+#endif /* SOLARIS_AUDITON_STAT */
       case VKI_A_SETUMASK:
          PRE_REG_READ3(long, SC3("auditsys", "auditctl", "setumask"),
                        long, code, int, cmd, vki_auditinfo_t *, umask);
@@ -7613,10 +8182,12 @@ POST(sys_auditsys)
          case VKI_A_GETCAR:
             POST_MEM_WRITE(ARG3, VG_(strlen)((HChar *) ARG3) + 1);
             break;
+#if defined(SOLARIS_AUDITON_STAT)
          case VKI_A_GETSTAT:
             POST_MEM_WRITE(ARG3, sizeof(vki_au_stat_t));
             break;
          case VKI_A_SETSTAT:
+#endif /* SOLARIS_AUDITON_STAT */
          case VKI_A_SETUMASK:
          case VKI_A_SETSMASK:
             break;
@@ -7997,6 +8568,16 @@ static void repository_door_pre_mem_door_call_hook(ThreadId tid, Int fd,
                            "entity_name->rpr_answertype)", r->rpr_answertype);
          }
          break;
+#if (SOLARIS_REPCACHE_PROTOCOL_VERSION >= 24) && (SOLARIS_REPCACHE_PROTOCOL_VERSION <= 30)
+      case VKI_REP_PROTOCOL_ENTITY_FMRI:
+         {
+            struct vki_rep_protocol_entity_fmri *r =
+               (struct vki_rep_protocol_entity_fmri *) p;
+            PRE_FIELD_READ("door_call(\"" VKI_REPOSITORY_DOOR_NAME "\", "
+                           "entity_fmri->rpr_entityid)", r->rpr_entityid);
+         }
+         break;
+#endif /* 24 <= SOLARIS_REPCACHE_PROTOCOL_VERSION =< 30 */
 #if (SOLARIS_REPCACHE_PROTOCOL_VERSION >= 25)
       case VKI_REP_PROTOCOL_ENTITY_GET_ROOT:
          {
@@ -8020,6 +8601,9 @@ static void repository_door_pre_mem_door_call_hook(ThreadId tid, Int fd,
          }
          break;
       case VKI_REP_PROTOCOL_ENTITY_GET_CHILD:
+#if (SOLARIS_REPCACHE_PROTOCOL_VERSION >= 31)
+      case VKI_REP_PROTOCOL_ENTITY_GET_CHILD_COMPOSED:
+#endif
          {
             struct vki_rep_protocol_entity_get_child *r =
                (struct vki_rep_protocol_entity_get_child *) p;
@@ -8116,7 +8700,7 @@ static void repository_door_pre_mem_door_call_hook(ThreadId tid, Int fd,
          break;
       default:
          VG_(unimplemented)("Door wrapper of " VKI_REPOSITORY_DOOR_NAME
-                            " where rpr_request=%u.", p->rpr_request);
+                            " where rpr_request=%#x.", p->rpr_request);
          /* NOTREACHED */
          break;
       }        
@@ -8721,7 +9305,8 @@ PRE(sys_door)
    case VKI_DOOR_SETPARAM:
       PRE_REG_READ3(long, "door", long, arg1, long, arg2, long, arg3);
       PRE_REG_READ_SIXTH_ONLY;
-      VG_(unimplemented)("DOOR_SETPARAM");
+      if (!ML_(fd_allowed)(ARG1, "door_setparam", tid, False))
+         SET_STATUS_Failure(VKI_EBADF);
       break;
    default:
       VG_(unimplemented)("Syswrap of the door call with subcode %ld.", SARG6);
@@ -8787,7 +9372,7 @@ POST(sys_door)
       door_record_server(tid, ARG1, RES);
       break;
    case VKI_DOOR_REVOKE:
-      door_revoke(tid, ARG1);
+      door_record_revoke(tid, ARG1);
       if (VG_(clo_track_fds))
          ML_(record_fd_close)(ARG1);
       break;
@@ -8802,7 +9387,7 @@ POST(sys_door)
 
          if (params->rbuf) {
             Addr addr = (Addr)params->rbuf;
-            if (!VG_(am_find_anon_segment(addr))) {
+            if (!VG_(am_find_anon_segment)(addr)) {
                /* This segment is new and was mapped by the kernel. */
                UInt prot, flags;
                SizeT size;
@@ -8820,7 +9405,7 @@ POST(sys_door)
                                                  -1, 0);
 
                /* Note: We don't notify the debuginfo reader about this
-                  mapping because there are no debug information stored in
+                  mapping because there is no debug information stored in
                   this segment. */
             }
 
@@ -8900,9 +9485,12 @@ POST(sys_schedctl)
    tst->os_state.schedctl_data = a;
 
    /* Returned address points to a block in a mapped page. */
-   if (!VG_(am_find_anon_segment(a))) {
+   if (!VG_(am_find_anon_segment)(a)) {
       Addr page = VG_PGROUNDDN(a);
-      UInt prot = VKI_PROT_READ | VKI_PROT_WRITE | VKI_PROT_EXEC;
+      UInt prot = VKI_PROT_READ | VKI_PROT_WRITE;
+#     if defined(SOLARIS_SCHEDCTL_PAGE_EXEC)
+      prot |= VKI_PROT_EXEC;
+#     endif /* SOLARIS_SCHEDCTL_PAGE_EXEC */
       UInt flags = VKI_MAP_ANONYMOUS;
       /* The kernel always allocates one page for the sc_shared struct. */
       SizeT size = VKI_PAGE_SIZE;
@@ -8914,9 +9502,9 @@ POST(sys_schedctl)
       /* The kernel always places redzone before and after the allocated page.
          Check this assertion now; the tool can later request to allocate
          a Valgrind segment and aspacemgr will place it adjacent. */
-      const NSegment *seg = VG_(am_find_nsegment(page - 1));
+      const NSegment *seg = VG_(am_find_nsegment)(page - 1);
       vg_assert(seg == NULL || seg->kind == SkResvn);
-      seg = VG_(am_find_nsegment(page + VKI_PAGE_SIZE));
+      seg = VG_(am_find_nsegment)(page + VKI_PAGE_SIZE);
       vg_assert(seg == NULL || seg->kind == SkResvn);
 
       /* The address space manager works with whole pages. */
@@ -8932,6 +9520,210 @@ POST(sys_schedctl)
    /* The tool needs per-thread granularity, not whole pages. */
    VG_TRACK(new_mem_mmap, a, sizeof(struct vki_sc_shared), True, True, True, 0);
    POST_MEM_WRITE(a, sizeof(struct vki_sc_shared));
+}
+
+PRE(sys_pset)
+{
+   /* Kernel: int pset(int subcode, long arg1, long arg2, long arg3,
+                       long arg4); */
+   switch (ARG1 /* subcode */) {
+   case VKI_PSET_CREATE:
+      /* Libc: int pset_create(psetid_t *newpset); */
+      PRINT("sys_pset ( %ld, %#lx )", SARG1, ARG2);
+      PRE_REG_READ2(long, SC2("pset", "create"), int, subcode,
+                    vki_psetid_t *, newpset);
+      PRE_MEM_WRITE("pset(newpset)", ARG2, sizeof(vki_psetid_t));
+      break;
+   case VKI_PSET_DESTROY:
+      /* Libc: int pset_destroy(psetid_t pset); */
+      PRINT("sys_pset ( %ld, %ld )", SARG1, SARG2);
+      PRE_REG_READ2(long, SC2("pset", "destroy"), int, subcode,
+                    vki_psetid_t, pset);
+      break;
+   case VKI_PSET_ASSIGN:
+      /* Libc: int pset_assign(psetid_t pset, processorid_t cpu,
+                               psetid_t *opset); */
+      PRINT("sys_pset ( %ld, %ld, %ld, %#lx )", SARG1, SARG2, SARG3, ARG4);
+      PRE_REG_READ4(long, SC2("pset", "assign"), int, subcode,
+                    vki_psetid_t, pset, vki_processorid_t, cpu,
+                    vki_psetid_t *, opset);
+      if (ARG4 != 0)
+         PRE_MEM_WRITE("pset(opset)", ARG4, sizeof(vki_psetid_t));
+      break;
+   case VKI_PSET_INFO:
+      /* Libc: int pset_info(psetid_t pset, int *type, uint_t *numcpus,
+                             processorid_t *cpulist); */
+      PRINT("sys_pset ( %ld, %ld, %#lx, %#lx, %#lx )", SARG1, SARG2, ARG3,
+                                                       ARG4, ARG5);
+      PRE_REG_READ5(long, SC2("pset", "info"), int, subcode, vki_psetid_t, pset,
+                    int *, type, vki_uint_t *, numcpus,
+                    vki_processorid_t *, cpulist);
+      if (ARG3 != 0)
+         PRE_MEM_WRITE("pset(type)", ARG3, sizeof(int));
+      if (ARG4 != 0)
+         PRE_MEM_WRITE("pset(numcpus)", ARG4, sizeof(vki_uint_t));
+      if ((ARG4 != 0) && (ARG5 != 0)) {
+         vki_uint_t *numcpus = (vki_uint_t *) ARG4;
+         if (ML_(safe_to_deref(numcpus, sizeof(vki_uint_t)))) {
+            PRE_MEM_WRITE("pset(cpulist)", ARG5,
+                          *numcpus * sizeof(vki_processorid_t));
+            /* If cpulist buffer is not large enough, it will hold only as many
+               entries as fit in the buffer. However numcpus will contain the
+               real number of cpus which will be greater than originally passed
+               in. Stash the original value in unused ARG6. */
+            ARG6 = *numcpus;
+         }
+      }
+      break;
+   case VKI_PSET_BIND:
+      /* Libc: int pset_bind(psetid_t pset, idtype_t idtype, id_t id,
+                             psetid_t *opset); */
+      PRINT("sys_pset ( %ld, %ld, %ld, %ld, %#lx )", SARG1, SARG2, SARG3,
+                                                     SARG4, ARG5);
+      PRE_REG_READ5(long, SC2("pset", "bind"), int, subcode, vki_psetid_t, pset,
+                    vki_idtype_t, idtype, vki_id_t, id, vki_psetid_t *, opset);
+      if (ARG5 != 0)
+         PRE_MEM_WRITE("pset(opset)", ARG5, sizeof(vki_psetid_t));
+      break;
+   case VKI_PSET_BIND_LWP:
+      /* Libc: int pset_bind_lwp(psetid_t pset, id_t id, pid_t pid,
+                                 psetid_t *opset); */
+      PRINT("sys_pset ( %ld, %ld, %ld, %ld, %#lx )", SARG1, SARG2, SARG3,
+                                                     SARG4, ARG5);
+      PRE_REG_READ5(long, SC2("pset", "bind_lwp"), int, subcode,
+                    vki_psetid_t, pset, vki_id_t, id, vki_pid_t, pid,
+                    vki_psetid_t *, opset);
+      if (ARG5 != 0)
+         PRE_MEM_WRITE("pset(opset)", ARG5, sizeof(vki_psetid_t));
+      break;
+   case VKI_PSET_GETLOADAVG:
+      /* Libc: int pset_getloadavg(psetid_t pset, double loadavg[],
+                                   int nelem); */
+      PRINT("sys_pset ( %ld, %ld, %#lx, %ld )", SARG1, SARG2, ARG3, SARG4);
+      PRE_REG_READ4(long, SC2("pset", "getloadavg"), int, subcode,
+                    vki_psetid_t, pset, int *, buf, int, nelem);
+      if (ARG3 != 0)
+         PRE_MEM_WRITE("pset(buf)", ARG3, SARG4 * sizeof(int));
+      break;
+   case VKI_PSET_LIST:
+      /* Libc: int pset_list(psetid_t *psetlist, uint_t *numpsets); */
+      PRINT("sys_pset ( %ld, %#lx, %#lx )", SARG1, ARG2, ARG3);
+      PRE_REG_READ3(long, SC2("pset", "list"), int, subcode,
+                    vki_psetid_t *, psetlist, vki_uint_t *, numpsets);
+      if (ARG3 != 0)
+         PRE_MEM_WRITE("pset(numpsets)", ARG3, sizeof(vki_uint_t));
+      if ((ARG2 != 0) && (ARG3 != 0)) {
+         vki_uint_t *numpsets = (vki_uint_t *) ARG3;
+         if (ML_(safe_to_deref(numpsets, sizeof(vki_uint_t)))) {
+            PRE_MEM_WRITE("pset(psetlist)", ARG2,
+                          *numpsets * sizeof(vki_psetid_t));
+            /* If psetlist buffer is not large enough, it will hold only as many
+               entries as fit in the buffer. However numpsets will contain the
+               real number of processor sets which will be greater than
+               originally passed in. Stash the original value in unused ARG6. */
+            ARG6 = *numpsets;
+         }
+      }
+      break;
+#  if defined(SOLARIS_PSET_GET_NAME)
+   case VKI_PSET_GET_NAME:
+      /* Libc: int pset_get_name(psetid_t psetid, char *buf, uint_t len); */
+      PRINT("sys_pset ( %ld, %ld, %#lx, %ld )", SARG1, SARG2, ARG3, SARG4);
+      PRE_REG_READ4(long, SC2("pset", "get_name"), int, subcode,
+                    vki_psetid_t, pset, char *, buf, vki_uint_t, len);
+      PRE_MEM_WRITE("pset(buf)", ARG3, ARG4);
+      break;
+#  endif /* SOLARIS_PSET_GET_NAME */
+   case VKI_PSET_SETATTR:
+      /* Libc: int pset_setattr(psetid_t pset, uint_t attr); */
+      PRINT("sys_pset ( %ld, %ld, %ld )", SARG1, SARG2, ARG3);
+      PRE_REG_READ3(long, SC2("pset", "setattr"), int, subcode,
+                    vki_psetid_t, pset, vki_uint_t, attr);
+      break;
+   case VKI_PSET_GETATTR:
+      /* Libc: int pset_getattr(psetid_t pset, uint_t *attr); */
+      PRINT("sys_pset ( %ld, %ld, %#lx )", SARG1, SARG2, ARG3);
+      PRE_REG_READ3(long, SC2("pset", "getattr"), int, subcode,
+                    vki_psetid_t, pset, vki_uint_t *, attr);
+      PRE_MEM_WRITE("pset(attr)", ARG3, sizeof(vki_uint_t));
+      break;
+   case VKI_PSET_ASSIGN_FORCED:
+      /* Libc: int pset_assign_forced(psetid_t pset, processorid_t cpu,
+                                      psetid_t *opset); */
+      PRINT("sys_pset ( %ld, %ld, %ld, %#lx )", SARG1, SARG2, SARG3, ARG4);
+      PRE_REG_READ4(long, SC2("pset", "assign_forced"), int, subcode,
+                    vki_psetid_t, pset, vki_processorid_t, cpu,
+                    vki_psetid_t *, opset);
+      if (ARG4 != 0)
+         PRE_MEM_WRITE("pset(opset)", ARG4, sizeof(vki_psetid_t));
+      break;
+   default:
+      VG_(unimplemented)("Syswrap of pset syscall with subcode %ld.", SARG1);
+      /*NOTREACHED*/
+      break;
+   }
+}
+
+POST(sys_pset)
+{
+   switch (ARG1 /*subcode*/) {
+   case VKI_PSET_CREATE:
+      POST_MEM_WRITE(ARG2, sizeof(vki_psetid_t));
+      break;
+   case VKI_PSET_DESTROY:
+      break;
+   case VKI_PSET_ASSIGN:
+      if (ARG4 != 0)
+         POST_MEM_WRITE(ARG4, sizeof(vki_psetid_t));
+      break;
+   case VKI_PSET_INFO:
+      if (ARG3 != 0)
+         POST_MEM_WRITE(ARG3, sizeof(int));
+      if (ARG4 != 0)
+         POST_MEM_WRITE(ARG4, sizeof(vki_uint_t));
+      if ((ARG4 != 0) && (ARG5 != 0)) {
+         vki_uint_t *numcpus = (vki_uint_t *) ARG4;
+         POST_MEM_WRITE(ARG5, MIN(*numcpus, ARG6) * sizeof(vki_processorid_t));
+      }
+      break;
+   case VKI_PSET_BIND:
+      if (ARG5 != 0)
+         POST_MEM_WRITE(ARG5, sizeof(vki_psetid_t));
+      break;
+   case VKI_PSET_BIND_LWP:
+      if (ARG5 != 0)
+         POST_MEM_WRITE(ARG5, sizeof(vki_psetid_t));
+      break;
+   case VKI_PSET_GETLOADAVG:
+      if (ARG3 != 0)
+         POST_MEM_WRITE(ARG3, MIN(SARG4, VKI_LOADAVG_NSTATS) * sizeof(int));
+      break;
+   case VKI_PSET_LIST:
+      if (ARG3 != 0)
+         POST_MEM_WRITE(ARG3, sizeof(vki_uint_t));
+      if ((ARG2 != 0) && (ARG3 != 0)) {
+         vki_uint_t *numpsets = (vki_uint_t *) ARG3;
+         POST_MEM_WRITE(ARG2, MIN(*numpsets, ARG6) * sizeof(vki_psetid_t));
+      }
+      break;
+#  if defined(SOLARIS_PSET_GET_NAME)
+   case VKI_PSET_GET_NAME:
+      POST_MEM_WRITE(ARG3, VG_(strlen)((HChar *) ARG3) + 1);
+      break;
+#  endif /* SOLARIS_PSET_GET_NAME */
+   case VKI_PSET_SETATTR:
+      break;
+   case VKI_PSET_GETATTR:
+      POST_MEM_WRITE(ARG3, sizeof(vki_uint_t));
+      break;
+   case VKI_PSET_ASSIGN_FORCED:
+      if (ARG4 != 0)
+         POST_MEM_WRITE(ARG4, sizeof(vki_psetid_t));
+      break;
+   default:
+      vg_assert(0);
+      break;
+   }
 }
 
 PRE(sys_resolvepath)
@@ -9227,7 +10019,7 @@ PRE(sys_zone)
       break;
    case VKI_ZONE_LOOKUP:
       /* Libc: zoneid_t zone_lookup(const char *name); */
-      PRINT("sys_zone ( %ld, %#lx )", SARG1, ARG2);
+      PRINT("sys_zone ( %ld, %#lx(%s) )", SARG1, ARG2, (HChar *) ARG2);
       PRE_REG_READ2(long, SC2("zone", "lookup"), int, cmd,
                     const char *, name);
       if (ARG2)
@@ -9755,33 +10547,7 @@ POST(fast_gethrt)
    if (RES == 0)
       return;
 
-   /* Returned address points to a memory mapping shared between kernel
-      and the process. This was already pre-arranged during process address
-      space initialization happening in kernel. Valgrind on startup created
-      a segment for this mapping categorized as Valgrind's owned anonymous.
-      Size of this mapping varies among Solaris versions but should be
-      page aligned. */
-   const NSegment *seg = VG_(am_find_anon_segment)(RES);
-   vg_assert(seg != NULL);
-   vg_assert(seg->start == RES);
-   vg_assert(VG_IS_PAGE_ALIGNED(seg->start));
-   vg_assert(VG_IS_PAGE_ALIGNED(seg->end + 1));
-   SizeT size = seg->end - seg->start + 1;
-   vg_assert(size > 0);
-
-   if (!VG_(am_is_valid_for_client)(RES, size, VKI_PROT_READ)) {
-      Bool change_ownership_v_c_OK
-         = VG_(am_change_ownership_v_to_c)(RES, size);
-      vg_assert(change_ownership_v_c_OK);
-
-      /* Tell the tool about just discovered mapping. */
-      VG_TRACK(new_mem_startup,
-               RES, size,
-               True  /* readable? */,
-               False /* writable? */,
-               False /* executable? */,
-               0     /* di_handle */);
-   }
+   VG_(change_mapping_ownership)(RES, False);
 }
 #endif /* SOLARIS_GETHRT_FASTTRAP */
 
@@ -9798,33 +10564,7 @@ POST(fast_getzoneoffset)
    if (RES == 0)
       return;
 
-   /* Returned address points to a memory mapping shared between kernel
-      and the process. This was already pre-arranged during process address
-      space initialization happening in kernel. Valgrind on startup created
-      a segment for this mapping categorized as Valgrind's owned anonymous.
-      Size of this mapping varies among Solaris versions but should be
-      page aligned. */
-   const NSegment *seg = VG_(am_find_anon_segment)(RES);
-   vg_assert(seg != NULL);
-   vg_assert(seg->start == RES);
-   vg_assert(VG_IS_PAGE_ALIGNED(seg->start));
-   vg_assert(VG_IS_PAGE_ALIGNED(seg->end + 1));
-   SizeT size = seg->end - seg->start + 1;
-   vg_assert(size > 0);
-
-   if (!VG_(am_is_valid_for_client)(RES, size, VKI_PROT_READ)) {
-      Bool change_ownership_v_c_OK
-         = VG_(am_change_ownership_v_to_c)(RES, size);
-      vg_assert(change_ownership_v_c_OK);
-
-      /* Tell the tool about just discovered mapping. */
-      VG_TRACK(new_mem_startup,
-               RES, size,
-               True  /* readable? */,
-               False /* writable? */,
-               False /* executable? */,
-               0     /* di_handle */);
-   }
+   VG_(change_mapping_ownership)(RES, False);
 }
 #endif /* SOLARIS_GETZONEOFFSET_FASTTRAP */
 
@@ -9955,6 +10695,7 @@ static SyscallTableEntry syscall_table[] = {
    GENXY(__NR_getdents,             sys_getdents),              /*  81 */
    SOLXY(__NR_privsys,              sys_privsys),               /*  82 */
    SOLXY(__NR_ucredsys,             sys_ucredsys),              /*  83 */
+   SOLXY(__NR_sysfs,                sys_sysfs),                 /*  84 */
    SOLXY(__NR_getmsg,               sys_getmsg),                /*  85 */
    SOLX_(__NR_putmsg,               sys_putmsg),                /*  86 */
 #if defined(SOLARIS_OLD_SYSCALLS)
@@ -9991,6 +10732,7 @@ static SyscallTableEntry syscall_table[] = {
    SOLX_(__NR_mmap,                 sys_mmap),                  /* 115 */
    GENXY(__NR_mprotect,             sys_mprotect),              /* 116 */
    GENXY(__NR_munmap,               sys_munmap),                /* 117 */
+   GENX_(__NR_fchdir,               sys_fchdir),                /* 120 */
    GENXY(__NR_readv,                sys_readv),                 /* 121 */
    GENX_(__NR_writev,               sys_writev),                /* 122 */
 #if defined(SOLARIS_UUIDSYS_SYSCALL)
@@ -10014,12 +10756,19 @@ static SyscallTableEntry syscall_table[] = {
    SOLXY(__NR_systeminfo,           sys_systeminfo),            /* 139 */
    SOLX_(__NR_seteuid,              sys_seteuid),               /* 141 */
    SOLX_(__NR_forksys,              sys_forksys),               /* 142 */
+#if defined(SOLARIS_GETRANDOM_SYSCALL)
+   SOLXY(__NR_getrandom,            sys_getrandom),             /* 143 */
+#endif /* SOLARIS_GETRANDOM_SYSCALL */
    SOLXY(__NR_sigtimedwait,         sys_sigtimedwait),          /* 144 */
    SOLX_(__NR_yield,                sys_yield),                 /* 146 */
    SOLXY(__NR_lwp_sema_post,        sys_lwp_sema_post),         /* 148 */
    SOLXY(__NR_lwp_sema_trywait,     sys_lwp_sema_trywait),      /* 149 */
    SOLX_(__NR_lwp_detach,           sys_lwp_detach),            /* 150 */
+   SOLXY(__NR_modctl,               sys_modctl),                /* 152 */
    SOLX_(__NR_fchroot,              sys_fchroot),               /* 153 */
+#if defined(SOLARIS_SYSTEM_STATS_SYSCALL)
+   SOLX_(__NR_system_stats,         sys_system_stats),          /* 154 */
+#endif /* SOLARIS_SYSTEM_STATS_SYSCALL */
    SOLXY(__NR_gettimeofday,         sys_gettimeofday),          /* 156 */
    GENXY(__NR_getitimer,            sys_getitimer),             /* 157 */
    GENXY(__NR_setitimer,            sys_setitimer),             /* 158 */
@@ -10037,6 +10786,8 @@ static SyscallTableEntry syscall_table[] = {
    SOLX_(__NR_lwp_private,          sys_lwp_private),           /* 166 */
    SOLXY(__NR_lwp_wait,             sys_lwp_wait),              /* 167 */
    SOLXY(__NR_lwp_mutex_wakeup,     sys_lwp_mutex_wakeup),      /* 168 */
+   SOLXY(__NR_lwp_cond_wait,        sys_lwp_cond_wait),         /* 170 */
+   SOLXY(__NR_lwp_cond_signal,      sys_lwp_cond_signal),       /* 171 */
    SOLX_(__NR_lwp_cond_broadcast,   sys_lwp_cond_broadcast),    /* 172 */
    SOLXY(__NR_pread,                sys_pread),                 /* 173 */
    SOLX_(__NR_pwrite,               sys_pwrite),                /* 174 */
@@ -10065,6 +10816,7 @@ static SyscallTableEntry syscall_table[] = {
    GENX_(__NR_setreuid,             sys_setreuid),              /* 202 */
    GENX_(__NR_setregid,             sys_setregid),              /* 202 */
    SOLXY(__NR_schedctl,             sys_schedctl),              /* 206 */
+   SOLXY(__NR_pset,                 sys_pset),                  /* 207 */
    SOLXY(__NR_resolvepath,          sys_resolvepath),           /* 209 */
    SOLXY(__NR_lwp_mutex_timedlock,  sys_lwp_mutex_timedlock),   /* 210 */
    SOLXY(__NR_lwp_sema_timedwait,   sys_lwp_sema_timedwait),    /* 211 */

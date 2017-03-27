@@ -254,7 +254,7 @@ extern SysRes VG_(am_mmap_file_float_valgrind)
 extern SysRes VG_(am_shared_mmap_file_float_valgrind)
    ( SizeT length, UInt prot, Int fd, Off64T offset );
 
-/* Convenience wrapper around VG_(am_mmap_anon_float_client) which also
+/* Similar to VG_(am_mmap_anon_float_client) but also
    marks the segment as containing the client heap. */
 extern SysRes VG_(am_mmap_client_heap) ( SizeT length, Int prot );
 
@@ -376,6 +376,11 @@ typedef
 extern Bool VG_(get_changed_segments)(
       const HChar* when, const HChar* where, /*OUT*/ChangedSeg* css,
       Int css_size, /*OUT*/Int* css_used);
+#endif
+
+#if defined(VGO_solaris)
+extern Bool VG_(am_search_for_new_segment)(Addr *start, SizeT *size,
+                                           UInt *prot);
 #endif
 
 #endif   // __PUB_CORE_ASPACEMGR_H

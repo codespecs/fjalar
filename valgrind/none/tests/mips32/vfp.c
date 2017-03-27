@@ -1,3 +1,7 @@
+#if defined(__mips_hard_float)
+#include <setjmp.h>
+#include <signal.h>
+#include <stdint.h>
 #include <stdio.h>
 
 unsigned int mem[] = {
@@ -10,6 +14,18 @@ unsigned int mem[] = {
    0x42026580, 0xB750E388,
    0x3E45798E, 0xE2308C3A,
    0x3FBF9ADD, 0x3746F65F
+};
+
+long long meml[] = {
+   0x236457894095A266, 0x7777777766666666,
+   0xBFF00000aaaaccde, 0x0004563217800000,
+   0x3FF0556644770000, 0x0002255889900000,
+   0x25254123698a2e2b, 0x21a2b3d6f62d2d2a,
+   0xFFaabb22ccFFFFFF, 0x542698eeFFFFFFFF,
+   0x41D2658041D26580, 0xB487E5C9B487E5C9,
+   0x420774411aa26580, 0xaabbccddB750E388,
+   0xffffeeee3E45798E, 0xccccccccE2308C3A,
+   0x123abb983FBF9ADD, 0x002255443746F65F
 };
 
 float fs_f[] = {
@@ -45,199 +61,204 @@ float mem1f[] = {
 };
 
 // ldc1 $f0, 0($t1)
-#if (__mips_fpr==64)
-#define TESTINSN5LOAD(instruction, RTval, offset, RT) \
-{ \
-    double out; \
-    int out1; \
-    int out2; \
-   __asm__ volatile( \
-     "move $t1, %3\n\t" \
-     "li $t0, " #RTval"\n\t" \
-     instruction "\n\t" \
-     "mov.d %0, $" #RT "\n\t" \
-     "mfc1 %1, $" #RT "\n\t" \
-     "mfhc1 %2, $" #RT "\n\t" \
-     : "=&f" (out), "=&r" (out1), "=&r" (out2) \
-     : "r" (mem), "r" (RTval) \
-     : "cc", "memory" \
-     ); \
-   printf("%s :: ft 0x%x%x\n", \
-          instruction, out1, out2); \
+#define TESTINSN5LOAD(instruction, RTval, offset, RT)            \
+{                                                                \
+   double out;                                                   \
+   uint64_t outl;                                                \
+   __asm__ volatile(                                             \
+      "move $t1, %1\n\t"                                         \
+      "li $t0, " #RTval"\n\t"                                    \
+      instruction "\n\t"                                         \
+      "mov.d %0, $" #RT "\n\t"                                   \
+      "sdc1 $" #RT ", 0(%3) \n\t"                                \
+      : "=&f" (out)                                              \
+      : "r" (mem), "r" (RTval), "r" (&outl)                      \
+      : "t0", "t1", "$"#RT, "memory"                             \
+   );                                                            \
+   printf("%s :: ft 0x%x%x\n",                                   \
+          instruction, (uint32_t)outl, (uint32_t)(outl >> 32));  \
 }
-#else
-#define TESTINSN5LOAD(instruction, RTval, offset, RT) \
-{ \
-    double out; \
-    int out1; \
-    int out2; \
-   __asm__ volatile( \
-     "move $t1, %3\n\t" \
-     "li $t0, " #RTval"\n\t" \
-     instruction "\n\t" \
-     "mov.d %0, $" #RT "\n\t" \
-     "mfc1 %1, $" #RT "\n\t" \
-     "mfc1 %2, $f1\n\t" \
-     : "=&f" (out), "=&r" (out1), "=&r" (out2) \
-     : "r" (mem), "r" (RTval) \
-     : "cc", "memory" \
-     ); \
-   printf("%s :: ft 0x%x%x\n", \
-          instruction, out1, out2); \
-}
-#endif
 
 // lwc1 $f0, 0($t1)
-#define TESTINSN5LOADw(instruction, RTval, offset, RT) \
-{ \
-    double out; \
-    int out1; \
-   __asm__ volatile( \
-     "move $t1, %2\n\t" \
-     "li $t0, " #RTval"\n\t" \
-     instruction "\n\t" \
-     "mov.d %0, $" #RT "\n\t" \
-     "mfc1 %1, $" #RT "\n\t" \
-     : "=&f" (out), "=&r" (out1) \
-     : "r" (mem), "r" (RTval) \
-     : "cc", "memory" \
-     ); \
-   printf("%s :: ft 0x%x\n", \
-          instruction, out1); \
+#define TESTINSN5LOADw(instruction, RTval, offset, RT)           \
+{                                                                \
+   double out;                                                   \
+   int out1;                                                     \
+   __asm__ volatile(                                             \
+      "move $t1, %2\n\t"                                         \
+      "li $t0, " #RTval"\n\t"                                    \
+      instruction "\n\t"                                         \
+      "mov.d %0, $" #RT "\n\t"                                   \
+      "mfc1 %1, $" #RT "\n\t"                                    \
+      : "=f" (out), "=r" (out1)                                  \
+      : "r" (mem), "r" (RTval)                                   \
+      : "t0", "t1", "$"#RT, "memory"                             \
+   );                                                            \
+   printf("%s :: ft 0x%x\n",                                     \
+          instruction, out1);                                    \
 }
 
 // lwxc1 $f0, $a3($v0)
-#define TESTINSN6LOADw(instruction, indexVal, fd, index, base) \
-{ \
-    int out; \
-   __asm__ volatile( \
-     "move $" #base ", %1\n\t" \
-     "li $" #index ", " #indexVal"\n\t" \
-     instruction "\n\t" \
-     "mfc1 %0, $" #fd "\n\t" \
-     : "=&r" (out) \
-     : "r" (mem) \
-     : "cc", "memory" \
-     ); \
-   printf("%s :: ft 0x%x\n", \
-          instruction, out); \
+#define TESTINSN6LOADw(instruction, indexVal, fd, index, base)   \
+{                                                                \
+   int out;                                                      \
+   __asm__ volatile(                                             \
+      "move $" #base ", %1\n\t"                                  \
+      "li $" #index ", " #indexVal"\n\t"                         \
+      instruction "\n\t"                                         \
+      "mfc1 %0, $" #fd "\n\t"                                    \
+      : "=r" (out)                                               \
+      : "r" (mem)                                                \
+      : #base, #index, "$"#fd, "memory"                          \
+   );                                                            \
+   printf("%s :: ft 0x%x\n",                                     \
+          instruction, out);                                     \
 }
 
 // ldxc1 $f0, $a3($v0)
-#if (__mips_fpr==64)
-#define TESTINSN6LOADd(instruction, indexVal, fd, index, base) \
-{ \
-    int out1; \
-    int out2; \
-   __asm__ volatile( \
-     "move $" #base ", %2\n\t" \
-     "li $" #index ", " #indexVal"\n\t" \
-     instruction "\n\t" \
-     "mfc1 %0, $" #fd "\n\t" \
-     "mfhc1 %1, $" #fd "\n\t" \
-     : "=&r" (out1), "=&r" (out2) \
-     : "r" (mem) \
-     : "cc", "memory" \
-     ); \
-   printf("%s :: ft lo: 0x%x, ft hi: 0x%x\n", \
-          instruction, out1, out2); \
+#define TESTINSN6LOADd(instruction, indexVal, fd, index, base)   \
+{                                                                \
+   uint64_t out;                                                 \
+   __asm__ volatile(                                             \
+      "move $" #base ", %0\n\t"                                  \
+      "li $" #index ", " #indexVal"\n\t"                         \
+      instruction "\n\t"                                         \
+      "sdc1 $"#fd ", 0(%1)"                                      \
+      : : "r" (mem), "r" (&out)                                  \
+      : #base, #index, "$"#fd, "memory"                          \
+   );                                                            \
+   printf("%s :: ft lo: 0x%x, ft hi: 0x%x\n",                    \
+          instruction, (uint32_t)out, (uint32_t)(out >> 32));    \
 }
-#else
-#define TESTINSN6LOADd(instruction, indexVal, fd, index, base) \
-{ \
-    int out1; \
-    int out2; \
-   __asm__ volatile( \
-     "move $" #base ", %2\n\t" \
-     "li $" #index ", " #indexVal"\n\t" \
-     instruction "\n\t" \
-     "mfc1 %0, $" #fd "\n\t" \
-     "mfc1 %1, $f1\n\t" \
-     : "=&r" (out1), "=&r" (out2) \
-     : "r" (mem) \
-     : "cc", "memory" \
-     ); \
-   printf("%s :: ft lo: 0x%x, ft hi: 0x%x\n", \
-          instruction, out1, out2); \
+
+// luxc1 $f0, $a3($v0)
+#define TESTINSN6LOADlu(instruction, indexVal, fd, index, base)  \
+{                                                                \
+   uint64_t out;                                                 \
+   __asm__ volatile(                                             \
+      "move $" #base ", %0\n\t"                                  \
+      "li $" #index ", " #indexVal"\n\t"                         \
+      instruction "\n\t"                                         \
+      "sdc1 $"#fd ", 0(%1)"                                      \
+      : : "r" (meml), "r" (&out)                                 \
+      : #base, #index, "$"#fd, "memory"                          \
+   );                                                            \
+   printf("%s :: ft lo: 0x%x, ft hi: 0x%x\n",                    \
+          instruction, (uint32_t)out, (uint32_t)(out >> 32));    \
 }
-#endif
 
 // sdc1 $f0, 0($t0)
-#define TESTINST1(offset) \
-{ \
-    unsigned int out; \
-   __asm__ volatile( \
-     "move $t0, %1\n\t" \
-     "move $t1, %2\n\t" \
-     "ldc1 $f0, "#offset"($t1)\n\t" \
-     "sdc1 $f0, "#offset"($t0) \n\t" \
-     "lw %0, "#offset"($t0)\n\t" \
-     : "=&r" (out) \
-     : "r" (mem1), "r" (fs_d) \
-     : "t1", "t0", "cc", "memory" \
-     ); \
-   printf("sdc1 $f0, 0($t0) :: out: 0x%x\n", \
-           out); \
+#define TESTINST1(offset)                                        \
+{                                                                \
+   unsigned int out;                                             \
+   __asm__ volatile(                                             \
+      "move $t0, %1\n\t"                                         \
+      "move $t1, %2\n\t"                                         \
+      "ldc1 $f0, "#offset"($t1)\n\t"                             \
+      "sdc1 $f0, "#offset"($t0) \n\t"                            \
+      "lw %0, "#offset"($t0)\n\t"                                \
+      : "=r" (out)                                               \
+      : "r" (mem1), "r" (fs_d)                                   \
+      : "t1", "t0", "$f0", "memory"                              \
+   );                                                            \
+   printf("sdc1 $f0, 0($t0) :: out: 0x%x\n",                     \
+          out);                                                  \
 }
 
 // sdxc1 $f0, $t2($t0)
-#define TESTINST1a(offset) \
-{ \
-    unsigned int out; \
-    unsigned int out1; \
-   __asm__ volatile( \
-     "move $t0, %2\n\t" \
-     "move $t1, %3\n\t" \
-     "li $t2, "#offset"\n\t" \
-     "ldc1 $f0, "#offset"($t1)\n\t" \
-     "sdxc1 $f0, $t2($t0) \n\t" \
-     "lw %0, "#offset"($t0)\n\t" \
-     "addi $t0, $t0, 4 \n\t" \
-     "lw %1, "#offset"($t0)\n\t" \
-     : "=&r" (out), "=&r" (out1) \
-     : "r" (mem1), "r" (fs_d) \
-     : "t2", "t1", "t0", "cc", "memory" \
-     ); \
-   printf("sdc1 $f0, #t2($t0) :: out: 0x%x : out1: 0x%x\n", \
-           out, out1); \
+#define TESTINST1a(offset)                                       \
+{                                                                \
+   unsigned int out;                                             \
+   unsigned int out1;                                            \
+   __asm__ volatile(                                             \
+      "move $t0, %2\n\t"                                         \
+      "move $t1, %3\n\t"                                         \
+      "li $t2, "#offset"\n\t"                                    \
+      "ldc1 $f0, "#offset"($t1)\n\t"                             \
+      "sdxc1 $f0, $t2($t0) \n\t"                                 \
+      "lw %0, "#offset"($t0)\n\t"                                \
+      "addi $t0, $t0, 4 \n\t"                                    \
+      "lw %1, "#offset"($t0)\n\t"                                \
+      : "=r" (out), "=r" (out1)                                  \
+      : "r" (mem1), "r" (fs_d)                                   \
+      : "t2", "t1", "t0", "$f0", "memory"                        \
+   );                                                            \
+   printf("sdc1 $f0, #t2($t0) :: out: 0x%x : out1: 0x%x\n",      \
+          out, out1);                                            \
+}
+
+// SUXC1 $f0, $t2($t0)
+#define TESTINST1b(offset, unligned_offset)                      \
+{                                                                \
+   unsigned int out;                                             \
+   unsigned int out1;                                            \
+   __asm__ volatile(                                             \
+      "move $t0, %2\n\t"                                         \
+      "move $t1, %3\n\t"                                         \
+      "li $t2, "#unligned_offset"\n\t"                           \
+      "ldc1 $f0, "#offset"($t1)\n\t"                             \
+      "suxc1 $f0, $t2($t0) \n\t"                                 \
+      "lw %0, "#offset"($t0)\n\t"                                \
+      "addi $t0, $t0, 4 \n\t"                                    \
+      "lw %1, "#offset"($t0)\n\t"                                \
+      : "=r" (out), "=r" (out1)                                  \
+      : "r" (mem1), "r" (fs_d)                                   \
+      : "t2", "t1", "t0", "$f0", "memory"                        \
+   );                                                            \
+   printf("suxc1 $f0, #t2($t0) :: out: 0x%x : out1: 0x%x\n",     \
+          out, out1);                                            \
 }
 
 // swc1 $f0, 0($t0)
-#define TESTINST2(offset) \
-{ \
-    unsigned int out; \
-   __asm__ volatile( \
-     "move $t0, %1\n\t" \
-     "move $t1, %2\n\t" \
-     "lwc1 $f0, "#offset"($t1)\n\t" \
-     "swc1 $f0, "#offset"($t0) \n\t" \
-     "lw %0, "#offset"($t0)\n\t" \
-     : "=&r" (out) \
-     : "r" (mem1f), "r" (fs_f) \
-     : "t1", "t0", "cc", "memory" \
-     ); \
-   printf("swc1 $f0, 0($t0) :: out: 0x%x\n", \
-           out); \
+#define TESTINST2(offset)                                        \
+{                                                                \
+   unsigned int out;                                             \
+   __asm__ volatile(                                             \
+      "move $t0, %1\n\t"                                         \
+      "move $t1, %2\n\t"                                         \
+      "lwc1 $f0, "#offset"($t1)\n\t"                             \
+      "swc1 $f0, "#offset"($t0) \n\t"                            \
+      "lw %0, "#offset"($t0)\n\t"                                \
+      : "=r" (out)                                               \
+      : "r" (mem1f), "r" (fs_f)                                  \
+      : "t1", "t0", "$f0", "memory"                              \
+   );                                                            \
+   printf("swc1 $f0, 0($t0) :: out: 0x%x\n",                     \
+          out);                                                  \
 }
 
 // SWXC1 $f0, $t2($t0)
-#define TESTINST2a(offset) \
-{ \
-    unsigned int out; \
-   __asm__ volatile( \
-     "move $t0, %1\n\t" \
-     "move $t1, %2\n\t" \
-     "li $t2, "#offset" \n\t" \
-     "lwc1 $f0, "#offset"($t1)\n\t" \
-     "swxc1 $f0, $t2($t0) \n\t" \
-     "lw %0, "#offset"($t0)\n\t" \
-     : "=&r" (out) \
-     : "r" (mem1f), "r" (fs_f) \
-     : "t2", "t1", "t0", "cc", "memory" \
-     ); \
-   printf("swxc1 $f0, 0($t0) :: out: 0x%x\n", \
-           out); \
+#define TESTINST2a(offset)                                       \
+{                                                                \
+   unsigned int out;                                             \
+   __asm__ volatile(                                             \
+      "move $t0, %1\n\t"                                         \
+      "move $t1, %2\n\t"                                         \
+      "li $t2, "#offset" \n\t"                                   \
+      "lwc1 $f0, "#offset"($t1)\n\t"                             \
+      "swxc1 $f0, $t2($t0) \n\t"                                 \
+      "lw %0, "#offset"($t0)\n\t"                                \
+      : "=r" (out)                                               \
+      : "r" (mem1f), "r" (fs_f)                                  \
+      : "t2", "t1", "t0", "$f0", "memory"                        \
+   );                                                            \
+   printf("swxc1 $f0, 0($t0) :: out: 0x%x\n",                    \
+          out);                                                  \
 }
+
+#define TEST_FPU64                \
+   __asm__ __volatile__(          \
+      "cvt.l.s $f0, $f0"  "\n\t"  \
+      :                           \
+      :                           \
+      : "$f0"                     \
+   );
+
+static void handler(int sig)
+{
+   exit(0);
+}
+
 void ppMem(double *m, int len)
 {
    int i;
@@ -448,6 +469,70 @@ int main()
    ppMemF(mem1f, 16);
 #endif
 
+#if (__mips==32) && (__mips_isa_rev>=2) && (__mips_fpr==64 || __mips_fpr==xx)
+   signal(SIGILL, handler);
+   /* Test fpu64 mode. */
+   TEST_FPU64;
+
+   printf("luxc1\n");
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 0, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 8, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 16, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 24, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 32, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 40, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 48, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 56, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 64, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 0, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 8, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 16, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 24, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 32, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 40, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 48, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 56, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 64, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 0, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 8, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 16, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 24, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 32, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 40, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 48, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 56, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 64, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 0, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 8, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 16, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 24, f0, a3, v0);
+   TESTINSN6LOADlu("luxc1 $f0, $a3($v0)", 32, f0, a3, v0);
+
+   printf("SUXC1\n");
+   TESTINST1b(0, 0);
+   TESTINST1b(0, 1);
+   TESTINST1b(8, 8);
+   TESTINST1b(8, 9);
+   TESTINST1b(16, 16);
+   TESTINST1b(16, 17);
+   TESTINST1b(24, 24);
+   TESTINST1b(24, 25);
+   TESTINST1b(32, 32);
+   TESTINST1b(32, 35);
+   TESTINST1b(40, 40);
+   TESTINST1b(40, 42);
+   TESTINST1b(48, 48);
+   TESTINST1b(48, 50);
+   TESTINST1b(56, 56);
+   TESTINST1b(56, 60);
+   TESTINST1b(64, 64);
+   TESTINST1b(64, 67);
+   ppMem(mem1, 16);
+#endif
    return 0;
 }
-
+#else
+int main() {
+   return 0;
+}
+#endif

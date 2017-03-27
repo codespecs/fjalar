@@ -110,10 +110,63 @@ ULong arm64g_calculate_condition ( /* ARM64Condcode << 4 | cc_op */
 //ZZ UInt armg_calculate_flag_qc ( UInt resL1, UInt resL2,
 //ZZ                               UInt resR1, UInt resR2 );
 
+extern ULong arm64g_calc_crc32b ( ULong acc, ULong bits );
+extern ULong arm64g_calc_crc32h ( ULong acc, ULong bits );
+extern ULong arm64g_calc_crc32w ( ULong acc, ULong bits );
+extern ULong arm64g_calc_crc32x ( ULong acc, ULong bits );
+
+extern ULong arm64g_calc_crc32cb ( ULong acc, ULong bits );
+extern ULong arm64g_calc_crc32ch ( ULong acc, ULong bits );
+extern ULong arm64g_calc_crc32cw ( ULong acc, ULong bits );
+extern ULong arm64g_calc_crc32cx ( ULong acc, ULong bits );
 
 /* --- DIRTY HELPERS --- */
 
 extern ULong arm64g_dirtyhelper_MRS_CNTVCT_EL0 ( void );
+
+extern void  arm64g_dirtyhelper_PMULLQ ( /*OUT*/V128* res,
+                                         ULong arg1, ULong arg2 );
+
+extern void  arm64g_dirtyhelper_AESE ( /*OUT*/V128* res,
+                                       ULong argHi, ULong argLo );
+extern void  arm64g_dirtyhelper_AESD ( /*OUT*/V128* res,
+                                       ULong argHi, ULong argLo );
+extern void  arm64g_dirtyhelper_AESMC  ( /*OUT*/V128* res,
+                                         ULong argHi, ULong argLo );
+extern void  arm64g_dirtyhelper_AESIMC ( /*OUT*/V128* res,
+                                         ULong argHi, ULong argLo );
+
+extern
+void arm64g_dirtyhelper_SHA1C ( /*OUT*/V128* res, ULong dHi, ULong dLo,
+                                ULong nHi, ULong nLo, ULong mHi, ULong mLo );
+extern
+void arm64g_dirtyhelper_SHA1H ( /*OUT*/V128* res,
+                                ULong nHi, ULong nLo );
+extern
+void arm64g_dirtyhelper_SHA1M ( /*OUT*/V128* res, ULong dHi, ULong dLo,
+                                ULong nHi, ULong nLo, ULong mHi, ULong mLo );
+extern
+void arm64g_dirtyhelper_SHA1P ( /*OUT*/V128* res, ULong dHi, ULong dLo,
+                                ULong nHi, ULong nLo, ULong mHi, ULong mLo );
+extern
+void arm64g_dirtyhelper_SHA1SU0 ( /*OUT*/V128* res, ULong dHi, ULong dLo,
+                                  ULong nHi, ULong nLo, ULong mHi, ULong mLo );
+extern
+void arm64g_dirtyhelper_SHA1SU1 ( /*OUT*/V128* res, ULong dHi, ULong dLo,
+                                  ULong nHi, ULong nLo );
+extern
+void arm64g_dirtyhelper_SHA256H2 ( /*OUT*/V128* res, ULong dHi, ULong dLo,
+                                   ULong nHi, ULong nLo, ULong mHi, ULong mLo );
+extern
+void arm64g_dirtyhelper_SHA256H ( /*OUT*/V128* res, ULong dHi, ULong dLo,
+                                  ULong nHi, ULong nLo, ULong mHi, ULong mLo );
+extern
+void arm64g_dirtyhelper_SHA256SU0 ( /*OUT*/V128* res, ULong dHi, ULong dLo,
+                                    ULong nHi, ULong nLo );
+extern
+void arm64g_dirtyhelper_SHA256SU1 ( /*OUT*/V128* res, ULong dHi, ULong dLo,
+                                    ULong nHi, ULong nLo,
+                                    ULong mHi, ULong mLo );
 
 
 /*---------------------------------------------------------*/

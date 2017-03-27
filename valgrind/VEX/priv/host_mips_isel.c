@@ -4171,19 +4171,19 @@ HInstrArray *iselSB_MIPS ( const IRSB* bb,
 
    /* sanity ... */
    vassert(arch_host == VexArchMIPS32 || arch_host == VexArchMIPS64);
-   vassert(VEX_PRID_COMP_MIPS == hwcaps_host
-           || VEX_PRID_COMP_BROADCOM == hwcaps_host
-           || VEX_PRID_COMP_NETLOGIC);
+   vassert(VEX_PRID_COMP_MIPS == VEX_MIPS_COMP_ID(hwcaps_host)
+           || VEX_PRID_COMP_CAVIUM == VEX_MIPS_COMP_ID(hwcaps_host)
+           || VEX_PRID_COMP_BROADCOM == VEX_MIPS_COMP_ID(hwcaps_host)
+           || VEX_PRID_COMP_NETLOGIC == VEX_MIPS_COMP_ID(hwcaps_host)
+           || VEX_PRID_COMP_INGENIC_E1 == VEX_MIPS_COMP_ID(hwcaps_host)
+           || VEX_PRID_COMP_LEGACY == VEX_MIPS_COMP_ID(hwcaps_host));
 
    /* Check that the host's endianness is as expected. */
    vassert(archinfo_host->endness == VexEndnessLE
            || archinfo_host->endness == VexEndnessBE);
 
    mode64 = arch_host != VexArchMIPS32;
-#if (__mips_fpr==64)
-   fp_mode64 = ((VEX_MIPS_REV(hwcaps_host) == VEX_PRID_CPU_32FPR)
-                || arch_host == VexArchMIPS64);
-#endif
+   fp_mode64 = VEX_MIPS_HOST_FP_MODE(hwcaps_host);
 
    /* Make up an initial environment to use. */
    env = LibVEX_Alloc_inline(sizeof(ISelEnv));

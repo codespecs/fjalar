@@ -83,8 +83,9 @@ asm(
 ".globl vgModuleLocal_call_on_new_stack_0_1\n"
 "vgModuleLocal_call_on_new_stack_0_1:\n"
 "   movl %esp, %esi\n"     // remember old stack pointer
-"   movl 4(%esi), %esp\n"  // set stack
-"   pushl 16(%esi)\n"      // arg1 to stack
+"   movl 4(%esi), %esp\n"  // set stack, assume %esp is now 16-byte aligned
+"   subl $12, %esp\n"      // skip 12 bytes
+"   pushl 16(%esi)\n"      // arg1 to stack, %esp is 16-byte aligned
 "   pushl  8(%esi)\n"      // retaddr to stack
 "   pushl 12(%esi)\n"      // f to stack
 "   movl $0, %eax\n"       // zero all GP regs
@@ -150,7 +151,8 @@ asm(
 "        movl     4+"FSZ"(%esp), %ecx\n"    /* syscall arg2: child stack */
 "        movl    12+"FSZ"(%esp), %ebx\n"    /* fn arg */
 "        movl     0+"FSZ"(%esp), %eax\n"    /* fn */
-"        lea     -8(%ecx), %ecx\n"          /* make space on stack */
+"        andl    $-16, %ecx\n"              /* align to 16-byte */
+"        lea     -20(%ecx), %ecx\n"         /* allocate 16*n+4 bytes on stack */
 "        movl    %ebx, 4(%ecx)\n"           /*   fn arg */
 "        movl    %eax, 0(%ecx)\n"           /*   fn */
 
@@ -165,7 +167,7 @@ asm(
 "        jnz     1f\n"
 
          /* CHILD - call thread function */
-"        popl    %eax\n"
+"        popl    %eax\n"                    /* child %esp is 16-byte aligned */
 "        call    *%eax\n"                   /* call fn */
 
          /* exit with result */
@@ -596,24 +598,33 @@ SysRes write_ldt ( ThreadId tid, void* ptr, UInt bytecount, Int oldmode )
 static SysRes sys_modify_ldt ( ThreadId tid,
                                Int func, void* ptr, UInt bytecount )
 {
+   /* Set return value to something "safe".  I think this will never
+      actually be returned, though. */
    SysRes ret = VG_(mk_SysRes_Error)( VKI_ENOSYS );
 
-   switch (func) {
-   case 0:
-      ret = read_ldt(tid, ptr, bytecount);
-      break;
-   case 1:
-      ret = write_ldt(tid, ptr, bytecount, 1);
-      break;
-   case 2:
-      VG_(unimplemented)("sys_modify_ldt: func == 2");
-      /* god knows what this is about */
-      /* ret = read_default_ldt(ptr, bytecount); */
-      /*UNREACHED*/
-      break;
-   case 0x11:
-      ret = write_ldt(tid, ptr, bytecount, 0);
-      break;
+   if (func != 0 && func != 1 && func != 2 && func != 0x11) {
+      ret = VG_(mk_SysRes_Error)( VKI_ENOSYS );
+   } else if (ptr != NULL && ! ML_(safe_to_deref)(ptr, bytecount)) {
+      ret = VG_(mk_SysRes_Error)( VKI_EFAULT );
+   } else {
+      switch (func) {
+      case 0:
+         ret = read_ldt(tid, ptr, bytecount);
+         break;
+      case 1:
+         ret = write_ldt(tid, ptr, bytecount, 1);
+         break;
+      case 2:
+         ret = VG_(mk_SysRes_Error)( VKI_ENOSYS );
+         VG_(unimplemented)("sys_modify_ldt: func == 2");
+         /* god knows what this is about */
+         /* ret = read_default_ldt(ptr, bytecount); */
+         /*UNREACHED*/
+         break;
+      case 0x11:
+         ret = write_ldt(tid, ptr, bytecount, 0);
+         break;
+      }
    }
    return ret;
 }
@@ -627,8 +638,10 @@ static SysRes sys_set_thread_area ( ThreadId tid, vki_modify_ldt_t* info )
    vg_assert(8 == sizeof(VexGuestX86SegDescr));
    vg_assert(sizeof(HWord) == sizeof(VexGuestX86SegDescr*));
 
-   if (info == NULL)
+   if (info == NULL || ! ML_(safe_to_deref)(info, sizeof(vki_modify_ldt_t))) {
+      VG_(umsg)("Warning: bad u_info address %p in set_thread_area\n", info);
       return VG_(mk_SysRes_Error)( VKI_EFAULT );
+   }
 
    gdt = (VexGuestX86SegDescr*)VG_(threads)[tid].arch.vex.guest_GDT;
 
@@ -679,8 +692,10 @@ static SysRes sys_get_thread_area ( ThreadId tid, vki_modify_ldt_t* info )
    vg_assert(sizeof(HWord) == sizeof(VexGuestX86SegDescr*));
    vg_assert(8 == sizeof(VexGuestX86SegDescr));
 
-   if (info == NULL)
+   if (info == NULL || ! ML_(safe_to_deref)(info, sizeof(vki_modify_ldt_t))) {
+      VG_(umsg)("Warning: bad u_info address %p in get_thread_area\n", info);
       return VG_(mk_SysRes_Error)( VKI_EFAULT );
+   }
 
    idx = info->entry_number;
 
@@ -1766,7 +1781,7 @@ static SyscallTableEntry syscall_table[] = {
    LINX_(__NR_readlinkat,	 sys_readlinkat),       // 305
    LINX_(__NR_fchmodat,		 sys_fchmodat),         // 306
    LINX_(__NR_faccessat,	 sys_faccessat),        // 307
-   LINX_(__NR_pselect6,		 sys_pselect6),         // 308
+   LINXY(__NR_pselect6,		 sys_pselect6),         // 308
    LINXY(__NR_ppoll,		 sys_ppoll),            // 309
 
    LINX_(__NR_unshare,		 sys_unshare),          // 310
@@ -1820,12 +1835,27 @@ static SyscallTableEntry syscall_table[] = {
 //   LIN__(__NR_finit_module,      sys_ni_syscall),       // 350
 //   LIN__(__NR_sched_setattr,     sys_ni_syscall),       // 351
 //   LIN__(__NR_sched_getattr,     sys_ni_syscall),       // 352
-//   LIN__(__NR_renameat2,         sys_ni_syscall),       // 353
+   LINX_(__NR_renameat2,         sys_renameat2),        // 353
 //   LIN__(__NR_seccomp,           sys_ni_syscall),       // 354
 
    LINXY(__NR_getrandom,         sys_getrandom),        // 355
-   LINXY(__NR_memfd_create,      sys_memfd_create)      // 356
-//   LIN__(__NR_bpf,               sys_ni_syscall)        // 357
+   LINXY(__NR_memfd_create,      sys_memfd_create),     // 356
+//   LIN__(__NR_bpf,               sys_ni_syscall),       // 357
+   LINXY(__NR_socket,            sys_socket),           // 359
+   LINXY(__NR_socketpair,        sys_socketpair),       // 360
+   LINX_(__NR_bind,              sys_bind),             // 361
+   LINX_(__NR_connect,           sys_connect),          // 362
+   LINX_(__NR_listen,            sys_listen),           // 363
+   LINXY(__NR_accept4,           sys_accept4),          // 364
+   LINXY(__NR_getsockopt,        sys_getsockopt),       // 365
+   LINX_(__NR_setsockopt,        sys_setsockopt),       // 366
+   LINXY(__NR_getsockname,       sys_getsockname),      // 367
+   LINXY(__NR_getpeername,       sys_getpeername),      // 368
+   LINX_(__NR_sendto,            sys_sendto),           // 369
+   LINX_(__NR_sendmsg,           sys_sendmsg),          // 370
+   LINXY(__NR_recvfrom,          sys_recvfrom),         // 371
+   LINXY(__NR_recvmsg,           sys_recvmsg),          // 372
+   LINX_(__NR_shutdown,          sys_shutdown)          // 373
 };
 
 SyscallTableEntry* ML_(get_linux_syscall_entry) ( UInt sysno )

@@ -21,11 +21,12 @@ int main(int argc, char** argv)
   return 0;
 }
 
+#if defined(__GNUC__) && __GNUC__ -0 < 6
 //
 // From libstdc++-v3/src/c++11/thread.cc
 //
 
-extern "C" void* execute_native_thread_routine_x(void* __p)
+extern "C" void* _v_execute_native_thread_routine(void* __p)
 {
   std::thread::_Impl_base* __t = static_cast<std::thread::_Impl_base*>(__p);
   std::thread::__shared_base_type __local;
@@ -57,7 +58,7 @@ namespace std
 #endif
 
     __b->_M_this_ptr = __b;
-    int __e = __gthread_create(&_M_id._M_thread, execute_native_thread_routine_x,
+    int __e = __gthread_create(&_M_id._M_thread, _v_execute_native_thread_routine,
                                __b.get());
     if (__e) {
       __b->_M_this_ptr.reset();
@@ -65,3 +66,4 @@ namespace std
     }
   }
 }
+#endif

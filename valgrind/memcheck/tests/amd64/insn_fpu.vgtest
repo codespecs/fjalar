@@ -1,2 +1,1 @@
-prog: ../../../none/tests/amd64/insn_fpu
-vgopts: -q
+../../../none/tests/amd64/insn_fpu.vgtest

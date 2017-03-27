@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright IBM Corp. 2010-2015
+   Copyright IBM Corp. 2010-2016
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -3831,6 +3831,16 @@ s390_irgen_BRCT(UChar r1, UShort i2)
 }
 
 static const HChar *
+s390_irgen_BRCTH(UChar r1, UInt i2)
+{
+   put_gpr_w0(r1, binop(Iop_Sub32, get_gpr_w0(r1), mkU32(1)));
+   if_condition_goto(binop(Iop_CmpNE32, get_gpr_w0(r1), mkU32(0)),
+                     guest_IA_curr_instr + ((ULong)(Long)(Short)i2 << 1));
+
+   return "brcth";
+}
+
+static const HChar *
 s390_irgen_BRCTG(UChar r1, UShort i2)
 {
    put_gpr_dw0(r1, binop(Iop_Sub64, get_gpr_dw0(r1), mkU64(1)));
@@ -7578,7 +7588,8 @@ s390_irgen_ROSBG(UChar r1, UChar r2, UChar i3, UChar i4, UChar i5)
 }
 
 static const HChar *
-s390_irgen_RISBG(UChar r1, UChar r2, UChar i3, UChar i4, UChar i5)
+s390_irgen_RISBGx(UChar r1, UChar r2, UChar i3, UChar i4, UChar i5,
+                  Bool set_cc)
 {
    UChar from;
    UChar to;
@@ -7612,9 +7623,83 @@ s390_irgen_RISBG(UChar r1, UChar r2, UChar i3, UChar i4, UChar i5)
       put_gpr_dw0(r1, binop(Iop_And64, mkexpr(op2), mkU64(mask)));
    }
    assign(result, get_gpr_dw0(r1));
-   s390_cc_thunk_putS(S390_CC_OP_LOAD_AND_TEST, result);
+   if (set_cc) {
+      s390_cc_thunk_putS(S390_CC_OP_LOAD_AND_TEST, result);
+      return "risbg";
+   }
 
-   return "risbg";
+   return "risbgn";
+}
+
+static const HChar *
+s390_irgen_RISBG(UChar r1, UChar r2, UChar i3, UChar i4, UChar i5)
+{
+   return s390_irgen_RISBGx(r1, r2, i3, i4, i5, True);
+}
+
+static const HChar *
+s390_irgen_RISBGN(UChar r1, UChar r2, UChar i3, UChar i4, UChar i5)
+{
+   return s390_irgen_RISBGx(r1, r2, i3, i4, i5, False);
+}
+
+static IRExpr *
+s390_irgen_RISBxG(UChar r1, UChar r2, UChar i3, UChar i4, UChar i5,
+                  Bool high)
+{
+   UChar from;
+   UChar to;
+   UChar rot;
+   UChar z_bit;
+   UInt mask;
+   UInt maskc;
+   IRTemp op2 = newTemp(Ity_I32);
+
+   from = i3 & 31;
+   to = i4 & 31;
+   rot = i5 & 63;
+   z_bit = i4 & 128;
+   if (rot == 0) {
+      assign(op2, high ? get_gpr_w0(r2) : get_gpr_w1(r2));
+   } else if (rot == 32) {
+      assign(op2, high ? get_gpr_w1(r2) : get_gpr_w0(r2));
+   } else {
+      assign(op2,
+             unop(high ? Iop_64HIto32 : Iop_64to32,
+                  binop(Iop_Or64,
+                        binop(Iop_Shl64, get_gpr_dw0(r2), mkU8(rot)),
+                        binop(Iop_Shr64, get_gpr_dw0(r2), mkU8(64 - rot)))));
+   }
+   if (from <= to) {
+      mask = ~0U;
+      mask = (mask >> from) & (mask << (31 - to));
+      maskc = ~mask;
+   } else {
+      maskc = ~0U;
+      maskc = (maskc >> (to + 1)) & (maskc << (32 - from));
+      mask = ~maskc;
+   }
+   if (z_bit) {
+      return binop(Iop_And32, mkexpr(op2), mkU32(mask));
+   }
+   return binop(Iop_Or32,
+                binop(Iop_And32, high ? get_gpr_w0(r1) : get_gpr_w1(r1),
+                      mkU32(maskc)),
+                binop(Iop_And32, mkexpr(op2), mkU32(mask)));
+}
+
+static const HChar *
+s390_irgen_RISBHG(UChar r1, UChar r2, UChar i3, UChar i4, UChar i5)
+{
+   put_gpr_w0(r1, s390_irgen_RISBxG(r1, r2, i3, i4, i5, True));
+   return "risbhg";
+}
+
+static const HChar *
+s390_irgen_RISBLG(UChar r1, UChar r2, UChar i3, UChar i4, UChar i5)
+{
+   put_gpr_w1(r1, s390_irgen_RISBxG(r1, r2, i3, i4, i5, False));
+   return "risblg";
 }
 
 static const HChar *
@@ -8754,6 +8839,15 @@ s390_irgen_LDR(UChar r1, UChar r2)
 }
 
 static const HChar *
+s390_irgen_LDER(UChar r1, UChar r2)
+{
+   put_fpr_dw0(r1, mkF64i(0x0));
+   put_fpr_w0(r1, get_fpr_w0(r2));
+
+   return "lder";
+}
+
+static const HChar *
 s390_irgen_LXR(UChar r1, UChar r2)
 {
    put_fpr_dw0(r1, get_fpr_dw0(r2));
@@ -8776,6 +8870,15 @@ s390_irgen_LD(UChar r1, IRTemp op2addr)
    put_fpr_dw0(r1, load(Ity_F64, mkexpr(op2addr)));
 
    return "ld";
+}
+
+static const HChar *
+s390_irgen_LDE(UChar r1, IRTemp op2addr)
+{
+   put_fpr_dw0(r1, mkF64i(0x0));
+   put_fpr_w0(r1, load(Ity_F32, mkexpr(op2addr)));
+
+   return "lde";
 }
 
 static const HChar *
@@ -10895,6 +10998,22 @@ s390_irgen_MVC_EX(IRTemp length, IRTemp start1, IRTemp start2)
 }
 
 static void
+s390_irgen_MVCIN_EX(IRTemp length, IRTemp start1, IRTemp start2)
+{
+   IRTemp counter = newTemp(Ity_I64);
+
+   assign(counter, get_counter_dw0());
+
+   store(binop(Iop_Add64, mkexpr(start1), mkexpr(counter)),
+         load(Ity_I8, binop(Iop_Sub64, mkexpr(start2), mkexpr(counter))));
+
+   /* Check for end of field */
+   put_counter_dw0(binop(Iop_Add64, mkexpr(counter), mkU64(1)));
+   iterate_if(binop(Iop_CmpNE64, mkexpr(counter), mkexpr(length)));
+   put_counter_dw0(mkU64(0));
+}
+
+static void
 s390_irgen_TR_EX(IRTemp length, IRTemp start1, IRTemp start2)
 {
    IRTemp op = newTemp(Ity_I8);
@@ -11026,6 +11145,11 @@ s390_irgen_EX(UChar r1, IRTemp addr2)
       /* special case TR */
       s390_irgen_EX_SS(r1, addr2, s390_irgen_TR_EX, 64);
       return "ex@tr";
+
+   case 0xe800000000000000ULL:
+      /* special case MVCIN */
+      s390_irgen_EX_SS(r1, addr2, s390_irgen_MVCIN_EX, 64);
+      return "ex@mvcin";
 
    default:
    {
@@ -11468,6 +11592,17 @@ s390_irgen_MVC(UChar length, IRTemp start1, IRTemp start2)
    s390_irgen_MVC_EX(len, start1, start2);
 
    return "mvc";
+}
+
+static const HChar *
+s390_irgen_MVCIN(UChar length, IRTemp start1, IRTemp start2)
+{
+   IRTemp len = newTemp(Ity_I64);
+
+   assign(len, mkU64(length));
+   s390_irgen_MVCIN_EX(len, start1, start2);
+
+   return "mvcin";
 }
 
 static const HChar *
@@ -12935,6 +13070,38 @@ s390_irgen_FLOGR(UChar r1, UChar r2)
                       mktemp(Ity_I64, mkU64(0)), False);
 
    return "flogr";
+}
+
+static const HChar *
+s390_irgen_POPCNT(UChar r1, UChar r2)
+{
+   Int i;
+   IRTemp val = newTemp(Ity_I64);
+   IRTemp mask[3];
+
+   assign(val, get_gpr_dw0(r2));
+   for (i = 0; i < 3; i++) {
+      mask[i] = newTemp(Ity_I64);
+   }
+   assign(mask[0], mkU64(0x5555555555555555ULL));
+   assign(mask[1], mkU64(0x3333333333333333ULL));
+   assign(mask[2], mkU64(0x0F0F0F0F0F0F0F0FULL));
+   for (i = 0; i < 3; i++) {
+      IRTemp tmp = newTemp(Ity_I64);
+
+      assign(tmp,
+             binop(Iop_Add64,
+                   binop(Iop_And64,
+                         mkexpr(val),
+                         mkexpr(mask[i])),
+                   binop(Iop_And64,
+                         binop(Iop_Shr64, mkexpr(val), mkU8(1 << i)),
+                         mkexpr(mask[i]))));
+      val = tmp;
+   }
+   s390_cc_thunk_putZ(S390_CC_OP_BITWISE, val);
+   put_gpr_dw0(r1, mkexpr(val));
+   return "popcnt";
 }
 
 static const HChar *
@@ -14512,7 +14679,8 @@ s390_decode_4byte_and_irgen(const UChar *bytes)
                                      ovl.fmt.RRF.r3, ovl.fmt.RRF.r2);  goto ok;
    case 0xb31f: s390_format_RRF_F0FF(s390_irgen_MSDBR, ovl.fmt.RRF.r1,
                                      ovl.fmt.RRF.r3, ovl.fmt.RRF.r2);  goto ok;
-   case 0xb324: /* LDER */ goto unimplemented;
+   case 0xb324: s390_format_RRE_FF(s390_irgen_LDER, ovl.fmt.RRE.r1,
+                                   ovl.fmt.RRE.r2); goto ok;
    case 0xb325: /* LXDR */ goto unimplemented;
    case 0xb326: /* LXER */ goto unimplemented;
    case 0xb32e: /* MAER */ goto unimplemented;
@@ -14999,7 +15167,8 @@ s390_decode_4byte_and_irgen(const UChar *bytes)
                                    ovl.fmt.RRE.r2);  goto ok;
    case 0xb9df: s390_format_RRE_RR(s390_irgen_CLHLR, ovl.fmt.RRE.r1,
                                    ovl.fmt.RRE.r2);  goto ok;
-   case 0xb9e1: /* POPCNT */ goto unimplemented;
+   case 0xb9e1: s390_format_RRE_RR(s390_irgen_POPCNT, ovl.fmt.RRE.r1,
+                                   ovl.fmt.RRE.r2);  goto ok;
    case 0xb9e2: s390_format_RRF_U0RR(s390_irgen_LOCGR, ovl.fmt.RRF3.r3,
                                      ovl.fmt.RRF3.r1, ovl.fmt.RRF3.r2,
                                      S390_XMNM_LOCGR);  goto ok;
@@ -15997,7 +16166,13 @@ s390_decode_6byte_and_irgen(const UChar *bytes)
    case 0xec0000000045ULL: s390_format_RIE_RRP(s390_irgen_BRXLG, ovl.fmt.RIE.r1,
                                                ovl.fmt.RIE.r3, ovl.fmt.RIE.i2);
                                                goto ok;
-   case 0xec0000000051ULL: /* RISBLG */ goto unimplemented;
+   case 0xec0000000051ULL: s390_format_RIE_RRUUU(s390_irgen_RISBLG,
+                                                 ovl.fmt.RIE_RRUUU.r1,
+                                                 ovl.fmt.RIE_RRUUU.r2,
+                                                 ovl.fmt.RIE_RRUUU.i3,
+                                                 ovl.fmt.RIE_RRUUU.i4,
+                                                 ovl.fmt.RIE_RRUUU.i5);
+                                                 goto ok;
    case 0xec0000000054ULL: s390_format_RIE_RRUUU(s390_irgen_RNSBG,
                                                  ovl.fmt.RIE_RRUUU.r1,
                                                  ovl.fmt.RIE_RRUUU.r2,
@@ -16026,8 +16201,20 @@ s390_decode_6byte_and_irgen(const UChar *bytes)
                                                  ovl.fmt.RIE_RRUUU.i4,
                                                  ovl.fmt.RIE_RRUUU.i5);
                                                  goto ok;
-   case 0xec0000000059ULL: /* RISBGN */ goto unimplemented;
-   case 0xec000000005dULL: /* RISBHG */ goto unimplemented;
+   case 0xec0000000059ULL: s390_format_RIE_RRUUU(s390_irgen_RISBGN,
+                                                 ovl.fmt.RIE_RRUUU.r1,
+                                                 ovl.fmt.RIE_RRUUU.r2,
+                                                 ovl.fmt.RIE_RRUUU.i3,
+                                                 ovl.fmt.RIE_RRUUU.i4,
+                                                 ovl.fmt.RIE_RRUUU.i5);
+                                                 goto ok;
+   case 0xec000000005dULL: s390_format_RIE_RRUUU(s390_irgen_RISBHG,
+                                                 ovl.fmt.RIE_RRUUU.r1,
+                                                 ovl.fmt.RIE_RRUUU.r2,
+                                                 ovl.fmt.RIE_RRUUU.i3,
+                                                 ovl.fmt.RIE_RRUUU.i4,
+                                                 ovl.fmt.RIE_RRUUU.i5);
+                                                 goto ok;
    case 0xec0000000064ULL: s390_format_RIE_RRPU(s390_irgen_CGRJ,
                                                 ovl.fmt.RIE_RRPU.r1,
                                                 ovl.fmt.RIE_RRPU.r2,
@@ -16190,7 +16377,10 @@ s390_decode_6byte_and_irgen(const UChar *bytes)
                                                  ovl.fmt.RXF.r3, ovl.fmt.RXF.x2,
                                                  ovl.fmt.RXF.b2, ovl.fmt.RXF.d2,
                                                  ovl.fmt.RXF.r1);  goto ok;
-   case 0xed0000000024ULL: /* LDE */ goto unimplemented;
+   case 0xed0000000024ULL: s390_format_RXE_FRRD(s390_irgen_LDE,
+                                                ovl.fmt.RXE.r1, ovl.fmt.RXE.x2,
+                                                ovl.fmt.RXE.b2,
+                                                ovl.fmt.RXE.d2); goto ok;
    case 0xed0000000025ULL: /* LXD */ goto unimplemented;
    case 0xed0000000026ULL: /* LXE */ goto unimplemented;
    case 0xed000000002eULL: /* MAE */ goto unimplemented;
@@ -16366,7 +16556,8 @@ s390_decode_6byte_and_irgen(const UChar *bytes)
    case 0xc802ULL: /* CSST */ goto unimplemented;
    case 0xc804ULL: /* LPD */ goto unimplemented;
    case 0xc805ULL: /* LPDG */ goto unimplemented;
-   case 0xcc06ULL: /* BRCTH */ goto unimplemented;
+   case 0xcc06ULL:  s390_format_RIL_RP(s390_irgen_BRCTH, ovl.fmt.RIL.r1,
+                                       ovl.fmt.RIL.i2);  goto ok;
    case 0xcc08ULL: s390_format_RIL_RI(s390_irgen_AIH, ovl.fmt.RIL.r1,
                                       ovl.fmt.RIL.i2);  goto ok;
    case 0xcc0aULL: s390_format_RIL_RI(s390_irgen_ALSIH, ovl.fmt.RIL.r1,
@@ -16416,7 +16607,9 @@ s390_decode_6byte_and_irgen(const UChar *bytes)
    case 0xdfULL: /* EDMK */ goto unimplemented;
    case 0xe1ULL: /* PKU */ goto unimplemented;
    case 0xe2ULL: /* UNPKU */ goto unimplemented;
-   case 0xe8ULL: /* MVCIN */ goto unimplemented;
+   case 0xe8ULL: s390_format_SS_L0RDRD(s390_irgen_MVCIN, ovl.fmt.SS.l,
+                                       ovl.fmt.SS.b1, ovl.fmt.SS.d1,
+                                       ovl.fmt.SS.b2, ovl.fmt.SS.d2);  goto ok;
    case 0xe9ULL: /* PKA */ goto unimplemented;
    case 0xeaULL: /* UNPKA */ goto unimplemented;
    case 0xeeULL: /* PLO */ goto unimplemented;

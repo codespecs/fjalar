@@ -1272,6 +1272,7 @@ static ULong DEBUG_SnarfCodeView(
                              // FIXME: .namelen is sizeof(.data) including .name[]
             vsym.isText    = (sym->generic.id == S_PUB_V1);
             vsym.isIFunc   = False;
+            vsym.isGlobal  = True;
             ML_(addSym)( di, &vsym );
             n_syms_read++;
          }
@@ -1299,6 +1300,7 @@ static ULong DEBUG_SnarfCodeView(
             vsym.isText    = !!(IMAGE_SCN_CNT_CODE 
                                 & sectp[sym->data_v2.segment-1].Characteristics);
             vsym.isIFunc   = False;
+            vsym.isGlobal  = True;
             ML_(addSym)( di, &vsym );
             n_syms_read++;
          }
@@ -1332,6 +1334,7 @@ static ULong DEBUG_SnarfCodeView(
             vsym.isText    = !!(IMAGE_SCN_CNT_CODE
                                 & sectp[sym->data_v2.segment-1].Characteristics);
             vsym.isIFunc   = False;
+            vsym.isGlobal  = True;
             ML_(addSym)( di, &vsym );
             n_syms_read++;
          }
@@ -1365,6 +1368,7 @@ static ULong DEBUG_SnarfCodeView(
          vsym.size      = sym->proc_v1.proc_len;
          vsym.isText    = True;
          vsym.isIFunc   = False;
+         vsym.isGlobal  = sym->generic.id == S_GPROC_V1;
          if (debug)
             VG_(umsg)("  Adding function %s addr=%#lx length=%u\n",
                       symname, vsym.avmas.main, vsym.size );
@@ -1386,6 +1390,7 @@ static ULong DEBUG_SnarfCodeView(
          vsym.size      = sym->proc_v2.proc_len;
          vsym.isText    = True;
          vsym.isIFunc   = False;
+         vsym.isGlobal  = sym->generic.id == S_GPROC_V2;
          if (debug)
             VG_(umsg)("  Adding function %s addr=%#lx length=%u\n",
                       symname, vsym.avmas.main, vsym.size );
@@ -1408,6 +1413,7 @@ static ULong DEBUG_SnarfCodeView(
             vsym.size      = sym->proc_v3.proc_len;
             vsym.isText    = 1;
             vsym.isIFunc   = False;
+            vsym.isGlobal  = sym->generic.id == S_GPROC_V3;
             ML_(addSym)( di, &vsym );
             n_syms_read++;
          }
@@ -2503,8 +2509,8 @@ HChar* ML_(find_name_of_pdb_file)( const HChar* pename )
       sh -c "strings (pename) | egrep '\.pdb$|\.PDB$' > (tmpname)"
    */
    const HChar* sh      = "/bin/sh";
-   const HChar* strings = "/usr/bin/strings";
-   const HChar* egrep   = "/usr/bin/egrep";
+   const HChar* strings = "strings";
+   const HChar* egrep   = "grep -E";
 
    /* (sh) -c "(strings) (pename) | (egrep) 'pdb' > (tmpname) */
    Int cmdlen = VG_(strlen)(strings) + VG_(strlen)(pename)

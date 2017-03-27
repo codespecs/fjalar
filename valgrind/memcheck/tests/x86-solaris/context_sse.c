@@ -8,14 +8,18 @@
 #include <sys/syscall.h>
 #include <sys/ucontext.h>
 
+#include "config.h"
+
 static siginfo_t si;
 static ucontext_t uc;
 /* x0 is always zero, but is visible to Valgrind as uninitialised. */
 static upad128_t x0;
 static upad128_t d0 = {0};
 
-static void sighandler(int sig, siginfo_t *sip, ucontext_t *ucp)
+static void sighandler(int sig, siginfo_t *sip, void *arg)
 {
+   ucontext_t *ucp = (ucontext_t *) arg;
+
    si = *sip;
    uc = *ucp;
 
@@ -29,7 +33,13 @@ int main(void)
    pid_t pid;
    upad128_t out[8];
    upad128_t y0;
-   struct fpchip_state *fs = &uc.uc_mcontext.fpregs.fp_reg_set.fpchip_state;
+
+#if defined(SOLARIS_FPCHIP_STATE_TAKES_UNDERSCORE)
+   struct _fpchip_state *fs;
+#else
+   struct fpchip_state *fs;
+#endif
+   fs = &uc.uc_mcontext.fpregs.fp_reg_set.fpchip_state;
 
    /* Uninitialised, but we know px[0] is 0x0. */
    upad128_t *px = malloc(sizeof(*px));
@@ -39,7 +49,7 @@ int main(void)
    upad128_t *py = malloc(sizeof(*py));
    y0 = py[0];
 
-   sa.sa_handler = sighandler;
+   sa.sa_sigaction = sighandler;
    sa.sa_flags = SA_SIGINFO;
    if (sigfillset(&sa.sa_mask)) {
       perror("sigfillset");

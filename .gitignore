@@ -227,6 +227,7 @@ valgrind/massif/tests/insig
 valgrind/massif/tests/long-names
 valgrind/massif/tests/long-time
 valgrind/massif/tests/malloc_usable
+valgrind/massif/tests/mmapunmap
 valgrind/massif/tests/new-cpp
 valgrind/massif/tests/null
 valgrind/massif/tests/one
@@ -245,9 +246,11 @@ valgrind/memcheck/tests/amd64/fxsave-amd64
 valgrind/memcheck/tests/amd64/insn-bsfl
 valgrind/memcheck/tests/amd64/insn-pcmpistri
 valgrind/memcheck/tests/amd64/insn-pmovmskb
+valgrind/memcheck/tests/amd64-linux/access_below_sp
 valgrind/memcheck/tests/amd64-linux/defcfaexpr
 valgrind/memcheck/tests/amd64-linux/int3-amd64
 valgrind/memcheck/tests/amd64/more_x87_fp
+valgrind/memcheck/tests/amd64/shr_edx
 valgrind/memcheck/tests/amd64/sh-mem-vec128
 valgrind/memcheck/tests/amd64/sh-mem-vec256
 valgrind/memcheck/tests/amd64/sse_memory
@@ -262,6 +265,7 @@ valgrind/memcheck/tests/badloop
 valgrind/memcheck/tests/badpoll
 valgrind/memcheck/tests/badrw
 valgrind/memcheck/tests/big_blocks_freed_list
+valgrind/memcheck/tests/big_debuginfo_symbol
 valgrind/memcheck/tests/brk2
 valgrind/memcheck/tests/buflen_check
 valgrind/memcheck/tests/bug155125
@@ -301,6 +305,7 @@ valgrind/memcheck/tests/inline
 valgrind/memcheck/tests/inlinfo
 valgrind/memcheck/tests/inltemplate
 valgrind/memcheck/tests/leak-0
+valgrind/memcheck/tests/leak-autofreepool
 valgrind/memcheck/tests/leak-cases
 valgrind/memcheck/tests/leak_cpp_interior
 valgrind/memcheck/tests/leak-cycle
@@ -411,6 +416,8 @@ valgrind/memcheck/tests/wrap5
 valgrind/memcheck/tests/wrap6
 valgrind/memcheck/tests/wrap7
 valgrind/memcheck/tests/wrap8
+valgrind/memcheck/tests/wrapmalloc
+valgrind/memcheck/tests/wrapmallocstatic
 valgrind/memcheck/tests/writev1
 valgrind/memcheck/tests/xml1
 valgrind/none/tests/allexec32
@@ -433,6 +440,7 @@ valgrind/none/tests/amd64/crc32
 valgrind/none/tests/amd64/faultstatus
 valgrind/none/tests/amd64/fcmovnu
 valgrind/none/tests/amd64/fma
+valgrind/none/tests/amd64/fma4
 valgrind/none/tests/amd64/fxtract
 valgrind/none/tests/amd64-linux/bug345887
 valgrind/none/tests/amd64-linux/map_32bits
@@ -526,10 +534,14 @@ valgrind/none/tests/mmap_fcntl_bug
 valgrind/none/tests/mq
 valgrind/none/tests/munmap_exe
 valgrind/none/tests/nestedfns
+valgrind/none/tests/nocwd
 valgrind/none/tests/pending
 valgrind/none/tests/pluto
+valgrind/none/tests/ppoll_alarm
 valgrind/none/tests/process_vm_readv_writev
 valgrind/none/tests/procfs-cmdline-exe
+valgrind/none/tests/pselect_alarm
+valgrind/none/tests/pselect_sigmask_null
 valgrind/none/tests/pth_atfork1
 valgrind/none/tests/pth_blockedsig
 valgrind/none/tests/pth_cancel1
@@ -542,6 +554,7 @@ valgrind/none/tests/pth_mutexspeed
 valgrind/none/tests/pth_once
 valgrind/none/tests/pth_rwlock
 valgrind/none/tests/pth_stackalign
+valgrind/none/tests/pth_term_signal
 valgrind/none/tests/rcrl
 valgrind/none/tests/readline1
 valgrind/none/tests/require-text-symbol

@@ -255,6 +255,9 @@ static void ocache_sarp_Clear_Origins ( Addr, UWord ); /* fwds */
 #define VA_BITS16_UNDEFINED   0x5555   // 01_01_01_01b x 2
 #define VA_BITS16_DEFINED     0xaaaa   // 10_10_10_10b x 2
 
+// These represent 128 bits of memory.
+#define VA_BITS32_UNDEFINED   0x55555555  // 01_01_01_01b x 4
+
 
 #define SM_CHUNKS             16384    // Each SM covers 64k of memory.
 #define SM_OFF(aaa)           (((aaa) & 0xffff) >> 2)
@@ -595,6 +598,12 @@ static AuxMapEnt* find_or_alloc_in_auxmap ( Addr a )
 
 // In all these, 'low' means it's definitely in the main primary map,
 // 'high' means it's definitely in the auxiliary table.
+
+static INLINE UWord get_primary_map_low_offset ( Addr a )
+{
+  UWord pm_off = a >> 16;
+  return pm_off;
+}
 
 static INLINE SecMap** get_secmap_low_ptr ( Addr a )
 {
@@ -1112,9 +1121,32 @@ Bool MC_(in_ignored_range) ( Addr a )
    /*NOTREACHED*/
 }
 
-/* Parse two Addr separated by a dash, or fail. */
+Bool MC_(in_ignored_range_below_sp) ( Addr sp, Addr a, UInt szB )
+{
+   if (LIKELY(!MC_(clo_ignore_range_below_sp)))
+       return False;
+   tl_assert(szB >= 1 && szB <= 32);
+   tl_assert(MC_(clo_ignore_range_below_sp__first_offset)
+             > MC_(clo_ignore_range_below_sp__last_offset));
+   Addr range_lo = sp - MC_(clo_ignore_range_below_sp__first_offset);
+   Addr range_hi = sp - MC_(clo_ignore_range_below_sp__last_offset);
+   if (range_lo >= range_hi) {
+      /* Bizarre.  We have a wraparound situation.  What should we do? */
+      return False; // Play safe
+   } else {
+      /* This is the expected case. */
+      if (range_lo <= a && a + szB - 1 <= range_hi)
+         return True;
+      else
+         return False;
+   }
+   /*NOTREACHED*/
+   tl_assert(0);
+}
 
-static Bool parse_range ( const HChar** ppc, Addr* result1, Addr* result2 )
+/* Parse two Addrs (in hex) separated by a dash, or fail. */
+
+static Bool parse_Addr_pair ( const HChar** ppc, Addr* result1, Addr* result2 )
 {
    Bool ok = VG_(parse_Addr) (ppc, result1);
    if (!ok)
@@ -1123,6 +1155,23 @@ static Bool parse_range ( const HChar** ppc, Addr* result1, Addr* result2 )
       return False;
    (*ppc)++;
    ok = VG_(parse_Addr) (ppc, result2);
+   if (!ok)
+      return False;
+   return True;
+}
+
+/* Parse two UInts (32 bit unsigned, in decimal) separated by a dash,
+   or fail. */
+
+static Bool parse_UInt_pair ( const HChar** ppc, UInt* result1, UInt* result2 )
+{
+   Bool ok = VG_(parse_UInt) (ppc, result1);
+   if (!ok)
+      return False;
+   if (**ppc != '-')
+      return False;
+   (*ppc)++;
+   ok = VG_(parse_UInt) (ppc, result2);
    if (!ok)
       return False;
    return True;
@@ -1139,7 +1188,7 @@ static Bool parse_ignore_ranges ( const HChar* str0 )
    while (1) {
       Addr start = ~(Addr)0;
       Addr end   = (Addr)0;
-      Bool ok    = parse_range(ppc, &start, &end);
+      Bool ok    = parse_Addr_pair(ppc, &start, &end);
       if (!ok)
          return False;
       if (start > end)
@@ -3515,57 +3564,48 @@ static inline UInt convert_nia_to_ecu ( Addr nia )
 }
 
 
-/* Note that this serves both the origin-tracking and
-   no-origin-tracking modes.  We assume that calls to it are
-   sufficiently infrequent that it isn't worth specialising for the
-   with/without origin-tracking cases. */
-void MC_(helperc_MAKE_STACK_UNINIT) ( Addr base, UWord len, Addr nia )
+/* This marks the stack as addressible but undefined, after a call or
+   return for a target that has an ABI defined stack redzone.  It
+   happens quite a lot and needs to be fast.  This is the version for
+   origin tracking.  The non-origin-tracking version is below. */
+VG_REGPARM(3)
+void MC_(helperc_MAKE_STACK_UNINIT_w_o) ( Addr base, UWord len, Addr nia )
 {
-   UInt otag;
-   tl_assert(sizeof(UWord) == sizeof(SizeT));
+   PROF_EVENT(MCPE_MAKE_STACK_UNINIT_W_O);
    if (0)
-      VG_(printf)("helperc_MAKE_STACK_UNINIT (%#lx,%lu,nia=%#lx)\n",
+      VG_(printf)("helperc_MAKE_STACK_UNINIT_w_o (%#lx,%lu,nia=%#lx)\n",
                   base, len, nia );
 
-   if (UNLIKELY( MC_(clo_mc_level) == 3 )) {
-      UInt ecu = convert_nia_to_ecu ( nia );
-      tl_assert(VG_(is_plausible_ECU)(ecu));
-      otag = ecu | MC_OKIND_STACK;
-   } else {
-      tl_assert(nia == 0);
-      otag = 0;
-   }
+   UInt ecu = convert_nia_to_ecu ( nia );
+   tl_assert(VG_(is_plausible_ECU)(ecu));
 
-#  if 0
-   /* Really slow version */
-   MC_(make_mem_undefined)(base, len, otag);
-#  endif
+   UInt otag = ecu | MC_OKIND_STACK;
 
 #  if 0
    /* Slow(ish) version, which is fairly easily seen to be correct.
    */
    if (LIKELY( VG_IS_8_ALIGNED(base) && len==128 )) {
-      make_aligned_word64_undefined(base +   0, otag);
-      make_aligned_word64_undefined(base +   8, otag);
-      make_aligned_word64_undefined(base +  16, otag);
-      make_aligned_word64_undefined(base +  24, otag);
+      make_aligned_word64_undefined_w_otag(base +   0, otag);
+      make_aligned_word64_undefined_w_otag(base +   8, otag);
+      make_aligned_word64_undefined_w_otag(base +  16, otag);
+      make_aligned_word64_undefined_w_otag(base +  24, otag);
 
-      make_aligned_word64_undefined(base +  32, otag);
-      make_aligned_word64_undefined(base +  40, otag);
-      make_aligned_word64_undefined(base +  48, otag);
-      make_aligned_word64_undefined(base +  56, otag);
+      make_aligned_word64_undefined_w_otag(base +  32, otag);
+      make_aligned_word64_undefined_w_otag(base +  40, otag);
+      make_aligned_word64_undefined_w_otag(base +  48, otag);
+      make_aligned_word64_undefined_w_otag(base +  56, otag);
 
-      make_aligned_word64_undefined(base +  64, otag);
-      make_aligned_word64_undefined(base +  72, otag);
-      make_aligned_word64_undefined(base +  80, otag);
-      make_aligned_word64_undefined(base +  88, otag);
+      make_aligned_word64_undefined_w_otag(base +  64, otag);
+      make_aligned_word64_undefined_w_otag(base +  72, otag);
+      make_aligned_word64_undefined_w_otag(base +  80, otag);
+      make_aligned_word64_undefined_w_otag(base +  88, otag);
 
-      make_aligned_word64_undefined(base +  96, otag);
-      make_aligned_word64_undefined(base + 104, otag);
-      make_aligned_word64_undefined(base + 112, otag);
-      make_aligned_word64_undefined(base + 120, otag);
+      make_aligned_word64_undefined_w_otag(base +  96, otag);
+      make_aligned_word64_undefined_w_otag(base + 104, otag);
+      make_aligned_word64_undefined_w_otag(base + 112, otag);
+      make_aligned_word64_undefined_w_otag(base + 120, otag);
    } else {
-      MC_(make_mem_undefined)(base, len, otag);
+      MC_(make_mem_undefined_w_otag)(base, len, otag);
    }
 #  endif 
 
@@ -3577,21 +3617,20 @@ void MC_(helperc_MAKE_STACK_UNINIT) ( Addr base, UWord len, Addr nia )
       directly into the vabits array.  (If the sm was distinguished, this
       will make a copy and then write to it.)
    */
-
    if (LIKELY( len == 128 && VG_IS_8_ALIGNED(base) )) {
       /* Now we know the address range is suitably sized and aligned. */
       UWord a_lo = (UWord)(base);
       UWord a_hi = (UWord)(base + 128 - 1);
       tl_assert(a_lo < a_hi);             // paranoia: detect overflow
-      if (a_hi <= MAX_PRIMARY_ADDRESS) {
-         // Now we know the entire range is within the main primary map.
-         SecMap* sm    = get_secmap_for_writing_low(a_lo);
-         SecMap* sm_hi = get_secmap_for_writing_low(a_hi);
-         /* Now we know that the entire address range falls within a
-            single secondary map, and that that secondary 'lives' in
-            the main primary map. */
-         if (LIKELY(sm == sm_hi)) {
-            // Finally, we know that the range is entirely within one secmap.
+      if (LIKELY(a_hi <= MAX_PRIMARY_ADDRESS)) {
+         /* Now we know the entire range is within the main primary map. */
+         UWord pm_off_lo = get_primary_map_low_offset(a_lo);
+         UWord pm_off_hi = get_primary_map_low_offset(a_hi);
+         if (LIKELY(pm_off_lo == pm_off_hi)) {
+           /* Now we know that the entire address range falls within a
+              single secondary map, and that that secondary 'lives' in
+              the main primary map. */
+            SecMap* sm    = get_secmap_for_writing_low(a_lo);
             UWord   v_off = SM_OFF(a_lo);
             UShort* p     = (UShort*)(&sm->vabits8[v_off]);
             p[ 0] = VA_BITS16_UNDEFINED;
@@ -3610,24 +3649,22 @@ void MC_(helperc_MAKE_STACK_UNINIT) ( Addr base, UWord len, Addr nia )
             p[13] = VA_BITS16_UNDEFINED;
             p[14] = VA_BITS16_UNDEFINED;
             p[15] = VA_BITS16_UNDEFINED;
-            if (UNLIKELY( MC_(clo_mc_level) == 3 )) {
-               set_aligned_word64_Origin_to_undef( base + 8 * 0, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 1, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 2, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 3, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 4, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 5, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 6, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 7, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 8, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 9, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 10, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 11, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 12, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 13, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 14, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 15, otag );
-            }
+            set_aligned_word64_Origin_to_undef( base + 8 * 0, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 1, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 2, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 3, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 4, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 5, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 6, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 7, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 8, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 9, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 10, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 11, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 12, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 13, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 14, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 15, otag );
             return;
          }
       }
@@ -3640,14 +3677,13 @@ void MC_(helperc_MAKE_STACK_UNINIT) ( Addr base, UWord len, Addr nia )
       UWord a_hi = (UWord)(base + 288 - 1);
       tl_assert(a_lo < a_hi);             // paranoia: detect overflow
       if (a_hi <= MAX_PRIMARY_ADDRESS) {
-         // Now we know the entire range is within the main primary map.
-         SecMap* sm    = get_secmap_for_writing_low(a_lo);
-         SecMap* sm_hi = get_secmap_for_writing_low(a_hi);
-         /* Now we know that the entire address range falls within a
-            single secondary map, and that that secondary 'lives' in
-            the main primary map. */
-         if (LIKELY(sm == sm_hi)) {
-            // Finally, we know that the range is entirely within one secmap.
+         UWord pm_off_lo = get_primary_map_low_offset(a_lo);
+         UWord pm_off_hi = get_primary_map_low_offset(a_hi);
+         if (LIKELY(pm_off_lo == pm_off_hi)) {
+           /* Now we know that the entire address range falls within a
+              single secondary map, and that that secondary 'lives' in
+              the main primary map. */
+            SecMap* sm    = get_secmap_for_writing_low(a_lo);
             UWord   v_off = SM_OFF(a_lo);
             UShort* p     = (UShort*)(&sm->vabits8[v_off]);
             p[ 0] = VA_BITS16_UNDEFINED;
@@ -3686,44 +3722,42 @@ void MC_(helperc_MAKE_STACK_UNINIT) ( Addr base, UWord len, Addr nia )
             p[33] = VA_BITS16_UNDEFINED;
             p[34] = VA_BITS16_UNDEFINED;
             p[35] = VA_BITS16_UNDEFINED;
-            if (UNLIKELY( MC_(clo_mc_level) == 3 )) {
-               set_aligned_word64_Origin_to_undef( base + 8 * 0, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 1, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 2, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 3, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 4, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 5, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 6, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 7, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 8, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 9, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 10, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 11, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 12, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 13, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 14, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 15, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 16, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 17, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 18, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 19, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 20, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 21, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 22, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 23, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 24, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 25, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 26, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 27, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 28, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 29, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 30, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 31, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 32, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 33, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 34, otag );
-               set_aligned_word64_Origin_to_undef( base + 8 * 35, otag );
-            }
+            set_aligned_word64_Origin_to_undef( base + 8 * 0, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 1, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 2, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 3, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 4, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 5, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 6, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 7, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 8, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 9, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 10, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 11, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 12, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 13, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 14, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 15, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 16, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 17, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 18, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 19, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 20, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 21, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 22, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 23, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 24, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 25, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 26, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 27, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 28, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 29, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 30, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 31, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 32, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 33, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 34, otag );
+            set_aligned_word64_Origin_to_undef( base + 8 * 35, otag );
             return;
          }
       }
@@ -3731,6 +3765,278 @@ void MC_(helperc_MAKE_STACK_UNINIT) ( Addr base, UWord len, Addr nia )
 
    /* else fall into slow case */
    MC_(make_mem_undefined_w_otag)(base, len, otag);
+}
+
+
+/* This is a version of MC_(helperc_MAKE_STACK_UNINIT_w_o) that is
+   specialised for the non-origin-tracking case. */
+VG_REGPARM(2)
+void MC_(helperc_MAKE_STACK_UNINIT_no_o) ( Addr base, UWord len )
+{
+   PROF_EVENT(MCPE_MAKE_STACK_UNINIT_NO_O);
+   if (0)
+      VG_(printf)("helperc_MAKE_STACK_UNINIT_no_o (%#lx,%lu)\n",
+                  base, len );
+
+#  if 0
+   /* Slow(ish) version, which is fairly easily seen to be correct.
+   */
+   if (LIKELY( VG_IS_8_ALIGNED(base) && len==128 )) {
+      make_aligned_word64_undefined(base +   0);
+      make_aligned_word64_undefined(base +   8);
+      make_aligned_word64_undefined(base +  16);
+      make_aligned_word64_undefined(base +  24);
+
+      make_aligned_word64_undefined(base +  32);
+      make_aligned_word64_undefined(base +  40);
+      make_aligned_word64_undefined(base +  48);
+      make_aligned_word64_undefined(base +  56);
+
+      make_aligned_word64_undefined(base +  64);
+      make_aligned_word64_undefined(base +  72);
+      make_aligned_word64_undefined(base +  80);
+      make_aligned_word64_undefined(base +  88);
+
+      make_aligned_word64_undefined(base +  96);
+      make_aligned_word64_undefined(base + 104);
+      make_aligned_word64_undefined(base + 112);
+      make_aligned_word64_undefined(base + 120);
+   } else {
+      make_mem_undefined(base, len);
+   }
+#  endif 
+
+   /* Idea is: go fast when
+         * 8-aligned and length is 128
+         * the sm is available in the main primary map
+         * the address range falls entirely with a single secondary map
+      If all those conditions hold, just update the V+A bits by writing
+      directly into the vabits array.  (If the sm was distinguished, this
+      will make a copy and then write to it.)
+   */
+   if (LIKELY( len == 128 && VG_IS_8_ALIGNED(base) )) {
+      /* Now we know the address range is suitably sized and aligned. */
+      UWord a_lo = (UWord)(base);
+      UWord a_hi = (UWord)(base + 128 - 1);
+      tl_assert(a_lo < a_hi);             // paranoia: detect overflow
+      if (LIKELY(a_hi <= MAX_PRIMARY_ADDRESS)) {
+         /* Now we know the entire range is within the main primary map. */
+         UWord pm_off_lo = get_primary_map_low_offset(a_lo);
+         UWord pm_off_hi = get_primary_map_low_offset(a_hi);
+         if (LIKELY(pm_off_lo == pm_off_hi)) {
+           /* Now we know that the entire address range falls within a
+              single secondary map, and that that secondary 'lives' in
+              the main primary map. */
+            SecMap* sm    = get_secmap_for_writing_low(a_lo);
+            UWord   v_off = SM_OFF(a_lo);
+            UShort* p     = (UShort*)(&sm->vabits8[v_off]);
+            p[ 0] = VA_BITS16_UNDEFINED;
+            p[ 1] = VA_BITS16_UNDEFINED;
+            p[ 2] = VA_BITS16_UNDEFINED;
+            p[ 3] = VA_BITS16_UNDEFINED;
+            p[ 4] = VA_BITS16_UNDEFINED;
+            p[ 5] = VA_BITS16_UNDEFINED;
+            p[ 6] = VA_BITS16_UNDEFINED;
+            p[ 7] = VA_BITS16_UNDEFINED;
+            p[ 8] = VA_BITS16_UNDEFINED;
+            p[ 9] = VA_BITS16_UNDEFINED;
+            p[10] = VA_BITS16_UNDEFINED;
+            p[11] = VA_BITS16_UNDEFINED;
+            p[12] = VA_BITS16_UNDEFINED;
+            p[13] = VA_BITS16_UNDEFINED;
+            p[14] = VA_BITS16_UNDEFINED;
+            p[15] = VA_BITS16_UNDEFINED;
+            return;
+         }
+      }
+   }
+
+   /* 288 bytes (36 ULongs) is the magic value for ELF ppc64. */
+   if (LIKELY( len == 288 && VG_IS_8_ALIGNED(base) )) {
+      /* Now we know the address range is suitably sized and aligned. */
+      UWord a_lo = (UWord)(base);
+      UWord a_hi = (UWord)(base + 288 - 1);
+      tl_assert(a_lo < a_hi);             // paranoia: detect overflow
+      if (a_hi <= MAX_PRIMARY_ADDRESS) {
+         UWord pm_off_lo = get_primary_map_low_offset(a_lo);
+         UWord pm_off_hi = get_primary_map_low_offset(a_hi);
+         if (LIKELY(pm_off_lo == pm_off_hi)) {
+           /* Now we know that the entire address range falls within a
+              single secondary map, and that that secondary 'lives' in
+              the main primary map. */
+            SecMap* sm    = get_secmap_for_writing_low(a_lo);
+            UWord   v_off = SM_OFF(a_lo);
+            UShort* p     = (UShort*)(&sm->vabits8[v_off]);
+            p[ 0] = VA_BITS16_UNDEFINED;
+            p[ 1] = VA_BITS16_UNDEFINED;
+            p[ 2] = VA_BITS16_UNDEFINED;
+            p[ 3] = VA_BITS16_UNDEFINED;
+            p[ 4] = VA_BITS16_UNDEFINED;
+            p[ 5] = VA_BITS16_UNDEFINED;
+            p[ 6] = VA_BITS16_UNDEFINED;
+            p[ 7] = VA_BITS16_UNDEFINED;
+            p[ 8] = VA_BITS16_UNDEFINED;
+            p[ 9] = VA_BITS16_UNDEFINED;
+            p[10] = VA_BITS16_UNDEFINED;
+            p[11] = VA_BITS16_UNDEFINED;
+            p[12] = VA_BITS16_UNDEFINED;
+            p[13] = VA_BITS16_UNDEFINED;
+            p[14] = VA_BITS16_UNDEFINED;
+            p[15] = VA_BITS16_UNDEFINED;
+            p[16] = VA_BITS16_UNDEFINED;
+            p[17] = VA_BITS16_UNDEFINED;
+            p[18] = VA_BITS16_UNDEFINED;
+            p[19] = VA_BITS16_UNDEFINED;
+            p[20] = VA_BITS16_UNDEFINED;
+            p[21] = VA_BITS16_UNDEFINED;
+            p[22] = VA_BITS16_UNDEFINED;
+            p[23] = VA_BITS16_UNDEFINED;
+            p[24] = VA_BITS16_UNDEFINED;
+            p[25] = VA_BITS16_UNDEFINED;
+            p[26] = VA_BITS16_UNDEFINED;
+            p[27] = VA_BITS16_UNDEFINED;
+            p[28] = VA_BITS16_UNDEFINED;
+            p[29] = VA_BITS16_UNDEFINED;
+            p[30] = VA_BITS16_UNDEFINED;
+            p[31] = VA_BITS16_UNDEFINED;
+            p[32] = VA_BITS16_UNDEFINED;
+            p[33] = VA_BITS16_UNDEFINED;
+            p[34] = VA_BITS16_UNDEFINED;
+            p[35] = VA_BITS16_UNDEFINED;
+            return;
+         }
+      }
+   }
+
+   /* else fall into slow case */
+   make_mem_undefined(base, len);
+}
+
+
+/* And this is an even more specialised case, for the case where there
+   is no origin tracking, and the length is 128. */
+VG_REGPARM(1)
+void MC_(helperc_MAKE_STACK_UNINIT_128_no_o) ( Addr base )
+{
+   PROF_EVENT(MCPE_MAKE_STACK_UNINIT_128_NO_O);
+   if (0)
+      VG_(printf)("helperc_MAKE_STACK_UNINIT_128_no_o (%#lx)\n", base );
+
+#  if 0
+   /* Slow(ish) version, which is fairly easily seen to be correct.
+   */
+   if (LIKELY( VG_IS_8_ALIGNED(base) )) {
+      make_aligned_word64_undefined(base +   0);
+      make_aligned_word64_undefined(base +   8);
+      make_aligned_word64_undefined(base +  16);
+      make_aligned_word64_undefined(base +  24);
+
+      make_aligned_word64_undefined(base +  32);
+      make_aligned_word64_undefined(base +  40);
+      make_aligned_word64_undefined(base +  48);
+      make_aligned_word64_undefined(base +  56);
+
+      make_aligned_word64_undefined(base +  64);
+      make_aligned_word64_undefined(base +  72);
+      make_aligned_word64_undefined(base +  80);
+      make_aligned_word64_undefined(base +  88);
+
+      make_aligned_word64_undefined(base +  96);
+      make_aligned_word64_undefined(base + 104);
+      make_aligned_word64_undefined(base + 112);
+      make_aligned_word64_undefined(base + 120);
+   } else {
+      make_mem_undefined(base, 128);
+   }
+#  endif 
+
+   /* Idea is: go fast when
+         * 16-aligned and length is 128
+         * the sm is available in the main primary map
+         * the address range falls entirely with a single secondary map
+      If all those conditions hold, just update the V+A bits by writing
+      directly into the vabits array.  (If the sm was distinguished, this
+      will make a copy and then write to it.)
+
+      Typically this applies to amd64 'ret' instructions, since RSP is
+      16-aligned (0 % 16) after the instruction (per the amd64-ELF ABI).
+   */
+   if (LIKELY( VG_IS_16_ALIGNED(base) )) {
+      /* Now we know the address range is suitably sized and aligned. */
+      UWord a_lo = (UWord)(base);
+      UWord a_hi = (UWord)(base + 128 - 1);
+      /* FIXME: come up with a sane story on the wraparound case
+         (which of course cnanot happen, but still..) */
+      /* tl_assert(a_lo < a_hi); */            // paranoia: detect overflow
+      if (LIKELY(a_hi <= MAX_PRIMARY_ADDRESS)) {
+         /* Now we know the entire range is within the main primary map. */
+         UWord pm_off_lo = get_primary_map_low_offset(a_lo);
+         UWord pm_off_hi = get_primary_map_low_offset(a_hi);
+         if (LIKELY(pm_off_lo == pm_off_hi)) {
+           /* Now we know that the entire address range falls within a
+              single secondary map, and that that secondary 'lives' in
+              the main primary map. */
+            PROF_EVENT(MCPE_MAKE_STACK_UNINIT_128_NO_O_ALIGNED_16);
+            SecMap* sm    = get_secmap_for_writing_low(a_lo);
+            UWord   v_off = SM_OFF(a_lo);
+            UInt*   w32   = (UInt*)(&sm->vabits8[v_off]);
+            w32[ 0] = VA_BITS32_UNDEFINED;
+            w32[ 1] = VA_BITS32_UNDEFINED;
+            w32[ 2] = VA_BITS32_UNDEFINED;
+            w32[ 3] = VA_BITS32_UNDEFINED;
+            w32[ 4] = VA_BITS32_UNDEFINED;
+            w32[ 5] = VA_BITS32_UNDEFINED;
+            w32[ 6] = VA_BITS32_UNDEFINED;
+            w32[ 7] = VA_BITS32_UNDEFINED;
+            return;
+         }
+      }
+   }
+   
+   /* The same, but for when base is 8 % 16, which is the situation
+      with RSP for amd64-ELF immediately after call instructions.
+   */
+   if (LIKELY( VG_IS_16_ALIGNED(base+8) )) { // restricts to 8 aligned
+      /* Now we know the address range is suitably sized and aligned. */
+      UWord a_lo = (UWord)(base);
+      UWord a_hi = (UWord)(base + 128 - 1);
+      /* FIXME: come up with a sane story on the wraparound case
+         (which of course cnanot happen, but still..) */
+      /* tl_assert(a_lo < a_hi); */            // paranoia: detect overflow
+      if (LIKELY(a_hi <= MAX_PRIMARY_ADDRESS)) {
+         /* Now we know the entire range is within the main primary map. */
+         UWord pm_off_lo = get_primary_map_low_offset(a_lo);
+         UWord pm_off_hi = get_primary_map_low_offset(a_hi);
+         if (LIKELY(pm_off_lo == pm_off_hi)) {
+            PROF_EVENT(MCPE_MAKE_STACK_UNINIT_128_NO_O_ALIGNED_8);
+           /* Now we know that the entire address range falls within a
+              single secondary map, and that that secondary 'lives' in
+              the main primary map. */
+            SecMap* sm    = get_secmap_for_writing_low(a_lo);
+            UWord   v_off = SM_OFF(a_lo);
+            UShort* w16   = (UShort*)(&sm->vabits8[v_off]);
+            UInt*   w32   = (UInt*)(&w16[1]);
+            /* The following assertion is commented out for obvious
+               performance reasons, but was verified as valid when
+               running the entire testsuite and also Firefox. */
+            /* tl_assert(VG_IS_4_ALIGNED(w32)); */
+            w16[ 0] = VA_BITS16_UNDEFINED; // w16[0]
+            w32[ 0] = VA_BITS32_UNDEFINED; // w16[1,2]
+            w32[ 1] = VA_BITS32_UNDEFINED; // w16[3,4]
+            w32[ 2] = VA_BITS32_UNDEFINED; // w16[5,6]
+            w32[ 3] = VA_BITS32_UNDEFINED; // w16[7,8]
+            w32[ 4] = VA_BITS32_UNDEFINED; // w16[9,10]
+            w32[ 5] = VA_BITS32_UNDEFINED; // w16[11,12]
+            w32[ 6] = VA_BITS32_UNDEFINED; // w16[13,14]
+            w16[15] = VA_BITS16_UNDEFINED; // w16[15]
+            return;
+         }
+      }
+   }
+
+   /* else fall into slow case */
+   PROF_EVENT(MCPE_MAKE_STACK_UNINIT_128_NO_O_SLOWCASE);
+   make_mem_undefined(base, 128);
 }
 
 
@@ -5710,6 +6016,9 @@ KeepStacktraces MC_(clo_keep_stacktraces)     = KS_alloc_and_free;
 Int           MC_(clo_mc_level)               = 2;
 Bool          MC_(clo_show_mismatched_frees)  = True;
 Bool          MC_(clo_expensive_definedness_checks) = False;
+Bool          MC_(clo_ignore_range_below_sp)               = False;
+UInt          MC_(clo_ignore_range_below_sp__first_offset) = 0;
+UInt          MC_(clo_ignore_range_below_sp__last_offset)  = 0;
 
 static const HChar * MC_(parse_leak_heuristics_tokens) =
    "-,stdstring,length64,newarray,multipleinheritance";
@@ -5840,6 +6149,48 @@ static Bool mc_process_cmd_line_options(const HChar* arg)
       }
    }
 
+   else if VG_STR_CLO(arg, "--ignore-range-below-sp", tmp_str) {
+      /* This seems at first a bit weird, but: in order to imply
+         a non-wrapped-around address range, the first offset needs to be
+         larger than the second one.  For example
+            --ignore-range-below-sp=8192,8189
+         would cause accesses to in the range [SP-8192, SP-8189] to be
+         ignored. */
+      UInt offs1 = 0, offs2 = 0;
+      Bool ok = parse_UInt_pair(&tmp_str, &offs1, &offs2);
+      // Ensure we used all the text after the '=' sign.
+      if (ok && *tmp_str != 0) ok = False;
+      if (!ok) {
+         VG_(message)(Vg_DebugMsg, 
+                      "ERROR: --ignore-range-below-sp: invalid syntax. "
+                      " Expected \"...=decimalnumber-decimalnumber\".\n");
+         return False;
+      }  
+      if (offs1 > 1000*1000 /*arbitrary*/ || offs2 > 1000*1000 /*ditto*/) {
+         VG_(message)(Vg_DebugMsg, 
+                      "ERROR: --ignore-range-below-sp: suspiciously large "
+                      "offset(s): %u and %u\n", offs1, offs2);
+         return False;
+      }
+      if (offs1 <= offs2) {
+         VG_(message)(Vg_DebugMsg, 
+                      "ERROR: --ignore-range-below-sp: invalid offsets "
+                      "(the first must be larger): %u and %u\n", offs1, offs2);
+         return False;
+      }
+      tl_assert(offs1 > offs2);
+      if (offs1 - offs2 > 4096 /*arbitrary*/) {
+         VG_(message)(Vg_DebugMsg, 
+                      "ERROR: --ignore-range-below-sp: suspiciously large "
+                      "range: %u-%u (size %u)\n", offs1, offs2, offs1 - offs2);
+         return False;
+      }
+      MC_(clo_ignore_range_below_sp) = True;
+      MC_(clo_ignore_range_below_sp__first_offset) = offs1;
+      MC_(clo_ignore_range_below_sp__last_offset)  = offs2;
+      return True;
+   }
+
    else if VG_BHEX_CLO(arg, "--malloc-fill", MC_(clo_malloc_fill), 0x00,0xFF) {}
    else if VG_BHEX_CLO(arg, "--free-fill",   MC_(clo_free_fill),   0x00,0xFF) {}
 
@@ -5897,8 +6248,11 @@ static void mc_print_usage(void)
 "                                     Use extra-precise definedness tracking [no]\n"
 "    --freelist-vol=<number>          volume of freed blocks queue     [20000000]\n"
 "    --freelist-big-blocks=<number>   releases first blocks with size>= [1000000]\n"
-"    --workaround-gcc296-bugs=no|yes  self explanatory [no]\n"
+"    --workaround-gcc296-bugs=no|yes  self explanatory [no].  Deprecated.\n"
+"                                     Use --ignore-range-below-sp instead.\n"
 "    --ignore-ranges=0xPP-0xQQ[,0xRR-0xSS]   assume given addresses are OK\n"
+"    --ignore-range-below-sp=<number>-<number>  do not report errors for\n"
+"                                     accesses at the given offsets below SP\n"
 "    --malloc-fill=<hexnumber>        fill malloc'd areas with given value\n"
 "    --free-fill=<hexnumber>          fill free'd areas with given value\n"
 "    --keep-stacktraces=alloc|free|alloc-and-free|alloc-then-free|none\n"
@@ -6150,7 +6504,7 @@ static Bool VG_(parse_slice) (HChar* s, HChar** saveptr,
 static Bool handle_gdb_monitor_command (ThreadId tid, HChar *req)
 {
    HChar* wcmd;
-   HChar s[VG_(strlen(req)) + 1]; /* copy for strtok_r */
+   HChar s[VG_(strlen)(req) + 1]; /* copy for strtok_r */
    HChar *ssaveptr;
 
    VG_(strcpy) (s, req);
@@ -6766,8 +7120,13 @@ static Bool mc_handle_client_request ( ThreadId tid, UWord* arg, UWord* ret )
          Addr pool      = (Addr)arg[1];
          UInt rzB       =       arg[2];
          Bool is_zeroed = (Bool)arg[3];
+         UInt flags     =       arg[4];
 
-         MC_(create_mempool) ( pool, rzB, is_zeroed );
+         // The create_mempool function does not know these mempool flags,
+         // pass as booleans.
+         MC_(create_mempool) ( pool, rzB, is_zeroed, 
+                               (flags & VALGRIND_MEMPOOL_AUTO_FREE),
+                               (flags & VALGRIND_MEMPOOL_METAPOOL) );
          return True;
       }
 
@@ -6991,6 +7350,15 @@ static const HChar* MC_(event_ctr_name)[MCPE_LAST] = {
    [MCPE_DIE_MEM_STACK_160] = "die_mem_stack_160",
    [MCPE_NEW_MEM_STACK]     = "new_mem_stack",
    [MCPE_DIE_MEM_STACK]     = "die_mem_stack",
+   [MCPE_MAKE_STACK_UNINIT_W_O]      = "MAKE_STACK_UNINIT_w_o",
+   [MCPE_MAKE_STACK_UNINIT_NO_O]     = "MAKE_STACK_UNINIT_no_o",
+   [MCPE_MAKE_STACK_UNINIT_128_NO_O] = "MAKE_STACK_UNINIT_128_no_o",
+   [MCPE_MAKE_STACK_UNINIT_128_NO_O_ALIGNED_16]
+                                     = "MAKE_STACK_UNINIT_128_no_o_aligned_16",
+   [MCPE_MAKE_STACK_UNINIT_128_NO_O_ALIGNED_8]
+                                     = "MAKE_STACK_UNINIT_128_no_o_aligned_8",
+   [MCPE_MAKE_STACK_UNINIT_128_NO_O_SLOWCASE]
+                                     = "MAKE_STACK_UNINIT_128_no_o_slowcase",
 };
 
 static void init_prof_mem ( void )
@@ -7387,12 +7755,23 @@ static void mc_post_clo_init ( void )
       MC_(clo_leak_check) = LC_Full;
    }
 
-   if (MC_(clo_freelist_big_blocks) >= MC_(clo_freelist_vol))
+   if (MC_(clo_freelist_big_blocks) >= MC_(clo_freelist_vol)
+       && VG_(clo_verbosity) == 1 && !VG_(clo_xml)) {
       VG_(message)(Vg_UserMsg,
                    "Warning: --freelist-big-blocks value %lld has no effect\n"
                    "as it is >= to --freelist-vol value %lld\n",
                    MC_(clo_freelist_big_blocks),
                    MC_(clo_freelist_vol));
+   }
+
+   if (MC_(clo_workaround_gcc296_bugs)
+       && VG_(clo_verbosity) == 1 && !VG_(clo_xml)) {
+      VG_(umsg)(
+         "Warning: --workaround-gcc296-bugs=yes is deprecated.\n"
+         "Warning: Instead use: --ignore-range-below-sp=1024-1\n"
+         "\n"
+      );
+   }
 
    tl_assert( MC_(clo_mc_level) >= 1 && MC_(clo_mc_level) <= 3 );
 
@@ -7745,6 +8124,7 @@ static void mc_pre_clo_init(void)
                                    MC_(print_extra_suppression_use),
                                    MC_(update_extra_suppression_use));
    VG_(needs_libc_freeres)        ();
+   VG_(needs_cxx_freeres)         ();
    VG_(needs_command_line_options)(mc_process_cmd_line_options,
                                    mc_print_usage,
                                    mc_print_debug_usage);
@@ -7866,7 +8246,12 @@ static void mc_pre_clo_init(void)
    tl_assert(MASK(4) == 0xFFFFFFF000000003ULL);
    tl_assert(MASK(8) == 0xFFFFFFF000000007ULL);
 #  endif
+
+   /* Check some assertions to do with the instrumentation machinery. */
+   MC_(do_instrumentation_startup_checks)();
 }
+
+STATIC_ASSERT(sizeof(UWord) == sizeof(SizeT));
 
 VG_DETERMINE_INTERFACE_VERSION(mc_pre_clo_init)
 

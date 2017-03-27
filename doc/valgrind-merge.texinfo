@@ -4,6 +4,10 @@
 @settitle Merging newer versions of Valgrind into Fjalar
 @c %**end of header
 
+@macro nospellcheck{text}
+\text\
+@end macro
+
 @paragraphindent 0
 @codequotebacktick on
 @exampleindent 1
@@ -177,7 +181,7 @@ Re-compile Fjalar, then run Daikon's Kvasir tests. (The tests take about 20 minu
 make -C $DAIKONDIR compile test
 
 make -C $INV/fjalar build
-make -C $INV/daikon/tests/kvasir-tests nightly-summary-w-daikon
+make -C $INV/daikon/tests/kvasir-tests clean-all regression-tests
 @end example
 
 The tests should pass. If any tests fail, fix them, then start over from
@@ -212,6 +216,13 @@ git ls-files --others --exclude-standard
 
 @node Get Valgrind version tags
 @section Get Valgrind version tags
+
+@strong{IMPORTANT NOTE} @*
+Throughout this document we use Subversion (@command{svn}) commands to access the
+Valgrind repository.  However, the Valgrind team is in the process of
+switching to the @command{git} repository tool.  They have not announced a
+change over date - but be aware it will probably occur before the next
+official release which means the SVN commands below will be incorrect.
 
 Execute the following Subversion command:
 
@@ -303,6 +314,8 @@ cd $INV
 svn co svn://svn.valgrind.org/valgrind/tags/$VNEWVER valgrind-new
 @end example
 
+@c For a  full repro of the current Valgrind source:
+@c svn co svn://svn.valgrind.org/valgrind/trunk valgrind-svn
 
 @node Remove files that have been removed upstream
 @section Remove files that have been removed upstream
@@ -468,6 +481,9 @@ merged or if the change is not relevant.
 Our changes to Memcheck are much more substantial than our changes to
 Coregrind.
 
+One bit of confusion is that a portion of the original @file{mc_translate.c}
+has been relocated to @file{fjalar/mc_translate.h} so it can be shared.
+
 The largest modification to Memcheck is in @file{mc_translate.c} and special
 care should be made to ensure it is present and up to date.
 The function @code{MC_(instrument)} handles the instrumentation of calls for
@@ -537,7 +553,7 @@ This keeps the files used during the source merge update to a minimum.
 You will need to make sure @command{gdb} is installed on your machine
 to run these tests. Also, they are very sensitive
 to the system software on the host machine.  In most cases, there will be
-some failures. (Currently, 7 of 657 tests do not pass on a standard UW/CSE
+some failures. (Currently, 1 of 677 tests does not pass on a standard UW/CSE
 system running CentOS 7.3.1611.) Rather, it is important to capture the results
 as they should be identical after the source merge.
 
@@ -556,32 +572,22 @@ This will take about 10-15 minutes.  A summary of the @command{regtest}
 results will be at the end of the log file.  We will use these results in
 @ref{Testing Valgrind}.
 
-Here is a copy of the last few lines from the latest run of these tests (01/17/2017)
+Here is a copy of the last few lines from the latest run of these tests (03/27/2017)
 on a UW/CSE CentOS based system:
 
 @example
-== 657 tests, 2 stderr failures, 0 stdout failures, 1 stderrB failure,
-                                  4 stdoutB failures, 0 post failures ==
-gdbserver_tests/hginfo                   (stdoutB)
+== 677 tests, 0 stderr failures, 0 stdout failures, 0 stderrB failures, 1 stdoutB failure, 0 post failures ==
 gdbserver_tests/hgtls                    (stdoutB)
-gdbserver_tests/mcinfcallWSRU            (stderrB)
-gdbserver_tests/nlcontrolc               (stdoutB)
-gdbserver_tests/nlvgdbsigqueue           (stdoutB)
-memcheck/tests/badfree3                  (stderr)
-memcheck/tests/varinfo5                  (stderr)
 
 ...checking makefile consistency
 ...checking header files and include directives
 *** File fjalar/mc_main.c must not include ../coregrind/pub_core_aspacemgr.h
-make: *** [regtest] Error 1
+make[1]: *** [regtest] Error 1
+make[1]: Leaving directory `/homes/gws/markro/invariants/fjalar/valgrind'
+make: *** [test] Error 2
 @end example
 
-(Almost all the @command{gsbserver_test} failures are a simple string 
-difference, apparently due to CentOS.
-@command{badfree3} and @command{varinfo5} seem to be sensitive to the
-current directory pathname - they often pass when run in a clean
-Valgrind directory, but fail when run as part of a fjalar enlistment.
-Note also the final include file failure - this is expected behavior.)
+(Note the final include file failure - this is expected behavior.)
 
 
 
@@ -1016,12 +1022,13 @@ The revision for Valgrind can be obtained by:
 export VALGRIND_REVISION_NEW=`(cd $INV/valgrind-new; svn info | \
     grep "Last Changed Rev: " | cut -d " " --fields=4)`
 echo $VALGRIND_REVISION_NEW
+export VEX_REVISION_NEW=`(cd $INV/valgrind-new/VEX; svn info | \
+    grep "Last Changed Rev: " | cut -d " " --fields=4)`
+echo $VEX_REVISION_NEW
 @end example
 
-You will need to manually edit @file{$INV/daikon/docs/CHANGES} and
-add the new revision information to the end of log file. Also, you
-will need to comment out the previous values by inserting a @kbd{#}
-character at the beginning of the line.
+You will need to manually edit @file{fjalar/valgrind/REVISION} and
+replace the revision information in the file.
 
 If new Valgrind tests were added, their names should be added to
 the @file{.gitignore} file in the "Ignore generated test drivers"
@@ -1103,8 +1110,6 @@ Add VG_ version of strnlen
 Add VG_ version of mkdir
 @item $INV/fjalar/valgrind/coregrind/m_machine.c
 Add get and set functions for additional machine registers
-@item $INV/fjalar/valgrind/coregrind/m_main.c
-Increase GDB delay loop time
 @item $INV/fjalar/valgrind/coregrind/m_scheduler/scheduler.c
 Modify an assertion that triggers based on shadow size
 @item $INV/fjalar/valgrind/coregrind/pub_core_machine.h
@@ -1118,11 +1123,17 @@ Add VG_ version of mkdir and fcntl
 @item $INV/fjalar/valgrind/include/pub_tool_machine.h
 Add get and set functions for additional machine registers
 @item $INV/fjalar/valgrind/Makefile.am
-Add fjalar to the list of tools; remove empty docs directory
+Add fjalar to the list of tools; add files to clean-local target
+@item $INV/fjalar/valgrind/none/tests/Makefile.am
+Add @nospellcheck{coregrind/libcoregrind-amd64-linux.a to libvex} tests
+@item fjalar/valgrind/tests/check_headers_and_includes
+Add fjalar to @nospellcheck{tool_dirs and inst to dirs_to_ignore}
 @item $INV/fjalar/valgrind/VEX/priv/guest_amd64_helpers.c
 Add additional general purpose registers to the guest state
 @item $INV/fjalar/valgrind/VEX/priv/guest_x86_helpers.c
 Add additional general purpose registers to the guest state
+@item fjalar/valgrind/VEX/priv/host_amd64_defs.c
+Add function name to debug dump of call instruction
 @item $INV/fjalar/valgrind/VEX/priv/host-generic/reg_alloc2.c
 Modify memory calculation using the shadow size
 @item $INV/fjalar/valgrind/VEX/pub/libvex.h
@@ -1138,13 +1149,12 @@ Add additional general purpose registers to the guest state
 The modifications made to Memcheck are more organizational in nature.
 A few functions from @file{mc_main.c} and @file{mc_translate.c} have been made
 non-static. An extra header has also been created and filled with their
-signatures for use by Fjalar.
+signatures for use by Fjalar.  Several changes to remove compile warnings
+for use of function name as variable.
 
 Other modifications include:
 
 @table @asis
-@item $INV/fjalar/valgrind/fjalar/mc_malloc_wrappers.c
-Calls to DynComp functions for memory operations.
 @item $INV/fjalar/valgrind/fjalar/mc_main.c
 Run-time arguments and versioning information for Kvasir to replace
 the default Memcheck ones

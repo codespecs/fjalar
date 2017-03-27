@@ -1188,7 +1188,7 @@ static SyscallTableEntry syscall_main_table[] = {
 
    LINX_(__NR_arm_fadvise64_64,  sys_fadvise64_64),     // 270 */(Linux?)
 
-   LINX_(__NR_pselect6,          sys_pselect6),         // 335
+   LINXY(__NR_pselect6,          sys_pselect6),         // 335
    LINXY(__NR_ppoll,             sys_ppoll),            // 336
 
    LINXY(__NR_epoll_pwait,       sys_epoll_pwait),      // 346
@@ -1218,6 +1218,8 @@ static SyscallTableEntry syscall_main_table[] = {
 
    LINXY(__NR_process_vm_readv,  sys_process_vm_readv), // 376
    LINX_(__NR_process_vm_writev, sys_process_vm_writev),// 377
+
+   LINX_(__NR_renameat2,         sys_renameat2),        // 382
 
    LINXY(__NR_getrandom,         sys_getrandom),        // 384
    LINXY(__NR_memfd_create,      sys_memfd_create)      // 385

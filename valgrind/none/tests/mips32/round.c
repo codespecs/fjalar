@@ -1,3 +1,5 @@
+#if defined(__mips_hard_float)
+
 #include <stdio.h>
 
 typedef enum {
@@ -149,12 +151,24 @@ void set_rounding_mode(round_mode_t mode)
    }
 }
 
+void clear_fcc(){
+   __asm__ __volatile__(
+      "cfc1 $t0, $31"            "\n\t"
+      "and  $t0, $t0, 0x17FFFFF" "\n\t"
+      "ctc1 $t0, $31"            "\n\t"
+      :
+      :
+      : "t0"
+   );
+}
+
 int directedRoundingMode(flt_dir_op_t op) {
    int fd_w = 0;
    int i;
    int fcsr = 0;
    round_mode_t rm = TO_NEAREST;
    for (i = 0; i < 24; i++) {
+      clear_fcc();
       set_rounding_mode(rm);
       switch(op) {
          case CEILWS:
@@ -217,6 +231,7 @@ int FCSRRoundingMode(flt_round_op_t op1)
       set_rounding_mode(rm);
       printf("roundig mode: %s\n", round_mode_name[rm]);
       for (i = 0; i < 24; i++) {
+         clear_fcc();
          set_rounding_mode(rm);
          switch(op1) {
             case CVTDS:
@@ -276,4 +291,9 @@ int main()
    }
    return 0;
 }
+#else
+int main() {
+   return 0;
+}
+#endif
 

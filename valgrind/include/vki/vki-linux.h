@@ -838,22 +838,22 @@ struct vki_ifreq
 };
 
 #define vki_ifr_name	ifr_ifrn.ifrn_name	/* interface name 	*/
-#define ifr_hwaddr	ifr_ifru.ifru_hwaddr	/* MAC address 		*/
-#define	ifr_addr	ifr_ifru.ifru_addr	/* address		*/
-#define	ifr_dstaddr	ifr_ifru.ifru_dstaddr	/* other end of p-p lnk	*/
-#define	ifr_broadaddr	ifr_ifru.ifru_broadaddr	/* broadcast address	*/
-#define	ifr_netmask	ifr_ifru.ifru_netmask	/* interface net mask	*/
+#define vki_ifr_hwaddr	ifr_ifru.ifru_hwaddr	/* MAC address 		*/
+#define	vki_ifr_addr	ifr_ifru.ifru_addr	/* address		*/
+#define	vki_ifr_dstaddr	ifr_ifru.ifru_dstaddr	/* other end of p-p lnk	*/
+#define	vki_ifr_broadaddr ifr_ifru.ifru_broadaddr /* broadcast address	*/
+#define	vki_ifr_netmask	ifr_ifru.ifru_netmask	/* interface net mask	*/
 #define	vki_ifr_flags	ifr_ifru.ifru_flags	/* flags		*/
 #define	vki_ifr_metric	ifr_ifru.ifru_ivalue	/* metric		*/
-#define	vki_ifr_mtu		ifr_ifru.ifru_mtu	/* mtu			*/
-#define ifr_map		ifr_ifru.ifru_map	/* device map		*/
-#define ifr_slave	ifr_ifru.ifru_slave	/* slave device		*/
+#define	vki_ifr_mtu	ifr_ifru.ifru_mtu	/* mtu			*/
+#define vki_ifr_map	ifr_ifru.ifru_map	/* device map		*/
+#define vki_ifr_slave	ifr_ifru.ifru_slave	/* slave device		*/
 #define	vki_ifr_data	ifr_ifru.ifru_data	/* for use by interface	*/
 #define vki_ifr_ifindex	ifr_ifru.ifru_ivalue	/* interface index	*/
-#define ifr_bandwidth	ifr_ifru.ifru_ivalue    /* link bandwidth	*/
-#define ifr_qlen	ifr_ifru.ifru_ivalue	/* Queue length 	*/
-#define ifr_newname	ifr_ifru.ifru_newname	/* New name		*/
-#define ifr_settings	ifr_ifru.ifru_settings	/* Device/proto settings*/
+#define vki_ifr_bandwidth ifr_ifru.ifru_ivalue  /* link bandwidth	*/
+#define vki_ifr_qlen	ifr_ifru.ifru_ivalue	/* Queue length 	*/
+#define vki_ifr_newname	ifr_ifru.ifru_newname	/* New name		*/
+#define vki_ifr_settings ifr_ifru.ifru_settings	/* Device/proto settings*/
 
 struct vki_ifconf 
 {
@@ -2946,6 +2946,16 @@ struct vki_perf_event_attr {
 	};
 };
 
+#define VKI_PERF_EVENT_IOC_ENABLE       _VKI_IO ('$', 0)
+#define VKI_PERF_EVENT_IOC_DISABLE      _VKI_IO ('$', 1)
+#define VKI_PERF_EVENT_IOC_REFRESH      _VKI_IO ('$', 2)
+#define VKI_PERF_EVENT_IOC_RESET        _VKI_IO ('$', 3)
+#define VKI_PERF_EVENT_IOC_PERIOD       _VKI_IOW('$', 4, __vki_u64)
+#define VKI_PERF_EVENT_IOC_SET_OUTPUT   _VKI_IO ('$', 5)
+#define VKI_PERF_EVENT_IOC_SET_FILTER   _VKI_IOW('$', 6, char *)
+#define VKI_PERF_EVENT_IOC_ID           _VKI_IOR('$', 7, __vki_u64 *)
+#define VKI_PERF_EVENT_IOC_SET_BPF      _VKI_IOW('$', 8, __vki_u32)
+
 /*--------------------------------------------------------------------*/
 // From linux-2.6.32.4/include/linux/getcpu.h
 /*--------------------------------------------------------------------*/
@@ -3009,7 +3019,8 @@ struct vki_getcpu_cache {
 //----------------------------------------------------------------------
 
 #if defined(VGPV_arm_linux_android) || defined(VGPV_x86_linux_android) \
-    || defined(VGPV_mips32_linux_android)
+    || defined(VGPV_mips32_linux_android) \
+    || defined(VGPV_arm64_linux_android)
 
 #define VKI_ASHMEM_NAME_LEN 256
 
@@ -4690,6 +4701,32 @@ struct vki_serial_struct {
 	unsigned int	port_high;
 	unsigned long	iomap_base;	/* cookie passed into ioremap */
 };
+
+//----------------------------------------------------------------------
+// From linux-3.19.0/fs/binfmt_elf.c
+//----------------------------------------------------------------------
+
+#if !defined(VKI_INIT_ARCH_ELF_STATE)
+   /* This structure is used to preserve architecture specific data during
+      the loading of an ELF file, throughout the checking of architecture
+      specific ELF headers & through to the point where the ELF load is
+      known to be proceeding. This implementation is a dummy for
+      architectures which require no specific state. */
+   struct vki_arch_elf_state {
+   };
+
+#  define VKI_INIT_ARCH_ELF_STATE { }
+
+#endif
+
+//----------------------------------------------------------------------
+// From linux-4.0/include/uapi/linux/prctl.h
+//----------------------------------------------------------------------
+
+#define VKI_PR_SET_FP_MODE          45
+#define VKI_PR_GET_FP_MODE          46
+# define VKI_PR_FP_MODE_FR          (1 << 0)     /* 64b FP registers  */
+# define VKI_PR_FP_MODE_FRE         (1 << 1)     /* 32b compatibility */
 
 #endif // __VKI_LINUX_H
 

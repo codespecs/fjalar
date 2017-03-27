@@ -66,7 +66,7 @@
 
 /* Load the client whose name is VG_(argv_the_exename). */
 
-static void load_client ( /*OUT*/ExeInfo* info, 
+static void load_client ( /*MOD*/ExeInfo* info, 
                           /*OUT*/Addr*    client_ip,
 			  /*OUT*/Addr*    client_toc)
 {
@@ -82,7 +82,6 @@ static void load_client ( /*OUT*/ExeInfo* info,
       VG_(exit)(127);      // 127 is Posix NOTFOUND
    }
 
-   VG_(memset)(info, 0, sizeof(*info));
    ret = VG_(do_exec)(exe_name, info);
    if (ret < 0) {
       VG_(printf)("valgrind: could not execute '%s'\n", exe_name);
@@ -221,7 +220,7 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
    /* ret[0 .. envc-1] is live now. */
    /* Find and remove a binding for VALGRIND_LAUNCHER. */
    for (i = 0; i < envc; i++)
-      if (0 == VG_(memcmp(ret[i], v_launcher, v_launcher_len)))
+      if (0 == VG_(memcmp)(ret[i], v_launcher, v_launcher_len))
          break;
 
    if (i < envc) {
@@ -585,14 +584,10 @@ Addr setup_client_stack( void*  init_sp,
    *ptr++ = argc + 1;
 
    /* --- client argv --- */
-   if (info->interp_name) {
+   if (info->interp_name)
       *ptr++ = (Addr)copy_str(&strtab, info->interp_name);
-      VG_(free)(info->interp_name);
-   }
-   if (info->interp_args) {
+   if (info->interp_args)
       *ptr++ = (Addr)copy_str(&strtab, info->interp_args);
-      VG_(free)(info->interp_args);
-   }
 
    *ptr++ = (Addr)copy_str(&strtab, VG_(args_the_exename));
 
@@ -691,8 +686,9 @@ Addr setup_client_stack( void*  init_sp,
                                "ARM has-neon from-auxv: %s\n",
                                has_neon ? "YES" : "NO");
               VG_(machine_arm_set_has_NEON)( has_neon );
-              #define VKI_HWCAP_TLS 32768
+#             define VKI_HWCAP_TLS 32768
               Bool has_tls = (auxv->u.a_val & VKI_HWCAP_TLS) > 0;
+#             undef VKI_HWCAP_TLS
               VG_(debugLog)(2, "initimg",
                                "ARM has-tls from-auxv: %s\n",
                                has_tls ? "YES" : "NO");
@@ -700,6 +696,12 @@ Addr setup_client_stack( void*  init_sp,
                  use this info to decide to really execute set_tls syscall
                  in syswrap-arm-linux.c rather than to base this on
                  conditional compilation. */
+            }
+#           elif defined(VGP_s390x_linux)
+            {
+               /* Advertise hardware features "below" TE only.  TE and VXRS
+                  (and anything above) are not supported by Valgrind. */
+               auxv->u.a_val &= VKI_HWCAP_S390_TE - 1;
             }
 #           endif
             break;
@@ -911,8 +913,14 @@ IIFinaliseImageInfo VG_(ii_create_image)( IICreateImageInfo iicii,
    ExeInfo info;
    HChar** env = NULL;
 
-   IIFinaliseImageInfo iifii;
-   VG_(memset)( &iifii, 0, sizeof(iifii) );
+   IIFinaliseImageInfo iifii = {
+      .clstack_max_size = 0,
+      .initial_client_SP = 0,
+      .initial_client_IP = 0,
+      .initial_client_TOC = 0,
+      .client_auxv = NULL,
+      .arch_elf_state = VKI_INIT_ARCH_ELF_STATE,
+   };
 
    //--------------------------------------------------------------
    // Load client executable, finding in $PATH if necessary
@@ -923,6 +931,9 @@ IIFinaliseImageInfo VG_(ii_create_image)( IICreateImageInfo iicii,
 
    if (VG_(args_the_exename) == NULL)
       VG_(err_missing_prog)();
+
+   VG_(memset)(&info, 0, sizeof(info));
+   info.arch_elf_state = &iifii.arch_elf_state;
 
    load_client(&info, &iifii.initial_client_IP, &iifii.initial_client_TOC);
 
@@ -1002,6 +1013,8 @@ IIFinaliseImageInfo VG_(ii_create_image)( IICreateImageInfo iicii,
       setup_client_dataseg( dseg_max_size );
    }
 
+   VG_(free)(info.interp_name); info.interp_name = NULL;
+   VG_(free)(info.interp_args); info.interp_args = NULL;
    return iifii;
 }
 
@@ -1166,6 +1179,10 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
    arch->vex.guest_r29 = iifii.initial_client_SP;
    arch->vex.guest_PC = iifii.initial_client_IP;
    arch->vex.guest_r31 = iifii.initial_client_SP;
+
+   if (iifii.arch_elf_state.overall_fp_mode == VKI_FP_FR1) {
+      arch->vex.guest_CP0_status |= MIPS_CP0_STATUS_FR;
+   }
 
 #   elif defined(VGP_mips64_linux)
    vg_assert(0 == sizeof(VexGuestMIPS64State) % LibVEX_GUEST_STATE_ALIGN);

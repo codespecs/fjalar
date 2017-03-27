@@ -220,6 +220,30 @@ VG_(amd64_linux_REDIR_FOR_strlen):
 .LfnE5:
 .size VG_(amd64_linux_REDIR_FOR_strlen), .-VG_(amd64_linux_REDIR_FOR_strlen)
 
+.global VG_(amd64_linux_REDIR_FOR_index)
+.type   VG_(amd64_linux_REDIR_FOR_index), @function
+VG_(amd64_linux_REDIR_FOR_index):
+        movzbl  (%rdi), %eax
+        movl    %esi, %edx
+        cmpb    %sil, %al
+        jne     .L4
+        jmp     .L5
+.L10:
+        addq    $1, %rdi
+        movzbl  (%rdi), %eax
+        cmpb    %dl, %al
+        je      .L5
+.L4:
+        testb   %al, %al
+        jne     .L10
+        xorl    %eax, %eax
+        ret
+.L5:
+        movq    %rdi, %rax
+        ret
+.size VG_(amd64_linux_REDIR_FOR_index), .-VG_(amd64_linux_REDIR_FOR_index)
+
+
 
 /* A CIE for the above four functions, followed by their FDEs */
 	.section .eh_frame,"a",@progbits
@@ -1254,8 +1278,8 @@ VG_(mips32_linux_REDIR_FOR_strlen):
       //la $a0, string
       j strlen_cond
    strlen_loop:
-      addi $v0, $v0, 1
-      addi $a0, $a0, 1
+      addiu $v0, $v0, 1
+      addiu $a0, $a0, 1
    strlen_cond:
       lbu $t0, ($a0)
       bne $t0, $zero, strlen_loop
@@ -1599,14 +1623,8 @@ VG_(trampoline_stuff_end):
 #endif
 #endif
 
-#if defined(VGO_linux)
 /* Let the linker know we don't need an executable stack */
-#  if defined(VGP_arm_linux)
-   .section .note.GNU-stack,"",%progbits
-#  else        
-   .section .note.GNU-stack,"",@progbits
-#  endif
-#endif
+MARK_STACK_NO_EXEC
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

@@ -89,6 +89,7 @@ model_info models[] = {
    { "2827", "zEC12"  },
    { "2828", "zBC12"  },
    { "2964", "z13"    },
+   { "2965", "z13s"   },
 };
 
 
@@ -231,6 +232,8 @@ static int go(char *feature, char *cpu)
       match = facilities & FAC_BIT(42);
    } else if (strcmp(feature, "s390x-pfpo") == 0 ) {
       match = facilities & FAC_BIT(44);
+   } else if (strcmp(feature, "s390x-highw") == 0 ) {
+      match = facilities & FAC_BIT(45);
    } else {
       return 2;          // Unrecognised feature.
    }

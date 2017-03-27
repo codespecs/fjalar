@@ -157,18 +157,18 @@ TESTINST2_hide2("ldp w21, w28, [x22, #-40] ; eor x21,x21,x28", AREA_MID, x21,x22
 
 ////////////////////////////////////////////////////////////////
 // This is a bit tricky.  We load the value from just before and
-// just after the actual instruction.  Because TESTINSN2_hide2 
-// generates two fixed insns either side of the test insn, these 
-// should be constant and hence "safe" to check.
+// just after the actual instruction.  So we place a couple of
+// nop insns either side of the test insn, these should "safe"
+// to check.
 
 printf("LDR (literal, int reg)\n");
-TESTINST2_hide2("xyzzy00: ldr  x21, xyzzy00 - 8", AREA_MID, x21,x22,0);
-TESTINST2_hide2("xyzzy01: ldr  x21, xyzzy01 + 0", AREA_MID, x21,x22,0);
-TESTINST2_hide2("xyzzy02: ldr  x21, xyzzy02 + 8", AREA_MID, x21,x22,0);
+TESTINST2_hide2("nop; nop; nop; xyzzy00: ldr  x21, xyzzy00 - 8; nop; nop; nop", AREA_MID, x21,x22,0);
+TESTINST2_hide2("nop; nop; nop; xyzzy01: ldr  x21, xyzzy01 + 0; nop; nop; nop", AREA_MID, x21,x22,0);
+TESTINST2_hide2("nop; nop; nop; xyzzy02: ldr  x21, xyzzy02 + 8; nop; nop; nop", AREA_MID, x21,x22,0);
 
-TESTINST2_hide2("xyzzy03: ldr  x21, xyzzy03 - 4", AREA_MID, x21,x22,0);
-TESTINST2_hide2("xyzzy04: ldr  x21, xyzzy04 + 0", AREA_MID, x21,x22,0);
-TESTINST2_hide2("xyzzy05: ldr  x21, xyzzy05 + 4", AREA_MID, x21,x22,0);
+TESTINST2_hide2("nop; nop; nop; xyzzy03: ldr  x21, xyzzy03 - 4; nop; nop; nop", AREA_MID, x21,x22,0);
+TESTINST2_hide2("nop; nop; nop; xyzzy04: ldr  x21, xyzzy04 + 0; nop; nop; nop", AREA_MID, x21,x22,0);
+TESTINST2_hide2("nop; nop; nop; xyzzy05: ldr  x21, xyzzy05 + 4; nop; nop; nop", AREA_MID, x21,x22,0);
 
 ////////////////////////////////////////////////////////////////
 printf("{LD,ST}R (integer register) (entirely MISSING)\n");
@@ -280,6 +280,18 @@ TESTINST2_hide2("ldarb w21, [x22]", AREA_MID, x21,x22,0);
 
 ////////////////////////////////////////////////////////////////
 printf("STL{R,RH,RB} (entirely MISSING)\n");
+
+////////////////////////////////////////////////////////////////
+// TESTINST2_hide2 allows use of x28 as scratch
+printf("LDPSW (immediate, simm7)\n");
+
+TESTINST2_hide2("ldpsw x21, x28, [x22], #-24 ; add x21,x21,x28", AREA_MID, x21,x22,0);
+TESTINST2_hide2("ldpsw x21, x28, [x22], #-24 ; eor x21,x21,x28", AREA_MID, x21,x22,0);
+TESTINST2_hide2("ldpsw x21, x28, [x22, #-40]! ; add x21,x21,x28", AREA_MID, x21,x22,0);
+TESTINST2_hide2("ldpsw x21, x28, [x22, #-40]! ; eor x21,x21,x28", AREA_MID, x21,x22,0);
+TESTINST2_hide2("ldpsw x21, x28, [x22, #-40] ; add x21,x21,x28", AREA_MID, x21,x22,0);
+TESTINST2_hide2("ldpsw x21, x28, [x22, #-40] ; eor x21,x21,x28", AREA_MID, x21,x22,0);
+
 } /* end of test_memory_old() */
 
 
@@ -1607,6 +1619,12 @@ MEM_TEST("prfm pstl2keep, [x5,w6,uxtw #0]", 12, 4);
 MEM_TEST("prfm pstl2strm, [x5,w6,uxtw #3]", 12, 4);
 MEM_TEST("prfm pstl3keep, [x5,w6,sxtw #0]", 12, 4);
 MEM_TEST("prfm pstl3strm, [x5,w6,sxtw #3]",  12, -4);
+
+////////////////////////////////////////////////////////////////
+printf("LDPSW (immediate, simm7)\n");
+MEM_TEST("ldpsw x13, x23, [x5], #-24",   0, 0);
+MEM_TEST("ldpsw x13, x23, [x5, #-40]!",  0, 0);
+MEM_TEST("ldpsw x13, x23, [x5, #-40]",   0, 0);
 
 } /* end of test_memory2() */
 

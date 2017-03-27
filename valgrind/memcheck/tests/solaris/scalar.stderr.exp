@@ -1496,6 +1496,41 @@ Syscall param ucredsys(buf) points to unaddressable byte(s)
  Address 0x........ is not stack'd, malloc'd or (recently) free'd
 
 ---------------------------------------------------------
+ 84:               SYS_sysfs (GETFSIND) 2s 1m
+---------------------------------------------------------
+Syscall param sysfs_getfsind(opcode) contains uninitialised byte(s)
+   ...
+
+Syscall param sysfs_getfsind(fsname) contains uninitialised byte(s)
+   ...
+
+Syscall param sysfs(fsname) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+---------------------------------------------------------
+ 84:               SYS_sysfs (GETFSTYP) 3s 1m
+---------------------------------------------------------
+Syscall param sysfs_getfstyp(opcode) contains uninitialised byte(s)
+   ...
+
+Syscall param sysfs_getfstyp(fs_index) contains uninitialised byte(s)
+   ...
+
+Syscall param sysfs_getfstyp(buf) contains uninitialised byte(s)
+   ...
+
+Syscall param sysfs(buf) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+---------------------------------------------------------
+ 84:               SYS_sysfs (GETNFSTYP) 1s 0m
+---------------------------------------------------------
+Syscall param sysfs_getnfstyp(opcode) contains uninitialised byte(s)
+   ...
+
+---------------------------------------------------------
  85:              SYS_getmsg 4s 1m
 ---------------------------------------------------------
 Syscall param getmsg(fildes) contains uninitialised byte(s)
@@ -2147,6 +2182,12 @@ Syscall param munmap(length) contains uninitialised byte(s)
    ...
 
 ---------------------------------------------------------
+120:              SYS_fchdir 1s 0m
+---------------------------------------------------------
+Syscall param fchdir(fd) contains uninitialised byte(s)
+   ...
+
+---------------------------------------------------------
 121:               SYS_readv 3s 1m
 ---------------------------------------------------------
 Syscall param readv(fd) contains uninitialised byte(s)
@@ -2425,6 +2466,66 @@ Syscall param lwp_detach(lwpid) contains uninitialised byte(s)
    ...
 
 ---------------------------------------------------------
+152:              SYS_modctl (MODLOAD) 4s 1m
+---------------------------------------------------------
+Syscall param modctl_modload(cmd) contains uninitialised byte(s)
+   ...
+
+Syscall param modctl_modload(use_path) contains uninitialised byte(s)
+   ...
+
+Syscall param modctl_modload(filename) contains uninitialised byte(s)
+   ...
+
+Syscall param modctl_modload(rvp) contains uninitialised byte(s)
+   ...
+
+Syscall param modctl(filaneme) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+Syscall param modctl(rvp) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+---------------------------------------------------------
+152:              SYS_modctl (MODUNLOAD) 2s 0m
+---------------------------------------------------------
+Syscall param modctl_modunload(cmd) contains uninitialised byte(s)
+   ...
+
+Syscall param modctl_modunload(id) contains uninitialised byte(s)
+   ...
+
+---------------------------------------------------------
+152:              SYS_modctl (MODINFO) 3s 4m
+---------------------------------------------------------
+Syscall param modctl_modinfo(cmd) contains uninitialised byte(s)
+   ...
+
+Syscall param modctl_modinfo(id) contains uninitialised byte(s)
+   ...
+
+Syscall param modctl_modinfo(umodi) contains uninitialised byte(s)
+   ...
+
+Syscall param modctl(umodi->mi_info) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+Syscall param modctl(umodi->mi_id) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+Syscall param modctl(umodi->mi_nextid) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+Syscall param modctl(umodi) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+---------------------------------------------------------
 153:             SYS_fchroot 1s 0m
 ---------------------------------------------------------
 Syscall param fchroot(fd) contains uninitialised byte(s)
@@ -2581,6 +2682,55 @@ Syscall param lwp_mutex_wakeup(lp->mutex_type) points to unaddressable byte(s)
  Address 0x........ is not stack'd, malloc'd or (recently) free'd
 
 Syscall param lwp_mutex_wakeup(lp->mutex_waiters) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+---------------------------------------------------------
+170:       SYS_lwp_cond_wait 4s 5m
+---------------------------------------------------------
+Syscall param lwp_cond_wait(cvp) contains uninitialised byte(s)
+   ...
+
+Syscall param lwp_cond_wait(mp) contains uninitialised byte(s)
+   ...
+
+Syscall param lwp_cond_wait(tsp) contains uninitialised byte(s)
+   ...
+
+Syscall param lwp_cond_wait(check_part) contains uninitialised byte(s)
+   ...
+
+Syscall param lwp_cond_wait(cvp->type) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+Syscall param lwp_cond_wait(cvp->waiters_kernel) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+Syscall param lwp_cond_wait(mp->mutex_type) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+Syscall param lwp_cond_wait(mp->mutex_waiters) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+Syscall param lwp_cond_wait(tsp) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+---------------------------------------------------------
+171:     SYS_lwp_cond_signal 1s 2m
+---------------------------------------------------------
+Syscall param lwp_cond_signal(cvp) contains uninitialised byte(s)
+   ...
+
+Syscall param lwp_cond_signal(cvp->type) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+Syscall param lwp_cond_signal(cvp->waiters_kernel) points to unaddressable byte(s)
    ...
  Address 0x........ is not stack'd, malloc'd or (recently) free'd
 
@@ -3412,38 +3562,6 @@ Syscall param auditsys(data) points to unaddressable byte(s)
  Address 0x........ is not stack'd, malloc'd or (recently) free'd
 
 ---------------------------------------------------------
-186:            SYS_auditsys (BSM_AUDITCTL,A_GETSTAT) 3s 1m
----------------------------------------------------------
-Syscall param auditsys_auditctl_getstat(code) contains uninitialised byte(s)
-   ...
-
-Syscall param auditsys_auditctl_getstat(cmd) contains uninitialised byte(s)
-   ...
-
-Syscall param auditsys_auditctl_getstat(stats) contains uninitialised byte(s)
-   ...
-
-Syscall param auditsys(stats) points to unaddressable byte(s)
-   ...
- Address 0x........ is not stack'd, malloc'd or (recently) free'd
-
----------------------------------------------------------
-186:            SYS_auditsys (BSM_AUDITCTL,A_SETSTAT) 3s 1m
----------------------------------------------------------
-Syscall param auditsys_auditctl_setstat(code) contains uninitialised byte(s)
-   ...
-
-Syscall param auditsys_auditctl_setstat(cmd) contains uninitialised byte(s)
-   ...
-
-Syscall param auditsys_auditctl_setstat(stats) contains uninitialised byte(s)
-   ...
-
-Syscall param auditsys(stats) points to unaddressable byte(s)
-   ...
- Address 0x........ is not stack'd, malloc'd or (recently) free'd
-
----------------------------------------------------------
 186:            SYS_auditsys (BSM_AUDITCTL,A_SETUMASK) 3s 1m
 ---------------------------------------------------------
 Syscall param auditsys_auditctl_setumask(code) contains uninitialised byte(s)
@@ -4121,6 +4239,21 @@ Syscall param door_call(params->rbuf) points to unaddressable byte(s)
  Address 0x........ is not stack'd, malloc'd or (recently) free'd
 
 ---------------------------------------------------------
+201:                SYS_door (DOOR_SETPARAM) 4s 0m
+---------------------------------------------------------
+Syscall param door(arg1) contains uninitialised byte(s)
+   ...
+
+Syscall param door(arg2) contains uninitialised byte(s)
+   ...
+
+Syscall param door(arg3) contains uninitialised byte(s)
+   ...
+
+Syscall param door(subcode) contains uninitialised byte(s)
+   ...
+
+---------------------------------------------------------
 202:            SYS_setreuid 2s 0m
 ---------------------------------------------------------
 Syscall param setreuid(ruid) contains uninitialised byte(s)
@@ -4141,6 +4274,237 @@ Syscall param setregid(egid) contains uninitialised byte(s)
 ---------------------------------------------------------
 206:            SYS_schedctl 0s 0m
 ---------------------------------------------------------
+---------------------------------------------------------
+207:                SYS_pset (CREATE) 2s 1m
+---------------------------------------------------------
+Syscall param pset_create(subcode) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_create(newpset) contains uninitialised byte(s)
+   ...
+
+Syscall param pset(newpset) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+---------------------------------------------------------
+207:                SYS_pset (DESTROY) 2s 0m
+---------------------------------------------------------
+Syscall param pset_destroy(subcode) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_destroy(pset) contains uninitialised byte(s)
+   ...
+
+---------------------------------------------------------
+207:                SYS_pset (ASSIGN) 4s 1m
+---------------------------------------------------------
+Syscall param pset_assign(subcode) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_assign(pset) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_assign(cpu) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_assign(opset) contains uninitialised byte(s)
+   ...
+
+Syscall param pset(opset) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+---------------------------------------------------------
+207:                SYS_pset (INFO) 5s 3m
+---------------------------------------------------------
+Syscall param pset_info(subcode) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_info(pset) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_info(type) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_info(numcpus) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_info(cpulist) contains uninitialised byte(s)
+   ...
+
+Syscall param pset(type) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+Syscall param pset(numcpus) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+---------------------------------------------------------
+207:                SYS_pset (INFO) 5s 1m
+---------------------------------------------------------
+Syscall param pset_info(subcode) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_info(pset) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_info(type) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_info(numcpus) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_info(cpulist) contains uninitialised byte(s)
+   ...
+
+Syscall param pset(cpulist) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+---------------------------------------------------------
+207:                SYS_pset (BIND) 5s 1m
+---------------------------------------------------------
+Syscall param pset_bind(subcode) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_bind(pset) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_bind(idtype) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_bind(id) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_bind(opset) contains uninitialised byte(s)
+   ...
+
+Syscall param pset(opset) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+---------------------------------------------------------
+207:                SYS_pset (BIND_LWP) 5s 1m
+---------------------------------------------------------
+Syscall param pset_bind_lwp(subcode) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_bind_lwp(pset) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_bind_lwp(id) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_bind_lwp(pid) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_bind_lwp(opset) contains uninitialised byte(s)
+   ...
+
+Syscall param pset(opset) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+---------------------------------------------------------
+207:                SYS_pset (GETLOADAVG) 4s 1m
+---------------------------------------------------------
+Syscall param pset_getloadavg(subcode) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_getloadavg(pset) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_getloadavg(buf) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_getloadavg(nelem) contains uninitialised byte(s)
+   ...
+
+Syscall param pset(buf) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+---------------------------------------------------------
+207:                SYS_pset (LIST) 3s 1m
+---------------------------------------------------------
+Syscall param pset_list(subcode) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_list(psetlist) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_list(numpsets) contains uninitialised byte(s)
+   ...
+
+Syscall param pset(numpsets) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+---------------------------------------------------------
+207:                SYS_pset (LIST) 3s 1m
+---------------------------------------------------------
+Syscall param pset_list(subcode) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_list(psetlist) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_list(numpsets) contains uninitialised byte(s)
+   ...
+
+Syscall param pset(psetlist) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+---------------------------------------------------------
+207:                SYS_pset (SETATTR) 3s 0m
+---------------------------------------------------------
+Syscall param pset_setattr(subcode) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_setattr(pset) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_setattr(attr) contains uninitialised byte(s)
+   ...
+
+---------------------------------------------------------
+207:                SYS_pset (GETATTR) 3s 1m
+---------------------------------------------------------
+Syscall param pset_getattr(subcode) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_getattr(pset) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_getattr(attr) contains uninitialised byte(s)
+   ...
+
+Syscall param pset(attr) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+---------------------------------------------------------
+207:                SYS_pset (ASSIGN_FORCED) 4s 1m
+---------------------------------------------------------
+Syscall param pset_assign_forced(subcode) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_assign_forced(pset) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_assign_forced(cpu) contains uninitialised byte(s)
+   ...
+
+Syscall param pset_assign_forced(opset) contains uninitialised byte(s)
+   ...
+
+Syscall param pset(opset) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
 ---------------------------------------------------------
 209:         SYS_resolvepath 3s 2m
 ---------------------------------------------------------

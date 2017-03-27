@@ -49,7 +49,7 @@
 #include "pub_core_machine.h"      // VG_(fnptr_to_fnentry)
 #include "pub_core_aspacemgr.h"    // VG_(am_find_nsegment)
 #include "pub_core_xarray.h"
-#include "pub_core_clientstate.h"  // VG_(client___libc_freeres_wrapper)
+#include "pub_core_clientstate.h"  // VG_(client_freeres_wrapper)
 #include "pub_core_demangle.h"     // VG_(maybe_Z_demangle)
 #include "pub_core_libcproc.h"     // VG_(libdir)
 
@@ -233,6 +233,7 @@ typedef
       HChar* from_fnpatt;  /* from fnname pattern  */
       Addr   to_addr;      /* where redirecting to */
       Bool   isWrap;       /* wrap or replacement? */
+      Bool   isGlobal;     /* must the symbol to replace be global? */
       Int    becTag; /* 0 through 9999.  Behavioural equivalance class tag.
                         If two wrappers have the same (non-zero) tag, they
                         are promising that they behave identically. */
@@ -388,7 +389,7 @@ static HChar const* advance_to_comma ( HChar const* c ) {
 
 void VG_(redir_notify_new_DebugInfo)( const DebugInfo* newdi )
 {
-   Bool         ok, isWrap;
+   Bool         ok, isWrap, isGlobal;
    Int          i, nsyms, becTag, becPrio;
    Spec*        specList;
    Spec*        spec;
@@ -518,13 +519,14 @@ void VG_(redir_notify_new_DebugInfo)( const DebugInfo* newdi )
    for (i = 0; i < nsyms; i++) {
       VG_(DebugInfo_syms_getidx)( newdi, i, &sym_avmas,
                                   NULL, &sym_name_pri, &sym_names_sec,
-                                  &isText, NULL );
+                                  &isText, NULL, NULL );
       /* Set up to conveniently iterate over all names for this symbol. */
       const HChar*  twoslots[2];
       const HChar** names_init =
          alloc_symname_array(sym_name_pri, sym_names_sec, &twoslots[0]);
       const HChar** names;
       for (names = names_init; *names; names++) {
+         isGlobal = False;
          ok = VG_(maybe_Z_demangle)( *names,
                                      &demangled_sopatt,
                                      &demangled_fnpatt,
@@ -579,15 +581,12 @@ void VG_(redir_notify_new_DebugInfo)( const DebugInfo* newdi )
                have a matching lib synonym, then replace the sopatt.
                Otherwise, just ignore this redirection spec. */
 
-            if (!VG_(clo_soname_synonyms))
-               continue; // No synonyms => skip the redir.
-
             /* Search for a matching synonym=newname*/
             SizeT const sopatt_syn_len 
                = VG_(strlen)(demangled_sopatt+VG_SO_SYN_PREFIX_LEN);
             HChar const* last = VG_(clo_soname_synonyms);
             
-            while (*last) {
+            while (last != NULL && *last) {
                HChar const* first = last;
                last = advance_to_equal(first);
                
@@ -611,6 +610,17 @@ void VG_(redir_notify_new_DebugInfo)( const DebugInfo* newdi )
                   last++;
             }
             
+	    // If the user didn't set it then somalloc is special. We
+	    // want to match public/global symbols that match the
+	    // fnpatt everywhere.
+	    if (replaced_sopatt == NULL
+		&& VG_(strcmp) ( demangled_sopatt, SO_SYN_MALLOC_NAME ) == 0)
+	      {
+		replaced_sopatt = dinfo_strdup("m_redir.rnnD.1", "*");
+		demangled_sopatt = replaced_sopatt;
+		isGlobal = True;
+	      }
+
             // If we have not replaced the sopatt, then skip the redir.
             if (replaced_sopatt == NULL)
                continue;
@@ -621,6 +631,7 @@ void VG_(redir_notify_new_DebugInfo)( const DebugInfo* newdi )
          spec->from_fnpatt = dinfo_strdup("redir.rnnD.3", demangled_fnpatt);
          spec->to_addr = sym_avmas.main;
          spec->isWrap = isWrap;
+         spec->isGlobal = isGlobal;
          spec->becTag = becTag;
          spec->becPrio = becPrio;
          /* check we're not adding manifestly stupid destinations */
@@ -629,6 +640,14 @@ void VG_(redir_notify_new_DebugInfo)( const DebugInfo* newdi )
          spec->mark = False; /* not significant */
          spec->done = False; /* not significant */
          specList = spec;
+         /* The demangler is the owner of the demangled_sopatt memory,
+            unless it was replaced. In this case, we have to free the
+            replace_sopatt(==demangled_sopatt).  We can free it,
+            because it was dinfo_strup-ed into spec->from_sopatt. */
+         if (replaced_sopatt != NULL) {
+            vg_assert(demangled_sopatt == replaced_sopatt);
+            dinfo_free(replaced_sopatt);
+         }
       }
       free_symname_array(names_init, &twoslots[0]);
    }
@@ -653,7 +672,7 @@ void VG_(redir_notify_new_DebugInfo)( const DebugInfo* newdi )
       for (i = 0; i < nsyms; i++) {
          VG_(DebugInfo_syms_getidx)( newdi, i, &sym_avmas,
                                      NULL, &sym_name_pri, &sym_names_sec,
-                                     &isText, NULL );
+                                     &isText, NULL, NULL );
          const HChar*  twoslots[2];
          const HChar** names_init =
             alloc_symname_array(sym_name_pri, sym_names_sec, &twoslots[0]);
@@ -785,7 +804,7 @@ void generate_and_add_actives (
      )
 {
    Spec*   sp;
-   Bool    anyMark, isText, isIFunc;
+   Bool    anyMark, isText, isIFunc, isGlobal;
    Active  act;
    Int     nsyms, i;
    SymAVMAs  sym_avmas;
@@ -798,8 +817,19 @@ void generate_and_add_actives (
    anyMark = False;
    for (sp = specs; sp; sp = sp->next) {
       sp->done = False;
-      sp->mark = VG_(string_match)( sp->from_sopatt, 
-                                    VG_(DebugInfo_get_soname)(di) );
+      const HChar *soname = VG_(DebugInfo_get_soname)(di);
+
+      /* When searching for global public symbols (like for the somalloc
+         synonym symbols), exclude the dynamic (runtime) linker as it is very
+         special. See https://bugs.kde.org/show_bug.cgi?id=355454 */
+      if ((VG_(strcmp)(sp->from_sopatt, "*") == 0) &&
+          (sp->isGlobal == True) &&
+          VG_(is_soname_ld_so)(soname)) {
+         sp->mark = False;
+         continue;
+      }
+
+      sp->mark = VG_(string_match)( sp->from_sopatt, soname );
       anyMark = anyMark || sp->mark;
    }
 
@@ -813,7 +843,7 @@ void generate_and_add_actives (
    for (i = 0; i < nsyms; i++) {
       VG_(DebugInfo_syms_getidx)( di, i, &sym_avmas,
                                   NULL, &sym_name_pri, &sym_names_sec,
-                                  &isText, &isIFunc );
+                                  &isText, &isIFunc, &isGlobal );
       const HChar*  twoslots[2];
       const HChar** names_init =
          alloc_symname_array(sym_name_pri, sym_names_sec, &twoslots[0]);
@@ -827,7 +857,8 @@ void generate_and_add_actives (
          for (sp = specs; sp; sp = sp->next) {
             if (!sp->mark)
                continue; /* soname doesn't match */
-            if (VG_(string_match)( sp->from_fnpatt, *names )) {
+            if (VG_(string_match)( sp->from_fnpatt, *names )
+		&& (sp->isGlobal == False || isGlobal == True)) {
                /* got a new binding.  Add to collection. */
                act.from_addr   = sym_avmas.main;
                act.to_addr     = sp->to_addr;
@@ -1167,6 +1198,29 @@ Addr VG_(redir_do_lookup) ( Addr orig, Bool* isWrap )
    return r->to_addr;
 }
 
+/* Does the soname represent a dynamic (runtime) linker?
+   Considers various VG_U_LD* entries from pub_tool_redir.h. */
+Bool VG_(is_soname_ld_so) (const HChar *soname)
+{
+#  if defined(VGO_linux)
+   if (VG_STREQ(soname, VG_U_LD_LINUX_SO_3))         return True;
+   if (VG_STREQ(soname, VG_U_LD_LINUX_SO_2))         return True;
+   if (VG_STREQ(soname, VG_U_LD_LINUX_X86_64_SO_2))  return True;
+   if (VG_STREQ(soname, VG_U_LD64_SO_1))             return True;
+   if (VG_STREQ(soname, VG_U_LD64_SO_2))             return True;
+   if (VG_STREQ(soname, VG_U_LD_SO_1))               return True;
+   if (VG_STREQ(soname, VG_U_LD_LINUX_AARCH64_SO_1)) return True;
+   if (VG_STREQ(soname, VG_U_LD_LINUX_ARMHF_SO_3))   return True;
+#  elif defined(VGO_darwin)
+   if (VG_STREQ(soname, VG_U_DYLD)) return True;
+#  elif defined(VGO_solaris)
+   if (VG_STREQ(soname, VG_U_LD_SO_1)) return True;
+#  else
+#    error "Unsupported OS"
+#  endif
+
+   return False;
+}
 
 /*------------------------------------------------------------*/
 /*--- INITIALISATION                                       ---*/
@@ -1220,6 +1274,7 @@ static void add_hardwired_spec (const  HChar* sopatt, const HChar* fnpatt,
    spec->from_fnpatt = CONST_CAST(HChar *,fnpatt);
    spec->to_addr     = to_addr;
    spec->isWrap      = False;
+   spec->isGlobal    = False;
    spec->mandatory   = mandatory;
    /* VARIABLE PARTS */
    spec->mark        = False; /* not significant */
@@ -1242,6 +1297,10 @@ static const HChar* complain_about_stripped_glibc_ldso[]
     "",
     "  On Debian, Ubuntu:                 libc6-dbg",
     "  On SuSE, openSuSE, Fedora, RHEL:   glibc-debuginfo",
+    "",
+    "Note that if you are debugging a 32 bit process on a",
+    "64 bit system, you will need a corresponding 32 bit debuginfo",
+    "package (e.g. libc6-dbg:i386).",
     NULL
   };
 
@@ -1305,6 +1364,9 @@ void VG_(redir_initialise) ( void )
       the start, otherwise ld.so makes a lot of noise. */
    if (0==VG_(strcmp)("Memcheck", VG_(details).name)) {
 
+      add_hardwired_spec(
+         "ld-linux-x86-64.so.2", "index",
+         (Addr)&VG_(amd64_linux_REDIR_FOR_index), NULL);
       add_hardwired_spec(
          "ld-linux-x86-64.so.2", "strlen",
          (Addr)&VG_(amd64_linux_REDIR_FOR_strlen),
@@ -1638,7 +1700,7 @@ void handle_maybe_load_notifier( const HChar* soname,
       return;
 
    if (VG_(strcmp)(symbol, VG_STRINGIFY(VG_NOTIFY_ON_LOAD(freeres))) == 0)
-      VG_(client___libc_freeres_wrapper) = addr;
+      VG_(client_freeres_wrapper) = addr;
    else
    if (VG_(strcmp)(symbol, VG_STRINGIFY(VG_NOTIFY_ON_LOAD(ifunc_wrapper))) == 0)
       iFuncWrapper = addr;
@@ -1719,7 +1781,7 @@ static void handle_require_text_symbols ( const DebugInfo* di )
          const HChar** sym_names_sec = NULL;
          VG_(DebugInfo_syms_getidx)( di, j, NULL,
                                      NULL, &sym_name_pri, &sym_names_sec,
-                                     &isText, NULL );
+                                     &isText, NULL, NULL );
          const HChar*  twoslots[2];
          const HChar** names_init =
             alloc_symname_array(sym_name_pri, sym_names_sec, &twoslots[0]);
@@ -1762,6 +1824,8 @@ static void handle_require_text_symbols ( const DebugInfo* di )
    }
 
    /* All required specs were found.  Just free memory and return. */
+   for (i = 0; i < VG_(sizeXA)(fnpatts); i++)
+      VG_(free)(*(HChar**) VG_(indexXA)(fnpatts, i));
    VG_(deleteXA)(fnpatts);
 }
 
@@ -1773,10 +1837,11 @@ static void handle_require_text_symbols ( const DebugInfo* di )
 static void show_spec ( const HChar* left, const Spec* spec )
 {
    VG_(message)( Vg_DebugMsg, 
-                 "%s%-25s %-30s %s-> (%04d.%d) 0x%08lx\n",
+                 "%s%-25s %-30s %s%s-> (%04d.%d) 0x%08lx\n",
                  left,
                  spec->from_sopatt, spec->from_fnpatt,
                  spec->isWrap ? "W" : "R",
+                 spec->isGlobal ? "G" : "L",
                  spec->becTag, spec->becPrio,
                  spec->to_addr );
 }

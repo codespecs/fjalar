@@ -291,7 +291,6 @@ static void init(void);
 // For some lines, we will also define a replacement function
 // whose only purpose is to be a soname synonym place holder
 // that can be replaced using --soname-synonyms.
-#define SO_SYN_MALLOC VG_SO_SYN(somalloc)
 
 // malloc
 #if defined(VGO_linux)
@@ -1181,7 +1180,7 @@ static vki_malloc_zone_t vg_default_zone = {
     NULL, // batch_free
     NULL, // GrP fixme: introspect
     2,  // version (GrP fixme 3?)
-    NULL, /* memalign */   // DDD: this field exists in Mac OS 10.6, but not 10.5.
+    (void*)VG_REPLACE_FUNCTION_EZU(10100,VG_Z_LIBC_SONAME,malloc_zone_memalign), // DDD: this field exists in Mac OS 10.6+
     NULL, /* free_definite_size */
     NULL, /* pressure_relief */
 };
@@ -1276,15 +1275,15 @@ ZONE_SET_NAME(SO_SYN_MALLOC,    malloc_set_zone_name);
 
 #define ZONE_GET_NAME(soname, fnname) \
    \
-   char* VG_REPLACE_FUNCTION_EZU(10280,soname,fnname)(void* zone); \
-   char* VG_REPLACE_FUNCTION_EZU(10280,soname,fnname)(void* zone)  \
+   const char* VG_REPLACE_FUNCTION_EZU(10280,soname,fnname)(void* zone); \
+   const char* VG_REPLACE_FUNCTION_EZU(10280,soname,fnname)(void* zone)  \
    { \
       TRIGGER_MEMCHECK_ERROR_IF_UNDEFINED(zone); \
       return vg_default_zone.zone_name; \
    }
 
-ZONE_SET_NAME(VG_Z_LIBC_SONAME, malloc_get_zone_name);
-ZONE_SET_NAME(SO_SYN_MALLOC,    malloc_get_zone_name);
+ZONE_GET_NAME(VG_Z_LIBC_SONAME, malloc_get_zone_name);
+ZONE_GET_NAME(SO_SYN_MALLOC,    malloc_get_zone_name);
 
 #endif /* defined(VGO_darwin) */
 
