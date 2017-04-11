@@ -700,7 +700,7 @@ diff -ub ~/tmp/$BUOLD/binutils/readelf.c readelf.c > readelf-binutils-vs-fjalar.
 Before applying any patches, run Daikon's Kvasir tests:
 
 @example
-  make -C $INV/daikon/tests/kvasir-tests nightly-summary-w-daikon
+  make -C $INV/daikon/tests/kvasir-tests clean-all regression-tests
 @end example
 
 @noindent
@@ -725,7 +725,9 @@ need to be corrected as described below.
 For these two, a visual merge tool (such as @command{meld}) will be
 helpful.
 If you plan to use such a tool, you should make copies of these
-two files prior to applying the patch.
+two files prior to applying the patch. Alternatively, you could add the
+"-b" option to the @file{binutils} patch command to backup all the files
+modified by the patch.
 
 @example
 cp -pf dwarf.c dwarf.c.orig
