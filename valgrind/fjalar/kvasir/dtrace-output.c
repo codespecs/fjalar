@@ -1227,6 +1227,10 @@ static int exit_count = 0;
     FILE *saved_decls_fp = decls_fp;
     /* Though this is a declaration, send it to the .dtrace file so
        it's easier to correlate with execution. */
+    if (!dtrace_fp) {
+      printf("\nError: you must specify a dtrace file to use dyncomp-print-inc\nExiting.\n");
+      VG_(exit)(1);
+    }
     decls_fp = dtrace_fp;
     fputs("INTERMEDIATE ", decls_fp);
     printOneFunctionDecl(funcPtr, isEnter, 0);
