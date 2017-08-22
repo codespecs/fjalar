@@ -1,5 +1,5 @@
 /* elfcomm.c -- common code for ELF format file.
-   Copyright (C) 2010-2016 Free Software Foundation, Inc.
+   Copyright (C) 2010-2017 Free Software Foundation, Inc.
 
    Originally developed by Eric Youngdale <eric@andante.jic.com>
    Modifications by Nick Clifton <nickc@redhat.com>
@@ -25,7 +25,7 @@
    This file is part of Fjalar, a dynamic analysis framework for C/C++
    programs.
 
-   Copyright (C) 2007-2016 University of Washington Computer Science & Engineering Department,
+   Copyright (C) 2007-2017 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
    This program is free software; you can redistribute it and/or
@@ -179,6 +179,7 @@ byte_get_little_endian (unsigned char *field, int size)
 	  |    (((unsigned long) (field[1])) << 8)
 	  |    (((unsigned long) (field[2])) << 16)
 	  |    (((unsigned long) (field[3])) << 24);
+      /* Fall through.  */
 
     case 6:
       if (sizeof (elf_vma) == 8)
@@ -196,6 +197,7 @@ byte_get_little_endian (unsigned char *field, int size)
 	  |    (((unsigned long) (field[1])) << 8)
 	  |    (((unsigned long) (field[2])) << 16)
 	  |    (((unsigned long) (field[3])) << 24);
+      /* Fall through.  */
 
     case 7:
       if (sizeof (elf_vma) == 8)
@@ -214,6 +216,7 @@ byte_get_little_endian (unsigned char *field, int size)
 	  |    (((unsigned long) (field[1])) << 8)
 	  |    (((unsigned long) (field[2])) << 16)
 	  |    (((unsigned long) (field[3])) << 24);
+      /* Fall through.  */
 
     case 8:
       if (sizeof (elf_vma) == 8)
@@ -233,6 +236,7 @@ byte_get_little_endian (unsigned char *field, int size)
 	  |    (((unsigned long) (field[1])) << 8)
 	  |    (((unsigned long) (field[2])) << 16)
 	  |    (((unsigned long) (field[3])) << 24);
+      /* Fall through.  */
 
     default:
       error (_("Unhandled data length: %d\n"), size);
@@ -280,6 +284,7 @@ byte_get_big_endian (unsigned char *field, int size)
 	    |   (((unsigned long) (field[1])) << 16)
 	    |   (((unsigned long) (field[0])) << 24);
 	}
+      /* Fall through.  */
 
     case 6:
       if (sizeof (elf_vma) == 8)
@@ -299,6 +304,7 @@ byte_get_big_endian (unsigned char *field, int size)
 	    |   (((unsigned long) (field[1])) << 16)
 	    |   (((unsigned long) (field[0])) << 24);
 	}
+      /* Fall through.  */
 
     case 7:
       if (sizeof (elf_vma) == 8)
@@ -319,6 +325,7 @@ byte_get_big_endian (unsigned char *field, int size)
 	    |   (((unsigned long) (field[1])) << 16)
 	    |   (((unsigned long) (field[0])) << 24);
 	}
+      /* Fall through.  */
 
     case 8:
       if (sizeof (elf_vma) == 8)
@@ -340,6 +347,7 @@ byte_get_big_endian (unsigned char *field, int size)
 	    |   (((unsigned long) (field[1])) << 16)
 	    |   (((unsigned long) (field[0])) << 24);
 	}
+      /* Fall through.  */
 
     default:
       error (_("Unhandled data length: %d\n"), size);
