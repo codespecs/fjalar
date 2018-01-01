@@ -1,0 +1,39 @@
+--- hgtls.stdoutB.exp	2016-03-24 09:52:07.657800107 -0700
++++ hgtls.stdoutB.out	2018-01-01 09:55:10.814465255 -0800
+@@ -8,28 +8,28 @@
+ test race tls_ip 0x........ ip 0x........ equal 1
+ Breakpoint 1, tls_ptr (p=0x........) at tls.c:55
+ 55		int here = 0;
+-test local tls_ip 0x........ ip 0x........ equal 1
++test local tls_ip 0x........ ip 0x........ equal 0
+ Breakpoint 1, tls_ptr (p=0x........) at tls.c:55
+ 55		int here = 0;
+-test local tls_ip 0x........ ip 0x........ equal 1
++test local tls_ip 0x........ ip 0x........ equal 0
+ Breakpoint 1, tls_ptr (p=0x........) at tls.c:55
+ 55		int here = 0;
+-test global tls_ip 0x........ ip 0x........ equal 1
++test global tls_ip 0x........ ip 0x........ equal 0
+ Breakpoint 1, tls_ptr (p=0x........) at tls.c:55
+ 55		int here = 0;
+-test global tls_ip 0x........ ip 0x........ equal 1
++test global tls_ip 0x........ ip 0x........ equal 0
+ Breakpoint 1, tls_ptr (p=0x........) at tls.c:55
+ 55		int here = 0;
+-test static_extern tls_ip 0x........ ip 0x........ equal 1
++test static_extern tls_ip 0x........ ip 0x........ equal 0
+ Breakpoint 1, tls_ptr (p=0x........) at tls.c:55
+ 55		int here = 0;
+-test static_extern tls_ip 0x........ ip 0x........ equal 1
++test static_extern tls_ip 0x........ ip 0x........ equal 0
+ Breakpoint 1, tls_ptr (p=0x........) at tls.c:55
+ 55		int here = 0;
+-test so_extern tls_ip 0x........ ip 0x........ equal 1
++test so_extern tls_ip 0x........ ip 0x........ equal 0
+ Breakpoint 1, tls_ptr (p=0x........) at tls.c:55
+ 55		int here = 0;
+-test so_extern tls_ip 0x........ ip 0x........ equal 1
++test so_extern tls_ip 0x........ ip 0x........ equal 0
+ Breakpoint 1, tls_ptr (p=0x........) at tls.c:55
+ 55		int here = 0;
+ test so_local tls_ip 0x........ ip 0x........ equal 1

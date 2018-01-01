@@ -11,7 +11,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2015 Julian Seward 
+   Copyright (C) 2000-2017 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -260,7 +260,7 @@
   Loss of pointercheck
   ~~~~~~~~~~~~~~~~~~~~
   Up to and including Valgrind 2.4.1, x86 segmentation was used to
-  enforce seperation of V and C, so that wild writes by C could not
+  enforce separation of V and C, so that wild writes by C could not
   trash V.  This got called "pointercheck".  Unfortunately, the new
   more flexible memory layout, plus the need to be portable across
   different architectures, means doing this in hardware is no longer
@@ -1620,6 +1620,7 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
 
    aspacem_minAddr = VG_(clo_aspacem_minAddr);
 
+   // --- Darwin -------------------------------------------
 #if defined(VGO_darwin)
 
 # if VG_WORDSIZE == 4
@@ -1637,6 +1638,7 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
 
    suggested_clstack_end = -1; // ignored; Mach-O specifies its stack
 
+   // --- Solaris ------------------------------------------
 #elif defined(VGO_solaris)
 #  if VG_WORDSIZE == 4
    /*
@@ -1653,7 +1655,7 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
       |                                |
       |--------------------------------|
       |          client stack          |
-      |--------------------------------| 0x38000000
+      |--------------------------------| 0x58000000
       |            V's text            |
       |--------------------------------|
       |                                |
@@ -1686,13 +1688,13 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
       |                                |
       |--------------------------------|
       |          client stack          |
-      |--------------------------------| 0x00000000_38000000
+      |--------------------------------| 0x00000000_58000000
       |            V's text            |
       |--------------------------------|
       |                                |
       |--------------------------------|
       |     dynamic shared objects     |
-      |--------------------------------| 0x0000000f_ffffffff
+      |--------------------------------| 0x0000001f_ffffffff
       |                                |
       |                                |
       |--------------------------------|
@@ -1702,18 +1704,18 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
       */
 
    /* Kernel likes to place objects at the end of the address space.
-      However accessing memory beyond 64GB makes memcheck slow
+      However accessing memory beyond 128GB makes memcheck slow
       (see memcheck/mc_main.c, internal representation). Therefore:
       - mmapobj() syscall is emulated so that libraries are subject to
         Valgrind's aspacemgr control
       - Kernel shared pages (such as schedctl and hrt) are left as they are
         because kernel cannot be told where they should be put */
 #    ifdef ENABLE_INNER
-     aspacem_maxAddr = (Addr) 0x00000007ffffffff; // 32GB
-     aspacem_vStart  = (Addr) 0x0000000400000000; // 16GB
-#    else
      aspacem_maxAddr = (Addr) 0x0000000fffffffff; // 64GB
      aspacem_vStart  = (Addr) 0x0000000800000000; // 32GB
+#    else
+     aspacem_maxAddr = (Addr) 0x0000001fffffffff; // 128GB
+     aspacem_vStart  = (Addr) 0x0000001000000000; // 64GB
 #    endif
 #  else
 #    error "Unknown word size"
@@ -1721,11 +1723,12 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
 
    aspacem_cStart = aspacem_minAddr;
 #  ifdef ENABLE_INNER
-   suggested_clstack_end = (Addr) 0x27ff0000 - 1; // 64kB below V's text
-#  else
    suggested_clstack_end = (Addr) 0x37ff0000 - 1; // 64kB below V's text
+#  else
+   suggested_clstack_end = (Addr) 0x57ff0000 - 1; // 64kB below V's text
 #  endif
 
+   // --- Linux --------------------------------------------
 #else
 
    /* Establish address limits and block out unusable parts
@@ -1736,7 +1739,7 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
                     sp_at_startup );
 
 #  if VG_WORDSIZE == 8
-     aspacem_maxAddr = (Addr)0x1000000000ULL - 1; // 64G
+     aspacem_maxAddr = (Addr)0x2000000000ULL - 1; // 128G
 #    ifdef ENABLE_INNER
      { Addr cse = VG_PGROUNDDN( sp_at_startup ) - 1;
        if (aspacem_maxAddr > cse)
@@ -1751,13 +1754,14 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
    aspacem_vStart = VG_PGROUNDUP(aspacem_minAddr 
                                  + (aspacem_maxAddr - aspacem_minAddr + 1) / 2);
 #  ifdef ENABLE_INNER
-   aspacem_vStart -= 0x10000000; // 256M
+   aspacem_vStart -= 0x20000000; // 512M
 #  endif
 
    suggested_clstack_end = aspacem_maxAddr - 16*1024*1024ULL
                                            + VKI_PAGE_SIZE;
 
 #endif
+   // --- (end) --------------------------------------------
 
    aspacem_assert(VG_IS_PAGE_ALIGNED(aspacem_minAddr));
    aspacem_assert(VG_IS_PAGE_ALIGNED(aspacem_maxAddr + 1));
@@ -1861,7 +1865,7 @@ Addr VG_(am_get_advisory) ( const MapRequest*  req,
         the outcome of the search and the kind of request made, decide
         whether the request is allowable and what address to advise.
 
-      The Default Policy is overriden by Policy Exception #1:
+      The Default Policy is overridden by Policy Exception #1:
 
         If the request is for a fixed client map, we are prepared to
         grant it providing all areas inside the request are either
@@ -1869,7 +1873,7 @@ Addr VG_(am_get_advisory) ( const MapRequest*  req,
         other words we are prepared to let the client trash its own
         mappings if it wants to.
 
-      The Default Policy is overriden by Policy Exception #2:
+      The Default Policy is overridden by Policy Exception #2:
 
         If the request is for a hinted client map, we are prepared to
         grant it providing all areas inside the request are either
@@ -2772,6 +2776,9 @@ SysRes am_munmap_both_wrk ( /*OUT*/Bool* need_discard,
 {
    Bool   d;
    SysRes sres;
+
+   /* Be safe with this regardless of return path. */
+   *need_discard = False;
 
    if (!VG_IS_PAGE_ALIGNED(start))
       goto eINVAL;

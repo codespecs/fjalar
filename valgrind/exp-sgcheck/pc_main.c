@@ -9,7 +9,7 @@
    This file is part of Ptrcheck, a Valgrind tool for checking pointer
    use in programs.
 
-   Copyright (C) 2008-2015 OpenWorks Ltd
+   Copyright (C) 2008-2017 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -77,10 +77,6 @@ static void pc_pre_clo_init(void)
    VG_(printf)("SGCheck doesn't work on MIPS yet, sorry.\n");
    VG_(exit)(1);
 #endif
-#if defined(VGA_tilegx)
-   VG_(printf)("SGCheck doesn't work on TileGx yet, sorry.\n");
-   VG_(exit)(1);
-#endif
 
    // Can't change the name until we change the names in suppressions
    // too.
@@ -89,7 +85,7 @@ static void pc_pre_clo_init(void)
    VG_(details_description)     ("a stack and global array "
                                  "overrun detector");
    VG_(details_copyright_author)(
-      "Copyright (C) 2003-2015, and GNU GPL'd, by OpenWorks Ltd et al.");
+      "Copyright (C) 2003-2017, and GNU GPL'd, by OpenWorks Ltd et al.");
    VG_(details_bug_reports_to)  (VG_BUGS_TO);
    VG_(details_avg_translation_sizeB) ( 496 );
 

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2015 OpenWorks LLP
+   Copyright (C) 2004-2017 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -353,6 +353,11 @@ void ppIROp ( IROp op )
 
       case Iop_RecpExpF64: vex_printf("RecpExpF64"); return;
       case Iop_RecpExpF32: vex_printf("RecpExpF32"); return;
+
+      case Iop_MaxNumF64: vex_printf("MaxNumF64"); return;
+      case Iop_MinNumF64: vex_printf("MinNumF64"); return;
+      case Iop_MaxNumF32: vex_printf("MaxNumF32"); return;
+      case Iop_MinNumF32: vex_printf("MinNumF32"); return;
 
       case Iop_F16toF64: vex_printf("F16toF64"); return;
       case Iop_F64toF16: vex_printf("F64toF16"); return;
@@ -1382,8 +1387,8 @@ void ppIRExpr ( const IRExpr* e )
     case Iex_VECRET:
       vex_printf("VECRET");
       break;
-    case Iex_BBPTR:
-      vex_printf("BBPTR");
+    case Iex_GSPTR:
+      vex_printf("GSPTR");
       break;
     default:
       vpanic("ppIRExpr");
@@ -1909,9 +1914,9 @@ IRExpr* IRExpr_VECRET ( void ) {
    e->tag    = Iex_VECRET;
    return e;
 }
-IRExpr* IRExpr_BBPTR ( void ) {
+IRExpr* IRExpr_GSPTR ( void ) {
    IRExpr* e = LibVEX_Alloc_inline(sizeof(IRExpr));
-   e->tag    = Iex_BBPTR;
+   e->tag    = Iex_GSPTR;
    return e;
 }
 
@@ -2386,8 +2391,8 @@ IRExpr* deepCopyIRExpr ( const IRExpr* e )
       case Iex_VECRET:
          return IRExpr_VECRET();
 
-      case Iex_BBPTR:
-         return IRExpr_BBPTR();
+      case Iex_GSPTR:
+         return IRExpr_GSPTR();
 
       case Iex_Binder:
          return IRExpr_Binder(e->Iex.Binder.binder);
@@ -2838,7 +2843,13 @@ void typeOfPrimop ( IROp op,
       case Iop_RecpExpF32:
          BINARY(ity_RMode,Ity_F32, Ity_F32);
 
-      case Iop_CmpF32:
+      case Iop_MaxNumF64: case Iop_MinNumF64:
+         BINARY(Ity_F64,Ity_F64, Ity_F64);
+
+      case Iop_MaxNumF32: case Iop_MinNumF32:
+         BINARY(Ity_F32,Ity_F32, Ity_F32);
+
+     case Iop_CmpF32:
          BINARY(Ity_F32,Ity_F32, Ity_I32);
 
       case Iop_CmpF64:
@@ -3670,8 +3681,8 @@ IRType typeOfIRExpr ( const IRTypeEnv* tyenv, const IRExpr* e )
          vpanic("typeOfIRExpr: Binder is not a valid expression");
       case Iex_VECRET:
          vpanic("typeOfIRExpr: VECRET is not a valid expression");
-      case Iex_BBPTR:
-         vpanic("typeOfIRExpr: BBPTR is not a valid expression");
+      case Iex_GSPTR:
+         vpanic("typeOfIRExpr: GSPTR is not a valid expression");
       default:
          ppIRExpr(e);
          vpanic("typeOfIRExpr");
@@ -3709,13 +3720,13 @@ Bool isPlausibleIRType ( IRType ty )
    }
 */
 
-static inline Bool isIRAtom_or_VECRET_or_BBPTR ( const IRExpr* e )
+static inline Bool isIRAtom_or_VECRET_or_GSPTR ( const IRExpr* e )
 {
   if (isIRAtom(e)) {
     return True;
   }
 
-  return UNLIKELY(is_IRExpr_VECRET_or_BBPTR(e));
+  return UNLIKELY(is_IRExpr_VECRET_or_GSPTR(e));
 }
 
 Bool isFlatIRStmt ( const IRStmt* st )
@@ -3805,7 +3816,7 @@ Bool isFlatIRStmt ( const IRStmt* st )
          if (!isIRAtom(di->guard)) 
             return False;
          for (i = 0; di->args[i]; i++)
-            if (!isIRAtom_or_VECRET_or_BBPTR(di->args[i])) 
+            if (!isIRAtom_or_VECRET_or_GSPTR(di->args[i])) 
                return False;
          if (di->mAddr && !isIRAtom(di->mAddr)) 
             return False;
@@ -3907,6 +3918,22 @@ void useBeforeDef_Temp ( const IRSB* bb, const IRStmt* stmt, IRTemp tmp,
 }
 
 static
+void assignedOnce_Temp(const IRSB *bb, const IRStmt *stmt, IRTemp tmp,
+                       Int *def_counts, UInt n_def_counts,
+                       const HChar *err_msg_out_of_range,
+                       const HChar *err_msg_assigned_more_than_once)
+{
+   if (tmp < 0 || tmp >= n_def_counts) {
+      sanityCheckFail(bb, stmt, err_msg_out_of_range);
+   }
+
+   def_counts[tmp]++;
+   if (def_counts[tmp] > 1) {
+      sanityCheckFail(bb, stmt, err_msg_assigned_more_than_once);
+   }
+}
+
+static
 void useBeforeDef_Expr ( const IRSB* bb, const IRStmt* stmt,
                          const IRExpr* expr, Int* def_counts )
 {
@@ -3950,7 +3977,7 @@ void useBeforeDef_Expr ( const IRSB* bb, const IRStmt* stmt,
       case Iex_CCall:
          for (i = 0; expr->Iex.CCall.args[i]; i++) {
             const IRExpr* arg = expr->Iex.CCall.args[i];
-            if (UNLIKELY(is_IRExpr_VECRET_or_BBPTR(arg))) {
+            if (UNLIKELY(is_IRExpr_VECRET_or_GSPTR(arg))) {
                /* These aren't allowed in CCall lists.  Let's detect
                   and throw them out here, though, rather than
                   segfaulting a bit later on. */
@@ -4032,7 +4059,7 @@ void useBeforeDef_Stmt ( const IRSB* bb, const IRStmt* stmt, Int* def_counts )
          d = stmt->Ist.Dirty.details;
          for (i = 0; d->args[i] != NULL; i++) {
             IRExpr* arg = d->args[i];
-            if (UNLIKELY(is_IRExpr_VECRET_or_BBPTR(arg))) {
+            if (UNLIKELY(is_IRExpr_VECRET_or_GSPTR(arg))) {
                /* This is ensured by isFlatIRStmt */
               ;
             } else {
@@ -4050,6 +4077,58 @@ void useBeforeDef_Stmt ( const IRSB* bb, const IRStmt* stmt, Int* def_counts )
          break;
       default: 
          vpanic("useBeforeDef_Stmt");
+   }
+}
+
+static
+void assignedOnce_Stmt(const IRSB *bb, const IRStmt *stmt,
+                       Int *def_counts, UInt n_def_counts)
+{
+   switch (stmt->tag) {
+   case Ist_WrTmp:
+      assignedOnce_Temp(
+         bb, stmt, stmt->Ist.WrTmp.tmp, def_counts, n_def_counts,
+         "IRStmt.Tmp: destination tmp is out of range",
+         "IRStmt.Tmp: destination tmp is assigned more than once");
+      break;
+   case Ist_LoadG:
+      assignedOnce_Temp(
+         bb, stmt, stmt->Ist.LoadG.details->dst, def_counts, n_def_counts,
+         "IRStmt.LoadG: destination tmp is out of range",
+         "IRStmt.LoadG: destination tmp is assigned more than once");
+      break;
+   case Ist_Dirty:
+      if (stmt->Ist.Dirty.details->tmp != IRTemp_INVALID) {
+         assignedOnce_Temp(
+            bb, stmt, stmt->Ist.Dirty.details->tmp, def_counts, n_def_counts,
+            "IRStmt.Dirty: destination tmp is out of range",
+            "IRStmt.Dirty: destination tmp is assigned more than once");
+      }
+      break;
+   case Ist_CAS:
+      if (stmt->Ist.CAS.details->oldHi != IRTemp_INVALID) {
+         assignedOnce_Temp(
+            bb, stmt, stmt->Ist.CAS.details->oldHi, def_counts, n_def_counts,
+            "IRStmt.CAS: destination tmpHi is out of range",
+            "IRStmt.CAS: destination tmpHi is assigned more than once");
+      }
+      assignedOnce_Temp(
+         bb, stmt, stmt->Ist.CAS.details->oldLo, def_counts, n_def_counts,
+         "IRStmt.CAS: destination tmpLo is out of range",
+         "IRStmt.CAS: destination tmpLo is assigned more than once");
+      break;
+   case Ist_LLSC:
+      assignedOnce_Temp(
+         bb, stmt, stmt->Ist.LLSC.result, def_counts, n_def_counts,
+         "IRStmt.LLSC: destination tmp is out of range",
+         "IRStmt.LLSC: destination tmp is assigned more than once");
+      break;
+   // Ignore all other cases
+   case Ist_NoOp: case Ist_IMark: case Ist_AbiHint: case Ist_Put: case Ist_PutI:
+   case Ist_Store: case Ist_StoreG: case Ist_MBE: case Ist_Exit:
+      break;
+   default:
+      vassert(0);
    }
 }
 
@@ -4232,8 +4311,8 @@ void tcExpr ( const IRSB* bb, const IRStmt* stmt, const IRExpr* expr,
             if (i >= 32)
                sanityCheckFail(bb,stmt,"Iex.CCall: > 32 args");
             IRExpr* arg = expr->Iex.CCall.args[i];
-            if (UNLIKELY(is_IRExpr_VECRET_or_BBPTR(arg)))
-               sanityCheckFail(bb,stmt,"Iex.CCall.args: is VECRET/BBPTR");
+            if (UNLIKELY(is_IRExpr_VECRET_or_GSPTR(arg)))
+               sanityCheckFail(bb,stmt,"Iex.CCall.args: is VECRET/GSPTR");
             tcExpr(bb,stmt, arg, gWordTy);
          }
          if (expr->Iex.CCall.retty == Ity_I1)
@@ -4351,7 +4430,7 @@ void tcStmt ( const IRSB* bb, const IRStmt* stmt, IRType gWordTy )
                                       ":: guest word type");
          if (typeOfIRExpr(tyenv, lg->alt) != typeOfIRTemp(tyenv, lg->dst))
              sanityCheckFail(bb,stmt,"IRStmt.LoadG: dst/alt type mismatch");
-         IRTemp cvtRes = Ity_INVALID, cvtArg = Ity_INVALID;
+         IRType cvtRes = Ity_INVALID, cvtArg = Ity_INVALID;
          typeOfIRLoadGOp(lg->cvt, &cvtRes, &cvtArg);
          if (cvtRes != typeOfIRTemp(tyenv, lg->dst))
             sanityCheckFail(bb,stmt,"IRStmt.LoadG: dst/loaded type mismatch");
@@ -4472,21 +4551,21 @@ void tcStmt ( const IRSB* bb, const IRStmt* stmt, IRType gWordTy )
             if (retTy == Ity_I1)
                sanityCheckFail(bb,stmt,"IRStmt.Dirty.dst :: Ity_I1");
          }
-         UInt nVECRETs = 0, nBBPTRs = 0;
+         UInt nVECRETs = 0, nGSPTRs = 0;
          for (i = 0; d->args[i] != NULL; i++) {
             if (i >= 32)
                sanityCheckFail(bb,stmt,"IRStmt.Dirty: > 32 args");
             const IRExpr* arg = d->args[i];
             if (UNLIKELY(arg->tag == Iex_VECRET)) {
                nVECRETs++;
-            } else if (UNLIKELY(arg->tag == Iex_BBPTR)) {
-               nBBPTRs++;
+            } else if (UNLIKELY(arg->tag == Iex_GSPTR)) {
+               nGSPTRs++;
             } else {
                if (typeOfIRExpr(tyenv, arg) == Ity_I1)
                   sanityCheckFail(bb,stmt,"IRStmt.Dirty.arg[i] :: Ity_I1");
             }
-            if (nBBPTRs > 1) {
-               sanityCheckFail(bb,stmt,"IRStmt.Dirty.args: > 1 BBPTR arg");
+            if (nGSPTRs > 1) {
+               sanityCheckFail(bb,stmt,"IRStmt.Dirty.args: > 1 GSPTR arg");
             }
             if (nVECRETs == 1) {
                /* Fn must return V128 or V256. */
@@ -4505,15 +4584,15 @@ void tcStmt ( const IRSB* bb, const IRStmt* stmt, IRType gWordTy )
                                "IRStmt.Dirty.args: > 1 VECRET present");
             }
          }
-         if (nBBPTRs > 1) {
+         if (nGSPTRs > 1) {
             sanityCheckFail(bb,stmt,
-                            "IRStmt.Dirty.args: > 1 BBPTR present");
+                            "IRStmt.Dirty.args: > 1 GSPTR present");
          }
          /* If you ask for the baseblock pointer, you have to make
             some declaration about access to the guest state too. */
-         if (d->nFxState == 0 && nBBPTRs != 0) {
+         if (d->nFxState == 0 && nGSPTRs != 0) {
             sanityCheckFail(bb,stmt,
-                            "IRStmt.Dirty.args: BBPTR requested, "
+                            "IRStmt.Dirty.args: GSPTR requested, "
                             "but no fxState declared");
          }
         break;
@@ -4603,79 +4682,12 @@ void sanityCheckIRSB ( const IRSB* bb, const HChar* caller,
       useBeforeDef_Stmt(bb,stmt,def_counts);
 
       /* Now make note of any temps defd by this statement. */
-      switch (stmt->tag) {
-      case Ist_WrTmp:
-         if (stmt->Ist.WrTmp.tmp < 0 || stmt->Ist.WrTmp.tmp >= n_temps)
-            sanityCheckFail(bb, stmt, 
-               "IRStmt.Tmp: destination tmp is out of range");
-         def_counts[stmt->Ist.WrTmp.tmp]++;
-         if (def_counts[stmt->Ist.WrTmp.tmp] > 1)
-            sanityCheckFail(bb, stmt, 
-               "IRStmt.Tmp: destination tmp is assigned more than once");
-         break;
-      case Ist_LoadG: {
-         const IRLoadG* lg = stmt->Ist.LoadG.details;
-         if (lg->dst < 0 || lg->dst >= n_temps)
-             sanityCheckFail(bb, stmt, 
-                "IRStmt.LoadG: destination tmp is out of range");
-         def_counts[lg->dst]++;
-         if (def_counts[lg->dst] > 1)
-             sanityCheckFail(bb, stmt, 
-                "IRStmt.LoadG: destination tmp is assigned more than once");
-         break;
-      }
-      case Ist_Dirty: {
-         const IRDirty* d = stmt->Ist.Dirty.details;
-         if (d->tmp != IRTemp_INVALID) {
-            if (d->tmp < 0 || d->tmp >= n_temps)
-               sanityCheckFail(bb, stmt, 
-                  "IRStmt.Dirty: destination tmp is out of range");
-            def_counts[d->tmp]++;
-            if (def_counts[d->tmp] > 1)
-               sanityCheckFail(bb, stmt, 
-                  "IRStmt.Dirty: destination tmp is assigned more than once");
-         }
-         break;
-      }
-      case Ist_CAS: {
-         const IRCAS* cas = stmt->Ist.CAS.details;
-         if (cas->oldHi != IRTemp_INVALID) {
-            if (cas->oldHi < 0 || cas->oldHi >= n_temps)
-                sanityCheckFail(bb, stmt, 
-                   "IRStmt.CAS: destination tmpHi is out of range");
-             def_counts[cas->oldHi]++;
-             if (def_counts[cas->oldHi] > 1)
-                sanityCheckFail(bb, stmt, 
-                   "IRStmt.CAS: destination tmpHi is assigned more than once");
-         }
-         if (cas->oldLo < 0 || cas->oldLo >= n_temps)
-            sanityCheckFail(bb, stmt, 
-               "IRStmt.CAS: destination tmpLo is out of range");
-         def_counts[cas->oldLo]++;
-         if (def_counts[cas->oldLo] > 1)
-            sanityCheckFail(bb, stmt, 
-               "IRStmt.CAS: destination tmpLo is assigned more than once");
-         break;
-      }
-      case Ist_LLSC:
-         if (stmt->Ist.LLSC.result < 0 || stmt->Ist.LLSC.result >= n_temps)
-            sanityCheckFail(bb, stmt,
-               "IRStmt.LLSC: destination tmp is out of range");
-         def_counts[stmt->Ist.LLSC.result]++;
-         if (def_counts[stmt->Ist.LLSC.result] > 1)
-            sanityCheckFail(bb, stmt,
-               "IRStmt.LLSC: destination tmp is assigned more than once");
-         break;
-      default:
-         /* explicitly handle the rest, so as to keep gcc quiet */
-         break;
-      }
+      assignedOnce_Stmt(bb, stmt, def_counts, n_temps);
    }
 
    /* Typecheck everything. */
    for (i = 0; i < bb->stmts_used; i++)
-      if (bb->stmts[i])
-         tcStmt( bb, bb->stmts[i], guest_word_size );
+      tcStmt(bb, bb->stmts[i], guest_word_size);
    if (typeOfIRExpr(bb->tyenv,bb->next) != guest_word_size)
       sanityCheckFail(bb, NULL, "bb->next field has wrong type");
    /* because it would intersect with host_EvC_* */

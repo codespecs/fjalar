@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2015 Nicholas Nethercote
+   Copyright (C) 2000-2017 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -45,6 +45,7 @@
 
 /* Define, and set defaults. */
 
+const HChar *VG_(clo_toolname) = "memcheck";    // default to Memcheck
 VexControl VG_(clo_vex_control);
 VexRegisterUpdates VG_(clo_px_file_backed) = VexRegUpd_INVALID;
 
@@ -79,8 +80,8 @@ Bool   VG_(clo_trace_children) = False;
 const HChar* VG_(clo_trace_children_skip) = NULL;
 const HChar* VG_(clo_trace_children_skip_by_arg) = NULL;
 Bool   VG_(clo_child_silent_after_fork) = False;
-const HChar* VG_(clo_log_fname_expanded) = NULL;
-const HChar* VG_(clo_xml_fname_expanded) = NULL;
+const HChar *VG_(clo_log_fname_unexpanded) = NULL;
+const HChar *VG_(clo_xml_fname_unexpanded) = NULL;
 Bool   VG_(clo_time_stamp)     = False;
 Int    VG_(clo_input_fd)       = 0; /* stdin */
 Bool   VG_(clo_default_supp)   = True;
@@ -112,6 +113,10 @@ Int    VG_(clo_core_redzone_size) = CORE_REDZONE_DEFAULT_SZB;
 // A value != -1 overrides the tool-specific value
 // VG_(needs_malloc_replacement).tool_client_redzone_szB
 Int    VG_(clo_redzone_size)   = -1;
+VgXTMemory VG_(clo_xtree_memory) =  Vg_XTMemory_None;
+const HChar* VG_(clo_xtree_memory_file) = "xtmemory.kcg.%p";
+Bool VG_(clo_xtree_compress_strings) = True;
+
 Int    VG_(clo_dump_error)     = 0;
 Int    VG_(clo_backtrace_size) = 12;
 Int    VG_(clo_merge_recursive_frames) = 0; // default value: no merge
@@ -143,8 +148,7 @@ UInt   VG_(clo_unw_stack_scan_frames) = 5;
 VgSmc VG_(clo_smc_check) = Vg_SmcAllNonFile;
 #elif defined(VGA_ppc32) || defined(VGA_ppc64be) || defined(VGA_ppc64le) \
       || defined(VGA_arm) || defined(VGA_arm64) \
-      || defined(VGA_mips32) || defined(VGA_mips64) \
-      || defined(VGA_tilegx)
+      || defined(VGA_mips32) || defined(VGA_mips64)
 VgSmc VG_(clo_smc_check) = Vg_SmcStack;
 #else
 #  error "Unknown arch"
@@ -219,6 +223,19 @@ HChar* VG_(expand_file_name)(const HChar* option_name, const HChar* format)
             Int pid = VG_(getpid)();
             ENSURE_THIS_MUCH_SPACE(10);
             j += VG_(sprintf)(&out[j], "%d", pid);
+            i++;
+         } 
+         else if ('n' == format[i]) {
+            // Print a seq nr.
+            static Int last_pid;
+            static Int seq_nr;
+            Int pid = VG_(getpid)();
+            if (last_pid != pid)
+               seq_nr = 0;
+            last_pid = pid;
+            seq_nr++;
+            ENSURE_THIS_MUCH_SPACE(10);
+            j += VG_(sprintf)(&out[j], "%d", seq_nr);
             i++;
          } 
          else if ('q' == format[i]) {

@@ -7,9 +7,9 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2015 Julian Seward 
+   Copyright (C) 2000-2017 Julian Seward 
       jseward@acm.org
-   Copyright (C) 2003-2015 Jeremy Fitzhardinge
+   Copyright (C) 2003-2017 Jeremy Fitzhardinge
       jeremy@goop.org
 
    This program is free software; you can redistribute it and/or
@@ -1567,10 +1567,23 @@ void VG_(redir_initialise) ( void )
 
       /* this is mandatory - can't sanely continue without it */
       add_hardwired_spec(
-         "ld.so.3", "strlen",
+         "ld.so.1", "strlen",
          (Addr)&VG_(mips32_linux_REDIR_FOR_strlen),
          complain_about_stripped_glibc_ldso
       );
+      add_hardwired_spec(
+         "ld.so.1", "index",
+         (Addr)&VG_(mips32_linux_REDIR_FOR_index),
+         complain_about_stripped_glibc_ldso
+      );
+#  if defined(VGPV_mips32_linux_android)
+      add_hardwired_spec(
+         "NONE", "__dl_strlen",
+         (Addr)&VG_(mips32_linux_REDIR_FOR_strlen),
+         NULL
+      );
+#  endif
+
    }
 
 #  elif defined(VGP_mips64_linux)
@@ -1578,18 +1591,14 @@ void VG_(redir_initialise) ( void )
 
       /* this is mandatory - can't sanely continue without it */
       add_hardwired_spec(
-         "ld.so.3", "strlen",
+         "ld.so.1", "strlen",
          (Addr)&VG_(mips64_linux_REDIR_FOR_strlen),
          complain_about_stripped_glibc_ldso
       );
-   }
-
-#  elif defined(VGP_tilegx_linux)
-   if (0==VG_(strcmp)("Memcheck", VG_(details).name)) {
-
       add_hardwired_spec(
-         "ld.so.1", "strlen",
-         (Addr)&VG_(tilegx_linux_REDIR_FOR_strlen), NULL
+         "ld.so.1", "index",
+         (Addr)&VG_(mips64_linux_REDIR_FOR_index),
+         complain_about_stripped_glibc_ldso
       );
    }
 

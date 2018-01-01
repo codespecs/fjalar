@@ -1,7 +1,7 @@
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2015 Bart Van Assche <bvanassche@acm.org>.
+  Copyright (C) 2006-2017 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -88,9 +88,9 @@ typedef struct
     * a corresponding OS thread that is detached.
     */
    Bool      detached_posix_thread;
-   /** Wether recording of memory load accesses is currently enabled. */
+   /** Whether recording of memory load accesses is currently enabled. */
    Bool      is_recording_loads;
-   /** Wether recording of memory load accesses is currently enabled. */
+   /** Whether recording of memory load accesses is currently enabled. */
    Bool      is_recording_stores;
    /** pthread_create() nesting level. */
    Int       pthread_create_nesting_level;

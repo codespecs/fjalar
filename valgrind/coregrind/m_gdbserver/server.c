@@ -107,7 +107,7 @@ void reset_valgrind_sink(const char *info)
        && initial_valgrind_sink_saved) {
       VG_(log_output_sink).fd = initial_valgrind_sink.fd;
       VG_(umsg) ("Reset valgrind output to log (%s)\n",
-                 (info = NULL ? "" : info));
+                 (info == NULL ? "" : info));
    }
 }
 
@@ -339,7 +339,7 @@ int handle_gdb_valgrind_command (char *mon, OutputSink *sink_wanted_at_return)
                do not, suggest a 'likely somewhat working' address: */
             const Addr tool_text_start
                = tooldi ?
-               VG_(DebugInfo_get_text_avma) (tooldi) : 0x38000000;
+               VG_(DebugInfo_get_text_avma) (tooldi) : 0x58000000;
             const NSegment *toolseg
                = tooldi ?
                  VG_(am_find_nsegment) (VG_(DebugInfo_get_text_avma) (tooldi))

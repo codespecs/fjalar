@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2013-2015 OpenWorks
+   Copyright (C) 2013-2017 OpenWorks
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -586,7 +586,8 @@ struct vki_ucontext {
 //ZZ };
 //ZZ 
 //ZZ // [[Nb: for our convenience within Valgrind, use a more specific name]]
-//ZZ typedef struct vki_user_desc vki_modify_ldt_t;
+
+typedef char vki_modify_ldt_t;
 
 //----------------------------------------------------------------------
 // From linux-3.10.5/include/asm-generic/ipcbuf.h

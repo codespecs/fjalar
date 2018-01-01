@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2015-2016 Ivo Raisr
+   Copyright (C) 2015-2017 Ivo Raisr
       ivosh@ivosh.net
 
    This program is free software; you can redistribute it and/or
@@ -28,7 +28,7 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-/* Copyright 2015-2015, Tomas Jedlicka <jedlickat@gmail.com>. */
+/* Copyright 2015-2017, Tomas Jedlicka <jedlickat@gmail.com>. */
 
 #ifndef __VKI_SOLARIS_REPCACHE_H
 #define __VKI_SOLARIS_REPCACHE_H
@@ -343,7 +343,7 @@ enum vki_rep_protocol_requestid {
 #error Unsupported repcache protocol version
 #endif
 
-/* The following definitions are currently stable accross all repcache protocol
+/* The following definitions are currently stable across all repcache protocol
    versions. If there is any change to them, they need to be versioned
    properly so that Valgrind works on older versions. */
 

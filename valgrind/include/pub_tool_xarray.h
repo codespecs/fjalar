@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2007-2015 OpenWorks LLP
+   Copyright (C) 2007-2017 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -54,9 +54,9 @@ typedef Int (*XACmpFn_t)(const void *, const void *);
    for elements of the specified size.  alloc_fn must not return NULL (that
    is, if it returns it must have succeeded.)
    This function never returns NULL. */
-extern XArray* VG_(newXA) ( void*(*alloc_fn)(const HChar*,SizeT), 
+extern XArray* VG_(newXA) ( Alloc_Fn_t alloc_fn,
                             const HChar* cc,
-                            void(*free_fn)(void*),
+                            Free_Fn_t free_fn,
                             Word elemSzB );
 
 /* Free all memory associated with an XArray. */
@@ -166,6 +166,8 @@ extern void VG_(getContentsXA_UNSAFE)( XArray* sr,
 extern void VG_(xaprintf)( XArray* dst, const HChar* format, ... )
                          PRINTF_CHECK(2, 3);
 
+/* Convenience function: linear search in an XArray of HChar*. */
+extern Bool VG_(strIsMemberXA)(const XArray* xa, const HChar* str );
 #endif   // __PUB_TOOL_XARRAY_H
 
 /*--------------------------------------------------------------------*/

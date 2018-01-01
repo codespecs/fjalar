@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2015 Julian Seward 
+   Copyright (C) 2000-2017 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -524,7 +524,7 @@ Bool get_elf_symbol_info (
       http://gcc.gnu.org/ml/gcc-patches/2004-08/msg00557.html
    */
 #  if defined(VGP_ppc64be_linux)
-   /* Host and guest may have different Endianess, used by BE only */
+   /* Host and guest may have different Endianness, used by BE only */
    is_in_opd = False;
 #  endif
 
@@ -692,15 +692,15 @@ Bool get_elf_symbol_info (
       in_rx = (ML_(find_rx_mapping)(
                       di,
                       (*sym_avmas_out).main,
-                      (*sym_avmas_out).main + *sym_size_out) != NULL);
+                      (*sym_avmas_out).main + *sym_size_out - 1) != NULL);
       if (in_text)
          vg_assert(in_rx);
       if (!in_rx) {
          TRACE_SYMTAB(
             "ignore -- %#lx .. %#lx outside .text svma range %#lx .. %#lx\n",
-            (*sym_avmas_out).main, (*sym_avmas_out).main + *sym_size_out,
+            (*sym_avmas_out).main, (*sym_avmas_out).main + *sym_size_out - 1,
             di->text_avma,
-            di->text_avma + di->text_size);
+            di->text_avma + di->text_size - 1);
          return False;
       }
    } else {
@@ -708,7 +708,7 @@ Bool get_elf_symbol_info (
          TRACE_SYMTAB(
             "ignore -- %#lx .. %#lx outside .data / .sdata / .rodata "
             "/ .bss / .sbss svma ranges\n",
-            (*sym_avmas_out).main, (*sym_avmas_out).main + *sym_size_out);
+            (*sym_avmas_out).main, (*sym_avmas_out).main + *sym_size_out - 1);
          return False;
       }
    }
@@ -2278,7 +2278,7 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
 #     if defined(VGP_x86_linux) || defined(VGP_amd64_linux) \
          || defined(VGP_arm_linux) || defined (VGP_s390x_linux) \
          || defined(VGP_mips32_linux) || defined(VGP_mips64_linux) \
-         || defined(VGP_arm64_linux) || defined(VGP_tilegx_linux) \
+         || defined(VGP_arm64_linux) \
          || defined(VGP_x86_solaris) || defined(VGP_amd64_solaris)
       /* Accept .plt where mapped as rx (code) */
       if (0 == VG_(strcmp)(name, ".plt")) {

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2005-2015 Apple Inc.
+   Copyright (C) 2005-2017 Apple Inc.
       Greg Parker  gparker@apple.com
 
    This program is free software; you can redistribute it and/or
@@ -53,6 +53,7 @@
 #include "pub_core_scheduler.h"
 #include "pub_core_sigframe.h"      // For VG_(sigframe_destroy)()
 #include "pub_core_signals.h"
+#include "pub_core_stacks.h"
 #include "pub_core_syscall.h"
 #include "pub_core_syswrap.h"
 #include "pub_core_tooliface.h"
@@ -205,6 +206,10 @@ static void run_a_thread_NORETURN ( Word tidW )
    c = VG_(count_living_threads)();
    vg_assert(c >= 1); /* stay sane */
 
+   /* Deregister thread's stack. */
+   if (tst->os_state.stk_id != NULL_STK_ID)
+      VG_(deregister_stack)(tst->os_state.stk_id);
+
    // Tell the tool this thread is exiting
    VG_TRACK( pre_thread_ll_exit, tid );
 
@@ -221,7 +226,7 @@ static void run_a_thread_NORETURN ( Word tidW )
          "WARNING: of the VALGRIND_DISABLE_ERROR_REPORTING macros.\n"
       );
       VG_(debugLog)(
-         1, "syswrap-linux", 
+         1, "syswrap-darwin", 
             "run_a_thread_NORETURN(tid=%u): "
             "WARNING: exiting thread has err_disablement_level = %u\n",
             tid, tst->err_disablement_level
@@ -4026,7 +4031,7 @@ PRE(getdirentries64)
 }
 POST(getdirentries64) 
 {
-   /* Disabled; see coments in the PRE wrapper.
+   /* Disabled; see comments in the PRE wrapper.
       POST_MEM_WRITE(ARG4, sizeof(vki_off_t));
    */
    // GrP fixme be specific about d_name? (fixme copied from 32 bit version)
@@ -8202,6 +8207,16 @@ PRE(mach_msg_task)
    case 3420:
       CALL_PRE(task_policy_set);
       return;
+
+#if DARWIN_VERS >= DARWIN_10_12
+   case 3444:
+      CALL_PRE(task_register_dyld_image_infos);
+      return;
+
+   case 3447:
+      CALL_PRE(task_register_dyld_shared_cache_image_info);
+      return;
+#endif /* DARWIN_VERS >= DARWIN_10_12 */
       
    case 3801:
       CALL_PRE(vm_allocate);
@@ -9694,6 +9709,22 @@ POST(getattrlistbulk)
       POST_MEM_WRITE(ARG3, ARG4);
 }
 
+PRE(faccessat)
+{
+    PRINT("faccessat(FIXME)(fd:%ld, path:%#lx(%s), amode:%#lx, flag:%#lx)",
+        ARG1, ARG2, (HChar*)ARG2, ARG3, ARG4);
+    PRE_REG_READ4(int, "faccessat",
+                  int, fd, user_addr_t, path, int, amode, int, flag);
+}
+
+PRE(fstatat64)
+{
+    PRINT("fstatat64(FIXME)(fd:%ld, path:%#lx(%s), ub:%#lx, flag:%#lx)",
+        ARG1, ARG2, (HChar*)ARG2, ARG3, ARG4);
+    PRE_REG_READ4(int, "fstatat64",
+                  int, fd, user_addr_t, path, user_addr_t, ub, int, flag);
+}
+
 PRE(readlinkat)
 {
     Word  saved = SYSNO;
@@ -9726,6 +9757,13 @@ PRE(bsdthread_ctl)
                  void*, cmd, void*, arg1, void*, arg2, void*, arg3);
 }
 
+PRE(csrctl)
+{
+   PRINT("csrctl(op:%ld, useraddr:%#lx, usersize:%#lx) FIXME", ARG1, ARG2, ARG3);
+   PRE_REG_READ3(int, "csrctl",
+                 uint32_t, op, user_addr_t, useraddr, user_addr_t, usersize);
+}
+
 PRE(guarded_open_dprotected_np)
 {
     PRINT("guarded_open_dprotected_np("
@@ -9753,6 +9791,113 @@ PRE(guarded_writev_np)
 }
 
 #endif /* DARWIN_VERS >= DARWIN_10_10 */
+
+
+/* ---------------------------------------------------------------------
+ Added for macOS 10.12 (Sierra)
+ ------------------------------------------------------------------ */
+
+#if DARWIN_VERS >= DARWIN_10_12
+
+PRE(getentropy)
+{
+    PRINT("getentropy(buffer:%#lx, size:%ld) FIXME", ARG1, ARG2);
+    PRE_REG_READ2(int, "getentropy",
+                  void*, buffer, size_t, size);
+}
+
+PRE(ulock_wake)
+{
+    PRINT("ulock_wake(operation:%ld, addr:%#lx, wake_value:%ld) FIXME",
+        ARG1, ARG2, ARG3);
+    PRE_REG_READ3(int, "ulock_wake",
+                  uint32_t, operation, void*, addr, uint64_t, wake_value);
+}
+
+PRE(host_create_mach_voucher_trap)
+{
+    // munge_wwww -- no need to call helper
+    PRINT("host_create_mach_voucher_trap"
+        "(host:%#lx, recipes:%#lx, recipes_size:%ld, voucher:%#lx) FIXME",
+        ARG1, ARG2, ARG3, ARG4);
+}
+
+PRE(task_register_dyld_image_infos)
+{
+#pragma pack(4)
+    typedef struct {
+       mach_msg_header_t Head;
+       /* start of the kernel processed data */
+       mach_msg_body_t msgh_body;
+       mach_msg_ool_descriptor_t dyld_images;
+       /* end of the kernel processed data */
+       NDR_record_t NDR;
+       mach_msg_type_number_t dyld_imagesCnt;
+    } Request;
+#pragma pack()
+    
+    // Request *req = (Request *)ARG1;
+    
+    PRINT("task_register_dyld_image_infos(%s)", name_for_port(MACH_REMOTE));
+    
+    AFTER = POST_FN(task_register_dyld_image_infos);
+}
+
+POST(task_register_dyld_image_infos)
+{
+#pragma pack(4)
+    typedef struct {
+       mach_msg_header_t Head;
+       NDR_record_t NDR;
+       kern_return_t RetCode;
+    } Reply;
+#pragma pack()
+    
+    Reply *reply = (Reply *)ARG1;
+    if (!reply->RetCode) {
+    } else {
+        PRINT("mig return %d", reply->RetCode);
+    }
+}
+
+PRE(task_register_dyld_shared_cache_image_info)
+{
+#pragma pack(4)
+    typedef struct {
+       mach_msg_header_t Head;
+       NDR_record_t NDR;
+       dyld_kernel_image_info_t dyld_cache_image;
+       boolean_t no_cache;
+       boolean_t private_cache;
+    } Request;
+#pragma pack()
+    
+    // Request *req = (Request *)ARG1;
+    
+    PRINT("task_register_dyld_shared_cache_image_info(%s)",
+        name_for_port(MACH_REMOTE));
+    
+    AFTER = POST_FN(task_register_dyld_shared_cache_image_info);
+}
+
+POST(task_register_dyld_shared_cache_image_info)
+{
+#pragma pack(4)
+    typedef struct {
+       mach_msg_header_t Head;
+       NDR_record_t NDR;
+       kern_return_t RetCode;
+    } Reply;
+#pragma pack()
+    
+    Reply *reply = (Reply *)ARG1;
+    if (!reply->RetCode) {
+    } else {
+        PRINT("mig return %d", reply->RetCode);
+    }
+}
+
+#endif /* DARWIN_VERS >= DARWIN_10_12 */
 
 
 /* ---------------------------------------------------------------------
@@ -10274,6 +10419,16 @@ const SyscallTableEntry ML_(syscall_table)[] = {
 #endif
 #if DARWIN_VERS >= DARWIN_10_9
     MACX_(__NR_fileport_makeport, fileport_makeport),
+// _____(__NR_fileport_makefd),                         // 431
+// _____(__NR_audit_session_port),                      // 432
+// _____(__NR_pid_suspend),                             // 433
+// _____(__NR_pid_resume),                              // 434
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(435)),        // ???
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(436)),        // ???
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(437)),        // ???
+// _____(__NR_shared_region_map_and_slide_np),          // 438
+// _____(__NR_kas_info),                                // 439
+// _____(__NR_memorystatus_control),                    // 440
     MACX_(__NR_guarded_open_np, guarded_open_np),
     MACX_(__NR_guarded_close_np, guarded_close_np),
     MACX_(__NR_guarded_kqueue_np, guarded_kqueue_np),
@@ -10285,14 +10440,57 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    MACXY(__NR_sysctlbyname,        sysctlbyname),       // 274
    MACXY(__NR_necp_match_policy,   necp_match_policy),  // 460
    MACXY(__NR_getattrlistbulk,     getattrlistbulk),    // 461
+   MACX_(__NR_faccessat,           faccessat),          // 466
+   MACX_(__NR_fstatat64,           fstatat64),          // 470
    MACX_(__NR_readlinkat,          readlinkat),         // 473
    MACX_(__NR_bsdthread_ctl,       bsdthread_ctl),      // 478
+   MACX_(__NR_csrctl,              csrctl),             // 483
    MACX_(__NR_guarded_open_dprotected_np, guarded_open_dprotected_np),  // 484
    MACX_(__NR_guarded_write_np, guarded_write_np),      // 485
    MACX_(__NR_guarded_pwrite_np, guarded_pwrite_np),    // 486
    MACX_(__NR_guarded_writev_np, guarded_writev_np),    // 487
-// _____(__NR___rename_ext),                            // 488
 // _____(__NR___mremap_encrypted),                      // 489
+#endif
+#if DARWIN_VERS >= DARWIN_10_11
+// _____(__NR_kdebug_trace_string),                     // 178
+// _____(__NR_kevent_qos),                              // 374
+// _____(__NR_netagent_trigger),                        // 490
+// _____(__NR_stack_snapshot_with_config),              // 491
+// _____(__NR_microstackshot),                          // 492
+// _____(__NR_grab_pgo_data),                           // 493
+// _____(__NR_persona),                                 // 494
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(495)),        // ???
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(496)),        // ???
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(497)),        // ???
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(498)),        // ???
+// _____(__NR_work_interval_ctl),                       // 499
+#endif
+#if DARWIN_VERS >= DARWIN_10_12
+// _____(__NR_kdebug_typefilter),                       // 177
+// _____(__NR_clonefileat),                             // 462
+// _____(__NR_renameatx_np),                            // 488
+   MACX_(__NR_getentropy, getentropy),                  // 500
+// _____(__NR_necp_open),                               // 501
+// _____(__NR_necp_client_action),                      // 502
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(503)),        // ???
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(504)),        // ???
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(505)),        // ???
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(506)),        // ???
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(507)),        // ???
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(508)),        // ???
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(509)),        // ???
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(510)),        // ???
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(511)),        // ???
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(512)),        // ???
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(513)),        // ???
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(514)),        // ???
+// _____(__NR_ulock_wait),                              // 515
+   MACX_(__NR_ulock_wake, ulock_wake),                  // 516
+// _____(__NR_fclonefileat),                            // 517
+// _____(__NR_fs_snapshot),                             // 518
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(519)),        // ???
+// _____(__NR_terminate_with_payload),                  // 520
+// _____(__NR_abort_with_payload),                      // 521
 #endif
 // _____(__NR_MAXSYSCALL)
    MACX_(__NR_DARWIN_FAKE_SIGRETURN, FAKE_SIGRETURN)
@@ -10444,8 +10642,12 @@ const SyscallTableEntry ML_(mach_trap_table)[] = {
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(66)), 
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(67)), 
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(68)), 
-   _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(69)), 
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(69)),
+#if DARWIN_VERS >= DARWIN_10_12
+   MACX_(__NR_host_create_mach_voucher_trap, host_create_mach_voucher_trap),
+#else 
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(70)), 
+#endif
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(71)), 
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(72)), 
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(73)), 

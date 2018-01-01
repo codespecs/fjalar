@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2010-2015 RT-RK
+   Copyright (C) 2010-2017 RT-RK
       mips-valgrind@rt-rk.com
 
    This program is free software; you can redistribute it and/or
@@ -710,6 +710,7 @@ struct vki_ucontext {
        vki_sigset_t           uc_sigmask;  /* mask last for extensibility */
 };
 
+typedef char vki_modify_ldt_t;
 //----------------------------------------------------------------------
 // From linux-2.6.35.9/include/asm-mips/ipcbuf.h
 //----------------------------------------------------------------------

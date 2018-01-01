@@ -27,6 +27,7 @@ EXTRA_DIST = \
 	avx2-1.vgtest avx2-1.stdout.exp avx2-1.stderr.exp \
 	asorep.stderr.exp asorep.stdout.exp asorep.vgtest \
 	bmi.stderr.exp bmi.stdout.exp bmi.vgtest \
+	bt_flags.stderr.exp bt_flags.stdout.exp bt_flags.vgtest \
 	fma.stderr.exp fma.stdout.exp fma.vgtest \
 	bug127521-64.vgtest bug127521-64.stdout.exp bug127521-64.stderr.exp \
 	bug132813-amd64.vgtest bug132813-amd64.stdout.exp \
@@ -37,10 +38,14 @@ EXTRA_DIST = \
 	bug132918.stdout.exp-older-glibc \
 	bug156404-amd64.vgtest bug156404-amd64.stdout.exp \
 	bug156404-amd64.stderr.exp \
+	cet_nops.vgtest cet_nops.stdout.exp cet_nops.stderr.exp \
 	clc.vgtest clc.stdout.exp clc.stderr.exp \
 	crc32.vgtest crc32.stdout.exp crc32.stderr.exp \
 	cmpxchg.vgtest cmpxchg.stdout.exp cmpxchg.stderr.exp \
 	faultstatus.disabled faultstatus.stderr.exp \
+	fb_test_amd64.vgtest \
+	fb_test_amd64.stderr.exp fb_test_amd64.stdout.exp \
+	fb_test_amd64.h fb_test_amd64_muldiv.h fb_test_amd64_shift.h \
 	fcmovnu.vgtest fcmovnu.stderr.exp fcmovnu.stdout.exp \
 	fma4.vgtest fma4.stdout.exp fma4.stderr.exp \
 	fxtract.vgtest fxtract.stderr.exp fxtract.stdout.exp \
@@ -90,7 +95,9 @@ EXTRA_DIST = \
 check_PROGRAMS = \
 	allexec \
 	amd64locked \
+	bt_flags \
 	bug127521-64 bug132813-amd64 bug132918 bug137714-amd64 \
+	cet_nops \
 	clc \
 	cmpxchg \
 	getseg \
@@ -105,6 +112,9 @@ check_PROGRAMS = \
 	xadd
 if BUILD_ADDR32_TESTS
  check_PROGRAMS += asorep
+endif
+if BUILD_ADX_TESTS
+  check_PROGRAMS += fb_test_amd64
 endif
 if BUILD_AVX_TESTS
 if BUILD_VPCLMULQDQ_TESTS
@@ -172,7 +182,11 @@ allexec_CFLAGS		= $(AM_CFLAGS) @FLAG_W_NO_NONNULL@
 # generic C ones
 amd64locked_CFLAGS	= $(AM_CFLAGS) -O
 bug132918_LDADD		= -lm
-fxtract_CFLAGS		= $(AM_CFLAGS) @FLAG_W_NO_OVERFLOW@
+cmpxchg_CFLAGS		= $(AM_CFLAGS) @FLAG_NO_PIE@
+fb_test_amd64_CFLAGS	= $(AM_CFLAGS) -O -fno-strict-aliasing
+fb_test_amd64_LDADD	= -lm
+fcmovnu_CFLAGS		= $(AM_CFLAGS) @FLAG_NO_PIE@
+fxtract_CFLAGS		= $(AM_CFLAGS) @FLAG_W_NO_OVERFLOW@ @FLAG_NO_PIE@
 insn_basic_SOURCES	= insn_basic.def
 insn_basic_LDADD	= -lm
 insn_mmx_SOURCES	= insn_mmx.def
@@ -194,6 +208,10 @@ if VGCONF_OS_IS_SOLARIS
 fma4_CFLAGS		+= -D__EXTENSIONS__
 endif
 fma4_LDADD		= -lm
+jrcxz_CFLAGS		= $(AM_CFLAGS) @FLAG_NO_PIE@
+looper_CFLAGS		= $(AM_CFLAGS) @FLAG_NO_PIE@
+sbbmisc_CFLAGS		= $(AM_CFLAGS) @FLAG_NO_PIE@
+shrld_CFLAGS		= $(AM_CFLAGS) @FLAG_NO_PIE@
 
 .def.c: $(srcdir)/gen_insn_test.pl
 	$(PERL) $(srcdir)/gen_insn_test.pl < $< > $@

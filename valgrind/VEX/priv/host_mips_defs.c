@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2010-2015 RT-RK
+   Copyright (C) 2010-2017 RT-RK
       mips-valgrind@rt-rk.com
 
    This program is free software; you can redistribute it and/or
@@ -35,9 +35,6 @@
 #include "main_util.h"
 #include "host_generic_regs.h"
 #include "host_mips_defs.h"
-
-/* guest_COND offset. */
-#define COND_OFFSET(__mode64) (__mode64 ? 612 : 448)
 
 /* Register number for guest state pointer in host code. */
 #define GuestSP 23
@@ -1514,7 +1511,7 @@ void ppMIPSInstr(const MIPSInstr * i, Bool mode64)
          return;
       }
       case Min_MfFCSR: {
-         vex_printf("ctc1 ");
+         vex_printf("cfc1 ");
          ppHRegMIPS(i->Min.MfFCSR.dst, mode64);
          vex_printf(", $31");
          return;

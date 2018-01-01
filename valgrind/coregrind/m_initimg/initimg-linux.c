@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2015 Julian Seward
+   Copyright (C) 2000-2017 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -789,7 +789,8 @@ Addr setup_client_stack( void*  init_sp,
             break;
 
 #        if !defined(VGP_ppc32_linux) && !defined(VGP_ppc64be_linux) \
-            && !defined(VGP_ppc64le_linux)
+            && !defined(VGP_ppc64le_linux) \
+            && !defined(VGP_mips32_linux) && !defined(VGP_mips64_linux)
          case AT_SYSINFO_EHDR: {
             /* Trash this, because we don't reproduce it */
             const NSegment* ehdrseg = VG_(am_find_nsegment)((Addr)auxv->u.a_ptr);
@@ -1197,20 +1198,6 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
    arch->vex.guest_r29 = iifii.initial_client_SP;
    arch->vex.guest_PC = iifii.initial_client_IP;
    arch->vex.guest_r31 = iifii.initial_client_SP;
-
-#  elif defined(VGP_tilegx_linux)
-   vg_assert(0 == sizeof(VexGuestTILEGXState) % LibVEX_GUEST_STATE_ALIGN);
-
-   /* Zero out the initial state. */
-   LibVEX_GuestTILEGX_initialise(&arch->vex);
-
-   /* Zero out the shadow areas. */
-   VG_(memset)(&arch->vex_shadow1, 0, sizeof(VexGuestTILEGXState));
-   VG_(memset)(&arch->vex_shadow2, 0, sizeof(VexGuestTILEGXState));
-
-   /* Put essential stuff into the new state. */
-   arch->vex.guest_r54 = iifii.initial_client_SP;
-   arch->vex.guest_pc  = iifii.initial_client_IP;
 
 #  else
 #    error Unknown platform

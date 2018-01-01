@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2015 Nicholas Nethercote
+   Copyright (C) 2000-2017 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -52,6 +52,7 @@
 #include "pub_core_options.h"
 #include "pub_core_scheduler.h"
 #include "pub_core_signals.h"
+#include "pub_core_stacks.h"
 #include "pub_core_syscall.h"
 #include "pub_core_syswrap.h"
 #include "pub_core_inner.h"
@@ -92,9 +93,8 @@ static VgSchedReturnCode thread_wrapper(Word /*ThreadId*/ tidW)
    VG_TRACK(pre_thread_first_insn, tid);
 
    tst->os_state.lwpid = VG_(gettid)();
-   /* Set the threadgroup for real.  This overwrites the provisional
-      value set in do_clone() syswrap-*-linux.c.  See comments in
-      do_clone for background, also #226116. */
+   /* Set the threadgroup for real.  This overwrites the provisional value set
+      in do_clone().  See comments in do_clone for background, also #226116. */
    tst->os_state.threadgroup = VG_(getpid)();
 
    /* Thread created with all signals blocked; scheduler will set the
@@ -161,6 +161,10 @@ static void run_a_thread_NORETURN ( Word tidW )
 
    c = VG_(count_living_threads)();
    vg_assert(c >= 1); /* stay sane */
+
+   /* Deregister thread's stack. */
+   if (tst->os_state.stk_id != NULL_STK_ID)
+      VG_(deregister_stack)(tst->os_state.stk_id);
 
    // Tell the tool this thread is exiting
    VG_TRACK( pre_thread_ll_exit, tid );
@@ -297,15 +301,6 @@ static void run_a_thread_NORETURN ( Word tidW )
          : "r" (VgTs_Empty), "n" (__NR_exit), "m" (tst->os_state.exitcode)
          : "cc", "memory" , "v0", "a0"
       );
-#elif defined(VGP_tilegx_linux)
-      asm volatile (
-         "st4    %0,  %1\n"      /* set tst->status = VgTs_Empty */
-         "moveli r10, %2\n"      /* set r10 = __NR_exit */
-         "move   r0,  %3\n"      /* set  r0 = tst->os_state.exitcode */
-         "swint1\n"              /* exit(tst->os_state.exitcode) */
-         : "=m" (tst->status)
-         : "r" (VgTs_Empty), "n" (__NR_exit), "r" (tst->os_state.exitcode)
-         : "r0", "r1", "r2", "r3", "r4", "r5");
 #else
 # error Unknown platform
 #endif
@@ -425,17 +420,308 @@ void VG_(main_thread_wrapper_NORETURN)(ThreadId tid)
    vg_assert(0);
 }
 
+/* Clone a new thread. Note that in the clone syscalls, we hard-code
+   tlsaddr argument as NULL : the guest TLS is emulated via guest
+   registers, and Valgrind itself has no thread local storage. */
+static SysRes clone_new_thread ( Word (*fn)(void *), 
+                                 void* stack, 
+                                 Word  flags, 
+                                 ThreadState* ctst,
+                                 Int* child_tidptr, 
+                                 Int* parent_tidptr)
+{
+   SysRes res;
+   /* Note that in all the below, we make sys_clone appear to have returned
+      Success(0) in the child, by assigning the relevant child guest
+      register(s) just before the clone syscall. */
+#if defined(VGP_x86_linux)
+   Int          eax;
+   ctst->arch.vex.guest_EAX = 0;
+   eax = do_syscall_clone_x86_linux
+      (ML_(start_thread_NORETURN), stack, flags, ctst,
+       child_tidptr, parent_tidptr, NULL);
+   res = VG_(mk_SysRes_x86_linux)( eax );
+#elif defined(VGP_amd64_linux)
+   Long         rax;
+   ctst->arch.vex.guest_RAX = 0;
+   rax = do_syscall_clone_amd64_linux
+      (ML_(start_thread_NORETURN), stack, flags, ctst,
+       child_tidptr, parent_tidptr, NULL);
+   res = VG_(mk_SysRes_amd64_linux)( rax );
+#elif defined(VGP_ppc32_linux)
+   ULong        word64;
+   UInt old_cr = LibVEX_GuestPPC32_get_CR( &ctst->arch.vex );
+   /* %r3 = 0 */
+   ctst->arch.vex.guest_GPR3 = 0;
+   /* %cr0.so = 0 */
+   LibVEX_GuestPPC32_put_CR( old_cr & ~(1<<28), &ctst->arch.vex );
+   word64 = do_syscall_clone_ppc32_linux
+      (ML_(start_thread_NORETURN), stack, flags, ctst,
+       child_tidptr, parent_tidptr, NULL);
+   /* High half word64 is syscall return value.  Low half is
+      the entire CR, from which we need to extract CR0.SO. */
+   /* VG_(printf)("word64 = 0x%llx\n", word64); */
+   res = VG_(mk_SysRes_ppc32_linux)(/*val*/(UInt)(word64 >> 32), 
+                                    /*errflag*/ (((UInt)word64) >> 28) & 1);
+#elif defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)
+   ULong        word64;
+   UInt old_cr = LibVEX_GuestPPC64_get_CR( &ctst->arch.vex );
+   /* %r3 = 0 */
+   ctst->arch.vex.guest_GPR3 = 0;
+   /* %cr0.so = 0 */
+   LibVEX_GuestPPC64_put_CR( old_cr & ~(1<<28), &ctst->arch.vex );
+   word64 = do_syscall_clone_ppc64_linux
+      (ML_(start_thread_NORETURN), stack, flags, ctst,
+       child_tidptr, parent_tidptr, NULL);
+   /* Low half word64 is syscall return value.  Hi half is
+      the entire CR, from which we need to extract CR0.SO. */
+   /* VG_(printf)("word64 = 0x%llx\n", word64); */
+   res = VG_(mk_SysRes_ppc64_linux)
+      (/*val*/(UInt)(word64 & 0xFFFFFFFFULL), 
+       /*errflag*/ (UInt)((word64 >> (32+28)) & 1));
+#elif defined(VGP_s390x_linux)
+   ULong        r2;
+   ctst->arch.vex.guest_r2 = 0;
+   r2 = do_syscall_clone_s390x_linux
+      (stack, flags, parent_tidptr, child_tidptr, NULL,
+       ML_(start_thread_NORETURN), ctst);
+   res = VG_(mk_SysRes_s390x_linux)( r2 );
+#elif defined(VGP_arm64_linux)
+   ULong        x0;
+   ctst->arch.vex.guest_X0 = 0;
+   x0 = do_syscall_clone_arm64_linux
+      (ML_(start_thread_NORETURN), stack, flags, ctst,
+       child_tidptr, parent_tidptr, NULL);
+   res = VG_(mk_SysRes_arm64_linux)( x0 );
+#elif defined(VGP_arm_linux)
+   UInt r0;
+   ctst->arch.vex.guest_R0 = 0;
+   r0 = do_syscall_clone_arm_linux
+      (ML_(start_thread_NORETURN), stack, flags, ctst,
+       child_tidptr, parent_tidptr, NULL);
+   res = VG_(mk_SysRes_arm_linux)( r0 );
+#elif defined(VGP_mips64_linux)
+   UInt ret = 0;
+   ctst->arch.vex.guest_r2 = 0;
+   ctst->arch.vex.guest_r7 = 0;
+   ret = do_syscall_clone_mips64_linux
+      (ML_(start_thread_NORETURN), stack, flags, ctst,
+       parent_tidptr, NULL, child_tidptr);
+   res = VG_(mk_SysRes_mips64_linux)( /* val */ ret, 0, /* errflag */ 0);
+#elif defined(VGP_mips32_linux)
+   UInt ret = 0;
+   ctst->arch.vex.guest_r2 = 0;
+   ctst->arch.vex.guest_r7 = 0;
+   ret = do_syscall_clone_mips_linux
+      (ML_(start_thread_NORETURN), stack, flags, ctst,
+       child_tidptr, parent_tidptr, NULL);
+   /* High half word64 is syscall return value.  Low half is
+      the entire CR, from which we need to extract CR0.SO. */ 
+   res = VG_ (mk_SysRes_mips32_linux) (/*val */ ret, 0, /*errflag */ 0);
+#else
+# error Unknown platform
+#endif
+   return res;
+}
 
-/* Do a clone which is really a fork() */
-SysRes ML_(do_fork_clone) ( ThreadId tid, UInt flags,
-                            Int* parent_tidptr, Int* child_tidptr )
+static void setup_child ( /*OUT*/ ThreadArchState *child, 
+                          /*IN*/  ThreadArchState *parent )
+{  
+   /* We inherit our parent's guest state. */
+   child->vex = parent->vex;
+   child->vex_shadow1 = parent->vex_shadow1;
+   child->vex_shadow2 = parent->vex_shadow2;
+
+#if defined(VGP_x86_linux)
+   extern void ML_(x86_setup_LDT_GDT) ( /*OUT*/ ThreadArchState *child, 
+                                        /*IN*/  ThreadArchState *parent );
+   ML_(x86_setup_LDT_GDT)(child, parent);
+#endif
+}
+
+static SysRes setup_child_tls (ThreadId ctid, Addr tlsaddr)
+{
+   static const Bool debug = False;
+   ThreadState* ctst = VG_(get_ThreadState)(ctid);
+   // res is succesful by default, overriden if a real syscall is needed/done.
+   SysRes res = VG_(mk_SysRes_Success)(0);
+
+   if (debug)
+      VG_(printf)("clone child has SETTLS: tls at %#lx\n", tlsaddr);
+
+#if defined(VGP_x86_linux)
+   vki_modify_ldt_t* tlsinfo = (vki_modify_ldt_t*)tlsaddr;
+   if (debug)
+      VG_(printf)("clone child has SETTLS: tls info at %p: idx=%u "
+                  "base=%#lx limit=%x; esp=%#x fs=%x gs=%x\n",
+                  tlsinfo, tlsinfo->entry_number, 
+                  tlsinfo->base_addr, tlsinfo->limit,
+                  ctst->arch.vex.guest_ESP,
+                  ctst->arch.vex.guest_FS, ctst->arch.vex.guest_GS);
+   res = ML_(x86_sys_set_thread_area)(ctid, tlsinfo);
+#elif defined(VGP_amd64_linux)
+   ctst->arch.vex.guest_FS_CONST = tlsaddr;
+#elif defined(VGP_ppc32_linux)
+   ctst->arch.vex.guest_GPR2 = tlsaddr;
+#elif defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)
+   ctst->arch.vex.guest_GPR13 = tlsaddr;
+#elif defined(VGP_s390x_linux)
+   ctst->arch.vex.guest_a0 = (UInt) (tlsaddr >> 32);
+   ctst->arch.vex.guest_a1 = (UInt) tlsaddr;
+#elif defined(VGP_arm64_linux)
+   /* Just assign the tls pointer in the guest TPIDR_EL0. */
+   ctst->arch.vex.guest_TPIDR_EL0 = tlsaddr;
+#elif defined(VGP_arm_linux)
+   /* Just assign the tls pointer in the guest TPIDRURO. */
+   ctst->arch.vex.guest_TPIDRURO = tlsaddr;
+#elif defined(VGP_mips64_linux)
+   ctst->arch.vex.guest_ULR = tlsaddr;
+   ctst->arch.vex.guest_r27 = tlsaddr;
+#elif defined(VGP_mips32_linux)
+   ctst->arch.vex.guest_ULR = tlsaddr;
+   ctst->arch.vex.guest_r27 = tlsaddr;
+#else
+# error Unknown platform
+#endif
+   return res;
+} 
+
+/* 
+   When a client clones, we need to keep track of the new thread.  This means:
+   1. allocate a ThreadId+ThreadState+stack for the thread
+
+   2. initialize the thread's new VCPU state
+
+   3. create the thread using the same args as the client requested,
+   but using the scheduler entrypoint for EIP, and a separate stack
+   for ESP.
+ */
+static SysRes do_clone ( ThreadId ptid, 
+                         UWord flags, Addr sp, 
+                         Int* parent_tidptr, 
+                         Int* child_tidptr, 
+                         Addr tlsaddr)
+{
+   ThreadId     ctid = VG_(alloc_ThreadState)();
+   ThreadState* ptst = VG_(get_ThreadState)(ptid);
+   ThreadState* ctst = VG_(get_ThreadState)(ctid);
+   UWord*       stack;
+   SysRes       res;
+   vki_sigset_t blockall, savedmask;
+
+   VG_(sigfillset)(&blockall);
+
+   vg_assert(VG_(is_running_thread)(ptid));
+   vg_assert(VG_(is_valid_tid)(ctid));
+
+   stack = (UWord*)ML_(allocstack)(ctid);
+   if (stack == NULL) {
+      res = VG_(mk_SysRes_Error)( VKI_ENOMEM );
+      goto out;
+   }
+
+   /* Copy register state
+
+      Both parent and child return to the same place, and the code
+      following the clone syscall works out which is which, so we
+      don't need to worry about it.
+
+      The parent gets the child's new tid returned from clone, but the
+      child gets 0.
+
+      If the clone call specifies a NULL sp for the new thread, then
+      it actually gets a copy of the parent's sp.
+   */
+   setup_child( &ctst->arch, &ptst->arch );
+
+   if (sp != 0)
+      VG_(set_SP)(ctid, sp);
+
+   ctst->os_state.parent = ptid;
+
+   /* inherit signal mask */
+   ctst->sig_mask     = ptst->sig_mask;
+   ctst->tmp_sig_mask = ptst->sig_mask;
+
+   /* Start the child with its threadgroup being the same as the
+      parent's.  This is so that any exit_group calls that happen
+      after the child is created but before it sets its
+      os_state.threadgroup field for real (in thread_wrapper in
+      syswrap-linux.c), really kill the new thread.  a.k.a this avoids
+      a race condition in which the thread is unkillable (via
+      exit_group) because its threadgroup is not set.  The race window
+      is probably only a few hundred or a few thousand cycles long.
+      See #226116. */
+   ctst->os_state.threadgroup = ptst->os_state.threadgroup;
+
+   ML_(guess_and_register_stack) (sp, ctst);
+   
+   /* Assume the clone will succeed, and tell any tool that wants to
+      know that this thread has come into existence.  We cannot defer
+      it beyond this point because setup_tls, just below,
+      causes checks to assert by making references to the new ThreadId
+      if we don't state the new thread exists prior to that point.
+      If the clone fails, we'll send out a ll_exit notification for it
+      at the out: label below, to clean up. */
+   vg_assert(VG_(owns_BigLock_LL)(ptid));
+   VG_TRACK ( pre_thread_ll_create, ptid, ctid );
+
+   if (flags & VKI_CLONE_SETTLS) {
+      res = setup_child_tls(ctid, tlsaddr);
+      if (sr_isError(res))
+	 goto out;
+   }
+   flags &= ~VKI_CLONE_SETTLS;
+
+   /* start the thread with everything blocked */
+   VG_(sigprocmask)(VKI_SIG_SETMASK, &blockall, &savedmask);
+
+   /* Create the new thread */
+   res = clone_new_thread ( ML_(start_thread_NORETURN), stack, flags, ctst,
+                            child_tidptr, parent_tidptr);
+
+   VG_(sigprocmask)(VKI_SIG_SETMASK, &savedmask, NULL);
+
+  out:
+   if (sr_isError(res)) {
+      /* clone failed */
+      VG_(cleanup_thread)(&ctst->arch);
+      ctst->status = VgTs_Empty;
+      /* oops.  Better tell the tool the thread exited in a hurry :-) */
+      VG_TRACK( pre_thread_ll_exit, ctid );
+   }
+
+   return res;
+}
+
+/* Do a clone which is really a fork().
+   ML_(do_fork_clone) uses the clone syscall to fork a child process.
+   Note that this should not be called for a thread creation.
+   Also, some flags combinations are not supported, and such combinations
+   are handled either by masking the non supported flags or by asserting.
+
+   The CLONE_VFORK flag is accepted, as this just tells that the parent is
+   suspended till the child exits or calls execve. We better keep this flag,
+   just in case the guests parent/client code depends on this synchronisation.
+
+   We cannot keep the flag CLONE_VM, as Valgrind will do whatever host
+   instructions in the child process, that will mess up the parent host
+   memory. So, we hope for the best and assumes that the guest application does
+   not (really) depends on sharing the memory between parent and child in the
+   interval between clone and exits/execve.
+
+   If child_sp != 0, the child (guest) sp will be set to child_sp just after the
+   clone syscall, before child guest instructions are executed. */
+static SysRes ML_(do_fork_clone) ( ThreadId tid, UInt flags,
+                                   Int* parent_tidptr, Int* child_tidptr,
+                                   Addr child_sp)
 {
    vki_sigset_t fork_saved_mask;
    vki_sigset_t mask;
    SysRes       res;
 
    if (flags & (VKI_CLONE_SETTLS | VKI_CLONE_FS | VKI_CLONE_VM 
-                | VKI_CLONE_FILES | VKI_CLONE_VFORK))
+                | VKI_CLONE_FILES))
       return VG_(mk_SysRes_Error)( VKI_EINVAL );
 
    /* Block all signals during fork, so that we can fix things up in
@@ -455,7 +741,7 @@ SysRes ML_(do_fork_clone) ( ThreadId tid, UInt flags,
    res = VG_(do_syscall5)( __NR_clone, flags, 
                            (UWord)NULL, (UWord)parent_tidptr, 
                            (UWord)NULL, (UWord)child_tidptr );
-#elif defined(VGP_amd64_linux) || defined(VGP_tilegx_linux)
+#elif defined(VGP_amd64_linux)
    /* note that the last two arguments are the opposite way round to x86 and
       ppc32 as the amd64 kernel expects the arguments in a different order */
    res = VG_(do_syscall5)( __NR_clone, flags, 
@@ -471,21 +757,12 @@ SysRes ML_(do_fork_clone) ( ThreadId tid, UInt flags,
 
    if (!sr_isError(res) && sr_Res(res) == 0) {
       /* child */
+      if (child_sp != 0)
+          VG_(set_SP)(tid, child_sp);
       VG_(do_atfork_child)(tid);
 
       /* restore signal mask */
       VG_(sigprocmask)(VKI_SIG_SETMASK, &fork_saved_mask, NULL);
-
-      /* If --child-silent-after-fork=yes was specified, set the
-         output file descriptors to 'impossible' values.  This is
-         noticed by send_bytes_to_logging_sink in m_libcprint.c, which
-         duly stops writing any further output. */
-      if (VG_(clo_child_silent_after_fork)) {
-         if (!VG_(log_output_sink).is_socket)
-            VG_(log_output_sink).fd = -1;
-         if (!VG_(xml_output_sink).is_socket)
-            VG_(xml_output_sink).fd = -1;
-      }
    } 
    else 
    if (!sr_isError(res) && sr_Res(res) > 0) {
@@ -503,7 +780,6 @@ SysRes ML_(do_fork_clone) ( ThreadId tid, UInt flags,
    return res;
 }
 
-
 /* ---------------------------------------------------------------------
    PRE/POST wrappers for arch-generic, Linux-specific syscalls
    ------------------------------------------------------------------ */
@@ -514,19 +790,155 @@ SysRes ML_(do_fork_clone) ( ThreadId tid, UInt flags,
 #define PRE(name)       DEFN_PRE_TEMPLATE(linux, name)
 #define POST(name)      DEFN_POST_TEMPLATE(linux, name)
 
-// Macros to support 64-bit syscall args split into two 32 bit values
-#define LOHI64(lo,hi)   ( ((ULong)(lo)) | (((ULong)(hi)) << 32) )
-#if defined(VG_LITTLEENDIAN)
-#define MERGE64(lo,hi)   ( ((ULong)(lo)) | (((ULong)(hi)) << 32) )
-#define MERGE64_FIRST(name) name##_low
-#define MERGE64_SECOND(name) name##_high
-#elif defined(VG_BIGENDIAN)
-#define MERGE64(hi,lo)   ( ((ULong)(lo)) | (((ULong)(hi)) << 32) )
-#define MERGE64_FIRST(name) name##_high
-#define MERGE64_SECOND(name) name##_low
+PRE(sys_clone)
+{
+   UInt cloneflags;
+   Bool badarg = False;
+
+   PRINT("sys_clone ( %lx, %#lx, %#lx, %#lx, %#lx )",ARG1,ARG2,ARG3,ARG4,ARG5);
+
+// Order of arguments differs between platforms.
+#if defined(VGP_x86_linux) \
+    || defined(VGP_ppc32_linux) \
+    || defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)	\
+    || defined(VGP_arm_linux) || defined(VGP_mips32_linux) \
+    || defined(VGP_mips64_linux) || defined(VGP_arm64_linux)
+#define ARG_CHILD_TIDPTR ARG5
+#define PRA_CHILD_TIDPTR PRA5
+#define ARG_TLS          ARG4
+#define PRA_TLS          PRA4
+#elif defined(VGP_amd64_linux) || defined(VGP_s390x_linux)
+#define ARG_CHILD_TIDPTR ARG4
+#define PRA_CHILD_TIDPTR PRA4
+#define ARG_TLS          ARG5
+#define PRA_TLS          PRA5
 #else
-#error Unknown endianness
+# error Unknown platform
 #endif
+// And s390x is even more special, and inverts flags and child stack args
+#if defined(VGP_s390x_linux)
+#define ARG_FLAGS       ARG2
+#define PRA_FLAGS       PRA2
+#define ARG_CHILD_STACK ARG1
+#define PRA_CHILD_STACK PRA1
+#else
+#define ARG_FLAGS       ARG1
+#define PRA_FLAGS       PRA1
+#define ARG_CHILD_STACK ARG2
+#define PRA_CHILD_STACK PRA2
+#endif
+
+   if (VG_(tdict).track_pre_reg_read) {
+      PRA_FLAGS("clone", unsigned long, flags);
+      PRA_CHILD_STACK("clone",  void *, child_stack);
+   }
+
+   if (ARG_FLAGS & VKI_CLONE_PARENT_SETTID) {
+      if (VG_(tdict).track_pre_reg_read) {
+         PRA3("clone", int *, parent_tidptr);
+      }
+      PRE_MEM_WRITE("clone(parent_tidptr)", ARG3, sizeof(Int));
+      if (!VG_(am_is_valid_for_client)(ARG3, sizeof(Int), 
+                                             VKI_PROT_WRITE)) {
+         badarg = True;
+      }
+   }
+   if (ARG_FLAGS & VKI_CLONE_SETTLS) {
+      if (VG_(tdict).track_pre_reg_read) {
+         PRA_TLS("clone", vki_modify_ldt_t *, tlsinfo);
+      }
+      /* Not very clear what is vki_modify_ldt_t: for many platforms, it is a
+         dummy type (that we define as a char). We only dereference/check the
+         ARG_TLS pointer if the type looks like a real type, i.e. sizeof > 1. */
+      if (sizeof(vki_modify_ldt_t) > 1) {
+         PRE_MEM_READ("clone(tlsinfo)", ARG_TLS, sizeof(vki_modify_ldt_t));
+         if (!VG_(am_is_valid_for_client)(ARG_TLS, sizeof(vki_modify_ldt_t), 
+                                          VKI_PROT_READ)) {
+            badarg = True;
+         }
+      }
+   }
+   if (ARG_FLAGS & (VKI_CLONE_CHILD_SETTID | VKI_CLONE_CHILD_CLEARTID)) {
+      if (VG_(tdict).track_pre_reg_read) {
+         PRA_CHILD_TIDPTR("clone", int *, child_tidptr);
+      }
+      PRE_MEM_WRITE("clone(child_tidptr)", ARG_CHILD_TIDPTR, sizeof(Int));
+      if (!VG_(am_is_valid_for_client)(ARG_CHILD_TIDPTR, sizeof(Int), 
+                                             VKI_PROT_WRITE)) {
+         badarg = True;
+      }
+   }
+
+   if (badarg) {
+      SET_STATUS_Failure( VKI_EFAULT );
+      return;
+   }
+
+   cloneflags = ARG_FLAGS;
+
+   if (!ML_(client_signal_OK)(ARG_FLAGS & VKI_CSIGNAL)) {
+      SET_STATUS_Failure( VKI_EINVAL );
+      return;
+   }
+
+   /* Only look at the flags we really care about */
+   switch (cloneflags & (VKI_CLONE_VM | VKI_CLONE_FS 
+                         | VKI_CLONE_FILES | VKI_CLONE_VFORK)) {
+   case VKI_CLONE_VM | VKI_CLONE_FS | VKI_CLONE_FILES:
+      /* thread creation */
+      SET_STATUS_from_SysRes(
+         do_clone(tid,
+                  ARG_FLAGS,               /* flags */
+                  (Addr)ARG_CHILD_STACK,   /* child ESP */
+                  (Int*)ARG3,              /* parent_tidptr */
+                  (Int*)ARG_CHILD_TIDPTR,  /* child_tidptr */
+                  (Addr)ARG_TLS));         /* set_tls */
+      break;
+
+   case VKI_CLONE_VFORK | VKI_CLONE_VM: /* vfork */
+      // FALLTHROUGH - assume vfork (somewhat) == fork, see ML_(do_fork_clone).
+      cloneflags &= ~VKI_CLONE_VM;
+
+   case 0: /* plain fork */
+      SET_STATUS_from_SysRes(
+         ML_(do_fork_clone)(tid,
+                       cloneflags,      /* flags */
+                       (Int*)ARG3,     /* parent_tidptr */
+                       (Int*)ARG_CHILD_TIDPTR,     /* child_tidptr */
+                       (Addr)ARG_CHILD_STACK));
+      break;
+
+   default:
+      /* should we just ENOSYS? */
+      VG_(message)(Vg_UserMsg, "Unsupported clone() flags: 0x%lx\n", ARG_FLAGS);
+      VG_(message)(Vg_UserMsg, "\n");
+      VG_(message)(Vg_UserMsg, "The only supported clone() uses are:\n");
+      VG_(message)(Vg_UserMsg, " - via a threads library (LinuxThreads or NPTL)\n");
+      VG_(message)(Vg_UserMsg, " - via the implementation of fork or vfork\n");
+      VG_(unimplemented)
+         ("Valgrind does not support general clone().");
+   }
+
+   if (SUCCESS) {
+      if (ARG_FLAGS & VKI_CLONE_PARENT_SETTID)
+         POST_MEM_WRITE(ARG3, sizeof(Int));
+      if (ARG_FLAGS & (VKI_CLONE_CHILD_SETTID | VKI_CLONE_CHILD_CLEARTID))
+         POST_MEM_WRITE(ARG_CHILD_TIDPTR, sizeof(Int));
+
+      /* Thread creation was successful; let the child have the chance
+         to run */
+      *flags |= SfYieldAfter;
+   }
+
+#undef ARG_CHILD_TIDPTR
+#undef PRA_CHILD_TIDPTR
+#undef ARG_TLS
+#undef PRA_TLS
+#undef ARG_FLAGS
+#undef PRA_FLAGS
+#undef ARG_CHILD_STACK
+#undef PRA_CHILD_STACK
+}
 
 /* ---------------------------------------------------------------------
    *mount wrappers
@@ -1014,7 +1426,26 @@ PRE(sys_prctl)
       break;
    case VKI_PR_SET_NAME:
       PRE_REG_READ2(int, "prctl", int, option, char *, name);
-      PRE_MEM_RASCIIZ("prctl(set-name)", ARG2);
+      /* The name can be up to TASK_COMM_LEN(16) bytes long, including
+         the terminating null byte. So do not check more than 16 bytes. */
+      if (ML_(safe_to_deref)((const HChar *) ARG2, VKI_TASK_COMM_LEN)) {
+         SizeT len = VG_(strnlen)((const HChar *) ARG2, VKI_TASK_COMM_LEN);
+         if (len < VKI_TASK_COMM_LEN) {
+            PRE_MEM_RASCIIZ("prctl(set-name)", ARG2);
+         } else {
+            PRE_MEM_READ("prctl(set-name)", ARG2, VKI_TASK_COMM_LEN);
+         }
+      } else {
+         /* Do it the slow way, one byte at a time, while checking for
+            terminating '\0'. */
+         const HChar *name = (const HChar *) ARG2;
+         for (UInt i = 0; i < VKI_TASK_COMM_LEN; i++) {
+            PRE_MEM_READ("prctl(set-name)", (Addr) &name[i], 1);
+            if (!ML_(safe_to_deref)(&name[i], 1) || name[i] == '\0') {
+               break;
+            }
+         }
+      }
       break;
    case VKI_PR_GET_NAME:
       PRE_REG_READ2(int, "prctl", int, option, char *, name);
@@ -1078,12 +1509,12 @@ POST(sys_prctl)
          const HChar* new_name = (const HChar*) ARG2;
          if (new_name) {    // Paranoia
             ThreadState* tst = VG_(get_ThreadState)(tid);
-            SizeT new_len = VG_(strlen)(new_name);
+            SizeT new_len = VG_(strnlen)(new_name, VKI_TASK_COMM_LEN);
 
             /* Don't bother reusing the memory. This is a rare event. */
             tst->thread_name =
               VG_(realloc)("syswrap.prctl", tst->thread_name, new_len + 1);
-            VG_(strcpy)(tst->thread_name, new_name);
+            VG_(strlcpy)(tst->thread_name, new_name, new_len + 1);
          }
       }
       break;
@@ -1172,9 +1603,11 @@ PRE(sys_futex)
       }
       break;
    case VKI_FUTEX_WAKE_BITSET:
-      PRE_REG_READ6(long, "futex", 
-                    vki_u32 *, futex, int, op, int, val,
-                    int, dummy, int, dummy2, int, val3);
+      PRE_REG_READ3(long, "futex",
+                    vki_u32 *, futex, int, op, int, val);
+      if (VG_(tdict).track_pre_reg_read) {
+         PRA6("futex", int, val3);
+      }
       break;
    case VKI_FUTEX_WAIT:
    case VKI_FUTEX_LOCK_PI:
@@ -1184,10 +1617,10 @@ PRE(sys_futex)
       break;
    case VKI_FUTEX_WAKE:
    case VKI_FUTEX_FD:
-   case VKI_FUTEX_TRYLOCK_PI:
       PRE_REG_READ3(long, "futex", 
                     vki_u32 *, futex, int, op, int, val);
       break;
+   case VKI_FUTEX_TRYLOCK_PI:
    case VKI_FUTEX_UNLOCK_PI:
    default:
       PRE_REG_READ2(long, "futex", vki_u32 *, futex, int, op);
@@ -1217,13 +1650,10 @@ PRE(sys_futex)
    case VKI_FUTEX_FD:
    case VKI_FUTEX_TRYLOCK_PI:
    case VKI_FUTEX_UNLOCK_PI:
-      PRE_MEM_READ( "futex(futex)", ARG1, sizeof(Int) );
-     break;
-
    case VKI_FUTEX_WAKE:
    case VKI_FUTEX_WAKE_BITSET:
-      /* no additional pointers */
-      break;
+      PRE_MEM_READ( "futex(futex)", ARG1, sizeof(Int) );
+     break;
 
    default:
       SET_STATUS_Failure( VKI_ENOSYS );   // some futex function we don't understand
@@ -1634,7 +2064,7 @@ PRE(sys_set_tid_address)
 
 PRE(sys_tkill)
 {
-   PRINT("sys_tgkill ( %ld, %ld )", SARG1, SARG2);
+   PRINT("sys_tkill ( %ld, %ld )", SARG1, SARG2);
    PRE_REG_READ2(long, "tkill", int, tid, int, sig);
    if (!ML_(client_signal_OK)(ARG2)) {
       SET_STATUS_Failure( VKI_EINVAL );
@@ -3277,7 +3707,7 @@ PRE(sys_sigaction)
       PRE_MEM_READ( "sigaction(act->sa_handler)", (Addr)&sa->ksa_handler, sizeof(sa->ksa_handler));
       PRE_MEM_READ( "sigaction(act->sa_mask)", (Addr)&sa->sa_mask, sizeof(sa->sa_mask));
       PRE_MEM_READ( "sigaction(act->sa_flags)", (Addr)&sa->sa_flags, sizeof(sa->sa_flags));
-      if (ML_(safe_to_deref)(sa,sizeof(sa))
+      if (ML_(safe_to_deref)(sa,sizeof(struct vki_old_sigaction))
           && (sa->sa_flags & VKI_SA_RESTORER))
          PRE_MEM_READ( "sigaction(act->sa_restorer)", (Addr)&sa->sa_restorer, sizeof(sa->sa_restorer));
    }
@@ -3390,7 +3820,7 @@ PRE(sys_rt_sigaction)
       PRE_MEM_READ( "rt_sigaction(act->sa_handler)", (Addr)&sa->ksa_handler, sizeof(sa->ksa_handler));
       PRE_MEM_READ( "rt_sigaction(act->sa_mask)", (Addr)&sa->sa_mask, sizeof(sa->sa_mask));
       PRE_MEM_READ( "rt_sigaction(act->sa_flags)", (Addr)&sa->sa_flags, sizeof(sa->sa_flags));
-      if (ML_(safe_to_deref)(sa,sizeof(sa))
+      if (ML_(safe_to_deref)(sa,sizeof(vki_sigaction_toK_t))
           && (sa->sa_flags & VKI_SA_RESTORER))
          PRE_MEM_READ( "rt_sigaction(act->sa_restorer)", (Addr)&sa->sa_restorer, sizeof(sa->sa_restorer));
    }
@@ -3558,6 +3988,16 @@ PRE(sys_rt_sigsuspend)
    PRE_REG_READ2(int, "rt_sigsuspend", vki_sigset_t *, mask, vki_size_t, size)
    if (ARG1 != (Addr)NULL) {
       PRE_MEM_READ( "rt_sigsuspend(mask)", ARG1, sizeof(vki_sigset_t) );
+      if (ML_(safe_to_deref)((vki_sigset_t *) ARG1, sizeof(vki_sigset_t))) {
+         VG_(sigdelset)((vki_sigset_t *) ARG1, VG_SIGVGKILL);
+         /* We cannot mask VG_SIGVGKILL, as otherwise this thread would not
+            be killable by VG_(nuke_all_threads_except).
+            We thus silently ignore the user request to mask this signal.
+            Note that this is similar to what is done for e.g.
+            sigprocmask (see m_signals.c calculate_SKSS_from_SCSS). */
+      } else {
+         SET_STATUS_Failure(VKI_EFAULT);
+      }
    }
 }
 
@@ -4004,10 +4444,10 @@ PRE(sys_shmget)
    }
 }
 
-PRE(wrap_sys_shmat)
+PRE(sys_shmat)
 {
    UWord arg2tmp;
-   PRINT("wrap_sys_shmat ( %ld, %#lx, %ld )", SARG1, ARG2, SARG3);
+   PRINT("sys_shmat ( %ld, %#lx, %ld )", SARG1, ARG2, SARG3);
    PRE_REG_READ3(long, "shmat",
                  int, shmid, const void *, shmaddr, int, shmflg);
 #if defined(VGP_arm_linux)
@@ -4025,7 +4465,7 @@ PRE(wrap_sys_shmat)
       ARG2 = arg2tmp;  // used in POST
 }
 
-POST(wrap_sys_shmat)
+POST(sys_shmat)
 {
    ML_(generic_POST_sys_shmat)(tid, RES,ARG1,ARG2,ARG3);
 }
@@ -5282,6 +5722,17 @@ PRE(sys_init_module)
    PRE_MEM_RASCIIZ( "init_module(uargs)", ARG3 );
 }
 
+PRE(sys_finit_module)
+{
+   *flags |= SfMayBlock;
+
+   PRINT("sys_finit_module ( %lx, %#lx(\"%s\"), %lx )",
+         ARG1, ARG2, (HChar*)ARG2, ARG3);
+   PRE_REG_READ3(long, "finit_module",
+                 int, fd, const char *, params, int, flags);
+   PRE_MEM_RASCIIZ("finit_module(params)", ARG2);
+}
+
 PRE(sys_delete_module)
 {
    *flags |= SfMayBlock;
@@ -5399,7 +5850,7 @@ POST(sys_lookup_dcookie)
 #endif
 
 #if defined(VGP_amd64_linux) || defined(VGP_s390x_linux)        \
-      || defined(VGP_tilegx_linux) || defined(VGP_arm64_linux)
+      || defined(VGP_arm64_linux)
 PRE(sys_lookup_dcookie)
 {
    *flags |= SfMayBlock;
@@ -5455,19 +5906,45 @@ PRE(sys_fcntl)
    case VKI_F_GETLK:
    case VKI_F_SETLK:
    case VKI_F_SETLKW:
-#  if defined(VGP_x86_linux) || defined(VGP_mips64_linux)
-   case VKI_F_GETLK64:
-   case VKI_F_SETLK64:
-   case VKI_F_SETLKW64:
-#  endif
    case VKI_F_OFD_GETLK:
    case VKI_F_OFD_SETLK:
    case VKI_F_OFD_SETLKW:
       PRINT("sys_fcntl[ARG3=='lock'] ( %lu, %lu, %#lx )", ARG1, ARG2, ARG3);
       PRE_REG_READ3(long, "fcntl",
                     unsigned int, fd, unsigned int, cmd,
-                    struct flock64 *, lock);
+                    struct vki_flock *, lock);
+      {
+         struct vki_flock *lock = (struct vki_flock *) ARG3;
+         PRE_FIELD_READ("fcntl(lock->l_type)", lock->l_type);
+         PRE_FIELD_READ("fcntl(lock->l_whence)", lock->l_whence);
+         PRE_FIELD_READ("fcntl(lock->l_start)", lock->l_start);
+         PRE_FIELD_READ("fcntl(lock->l_len)", lock->l_len);
+         if (ARG2 == VKI_F_GETLK || ARG2 == VKI_F_OFD_GETLK) {
+            PRE_FIELD_WRITE("fcntl(lock->l_pid)", lock->l_pid);
+         }
+      }
       break;
+
+#  if defined(VGP_x86_linux) || defined(VGP_mips64_linux)
+   case VKI_F_GETLK64:
+   case VKI_F_SETLK64:
+   case VKI_F_SETLKW64:
+      PRINT("sys_fcntl[ARG3=='lock'] ( %lu, %lu, %#lx )", ARG1, ARG2, ARG3);
+      PRE_REG_READ3(long, "fcntl",
+                    unsigned int, fd, unsigned int, cmd,
+                    struct flock64 *, lock);
+      {
+         struct vki_flock64 *lock = (struct vki_flock64 *) ARG3;
+         PRE_FIELD_READ("fcntl(lock->l_type)", lock->l_type);
+         PRE_FIELD_READ("fcntl(lock->l_whence)", lock->l_whence);
+         PRE_FIELD_READ("fcntl(lock->l_start)", lock->l_start);
+         PRE_FIELD_READ("fcntl(lock->l_len)", lock->l_len);
+         if (ARG2 == VKI_F_GETLK64) {
+            PRE_FIELD_WRITE("fcntl(lock->l_pid)", lock->l_pid);
+         }
+      }
+      break;
+#  endif
 
    case VKI_F_SETOWN_EX:
       PRINT("sys_fcntl[F_SETOWN_EX] ( %lu, %lu, %lu )", ARG1, ARG2, ARG3);
@@ -5522,6 +5999,14 @@ POST(sys_fcntl)
       }
    } else if (ARG2 == VKI_F_GETOWN_EX) {
       POST_MEM_WRITE(ARG3, sizeof(struct vki_f_owner_ex));
+   } else if (ARG2 == VKI_F_GETLK || ARG2 == VKI_F_OFD_GETLK) {
+      struct vki_flock *lock = (struct vki_flock *) ARG3;
+      POST_FIELD_WRITE(lock->l_pid);
+#  if defined(VGP_x86_linux) || defined(VGP_mips64_linux)
+   } else if (ARG2 == VKI_F_GETLK64) {
+      struct vki_flock64 *lock = (struct vki_flock64 *) ARG3;
+      PRE_FIELD_WRITE("fcntl(lock->l_pid)", lock->l_pid);
+#  endif
    }
 }
 
@@ -5625,6 +6110,11 @@ POST(sys_fcntl64)
    ioctl wrappers
    ------------------------------------------------------------------ */
 
+struct vg_drm_version_info {
+   struct vki_drm_version data;
+   struct vki_drm_version *orig; // Original ARG3 pointer value at syscall entry.
+};
+
 PRE(sys_ioctl)
 {
    *flags |= SfMayBlock;
@@ -5666,8 +6156,12 @@ PRE(sys_ioctl)
    
    /* CDROM stuff. */
    case VKI_CDROM_DISC_STATUS:
+   case VKI_CDROMSTOP:
 
-   /* KVM ioctls that dont check for a numeric value as parameter */
+   /* DVD stuff */
+   case VKI_DVD_READ_STRUCT:
+
+   /* KVM ioctls that don't check for a numeric value as parameter */
    case VKI_KVM_S390_ENABLE_SIE:
    case VKI_KVM_CREATE_IRQCHIP:
    case VKI_KVM_S390_INITIAL_RESET:
@@ -6460,8 +6954,13 @@ PRE(sys_ioctl)
       PRE_MEM_WRITE( "ioctl(CDROMSUBCHNL)", ARG3, 
 		     sizeof(struct vki_cdrom_subchnl));
       break;
-   case VKI_CDROMREADMODE2:
-      PRE_MEM_READ( "ioctl(CDROMREADMODE2)", ARG3, VKI_CD_FRAMESIZE_RAW0 );
+   case VKI_CDROMREADMODE1: /*0x530d*/
+      PRE_MEM_READ("ioctl(CDROMREADMODE1)", ARG3, VKI_CD_FRAMESIZE_RAW1);
+      PRE_MEM_WRITE("ioctl(CDROMREADMODE1)", ARG3, VKI_CD_FRAMESIZE_RAW1);
+      break;
+   case VKI_CDROMREADMODE2: /*0x530c*/
+      PRE_MEM_READ("ioctl(CDROMREADMODE2)", ARG3, VKI_CD_FRAMESIZE_RAW0);
+      PRE_MEM_WRITE("ioctl(CDROMREADMODE2)", ARG3, VKI_CD_FRAMESIZE_RAW0);
       break;
    case VKI_CDROMREADTOCHDR:
       PRE_MEM_WRITE( "ioctl(CDROMREADTOCHDR)", ARG3, 
@@ -7238,7 +7737,8 @@ PRE(sys_ioctl)
 
    case VKI_DRM_IOCTL_VERSION:
       if (ARG3) {
-         struct vki_drm_version *data = (struct vki_drm_version *)ARG3;
+         struct vki_drm_version* data = (struct vki_drm_version *)ARG3;
+         struct vg_drm_version_info* info;
 	 PRE_MEM_WRITE("ioctl(DRM_VERSION).version_major", (Addr)&data->version_major, sizeof(data->version_major));
          PRE_MEM_WRITE("ioctl(DRM_VERSION).version_minor", (Addr)&data->version_minor, sizeof(data->version_minor));
          PRE_MEM_WRITE("ioctl(DRM_VERSION).version_patchlevel", (Addr)&data->version_patchlevel, sizeof(data->version_patchlevel));
@@ -7251,6 +7751,12 @@ PRE(sys_ioctl)
          PRE_MEM_READ("ioctl(DRM_VERSION).desc_len", (Addr)&data->desc_len, sizeof(data->desc_len));
          PRE_MEM_READ("ioctl(DRM_VERSION).desc", (Addr)&data->desc, sizeof(data->desc));
          PRE_MEM_WRITE("ioctl(DRM_VERSION).desc", (Addr)data->desc, data->desc_len);
+         info = VG_(malloc)("syswrap.ioctl.1", sizeof(*info));
+         // To ensure we VG_(free) info even when syscall fails:
+         *flags |= SfPostOnFail;
+         info->data = *data;
+         info->orig = data;
+         ARG3 = (Addr)&info->data;
       }
       break;
    case VKI_DRM_IOCTL_GET_UNIQUE:
@@ -8553,9 +9059,9 @@ PRE(sys_ioctl)
 
 POST(sys_ioctl)
 {
-   vg_assert(SUCCESS);
-
    ARG2 = (UInt)ARG2;
+
+   vg_assert(SUCCESS || (FAILURE && VKI_DRM_IOCTL_VERSION == ARG2));
 
    /* --- BEGIN special IOCTL handlers for specific Android hardware --- */
 
@@ -9072,6 +9578,8 @@ POST(sys_ioctl)
    case VKI_SNDRV_TIMER_IOCTL_STOP:
    case VKI_SNDRV_TIMER_IOCTL_CONTINUE:
    case VKI_SNDRV_TIMER_IOCTL_PAUSE:
+      break;
+
    case VKI_SNDRV_CTL_IOCTL_PVERSION: {
       POST_MEM_WRITE( (Addr)ARG3, sizeof(int) );
       break;
@@ -9182,6 +9690,7 @@ POST(sys_ioctl)
 
       /* CD ROM stuff (??)  */
    case VKI_CDROM_DISC_STATUS:
+   case VKI_CDROMSTOP:
       break;
    case VKI_CDROMSUBCHNL:
       POST_MEM_WRITE(ARG3, sizeof(struct vki_cdrom_subchnl));
@@ -9197,6 +9706,12 @@ POST(sys_ioctl)
       break;
    case VKI_CDROMVOLREAD:
       POST_MEM_WRITE(ARG3, sizeof(struct vki_cdrom_volctrl));
+      break;
+   case VKI_CDROMREADMODE1:
+      POST_MEM_WRITE(ARG3, VKI_CD_FRAMESIZE_RAW1);
+      break;
+   case VKI_CDROMREADMODE2:
+      POST_MEM_WRITE(ARG3, VKI_CD_FRAMESIZE_RAW0);
       break;
    case VKI_CDROMREADRAW:
       POST_MEM_WRITE(ARG3, VKI_CD_FRAMESIZE_RAW);
@@ -9216,6 +9731,10 @@ POST(sys_ioctl)
    case VKI_CDROM_CLEAR_OPTIONS: /* 0x5321 */
       break;
    case VKI_CDROM_GET_CAPABILITY: /* 0x5331 */
+      break;
+
+      /* DVD stuff */
+   case VKI_DVD_READ_STRUCT:
       break;
 
    case VKI_FIGETBSZ:
@@ -9719,16 +10238,26 @@ POST(sys_ioctl)
 
    case VKI_DRM_IOCTL_VERSION:
       if (ARG3) {
-         struct vki_drm_version *data = (struct vki_drm_version *)ARG3;
-	 POST_MEM_WRITE((Addr)&data->version_major, sizeof(data->version_major));
-         POST_MEM_WRITE((Addr)&data->version_minor, sizeof(data->version_minor));
-         POST_MEM_WRITE((Addr)&data->version_patchlevel, sizeof(data->version_patchlevel));
-         POST_MEM_WRITE((Addr)&data->name_len, sizeof(data->name_len));
-         POST_MEM_WRITE((Addr)data->name, data->name_len);
-         POST_MEM_WRITE((Addr)&data->date_len, sizeof(data->date_len));
-         POST_MEM_WRITE((Addr)data->date, data->date_len);
-         POST_MEM_WRITE((Addr)&data->desc_len, sizeof(data->desc_len));
-         POST_MEM_WRITE((Addr)data->desc, data->desc_len);
+         struct vki_drm_version* data = (struct vki_drm_version *)ARG3;
+         struct vg_drm_version_info* info = container_of(data, struct vg_drm_version_info, data);
+         const vki_size_t orig_name_len = info->orig->name_len;
+         const vki_size_t orig_date_len = info->orig->date_len;
+         const vki_size_t orig_desc_len = info->orig->desc_len;
+         *info->orig = info->data;
+         ARG3 = (Addr)info->orig;
+         data = info->orig;
+         VG_(free)(info);
+         if (SUCCESS) {
+            POST_MEM_WRITE((Addr)&data->version_major, sizeof(data->version_major));
+            POST_MEM_WRITE((Addr)&data->version_minor, sizeof(data->version_minor));
+            POST_MEM_WRITE((Addr)&data->version_patchlevel, sizeof(data->version_patchlevel));
+            POST_MEM_WRITE((Addr)&data->name_len, sizeof(data->name_len));
+            POST_MEM_WRITE((Addr)data->name, VG_MIN(data->name_len, orig_name_len));
+            POST_MEM_WRITE((Addr)&data->date_len, sizeof(data->date_len));
+            POST_MEM_WRITE((Addr)data->date, VG_MIN(data->date_len, orig_date_len));
+            POST_MEM_WRITE((Addr)&data->desc_len, sizeof(data->desc_len));
+            POST_MEM_WRITE((Addr)data->desc, VG_MIN(data->desc_len, orig_desc_len));
+         }
       }
       break;
    case VKI_DRM_IOCTL_GET_UNIQUE:
@@ -10646,16 +11175,23 @@ ML_(linux_POST_sys_sendmmsg) (ThreadId tid, UWord res,
    ------------------------------------------------------------------ */
 
 void
+ML_(linux_POST_traceme) ( ThreadId tid )
+{
+  ThreadState *tst = VG_(get_ThreadState)(tid);
+  tst->ptrace = VKI_PT_PTRACED;
+}
+
+void
 ML_(linux_PRE_getregset) ( ThreadId tid, long arg3, long arg4 )
 {
    struct vki_iovec *iov = (struct vki_iovec *) arg4;
 
-   PRE_MEM_READ("ptrace(getregset iovec->iov_base)",
-		(unsigned long) &iov->iov_base, sizeof(iov->iov_base));
-   PRE_MEM_READ("ptrace(getregset iovec->iov_len)",
-		(unsigned long) &iov->iov_len, sizeof(iov->iov_len));
-   PRE_MEM_WRITE("ptrace(getregset *(iovec->iov_base))",
-		 (unsigned long) iov->iov_base, iov->iov_len);
+   PRE_FIELD_READ("ptrace(getregset iovec->iov_base)", iov->iov_base);
+   PRE_FIELD_READ("ptrace(getregset iovec->iov_len)", iov->iov_len);
+   if (ML_(safe_to_deref)(iov, sizeof(struct vki_iovec))) {
+      PRE_MEM_WRITE("ptrace(getregset *(iovec->iov_base))",
+                    (Addr) iov->iov_base, iov->iov_len);
+   }
 }
 
 void
@@ -10663,12 +11199,12 @@ ML_(linux_PRE_setregset) ( ThreadId tid, long arg3, long arg4 )
 {
    struct vki_iovec *iov = (struct vki_iovec *) arg4;
 
-   PRE_MEM_READ("ptrace(setregset iovec->iov_base)",
-		(unsigned long) &iov->iov_base, sizeof(iov->iov_base));
-   PRE_MEM_READ("ptrace(setregset iovec->iov_len)",
-		(unsigned long) &iov->iov_len, sizeof(iov->iov_len));
-   PRE_MEM_READ("ptrace(setregset *(iovec->iov_base))",
-		(unsigned long) iov->iov_base, iov->iov_len);
+   PRE_FIELD_READ("ptrace(setregset iovec->iov_base)", iov->iov_base);
+   PRE_FIELD_READ("ptrace(setregset iovec->iov_len)", iov->iov_len);
+   if (ML_(safe_to_deref)(iov, sizeof(struct vki_iovec))) {
+      PRE_MEM_READ("ptrace(setregset *(iovec->iov_base))",
+                   (Addr) iov->iov_base, iov->iov_len);
+   }
 }
 
 void

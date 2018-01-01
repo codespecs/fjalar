@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2011-2015 Petr Pavlu
+   Copyright (C) 2011-2017 Petr Pavlu
       setup@dagobah.cz
 
    This program is free software; you can redistribute it and/or
@@ -28,7 +28,7 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-/* Copyright 2013-2016, Ivo Raisr <ivosh@ivosh.net>. */
+/* Copyright 2013-2017, Ivo Raisr <ivosh@ivosh.net>. */
 
 /* Copyright 2013, OmniTI Computer Consulting, Inc. All rights reserved. */
 
@@ -144,7 +144,7 @@
 #define __NR_setgroups                  SYS_setgroups
 #define __NR_getgroups                  SYS_getgroups
 #define __NR_sigprocmask                SYS_sigprocmask
-//#define __NR_sigsuspend                 SYS_sigsuspend
+#define __NR_sigsuspend                 SYS_sigsuspend
 #define __NR_sigaltstack                SYS_sigaltstack
 #define __NR_sigaction                  SYS_sigaction
 #define __NR_sigpending                 SYS_sigpending
@@ -157,7 +157,7 @@
 #define __NR_nfssys                     SYS_nfssys
 #define __NR_waitid                     SYS_waitid
 #define __NR_waitsys                    SYS_waitsys /* = SYS_waitid (historical) */
-//#define __NR_sigsendsys                 SYS_sigsendsys
+#define __NR_sigsendsys                 SYS_sigsendsys
 //#define __NR_hrtsys                     SYS_hrtsys
 #if defined(SOLARIS_UTIMESYS_SYSCALL)
 #define __NR_utimesys                   SYS_utimesys
@@ -237,8 +237,7 @@
 //#define __NR_brand                      SYS_brand
 //#define __NR_kaio                       SYS_kaio
 //#define __NR_cpc                        SYS_cpc
-//#define __NR_lgrpsys                    SYS_lgrpsys
-//#define __NR_meminfosys                 SYS_meminfosys /* = SYS_lgrpsys */
+#define __NR_lgrpsys                    SYS_lgrpsys
 #define __NR_rusagesys                  SYS_rusagesys
 #define __NR_port                       SYS_port
 #define __NR_pollsys                    SYS_pollsys
@@ -354,10 +353,8 @@
    VG_SOLARIS_SYSCALL_CONSTRUCT_FASTTRAP(T_GETHRVTIME)
 #define __NR_gethrestime \
    VG_SOLARIS_SYSCALL_CONSTRUCT_FASTTRAP(T_GETHRESTIME)
-/*
 #define __NR_getlgrp \
    VG_SOLARIS_SYSCALL_CONSTRUCT_FASTTRAP(T_GETLGRP)
-*/
 #if defined(SOLARIS_GETHRT_FASTTRAP)
 #define __NR_gethrt \
    VG_SOLARIS_SYSCALL_CONSTRUCT_FASTTRAP(T_GETHRT)

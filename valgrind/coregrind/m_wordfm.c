@@ -9,13 +9,13 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2007-2015 Julian Seward
+   Copyright (C) 2007-2017 Julian Seward
       jseward@acm.org
 
    This code is based on previous work by Nicholas Nethercote
    (coregrind/m_oset.c) which is
 
-   Copyright (C) 2005-2015 Nicholas Nethercote
+   Copyright (C) 2005-2017 Nicholas Nethercote
        njn@valgrind.org
 
    which in turn was derived partially from:
@@ -93,7 +93,7 @@ struct _WordFM {
 /* forward */
 static Bool avl_removeroot_wrk(AvlNode** t, Word(*kCmp)(UWord,UWord));
 
-/* Swing to the left.  Warning: no balance maintainance. */
+/* Swing to the left.  Warning: no balance maintenance. */
 static void avl_swl ( AvlNode** root )
 {
    AvlNode* a  = *root;
@@ -103,7 +103,7 @@ static void avl_swl ( AvlNode** root )
    b->child[0] = a;
 }
 
-/* Swing to the right.  Warning: no balance maintainance. */
+/* Swing to the right.  Warning: no balance maintenance. */
 static void avl_swr ( AvlNode** root )
 {
    AvlNode* a  = *root;
@@ -113,7 +113,7 @@ static void avl_swr ( AvlNode** root )
    b->child[1] = a;
 }
 
-/* Balance maintainance after especially nasty swings. */
+/* Balance maintenance after especially nasty swings. */
 static void avl_nasty ( AvlNode* root )
 {
    switch (root->balance) {

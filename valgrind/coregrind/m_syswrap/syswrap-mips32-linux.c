@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2010-2015 RT-RK
+   Copyright (C) 2010-2017 RT-RK
       mips-valgrind@rt-rk.com
 
    This program is free software; you can redistribute it and/or
@@ -77,41 +77,41 @@
    stack, and use 'retaddr' as f's return-to address.  Also, clear all
    the integer registers before entering f.*/ 
 
-__attribute__ ((noreturn)) 
-void ML_ (call_on_new_stack_0_1) (Addr stack, Addr retaddr, 
+__attribute__ ((noreturn))
+void ML_ (call_on_new_stack_0_1) (Addr stack, Addr retaddr,
                                   void (*f) (Word), Word arg1);
 //    a0 = stack
 //    a1 = retaddr
 //    a2 = f
 //    a3 = arg1
 asm (
-".text\n" 
-".globl vgModuleLocal_call_on_new_stack_0_1\n" 
+".text\n"
+".globl vgModuleLocal_call_on_new_stack_0_1\n"
 "vgModuleLocal_call_on_new_stack_0_1:\n" 
-"   move	$29, $4\n\t"	// stack to %sp
-"   move	$25, $6\n\t"	// f to t9/$25 
-"   move 	$4, $7\n\t"	// arg1 to $a0
-"   li 		$2, 0\n\t"	// zero all GP regs
-"   li 		$3, 0\n\t" 
-"   li 		$5, 0\n\t" 
-"   li 		$6, 0\n\t" 
-"   li 		$7, 0\n\t" 
-
-"   li 		$12, 0\n\t" 
-"   li 		$13, 0\n\t" 
-"   li 		$14, 0\n\t" 
-"   li 		$15, 0\n\t" 
-"   li 		$16, 0\n\t" 
-"   li 		$17, 0\n\t" 
-"   li 		$18, 0\n\t" 
-"   li 		$19, 0\n\t" 
-"   li 		$20, 0\n\t" 
-"   li 		$21, 0\n\t" 
-"   li 		$22, 0\n\t" 
-"   li 		$23, 0\n\t" 
-"   li 		$24, 0\n\t" 
-"   jr 		$25\n\t"	// jump to dst
-"   break	0x7\n"	// should never get here
+"   move  $29, $4\n\t"  // stack to %sp
+"   move  $31, $5\n\t"  // retaddr to $ra
+"   move  $25, $6\n\t"  // f to t9/$25
+"   move  $4, $7\n\t"   // arg1 to $a0
+"   li    $2, 0\n\t"    // zero all GP regs
+"   li    $3, 0\n\t"
+"   li    $5, 0\n\t"
+"   li    $6, 0\n\t"
+"   li    $7, 0\n\t"
+"   li    $12, 0\n\t"
+"   li    $13, 0\n\t"
+"   li    $14, 0\n\t"
+"   li    $15, 0\n\t"
+"   li    $16, 0\n\t"
+"   li    $17, 0\n\t"
+"   li    $18, 0\n\t"
+"   li    $19, 0\n\t"
+"   li    $20, 0\n\t"
+"   li    $21, 0\n\t"
+"   li    $22, 0\n\t"
+"   li    $23, 0\n\t"
+"   li    $24, 0\n\t"
+"   jr    $25\n\t"      // jump to dst
+"   break 0x7\n"        // should never get here
 ".previous\n" 
 );
 
@@ -144,14 +144,7 @@ asm (
 #define __NR_CLONE        VG_STRINGIFY(__NR_clone)
 #define __NR_EXIT         VG_STRINGIFY(__NR_exit)
 
-//extern
-UInt do_syscall_clone_mips_linux (Word (*fn) (void *), //a0      0     32
-                                   void *stack,         //a1      4     36
-                                   Int flags,           //a2      8     40
-                                   void *arg,           //a3      12    44
-                                   Int * child_tid,     //stack   16    48
-                                   Int * parent_tid,    //stack   20    52
-                                   Int tls);          //stack   24    56
+// See priv_syswrap-linux.h for arg profile.
 asm (
 ".text\n" 
 "   .globl   do_syscall_clone_mips_linux\n" 
@@ -219,109 +212,10 @@ asm (
 #undef __NR_EXIT
 
 // forward declarations
-
-static void setup_child (ThreadArchState *, ThreadArchState *);
 static SysRes sys_set_tls (ThreadId tid, Addr tlsptr);
 static SysRes mips_PRE_sys_mmap (ThreadId tid,
                                  UWord arg1, UWord arg2, UWord arg3,
                                  UWord arg4, UWord arg5, Off64T arg6);
-/* 
-   When a client clones, we need to keep track of the new thread.  This means:
-   1. allocate a ThreadId+ThreadState+stack for the thread
-   2. initialize the thread's new VCPU state
-   3. create the thread using the same args as the client requested,
-   but using the scheduler entrypoint for IP, and a separate stack
-   for SP.
- */ 
-
-static SysRes do_clone (ThreadId ptid, 
-                        UInt flags, Addr sp, 
-                        Int * parent_tidptr,
-                        Int * child_tidptr, 
-                        Addr child_tls) 
-{
-   const Bool debug = False;
-   ThreadId ctid = VG_ (alloc_ThreadState) ();
-   ThreadState * ptst = VG_ (get_ThreadState) (ptid);
-   ThreadState * ctst = VG_ (get_ThreadState) (ctid);
-   UInt ret = 0;
-   UWord * stack;
-   SysRes res;
-   vki_sigset_t blockall, savedmask;
-
-   VG_ (sigfillset) (&blockall);
-   vg_assert (VG_ (is_running_thread) (ptid));
-   vg_assert (VG_ (is_valid_tid) (ctid));
-   stack = (UWord *) ML_ (allocstack) (ctid);
-   if (stack == NULL) {
-      res = VG_ (mk_SysRes_Error) (VKI_ENOMEM);
-      goto out;
-   }
-   setup_child (&ctst->arch, &ptst->arch);
-
-   /* on MIPS we need to set V0 and A3 to zero */ 
-   ctst->arch.vex.guest_r2 = 0;
-   ctst->arch.vex.guest_r7 = 0;
-   if (sp != 0)
-      ctst->arch.vex.guest_r29 = sp;
-
-   ctst->os_state.parent = ptid;
-   ctst->sig_mask = ptst->sig_mask;
-   ctst->tmp_sig_mask = ptst->sig_mask;
-
-   /* Start the child with its threadgroup being the same as the
-      parent's.  This is so that any exit_group calls that happen
-      after the child is created but before it sets its
-      os_state.threadgroup field for real (in thread_wrapper in
-      syswrap-linux.c), really kill the new thread.  a.k.a this avoids
-      a race condition in which the thread is unkillable (via
-      exit_group) because its threadgroup is not set.  The race window
-      is probably only a few hundred or a few thousand cycles long.
-      See #226116. */ 
-
-   ctst->os_state.threadgroup = ptst->os_state.threadgroup;
-
-   ML_(guess_and_register_stack) (sp, ctst);
-
-   VG_TRACK (pre_thread_ll_create, ptid, ctid);
-   if (flags & VKI_CLONE_SETTLS) {
-      if (debug)
-        VG_(printf)("clone child has SETTLS: tls at %#lx\n", child_tls);
-      ctst->arch.vex.guest_r27 = child_tls;
-      res = sys_set_tls(ctid, child_tls);
-      if (sr_isError(res))
-         goto out;
-      ctst->arch.vex.guest_r27 = child_tls;
-  }
-
-   flags &= ~VKI_CLONE_SETTLS;
-   VG_ (sigprocmask) (VKI_SIG_SETMASK, &blockall, &savedmask);
-   /* Create the new thread */ 
-   ret = do_syscall_clone_mips_linux (ML_ (start_thread_NORETURN),
-                                    stack, flags, &VG_ (threads)[ctid], 
-                                    child_tidptr, parent_tidptr,
-                                    0 /*child_tls*/);
-
-   /* High half word64 is syscall return value.  Low half is
-      the entire CR, from which we need to extract CR0.SO. */ 
-   if (debug)
-      VG_(printf)("ret: 0x%x\n", ret);
-
-   res = VG_ (mk_SysRes_mips32_linux) (/*val */ ret, 0, /*errflag */ 0);
-
-   VG_ (sigprocmask) (VKI_SIG_SETMASK, &savedmask, NULL);
-
-   out:
-   if (sr_isError (res)) {
-      VG_(cleanup_thread) (&ctst->arch);
-      ctst->status = VgTs_Empty;
-      VG_TRACK (pre_thread_ll_exit, ctid);
-   }
-   ptst->arch.vex.guest_r2 = 0;
-
-   return res;
-}
-
 /* ---------------------------------------------------------------------
    More thread stuff
    ------------------------------------------------------------------ */ 
@@ -330,16 +224,6 @@ static SysRes do_clone (ThreadId ptid,
 // needs to be cleaned up da li ????!!!!???
 void
 VG_ (cleanup_thread) (ThreadArchState * arch) { } 
-
-void
-setup_child ( /*OUT*/ ThreadArchState * child,
-              /*IN*/ ThreadArchState * parent) 
-{
-   /* We inherit our parent's guest state. */ 
-   child->vex = parent->vex;
-   child->vex_shadow1 = parent->vex_shadow1;
-   child->vex_shadow2 = parent->vex_shadow2;
-}
 
 SysRes sys_set_tls ( ThreadId tid, Addr tlsptr )
 {
@@ -518,15 +402,16 @@ DECL_TEMPLATE (mips_linux, sys_mmap);
 DECL_TEMPLATE (mips_linux, sys_mmap2);
 DECL_TEMPLATE (mips_linux, sys_stat64);
 DECL_TEMPLATE (mips_linux, sys_lstat64);
+DECL_TEMPLATE (mips_linux, sys_fadvise64);
 DECL_TEMPLATE (mips_linux, sys_fstatat64);
 DECL_TEMPLATE (mips_linux, sys_fstat64);
-DECL_TEMPLATE (mips_linux, sys_clone);
 DECL_TEMPLATE (mips_linux, sys_sigreturn);
 DECL_TEMPLATE (mips_linux, sys_rt_sigreturn);
 DECL_TEMPLATE (mips_linux, sys_cacheflush);
 DECL_TEMPLATE (mips_linux, sys_set_thread_area);
 DECL_TEMPLATE (mips_linux, sys_pipe);
 DECL_TEMPLATE (mips_linux, sys_prctl);
+DECL_TEMPLATE (mips_linux, sys_ptrace);
 
 PRE(sys_mmap2) 
 {
@@ -553,14 +438,68 @@ PRE(sys_mmap)
                 int, prot, int, flags, int, fd, unsigned long, offset);
   r = mips_PRE_sys_mmap(tid, ARG1, ARG2, ARG3, ARG4, ARG5, (Off64T) ARG6);
   SET_STATUS_from_SysRes(r);
-} 
+}
+
+PRE(sys_ptrace)
+{
+   PRINT("sys_ptrace ( %ld, %ld, %#lx, %#lx )", SARG1, SARG2, ARG3, ARG4);
+   PRE_REG_READ4(int, "ptrace",
+                 long, request, long, pid, unsigned long, addr,
+                 unsigned long, data);
+   switch (ARG1) {
+      case VKI_PTRACE_PEEKTEXT:
+      case VKI_PTRACE_PEEKDATA:
+      case VKI_PTRACE_PEEKUSR:
+         PRE_MEM_WRITE("ptrace(peek)", ARG4, sizeof(long));
+         break;
+      case VKI_PTRACE_GETEVENTMSG:
+         PRE_MEM_WRITE("ptrace(geteventmsg)", ARG4, sizeof(unsigned long));
+         break;
+      case VKI_PTRACE_GETSIGINFO:
+         PRE_MEM_WRITE("ptrace(getsiginfo)", ARG4, sizeof(vki_siginfo_t));
+         break;
+      case VKI_PTRACE_SETSIGINFO:
+         PRE_MEM_READ("ptrace(setsiginfo)", ARG4, sizeof(vki_siginfo_t));
+         break;
+      case VKI_PTRACE_GETREGSET:
+         ML_(linux_PRE_getregset)(tid, ARG3, ARG4);
+         break;
+      default:
+        break;
+   }
+}
+
+POST(sys_ptrace)
+{
+   switch (ARG1) {
+      case VKI_PTRACE_TRACEME:
+         ML_(linux_POST_traceme)(tid);
+         break;
+      case VKI_PTRACE_PEEKTEXT:
+      case VKI_PTRACE_PEEKDATA:
+      case VKI_PTRACE_PEEKUSR:
+         POST_MEM_WRITE (ARG4, sizeof(long));
+         break;
+      case VKI_PTRACE_GETEVENTMSG:
+         POST_MEM_WRITE (ARG4, sizeof(unsigned long));
+      break;
+      case VKI_PTRACE_GETSIGINFO:
+         POST_MEM_WRITE (ARG4, sizeof(vki_siginfo_t));
+         break;
+      case VKI_PTRACE_GETREGSET:
+         ML_(linux_POST_getregset)(tid, ARG3, ARG4);
+         break;
+      default:
+      break;
+   }
+}
 
 // XXX: lstat64/fstat64/stat64 are generic, but not necessarily
 // applicable to every architecture -- I think only to 32-bit archs.
 // We're going to need something like linux/core_os32.h for such
 // things, eventually, I think.  --njn
  
-PRE (sys_lstat64) 
+PRE(sys_lstat64) 
 {
   PRINT ("sys_lstat64 ( %#lx(%s), %#lx )", ARG1, (HChar *) ARG1, ARG2);
   PRE_REG_READ2 (long, "lstat64", char *, file_name, struct stat64 *, buf);
@@ -568,7 +507,7 @@ PRE (sys_lstat64)
   PRE_MEM_WRITE ("lstat64(buf)", ARG2, sizeof (struct vki_stat64));
 } 
 
-POST (sys_lstat64) 
+POST(sys_lstat64) 
 {
   vg_assert (SUCCESS);
   if (RES == 0)
@@ -577,7 +516,7 @@ POST (sys_lstat64)
     }
 } 
 
-PRE (sys_stat64) 
+PRE(sys_stat64) 
 {
   PRINT ("sys_stat64 ( %#lx(%s), %#lx )", ARG1, (HChar *) ARG1, ARG2);
   PRE_REG_READ2 (long, "stat64", char *, file_name, struct stat64 *, buf);
@@ -585,12 +524,28 @@ PRE (sys_stat64)
   PRE_MEM_WRITE ("stat64(buf)", ARG2, sizeof (struct vki_stat64));
 }
 
-POST (sys_stat64)
+POST(sys_stat64)
 {
   POST_MEM_WRITE (ARG2, sizeof (struct vki_stat64));
 }
 
-PRE (sys_fstatat64)
+PRE(sys_fadvise64)
+{
+    PRINT("sys_fadvise64 ( %ld, %llu, %llu, %ld )",
+          SARG1, MERGE64(ARG3,ARG4), MERGE64(ARG5, ARG6), SARG7);
+
+   if (VG_(tdict).track_pre_reg_read) {
+      PRRSN;
+      PRA1("fadvise64", int, fd);
+      PRA3("fadvise64", vki_u32, MERGE64_FIRST(offset));
+      PRA4("fadvise64", vki_u32, MERGE64_SECOND(offset));
+      PRA5("fadvise64", vki_u32, MERGE64_FIRST(len));
+      PRA6("fadvise64", vki_u32, MERGE64_SECOND(len));
+      PRA7("fadvise64", int, advice);
+   }
+}
+
+PRE(sys_fstatat64)
 {
   // ARG4 =  int flags;  Flags are or'ed together, therefore writing them
   // as a hex constant is more meaningful.
@@ -602,114 +557,24 @@ PRE (sys_fstatat64)
   PRE_MEM_WRITE ("fstatat64(buf)", ARG3, sizeof (struct vki_stat64));
 }
 
-POST (sys_fstatat64)
+POST(sys_fstatat64)
 {
   POST_MEM_WRITE (ARG3, sizeof (struct vki_stat64));
 }
 
-PRE (sys_fstat64)
+PRE(sys_fstat64)
 {
   PRINT ("sys_fstat64 ( %lu, %#lx )", SARG1, ARG2);
   PRE_REG_READ2 (long, "fstat64", unsigned long, fd, struct stat64 *, buf);
   PRE_MEM_WRITE ("fstat64(buf)", ARG2, sizeof (struct vki_stat64));
 }
 
-POST (sys_fstat64)
+POST(sys_fstat64)
 {
   POST_MEM_WRITE (ARG2, sizeof (struct vki_stat64));
 } 
 
-PRE (sys_clone) 
-  {
-    Bool badarg = False;
-    UInt cloneflags;
-    PRINT ("sys_clone ( %lx, %#lx, %#lx, %#lx, %#lx )", ARG1, ARG2, ARG3,
-                                                        ARG4, ARG5);
-    PRE_REG_READ2 (int, "clone", unsigned long, flags,  void *, child_stack);
-    if (ARG1 & VKI_CLONE_PARENT_SETTID)
-      {
-        if (VG_ (tdict).track_pre_reg_read)
-          {
-            PRA3 ("clone", int *, parent_tidptr);
-          }
-        PRE_MEM_WRITE ("clone(parent_tidptr)", ARG3, sizeof (Int));
-        if (!VG_ (am_is_valid_for_client)(ARG3, sizeof (Int), VKI_PROT_WRITE))
-        {
-          badarg = True;
-        }
-      }
-    if (ARG1 & (VKI_CLONE_CHILD_SETTID | VKI_CLONE_CHILD_CLEARTID))
-      {
-        if (VG_ (tdict).track_pre_reg_read)
-          {
-            PRA5 ("clone", int *, child_tidptr);
-          }
-        PRE_MEM_WRITE ("clone(child_tidptr)", ARG5, sizeof (Int));
-        if (!VG_ (am_is_valid_for_client)(ARG5, sizeof (Int), VKI_PROT_WRITE))
-          {
-            badarg = True;
-          }
-      }
-    if (badarg)
-      {
-        SET_STATUS_Failure (VKI_EFAULT);
-        return;
-      }
-    cloneflags = ARG1;
-    if (!ML_ (client_signal_OK) (ARG1 & VKI_CSIGNAL))
-      {
-        SET_STATUS_Failure (VKI_EINVAL);
-        return;
-      }
-    /* Only look at the flags we really care about */ 
-    switch (cloneflags & (VKI_CLONE_VM | VKI_CLONE_FS
-           |VKI_CLONE_FILES | VKI_CLONE_VFORK))
-      {
-        case VKI_CLONE_VM | VKI_CLONE_FS | VKI_CLONE_FILES:
-        /* thread creation */ 
-        PRINT ("sys_clone1 ( %#lx, %#lx, %#lx, %#lx, %#lx )",
-               ARG1, ARG2, ARG3, ARG4, ARG5);
-        SET_STATUS_from_SysRes (do_clone (tid, 
-                                          ARG1, /* flags */ 
-                                          (Addr) ARG2, /* child SP */ 
-                                          (Int *) ARG3, /* parent_tidptr */ 
-                                          (Int *) ARG5, /* child_tidptr */ 
-                                          (Addr) ARG4));	/* child_tls */
-
-        break;
-        case VKI_CLONE_VFORK | VKI_CLONE_VM:	/* vfork */
-          /* FALLTHROUGH - assume vfork == fork */ 
-          cloneflags &= ~(VKI_CLONE_VFORK | VKI_CLONE_VM);
-        case 0:  /* plain fork */
-          SET_STATUS_from_SysRes (ML_ (do_fork_clone) (tid,
-                                  cloneflags, /* flags */ 
-                                  (Int *) ARG3, /* parent_tidptr */ 
-                                  (Int *) ARG5));	/* child_tidptr */
-        break;
-        default:
-          /* should we just ENOSYS? */ 
-          VG_ (message) (Vg_UserMsg, "Unsupported clone() flags: 0x%lx\n", ARG1);
-          VG_ (message) (Vg_UserMsg, "\n");
-          VG_ (message) (Vg_UserMsg, "The only supported clone() uses are:\n");
-          VG_ (message) (Vg_UserMsg, 
-                          " - via a threads library (LinuxThreads or NPTL)\n");
-          VG_ (message) (Vg_UserMsg,
-                          " - via the implementation of fork or vfork\n");
-          VG_ (unimplemented)("Valgrind does not support general clone().");
-    }
-    if (SUCCESS)
-      {
-        if (ARG1 & VKI_CLONE_PARENT_SETTID)
-          POST_MEM_WRITE (ARG3, sizeof (Int));
-        if (ARG1 & (VKI_CLONE_CHILD_SETTID | VKI_CLONE_CHILD_CLEARTID))
-          POST_MEM_WRITE (ARG5, sizeof (Int));
-        /* Thread creation was successful; let the child have the chance 
-         * to run */
-        *flags |= SfYieldAfter;
-      }
-}
-
-PRE (sys_sigreturn) 
+PRE(sys_sigreturn) 
 {
   PRINT ("sys_sigreturn ( )");
   vg_assert (VG_ (is_valid_tid) (tid));
@@ -724,7 +589,7 @@ PRE (sys_sigreturn)
   *flags |= SfPollAfter;
 }
 
-PRE (sys_rt_sigreturn) 
+PRE(sys_rt_sigreturn) 
 {
   PRINT ("rt_sigreturn ( )");
   vg_assert (VG_ (is_valid_tid) (tid));
@@ -740,7 +605,7 @@ PRE (sys_rt_sigreturn)
   *flags |= SfPollAfter;
 }
 
-PRE (sys_set_thread_area) 
+PRE(sys_set_thread_area) 
 {
    PRINT ("set_thread_area (%lx)", ARG1);
    PRE_REG_READ1(long, "set_thread_area", unsigned long, addr);
@@ -748,7 +613,7 @@ PRE (sys_set_thread_area)
 }
 
 /* Very much MIPS specific */
-PRE (sys_cacheflush)
+PRE(sys_cacheflush)
 {
   PRINT ("cacheflush (%lx, %ld, %ld)", ARG1, SARG2, SARG3);
   PRE_REG_READ3(long, "cacheflush", unsigned long, addr,
@@ -785,7 +650,7 @@ POST(sys_pipe)
    }
 }
 
-PRE (sys_prctl)
+PRE(sys_prctl)
 {
    switch (ARG1) {
       case VKI_PR_SET_FP_MODE:
@@ -829,6 +694,11 @@ PRE (sys_prctl)
          WRAPPER_PRE_NAME(linux, sys_prctl)(tid, layout, arrghs, status, flags);
          break;
    }
+}
+
+POST(sys_prctl)
+{
+   WRAPPER_POST_NAME(linux, sys_prctl)(tid, arrghs, status);
 }
 
 #undef PRE
@@ -875,7 +745,7 @@ static SyscallTableEntry syscall_main_table[] = {
    GENX_ (__NR_setuid,                 sys_setuid),                  // 23
    GENX_ (__NR_getuid,                 sys_getuid),                  // 24
    LINX_ (__NR_stime,                  sys_stime),                   // 25
-   //..    PLAXY(__NR_ptrace,            sys_ptrace),            // 26
+   PLAXY(__NR_ptrace,                  sys_ptrace),                  // 26
    GENX_ (__NR_alarm,                  sys_alarm),                   // 27
    //..    //   (__NR_oldfstat,          sys_fstat),  // 28
    GENX_ (__NR_pause,                  sys_pause),                   // 29
@@ -969,7 +839,7 @@ static SyscallTableEntry syscall_main_table[] = {
    LINXY (__NR_ipc,                    sys_ipc),                     // 117
    GENX_ (__NR_fsync,                  sys_fsync),                   // 118
    PLAX_ (__NR_sigreturn,              sys_sigreturn),               // 119
-   PLAX_ (__NR_clone,                  sys_clone),                   // 120
+   LINX_ (__NR_clone,                  sys_clone),                   // 120
    //..    //   (__NR_setdomainname,     sys_setdomainname),     // 121
    GENXY (__NR_uname,                  sys_newuname),                // 122
    //..    PLAX_(__NR_modify_ldt,        sys_modify_ldt),        // 123
@@ -1038,7 +908,7 @@ static SyscallTableEntry syscall_main_table[] = {
    //..
    LINX_ (__NR_setresgid,              sys_setresgid),               // 190
    LINXY (__NR_getresgid,              sys_getresgid),               // 191
-   PLAX_ (__NR_prctl,                  sys_prctl),                   // 192
+   PLAXY (__NR_prctl,                  sys_prctl),                   // 192
    PLAX_ (__NR_rt_sigreturn,           sys_rt_sigreturn),            // 193
    LINXY (__NR_rt_sigaction,           sys_rt_sigaction),            // 194
    LINXY (__NR_rt_sigprocmask,         sys_rt_sigprocmask),          // 195
@@ -1096,7 +966,7 @@ static SyscallTableEntry syscall_main_table[] = {
    LINXY (__NR_epoll_wait,             sys_epoll_wait),              // 250
    //..
    LINX_ (__NR_set_tid_address,        sys_set_tid_address),         // 252
-   LINX_ (__NR_fadvise64,              sys_fadvise64),               // 254
+   PLAX_ (__NR_fadvise64,              sys_fadvise64),               // 254
    GENXY (__NR_statfs64,               sys_statfs64),                // 255
    GENXY (__NR_fstatfs64,              sys_fstatfs64),               // 256
    //..

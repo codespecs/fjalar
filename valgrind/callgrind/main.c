@@ -8,10 +8,10 @@
    This file is part of Callgrind, a Valgrind tool for call graph
    profiling programs.
 
-   Copyright (C) 2002-2015, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2017, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This tool is derived from and contains code from Cachegrind
-   Copyright (C) 2002-2015 Nicholas Nethercote (njn@valgrind.org)
+   Copyright (C) 2002-2017 Nicholas Nethercote (njn@valgrind.org)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -1975,6 +1975,16 @@ void CLG_(post_clo_init)(void)
                 "sp-at-mem-access\n");
    }
 
+   if (CLG_(clo).collect_systime) {
+      VG_(needs_syscall_wrapper)(CLG_(pre_syscalltime),
+                                 CLG_(post_syscalltime));
+      syscalltime = CLG_MALLOC("cl.main.pci.1",
+                               VG_N_THREADS * sizeof syscalltime[0]);
+      for (UInt i = 0; i < VG_N_THREADS; ++i) {
+         syscalltime[i] = 0;
+      }
+   }
+
    if (VG_(clo_px_file_backed) != VexRegUpdSpAtMemAccess) {
       CLG_DEBUG(1, " Using user specified value for "
                 "--px-file-backed\n");
@@ -1988,13 +1998,13 @@ void CLG_(post_clo_init)(void)
       VG_(message)(Vg_UserMsg, 
                    "callgrind only works with --vex-iropt-unroll-thresh=0\n"
                    "=> resetting it back to 0\n");
-      VG_(clo_vex_control).iropt_unroll_thresh = 0;   // cannot be overriden.
+      VG_(clo_vex_control).iropt_unroll_thresh = 0;   // cannot be overridden.
    }
    if (VG_(clo_vex_control).guest_chase_thresh != 0) {
       VG_(message)(Vg_UserMsg,
                    "callgrind only works with --vex-guest-chase-thresh=0\n"
                    "=> resetting it back to 0\n");
-      VG_(clo_vex_control).guest_chase_thresh = 0; // cannot be overriden.
+      VG_(clo_vex_control).guest_chase_thresh = 0; // cannot be overridden.
    }
    
    CLG_DEBUG(1, "  dump threads: %s\n", CLG_(clo).separate_threads ? "Yes":"No");
@@ -2038,7 +2048,7 @@ void CLG_(pre_clo_init)(void)
     VG_(details_name)            ("Callgrind");
     VG_(details_version)         (NULL);
     VG_(details_description)     ("a call-graph generating cache profiler");
-    VG_(details_copyright_author)("Copyright (C) 2002-2015, and GNU GPL'd, "
+    VG_(details_copyright_author)("Copyright (C) 2002-2017, and GNU GPL'd, "
 				  "by Josef Weidendorfer et al.");
     VG_(details_bug_reports_to)  (VG_BUGS_TO);
     VG_(details_avg_translation_sizeB) ( 500 );
@@ -2047,8 +2057,8 @@ void CLG_(pre_clo_init)(void)
        = VG_(clo_px_file_backed)
        = VexRegUpdSpAtMemAccess; // overridable by the user.
 
-    VG_(clo_vex_control).iropt_unroll_thresh = 0;   // cannot be overriden.
-    VG_(clo_vex_control).guest_chase_thresh = 0;    // cannot be overriden.
+    VG_(clo_vex_control).iropt_unroll_thresh = 0;   // cannot be overridden.
+    VG_(clo_vex_control).guest_chase_thresh = 0;    // cannot be overridden.
 
     VG_(basic_tool_funcs)        (CLG_(post_clo_init),
                                   CLG_(instrument),
@@ -2063,8 +2073,6 @@ void CLG_(pre_clo_init)(void)
 
     VG_(needs_client_requests)(CLG_(handle_client_request));
     VG_(needs_print_stats)    (clg_print_stats);
-    VG_(needs_syscall_wrapper)(CLG_(pre_syscalltime),
-			       CLG_(post_syscalltime));
 
     VG_(track_start_client_code)  ( & clg_start_client_code_callback );
     VG_(track_pre_deliver_signal) ( & CLG_(pre_signal) );
@@ -2072,11 +2080,6 @@ void CLG_(pre_clo_init)(void)
 
     CLG_(set_clo_defaults)();
 
-    syscalltime = CLG_MALLOC("cl.main.pci.1",
-                             VG_N_THREADS * sizeof syscalltime[0]);
-    for (UInt i = 0; i < VG_N_THREADS; ++i) {
-       syscalltime[i] = 0;
-    }
 }
 
 VG_DETERMINE_INTERFACE_VERSION(CLG_(pre_clo_init))

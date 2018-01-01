@@ -8,7 +8,7 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2000-2015 Julian Seward 
+   Copyright (C) 2000-2017 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -1607,6 +1607,14 @@ IRAtom* mkLazy2 ( MCEnv* mce, IRType finalVty, IRAtom* va1, IRAtom* va2 )
    if (t1 == Ity_I64 && t2 == Ity_I64 && finalVty == Ity_I32) {
       if (0) VG_(printf)("mkLazy2: I64 x I64 -> I32\n");
       at = mkUifU(mce, Ity_I64, va1, va2);
+      at = mkPCastTo(mce, Ity_I32, at);
+      return at;
+   }
+
+   /* I32 x I32 -> I32 */
+   if (t1 == Ity_I32 && t2 == Ity_I32 && finalVty == Ity_I32) {
+      if (0) VG_(printf)("mkLazy2: I32 x I32 -> I32\n");
+      at = mkUifU(mce, Ity_I32, va1, va2);
       at = mkPCastTo(mce, Ity_I32, at);
       return at;
    }
@@ -3942,6 +3950,16 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
       case Iop_CmpExpD128:
          return mkLazy2(mce, Ity_I32, vatom1, vatom2);
 
+      case Iop_MaxNumF32:
+      case Iop_MinNumF32:
+         /* F32 x F32 -> F32 */
+         return mkLazy2(mce, Ity_I32, vatom1, vatom2);
+
+      case Iop_MaxNumF64:
+      case Iop_MinNumF64:
+         /* F64 x F64 -> F64 */
+         return mkLazy2(mce, Ity_I64, vatom1, vatom2);
+
       /* non-FP after here */
 
       case Iop_DivModU64to32:
@@ -5370,7 +5388,7 @@ void do_shadow_Dirty ( MCEnv* mce, IRDirty* d )
    for (i = 0; d->args[i]; i++) {
       IRAtom* arg = d->args[i];
       if ( (d->cee->mcx_mask & (1<<i))
-           || UNLIKELY(is_IRExpr_VECRET_or_BBPTR(arg)) ) {
+           || UNLIKELY(is_IRExpr_VECRET_or_GSPTR(arg)) ) {
          /* ignore this arg */
       } else {
          here = mkPCastTo( mce, Ity_I32, expr2vbits(mce, arg) );
@@ -6268,7 +6286,7 @@ static Bool checkForBogusLiterals ( /*FLAT*/ IRStmt* st )
          d = st->Ist.Dirty.details;
          for (i = 0; d->args[i]; i++) {
             IRAtom* atom = d->args[i];
-            if (LIKELY(!is_IRExpr_VECRET_or_BBPTR(atom))) {
+            if (LIKELY(!is_IRExpr_VECRET_or_GSPTR(atom))) {
                if (isBogusAtom(atom))
                   return True;
             }
@@ -7273,7 +7291,7 @@ static void do_origins_Dirty ( MCEnv* mce, IRDirty* d )
    for (i = 0; d->args[i]; i++) {
       IRAtom* arg = d->args[i];
       if ( (d->cee->mcx_mask & (1<<i))
-           || UNLIKELY(is_IRExpr_VECRET_or_BBPTR(arg)) ) {
+           || UNLIKELY(is_IRExpr_VECRET_or_GSPTR(arg)) ) {
          /* ignore this arg */
       } else {
          here = schemeE( mce, arg );

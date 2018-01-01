@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2010-2015 RT-RK
+   Copyright (C) 2010-2017 RT-RK
       mips-valgrind@rt-rk.com
 
    This program is free software; you can redistribute it and/or
@@ -40,7 +40,8 @@
 /*---               mips to IR conversion               ---*/
 /*---------------------------------------------------------*/
 
-/* Convert one MIPS insn to IR. See the type DisOneInstrFn in bb_to_IR.h. */
+/* Convert one MIPS insn to IR. See the type DisOneInstrFn in 
+   guest_generic_bb_to_IR.h. */
 extern DisResult disInstr_MIPS ( IRSB*        irbb,
                                  Bool         (*resteerOkFn) (void *, Addr),
                                  Bool         resteerCisOk,
@@ -93,10 +94,13 @@ typedef enum {
    SUBS,     SUBD,    DIVS
 } flt_op;
 
-#if defined(__mips__) && ((defined(__mips_isa_rev) && __mips_isa_rev >= 2))
-extern UInt mips32_dirtyhelper_rdhwr ( UInt rt, UInt rd );
-extern ULong mips64_dirtyhelper_rdhwr ( ULong rt, ULong rd );
+#if defined (_MIPSEL)
+   #define MIPS_IEND Iend_LE
+#else
+   #define MIPS_IEND Iend_BE
 #endif
+
+extern HWord mips_dirtyhelper_rdhwr ( UInt rd );
 
 /* Calculate FCSR in fp32 mode. */
 extern UInt mips_dirtyhelper_calculate_FCSR_fp32 ( void* guest_state, UInt fs,

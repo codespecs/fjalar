@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2015 Julian Seward
+   Copyright (C) 2000-2017 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -145,7 +145,7 @@ struct _AddrInfo {
       // blocks and Arena blocks.
       // alloc_tinfo identifies the thread that has allocated the block.
       // This is used by tools such as helgrind that maintain
-      // more detailed informations about client blocks.
+      // more detailed information about client blocks.
       struct {
          BlockKind   block_kind;
          const HChar* block_desc;   // "block","mempool","user-defined",arena

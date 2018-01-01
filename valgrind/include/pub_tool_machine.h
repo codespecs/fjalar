@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2015 Julian Seward
+   Copyright (C) 2000-2017 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -102,12 +102,6 @@
 #  define VG_MIN_INSTR_SZB          4
 #  define VG_MAX_INSTR_SZB          4 
 #  define VG_CLREQ_SZB             20
-#  define VG_STACK_REDZONE_SZB      0
-
-#elif defined(VGP_tilegx_linux)
-#  define VG_MIN_INSTR_SZB          8
-#  define VG_MAX_INSTR_SZB          8
-#  define VG_CLREQ_SZB             24
 #  define VG_STACK_REDZONE_SZB      0
 
 #else

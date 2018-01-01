@@ -84,6 +84,7 @@ valgrind/drd/tests/bug-235681
 valgrind/drd/tests/circular_buffer
 valgrind/drd/tests/concurrent_close
 valgrind/drd/tests/custom_alloc
+valgrind/drd/tests/dlopen_main
 valgrind/drd/tests/fp_race
 valgrind/drd/tests/free_is_write
 valgrind/drd/tests/hold_lock
@@ -429,19 +430,24 @@ valgrind/none/tests/amd64/asorep
 valgrind/none/tests/amd64/avx-1
 valgrind/none/tests/amd64/avx2-1
 valgrind/none/tests/amd64/bmi
+valgrind/none/tests/amd64/bt_flags
 valgrind/none/tests/amd64/bug127521-64
 valgrind/none/tests/amd64/bug132813-amd64
 valgrind/none/tests/amd64/bug132918
 valgrind/none/tests/amd64/bug137714-amd64
 valgrind/none/tests/amd64/bug156404-amd64
+valgrind/none/tests/amd64/cet_nops
 valgrind/none/tests/amd64/clc
 valgrind/none/tests/amd64/cmpxchg
 valgrind/none/tests/amd64/crc32
 valgrind/none/tests/amd64/faultstatus
+valgrind/none/tests/amd64/fb_test_amd64
 valgrind/none/tests/amd64/fcmovnu
 valgrind/none/tests/amd64/fma
 valgrind/none/tests/amd64/fma4
 valgrind/none/tests/amd64/fxtract
+valgrind/none/tests/amd64-linux/cet_nops_fs
+valgrind/none/tests/amd64-linux/cet_nops_gs
 valgrind/none/tests/amd64-linux/bug345887
 valgrind/none/tests/amd64-linux/map_32bits
 valgrind/none/tests/amd64/getseg
@@ -519,6 +525,7 @@ valgrind/none/tests/libvex_test
 valgrind/none/tests/linux/blockfault
 valgrind/none/tests/linux/brk-overflow1
 valgrind/none/tests/linux/brk-overflow2
+valgrind/none/tests/linux/clonev
 valgrind/none/tests/linux/mremap
 valgrind/none/tests/linux/mremap2
 valgrind/none/tests/linux/mremap3
@@ -542,6 +549,7 @@ valgrind/none/tests/process_vm_readv_writev
 valgrind/none/tests/procfs-cmdline-exe
 valgrind/none/tests/pselect_alarm
 valgrind/none/tests/pselect_sigmask_null
+valgrind/none/tests/pth_2sig
 valgrind/none/tests/pth_atfork1
 valgrind/none/tests/pth_blockedsig
 valgrind/none/tests/pth_cancel1
@@ -569,6 +577,7 @@ valgrind/none/tests/sha1_test
 valgrind/none/tests/shortpush
 valgrind/none/tests/shorts
 valgrind/none/tests/sigstackgrowth
+valgrind/none/tests/sigsusp
 valgrind/none/tests/stackgrowth
 valgrind/none/tests/syscall-restart1
 valgrind/none/tests/syscall-restart2
@@ -582,6 +591,7 @@ valgrind/none/tests/tls
 valgrind/none/tests/unit_debuglog
 valgrind/none/tests/valgrind_cpp_test
 valgrind/none/tests/vgprintf
+valgrind/none/tests/vgprintf_nvalgrind
 valgrind/perf/bigcode
 valgrind/perf/bz2
 valgrind/perf/fbench
@@ -595,6 +605,7 @@ valgrind/perf/tinycc
 valgrind/perf/vg_perf
 valgrind/tests/arch_test
 valgrind/tests/is_ppc64_BE
+valgrind/tests/libc_test
 valgrind/tests/min_power_isa
 valgrind/tests/mips_features
 valgrind/tests/os_test

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2015 Nicholas Nethercote
+   Copyright (C) 2000-2017 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -39,12 +39,10 @@ extern Word ML_(start_thread_NORETURN) ( void* arg );
 extern Addr ML_(allocstack)            ( ThreadId tid );
 extern void ML_(call_on_new_stack_0_1) ( Addr stack, Addr retaddr,
 			                 void (*f)(Word), Word arg1 );
-extern SysRes ML_(do_fork_clone) ( ThreadId tid, UInt flags,
-                                   Int* parent_tidptr, Int* child_tidptr );
-
 
 // Linux-specific (but non-arch-specific) syscalls
 
+DECL_TEMPLATE(linux, sys_clone)
 DECL_TEMPLATE(linux, sys_mount);
 DECL_TEMPLATE(linux, sys_oldumount);
 DECL_TEMPLATE(linux, sys_umount);
@@ -60,6 +58,10 @@ DECL_TEMPLATE(linux, sys_tee);
 DECL_TEMPLATE(linux, sys_vmsplice);
 DECL_TEMPLATE(linux, sys_readahead);
 DECL_TEMPLATE(linux, sys_move_pages);
+
+// clone is similar enough between linux variants to have a generic
+// version, but which will call an extern defined in syswrap-<platform>-linux.c
+DECL_TEMPLATE(linux, sys_clone);
 
 // POSIX, but various sub-cases differ between Linux and Darwin.
 DECL_TEMPLATE(linux, sys_fcntl);
@@ -271,6 +273,7 @@ DECL_TEMPLATE(linux, sys_stime);  /* maybe generic?  I'm not sure */
 
 // Linux specific (kernel modules)
 DECL_TEMPLATE(linux, sys_init_module);
+DECL_TEMPLATE(linux, sys_finit_module);
 DECL_TEMPLATE(linux, sys_delete_module);
 
 // Linux-specific (oprofile-related)
@@ -316,6 +319,7 @@ extern void ML_(linux_POST_sys_sendmmsg)   ( TId, UW, UW, UW, UW, UW );
 // Linux-specific (but non-arch-specific) ptrace wrapper helpers
 extern void ML_(linux_PRE_getregset) ( ThreadId, long, long );
 extern void ML_(linux_PRE_setregset) ( ThreadId, long, long );
+extern void ML_(linux_POST_traceme)  ( ThreadId );
 extern void ML_(linux_POST_getregset)( ThreadId, long, long );
 
 #undef TId
@@ -337,7 +341,7 @@ DECL_TEMPLATE(linux, sys_semop);
 DECL_TEMPLATE(linux, sys_semctl);
 DECL_TEMPLATE(linux, sys_semtimedop);
 /* Shared memory */
-DECL_TEMPLATE(linux, wrap_sys_shmat);
+DECL_TEMPLATE(linux, sys_shmat);
 DECL_TEMPLATE(linux, sys_shmget);
 DECL_TEMPLATE(linux, sys_shmdt);
 DECL_TEMPLATE(linux, sys_shmctl);
@@ -368,6 +372,75 @@ DECL_TEMPLATE(linux, sys_getpeername);
 DECL_TEMPLATE(linux, sys_socketpair);
 DECL_TEMPLATE(linux, sys_kcmp);
 
+// Some arch specific functions called from syswrap-linux.c
+extern Int do_syscall_clone_x86_linux ( Word (*fn)(void *), 
+                                        void* stack, 
+                                        Int   flags, 
+                                        void* arg,
+                                        Int*  child_tid, 
+                                        Int*  parent_tid, 
+                                        void* tls_ptr);
+extern SysRes ML_(x86_sys_set_thread_area) ( ThreadId tid,
+                                             vki_modify_ldt_t* info );
+extern void ML_(x86_setup_LDT_GDT) ( /*OUT*/ ThreadArchState *child, 
+                                     /*IN*/  ThreadArchState *parent );
+
+extern Long do_syscall_clone_amd64_linux ( Word (*fn)(void *), 
+                                           void* stack, 
+                                           Long  flags, 
+                                           void* arg,
+                                           Int* child_tid, 
+                                           Int* parent_tid, 
+                                           void* tls_ptr);
+extern ULong do_syscall_clone_ppc32_linux ( Word (*fn)(void *), 
+                                            void* stack, 
+                                            Int   flags, 
+                                            void* arg,
+                                            Int*  child_tid, 
+                                            Int*  parent_tid, 
+                                            void* tls_ptr);
+extern ULong do_syscall_clone_ppc64_linux ( Word (*fn)(void *), 
+                                            void* stack, 
+                                            Int   flags, 
+                                            void* arg,
+                                            Int*  child_tid, 
+                                            Int*  parent_tid, 
+                                            void* tls_ptr );
+extern ULong do_syscall_clone_s390x_linux ( void  *stack,
+                                            ULong flags,
+                                            Int   *parent_tid,
+                                            Int   *child_tid,
+                                            void*  tls_ptr,
+                                            Word (*fn)(void *),
+                                            void  *arg);
+extern Long do_syscall_clone_arm64_linux ( Word (*fn)(void *), 
+                                           void* stack, 
+                                           Long  flags, 
+                                           void* arg,
+                                           Int*  child_tid,
+                                           Int*  parent_tid,
+                                           void* tls_ptr );
+extern ULong do_syscall_clone_arm_linux   ( Word (*fn)(void *), 
+                                            void* stack, 
+                                            Int   flags, 
+                                            void* arg,
+                                            Int*  child_tid,
+                                            Int*  parent_tid,
+                                            void* tls_ptr );
+extern ULong do_syscall_clone_mips64_linux ( Word (*fn) (void *),  /* a0 - 4 */
+                                             void* stack,          /* a1 - 5 */
+                                             Int   flags,          /* a2 - 6 */
+                                             void* arg,            /* a3 - 7 */
+                                             Int*  parent_tid,     /* a4 - 8 */
+                                             void* tls_ptr,        /* a5 - 9 */
+                                             Int*  child_tid );    /* a6 - 10 */
+extern UInt do_syscall_clone_mips_linux ( Word (*fn) (void *), //a0     0    32
+                                          void* stack,         //a1     4    36
+                                          Int   flags,         //a2     8    40
+                                          void* arg,           //a3     12   44
+                                          Int*  child_tid,     //stack  16   48
+                                          Int*  parent_tid,    //stack  20   52
+                                          void* tls_ptr);      //stack  24   56
 #endif   // __PRIV_SYSWRAP_LINUX_H
 
 /*--------------------------------------------------------------------*/

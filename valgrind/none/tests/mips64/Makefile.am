@@ -18,9 +18,10 @@ EXTRA_DIST = \
 	cvm_lx_ins.stdout.exp-LE cvm_lx_ins.stdout.exp-BE \
 	cvm_lx_ins.stdout.exp-non-octeon \
 	cvm_lx_ins.stderr.exp cvm_lx_ins.vgtest \
-	cvm_atomic.stdout.exp-LE cvm_atomic.stdout.exp-non-octeon \
+	cvm_atomic.stdout.exp-LE cvm_atomic.stdout.exp-BE \
+	cvm_atomic.stdout.exp-non-octeon \
 	cvm_atomic.stderr.exp cvm_atomic.vgtest \
-	cvm_atomic_thread.stdout.exp-LE cvm_atomic_thread.stdout.exp-non-octeon \
+	cvm_atomic_thread.stdout.exp cvm_atomic_thread.stdout.exp-non-octeon \
 	cvm_atomic_thread.stderr.exp cvm_atomic_thread.vgtest \
 	extract_insert_bit_field.stdout.exp-mips64 \
 	extract_insert_bit_field.stdout.exp-mips64r2 \
@@ -54,7 +55,8 @@ EXTRA_DIST = \
 	test_block_size.vgtest \
 	test_fcsr.stdout.exp test_fcsr.stderr.exp \
 	test_fcsr.vgtest \
-	test_math.stdout.exp test_math.stderr.exp test_math.vgtest \
+	test_math.stdout.exp test_math.stdout.exp-older-gcc \
+	test_math.stderr.exp test_math.vgtest \
 	unaligned_load.stdout.exp-BE unaligned_load.stdout.exp-LE \
 	unaligned_load.stderr.exp unaligned_load.vgtest \
 	unaligned_load_store.stdout.exp-LE unaligned_load_store.stdout.exp-BE \

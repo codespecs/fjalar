@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2007-2015 OpenWorks LLP
+   Copyright (C) 2007-2017 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -38,9 +38,9 @@
 /* See pub_tool_xarray.h for details of what this is all about. */
 
 struct _XArray {
-   void* (*alloc_fn) ( const HChar*, SizeT ); /* alloc fn (nofail) */
+   Alloc_Fn_t alloc_fn;                /* alloc fn (nofail) */
    const HChar* cc;                    /* cost centre for alloc */
-   void  (*free_fn) ( void* );         /* free fn */
+   Free_Fn_t free_fn;                  /* free fn */
    Int   (*cmpFn) ( const void*, const void* ); /* cmp fn (may be NULL) */
    Word  elemSzB;   /* element size in bytes */
    void* arr;       /* pointer to elements */
@@ -50,9 +50,9 @@ struct _XArray {
 };
 
 
-XArray* VG_(newXA) ( void*(*alloc_fn)(const HChar*,SizeT), 
+XArray* VG_(newXA) ( Alloc_Fn_t alloc_fn,
                      const HChar* cc,
-                     void(*free_fn)(void*),
+                     Free_Fn_t free_fn,
                      Word elemSzB )
 {
    XArray* xa;
@@ -373,6 +373,16 @@ void VG_(xaprintf)( XArray* dst, const HChar* format, ... )
    va_end(vargs);
 }
 
+Bool VG_(strIsMemberXA)(const XArray* xa, const HChar* str )
+{
+   Word i;
+   HChar** members = (HChar**)xa->arr;
+
+   for (i = 0; i < xa->usedsizeE; i++)
+      if (VG_(strcmp)(str, members[i]) == 0)
+         return True;
+   return False;
+}
 
 /*--------------------------------------------------------------------*/
 /*--- end                                               m_xarray.c ---*/

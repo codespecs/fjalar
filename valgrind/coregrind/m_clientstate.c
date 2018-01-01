@@ -9,7 +9,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2015 Julian Seward 
+   Copyright (C) 2000-2017 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -31,6 +31,7 @@
 */
 
 #include "pub_core_basics.h"
+#include "pub_core_threadstate.h"
 #include "pub_core_vki.h"
 #include "pub_core_xarray.h"
 #include "pub_core_clientstate.h"
@@ -50,7 +51,7 @@
 Addr  VG_(clstk_start_base)  = 0;
 /* Initial highest address of the stack segment of the main thread. */
 Addr  VG_(clstk_end)   = 0;
-UWord VG_(clstk_id)    = 0;
+UWord VG_(clstk_id)    = NULL_STK_ID;
 /* Maximum size of the main thread's client stack. */
 SizeT VG_(clstk_max_size) = 0;
 

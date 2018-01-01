@@ -10,6 +10,12 @@ endif
 if VGCONF_ARCHS_INCLUDE_AMD64
 SUBDIRS += amd64
 endif
+if VGCONF_ARCHS_INCLUDE_MIPS32
+SUBDIRS += mips32
+endif
+if VGCONF_ARCHS_INCLUDE_MIPS64
+SUBDIRS += mips64
+endif
 if VGCONF_ARCHS_INCLUDE_PPC32
 SUBDIRS += ppc32
 endif
@@ -50,7 +56,7 @@ endif
 
 DIST_SUBDIRS = x86 amd64 ppc32 ppc64 s390x linux \
 		darwin solaris x86-linux amd64-linux arm64-linux \
-		x86-solaris amd64-solaris \
+		x86-solaris amd64-solaris mips32 mips64 \
 		common .
 
 dist_noinst_SCRIPTS = \
@@ -214,11 +220,9 @@ EXTRA_DIST = \
 	origin5-bz2.stderr.exp-glibc212-s390x \
 	origin5-bz2.stderr.exp-glibc234-s390x \
 	origin5-bz2.stderr.exp-glibc218-mips32 \
-	origin5-bz2.stderr.exp-glibc212-tilegx \
 	origin6-fp.vgtest origin6-fp.stdout.exp \
 	origin6-fp.stderr.exp-glibc25-amd64 \
 	origin6-fp.stderr.exp-glibc27-ppc64 \
-	origin6-fp.stderr.exp-glibc212-tilegx \
 	overlap.stderr.exp overlap.stdout.exp overlap.vgtest \
 	partiallydefinedeq.vgtest partiallydefinedeq.stderr.exp \
 	partiallydefinedeq.stderr.exp4 \

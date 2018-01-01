@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2005-2015 Apple Inc.
+   Copyright (C) 2005-2017 Apple Inc.
       Greg Parker  gparker@apple.com
 
    This program is free software; you can redistribute it and/or
@@ -234,8 +234,12 @@ DECL_TEMPLATE(darwin, csops);                   // 169
 // old getdents
 // old gc_control
 // NYI add_profil 176
-// 177
-// 178
+#if DARWIN_VERS >= DARWIN_10_12
+// NYI kdebug_typefilter                        // 177
+#endif /* DARWIN_VERS >= DARWIN_10_12 */
+#if DARWIN_VERS >= DARWIN_10_11
+// NYI kdebug_trace_string                      // 178
+#endif /* DARWIN_VERS >= DARWIN_10_11 */
 // 179
 DECL_TEMPLATE(darwin, kdebug_trace);            // 180
 // GEN setgid 181
@@ -463,7 +467,9 @@ DECL_TEMPLATE(darwin, kevent64);                // 369
 DECL_TEMPLATE(darwin, __thread_selfid);         // 372
 #endif
 // 373
-// 374
+#if DARWIN_VERS >= DARWIN_10_11
+// NYI kevent_qos                               // 374
+#endif /* DARWIN_VERS >= DARWIN_10_11 */
 // 375
 // 376
 // 377
@@ -555,15 +561,19 @@ DECL_TEMPLATE(darwin, disconnectx);              // 448
 // NYI coalition_info  // 459
 DECL_TEMPLATE(darwin, necp_match_policy);        // 460
 DECL_TEMPLATE(darwin, getattrlistbulk);          // 461
-// 462
+#endif /* DARWIN_VERS >= DARWIN_10_10 */
+#if DARWIN_VERS >= DARWIN_10_12
+// NYI clonefileat     // 462
+#endif /* DARWIN_VERS >= DARWIN_10_12 */
+#if DARWIN_VERS >= DARWIN_10_10
 // NYI openat          // 463
 // NYI openat_nocancel // 464
 // NYI renameat        // 465
-// NYI faccessat       // 466
+DECL_TEMPLATE(darwin, faccessat);                // 466
 // NYI fchmodat        // 467
 // NYI fchownat        // 468
 // NYI fstatat         // 469
-// NYI fstatat64       // 470
+DECL_TEMPLATE(darwin, fstatat64);                // 470
 // NYI linkat          // 471
 // NYI unlinkat        // 472
 DECL_TEMPLATE(darwin, readlinkat);               // 473
@@ -576,14 +586,50 @@ DECL_TEMPLATE(darwin, bsdthread_ctl);            // 478
 // NYI recvmsg_x       // 480
 // NYI sendmsg_x       // 481
 // NYI thread_selfusage  // 482
-// NYI csrctl          // 483
+DECL_TEMPLATE(darwin, csrctl);                      // 483
 DECL_TEMPLATE(darwin, guarded_open_dprotected_np);  // 484
 DECL_TEMPLATE(darwin, guarded_write_np);            // 485
 DECL_TEMPLATE(darwin, guarded_pwrite_np);           // 486
 DECL_TEMPLATE(darwin, guarded_writev_np);           // 487
-// NYI rename_ext      // 488
+// NYI renameatx_np                                 // 488
 // NYI mremap_encrypted  // 489
 #endif /* DARWIN_VERS >= DARWIN_10_10 */
+#if DARWIN_VERS >= DARWIN_10_11
+// NYI netagent_trigger                             // 490
+// NYI stack_snapshot_with_config                   // 491
+// NYI microstackshot                               // 492
+// NYI grab_pgo_data                                // 493
+// NYI persona                                      // 494
+// 495
+// 496
+// 497
+// 498
+// NYI work_interval_ctl                            // 499
+#endif /* DARWIN_VERS >= DARWIN_10_11 */
+#if DARWIN_VERS >= DARWIN_10_12
+DECL_TEMPLATE(darwin, getentropy);                  // 500
+// NYI necp_open                                    // 501
+// NYI necp_client_action                           // 502
+// 503
+// 504
+// 505
+// 506
+// 507
+// 508
+// 509
+// 510
+// 511
+// 512
+// 513
+// 514
+// NYI ulock_wait                                   // 515
+DECL_TEMPLATE(darwin, ulock_wake);                  // 516
+// NYI fclonefileat                                 // 517
+// NYI fs_snapshot                                  // 518
+// 519
+// NYI terminate_with_payload                       // 520
+// NYI abort_with_payload                           // 521
+#endif /* DARWIN_VERS >= DARWIN_10_12 */
 
 // Mach message helpers
 DECL_TEMPLATE(darwin, mach_port_set_context);
@@ -699,6 +745,13 @@ DECL_TEMPLATE(darwin, semaphore_timedwait);
 DECL_TEMPLATE(darwin, semaphore_timedwait_signal);
 DECL_TEMPLATE(darwin, task_for_pid);
 DECL_TEMPLATE(darwin, pid_for_task);
+
+#if DARWIN_VERS >= DARWIN_10_12
+DECL_TEMPLATE(darwin, host_create_mach_voucher_trap);
+DECL_TEMPLATE(darwin, task_register_dyld_image_infos);
+DECL_TEMPLATE(darwin, task_register_dyld_shared_cache_image_info);
+#endif /* DARWIN_VERS >= DARWIN_10_12 */
+
 DECL_TEMPLATE(darwin, mach_timebase_info);
 DECL_TEMPLATE(darwin, mach_wait_until);
 DECL_TEMPLATE(darwin, mk_timer_create);

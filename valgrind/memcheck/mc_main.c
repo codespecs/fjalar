@@ -10,7 +10,7 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2000-2015 Julian Seward 
+   Copyright (C) 2000-2017 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -47,6 +47,9 @@
 #include "pub_tool_replacemalloc.h"
 #include "pub_tool_tooliface.h"
 #include "pub_tool_threadstate.h"
+#include "pub_tool_xarray.h"
+#include "pub_tool_xtree.h"
+#include "pub_tool_xtmemory.h"
 
 #include "mc_include.h"
 #include "memcheck.h"   /* for client requests */
@@ -173,10 +176,10 @@ static void ocache_sarp_Clear_Origins ( Addr, UWord ); /* fwds */
 
 #else
 
-/* Just handle the first 64G fast and the rest via auxiliary
+/* Just handle the first 128G fast and the rest via auxiliary
    primaries.  If you change this, Memcheck will assert at startup.
    See the definition of UNALIGNED_OR_HIGH for extensive comments. */
-#  define N_PRIMARY_BITS  20
+#  define N_PRIMARY_BITS  21
 
 #endif
 
@@ -274,9 +277,12 @@ static INLINE Bool is_start_of_sm ( Addr a ) {
    return (start_of_this_sm(a) == a);
 }
 
+STATIC_ASSERT(SM_CHUNKS % 2 == 0);
+
 typedef 
-   struct {
+   union {
       UChar vabits8[SM_CHUNKS];
+      UShort vabits16[SM_CHUNKS/2];
    }
    SecMap;
 
@@ -1380,7 +1386,7 @@ ULong mc_LOADVn_slow ( Addr a, SizeT nBits, Bool bigendian )
                       && nBits == 64 && VG_IS_8_ALIGNED(a))) {
       SecMap* sm       = get_secmap_for_reading(a);
       UWord   sm_off16 = SM_OFF_16(a);
-      UWord   vabits16 = ((UShort*)(sm->vabits8))[sm_off16];
+      UWord   vabits16 = sm->vabits16[sm_off16];
       if (LIKELY(vabits16 == VA_BITS16_DEFINED))
          return V_BITS64_DEFINED;
       if (LIKELY(vabits16 == VA_BITS16_UNDEFINED))
@@ -1533,7 +1539,7 @@ void mc_STOREVn_slow ( Addr a, SizeT nBits, ULong vbytes, Bool bigendian )
                       && nBits == 64 && VG_IS_8_ALIGNED(a))) {
       SecMap* sm       = get_secmap_for_reading(a);
       UWord   sm_off16 = SM_OFF_16(a);
-      UWord   vabits16 = ((UShort*)(sm->vabits8))[sm_off16];
+      UWord   vabits16 = sm->vabits16[sm_off16];
       if (LIKELY( !is_distinguished_sm(sm) && 
                           (VA_BITS16_DEFINED   == vabits16 ||
                            VA_BITS16_UNDEFINED == vabits16) )) {
@@ -1541,10 +1547,10 @@ void mc_STOREVn_slow ( Addr a, SizeT nBits, ULong vbytes, Bool bigendian )
          /* is mapped, and is addressible. */
          // Convert full V-bits in register to compact 2-bit form.
          if (LIKELY(V_BITS64_DEFINED == vbytes)) {
-            ((UShort*)(sm->vabits8))[sm_off16] = (UShort)VA_BITS16_DEFINED;
+            sm->vabits16[sm_off16] = VA_BITS16_DEFINED;
             return;
          } else if (V_BITS64_UNDEFINED == vbytes) {
-            ((UShort*)(sm->vabits8))[sm_off16] = (UShort)VA_BITS16_UNDEFINED;
+            sm->vabits16[sm_off16] = VA_BITS16_UNDEFINED;
             return;
          }
          /* else fall into the slow case */
@@ -1741,7 +1747,7 @@ static void set_address_range_perms ( Addr a, SizeT lenT, UWord vabits16,
       if (lenA < 8) break;
       PROF_EVENT(MCPE_SET_ADDRESS_RANGE_PERMS_LOOP8A);
       sm_off16 = SM_OFF_16(a);
-      ((UShort*)(sm->vabits8))[sm_off16] = vabits16;
+      sm->vabits16[sm_off16] = vabits16;
       a    += 8;
       lenA -= 8;
    }
@@ -1814,7 +1820,7 @@ static void set_address_range_perms ( Addr a, SizeT lenT, UWord vabits16,
       if (lenB < 8) break;
       PROF_EVENT(MCPE_SET_ADDRESS_RANGE_PERMS_LOOP8B);
       sm_off16 = SM_OFF_16(a);
-      ((UShort*)(sm->vabits8))[sm_off16] = vabits16;
+      sm->vabits16[sm_off16] = vabits16;
       a    += 8;
       lenB -= 8;
    }
@@ -2757,7 +2763,7 @@ static INLINE void make_aligned_word64_undefined ( Addr a )
 
       sm       = get_secmap_for_writing_low(a);
       sm_off16 = SM_OFF_16(a);
-      ((UShort*)(sm->vabits8))[sm_off16] = VA_BITS16_UNDEFINED;
+      sm->vabits16[sm_off16] = VA_BITS16_UNDEFINED;
    }
 #endif
 }
@@ -2801,7 +2807,7 @@ void make_aligned_word64_noaccess ( Addr a )
 
       sm       = get_secmap_for_writing_low(a);
       sm_off16 = SM_OFF_16(a);
-      ((UShort*)(sm->vabits8))[sm_off16] = VA_BITS16_NOACCESS;
+      sm->vabits16[sm_off16] = VA_BITS16_NOACCESS;
 
       //// BEGIN inlined, specialised version of MC_(helperc_b_store8)
       //// Clear the origins for a+0 .. a+7.
@@ -3630,9 +3636,9 @@ void MC_(helperc_MAKE_STACK_UNINIT_w_o) ( Addr base, UWord len, Addr nia )
            /* Now we know that the entire address range falls within a
               single secondary map, and that that secondary 'lives' in
               the main primary map. */
-            SecMap* sm    = get_secmap_for_writing_low(a_lo);
-            UWord   v_off = SM_OFF(a_lo);
-            UShort* p     = (UShort*)(&sm->vabits8[v_off]);
+            SecMap* sm      = get_secmap_for_writing_low(a_lo);
+            UWord   v_off16 = SM_OFF_16(a_lo);
+            UShort* p       = &sm->vabits16[v_off16];
             p[ 0] = VA_BITS16_UNDEFINED;
             p[ 1] = VA_BITS16_UNDEFINED;
             p[ 2] = VA_BITS16_UNDEFINED;
@@ -3683,9 +3689,9 @@ void MC_(helperc_MAKE_STACK_UNINIT_w_o) ( Addr base, UWord len, Addr nia )
            /* Now we know that the entire address range falls within a
               single secondary map, and that that secondary 'lives' in
               the main primary map. */
-            SecMap* sm    = get_secmap_for_writing_low(a_lo);
-            UWord   v_off = SM_OFF(a_lo);
-            UShort* p     = (UShort*)(&sm->vabits8[v_off]);
+            SecMap* sm      = get_secmap_for_writing_low(a_lo);
+            UWord   v_off16 = SM_OFF_16(a_lo);
+            UShort* p       = &sm->vabits16[v_off16];
             p[ 0] = VA_BITS16_UNDEFINED;
             p[ 1] = VA_BITS16_UNDEFINED;
             p[ 2] = VA_BITS16_UNDEFINED;
@@ -3827,9 +3833,9 @@ void MC_(helperc_MAKE_STACK_UNINIT_no_o) ( Addr base, UWord len )
            /* Now we know that the entire address range falls within a
               single secondary map, and that that secondary 'lives' in
               the main primary map. */
-            SecMap* sm    = get_secmap_for_writing_low(a_lo);
-            UWord   v_off = SM_OFF(a_lo);
-            UShort* p     = (UShort*)(&sm->vabits8[v_off]);
+            SecMap* sm      = get_secmap_for_writing_low(a_lo);
+            UWord   v_off16 = SM_OFF_16(a_lo);
+            UShort* p       = &sm->vabits16[v_off16];
             p[ 0] = VA_BITS16_UNDEFINED;
             p[ 1] = VA_BITS16_UNDEFINED;
             p[ 2] = VA_BITS16_UNDEFINED;
@@ -3864,9 +3870,9 @@ void MC_(helperc_MAKE_STACK_UNINIT_no_o) ( Addr base, UWord len )
            /* Now we know that the entire address range falls within a
               single secondary map, and that that secondary 'lives' in
               the main primary map. */
-            SecMap* sm    = get_secmap_for_writing_low(a_lo);
-            UWord   v_off = SM_OFF(a_lo);
-            UShort* p     = (UShort*)(&sm->vabits8[v_off]);
+            SecMap* sm      = get_secmap_for_writing_low(a_lo);
+            UWord   v_off16 = SM_OFF_16(a_lo);
+            UShort* p       = &sm->vabits16[v_off16];
             p[ 0] = VA_BITS16_UNDEFINED;
             p[ 1] = VA_BITS16_UNDEFINED;
             p[ 2] = VA_BITS16_UNDEFINED;
@@ -3979,7 +3985,7 @@ void MC_(helperc_MAKE_STACK_UNINIT_128_no_o) ( Addr base )
             PROF_EVENT(MCPE_MAKE_STACK_UNINIT_128_NO_O_ALIGNED_16);
             SecMap* sm    = get_secmap_for_writing_low(a_lo);
             UWord   v_off = SM_OFF(a_lo);
-            UInt*   w32   = (UInt*)(&sm->vabits8[v_off]);
+            UInt*   w32   = ASSUME_ALIGNED(UInt*, &sm->vabits8[v_off]);
             w32[ 0] = VA_BITS32_UNDEFINED;
             w32[ 1] = VA_BITS32_UNDEFINED;
             w32[ 2] = VA_BITS32_UNDEFINED;
@@ -4012,10 +4018,10 @@ void MC_(helperc_MAKE_STACK_UNINIT_128_no_o) ( Addr base )
            /* Now we know that the entire address range falls within a
               single secondary map, and that that secondary 'lives' in
               the main primary map. */
-            SecMap* sm    = get_secmap_for_writing_low(a_lo);
-            UWord   v_off = SM_OFF(a_lo);
-            UShort* w16   = (UShort*)(&sm->vabits8[v_off]);
-            UInt*   w32   = (UInt*)(&w16[1]);
+            SecMap* sm      = get_secmap_for_writing_low(a_lo);
+            UWord   v_off16 = SM_OFF_16(a_lo);
+            UShort* w16     = &sm->vabits16[v_off16];
+            UInt*   w32     = ASSUME_ALIGNED(UInt*, &w16[1]);
             /* The following assertion is commented out for obvious
                performance reasons, but was verified as valid when
                running the entire testsuite and also Firefox. */
@@ -4462,7 +4468,7 @@ static UInt mb_get_origin_for_guest_offset ( ThreadId tid,
 static void mc_post_reg_write ( CorePart part, ThreadId tid, 
                                 PtrdiffT offset, SizeT size)
 {
-#  define MAX_REG_WRITE_SIZE 1712
+#  define MAX_REG_WRITE_SIZE 1728
    UChar area[MAX_REG_WRITE_SIZE];
    tl_assert(size <= MAX_REG_WRITE_SIZE);
    VG_(memset)(area, V_BITS8_DEFINED, size);
@@ -4766,7 +4772,7 @@ void mc_LOADV_128_or_256 ( /*OUT*/ULong* res,
       for (j = 0; j < nULongs; j++) {
          sm       = get_secmap_for_reading_low(a + 8*j);
          sm_off16 = SM_OFF_16(a + 8*j);
-         vabits16 = ((UShort*)(sm->vabits8))[sm_off16];
+         vabits16 = sm->vabits16[sm_off16];
 
          // Convert V bits from compact memory form to expanded
          // register form.
@@ -4828,7 +4834,7 @@ ULong mc_LOADV64 ( Addr a, Bool isBigEndian )
 
       sm       = get_secmap_for_reading_low(a);
       sm_off16 = SM_OFF_16(a);
-      vabits16 = ((UShort*)(sm->vabits8))[sm_off16];
+      vabits16 = sm->vabits16[sm_off16];
 
       // Handle common case quickly: a is suitably aligned, is mapped, and
       // addressible.
@@ -4962,7 +4968,7 @@ void mc_STOREV64 ( Addr a, ULong vbits64, Bool isBigEndian )
 
       sm       = get_secmap_for_reading_low(a);
       sm_off16 = SM_OFF_16(a);
-      vabits16 = ((UShort*)(sm->vabits8))[sm_off16];
+      vabits16 = sm->vabits16[sm_off16];
 
       // To understand the below cleverness, see the extensive comments
       // in MC_(helperc_STOREV8).
@@ -4971,7 +4977,7 @@ void mc_STOREV64 ( Addr a, ULong vbits64, Bool isBigEndian )
             return;
          }
          if (!is_distinguished_sm(sm) && VA_BITS16_UNDEFINED == vabits16) {
-            ((UShort*)(sm->vabits8))[sm_off16] = (UShort)VA_BITS16_DEFINED;
+            sm->vabits16[sm_off16] = VA_BITS16_DEFINED;
             return;
          }
          PROF_EVENT(MCPE_STOREV64_SLOW2);
@@ -4983,7 +4989,7 @@ void mc_STOREV64 ( Addr a, ULong vbits64, Bool isBigEndian )
             return;
          }
          if (!is_distinguished_sm(sm) && VA_BITS16_DEFINED == vabits16) {
-            ((UShort*)(sm->vabits8))[sm_off16] = (UShort)VA_BITS16_UNDEFINED;
+            sm->vabits16[sm_off16] = VA_BITS16_UNDEFINED;
             return;
          } 
          PROF_EVENT(MCPE_STOREV64_SLOW3);
@@ -6009,6 +6015,8 @@ UInt          MC_(clo_leak_check_heuristics)  =   H2S(LchStdString)
                                                 | H2S( LchLength64)
                                                 | H2S( LchNewArray)
                                                 | H2S( LchMultipleInheritance);
+Bool          MC_(clo_xtree_leak)             = False;
+const HChar*  MC_(clo_xtree_leak_file) = "xtleak.kcg.%p";
 Bool          MC_(clo_workaround_gcc296_bugs) = False;
 Int           MC_(clo_malloc_fill)            = -1;
 Int           MC_(clo_free_fill)              = -1;
@@ -6210,6 +6218,11 @@ static Bool mc_process_cmd_line_options(const HChar* arg)
    else if VG_BOOL_CLO(arg, "--expensive-definedness-checks",
                        MC_(clo_expensive_definedness_checks)) {}
 
+   else if VG_BOOL_CLO(arg, "--xtree-leak",
+                       MC_(clo_xtree_leak)) {}
+   else if VG_STR_CLO (arg, "--xtree-leak-file",
+                       MC_(clo_xtree_leak_file)) {}
+
    else
       return VG_(replacement_malloc_process_cmd_line_option)(arg);
 
@@ -6241,6 +6254,8 @@ static void mc_print_usage(void)
 "                                     same as --show-leak-kinds=definite,possible\n"
 "    --show-reachable=no --show-possibly-lost=no\n"
 "                                     same as --show-leak-kinds=definite\n"
+"    --xtree-leak=no|yes              output leak result in xtree format? [no]\n"
+"    --xtree-leak-file=<file>         xtree leak report file [xtleak.kcg.%%p]\n"
 "    --undef-value-errors=no|yes      check for undefined value errors [yes]\n"
 "    --track-origins=no|yes           show origins of undefined values? [no]\n"
 "    --partial-loads-ok=no|yes        too hard to explain here; see manual [yes]\n"
@@ -6375,12 +6390,13 @@ static void print_monitor_help ( void )
 "  check_memory [addressable|defined] <addr> [<len>]\n"
 "        check that <len> (or 1) bytes at <addr> have the given accessibility\n"
 "            and outputs a description of <addr>\n"
-"  leak_check [full*|summary]\n"
+"  leak_check [full*|summary|xtleak]\n"
 "                [kinds kind1,kind2,...|reachable|possibleleak*|definiteleak]\n"
 "                [heuristics heur1,heur2,...]\n"
 "                [increased*|changed|any]\n"
 "                [unlimited*|limited <max_loss_records_output>]\n"
 "            * = defaults\n"
+"         xtleak produces an xtree full leak result in xtleak.kcg.%%p.%%n\n"
 "       where kind is one of:\n"
 "         definite indirect possible reachable all none\n"
 "       where heur is one of:\n"
@@ -6400,6 +6416,8 @@ static void print_monitor_help ( void )
 "        shows places pointing inside <len> (default 1) bytes at <addr>\n"
 "        (with len 1, only shows \"start pointers\" pointing exactly to <addr>,\n"
 "         with len > 1, will also show \"interior pointers\")\n"
+"  xtmemory [<filename>]\n"
+"        dump xtree memory profile in <filename> (default xtmemory.kcg.%%p.%%n)\n"
 "\n");
 }
 
@@ -6515,7 +6533,7 @@ static Bool handle_gdb_monitor_command (ThreadId tid, HChar *req)
       command. This ensures a shorter abbreviation for the user. */
    switch (VG_(keyword_id) 
            ("help get_vbits leak_check make_memory check_memory "
-            "block_list who_points_at xb", 
+            "block_list who_points_at xb xtmemory", 
             wcmd, kwd_report_duplicated_matches)) {
    case -2: /* multiple matches */
       return True;
@@ -6562,6 +6580,7 @@ static Bool handle_gdb_monitor_command (ThreadId tid, HChar *req)
    case  2: { /* leak_check */
       Int err = 0;
       LeakCheckParams lcp;
+      HChar* xt_filename = NULL;
       HChar* kw;
       
       lcp.mode               = LC_Full;
@@ -6571,12 +6590,13 @@ static Bool handle_gdb_monitor_command (ThreadId tid, HChar *req)
       lcp.deltamode          = LCD_Increased;
       lcp.max_loss_records_output = 999999999;
       lcp.requested_by_monitor_command = True;
+      lcp.xt_filename = NULL;
       
       for (kw = VG_(strtok_r) (NULL, " ", &ssaveptr); 
            kw != NULL; 
            kw = VG_(strtok_r) (NULL, " ", &ssaveptr)) {
          switch (VG_(keyword_id) 
-                 ("full summary "
+                 ("full summary xtleak "
                   "kinds reachable possibleleak definiteleak "
                   "heuristics "
                   "increased changed any "
@@ -6588,7 +6608,14 @@ static Bool handle_gdb_monitor_command (ThreadId tid, HChar *req)
             lcp.mode = LC_Full; break;
          case  1: /* summary */
             lcp.mode = LC_Summary; break;
-         case  2: { /* kinds */
+         case  2: /* xtleak */
+            lcp.mode = LC_Full;
+            xt_filename 
+               = VG_(expand_file_name)("--xtleak-mc_main.c",
+                                       "xtleak.kcg.%p.%n");
+            lcp.xt_filename = xt_filename;
+            break;
+         case  3: { /* kinds */
             wcmd = VG_(strtok_r) (NULL, " ", &ssaveptr);
             if (wcmd == NULL 
                 || !VG_(parse_enum_set)(MC_(parse_leak_kinds_tokens),
@@ -6600,17 +6627,17 @@ static Bool handle_gdb_monitor_command (ThreadId tid, HChar *req)
             }
             break;
          }
-         case  3: /* reachable */
+         case  4: /* reachable */
             lcp.show_leak_kinds = MC_(all_Reachedness)();
             break;
-         case  4: /* possibleleak */
+         case  5: /* possibleleak */
             lcp.show_leak_kinds 
                = R2S(Possible) | R2S(IndirectLeak) | R2S(Unreached);
             break;
-         case  5: /* definiteleak */
+         case  6: /* definiteleak */
             lcp.show_leak_kinds = R2S(Unreached);
             break;
-         case  6: { /* heuristics */
+         case  7: { /* heuristics */
             wcmd = VG_(strtok_r) (NULL, " ", &ssaveptr);
             if (wcmd == NULL 
                 || !VG_(parse_enum_set)(MC_(parse_leak_heuristics_tokens),
@@ -6622,15 +6649,15 @@ static Bool handle_gdb_monitor_command (ThreadId tid, HChar *req)
             }
             break;
          }
-         case  7: /* increased */
+         case  8: /* increased */
             lcp.deltamode = LCD_Increased; break;
-         case  8: /* changed */
+         case  9: /* changed */
             lcp.deltamode = LCD_Changed; break;
-         case  9: /* any */
+         case 10: /* any */
             lcp.deltamode = LCD_Any; break;
-         case 10: /* unlimited */
+         case 11: /* unlimited */
             lcp.max_loss_records_output = 999999999; break;
-         case 11: { /* limited */
+         case 12: { /* limited */
             Int int_value;
             const HChar* endptr;
 
@@ -6658,6 +6685,8 @@ static Bool handle_gdb_monitor_command (ThreadId tid, HChar *req)
       }
       if (!err)
          MC_(detect_memory_leaks)(tid, &lcp);
+      if (xt_filename != NULL)
+         VG_(free)(xt_filename);
       return True;
    }
       
@@ -6874,6 +6903,13 @@ static Bool handle_gdb_monitor_command (ThreadId tid, HChar *req)
       return True;
    }
 
+   case  8: { /* xtmemory */
+      HChar* filename;
+      filename = VG_(strtok_r) (NULL, " ", &ssaveptr);
+      MC_(xtmemory_report)(filename, False);
+      return True;
+   }
+
    default: 
       tl_assert(0);
       return False;
@@ -6978,6 +7014,7 @@ static Bool mc_handle_client_request ( ThreadId tid, UWord* arg, UWord* ret )
          }
          lcp.max_loss_records_output = 999999999;
          lcp.requested_by_monitor_command = False;
+         lcp.xt_filename = NULL;
          
          MC_(detect_memory_leaks)(tid, &lcp);
          *ret = 0; /* return value is meaningless */
@@ -7842,7 +7879,7 @@ static void mc_post_clo_init ( void )
    // As for the portability of all this:
    //
    //   sbrk and brk are not POSIX.  However, any system that is a derivative
-   //   of *nix has sbrk and brk because there are too many softwares (such as
+   //   of *nix has sbrk and brk because there are too many software (such as
    //   the Bourne shell) which rely on the traditional memory map (.text,
    //   .data+.bss, stack) and the existence of sbrk/brk.
    //
@@ -7889,6 +7926,17 @@ static void mc_post_clo_init ( void )
    /* Do not check definedness of guest state if --undef-value-errors=no */
    if (MC_(clo_mc_level) >= 2)
       VG_(track_pre_reg_read) ( mc_pre_reg_read );
+
+   if (VG_(clo_xtree_memory) == Vg_XTMemory_Full) {
+      if (MC_(clo_keep_stacktraces) == KS_none
+          || MC_(clo_keep_stacktraces) == KS_free)
+         VG_(fmsg_bad_option)("--keep-stacktraces",
+                              "To use --xtree-memory=full, you must"
+                              " keep at least the alloc stacktrace\n");
+      // Activate full xtree memory profiling.
+      VG_(XTMemory_Full_init)(VG_(XT_filter_1top_and_maybe_below_main));
+   }
+   
 }
 
 static void print_SM_info(const HChar* type, Int n_SMs)
@@ -7997,10 +8045,12 @@ static void mc_print_stats (void)
 
 static void mc_fini ( Int exitcode )
 {
+   MC_(xtmemory_report) (VG_(clo_xtree_memory_file), True);
    MC_(print_malloc_stats)();
 
    if (MC_(clo_leak_check) != LC_Off) {
       LeakCheckParams lcp;
+      HChar* xt_filename = NULL;
       lcp.mode = MC_(clo_leak_check);
       lcp.show_leak_kinds = MC_(clo_show_leak_kinds);
       lcp.heuristics = MC_(clo_leak_check_heuristics);
@@ -8008,7 +8058,17 @@ static void mc_fini ( Int exitcode )
       lcp.deltamode = LCD_Any;
       lcp.max_loss_records_output = 999999999;
       lcp.requested_by_monitor_command = False;
+      if (MC_(clo_xtree_leak)) {
+         xt_filename = VG_(expand_file_name)("--xtree-leak-file",
+                                             MC_(clo_xtree_leak_file));
+         lcp.xt_filename = xt_filename;
+         lcp.mode = LC_Full;
+      }
+      else
+         lcp.xt_filename = NULL;
       MC_(detect_memory_leaks)(1/*bogus ThreadId*/, &lcp);
+      if (MC_(clo_xtree_leak))
+         VG_(free)(xt_filename);
    } else {
       if (VG_(clo_verbosity) == 1 && !VG_(clo_xml)) {
          VG_(umsg)(
@@ -8099,7 +8159,7 @@ static void mc_pre_clo_init(void)
    VG_(details_version)         (NULL);
    VG_(details_description)     ("a memory error detector");
    VG_(details_copyright_author)(
-      "Copyright (C) 2002-2015, and GNU GPL'd, by Julian Seward et al.");
+      "Copyright (C) 2002-2017, and GNU GPL'd, by Julian Seward et al.");
    VG_(details_bug_reports_to)  (VG_BUGS_TO);
    VG_(details_avg_translation_sizeB) ( 640 );
 
@@ -8240,11 +8300,11 @@ static void mc_pre_clo_init(void)
    tl_assert(sizeof(Addr)  == 8);
    tl_assert(sizeof(UWord) == 8);
    tl_assert(sizeof(Word)  == 8);
-   tl_assert(MAX_PRIMARY_ADDRESS == 0xFFFFFFFFFULL);
-   tl_assert(MASK(1) == 0xFFFFFFF000000000ULL);
-   tl_assert(MASK(2) == 0xFFFFFFF000000001ULL);
-   tl_assert(MASK(4) == 0xFFFFFFF000000003ULL);
-   tl_assert(MASK(8) == 0xFFFFFFF000000007ULL);
+   tl_assert(MAX_PRIMARY_ADDRESS == 0x1FFFFFFFFFULL);
+   tl_assert(MASK(1) == 0xFFFFFFE000000000ULL);
+   tl_assert(MASK(2) == 0xFFFFFFE000000001ULL);
+   tl_assert(MASK(4) == 0xFFFFFFE000000003ULL);
+   tl_assert(MASK(8) == 0xFFFFFFE000000007ULL);
 #  endif
 
    /* Check some assertions to do with the instrumentation machinery. */

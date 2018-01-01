@@ -8,7 +8,7 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2000-2015 Julian Seward 
+   Copyright (C) 2000-2017 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -143,6 +143,8 @@ void MC_(make_mem_noaccess)        ( Addr a, SizeT len );
 void MC_(make_mem_undefined_w_otag)( Addr a, SizeT len, UInt otag );
 void MC_(make_mem_defined)         ( Addr a, SizeT len );
 void MC_(copy_address_range_state) ( Addr src, Addr dst, SizeT len );
+
+void MC_(xtmemory_report) ( const HChar* filename, Bool fini );
 
 void MC_(print_malloc_stats) ( void );
 /* nr of free operations done */
@@ -384,7 +386,7 @@ typedef
                         //   least one interior-pointer along the way.
       IndirectLeak =2,  // Leaked, but reachable from another leaked block
                         //   (be it Unreached or IndirectLeak).
-      Unreached    =3,  // Not reached, ie. leaked. 
+      Unreached    =3   // Not reached, ie. leaked. 
                         //   (At best, only reachable from itself via a cycle.)
   }
   Reachedness;
@@ -459,6 +461,7 @@ typedef
       LeakCheckDeltaMode deltamode;
       UInt max_loss_records_output; // limit on the nr of loss records output.
       Bool requested_by_monitor_command; // True when requested by gdb/vgdb.
+      const HChar* xt_filename; // if != NULL, produce an xtree leak file.
    }
    LeakCheckParams;
 

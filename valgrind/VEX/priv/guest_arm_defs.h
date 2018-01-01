@@ -6,7 +6,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2015 OpenWorks LLP
+   Copyright (C) 2004-2017 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -40,7 +40,7 @@
 /*---------------------------------------------------------*/
 
 /* Convert one ARM insn to IR.  See the type DisOneInstrFn in
-   bb_to_IR.h. */
+  geust_generic_ bb_to_IR.h. */
 extern
 DisResult disInstr_ARM ( IRSB*        irbb,
                          Bool         (*resteerOkFn) ( void*, Addr ),

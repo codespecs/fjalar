@@ -9,7 +9,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2015 Julian Seward 
+   Copyright (C) 2000-2017 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -216,11 +216,6 @@ void ML_(ppDiCfSI) ( const XArray* /* of CfiExpr */ exprs,
    SHOW_HOW(si_m->x30_how, si_m->x30_off);
    VG_(printf)(" X29=");
    SHOW_HOW(si_m->x29_how, si_m->x29_off);
-#  elif defined(VGA_tilegx)
-   VG_(printf)(" SP=");
-   SHOW_HOW(si_m->sp_how, si_m->sp_off);
-   VG_(printf)(" FP=");
-   SHOW_HOW(si_m->fp_how, si_m->fp_off);
 #  else
 #    error "Unknown arch"
 #  endif
@@ -950,10 +945,6 @@ static void ppCfiReg ( CfiReg reg )
       case Creg_S390_SP:   VG_(printf)("SP"); break;
       case Creg_S390_FP:   VG_(printf)("FP"); break;
       case Creg_S390_LR:   VG_(printf)("LR"); break;
-      case Creg_TILEGX_IP: VG_(printf)("PC");  break;
-      case Creg_TILEGX_SP: VG_(printf)("SP");  break;
-      case Creg_TILEGX_BP: VG_(printf)("BP");  break;
-      case Creg_TILEGX_LR: VG_(printf)("R55"); break;
       default: vg_assert(0);
    }
 }
@@ -1713,7 +1704,7 @@ static void canonicaliseSymtab ( struct _DebugInfo* di )
                di->symtab[r].sec_names = NULL;
             }
             /* Completely zap the entry -- paranoia to make it more
-               likely we'll notice if we inadvertantly use it
+               likely we'll notice if we inadvertently use it
                again. */
             VG_(memset)(&di->symtab[r], 0, sizeof(DiSym));
          } else {
@@ -2360,11 +2351,10 @@ void ML_(canonicaliseTables) ( struct _DebugInfo* di )
    if not found.  Binary search.  */
 
 Word ML_(search_one_symtab) ( const DebugInfo* di, Addr ptr,
-                              Bool match_anywhere_in_sym,
                               Bool findText )
 {
    Addr a_mid_lo, a_mid_hi;
-   Word mid, size, 
+   Word mid,
         lo = 0, 
         hi = di->symtab_used-1;
    while (True) {
@@ -2372,10 +2362,7 @@ Word ML_(search_one_symtab) ( const DebugInfo* di, Addr ptr,
       if (lo > hi) return -1; /* not found */
       mid      = (lo + hi) / 2;
       a_mid_lo = di->symtab[mid].avmas.main;
-      size = ( match_anywhere_in_sym
-             ? di->symtab[mid].size
-             : 1);
-      a_mid_hi = ((Addr)di->symtab[mid].avmas.main) + size - 1;
+      a_mid_hi = ((Addr)di->symtab[mid].avmas.main) + di->symtab[mid].size - 1;
 
       if (ptr < a_mid_lo) { hi = mid-1; continue; } 
       if (ptr > a_mid_hi) { lo = mid+1; continue; }

@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright IBM Corp. 2010-2016
+   Copyright IBM Corp. 2010-2017
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -13172,10 +13172,10 @@ s390_irgen_STFLE(IRTemp op2addr)
    IRDirty *d;
    IRTemp cc = newTemp(Ity_I64);
 
-   /* IRExpr_BBPTR() => Need to pass pointer to guest state to helper */
+   /* IRExpr_GSPTR() => Need to pass pointer to guest state to helper */
    d = unsafeIRDirty_1_N(cc, 0, "s390x_dirtyhelper_STFLE",
                          &s390x_dirtyhelper_STFLE,
-                         mkIRExprVec_2(IRExpr_BBPTR(), mkexpr(op2addr)));
+                         mkIRExprVec_2(IRExpr_GSPTR(), mkexpr(op2addr)));
 
    d->nFxState = 1;
    vex_bzero(&d->fxState, sizeof(d->fxState));
@@ -16832,6 +16832,7 @@ disInstr_S390_WRK(const UChar *insn)
    dres.len        = insn_length;
    dres.continueAt = 0;
    dres.jk_StopHere = Ijk_INVALID;
+   dres.hint        = Dis_HintNone;
 
    /* fixs390: consider chasing of conditional jumps */
 

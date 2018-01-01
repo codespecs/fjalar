@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2015 Julian Seward
+   Copyright (C) 2000-2017 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -118,6 +118,8 @@ typedef
    ThreadArchState;
 
 
+#define NULL_STK_ID (~(UWord)0)
+
 /* OS-specific thread state.  IMPORTANT: if you add fields to this,
    you _must_ add code to os_state_clear() to initialise those
    fields. */
@@ -132,6 +134,12 @@ typedef
       /* runtime details */
       Addr valgrind_stack_base;    // Valgrind's stack (VgStack*)
       Addr valgrind_stack_init_SP; // starting value for SP
+
+      /* Client stack is registered as stk_id (on linux/darwin, by
+         ML_(guess_and_register_stack)).
+         Stack id NULL_STK_ID means that the user stack is not (yet)
+         registered. */
+      UWord stk_id;
 
       /* exit details */
       Word exitcode; // in the case of exitgroup, set by someone else
@@ -285,10 +293,6 @@ typedef
          the 64-bit offset associated with a %fs value of zero. */
 #     endif
 
-      /* Stack id (value (UWord)(-1) means that there is no stack). This
-         tracks a stack that is set in restore_stack(). */
-      UWord stk_id;
-
       /* Simulation of the kernel's lwp->lwp_ustack. Set in the PRE wrapper
          of the getsetcontext syscall, for SETUSTACK. Used in
          VG_(save_context)(), VG_(restore_context)() and
@@ -358,7 +362,9 @@ typedef struct {
       different values is during the execution of a sigsuspend, where
       tmp_sig_mask is the temporary mask which sigsuspend installs.
       It is only consulted to compute the signal mask applied to a
-      signal handler. */
+      signal handler. 
+      PW Nov 2016 : it is not clear if and where this tmp_sig_mask
+      is set when an handler runs "inside" a sigsuspend. */
    vki_sigset_t tmp_sig_mask;
 
    /* A little signal queue for signals we can't get the kernel to
@@ -405,6 +411,7 @@ typedef struct {
 
    /* This thread's name. NULL, if no name. */
    HChar *thread_name;
+   UInt ptrace;
 }
 ThreadState;
 
@@ -413,10 +420,15 @@ ThreadState;
 /*--- The thread table.                                    ---*/
 /*------------------------------------------------------------*/
 
-/* A statically allocated array of threads.  NOTE: [0] is
-   never used, to simplify the simulation of initialisers for
-   LinuxThreads. */
+/* An array of threads, dynamically allocated by VG_(init_Threads).
+   NOTE: [0] is never used, to simplify the simulation of initialisers
+   for LinuxThreads. */
 extern ThreadState *VG_(threads);
+
+/* In an outer valgrind, VG_(inner_threads) stores the address of
+   the inner VG_(threads) array, as reported by the inner using
+   the client request INNER_THREADS. */
+extern ThreadState *VG_(inner_threads);
 
 // The running thread.  m_scheduler should be the only other module
 // to write to this.

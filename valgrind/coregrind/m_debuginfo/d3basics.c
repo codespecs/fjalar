@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2008-2015 OpenWorks LLP
+   Copyright (C) 2008-2017 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -426,9 +426,6 @@ static Bool get_Dwarf_Reg( /*OUT*/Addr* a, Word regno, const RegSummary* regs )
    if (regno == 30) { *a = regs->fp; return True; }
 #  elif defined(VGP_arm64_linux)
    if (regno == 31) { *a = regs->sp; return True; }
-#  elif defined(VGP_tilegx_linux)
-   if (regno == 52) { *a = regs->fp; return True; }
-   if (regno == 54) { *a = regs->sp; return True; }
 #  else
 #    error "Unknown platform"
 #  endif

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2011-2015 Petr Pavlu
+   Copyright (C) 2011-2017 Petr Pavlu
       setup@dagobah.cz
 
    This program is free software; you can redistribute it and/or
@@ -28,7 +28,7 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-/* Copyright 2013-2016, Ivo Raisr <ivosh@ivosh.net> */
+/* Copyright 2013-2017, Ivo Raisr <ivosh@ivosh.net> */
 
 /* Copyright 2013, OmniTI Computer Consulting, Inc. All rights reserved. */
 
@@ -500,13 +500,14 @@ typedef struct vki_kcf_door_arg_s {
 #define VKI_O_LARGEFILE O_LARGEFILE
 
 #define VKI_F_DUPFD F_DUPFD
+#define VKI_F_DUPFD_CLOEXEC F_DUPFD_CLOEXEC
 #define VKI_F_GETFD F_GETFD
 #define VKI_F_SETFD F_SETFD
 #define VKI_F_GETFL F_GETFL
 #define VKI_F_GETXFL F_GETXFL
 #define VKI_F_SETFL F_SETFL
 
-/* SVR3 rfs compability const, declared only if _KERNEL or _KMEMUSER is
+/* SVR3 rfs compatibility const, declared only if _KERNEL or _KMEMUSER is
    defined. */
 #if 0
 #define VKI_F_O_GETLK F_O_GETLK
@@ -603,6 +604,26 @@ typedef struct vki_kcf_door_arg_s {
 #define vki_semid64_ds semid_ds64
 
 
+#include <sys/lgrp_user.h>
+#if defined(HAVE_SYS_LGRP_USER_IMPL_H)
+/* Include implementation specific header file on newer Solaris. */
+#include <sys/lgrp_user_impl.h>
+#endif /* HAVE_SYS_LGRP_USER_IMPL_H */
+#define VKI_LGRP_SYS_MEMINFO LGRP_SYS_MEMINFO
+#define VKI_LGRP_SYS_GENERATION LGRP_SYS_GENERATION
+#define VKI_LGRP_SYS_VERSION LGRP_SYS_VERSION
+#define VKI_LGRP_SYS_SNAPSHOT LGRP_SYS_SNAPSHOT
+#define VKI_LGRP_SYS_AFFINITY_GET LGRP_SYS_AFFINITY_GET
+#define VKI_LGRP_SYS_AFFINITY_SET LGRP_SYS_AFFINITY_SET
+#define VKI_LGRP_SYS_LATENCY LGRP_SYS_LATENCY
+#define VKI_LGRP_SYS_HOME LGRP_SYS_HOME
+#define VKI_LGRP_SYS_AFF_INHERIT_GET LGRP_SYS_AFF_INHERIT_GET
+#define VKI_LGRP_SYS_AFF_INHERIT_SET LGRP_SYS_AFF_INHERIT_SET
+#define VKI_LGRP_SYS_DEVICE_LGRPS LGRP_SYS_DEVICE_LGRPS
+#define VKI_LGRP_SYS_MAXSOCKETS_GET LGRP_SYS_MAXSOCKETS_GET
+#define vki_lgrp_view_t lgrp_view_t
+
+
 #include <sys/loadavg.h>
 #define VKI_LOADAVG_NSTATS LOADAVG_NSTATS
 
@@ -641,6 +662,8 @@ typedef struct vki_kcf_door_arg_s {
 #define VKI_MC_LOCKAS MC_LOCKAS
 #define VKI_MC_UNLOCKAS MC_UNLOCKAS
 #define VKI_MC_HAT_ADVISE MC_HAT_ADVISE
+
+#define vki_meminfo_t meminfo_t
 
 
 #include <sys/mntio.h>
@@ -813,6 +836,7 @@ typedef struct vki_kcf_door_arg_s {
 #define VKI_P_PID P_PID
 #define VKI_P_PGID P_PGID
 #define VKI_P_ALL P_ALL
+#define VKI_POP_AND POP_AND
 #define vki_procset_t procset_t
 
 

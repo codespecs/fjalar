@@ -1049,6 +1049,18 @@ Syscall param fcntl(arg) contains uninitialised byte(s)
    ...
 
 ---------------------------------------------------------
+ 62:               SYS_fcntl (DUPFD_CLOEXEC) 3s 0m
+---------------------------------------------------------
+Syscall param fcntl(fildes) contains uninitialised byte(s)
+   ...
+
+Syscall param fcntl(cmd) contains uninitialised byte(s)
+   ...
+
+Syscall param fcntl(arg) contains uninitialised byte(s)
+   ...
+
+---------------------------------------------------------
  62:               SYS_fcntl (GETLK) 3s 5m
 ---------------------------------------------------------
 Syscall param fcntl(fildes) contains uninitialised byte(s)
@@ -1611,6 +1623,16 @@ Syscall param sigprocmask(oset) points to unaddressable byte(s)
  Address 0x........ is not stack'd, malloc'd or (recently) free'd
 
 ---------------------------------------------------------
+ 96:          SYS_sigsuspend 1s 1m
+---------------------------------------------------------
+Syscall param sigsuspend(set) contains uninitialised byte(s)
+   ...
+
+Syscall param sigsuspend(set) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+---------------------------------------------------------
  97:         SYS_sigaltstack 2s 2m
 ---------------------------------------------------------
 Syscall param sigaltstack(ss) contains uninitialised byte(s)
@@ -1825,6 +1847,19 @@ Syscall param waitid(options) contains uninitialised byte(s)
    ...
 
 Syscall param waitid(infop) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+---------------------------------------------------------
+108:          SYS_sigsendsys 2s 1m
+---------------------------------------------------------
+Syscall param sigsendsys(psp) contains uninitialised byte(s)
+   ...
+
+Syscall param sigsendsys(signal) contains uninitialised byte(s)
+   ...
+
+Syscall param sigsendsys(psp) points to unaddressable byte(s)
    ...
  Address 0x........ is not stack'd, malloc'd or (recently) free'd
 
@@ -2640,22 +2675,6 @@ Syscall param lwp_sigmask(bits3) contains uninitialised byte(s)
 
 sigprocmask: unknown 'how' field 0
 ---------------------------------------------------------
-166:         SYS_lwp_private 3s 1m
----------------------------------------------------------
-Syscall param lwp_private(cmd) contains uninitialised byte(s)
-   ...
-
-Syscall param lwp_private(which) contains uninitialised byte(s)
-   ...
-
-Syscall param lwp_private(base) contains uninitialised byte(s)
-   ...
-
-Syscall param lwp_private(base) points to unaddressable byte(s)
-   ...
- Address 0x........ is not stack'd, malloc'd or (recently) free'd
-
----------------------------------------------------------
 167:            SYS_lwp_wait 2s 1m
 ---------------------------------------------------------
 Syscall param lwp_wait(lwpid) contains uninitialised byte(s)
@@ -2783,6 +2802,104 @@ Syscall param pwrite(offset) contains uninitialised byte(s)
    ...
 
 Syscall param pwrite(buf) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+---------------------------------------------------------
+180:             SYS_lgrpsys (LGRP_SYS_MEMINFO) 3s 1m
+---------------------------------------------------------
+Syscall param lgrpsys_meminfo(subcode) contains uninitialised byte(s)
+   ...
+
+Syscall param lgrpsys_meminfo(addr_count) contains uninitialised byte(s)
+   ...
+
+Syscall param lgrpsys_meminfo(minfo) contains uninitialised byte(s)
+   ...
+
+Syscall param lgrpsys(minfo) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+---------------------------------------------------------
+180:             SYS_lgrpsys (LGRP_SYS_MEMINFO) 3s 1m
+---------------------------------------------------------
+Syscall param lgrpsys_meminfo(subcode) contains uninitialised byte(s)
+   ...
+
+Syscall param lgrpsys_meminfo(addr_count) contains uninitialised byte(s)
+   ...
+
+Syscall param lgrpsys_meminfo(minfo) contains uninitialised byte(s)
+   ...
+
+Syscall param lgrpsys(minfo) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+---------------------------------------------------------
+180:             SYS_lgrpsys (LGRP_SYS_MEMINFO) 4s 4m
+---------------------------------------------------------
+Syscall param lgrpsys_meminfo(subcode) contains uninitialised byte(s)
+   ...
+
+Syscall param lgrpsys_meminfo(addr_count) contains uninitialised byte(s)
+   ...
+
+Syscall param lgrpsys_meminfo(minfo) contains uninitialised byte(s)
+   ...
+
+Syscall param lgrpsys(minfo) points to uninitialised byte(s)
+   ...
+ Address 0x........ is on thread 1's stack
+
+Syscall param lgrpsys(minfo->mi_inaddr) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+Syscall param lgrpsys(minfo->mi_info_req) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+Syscall param lgrpsys(minfo->mi_outdata) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+Syscall param lgrpsys(minfo->mi_validity) points to unaddressable byte(s)
+   ...
+ Address 0x........ is not stack'd, malloc'd or (recently) free'd
+
+---------------------------------------------------------
+180:             SYS_lgrpsys (LGRP_SYS_GENERATION) 2s 0m
+---------------------------------------------------------
+Syscall param lgrpsys_generation(subcode) contains uninitialised byte(s)
+   ...
+
+Syscall param lgrpsys_generation(view) contains uninitialised byte(s)
+   ...
+
+---------------------------------------------------------
+180:             SYS_lgrpsys (LGRP_SYS_VERSION) 2s 0m
+---------------------------------------------------------
+Syscall param lgrpsys_version(subcode) contains uninitialised byte(s)
+   ...
+
+Syscall param lgrpsys_version(version) contains uninitialised byte(s)
+   ...
+
+---------------------------------------------------------
+180:             SYS_lgrpsys (LGRP_SYS_SNAPSHOT) 3s 1m
+---------------------------------------------------------
+Syscall param lgrpsys_snapshot(subcode) contains uninitialised byte(s)
+   ...
+
+Syscall param lgrpsys_snapshot(bufsize) contains uninitialised byte(s)
+   ...
+
+Syscall param lgrpsys_snapshot(buf) contains uninitialised byte(s)
+   ...
+
+Syscall param lgrpsys(buf) points to unaddressable byte(s)
    ...
  Address 0x........ is not stack'd, malloc'd or (recently) free'd
 

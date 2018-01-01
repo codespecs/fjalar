@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2015 OpenWorks LLP
+   Copyright (C) 2004-2017 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -1409,6 +1409,7 @@ const HChar* sorbTxt ( UChar sorb )
       case 0x26: return "%es:";
       case 0x64: return "%fs:";
       case 0x65: return "%gs:";
+      case 0x36: return "%ss:";
       default: vpanic("sorbTxt(x86,guest)");
    }
 }
@@ -1433,6 +1434,7 @@ IRExpr* handleSegOverride ( UChar sorb, IRExpr* virtual )
       case 0x26: sreg = R_ES; break;
       case 0x64: sreg = R_FS; break;
       case 0x65: sreg = R_GS; break;
+      case 0x36: sreg = R_SS; break;
       default: vpanic("handleSegOverride(x86,guest)");
    }
 
@@ -3170,7 +3172,7 @@ UInt dis_Grp5 ( UChar sorb, Bool locked, Int sz, Int delta,
 
 /* Code shared by all the string ops */
 static
-void dis_string_op_increment(Int sz, Int t_inc)
+void dis_string_op_increment(Int sz, IRTemp t_inc)
 {
    if (sz == 4 || sz == 2) {
       assign( t_inc, 
@@ -4030,7 +4032,7 @@ UInt dis_FPU ( Bool* decode_ok, UChar sorb, Int delta )
                                 0/*regparms*/, 
                                 "x86g_dirtyhelper_FLDENV", 
                                 &x86g_dirtyhelper_FLDENV,
-                                mkIRExprVec_2( IRExpr_BBPTR(), mkexpr(addr) )
+                                mkIRExprVec_2( IRExpr_GSPTR(), mkexpr(addr) )
                              );
                d->tmp   = ew;
                /* declare we're reading memory */
@@ -4126,7 +4128,7 @@ UInt dis_FPU ( Bool* decode_ok, UChar sorb, Int delta )
                                0/*regparms*/, 
                                "x86g_dirtyhelper_FSTENV", 
                                &x86g_dirtyhelper_FSTENV,
-                               mkIRExprVec_2( IRExpr_BBPTR(), mkexpr(addr) )
+                               mkIRExprVec_2( IRExpr_GSPTR(), mkexpr(addr) )
                             );
                /* declare we're writing memory */
                d->mFx   = Ifx_Write;
@@ -4842,7 +4844,7 @@ UInt dis_FPU ( Bool* decode_ok, UChar sorb, Int delta )
                                 0/*regparms*/, 
                                 "x86g_dirtyhelper_FINIT", 
                                 &x86g_dirtyhelper_FINIT,
-                                mkIRExprVec_1(IRExpr_BBPTR())
+                                mkIRExprVec_1(IRExpr_GSPTR())
                              );
 
                /* declare we're writing guest state */
@@ -5041,7 +5043,7 @@ UInt dis_FPU ( Bool* decode_ok, UChar sorb, Int delta )
                                 0/*regparms*/, 
                                 "x86g_dirtyhelper_FRSTOR", 
                                 &x86g_dirtyhelper_FRSTOR,
-                                mkIRExprVec_2( IRExpr_BBPTR(), mkexpr(addr) )
+                                mkIRExprVec_2( IRExpr_GSPTR(), mkexpr(addr) )
                              );
                d->tmp   = ew;
                /* declare we're reading memory */
@@ -5100,7 +5102,7 @@ UInt dis_FPU ( Bool* decode_ok, UChar sorb, Int delta )
                                0/*regparms*/, 
                                "x86g_dirtyhelper_FSAVE", 
                                &x86g_dirtyhelper_FSAVE,
-                               mkIRExprVec_2( IRExpr_BBPTR(), mkexpr(addr) )
+                               mkIRExprVec_2( IRExpr_GSPTR(), mkexpr(addr) )
                             );
                /* declare we're writing memory */
                d->mFx   = Ifx_Write;
@@ -8101,7 +8103,7 @@ DisResult disInstr_X86_WRK (
    Int sz = 4;
 
    /* sorb holds the segment-override-prefix byte, if any.  Zero if no
-      prefix has been seen, else one of {0x26, 0x3E, 0x64, 0x65}
+      prefix has been seen, else one of {0x26, 0x36, 0x3E, 0x64, 0x65}
       indicating the prefix.  */
    UChar sorb = 0;
 
@@ -8112,6 +8114,7 @@ DisResult disInstr_X86_WRK (
    dres.whatNext    = Dis_Continue;
    dres.len         = 0;
    dres.continueAt  = 0;
+   dres.hint        = Dis_HintNone;
    dres.jk_StopHere = Ijk_INVALID;
 
    *expect_CAS = False;
@@ -8228,8 +8231,58 @@ DisResult disInstr_X86_WRK (
             goto decode_success;
          }
       }
-   }       
 
+      // Intel CET requires the following opcodes to be treated as NOPs
+      // with any prefix and ModRM, SIB and disp combination:
+      // "0F 19", "0F 1C", "0F 1D", "0F 1E", "0F 1F"
+      UInt opcode_index = 0;
+      // Skip any prefix combination
+      UInt addr_override = 0;
+      UInt temp_sz = 4;
+      Bool is_prefix = True;
+      while (is_prefix) {
+         switch (code[opcode_index]) {
+            case 0x66:
+               temp_sz = 2;
+               opcode_index++;
+               break;
+            case 0x67:
+               addr_override = 1;
+               opcode_index++;
+               break;
+            case 0x26: case 0x3E: // if we set segment override here,
+            case 0x64: case 0x65: //  disAMode segfaults
+            case 0x2E: case 0x36:
+            case 0xF0: case 0xF2: case 0xF3:
+               opcode_index++;
+               break;
+            default: 
+               is_prefix = False;
+         }
+      }
+      // Check the opcode
+      if (code[opcode_index] == 0x0F) {
+         switch (code[opcode_index+1]) {
+            case 0x19:
+            case 0x1C: case 0x1D:
+            case 0x1E: case 0x1F:
+               delta += opcode_index+2;
+               modrm = getUChar(delta);
+               if (epartIsReg(modrm)) {
+                  delta += 1;
+                  DIP("nop%c\n", nameISize(temp_sz));
+               }
+               else {
+                  addr = disAMode(&alen, 0/*"no sorb"*/, delta, dis_buf);
+                  delta += alen - addr_override;
+                  DIP("nop%c %s\n", nameISize(temp_sz), dis_buf);
+               }
+               goto decode_success;
+            default:
+               break;
+         }
+      }
+   }
    /* Normal instruction handling starts here. */
 
    /* Deal with some but not all prefixes: 
@@ -8255,6 +8308,7 @@ DisResult disInstr_X86_WRK (
          case 0x26: /* %ES: */
          case 0x64: /* %FS: */
          case 0x65: /* %GS: */
+         case 0x36: /* %SS: */
             if (sorb != 0) 
                goto decode_failure; /* only one seg override allowed */
             sorb = pre;
@@ -8274,9 +8328,6 @@ DisResult disInstr_X86_WRK (
             }
             break;
          }
-         case 0x36: /* %SS: */
-            /* SS override cases are not handled */
-            goto decode_failure;
          default: 
             goto not_a_prefix;
       }
@@ -8337,7 +8388,7 @@ DisResult disInstr_X86_WRK (
              0/*regparms*/, 
              "x86g_dirtyhelper_FXSAVE", 
              &x86g_dirtyhelper_FXSAVE,
-             mkIRExprVec_2( IRExpr_BBPTR(), mkexpr(addr) )
+             mkIRExprVec_2( IRExpr_GSPTR(), mkexpr(addr) )
           );
 
       /* declare we're writing memory */
@@ -8411,7 +8462,7 @@ DisResult disInstr_X86_WRK (
              0/*regparms*/, 
              "x86g_dirtyhelper_FXRSTOR", 
              &x86g_dirtyhelper_FXRSTOR,
-             mkIRExprVec_2( IRExpr_BBPTR(), mkexpr(addr) )
+             mkIRExprVec_2( IRExpr_GSPTR(), mkexpr(addr) )
           );
 
       /* declare we're reading memory */
@@ -14874,7 +14925,7 @@ DisResult disInstr_X86_WRK (
 
          vassert(fName); vassert(fAddr);
          d = unsafeIRDirty_0_N ( 0/*regparms*/, 
-                                 fName, fAddr, mkIRExprVec_1(IRExpr_BBPTR()) );
+                                 fName, fAddr, mkIRExprVec_1(IRExpr_GSPTR()) );
          /* declare guest state effects */
          d->nFxState = 4;
          vex_bzero(&d->fxState, sizeof(d->fxState));
@@ -15318,11 +15369,11 @@ DisResult disInstr_X86_WRK (
              see it (pass-through semantics).  I can't see any way to
              construct a faked-up value, so don't bother to try. */
          modrm = getUChar(delta);
-         addr = disAMode ( &alen, sorb, delta, dis_buf );
-         delta += alen;
          if (epartIsReg(modrm)) goto decode_failure;
          if (gregOfRM(modrm) != 0 && gregOfRM(modrm) != 1)
             goto decode_failure;
+         addr = disAMode ( &alen, sorb, delta, dis_buf );
+         delta += alen;
          switch (gregOfRM(modrm)) {
             case 0: DIP("sgdt %s\n", dis_buf); break;
             case 1: DIP("sidt %s\n", dis_buf); break;

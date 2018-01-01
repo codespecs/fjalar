@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2005-2015 Julian Seward
+   Copyright (C) 2005-2017 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -684,6 +684,9 @@ struct vki_ucontext {
   vki_sigset_t          __unused0[15]; /* Allow for uc_sigmask growth */
   struct vki_sigcontext uc_mcontext;  /* last for extensibility */
 };
+
+// CAB: TODO
+typedef char vki_modify_ldt_t;
 
 //----------------------------------------------------------------------
 // From linux-2.6.13/include/asm-ppc64/ipcbuf.h

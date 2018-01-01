@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2015 Julian Seward
+   Copyright (C) 2000-2017 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -130,10 +130,6 @@ typedef
 typedef
    struct { Addr pc; Addr sp; Addr fp; Addr ra; }
    D3UnwindRegs;
-#elif defined(VGA_tilegx)
-typedef
-   struct { Addr pc; Addr sp; Addr fp; Addr lr; }
-   D3UnwindRegs;
 #else
 #  error "Unsupported arch"
 #endif
@@ -153,7 +149,7 @@ extern UInt VG_(debuginfo_generation) (void);
 
 /* True if some FPO information is loaded.
    It is useless to call VG_(use_FPO_info) if this returns False.
-   Note that the return value should preferrably be cached in
+   Note that the return value should preferably be cached in
    the stack unwind code, and re-queried when the debug info generation
    changes. */
 extern Bool VG_(FPO_info_present)(void);

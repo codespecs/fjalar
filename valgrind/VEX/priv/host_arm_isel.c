@@ -7,11 +7,11 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2015 OpenWorks LLP
+   Copyright (C) 2004-2017 OpenWorks LLP
       info@open-works.net
 
    NEON support is
-   Copyright (C) 2010-2015 Samsung Electronics
+   Copyright (C) 2010-2017 Samsung Electronics
    contributed by Dmitry Zhurikhin <zhur@ispras.ru>
               and Kirill Batuzov <batuzovk@ispras.ru>
 
@@ -233,9 +233,9 @@ static HReg        iselIntExpr_R_wrk      ( ISelEnv* env, IRExpr* e );
 static HReg        iselIntExpr_R          ( ISelEnv* env, IRExpr* e );
 
 static void        iselInt64Expr_wrk      ( HReg* rHi, HReg* rLo, 
-                                            ISelEnv* env, IRExpr* e );
+                                            ISelEnv* env, const IRExpr* e );
 static void        iselInt64Expr          ( HReg* rHi, HReg* rLo, 
-                                            ISelEnv* env, IRExpr* e );
+                                            ISelEnv* env, const IRExpr* e );
 
 static HReg        iselDblExpr_wrk        ( ISelEnv* env, IRExpr* e );
 static HReg        iselDblExpr            ( ISelEnv* env, IRExpr* e );
@@ -243,11 +243,11 @@ static HReg        iselDblExpr            ( ISelEnv* env, IRExpr* e );
 static HReg        iselFltExpr_wrk        ( ISelEnv* env, IRExpr* e );
 static HReg        iselFltExpr            ( ISelEnv* env, IRExpr* e );
 
-static HReg        iselNeon64Expr_wrk     ( ISelEnv* env, IRExpr* e );
-static HReg        iselNeon64Expr         ( ISelEnv* env, IRExpr* e );
+static HReg        iselNeon64Expr_wrk     ( ISelEnv* env, const IRExpr* e );
+static HReg        iselNeon64Expr         ( ISelEnv* env, const IRExpr* e );
 
-static HReg        iselNeonExpr_wrk       ( ISelEnv* env, IRExpr* e );
-static HReg        iselNeonExpr           ( ISelEnv* env, IRExpr* e );
+static HReg        iselNeonExpr_wrk       ( ISelEnv* env, const IRExpr* e );
+static HReg        iselNeonExpr           ( ISelEnv* env, const IRExpr* e );
 
 /*---------------------------------------------------------*/
 /*--- ISEL: Misc helpers                                ---*/
@@ -353,7 +353,7 @@ void set_VFP_rounding_mode ( ISelEnv* env, IRExpr* mode )
 static
 Bool mightRequireFixedRegs ( IRExpr* e )
 {
-   if (UNLIKELY(is_IRExpr_VECRET_or_BBPTR(e))) {
+   if (UNLIKELY(is_IRExpr_VECRET_or_GSPTR(e))) {
       // These are always "safe" -- either a copy of r13(sp) in some
       // arbitrary vreg, or a copy of r8, respectively.
       return False;
@@ -387,7 +387,7 @@ Bool doHelperCallWithArgsOnStack ( /*OUT*/UInt*   stackAdjustAfterCall,
    UInt n_real_args = 0;
    for (i = 1; args[i]; i++) {
       IRExpr* arg = args[i];
-      if (UNLIKELY(is_IRExpr_VECRET_or_BBPTR(arg)))
+      if (UNLIKELY(is_IRExpr_VECRET_or_GSPTR(arg)))
          goto no_match;
       IRType argTy = typeOfIRExpr(env->type_env, arg);
       if (UNLIKELY(argTy != Ity_I32))
@@ -525,9 +525,9 @@ Bool doHelperCall ( /*OUT*/UInt*   stackAdjustAfterCall,
    *retloc               = mk_RetLoc_INVALID();
 
    /* These are used for cross-checking that IR-level constraints on
-      the use of IRExpr_VECRET() and IRExpr_BBPTR() are observed. */
+      the use of IRExpr_VECRET() and IRExpr_GSPTR() are observed. */
    UInt nVECRETs = 0;
-   UInt nBBPTRs  = 0;
+   UInt nGSPTRs  = 0;
 
    /* Marshal args for a call and do the call.
 
@@ -545,7 +545,7 @@ Bool doHelperCall ( /*OUT*/UInt*   stackAdjustAfterCall,
       preallocate the return space before marshalling any arguments,
       in this case.
 
-      |args| may also contain IRExpr_BBPTR(), in which case the
+      |args| may also contain IRExpr_GSPTR(), in which case the
       value in r8 is passed as the corresponding argument.
 
       Generating code which is both efficient and correct when
@@ -592,8 +592,8 @@ Bool doHelperCall ( /*OUT*/UInt*   stackAdjustAfterCall,
       IRExpr* arg = args[i];
       if (UNLIKELY(arg->tag == Iex_VECRET)) {
          nVECRETs++;
-      } else if (UNLIKELY(arg->tag == Iex_BBPTR)) {
-         nBBPTRs++;
+      } else if (UNLIKELY(arg->tag == Iex_GSPTR)) {
+         nGSPTRs++;
       }
       n_args++;
    }
@@ -665,7 +665,7 @@ Bool doHelperCall ( /*OUT*/UInt*   stackAdjustAfterCall,
          IRExpr* arg = args[i];
 
          IRType  aTy = Ity_INVALID;
-         if (LIKELY(!is_IRExpr_VECRET_or_BBPTR(arg)))
+         if (LIKELY(!is_IRExpr_VECRET_or_GSPTR(arg)))
             aTy = typeOfIRExpr(env->type_env, arg);
 
          if (nextArgReg >= ARM_N_ARGREGS)
@@ -696,7 +696,7 @@ Bool doHelperCall ( /*OUT*/UInt*   stackAdjustAfterCall,
             addInstr(env, mk_iMOVds_RR( argregs[nextArgReg], raHi ));
             nextArgReg++;
          }
-         else if (arg->tag == Iex_BBPTR) {
+         else if (arg->tag == Iex_GSPTR) {
             vassert(0); //ATC
             addInstr(env, mk_iMOVds_RR( argregs[nextArgReg],
                                         hregARM_R8() ));
@@ -722,7 +722,7 @@ Bool doHelperCall ( /*OUT*/UInt*   stackAdjustAfterCall,
          IRExpr* arg = args[i];
 
          IRType  aTy = Ity_INVALID;
-         if (LIKELY(!is_IRExpr_VECRET_or_BBPTR(arg)))
+         if (LIKELY(!is_IRExpr_VECRET_or_GSPTR(arg)))
             aTy  = typeOfIRExpr(env->type_env, arg);
 
          if (nextArgReg >= ARM_N_ARGREGS)
@@ -745,7 +745,7 @@ Bool doHelperCall ( /*OUT*/UInt*   stackAdjustAfterCall,
             tmpregs[nextArgReg] = raHi;
             nextArgReg++;
          }
-         else if (arg->tag == Iex_BBPTR) {
+         else if (arg->tag == Iex_GSPTR) {
             vassert(0); //ATC
             tmpregs[nextArgReg] = hregARM_R8();
             nextArgReg++;
@@ -791,8 +791,8 @@ Bool doHelperCall ( /*OUT*/UInt*   stackAdjustAfterCall,
 
    /* Do final checks, set the return values, and generate the call
       instruction proper. */
-   vassert(nBBPTRs == 0 || nBBPTRs == 1);
-   vassert(nVECRETs == (retTy == Ity_V128 || retTy == Ity_V256) ? 1 : 0);
+   vassert(nGSPTRs == 0 || nGSPTRs == 1);
+   vassert(nVECRETs == ((retTy == Ity_V128 || retTy == Ity_V256) ? 1 : 0));
    vassert(*stackAdjustAfterCall == 0);
    vassert(is_RetLoc_INVALID(*retloc));
    switch (retTy) {
@@ -1655,7 +1655,7 @@ static HReg iselIntExpr_R_wrk ( ISelEnv* env, IRExpr* e )
 //zz         DEFINE_PATTERN(p_32to1_then_1Uto8,
 //zz                        unop(Iop_1Uto8,unop(Iop_32to1,bind(0))));
 //zz         if (matchIRExpr(&mi,p_32to1_then_1Uto8,e)) {
-//zz            IRExpr* expr32 = mi.bindee[0];
+//zz            const IRExpr* expr32 = mi.bindee[0];
 //zz            HReg dst = newVRegI(env);
 //zz            HReg src = iselIntExpr_R(env, expr32);
 //zz            addInstr(env, mk_iMOVsd_RR(src,dst) );
@@ -2053,7 +2053,8 @@ static HReg iselIntExpr_R_wrk ( ISelEnv* env, IRExpr* e )
    either real or virtual regs; in any case they must not be changed
    by subsequent code emitted by the caller.  */
 
-static void iselInt64Expr ( HReg* rHi, HReg* rLo, ISelEnv* env, IRExpr* e )
+static void iselInt64Expr ( HReg* rHi, HReg* rLo, ISelEnv* env,
+                            const IRExpr* e )
 {
    iselInt64Expr_wrk(rHi, rLo, env, e);
 #  if 0
@@ -2066,7 +2067,8 @@ static void iselInt64Expr ( HReg* rHi, HReg* rLo, ISelEnv* env, IRExpr* e )
 }
 
 /* DO NOT CALL THIS DIRECTLY ! */
-static void iselInt64Expr_wrk ( HReg* rHi, HReg* rLo, ISelEnv* env, IRExpr* e )
+static void iselInt64Expr_wrk ( HReg* rHi, HReg* rLo, ISelEnv* env,
+                                const IRExpr* e )
 {
    vassert(e);
    vassert(typeOfIRExpr(env->type_env,e) == Ity_I64);
@@ -2317,7 +2319,7 @@ static void iselInt64Expr_wrk ( HReg* rHi, HReg* rLo, ISelEnv* env, IRExpr* e )
 /*--- ISEL: Vector (NEON) expressions (64 or 128 bit)   ---*/
 /*---------------------------------------------------------*/
 
-static HReg iselNeon64Expr ( ISelEnv* env, IRExpr* e )
+static HReg iselNeon64Expr ( ISelEnv* env, const IRExpr* e )
 {
    HReg r;
    vassert(env->hwcaps & VEX_HWCAPS_ARM_NEON);
@@ -2328,7 +2330,7 @@ static HReg iselNeon64Expr ( ISelEnv* env, IRExpr* e )
 }
 
 /* DO NOT CALL THIS DIRECTLY */
-static HReg iselNeon64Expr_wrk ( ISelEnv* env, IRExpr* e )
+static HReg iselNeon64Expr_wrk ( ISelEnv* env, const IRExpr* e )
 {
    IRType ty = typeOfIRExpr(env->type_env, e);
    MatchInfo mi;
@@ -3938,7 +3940,7 @@ static HReg iselNeon64Expr_wrk ( ISelEnv* env, IRExpr* e )
 }
 
 
-static HReg iselNeonExpr ( ISelEnv* env, IRExpr* e )
+static HReg iselNeonExpr ( ISelEnv* env, const IRExpr* e )
 {
    HReg r;
    vassert(env->hwcaps & VEX_HWCAPS_ARM_NEON);
@@ -3949,7 +3951,7 @@ static HReg iselNeonExpr ( ISelEnv* env, IRExpr* e )
 }
 
 /* DO NOT CALL THIS DIRECTLY */
-static HReg iselNeonExpr_wrk ( ISelEnv* env, IRExpr* e )
+static HReg iselNeonExpr_wrk ( ISelEnv* env, const IRExpr* e )
 {
    IRType ty = typeOfIRExpr(env->type_env, e);
    MatchInfo mi;
@@ -5601,6 +5603,36 @@ static HReg iselDblExpr_wrk ( ISelEnv* env, IRExpr* e )
             addInstr(env, ARMInstr_VUnaryD(ARMvfpu_SQRT, dst, src));
             return dst;
          }
+         case Iop_RoundF64toInt: {
+            /* We can only generate this on a >= V8 capable target.  But
+               that's OK since we should only be asked to generate for V8
+               capable guests, and we assume here that host == guest. */
+            if (VEX_ARM_ARCHLEVEL(env->hwcaps) >= 8) {
+               HReg src = iselDblExpr(env, e->Iex.Binop.arg2);
+               HReg dst = newVRegD(env);
+               set_VFP_rounding_mode(env, e->Iex.Binop.arg1);
+               addInstr(env, ARMInstr_VRIntR(True/*isF64*/, dst, src));
+               set_VFP_rounding_default(env);
+               return dst;
+            }
+            /* not a V8 target, so we can't select insns for this. */
+            break;
+         }
+         case Iop_MaxNumF64:
+         case Iop_MinNumF64: {
+            /* Same comments regarding V8 support as for Iop_RoundF64toInt. */
+            if (VEX_ARM_ARCHLEVEL(env->hwcaps) >= 8) {
+               HReg srcL  = iselDblExpr(env, e->Iex.Binop.arg1);
+               HReg srcR  = iselDblExpr(env, e->Iex.Binop.arg2);
+               HReg dst   = newVRegD(env);
+               Bool isMax = e->Iex.Binop.op == Iop_MaxNumF64;
+               addInstr(env, ARMInstr_VMinMaxNum(
+                                True/*isF64*/, isMax, dst, srcL, srcR));
+               return dst;
+            }
+            /* not a V8 target, so we can't select insns for this. */
+            break;
+         }
          default:
             break;
       }
@@ -5742,6 +5774,36 @@ static HReg iselFltExpr_wrk ( ISelEnv* env, IRExpr* e )
             addInstr(env, ARMInstr_VCvtSD(False/*!sToD*/, valS, valD));
             set_VFP_rounding_default(env);
             return valS;
+         }
+         case Iop_RoundF32toInt: {
+            /* We can only generate this on a >= V8 capable target.  But
+               that's OK since we should only be asked to generate for V8
+               capable guests, and we assume here that host == guest. */
+            if (VEX_ARM_ARCHLEVEL(env->hwcaps) >= 8) {
+               HReg src = iselFltExpr(env, e->Iex.Binop.arg2);
+               HReg dst = newVRegF(env);
+               set_VFP_rounding_mode(env, e->Iex.Binop.arg1);
+               addInstr(env, ARMInstr_VRIntR(False/*!isF64*/, dst, src));
+               set_VFP_rounding_default(env);
+               return dst;
+            }
+            /* not a V8 target, so we can't select insns for this. */
+            break;
+         }
+         case Iop_MaxNumF32:
+         case Iop_MinNumF32: {
+            /* Same comments regarding V8 support as for Iop_RoundF32toInt. */
+            if (VEX_ARM_ARCHLEVEL(env->hwcaps) >= 8) {
+               HReg srcL  = iselFltExpr(env, e->Iex.Binop.arg1);
+               HReg srcR  = iselFltExpr(env, e->Iex.Binop.arg2);
+               HReg dst   = newVRegF(env);
+               Bool isMax = e->Iex.Binop.op == Iop_MaxNumF32;
+               addInstr(env, ARMInstr_VMinMaxNum(
+                                False/*!isF64*/, isMax, dst, srcL, srcR));
+               return dst;
+            }
+            /* not a V8 target, so we can't select insns for this. */
+            break;
          }
          default:
             break;

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2015 Julian Seward
+   Copyright (C) 2000-2017 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -38,6 +38,9 @@
 //--------------------------------------------------------------------
 #include "pub_tool_options.h"
 #include "pub_core_xarray.h"
+
+/* Valgrind tool name. Defaults to "memcheck". */
+extern const HChar *VG_(clo_toolname);
 
 /* Should we stop collecting errors if too many appear?  default: YES */
 extern Bool  VG_(clo_error_limit);
@@ -117,9 +120,9 @@ extern const HChar* VG_(clo_trace_children_skip_by_arg);
 extern Bool  VG_(clo_child_silent_after_fork);
 
 /* If the user specified --log-file=STR and/or --xml-file=STR, these
-   hold STR after expansion of the %p and %q templates. */
-extern const HChar* VG_(clo_log_fname_expanded);
-extern const HChar* VG_(clo_xml_fname_expanded);
+   hold STR before expansion. */
+extern const HChar *VG_(clo_log_fname_unexpanded);
+extern const HChar *VG_(clo_xml_fname_unexpanded);
 
 /* Add timestamps to log messages?  default: NO */
 extern Bool  VG_(clo_time_stamp);
@@ -207,7 +210,6 @@ extern Bool  VG_(clo_profile_heap);
 extern Int VG_(clo_core_redzone_size);
 // VG_(clo_redzone_size) has default value -1, indicating to keep
 // the tool provided value.
-extern Int VG_(clo_redzone_size);
 /* DEBUG: display gory details for the k'th most popular error.
    default: Infinity. */
 extern Int   VG_(clo_dump_error);
@@ -220,14 +222,15 @@ typedef
       SimHint_fuse_compatible,
       SimHint_enable_outer,
       SimHint_no_inner_prefix,
-      SimHint_no_nptl_pthread_stackcache
+      SimHint_no_nptl_pthread_stackcache,
+      SimHint_fallback_llsc
    }
    SimHint;
 
 // Build mask to check or set SimHint a membership
 #define SimHint2S(a) (1 << (a))
 // SimHint h is member of the Set s ?
-#define SimHintiS(h,s) ((s) & SimHint2S(h))
+#define SimHintiS(h,s) (((s) & SimHint2S(h)) != 0)
 extern UInt VG_(clo_sim_hints);
 
 /* Show symbols in the form 'name+offset' ?  Default: NO */

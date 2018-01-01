@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2015 OpenWorks LLP
+   Copyright (C) 2004-2017 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -43,8 +43,15 @@
 
 #define NULL ((void*)0)
 
-#define LIKELY(x)       __builtin_expect(!!(x), 1)
-#define UNLIKELY(x)     __builtin_expect(!!(x), 0)
+#if defined(_MSC_VER) // building with MSVC
+# define LIKELY(x)          (x)
+# define UNLIKELY(x)        (x)
+# define CAST_TO_TYPEOF(x)  /**/
+#else
+# define LIKELY(x)          __builtin_expect(!!(x), 1)
+# define UNLIKELY(x)        __builtin_expect(!!(x), 0)
+# define CAST_TO_TYPEOF(x)  (__typeof__(x))
+#endif // defined(_MSC_VER)
 
 #if !defined(offsetof)
 #   define offsetof(type,memb) ((SizeT)(HWord)&((type*)0)->memb)

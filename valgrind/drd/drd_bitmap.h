@@ -1,7 +1,7 @@
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2015 Bart Van Assche <bvanassche@acm.org>.
+  Copyright (C) 2006-2017 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -140,8 +140,7 @@ Addr make_address(const UWord a1, const UWord a0)
     || defined(VGA_mips32)
 #define BITS_PER_BITS_PER_UWORD 5
 #elif defined(VGA_amd64) || defined(VGA_ppc64be) || defined(VGA_ppc64le) \
-      || defined(VGA_s390x) || defined(VGA_mips64) || defined(VGA_arm64) \
-      || defined(VGA_tilegx)
+      || defined(VGA_s390x) || defined(VGA_mips64) || defined(VGA_arm64)
 #define BITS_PER_BITS_PER_UWORD 6
 #else
 #error Unknown platform.

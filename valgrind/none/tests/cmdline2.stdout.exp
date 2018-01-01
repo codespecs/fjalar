@@ -58,6 +58,12 @@ usage: valgrind [options] prog-and-args
     --alignment=<number>      set minimum alignment of heap allocations [not used by this tool]
     --redzone-size=<number>   set minimum size of redzones added before/after
                               heap blocks (in bytes). [not used by this tool]
+    --xtree-memory=none|allocs|full   profile heap memory in an xtree [none]
+                              and produces a report at the end of the execution
+                              none: no profiling, allocs: current allocated
+                              size/blocks, full: profile current and cumulative
+                              allocated size/blocks and freed size/blocks.
+    --xtree-memory-file=<file>   xtree memory report file [xtmemory.kcg.%p]
 
   uncommon user options for all Valgrind tools:
     --fullpath-after=         (with nothing after the '=')
@@ -95,7 +101,7 @@ usage: valgrind [options] prog-and-args
     --sim-hints=hint1,hint2,...  activate unusual sim behaviours [none] 
          where hint is one of:
            lax-ioctls lax-doors fuse-compatible enable-outer
-           no-inner-prefix no-nptl-pthread-stackcache none
+           no-inner-prefix no-nptl-pthread-stackcache fallback-llsc none
     --fair-sched=no|yes|try   schedule threads fairly on multicore systems [no]
     --kernel-variant=variant1,variant2,...
          handle non-standard kernel variants [none]
@@ -104,7 +110,7 @@ usage: valgrind [options] prog-and-args
            android-gpu-sgx5xx android-gpu-adreno3xx none
     --merge-recursive-frames=<number>  merge frames between identical
            program counters in max <number> frames) [0]
-    --num-transtab-sectors=<number> size of translated code cache [16]
+    --num-transtab-sectors=<number> size of translated code cache [32]
            more sectors may increase performance, but use more memory.
     --avg-transtab-entry-size=<number> avg size in bytes of a translated
            basic block [0, meaning use tool provided default]
@@ -199,15 +205,16 @@ usage: valgrind [options] prog-and-args
 
   debugging options for Valgrind tools that replace malloc:
     --trace-malloc=no|yes     show client malloc details? [no]
+    --xtree-compress-strings=no|yes   compress strings in xtree callgrind format [yes]
 
   debugging options for Nulgrind:
     (none)
 
   Extra options read from ~/.valgrindrc, $VALGRIND_OPTS, ./.valgrindrc
 
-  Nulgrind is Copyright (C) 2002-2015, and GNU GPL'd, by Nicholas Nethercote.
-  Valgrind is Copyright (C) 2000-2015, and GNU GPL'd, by Julian Seward et al.
-  LibVEX is Copyright (C) 2004-2015, and GNU GPL'd, by OpenWorks LLP et al.
+  Nulgrind is Copyright (C) 2002-2017, and GNU GPL'd, by Nicholas Nethercote.
+  Valgrind is Copyright (C) 2000-2017, and GNU GPL'd, by Julian Seward et al.
+  LibVEX is Copyright (C) 2004-2017, and GNU GPL'd, by OpenWorks LLP et al.
 
   Bug reports, feedback, admiration, abuse, etc, to: www.valgrind.org.
 

@@ -6,7 +6,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2015 Josef Weidendorfer
+   Copyright (C) 2004-2017 Josef Weidendorfer
       josef.weidendorfer@gmx.de
 
    This program is free software; you can redistribute it and/or
@@ -347,7 +347,7 @@ struct _JmpData {
  * Basic Block Cost Center
  *
  * On demand, multiple BBCCs will be created for the same BB
- * dependend on command line options and:
+ * dependent on command line options and:
  * - current function (it's possible that a BB is executed in the
  *   context of different functions, e.g. in manual assembler/PLT)
  * - current thread ID

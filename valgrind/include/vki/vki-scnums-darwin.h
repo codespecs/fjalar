@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2007-2015 Apple Inc.
+   Copyright (C) 2007-2017 Apple Inc.
       Greg Parker  gparker@apple.com
 
    This program is free software; you can redistribute it and/or
@@ -202,6 +202,10 @@
 #define __NR_syscall_thread_switch            VG_DARWIN_SYSCALL_CONSTRUCT_MACH(61)
 #define __NR_clock_sleep_trap                 VG_DARWIN_SYSCALL_CONSTRUCT_MACH(62)
 
+#if DARWIN_VERS >= DARWIN_10_12
+#define __NR_host_create_mach_voucher_trap    VG_DARWIN_SYSCALL_CONSTRUCT_MACH(70)
+#endif
+
 #define __NR_mach_timebase_info               VG_DARWIN_SYSCALL_CONSTRUCT_MACH(89)
 #define __NR_mach_wait_until                  VG_DARWIN_SYSCALL_CONSTRUCT_MACH(90)
 #define __NR_mk_timer_create                  VG_DARWIN_SYSCALL_CONSTRUCT_MACH(91)
@@ -391,8 +395,13 @@
 			/* 174  old getdents */
 			/* 175  old gc_control */
 #define	__NR_add_profil     VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(176)
-			/* 177  */
-			/* 178  */
+
+#if DARWIN_VERS >= DARWIN_10_12
+#define __NR_kdebug_typefilter VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(177)
+#endif /* DARWIN_VERS >= DARWIN_10_12 */
+#if DARWIN_VERS >= DARWIN_10_11
+#define __NR_kdebug_trace_string VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(178)
+#endif /* DARWIN_VERS >= DARWIN_10_11 */
 			/* 179  */
 #define	__NR_kdebug_trace   VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(180)
 #define	__NR_setgid         VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(181)
@@ -642,7 +651,9 @@
 			/* 372  */
 #endif
 			/* 373  */
-			/* 374  */
+#if DARWIN_VERS >= DARWIN_10_11
+#define	__NR_kevent_qos             VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(374)
+#endif /* DARWIN_VERS >= DARWIN_10_11 */
 			/* 375  */
 			/* 376  */
 			/* 377  */
@@ -706,9 +717,9 @@
 #define __NR_audit_session_port     VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(432)
 #define __NR_pid_suspend            VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(433)
 #define __NR_pid_resume             VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(434)
-
-
-
+			/* 435  */
+			/* 436  */
+			/* 437  */
 #define __NR_shared_region_map_and_slide_np  VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(438)
 #define __NR_kas_info               VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(439)
 #define __NR_memorystatus_control   VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(440)
@@ -716,7 +727,7 @@
 #define __NR_guarded_close_np       VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(442)
 #define __NR_guarded_kqueue_np      VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(443)
 #define __NR_change_fdguard_np      VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(444)
-
+			/* 445  */
 #define __NR_proc_rlimit_control    VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(446)
 #define __NR_connectx               VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(447)
 #define __NR_disconnectx            VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(448)
@@ -732,35 +743,46 @@
 #if DARWIN_VERS >= DARWIN_10_10
 #define __NR_necp_match_policy      VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(460)
 #define __NR_getattrlistbulk        VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(461)
+#endif /* DARWIN_VERS >= DARWIN_10_10 */
+
+#if DARWIN_VERS >= DARWIN_10_12
+#define __NR_clonefileat            VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(462)
+#endif /* DARWIN_VERS >= DARWIN_10_12 */
+
+#if DARWIN_VERS >= DARWIN_10_10
+#define __NR_faccessat              VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(466)
+#define __NR_fstatat64              VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(470)
 #define __NR_readlinkat             VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(473)
 #define __NR_bsdthread_ctl          VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(478)
+#define __NR_csrctl                 VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(483)
 #define __NR_guarded_open_dprotected_np VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(484)
 #define __NR_guarded_write_np       VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(485)
 #define __NR_guarded_pwrite_np      VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(486)
 #define __NR_guarded_writev_np      VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(487)
-			/* 488  */
-			/* 489  */
 #endif /* DARWIN_VERS >= DARWIN_10_10 */
 
-// TODO Update with OS X 10.11 kernel (xnu) source code release
+#if DARWIN_VERS >= DARWIN_10_12
+#define	__NR_renameatx_np           VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(488)
+#endif /* DARWIN_VERS >= DARWIN_10_12 */
+			/* 489  */
+
 #if DARWIN_VERS >= DARWIN_10_11
-			/* 490  */
-			/* 491  */
-			/* 492  */
-			/* 493  */
-			/* 494  */
+#define	__NR_netagent_trigger       VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(490)
+#define	__NR_stack_snapshot_with_config       VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(491)
+#define	__NR_microstackshot         VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(492)
+#define	__NR_grab_pgo_data          VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(493)
+#define	__NR_persona                VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(494)
 			/* 495  */
 			/* 496  */
 			/* 497  */
 			/* 498  */
-			/* 499  */
+#define	__NR_work_interval_ctl      VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(499)
 #endif /* DARWIN_VERS >= DARWIN_10_11 */
 
-// TODO Update with macOS 10.12 kernel (xnu) source code release
 #if DARWIN_VERS >= DARWIN_10_12
-			/* 500  */
-			/* 501  */
-			/* 502  */
+#define	__NR_getentropy             VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(500)
+#define	__NR_necp_open              VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(501)
+#define	__NR_necp_client_action     VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(502)
 			/* 503  */
 			/* 504  */
 			/* 505  */
@@ -773,13 +795,13 @@
 			/* 512  */
 			/* 513  */
 			/* 514  */
-			/* 515  */
-			/* 516  */
-			/* 517  */
-			/* 518  */
+#define	__NR_ulock_wait             VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(515)
+#define	__NR_ulock_wake             VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(516)
+#define	__NR_fclonefileat           VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(517)
+#define	__NR_fs_snapshot            VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(518)
 			/* 519  */
-			/* 520  */
-			/* 521  */
+#define	__NR_terminate_with_payload VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(520)
+#define	__NR_abort_with_payload     VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(521)
 #endif /* DARWIN_VERS >= DARWIN_10_12 */
 
 #if DARWIN_VERS < DARWIN_10_6
@@ -795,7 +817,6 @@
 #elif DARWIN_VERS == DARWIN_10_11
 #define __NR_MAXSYSCALL             VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(500)
 #elif DARWIN_VERS == DARWIN_10_12
-// TODO Confirm against final release
 #define __NR_MAXSYSCALL             VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(522)
 #else
 #error unknown darwin version

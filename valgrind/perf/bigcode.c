@@ -28,8 +28,6 @@
 #if defined(__mips__)
 #include <asm/cachectl.h>
 #include <sys/syscall.h>
-#elif defined(__tilegx__)
-#include <asm/cachectl.h>
 #endif
 #include "tests/sys_mman.h"
 
@@ -75,7 +73,7 @@ int main(int argc, char* argv[])
    printf("%d copies of f(), %d reps\n", n_fns, n_reps);
    
    char* a = mmap(0, FN_SIZE * n_fns, 
-                     PROT_EXEC|PROT_WRITE, 
+                     PROT_EXEC|PROT_WRITE|PROT_READ, 
                      MAP_PRIVATE|MAP_ANONYMOUS, -1,0);
    assert(a != (char*)MAP_FAILED);
 
@@ -87,8 +85,6 @@ int main(int argc, char* argv[])
 
 #if defined(__mips__)
    syscall(__NR_cacheflush, a, FN_SIZE * n_fns, ICACHE);
-#elif defined(__tilegx__)
-   cacheflush(a, FN_SIZE * n_fns, ICACHE);
 #endif
 
    for (h = 0; h < n_reps; h += 1) {

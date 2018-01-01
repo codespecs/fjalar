@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2015 OpenWorks LLP
+   Copyright (C) 2004-2017 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -60,8 +60,7 @@ typedef
       VexArchPPC64,
       VexArchS390X,
       VexArchMIPS32,
-      VexArchMIPS64,
-      VexArchTILEGX
+      VexArchMIPS64
    }
    VexArch;
 
@@ -176,9 +175,6 @@ typedef
 
 #define VEX_HWCAPS_S390X(x)  ((x) & ~VEX_S390X_MODEL_MASK)
 #define VEX_S390X_MODEL(x)   ((x) &  VEX_S390X_MODEL_MASK)
-
-/* Tilegx: baseline capability is TILEGX36 */
-#define VEX_HWCAPS_TILEGX_BASE (1<<16)  /* TILEGX Baseline */
 
 /* arm: baseline capability is ARMv4 */
 /* Bits 5:0 - architecture level (e.g. 5 for v5, 6 for v6 etc) */
@@ -327,6 +323,9 @@ typedef
          line size of 64 bytes would be encoded here as 6. */
       UInt arm64_dMinLine_lg2_szB;
       UInt arm64_iMinLine_lg2_szB;
+      /* ARM64: does the host require us to use the fallback LLSC
+         implementation? */
+      Bool arm64_requires_fallback_LLSC;
    }
    VexArchInfo;
 
@@ -369,6 +368,11 @@ void LibVEX_default_VexArchInfo ( /*OUT*/VexArchInfo* vai );
       guest is ppc32-linux                ==> const False
       guest is other                      ==> inapplicable
 
+   guest__use_fallback_LLSC
+      guest is mips32                     ==> applicable, default True
+      guest is mips64                     ==> applicable, default True
+      guest is arm64                      ==> applicable, default False
+
    host_ppc_calls_use_fndescrs:
       host is ppc32-linux                 ==> False
       host is ppc64-linux                 ==> True
@@ -401,11 +405,17 @@ typedef
          is assumed equivalent to a fn which always returns False. */
       Bool (*guest_ppc_zap_RZ_at_bl)(Addr);
 
+      /* Potentially for all guests that use LL/SC: use the fallback
+         (synthesised) implementation rather than passing LL/SC on to
+         the host? */
+      Bool guest__use_fallback_LLSC;
+
       /* PPC32/PPC64 HOSTS only: does '&f' give us a pointer to a
          function descriptor on the host, or to the function code
          itself?  True => descriptor, False => code. */
       Bool host_ppc_calls_use_fndescrs;
 
+      /* ??? Description ??? */
       Bool guest_mips_fp_mode64;
    }
    VexAbiInfo;
@@ -475,7 +485,7 @@ typedef
          Default=120.  A setting of zero disables unrolling.  */
       Int iropt_unroll_thresh;
       /* What's the maximum basic block length the front end(s) allow?
-         BBs longer than this are split up.  Default=50 (guest
+         BBs longer than this are split up.  Default=60 (guest
          insns). */
       Int guest_max_insns;
       /* How aggressive should front ends be in following
@@ -825,8 +835,17 @@ typedef
    VexTranslateArgs;
 
 
+/* Runs the entire compilation pipeline. */
 extern
-VexTranslateResult LibVEX_Translate ( VexTranslateArgs* );
+VexTranslateResult LibVEX_Translate ( /*MOD*/ VexTranslateArgs* );
+
+/* Runs the first half of the compilation pipeline: lifts guest code to IR,
+   optimises, instruments and optimises it some more. */
+extern
+IRSB* LibVEX_FrontEnd ( /*MOD*/ VexTranslateArgs*,
+                        /*OUT*/ VexTranslateResult* res,
+                        /*OUT*/ VexRegisterUpdates* pxControl );
+
 
 /* A subtlety re interaction between self-checking translations and
    bb-chasing.  The supplied chase_into_ok function should say NO

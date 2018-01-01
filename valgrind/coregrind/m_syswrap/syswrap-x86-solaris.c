@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2011-2015 Petr Pavlu
+   Copyright (C) 2011-2017 Petr Pavlu
       setup@dagobah.cz
 
    This program is free software; you can redistribute it and/or
@@ -576,7 +576,7 @@ void ML_(cleanup_gdt)(VexGuestX86State *vex)
 {
    if (!vex->guest_GDT)
       return;
-   VG_(free)((void*)vex->guest_GDT);
+   VG_(free)((void *) (HWord) vex->guest_GDT);
    vex->guest_GDT = 0;
 }
 
@@ -586,7 +586,8 @@ void ML_(update_gdt_lwpgs)(ThreadId tid)
 {
    ThreadState *tst = VG_(get_ThreadState)(tid);
    Addr base = tst->os_state.thrptr;
-   VexGuestX86SegDescr *gdt = (VexGuestX86SegDescr*)tst->arch.vex.guest_GDT;
+   VexGuestX86SegDescr *gdt
+      = (VexGuestX86SegDescr *) (HWord) tst->arch.vex.guest_GDT;
    VexGuestX86SegDescr desc;
 
    vg_assert(gdt);

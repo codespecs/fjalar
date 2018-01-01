@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2015 OpenWorks LLP
+   Copyright (C) 2004-2017 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -560,6 +560,26 @@ static inline ULong idULong ( ULong x )
 
 /*-------------------------------------------------------------*/
 
+#define ACTIONS_ADX(DATA_BITS,DATA_UTYPE,FLAGNAME)		\
+{								\
+   PREAMBLE(DATA_BITS);						\
+   { ULong ocf;	/* o or c */					\
+     ULong argL, argR, oldOC, res;				\
+     oldOC = (CC_NDEP >> AMD64G_CC_SHIFT_##FLAGNAME) & 1;	\
+     argL  = CC_DEP1;						\
+     argR  = CC_DEP2 ^ oldOC;					\
+     res   = (argL + argR) + oldOC;				\
+     if (oldOC)							\
+        ocf = (DATA_UTYPE)res <= (DATA_UTYPE)argL;		\
+     else							\
+        ocf = (DATA_UTYPE)res < (DATA_UTYPE)argL;		\
+     return (CC_NDEP & ~AMD64G_CC_MASK_##FLAGNAME)		\
+            | (ocf << AMD64G_CC_SHIFT_##FLAGNAME);		\
+   }								\
+}
+
+/*-------------------------------------------------------------*/
+
 
 #if PROFILE_RFLAGS
 
@@ -734,6 +754,12 @@ ULong amd64g_calculate_rflags_all_WRK ( ULong cc_op,
 
       case AMD64G_CC_OP_BLSR32: ACTIONS_BLSR( 32, UInt   );
       case AMD64G_CC_OP_BLSR64: ACTIONS_BLSR( 64, ULong  );
+
+      case AMD64G_CC_OP_ADCX32: ACTIONS_ADX( 32, UInt,  C );
+      case AMD64G_CC_OP_ADCX64: ACTIONS_ADX( 64, ULong, C );
+
+      case AMD64G_CC_OP_ADOX32: ACTIONS_ADX( 32, UInt,  O );
+      case AMD64G_CC_OP_ADOX64: ACTIONS_ADX( 64, ULong, O );
 
       default:
          /* shouldn't really make these calls from generated code */
@@ -1353,6 +1379,34 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
                            binop(Iop_Shl64, cc_dep2, mkU8(48))));
       }
 
+      /* 8, 9 */
+      if (isU64(cc_op, AMD64G_CC_OP_SUBW) && isU64(cond, AMD64CondS)
+                                          && isU64(cc_dep2, 0)) {
+         /* word sub/cmp of zero, then S --> test (dst-0 <s 0)
+                                         --> test dst <s 0
+                                         --> (ULong)dst[15]
+            This is yet another scheme by which clang figures out if the
+            top bit of a word is 1 or 0.  See also LOGICB/CondS below. */
+         /* Note: isU64(cc_dep2, 0) is correct, even though this is
+            for an 16-bit comparison, since the args to the helper
+            function are always U64s. */
+         return binop(Iop_And64,
+                      binop(Iop_Shr64,cc_dep1,mkU8(15)),
+                      mkU64(1));
+      }
+      if (isU64(cc_op, AMD64G_CC_OP_SUBW) && isU64(cond, AMD64CondNS)
+                                          && isU64(cc_dep2, 0)) {
+         /* word sub/cmp of zero, then NS --> test !(dst-0 <s 0)
+                                          --> test !(dst <s 0)
+                                          --> (ULong) !dst[15]
+         */
+         return binop(Iop_Xor64,
+                      binop(Iop_And64,
+                            binop(Iop_Shr64,cc_dep1,mkU8(15)),
+                            mkU64(1)),
+                      mkU64(1));
+      }
+
       /* 14, */
       if (isU64(cc_op, AMD64G_CC_OP_SUBW) && isU64(cond, AMD64CondLE)) {
          /* word sub/cmp, then LE (signed less than or equal) 
@@ -1604,12 +1658,31 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
                            mkU64(0)));
       }
 
+      /*---------------- SHRQ ----------------*/
+
+      if (isU64(cc_op, AMD64G_CC_OP_SHRQ) && isU64(cond, AMD64CondZ)) {
+         /* SHRQ, then Z --> test dep1 == 0 */
+         return unop(Iop_1Uto64,
+                     binop(Iop_CmpEQ64, cc_dep1, mkU64(0)));
+      }
+      if (isU64(cc_op, AMD64G_CC_OP_SHRQ) && isU64(cond, AMD64CondNZ)) {
+         /* SHRQ, then NZ --> test dep1 != 0 */
+         return unop(Iop_1Uto64,
+                     binop(Iop_CmpNE64, cc_dep1, mkU64(0)));
+      }
+
       /*---------------- SHRL ----------------*/
 
       if (isU64(cc_op, AMD64G_CC_OP_SHRL) && isU64(cond, AMD64CondZ)) {
          /* SHRL, then Z --> test dep1 == 0 */
          return unop(Iop_1Uto64,
                      binop(Iop_CmpEQ32, unop(Iop_64to32, cc_dep1),
+                           mkU32(0)));
+      }
+      if (isU64(cc_op, AMD64G_CC_OP_SHRL) && isU64(cond, AMD64CondNZ)) {
+         /* SHRL, then NZ --> test dep1 != 0 */
+         return unop(Iop_1Uto64,
+                     binop(Iop_CmpNE32, unop(Iop_64to32, cc_dep1),
                            mkU32(0)));
       }
 
@@ -1732,6 +1805,20 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
                            binop(Iop_And64,cc_dep1,mkU64(0xFF)),
                            binop(Iop_And64,cc_dep2,mkU64(0xFF))));
       }
+      if (isU64(cc_op, AMD64G_CC_OP_ADDQ)) {
+         /* C after add denotes sum <u either arg */
+         return unop(Iop_1Uto64,
+                     binop(Iop_CmpLT64U, 
+                           binop(Iop_Add64, cc_dep1, cc_dep2), 
+                           cc_dep1));
+      }
+      if (isU64(cc_op, AMD64G_CC_OP_ADDL)) {
+         /* C after add denotes sum <u either arg */
+         return unop(Iop_1Uto64,
+                     binop(Iop_CmpLT32U, 
+                           unop(Iop_64to32, binop(Iop_Add64, cc_dep1, cc_dep2)),
+                           unop(Iop_64to32, cc_dep1)));
+      }
       if (isU64(cc_op, AMD64G_CC_OP_LOGICQ)
           || isU64(cc_op, AMD64G_CC_OP_LOGICL)
           || isU64(cc_op, AMD64G_CC_OP_LOGICW)
@@ -1852,18 +1939,17 @@ ULong amd64g_calculate_FXAM ( ULong tag, ULong dbl )
    themselves are not transferred into the guest state. */
 static
 VexEmNote do_put_x87 ( Bool moveRegs,
-                       /*IN*/UChar* x87_state,
+                       /*IN*/Fpu_State* x87_state,
                        /*OUT*/VexGuestAMD64State* vex_state )
 {
    Int        stno, preg;
    UInt       tag;
    ULong*     vexRegs = (ULong*)(&vex_state->guest_FPREG[0]);
    UChar*     vexTags = (UChar*)(&vex_state->guest_FPTAG[0]);
-   Fpu_State* x87     = (Fpu_State*)x87_state;
-   UInt       ftop    = (x87->env[FP_ENV_STAT] >> 11) & 7;
-   UInt       tagw    = x87->env[FP_ENV_TAG];
-   UInt       fpucw   = x87->env[FP_ENV_CTRL];
-   UInt       c3210   = x87->env[FP_ENV_STAT] & 0x4700;
+   UInt       ftop    = (x87_state->env[FP_ENV_STAT] >> 11) & 7;
+   UInt       tagw    = x87_state->env[FP_ENV_TAG];
+   UInt       fpucw   = x87_state->env[FP_ENV_CTRL];
+   UInt       c3210   = x87_state->env[FP_ENV_STAT] & 0x4700;
    VexEmNote  ew;
    UInt       fpround;
    ULong      pair;
@@ -1884,7 +1970,7 @@ VexEmNote do_put_x87 ( Bool moveRegs,
       } else {
          /* register is non-empty */
          if (moveRegs)
-            convert_f80le_to_f64le( &x87->reg[10*stno], 
+            convert_f80le_to_f64le( &x87_state->reg[10*stno], 
                                     (UChar*)&vexRegs[preg] );
          vexTags[preg] = 1;
       }
@@ -1913,23 +1999,23 @@ VexEmNote do_put_x87 ( Bool moveRegs,
    we can approximate it. */
 static
 void do_get_x87 ( /*IN*/VexGuestAMD64State* vex_state,
-                  /*OUT*/UChar* x87_state )
+                  /*OUT*/Fpu_State* x87_state )
 {
    Int        i, stno, preg;
    UInt       tagw;
    ULong*     vexRegs = (ULong*)(&vex_state->guest_FPREG[0]);
    UChar*     vexTags = (UChar*)(&vex_state->guest_FPTAG[0]);
-   Fpu_State* x87     = (Fpu_State*)x87_state;
    UInt       ftop    = vex_state->guest_FTOP;
    UInt       c3210   = vex_state->guest_FC3210;
 
    for (i = 0; i < 14; i++)
-      x87->env[i] = 0;
+      x87_state->env[i] = 0;
 
-   x87->env[1] = x87->env[3] = x87->env[5] = x87->env[13] = 0xFFFF;
-   x87->env[FP_ENV_STAT] 
+   x87_state->env[1] = x87_state->env[3] = x87_state->env[5]
+      = x87_state->env[13] = 0xFFFF;
+   x87_state->env[FP_ENV_STAT] 
       = toUShort(((ftop & 7) << 11) | (c3210 & 0x4700));
-   x87->env[FP_ENV_CTRL] 
+   x87_state->env[FP_ENV_CTRL] 
       = toUShort(amd64g_create_fpucw( vex_state->guest_FPROUND ));
 
    /* Dump the register stack in ST order. */
@@ -1940,15 +2026,15 @@ void do_get_x87 ( /*IN*/VexGuestAMD64State* vex_state,
          /* register is empty */
          tagw |= (3 << (2*preg));
          convert_f64le_to_f80le( (UChar*)&vexRegs[preg], 
-                                 &x87->reg[10*stno] );
+                                 &x87_state->reg[10*stno] );
       } else {
          /* register is full. */
          tagw |= (0 << (2*preg));
          convert_f64le_to_f80le( (UChar*)&vexRegs[preg], 
-                                 &x87->reg[10*stno] );
+                                 &x87_state->reg[10*stno] );
       }
    }
-   x87->env[FP_ENV_TAG] = toUShort(tagw);
+   x87_state->env[FP_ENV_TAG] = toUShort(tagw);
 }
 
 
@@ -1980,7 +2066,7 @@ void amd64g_dirtyhelper_XSAVE_COMPONENT_0
    Int       r, stno;
    UShort    *srcS, *dstS;
 
-   do_get_x87( gst, (UChar*)&tmp );
+   do_get_x87( gst, &tmp );
 
    /* Now build the proper fxsave x87 image from the fsave x87 image
       we just made. */
@@ -2149,7 +2235,7 @@ VexEmNote amd64g_dirtyhelper_XRSTOR_COMPONENT_0
    tmp.env[FP_ENV_TAG] = fp_tags;
 
    /* Now write 'tmp' into the guest state. */
-   VexEmNote warnX87 = do_put_x87( True/*moveRegs*/, (UChar*)&tmp, gst );
+   VexEmNote warnX87 = do_put_x87( True/*moveRegs*/, &tmp, gst );
 
    return warnX87;
 }
@@ -2353,7 +2439,7 @@ ULong amd64g_create_fpucw ( ULong fpround )
 VexEmNote amd64g_dirtyhelper_FLDENV ( /*OUT*/VexGuestAMD64State* vex_state,
                                       /*IN*/HWord x87_state)
 {
-   return do_put_x87( False, (UChar*)x87_state, vex_state );
+   return do_put_x87( False, (Fpu_State*)x87_state, vex_state );
 }
 
 
@@ -2405,7 +2491,7 @@ void amd64g_dirtyhelper_FSTENV ( /*IN*/VexGuestAMD64State* vex_state,
 void amd64g_dirtyhelper_FNSAVE ( /*IN*/VexGuestAMD64State* vex_state,
                                  /*OUT*/HWord x87_state)
 {
-   do_get_x87( vex_state, (UChar*)x87_state );
+   do_get_x87( vex_state, (Fpu_State*)x87_state );
 }
 
 
@@ -2459,7 +2545,7 @@ void amd64g_dirtyhelper_FNSAVES ( /*IN*/VexGuestAMD64State* vex_state,
 VexEmNote amd64g_dirtyhelper_FRSTOR ( /*OUT*/VexGuestAMD64State* vex_state,
                                       /*IN*/HWord x87_state)
 {
-   return do_put_x87( True, (UChar*)x87_state, vex_state );
+   return do_put_x87( True, (Fpu_State*)x87_state, vex_state );
 }
 
 

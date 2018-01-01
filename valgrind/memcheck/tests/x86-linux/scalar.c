@@ -6,6 +6,7 @@
 #include <sched.h>
 #include <signal.h>
 #include <linux/mman.h> // MREMAP_FIXED
+#include <sys/prctl.h>
 
 // Here we are trying to trigger every syscall error (scalar errors and
 // memory errors) for every syscall.  We do this by passing a lot of bogus
@@ -85,10 +86,18 @@ int main(void)
    SY(__NR_unlink, x0); FAIL;
 
    // __NR_execve 11
-   // Nb: could have 3 memory errors if we pass x0+1 as the 2nd and 3rd
-   // args, except for bug #93174.
    GO(__NR_execve, "3s 1m");
-   SY(__NR_execve, x0, x0, x0); FAIL;
+   SY(__NR_execve, x0 + 1, x0 + 1, x0); FAIL;
+
+   GO(__NR_execve, "3s 1m");
+   SY(__NR_execve, x0 + 1, x0, x0 + 1); FAIL;
+
+   char *argv_envp[] = {(char *) (x0 + 1), NULL};
+   GO(__NR_execve, "4s 2m");
+   SY(__NR_execve, x0 + 1, x0 + argv_envp, x0); FAIL;
+
+   GO(__NR_execve, "4s 2m");
+   SY(__NR_execve, x0 + 1, x0, x0 + argv_envp); FAIL;
 
    // __NR_chdir 12
    GO(__NR_chdir, "1s 1m");
@@ -279,7 +288,7 @@ int main(void)
    // For F_GETLK the 3rd arg is 'lock'.  On x86, this fails w/EBADF.  But
    // on amd64 in 32-bit mode it fails w/EFAULT.  We don't check the 1st two
    // args for the reason given above.
-   GO(__NR_fcntl, "(GETLK) 1s 0m");
+   GO(__NR_fcntl, "(GETLK) 1s 5m");
    SY(__NR_fcntl, -1, F_GETLK, x0); FAIL; //FAILx(EBADF);
 
    // __NR_mpx 56
@@ -767,6 +776,16 @@ int main(void)
    GO(__NR_prctl, "5s 0m");
    SY(__NR_prctl, x0, x0, x0, x0, x0); FAIL;
 
+   char buf16[16] = "123456789012345.";
+   buf16[15] = x0; // this will cause 'using unitialised value'
+   GO(__NR_prctl, "2s 0m");
+   SY(__NR_prctl, x0 + PR_SET_NAME, buf16); SUCC;
+
+   char buf17[17] = "1234567890123456.";
+   buf17[16] = x0; // this must not cause 'using unitialised value'
+   GO(__NR_prctl, "1s 0m");
+   SY(__NR_prctl, x0 + PR_SET_NAME, buf17); SUCC;
+
    // __NR_rt_sigreturn 173
    GO(__NR_rt_sigreturn, "n/a");
  //SY(__NR_rt_sigreturn); // (Not yet handled by Valgrind) FAIL;
@@ -792,8 +811,8 @@ int main(void)
    SY(__NR_rt_sigqueueinfo, x0, x0+1, x0); FAIL;
 
    // __NR_rt_sigsuspend 179
-   GO(__NR_rt_sigsuspend, "ignore");
-   // (I don't know how to test this...)
+   GO(__NR_rt_sigsuspend, "2s 1m");
+   SY(__NR_rt_sigsuspend, x0 + 1, x0 + sizeof(sigset_t)); FAILx(EFAULT);
 
    // __NR_pread64 180
    GO(__NR_pread64, "5s 1m");
@@ -1068,8 +1087,8 @@ int main(void)
    #define FUTEX_WAIT   0
    #endif
    // XXX: again, glibc not doing 6th arg means we have only 5s errors
-   GO(__NR_futex, "5s 2m");
-   SY(__NR_futex, x0+FUTEX_WAIT, x0, x0, x0+1, x0, x0); FAIL;
+   GO(__NR_futex, "4s 2m");
+   SY(__NR_futex, x0+FUTEX_WAIT, x0, x0, x0+1); FAIL;
 
    // __NR_sched_setaffinity 241
    GO(__NR_sched_setaffinity, "3s 1m");

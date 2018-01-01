@@ -233,7 +233,7 @@ tool-specific macros).</para>
     memcheck leak search can be requested from the client program
     using VALGRIND_DO_LEAK_CHECK or via the monitor command "leak_search".
     Note that the syntax of the command string is only verified at
-    run-time. So, if it exists, it is preferrable to use a specific
+    run-time. So, if it exists, it is preferable to use a specific
     client request to have better compile time verifications of the
     arguments.
     </para>
@@ -411,8 +411,8 @@ and indicates it is waiting for a connection from a GDB:</para>
 
 <programlisting><![CDATA[
 ==2418== Memcheck, a memory error detector
-==2418== Copyright (C) 2002-2010, and GNU GPL'd, by Julian Seward et al.
-==2418== Using Valgrind-3.7.0.SVN and LibVEX; rerun with -h for copyright info
+==2418== Copyright (C) 2002-2017, and GNU GPL'd, by Julian Seward et al.
+==2418== Using Valgrind-3.13.0.SVN and LibVEX; rerun with -h for copyright info
 ==2418== Command: ./prog
 ==2418== 
 ==2418== (action at startup) vgdb me ... 
@@ -1057,6 +1057,12 @@ $5 = 36
      OS X or Android.
      </para>
 
+     <para>Unblocking processes blocked in system calls is implemented
+     via agent thread on Solaris. This is quite a different approach
+     than using ptrace on Linux, but leads to equivalent result - Valgrind
+     gdbserver is invoked. Note that agent thread is a Solaris OS
+     feature and cannot be disabled.
+     </para>
    </listitem>
 
    <listitem>
@@ -1390,6 +1396,13 @@ client request.
     to a huge value and continue execution.</para>
   </listitem>
 
+  <listitem>
+    <para><varname>xtmemory [&lt;filename&gt; default xtmemory.kcg.%p.%n]</varname>
+      requests the tool to produce an xtree heap memory report.
+      See <xref linkend="manual-core.xtree"/> for
+      a detailed explanation about execution trees. </para>
+  </listitem>
+
 </itemizedlist>
 
 <para>The following Valgrind monitor commands are useful for
@@ -1435,7 +1448,7 @@ problems or bugs.</para>
   </listitem>
 
   <listitem>
-    <para><varname>v.info exectxt</varname> shows informations about
+    <para><varname>v.info exectxt</varname> shows information about
     the "executable contexts" (i.e. the stack traces) recorded by
     Valgrind.  For some programs, Valgrind can record a very high
     number of such stack traces, causing a high memory usage.  This
@@ -1503,9 +1516,9 @@ problems or bugs.</para>
 
 <screen><![CDATA[
 (gdb) monitor v.set hostvisibility yes
-(gdb) add-symbol-file /path/to/tool/executable/file/memcheck-x86-linux 0x38000000
+(gdb) add-symbol-file /path/to/tool/executable/file/memcheck-x86-linux 0x58000000
 add symbol table from file "/path/to/tool/executable/file/memcheck-x86-linux" at
-	.text_addr = 0x38000000
+	.text_addr = 0x58000000
 (y or n) y
 Reading symbols from /path/to/tool/executable/file/memcheck-x86-linux...done.
 (gdb) 

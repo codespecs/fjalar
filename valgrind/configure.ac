@@ -8,7 +8,7 @@
 ##------------------------------------------------------------##
 
 # Process this file with autoconf to produce a configure script.
-AC_INIT([Valgrind],[3.12.0.Fjalar],[valgrind-users@lists.sourceforge.net])
+AC_INIT([Valgrind],[3.13.0.Fjalar],[valgrind-users@lists.sourceforge.net])
 AC_CONFIG_SRCDIR(coregrind/m_main.c)
 AC_CONFIG_HEADERS([config.h])
 AM_INIT_AUTOMAKE([foreign subdir-objects])
@@ -192,10 +192,10 @@ AC_MSG_CHECKING([for a supported CPU])
 # Power PC returns powerpc for Big Endian.  This was not changed when Little
 # Endian support was added to the 64-bit architecture.  The 64-bit Little
 # Endian systems explicitly state le in the host_cpu.  For clarity in the
-# Valgrind code, the ARCH_MAX name will state LE or BE for the endianess of
+# Valgrind code, the ARCH_MAX name will state LE or BE for the endianness of
 # the 64-bit system.  Big Endian is the only mode supported on 32-bit Power PC.
 # The abreviation PPC or ppc refers to 32-bit and 64-bit systems with either
-# Endianess.  The name PPC64 or ppc64 to 64-bit systems of either Endianess.
+# Endianness.  The name PPC64 or ppc64 to 64-bit systems of either Endianness.
 # The names ppc64be or PPC64BE refer to only 64-bit systems that are Big
 # Endian.  Similarly, ppc64le or PPC64LE refer to only 64-bit systems that are
 # Little Endian.
@@ -267,11 +267,6 @@ case "${host_cpu}" in
      mipsisa64*)
         AC_MSG_RESULT([ok (${host_cpu})])
         ARCH_MAX="mips64"
-        ;;
-
-     tilegx)
-        AC_MSG_RESULT([ok (${host_cpu})])
-        ARCH_MAX="tilegx"
         ;;
 
      *) 
@@ -527,8 +522,8 @@ case "$ARCH_MAX-$VGCONF_OS" in
         VGCONF_ARCH_SEC=""
 	VGCONF_PLATFORM_PRI_CAPS="X86_LINUX"
 	VGCONF_PLATFORM_SEC_CAPS=""
-        valt_load_address_pri_norml="0x38000000"
-        valt_load_address_pri_inner="0x28000000"
+        valt_load_address_pri_norml="0x58000000"
+        valt_load_address_pri_inner="0x38000000"
         valt_load_address_sec_norml="0xUNSET"
         valt_load_address_sec_inner="0xUNSET"
         AC_MSG_RESULT([ok (${ARCH_MAX}-${VGCONF_OS})])
@@ -541,24 +536,24 @@ case "$ARCH_MAX-$VGCONF_OS" in
            VGCONF_ARCH_SEC=""
 	   VGCONF_PLATFORM_PRI_CAPS="AMD64_LINUX"
 	   VGCONF_PLATFORM_SEC_CAPS=""
-           valt_load_address_pri_norml="0x38000000"
-           valt_load_address_pri_inner="0x28000000"
+           valt_load_address_pri_norml="0x58000000"
+           valt_load_address_pri_inner="0x38000000"
 	elif test x$vg_cv_only32bit = xyes; then
 	   VGCONF_ARCH_PRI="x86"
            VGCONF_ARCH_SEC=""
 	   VGCONF_PLATFORM_PRI_CAPS="X86_LINUX"
 	   VGCONF_PLATFORM_SEC_CAPS=""
-           valt_load_address_pri_norml="0x38000000"
-           valt_load_address_pri_inner="0x28000000"
+           valt_load_address_pri_norml="0x58000000"
+           valt_load_address_pri_inner="0x38000000"
 	else
            VGCONF_ARCH_PRI="amd64"
            VGCONF_ARCH_SEC="x86"
 	   VGCONF_PLATFORM_PRI_CAPS="AMD64_LINUX"
 	   VGCONF_PLATFORM_SEC_CAPS="X86_LINUX"
-           valt_load_address_pri_norml="0x38000000"
-           valt_load_address_pri_inner="0x28000000"
-           valt_load_address_sec_norml="0x38000000"
-           valt_load_address_sec_inner="0x28000000"
+           valt_load_address_pri_norml="0x58000000"
+           valt_load_address_pri_inner="0x38000000"
+           valt_load_address_sec_norml="0x58000000"
+           valt_load_address_sec_inner="0x38000000"
 	fi
         AC_MSG_RESULT([ok (${ARCH_MAX}-${VGCONF_OS})])
 	;;
@@ -567,8 +562,8 @@ case "$ARCH_MAX-$VGCONF_OS" in
         VGCONF_ARCH_SEC=""
 	VGCONF_PLATFORM_PRI_CAPS="PPC32_LINUX"
 	VGCONF_PLATFORM_SEC_CAPS=""
-        valt_load_address_pri_norml="0x38000000"
-        valt_load_address_pri_inner="0x28000000"
+        valt_load_address_pri_norml="0x58000000"
+        valt_load_address_pri_inner="0x38000000"
         valt_load_address_sec_norml="0xUNSET"
         valt_load_address_sec_inner="0xUNSET"
         AC_MSG_RESULT([ok (${ARCH_MAX}-${VGCONF_OS})])
@@ -581,24 +576,24 @@ case "$ARCH_MAX-$VGCONF_OS" in
            VGCONF_ARCH_SEC=""
 	   VGCONF_PLATFORM_PRI_CAPS="PPC64BE_LINUX"
 	   VGCONF_PLATFORM_SEC_CAPS=""
-           valt_load_address_pri_norml="0x38000000"
-           valt_load_address_pri_inner="0x28000000"
+           valt_load_address_pri_norml="0x58000000"
+           valt_load_address_pri_inner="0x38000000"
 	elif test x$vg_cv_only32bit = xyes; then
 	   VGCONF_ARCH_PRI="ppc32"
            VGCONF_ARCH_SEC=""
 	   VGCONF_PLATFORM_PRI_CAPS="PPC32_LINUX"
 	   VGCONF_PLATFORM_SEC_CAPS=""
-           valt_load_address_pri_norml="0x38000000"
-           valt_load_address_pri_inner="0x28000000"
+           valt_load_address_pri_norml="0x58000000"
+           valt_load_address_pri_inner="0x38000000"
 	else
 	   VGCONF_ARCH_PRI="ppc64be"
            VGCONF_ARCH_SEC="ppc32"
 	   VGCONF_PLATFORM_PRI_CAPS="PPC64BE_LINUX"
 	   VGCONF_PLATFORM_SEC_CAPS="PPC32_LINUX"
-           valt_load_address_pri_norml="0x38000000"
-           valt_load_address_pri_inner="0x28000000"
-           valt_load_address_sec_norml="0x38000000"
-           valt_load_address_sec_inner="0x28000000"
+           valt_load_address_pri_norml="0x58000000"
+           valt_load_address_pri_inner="0x38000000"
+           valt_load_address_sec_norml="0x58000000"
+           valt_load_address_sec_inner="0x38000000"
 	fi
         AC_MSG_RESULT([ok (${ARCH_MAX}-${VGCONF_OS})])
 	;;
@@ -610,8 +605,8 @@ case "$ARCH_MAX-$VGCONF_OS" in
         VGCONF_ARCH_SEC=""
         VGCONF_PLATFORM_PRI_CAPS="PPC64LE_LINUX"
         VGCONF_PLATFORM_SEC_CAPS=""
-        valt_load_address_pri_norml="0x38000000"
-        valt_load_address_pri_inner="0x28000000"
+        valt_load_address_pri_norml="0x58000000"
+        valt_load_address_pri_inner="0x38000000"
         AC_MSG_RESULT([ok (${ARCH_MAX}-${VGCONF_OS})])
        ;;
      # Darwin gets identified as 32-bit even when it supports 64-bit.
@@ -628,25 +623,25 @@ case "$ARCH_MAX-$VGCONF_OS" in
            VGCONF_ARCH_SEC=""
 	   VGCONF_PLATFORM_PRI_CAPS="AMD64_DARWIN"
 	   VGCONF_PLATFORM_SEC_CAPS=""
-           valt_load_address_pri_norml="0x138000000"
-           valt_load_address_pri_inner="0x128000000"
+           valt_load_address_pri_norml="0x158000000"
+           valt_load_address_pri_inner="0x138000000"
 	elif test x$vg_cv_only32bit = xyes; then
            VGCONF_ARCH_PRI="x86"
            VGCONF_ARCH_SEC=""
 	   VGCONF_PLATFORM_PRI_CAPS="X86_DARWIN"
 	   VGCONF_PLATFORM_SEC_CAPS=""
 	   VGCONF_ARCH_PRI_CAPS="x86"
-           valt_load_address_pri_norml="0x38000000"
-           valt_load_address_pri_inner="0x28000000"
+           valt_load_address_pri_norml="0x58000000"
+           valt_load_address_pri_inner="0x38000000"
 	else
            VGCONF_ARCH_PRI="amd64"
            VGCONF_ARCH_SEC="x86"
 	   VGCONF_PLATFORM_PRI_CAPS="AMD64_DARWIN"
 	   VGCONF_PLATFORM_SEC_CAPS="X86_DARWIN"
-           valt_load_address_pri_norml="0x138000000"
-           valt_load_address_pri_inner="0x128000000"
-           valt_load_address_sec_norml="0x38000000"
-           valt_load_address_sec_inner="0x28000000"
+           valt_load_address_pri_norml="0x158000000"
+           valt_load_address_pri_inner="0x138000000"
+           valt_load_address_sec_norml="0x58000000"
+           valt_load_address_sec_inner="0x38000000"
 	fi
         AC_MSG_RESULT([ok (${ARCH_MAX}-${VGCONF_OS})])
 	;;
@@ -654,8 +649,8 @@ case "$ARCH_MAX-$VGCONF_OS" in
 	VGCONF_ARCH_PRI="arm"
 	VGCONF_PLATFORM_PRI_CAPS="ARM_LINUX"
 	VGCONF_PLATFORM_SEC_CAPS=""
-	valt_load_address_pri_norml="0x38000000"
-	valt_load_address_pri_inner="0x28000000"
+	valt_load_address_pri_norml="0x58000000"
+	valt_load_address_pri_inner="0x38000000"
         valt_load_address_sec_norml="0xUNSET"
         valt_load_address_sec_inner="0xUNSET"
 	AC_MSG_RESULT([ok (${host_cpu}-${host_os})])
@@ -668,24 +663,24 @@ case "$ARCH_MAX-$VGCONF_OS" in
            VGCONF_ARCH_SEC=""
            VGCONF_PLATFORM_PRI_CAPS="ARM64_LINUX"
            VGCONF_PLATFORM_SEC_CAPS=""
-           valt_load_address_pri_norml="0x38000000"
-           valt_load_address_pri_inner="0x28000000"
+           valt_load_address_pri_norml="0x58000000"
+           valt_load_address_pri_inner="0x38000000"
         elif test x$vg_cv_only32bit = xyes; then
            VGCONF_ARCH_PRI="arm"
            VGCONF_ARCH_SEC=""
            VGCONF_PLATFORM_PRI_CAPS="ARM_LINUX"
            VGCONF_PLATFORM_SEC_CAPS=""
-           valt_load_address_pri_norml="0x38000000"
-           valt_load_address_pri_inner="0x28000000"
+           valt_load_address_pri_norml="0x58000000"
+           valt_load_address_pri_inner="0x38000000"
         else
            VGCONF_ARCH_PRI="arm64"
            VGCONF_ARCH_SEC="arm"
            VGCONF_PLATFORM_PRI_CAPS="ARM64_LINUX"
            VGCONF_PLATFORM_SEC_CAPS="ARM_LINUX"
-           valt_load_address_pri_norml="0x38000000"
-           valt_load_address_pri_inner="0x28000000"
-           valt_load_address_sec_norml="0x38000000"
-           valt_load_address_sec_inner="0x28000000"
+           valt_load_address_pri_norml="0x58000000"
+           valt_load_address_pri_inner="0x38000000"
+           valt_load_address_sec_norml="0x58000000"
+           valt_load_address_sec_inner="0x38000000"
         fi
         AC_MSG_RESULT([ok (${ARCH_MAX}-${VGCONF_OS})])
         ;;
@@ -706,8 +701,8 @@ case "$ARCH_MAX-$VGCONF_OS" in
         VGCONF_ARCH_PRI="mips32"
         VGCONF_PLATFORM_PRI_CAPS="MIPS32_LINUX"
         VGCONF_PLATFORM_SEC_CAPS=""
-        valt_load_address_pri_norml="0x38000000"
-        valt_load_address_pri_inner="0x28000000"
+        valt_load_address_pri_norml="0x58000000"
+        valt_load_address_pri_inner="0x38000000"
         valt_load_address_sec_norml="0xUNSET"
         valt_load_address_sec_inner="0xUNSET"
         AC_MSG_RESULT([ok (${ARCH_MAX}-${VGCONF_OS})])
@@ -716,19 +711,8 @@ case "$ARCH_MAX-$VGCONF_OS" in
         VGCONF_ARCH_PRI="mips64"
         VGCONF_PLATFORM_PRI_CAPS="MIPS64_LINUX"
         VGCONF_PLATFORM_SEC_CAPS=""
-        valt_load_address_pri_norml="0x38000000"
-        valt_load_address_pri_inner="0x28000000"
-        valt_load_address_sec_norml="0xUNSET"
-        valt_load_address_sec_inner="0xUNSET"
-        AC_MSG_RESULT([ok (${ARCH_MAX}-${VGCONF_OS})])
-        ;;
-     tilegx-linux)
-        VGCONF_ARCH_PRI="tilegx"
-        VGCONF_ARCH_SEC=""
-        VGCONF_PLATFORM_PRI_CAPS="TILEGX_LINUX"
-        VGCONF_PLATFORM_SEC_CAPS=""
-        valt_load_address_pri_norml="0x38000000"
-        valt_load_address_pri_inner="0x28000000"
+        valt_load_address_pri_norml="0x58000000"
+        valt_load_address_pri_inner="0x38000000"
         valt_load_address_sec_norml="0xUNSET"
         valt_load_address_sec_inner="0xUNSET"
         AC_MSG_RESULT([ok (${ARCH_MAX}-${VGCONF_OS})])
@@ -738,8 +722,8 @@ case "$ARCH_MAX-$VGCONF_OS" in
         VGCONF_ARCH_SEC=""
         VGCONF_PLATFORM_PRI_CAPS="X86_SOLARIS"
         VGCONF_PLATFORM_SEC_CAPS=""
-        valt_load_address_pri_norml="0x38000000"
-        valt_load_address_pri_inner="0x28000000"
+        valt_load_address_pri_norml="0x58000000"
+        valt_load_address_pri_inner="0x38000000"
         valt_load_address_sec_norml="0xUNSET"
         valt_load_address_sec_inner="0xUNSET"
         AC_MSG_RESULT([ok (${ARCH_MAX}-${VGCONF_OS})])
@@ -752,24 +736,24 @@ case "$ARCH_MAX-$VGCONF_OS" in
            VGCONF_ARCH_SEC=""
            VGCONF_PLATFORM_PRI_CAPS="AMD64_SOLARIS"
            VGCONF_PLATFORM_SEC_CAPS=""
-           valt_load_address_pri_norml="0x38000000"
-           valt_load_address_pri_inner="0x28000000"
+           valt_load_address_pri_norml="0x58000000"
+           valt_load_address_pri_inner="0x38000000"
         elif test x$vg_cv_only32bit = xyes; then
            VGCONF_ARCH_PRI="x86"
            VGCONF_ARCH_SEC=""
            VGCONF_PLATFORM_PRI_CAPS="X86_SOLARIS"
            VGCONF_PLATFORM_SEC_CAPS=""
-           valt_load_address_pri_norml="0x38000000"
-           valt_load_address_pri_inner="0x28000000"
+           valt_load_address_pri_norml="0x58000000"
+           valt_load_address_pri_inner="0x38000000"
         else
            VGCONF_ARCH_PRI="amd64"
            VGCONF_ARCH_SEC="x86"
            VGCONF_PLATFORM_PRI_CAPS="AMD64_SOLARIS"
            VGCONF_PLATFORM_SEC_CAPS="X86_SOLARIS"
-           valt_load_address_pri_norml="0x38000000"
-           valt_load_address_pri_inner="0x28000000"
-           valt_load_address_sec_norml="0x38000000"
-           valt_load_address_sec_inner="0x28000000"
+           valt_load_address_pri_norml="0x58000000"
+           valt_load_address_pri_inner="0x38000000"
+           valt_load_address_sec_norml="0x58000000"
+           valt_load_address_sec_inner="0x38000000"
         fi
         AC_MSG_RESULT([ok (${ARCH_MAX}-${VGCONF_OS})])
         ;;
@@ -819,8 +803,6 @@ AM_CONDITIONAL(VGCONF_ARCHS_INCLUDE_MIPS32,
                test x$VGCONF_PLATFORM_PRI_CAPS = xMIPS32_LINUX )
 AM_CONDITIONAL(VGCONF_ARCHS_INCLUDE_MIPS64,
                test x$VGCONF_PLATFORM_PRI_CAPS = xMIPS64_LINUX ) 
-AM_CONDITIONAL(VGCONF_ARCHS_INCLUDE_TILEGX,
-               test x$VGCONF_PLATFORM_PRI_CAPS = xTILEGX_LINUX )
 
 # Set up VGCONF_PLATFORMS_INCLUDE_<platform>.  Either one or two of these
 # become defined.
@@ -848,8 +830,6 @@ AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_MIPS32_LINUX,
                test x$VGCONF_PLATFORM_PRI_CAPS = xMIPS32_LINUX)
 AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_MIPS64_LINUX,
                test x$VGCONF_PLATFORM_PRI_CAPS = xMIPS64_LINUX)
-AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_TILEGX_LINUX,
-               test x$VGCONF_PLATFORM_PRI_CAPS = xTILEGX_LINUX)
 AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_X86_DARWIN,   
                test x$VGCONF_PLATFORM_PRI_CAPS = xX86_DARWIN \
                  -o x$VGCONF_PLATFORM_SEC_CAPS = xX86_DARWIN)
@@ -875,8 +855,7 @@ AM_CONDITIONAL(VGCONF_OS_IS_LINUX,
                  -o x$VGCONF_PLATFORM_PRI_CAPS = xARM64_LINUX \
                  -o x$VGCONF_PLATFORM_PRI_CAPS = xS390X_LINUX \
                  -o x$VGCONF_PLATFORM_PRI_CAPS = xMIPS32_LINUX \
-                 -o x$VGCONF_PLATFORM_PRI_CAPS = xMIPS64_LINUX \
-                 -o x$VGCONF_PLATFORM_PRI_CAPS = xTILEGX_LINUX)
+                 -o x$VGCONF_PLATFORM_PRI_CAPS = xMIPS64_LINUX)
 AM_CONDITIONAL(VGCONF_OS_IS_DARWIN,
                test x$VGCONF_PLATFORM_PRI_CAPS = xX86_DARWIN \
                  -o x$VGCONF_PLATFORM_PRI_CAPS = xAMD64_DARWIN)
@@ -990,6 +969,13 @@ if test x$VGCONF_PLATFORM_PRI_CAPS = xX86_SOLARIS \
     GLIBC_VERSION="solaris"
 fi
 
+# GLIBC_VERSION is empty if a musl libc is used, so use the toolchain tuple
+# in this case.
+if test x$GLIBC_VERSION = x; then
+    if $CC -dumpmachine | grep -q musl; then
+        GLIBC_VERSION=musl
+    fi
+fi
 
 AC_MSG_CHECKING([the glibc version])
 
@@ -1045,10 +1031,15 @@ case "${GLIBC_VERSION}" in
 	# DEFAULT_SUPP set in host_os switch-case above.
 	# No other suppression file is used.
 	;;
+     musl)
+	AC_MSG_RESULT(Musl)
+	AC_DEFINE([MUSL_LIBC], 1, [Define to 1 if you're using Musl libc])
+	# no DEFAULT_SUPP file yet for musl libc.
+	;;
      2.0|2.1|*)
 	AC_MSG_RESULT([unsupported version ${GLIBC_VERSION}])
-	AC_MSG_ERROR([Valgrind requires glibc version 2.2 or later,])
-	AC_MSG_ERROR([Darwin libc, Bionic libc or Solaris libc])
+	AC_MSG_ERROR([Valgrind requires glibc version 2.2 or later, uClibc,])
+	AC_MSG_ERROR([musl libc, Darwin libc, Bionic libc or Solaris libc])
 	;;
 esac
 
@@ -1537,7 +1528,7 @@ ac_asm_have_isa_3_00=no
 AC_MSG_RESULT([no])
 ])
 
-AM_CONDITIONAL(HAS_ISA_3_00, test x$ac_asm_have_isa_3_00 = xyes \
+AM_CONDITIONAL(HAS_ISA_3_00, [test x$ac_asm_have_isa_3_00 = xyes \
                              -a x$HWCAP_HAS_ISA_3_00 = xyes])
 
 # Check for pthread_create@GLIBC2.0
@@ -2186,6 +2177,28 @@ AC_MSG_RESULT([no])
 AM_CONDITIONAL([HAVE_ASM_CONSTRAINT_P], [test x$ac_have_asm_constraint_p = xyes])
 
 
+# Does this compiler support -no-pie?
+# On Ubuntu 16.10+, gcc produces position independent executables (PIE) by
+# default. However this gets in the way with some tests, we use -no-pie
+# for these.
+
+AC_MSG_CHECKING([if gcc accepts -no-pie])
+
+safe_CFLAGS=$CFLAGS
+CFLAGS="-no-pie"
+
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[ ]], [[
+  return 0;
+]])], [
+AC_SUBST([FLAG_NO_PIE], ["-no-pie"])
+AC_MSG_RESULT([yes])
+], [
+AC_SUBST([FLAG_NO_PIE], [""])
+AC_MSG_RESULT([no])
+])
+CFLAGS=$safe_CFLAGS
+
+
 # We want to use use the -Ttext-segment option to the linker.
 # GNU (bfd) ld supports this directly. Newer GNU gold linkers
 # support it as an alias of -Ttext. Sadly GNU (bfd) ld's -Ttext
@@ -2219,7 +2232,7 @@ AC_LINK_IFELSE(
 CFLAGS=$safe_CFLAGS
 
 # If the linker only supports -Ttext (not -Ttext-segment) then we will
-# have to strip any build-id ELF NOTEs from the staticly linked tools.
+# have to strip any build-id ELF NOTEs from the statically linked tools.
 # Otherwise the build-id NOTE might end up at the default load address.
 # (Pedantically if the linker is gold then -Ttext is fine, but newer
 # gold versions also support -Ttext-segment. So just assume that unless
@@ -2648,6 +2661,26 @@ AC_MSG_RESULT([no])
 AM_CONDITIONAL(BUILD_MPX_TESTS, test x$ac_have_as_mpx = xyes)
 
 
+# does the amd64 assembler understand ADX instructions?
+# Note, this doesn't generate a C-level symbol.  It generates a
+# automake-level symbol (BUILD_ADX_TESTS), used in test Makefile.am's
+AC_MSG_CHECKING([if amd64 assembler knows the ADX instructions])
+
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[
+  do {
+    asm ("adcxq %r14,%r8");
+  } while (0)
+]])], [
+ac_have_as_adx=yes
+AC_MSG_RESULT([yes])
+], [
+ac_have_as_adx=no
+AC_MSG_RESULT([no])
+])
+
+AM_CONDITIONAL(BUILD_ADX_TESTS, test x$ac_have_as_adx = xyes)
+
+
 # Does the C compiler support the "ifunc" attribute
 # Note, this doesn't generate a C-level symbol.  It generates a
 # automake-level symbol (BUILD_IFUNC_TESTS), used in test Makefile.am's
@@ -2757,6 +2790,8 @@ fi
 #----------------------------------------------------------------------------
 
 if test "$VGCONF_OS" = "solaris" ; then
+AC_CHECK_HEADERS([sys/lgrp_user_impl.h])
+
 # Solaris-specific check determining if the Sun Studio Assembler is used to
 # build Valgrind.  The test checks if the x86/amd64 assembler understands the
 # cmovl.l instruction, if yes then it's Sun Assembler.
@@ -2778,10 +2813,10 @@ AC_MSG_RESULT([no])
 AM_CONDITIONAL(SOLARIS_SUN_STUDIO_AS, test x$solaris_have_sun_studio_as = xyes)
 
 # Solaris-specific check determining if symbols __xpg4 and __xpg6
-# are present in linked elfs when gcc is invoked with -std=gnu99.
+# are present in linked shared libraries when gcc is invoked with -std=gnu99.
 # See solaris/vgpreload-solaris.mapfile for details.
-# gcc on Solaris instructs linker to include these symbols,
-# gcc on illumos does not.
+# gcc on older Solaris instructs linker to include these symbols,
+# gcc on illumos and newer Solaris does not.
 #
 # C-level symbol: none
 # Automake-level symbol: SOLARIS_XPG_SYMBOLS_PRESENT
@@ -2789,34 +2824,21 @@ AM_CONDITIONAL(SOLARIS_SUN_STUDIO_AS, test x$solaris_have_sun_studio_as = xyes)
 save_CFLAGS="$CFLAGS"
 CFLAGS="$CFLAGS -std=gnu99"
 AC_MSG_CHECKING([if xpg symbols are present with -std=gnu99 (Solaris-specific)])
-AC_RUN_IFELSE([AC_LANG_SOURCE([[
-#include <limits.h>
+temp_dir=$( /usr/bin/mktemp -d )
+cat <<_ACEOF >${temp_dir}/mylib.c
 #include <stdio.h>
-#include <stdlib.h>
-
-int main(int argc, const char *argv[]) {
-    char command[PATH_MAX + 50];
-    snprintf(command, sizeof(command), "nm %s | egrep '__xpg[4,6]'", argv[0]);
-
-    FILE *output = popen(command, "r");
-    if (output == NULL) return -1;
-
-    char buf[100];
-    if (fgets(buf, sizeof(buf), output) != NULL) {
-        pclose(output);
-        return 0;
-    } else {
-        pclose(output);
-        return 1;
-    }
-}
-]])], [
-solaris_xpg_symbols_present=yes
-AC_MSG_RESULT([yes])
-], [
-solaris_xpg_symbols_present=no
-AC_MSG_RESULT([no])
-])
+int myfunc(void) { printf("LaPutyka\n"); }
+_ACEOF
+${CC} ${CFLAGS} -fpic -shared -o ${temp_dir}/mylib.so ${temp_dir}/mylib.c
+xpg_present=$( /usr/bin/nm ${temp_dir}/mylib.so | ${EGREP} '(__xpg4|__xpg6)' )
+if test "x${xpg_present}" = "x" ; then
+    solaris_xpg_symbols_present=no
+    AC_MSG_RESULT([no])
+else
+    solaris_xpg_symbols_present=yes
+    AC_MSG_RESULT([yes])
+fi
+rm -rf ${temp_dir}
 AM_CONDITIONAL(SOLARIS_XPG_SYMBOLS_PRESENT, test x$solaris_xpg_symbols_present = xyes)
 CFLAGS="$save_CFLAGS"
 
@@ -4370,6 +4392,8 @@ AC_CONFIG_FILES([
    memcheck/tests/ppc32/Makefile
    memcheck/tests/ppc64/Makefile
    memcheck/tests/s390x/Makefile
+   memcheck/tests/mips32/Makefile
+   memcheck/tests/mips64/Makefile
    memcheck/tests/vbit-test/Makefile
    cachegrind/Makefile
    cachegrind/tests/Makefile
@@ -4399,7 +4423,6 @@ AC_CONFIG_FILES([
    none/tests/s390x/Makefile
    none/tests/mips32/Makefile
    none/tests/mips64/Makefile
-   none/tests/tilegx/Makefile
    none/tests/linux/Makefile
    none/tests/darwin/Makefile
    none/tests/solaris/Makefile

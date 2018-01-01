@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright IBM Corp. 2010-2015
+   Copyright IBM Corp. 2010-2017
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -821,6 +821,8 @@ struct vki_ucontext {
 	_vki_sigregs          uc_mcontext;
 	vki_sigset_t	      uc_sigmask; /* mask last for extensibility */
 };
+
+typedef char vki_modify_ldt_t;
 
 //----------------------------------------------------------------------
 // From linux-2.6.16.60/include/asm-s390/ipcbuf.h

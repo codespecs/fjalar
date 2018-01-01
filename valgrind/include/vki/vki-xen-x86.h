@@ -2,7 +2,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2012-2015 Citrix
+   Copyright (C) 2012-2017 Citrix
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -269,6 +269,19 @@ struct vki_hvm_hw_cpu {
 };
 
 VKI_DECLARE_HVM_SAVE_TYPE(CPU, 2, struct vki_hvm_hw_cpu);
+
+struct vki_hvm_hw_mtrr {
+#define VKI_MTRR_VCNT     8
+#define VKI_NUM_FIXED_MSR 11
+   vki_uint64_t msr_pat_cr;
+   /* mtrr physbase & physmask msr pair*/
+   vki_uint64_t msr_mtrr_var[VKI_MTRR_VCNT*2];
+   vki_uint64_t msr_mtrr_fixed[VKI_NUM_FIXED_MSR];
+   vki_uint64_t msr_mtrr_cap;
+   vki_uint64_t msr_mtrr_def_type;
+};
+
+VKI_DECLARE_HVM_SAVE_TYPE(MTRR, 14, struct vki_hvm_hw_mtrr);
 
 #endif // __VKI_XEN_H
 

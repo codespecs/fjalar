@@ -6,7 +6,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2013-2015 OpenWorks
+   Copyright (C) 2013-2017 OpenWorks
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -38,7 +38,7 @@
 /*---------------------------------------------------------*/
 
 /* Convert one ARM64 insn to IR.  See the type DisOneInstrFn in
-   bb_to_IR.h. */
+   guest_generic_bb_to_IR.h. */
 extern
 DisResult disInstr_ARM64 ( IRSB*        irbb,
                            Bool         (*resteerOkFn) ( void*, Addr ),
@@ -123,6 +123,8 @@ extern ULong arm64g_calc_crc32cx ( ULong acc, ULong bits );
 /* --- DIRTY HELPERS --- */
 
 extern ULong arm64g_dirtyhelper_MRS_CNTVCT_EL0 ( void );
+
+extern ULong arm64g_dirtyhelper_MRS_CNTFRQ_EL0 ( void );
 
 extern void  arm64g_dirtyhelper_PMULLQ ( /*OUT*/V128* res,
                                          ULong arg1, ULong arg2 );

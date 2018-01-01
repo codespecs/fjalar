@@ -5,7 +5,7 @@
 /*
   This file is part of DRD, a thread error detector.
 
-  Copyright (C) 2006-2015 Bart Van Assche <bvanassche@acm.org>.
+  Copyright (C) 2006-2017 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -228,7 +228,7 @@ typedef struct
 
 static void DRD_(init)(void) __attribute__((constructor));
 static void DRD_(check_threading_library)(void);
-static void DRD_(set_main_thread_state)(void);
+static void DRD_(set_pthread_id)(void);
 static void DRD_(sema_init)(DrdSema* sema);
 static void DRD_(sema_destroy)(DrdSema* sema);
 static void DRD_(sema_down)(DrdSema* sema);
@@ -250,7 +250,7 @@ static void DRD_(sema_up)(DrdSema* sema);
 static void DRD_(init)(void)
 {
    DRD_(check_threading_library)();
-   DRD_(set_main_thread_state)();
+   DRD_(set_pthread_id)();
 #if defined(VGO_solaris)
    if ((DRD_(rtld_bind_guard) == NULL) || (DRD_(rtld_bind_clear) == NULL)) {
       fprintf(stderr,
@@ -501,12 +501,10 @@ static void DRD_(check_threading_library)(void)
 }
 
 /**
- * The main thread is the only thread not created by pthread_create().
- * Update DRD's state information about the main thread.
+ * Update DRD's state information about the current thread.
  */
-static void DRD_(set_main_thread_state)(void)
+static void DRD_(set_pthread_id)(void)
 {
-   // Make sure that DRD knows about the main thread's POSIX thread ID.
    VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__SET_PTHREADID,
                                    pthread_self(), 0, 0, 0, 0);
 }
@@ -558,6 +556,14 @@ int pthread_create_intercept(pthread_t* thread, const pthread_attr_t* attr,
    assert(thread_args.detachstate == PTHREAD_CREATE_JOINABLE
           || thread_args.detachstate == PTHREAD_CREATE_DETACHED);
 
+   /*
+    * The DRD_(set_pthread_id)() from DRD_(init)() may encounter that
+    * pthread_self() == 0, e.g. when the main program is not linked with the
+    * pthread library and when a pthread_create() call occurs from within a
+    * shared library. Hence call DRD_(set_pthread_id)() again to ensure that
+    * DRD knows the identity of the current thread. See also B.Z. 356374.
+    */
+   DRD_(set_pthread_id)();
    DRD_(entering_pthread_create)();
    CALL_FN_W_WWWW(ret, fn, thread, attr, DRD_(thread_wrapper), &thread_args);
    DRD_(left_pthread_create)();

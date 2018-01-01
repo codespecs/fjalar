@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2015 Julian Seward 
+   Copyright (C) 2000-2017 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -97,8 +97,6 @@
 #  include "vki-posixtypes-mips32-linux.h"
 #elif defined(VGA_mips64)
 #  include "vki-posixtypes-mips64-linux.h"
-#elif defined(VGA_tilegx)
-#  include "vki-posixtypes-tilegx-linux.h"
 #else
 #  error Unknown platform
 #endif
@@ -225,8 +223,6 @@ typedef unsigned int	        vki_uint;
 #  include "vki-mips32-linux.h"
 #elif defined(VGA_mips64)
 #  include "vki-mips64-linux.h"
-#elif defined(VGA_tilegx)
-#  include "vki-tilegx-linux.h"
 #else
 #  error Unknown platform
 #endif
@@ -527,7 +523,7 @@ typedef struct vki_siginfo {
  * SIGBUS si_codes
  */
 #define VKI_BUS_ADRALN	(__VKI_SI_FAULT|1)	/* invalid address alignment */
-#define VKI_BUS_ADRERR	(__VKI_SI_FAULT|2)	/* non-existant physical address */
+#define VKI_BUS_ADRERR	(__VKI_SI_FAULT|2)	/* non-existent physical address */
 #define VKI_BUS_OBJERR	(__VKI_SI_FAULT|3)	/* object specific hardware error */
 
 /*
@@ -674,7 +670,8 @@ __KINLINE struct vki_cmsghdr * __vki_cmsg_nxthdr(void *__ctl, __vki_kernel_size_
 {
 	struct vki_cmsghdr * __ptr;
 
-	__ptr = (struct vki_cmsghdr*)(((unsigned char *) __cmsg) +  VKI_CMSG_ALIGN(__cmsg->cmsg_len));
+	__ptr = ASSUME_ALIGNED(struct vki_cmsghdr *,
+        	((unsigned char *) __cmsg) +  VKI_CMSG_ALIGN(__cmsg->cmsg_len));
 	if ((unsigned long)((char*)(__ptr+1) - (char *) __ctl) > __size)
 		return (struct vki_cmsghdr *)0;
 
@@ -1415,6 +1412,22 @@ struct vki_dirent64 {
 #define VKI_F_SETPIPE_SZ    (VKI_F_LINUX_SPECIFIC_BASE + 7)
 #define VKI_F_GETPIPE_SZ    (VKI_F_LINUX_SPECIFIC_BASE + 8)
 
+struct vki_flock {
+	short			l_type;
+	short			l_whence;
+	__vki_kernel_off_t	l_start;
+	__vki_kernel_off_t	l_len;
+	__vki_kernel_pid_t	l_pid;
+};
+
+struct vki_flock64 {
+	short			l_type;
+	short			l_whence;
+	__vki_kernel_loff_t	l_start;
+	__vki_kernel_loff_t	l_len;
+	__vki_kernel_pid_t	l_pid;
+};
+
 //----------------------------------------------------------------------
 // From linux-2.6.8.1/include/linux/sysctl.h
 //----------------------------------------------------------------------
@@ -1865,10 +1878,13 @@ struct vki_scsi_idlun {
                                 	           (struct cdrom_tochdr) */
 #define VKI_CDROMREADTOCENTRY		0x5306 /* Read TOC entry 
                                 	           (struct cdrom_tocentry) */
+#define VKI_CDROMSTOP			0x5307 /* Stop the cdrom drive */
 #define VKI_CDROMSUBCHNL		0x530b /* Read subchannel data 
                                 	           (struct cdrom_subchnl) */
 #define VKI_CDROMREADMODE2		0x530c /* Read CDROM mode 2 data (2336 Bytes) 
                                 	           (struct cdrom_read) */
+#define VKI_CDROMREADMODE1		0x530d /* Read CDROM mode 1 data (2048 Bytes)
+                                                   (struct cdrom_read) */
 #define VKI_CDROMREADAUDIO		0x530e /* (struct cdrom_read_audio) */
 #define VKI_CDROMMULTISESSION		0x5310 /* Obtain the start-of-last-session 
                                 	           address of multi session disks 
@@ -1884,6 +1900,7 @@ struct vki_scsi_idlun {
 #define VKI_CDROM_DISC_STATUS		0x5327	/* get CD type information */
 #define VKI_CDROM_GET_CAPABILITY	0x5331	/* get capabilities */
 
+#define VKI_DVD_READ_STRUCT		0x5390  /* read structure */
 #define VKI_CDROM_SEND_PACKET		0x5393	/* send a packet to the drive */
 
 struct vki_cdrom_msf0		
@@ -1994,6 +2011,7 @@ struct vki_cdrom_generic_command
 #define VKI_CD_HEAD_SIZE          4 /* header (address) bytes per raw data frame */
 #define VKI_CD_FRAMESIZE_RAW   2352 /* bytes per frame, "raw" mode */
 #define VKI_CD_FRAMESIZE_RAW0 (VKI_CD_FRAMESIZE_RAW-VKI_CD_SYNC_SIZE-VKI_CD_HEAD_SIZE) /*2336*/
+#define VKI_CD_FRAMESIZE_RAW1  2048 /* bytes per frame, mode 1*/
 
 //----------------------------------------------------------------------
 // From linux-2.6.8.1/include/linux/soundcard.h
@@ -2320,6 +2338,8 @@ typedef __vki_kernel_uid32_t vki_qid_t; /* Type in which we store ids in memory 
 #define VKI_PTRACE_SETSIGINFO	0x4203
 #define VKI_PTRACE_GETREGSET	0x4204
 #define VKI_PTRACE_SETREGSET	0x4205
+
+#define VKI_PT_PTRACED 0x00000001
 
 //----------------------------------------------------------------------
 // From linux-2.6.14/include/sound/asound.h
@@ -2773,7 +2793,7 @@ typedef vki_uint32_t vki_key_perm_t;
 #define VKI_SIOCSIWPOWER	0x8B2C	/* set Power Management settings */
 #define VKI_SIOCGIWPOWER	0x8B2D	/* get Power Management settings */
 
-/* WPA : Generic IEEE 802.11 informatiom element (e.g., for WPA/RSN/WMM). */
+/* WPA : Generic IEEE 802.11 information element (e.g., for WPA/RSN/WMM). */
 #define VKI_SIOCSIWGENIE	0x8B30		/* set generic IE */
 #define VKI_SIOCGIWGENIE	0x8B31		/* get generic IE */
 
@@ -2800,7 +2820,7 @@ struct	vki_iw_param
   __vki_s32	value;		/* The value of the parameter itself */
   __vki_u8	fixed;		/* Hardware should not use auto select */
   __vki_u8	disabled;	/* Disable the feature */
-  __vki_u16	flags;		/* Various specifc flags (if any) */
+  __vki_u16	flags;		/* Various specific flags (if any) */
 };
 
 struct	vki_iw_point

@@ -186,7 +186,7 @@ make -C $INV/daikon/tests/kvasir-tests clean-all regression-tests
 
 The tests should pass. If any tests fail, fix them, then start over from
 the beginning.
-As of February 3, 2017, all tests pass on a standard UW/CSE machine running CentOS 7.3.1611.
+As of December 31, 2017, all tests pass on a standard UW/CSE machine running CentOS 7.4.1708.
 They also pass on Fedora 23, 24, 25 and Ubuntu 16.04.  (We use Travis/Docker to run
 these configurations.)
 
@@ -219,10 +219,9 @@ git ls-files --others --exclude-standard
 
 @strong{IMPORTANT NOTE} @*
 Throughout this document we use Subversion (@command{svn}) commands to access the
-Valgrind repository.  However, the Valgrind team is in the process of
-switching to the @command{git} repository tool.  They have not announced a
-change over date - but be aware it will probably occur before the next
-official release which means the SVN commands below will be incorrect.
+Valgrind repository.  However, the Valgrind team has now converted
+to the @command{git} repository tool.  Thus the SVN commands below are
+incorrect and will need to be changed as part of the next Valgrind upgrade.
 
 Execute the following Subversion command:
 
@@ -553,8 +552,8 @@ This keeps the files used during the source merge update to a minimum.
 You will need to make sure @command{gdb} is installed on your machine
 to run these tests. Also, they are very sensitive
 to the system software on the host machine.  In most cases, there will be
-some failures. (Currently, 1 of 677 tests does not pass on a standard UW/CSE
-system running CentOS 7.3.1611.) Rather, it is important to capture the results
+some failures. (Currently, 12 of 687 tests do not pass on a standard UW/CSE
+system running CentOS 7.4.1708.) Rather, it is important to capture the results
 as they should be identical after the source merge.
 
 To run the @command{regtest} verification tests,
@@ -576,8 +575,19 @@ Here is a copy of the last few lines from the latest run of these tests (03/27/2
 on a UW/CSE CentOS based system:
 
 @example
-== 677 tests, 0 stderr failures, 0 stdout failures, 0 stderrB failures, 1 stdoutB failure, 0 post failures ==
+== 687 tests, 7 stderr failures, 4 stdout failures, 0 stderrB failures, 1 stdoutB failure, 0 post failures ==
 gdbserver_tests/hgtls                    (stdoutB)
+helgrind/tests/bar_bad                   (stderr)
+exp-sgcheck/tests/bad_percentify         (stdout)
+exp-sgcheck/tests/bad_percentify         (stderr)
+exp-sgcheck/tests/globalerr              (stderr)
+exp-sgcheck/tests/hackedbz2              (stdout)
+exp-sgcheck/tests/hackedbz2              (stderr)
+exp-sgcheck/tests/hsg                    (stdout)
+exp-sgcheck/tests/hsg                    (stderr)
+exp-sgcheck/tests/preen_invars           (stdout)
+exp-sgcheck/tests/preen_invars           (stderr)
+exp-sgcheck/tests/stackerr               (stderr)
 
 ...checking makefile consistency
 ...checking header files and include directives

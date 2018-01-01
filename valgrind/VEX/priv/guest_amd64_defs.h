@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2015 OpenWorks LLP
+   Copyright (C) 2004-2017 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -48,7 +48,7 @@
 /*---------------------------------------------------------*/
 
 /* Convert one amd64 insn to IR.  See the type DisOneInstrFn in
-   bb_to_IR.h. */
+   guest_generic_bb_to_IR.h. */
 extern
 DisResult disInstr_AMD64 ( IRSB*        irbb,
                            Bool         (*resteerOkFn) ( void*, Addr ),
@@ -540,6 +540,12 @@ enum {
 
     AMD64G_CC_OP_BLSR32,  /* 59 */
     AMD64G_CC_OP_BLSR64,  /* 60 DEP1 = res, DEP2 = arg, NDEP = unused */
+
+    AMD64G_CC_OP_ADCX32,  /* 61 DEP1 = argL, DEP2 = argR ^ oldCarry, .. */
+    AMD64G_CC_OP_ADCX64,  /* 62 .. NDEP = old flags */
+
+    AMD64G_CC_OP_ADOX32,  /* 63 DEP1 = argL, DEP2 = argR ^ oldOverflow, .. */
+    AMD64G_CC_OP_ADOX64,  /* 64 .. NDEP = old flags */
 
     AMD64G_CC_OP_NUMBER
 };

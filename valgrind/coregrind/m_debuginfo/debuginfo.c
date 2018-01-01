@@ -9,7 +9,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2015 Julian Seward 
+   Copyright (C) 2000-2017 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -105,8 +105,7 @@
 /*--- fwdses                                               ---*/
 /*------------------------------------------------------------*/
 
-static UInt debuginfo_generation = 0;
-static void cfsi_m_cache__invalidate ( void );
+static void caches__invalidate (void);
 
 
 /*------------------------------------------------------------*/
@@ -586,8 +585,8 @@ void VG_(di_initialise) ( void )
       less independently. */
    vg_assert(debugInfo_list == NULL);
 
-   /* flush the CFI fast query cache. */
-   cfsi_m_cache__invalidate();
+   /* flush the debug info caches. */
+   caches__invalidate();
 }
 
 
@@ -757,8 +756,8 @@ static ULong di_notify_ACHIEVE_ACCEPT_STATE ( struct _DebugInfo* di )
 
       TRACE_SYMTAB("\n------ Canonicalising the "
                    "acquired info ------\n");
-      /* invalidate the CFI unwind cache. */
-      cfsi_m_cache__invalidate();
+      /* invalidate the debug info caches. */
+      caches__invalidate();
       /* prepare read data for use */
       ML_(canonicaliseTables)( di );
       /* Check invariants listed in
@@ -954,9 +953,6 @@ ULong VG_(di_notify_mmap)( Addr a, Bool allow_SkFileV, Int use_fd )
 #  elif defined(VGP_s390x_linux)
    is_rx_map = seg->hasR && seg->hasX && !seg->hasW;
    is_rw_map = seg->hasR && seg->hasW;
-#  elif defined(VGA_tilegx)
-   is_rx_map = seg->hasR && seg->hasX; // && !seg->hasW;
-   is_rw_map = seg->hasR && seg->hasW; // && !seg->hasX;
 #  else
 #    error "Unknown platform"
 #  endif
@@ -1082,7 +1078,7 @@ void VG_(di_notify_munmap)( Addr a, SizeT len )
    if (0) VG_(printf)("DISCARD %#lx %#lx\n", a, a+len);
    anyFound = discard_syms_in_range(a, len);
    if (anyFound)
-      cfsi_m_cache__invalidate();
+      caches__invalidate();
 }
 
 
@@ -1099,7 +1095,7 @@ void VG_(di_notify_mprotect)( Addr a, SizeT len, UInt prot )
    if (0 && !exe_ok) {
       Bool anyFound = discard_syms_in_range(a, len);
       if (anyFound)
-         cfsi_m_cache__invalidate();
+         caches__invalidate();
    }
 }
 
@@ -1394,9 +1390,9 @@ void VG_(di_notify_pdb_debuginfo)( Int fd_obj, Addr avma_obj,
    if (VG_(clo_verbosity) > 0)
       VG_(message)(Vg_UserMsg, "LOAD_PDB_DEBUGINFO: pdbname: %s\n", pdbname);
 
-   /* play safe; always invalidate the CFI cache.  I don't know if
+   /* play safe; always invalidate the debug info caches.  I don't know if
       this is necessary, but anyway .. */
-   cfsi_m_cache__invalidate();
+   caches__invalidate();
    /* dump old info for this range, if any */
    discard_syms_in_range( avma_obj, total_size );
 
@@ -1647,7 +1643,6 @@ void VG_(delete_IIPC)(InlIPCursor *iipc)
 */
 static void search_all_symtabs ( Addr ptr, /*OUT*/DebugInfo** pdi,
                                            /*OUT*/Word* symno,
-                                 Bool match_anywhere_in_sym,
                                  Bool findText )
 {
    Word       sno;
@@ -1691,8 +1686,7 @@ static void search_all_symtabs ( Addr ptr, /*OUT*/DebugInfo** pdi,
 
       if (!inRange) continue;
 
-      sno = ML_(search_one_symtab) ( 
-               di, ptr, match_anywhere_in_sym, findText );
+      sno = ML_(search_one_symtab) ( di, ptr, findText );
       if (sno == -1) goto not_found;
       *symno = sno;
       *pdi = di;
@@ -1728,6 +1722,40 @@ static void search_all_loctabs ( Addr ptr, /*OUT*/DebugInfo** pdi,
    *pdi = NULL;
 }
 
+/* Caching of queries to symbol names. */
+// Prime number, giving about 6Kbytes cache on 32 bits,
+//                           12Kbytes cache on 64 bits.
+#define N_SYM_NAME_CACHE 509
+
+typedef
+   struct {
+      Addr sym_avma;
+      const HChar* sym_name;
+      PtrdiffT offset : (sizeof(PtrdiffT)*8)-1; 
+      Bool isText : 1;
+   }
+   Sym_Name_CacheEnt;
+/* Sym_Name_CacheEnt associates a queried address to the sym name found.
+   By nature, if a sym name was found, it means the searched address
+   stored in the cache is an avma (see e.g. search_all_symtabs).
+   Note however that the caller is responsibe to work with 'avma'
+   addresses e.g. when calling VG_(get_fnname) : m_debuginfo.c has
+   no way to differentiate an 'svma a' from an 'avma a'. It is however
+   unlikely that svma would percolate outside of this module. */
+
+static Sym_Name_CacheEnt sym_name_cache[N_SYM_NAME_CACHE];
+
+static const HChar* no_sym_name = "<<<noname>>>";
+/* We need a special marker for the address 0 : a not used entry has
+   a zero sym_avma. So, if ever the 0 address is really queried, we need
+   to be able to detect there is no sym name for this address.
+   If on some platforms, 0 is associated to a symbol, the cache would
+   work properly. */
+
+static void sym_name_cache__invalidate ( void ) {
+   VG_(memset)(&sym_name_cache, 0, sizeof(sym_name_cache));
+   sym_name_cache[0].sym_name = no_sym_name;
+}
 
 /* The whole point of this whole big deal: map a code address to a
    plausible symbol name.  Returns False if no idea; otherwise True.
@@ -1736,13 +1764,15 @@ static void search_all_loctabs ( Addr ptr, /*OUT*/DebugInfo** pdi,
    call has come from VG_(get_fnname_raw)().  findText
    indicates whether we're looking for a text symbol or a data symbol
    -- caller must choose one kind or the other.
-   Note: the string returned in *BUF is persistent as long as 
+   NOTE: See IMPORTANT COMMENT above about persistence and ownership
+   in pub_tool_debuginfo.h 
+   get_sym_name and the fact it calls the demangler is the main reason
+   for non persistence of the information returned by m_debuginfo.c
+   functions : the string returned in *BUF is persistent as long as 
    (1) the DebugInfo it belongs to is not discarded
-   (2) the segment containing the address is not merged with another segment
-   (3) the demangler is not invoked again
-   In other words: if in doubt, save it away.
+   (2) the demangler is not invoked again
    Also, the returned string is owned by "somebody else". Callers must
-   not free it or modify it. */
+   not free it or modify it.*/
 static
 Bool get_sym_name ( Bool do_cxx_demangling, Bool do_z_demangling,
                     Bool do_below_main_renaming,
@@ -1750,34 +1780,48 @@ Bool get_sym_name ( Bool do_cxx_demangling, Bool do_z_demangling,
                     Bool match_anywhere_in_sym, Bool show_offset,
                     Bool findText, /*OUT*/PtrdiffT* offsetP )
 {
-   DebugInfo* di;
-   Word       sno;
-   PtrdiffT   offset;
+   UWord         hash = a % N_SYM_NAME_CACHE;
+   Sym_Name_CacheEnt* se =  &sym_name_cache[hash];
 
-   search_all_symtabs ( a, &di, &sno, match_anywhere_in_sym, findText );
-   if (di == NULL) {
+   if (UNLIKELY(se->sym_avma != a || se->isText != findText)) {
+      DebugInfo* di;
+      Word       sno;
+
+      search_all_symtabs ( a, &di, &sno, findText );
+      se->sym_avma = a;
+      se->isText = findText;
+      if (di == NULL || a == 0)
+         se->sym_name = no_sym_name;
+      else {
+         vg_assert(di->symtab[sno].pri_name);
+         se->sym_name = di->symtab[sno].pri_name;
+         se->offset = a - di->symtab[sno].avmas.main;
+      }
+   }
+
+   if (se->sym_name == no_sym_name
+       || (!match_anywhere_in_sym && se->offset != 0)) {
       *buf = "";
       return False;
    }
 
-   vg_assert(di->symtab[sno].pri_name);
    VG_(demangle) ( do_cxx_demangling, do_z_demangling,
-                   di->symtab[sno].pri_name, buf );
+                   se->sym_name, buf );
 
    /* Do the below-main hack */
    // To reduce the endless nuisance of multiple different names 
    // for "the frame below main()" screwing up the testsuite, change all
    // known incarnations of said into a single name, "(below main)", if
    // --show-below-main=yes.
-   if ( do_below_main_renaming && ! VG_(clo_show_below_main) &&
-        Vg_FnNameBelowMain == VG_(get_fnname_kind)(*buf) )
+   if ( do_below_main_renaming && ! VG_(clo_show_below_main)
+        && Vg_FnNameBelowMain == VG_(get_fnname_kind)(*buf) )
    {
      *buf = "(below main)";
    }
-   offset = a - di->symtab[sno].avmas.main;
-   if (offsetP) *offsetP = offset;
 
-   if (show_offset && offset != 0) {
+   if (offsetP) *offsetP = se->offset;
+
+   if (show_offset && se->offset != 0) {
       static HChar *bufwo;      // buf with offset
       static SizeT  bufwo_szB;
       SizeT  need, len;
@@ -1791,8 +1835,8 @@ Bool get_sym_name ( Bool do_cxx_demangling, Bool do_z_demangling,
 
       VG_(strcpy)(bufwo, *buf);
       VG_(sprintf)(bufwo + len, "%c%ld",
-                   offset < 0 ? '-' : '+',
-                   offset < 0 ? -offset : offset);
+                   se->offset < 0 ? '-' : '+',
+                   (PtrdiffT) (se->offset < 0 ? -se->offset : se->offset));
       *buf = bufwo;
    }
 
@@ -1809,7 +1853,6 @@ Addr VG_(get_tocptr) ( Addr guest_code_addr )
    Word       sno;
    search_all_symtabs ( guest_code_addr, 
                         &si, &sno,
-                        True/*match_anywhere_in_fun*/,
                         True/*consider text symbols only*/ );
    if (si == NULL) 
       return 0;
@@ -1822,8 +1865,8 @@ Addr VG_(get_tocptr) ( Addr guest_code_addr )
 
 /* This is available to tools... always demangle C++ names,
    match anywhere in function, but don't show offsets.
-   NOTE: See important comment about the persistence and memory ownership
-   of the return string at function get_sym_name */
+   NOTE: See IMPORTANT COMMENT above about persistence and ownership
+   in pub_tool_debuginfo.h */
 Bool VG_(get_fnname) ( Addr a, const HChar** buf )
 {
    return get_sym_name ( /*C++-demangle*/True, /*Z-demangle*/True,
@@ -1831,14 +1874,14 @@ Bool VG_(get_fnname) ( Addr a, const HChar** buf )
                          a, buf,
                          /*match_anywhere_in_fun*/True, 
                          /*show offset?*/False,
-                         /*text syms only*/True,
+                         /*text sym*/True,
                          /*offsetP*/NULL );
 }
 
 /* This is available to tools... always demangle C++ names,
    match anywhere in function, and show offset if nonzero.
-   NOTE: See important comment about the persistence and memory ownership
-   of the return string at function get_sym_name */
+   NOTE: See IMPORTANT COMMENT above about persistence and ownership
+   in pub_tool_debuginfo.h */
 Bool VG_(get_fnname_w_offset) ( Addr a, const HChar** buf )
 {
    return get_sym_name ( /*C++-demangle*/True, /*Z-demangle*/True,
@@ -1846,15 +1889,15 @@ Bool VG_(get_fnname_w_offset) ( Addr a, const HChar** buf )
                          a, buf,
                          /*match_anywhere_in_fun*/True, 
                          /*show offset?*/True,
-                         /*text syms only*/True,
+                         /*text sym*/True,
                          /*offsetP*/NULL );
 }
 
 /* This is available to tools... always demangle C++ names,
    only succeed if 'a' matches first instruction of function,
    and don't show offsets.
-   NOTE: See important comment about the persistence and memory ownership
-   of the return string at function get_sym_name */
+   NOTE: See IMPORTANT COMMENT above about persistence and ownership
+   in pub_tool_debuginfo.h */
 Bool VG_(get_fnname_if_entry) ( Addr a, const HChar** buf )
 {
    const HChar *tmp;
@@ -1865,7 +1908,7 @@ Bool VG_(get_fnname_if_entry) ( Addr a, const HChar** buf )
                          a, &tmp,
                          /*match_anywhere_in_fun*/False, 
                          /*show offset?*/False,
-                         /*text syms only*/True,
+                         /*text sym*/True,
                          /*offsetP*/NULL );
    if (res)
       *buf = tmp;
@@ -1875,8 +1918,8 @@ Bool VG_(get_fnname_if_entry) ( Addr a, const HChar** buf )
 /* This is only available to core... don't C++-demangle, don't Z-demangle,
    don't rename below-main, match anywhere in function, and don't show
    offsets.
-   NOTE: See important comment about the persistence and memory ownership
-   of the return string at function get_sym_name */
+   NOTE: See IMPORTANT COMMENT above about persistence and ownership
+   in pub_tool_debuginfo.h  */
 Bool VG_(get_fnname_raw) ( Addr a, const HChar** buf )
 {
    return get_sym_name ( /*C++-demangle*/False, /*Z-demangle*/False,
@@ -1884,15 +1927,15 @@ Bool VG_(get_fnname_raw) ( Addr a, const HChar** buf )
                          a, buf,
                          /*match_anywhere_in_fun*/True, 
                          /*show offset?*/False,
-                         /*text syms only*/True,
+                         /*text sym*/True,
                          /*offsetP*/NULL );
 }
 
 /* This is only available to core... don't demangle C++ names, but do
    do Z-demangling and below-main-renaming, match anywhere in function, and
    don't show offsets.
-   NOTE: See important comment about the persistence and memory ownership
-   of the return string at function get_sym_name */
+   NOTE: See IMPORTANT COMMENT above about persistence and ownership
+   in pub_tool_debuginfo.h */
 Bool VG_(get_fnname_no_cxx_demangle) ( Addr a, const HChar** buf,
                                        const InlIPCursor* iipc )
 {
@@ -1903,7 +1946,7 @@ Bool VG_(get_fnname_no_cxx_demangle) ( Addr a, const HChar** buf,
                             a, buf,
                             /*match_anywhere_in_fun*/True, 
                             /*show offset?*/False,
-                            /*text syms only*/True,
+                            /*text sym*/True,
                             /*offsetP*/NULL );
    } else {
       const DiInlLoc *next_inl = iipc && iipc->next_inltab >= 0
@@ -1928,7 +1971,7 @@ Bool VG_(get_inst_offset_in_function)( Addr a,
                          a, &fnname,
                          /*match_anywhere_in_sym*/True, 
                          /*show offset?*/False,
-                         /*text syms only*/True,
+                         /*text sym*/True,
                          offset );
 }
 
@@ -1974,8 +2017,8 @@ Vg_FnNameKind VG_(get_fnname_kind_from_IP) ( Addr ip )
 /* Looks up data_addr in the collection of data symbols, and if found
    puts a pointer to its name into dname. The name is zero terminated.
    Also data_addr's offset from the symbol start is put into *offset.
-   NOTE: See important comment about the persistence and memory ownership
-   of the return string at function get_sym_name */
+   NOTE: See IMPORTANT COMMENT above about persistence and ownership
+   in pub_tool_debuginfo.h  */
 Bool VG_(get_datasym_and_offset)( Addr data_addr,
                                   /*OUT*/const HChar** dname,
                                   /*OUT*/PtrdiffT* offset )
@@ -1985,7 +2028,7 @@ Bool VG_(get_datasym_and_offset)( Addr data_addr,
                        data_addr, dname,
                        /*match_anywhere_in_sym*/True, 
                        /*show offset?*/False,
-                       /*data syms only please*/False,
+                       /*text sym*/False,
                        offset );
 }
 
@@ -1995,7 +2038,7 @@ Bool VG_(get_datasym_and_offset)( Addr data_addr,
    (1) the DebugInfo it belongs to is not discarded
    (2) the segment containing the address is not merged with another segment
 */
-Bool VG_(get_objname) ( Addr a, const HChar** buf )
+Bool VG_(get_objname) ( Addr a, const HChar** objname )
 {
    DebugInfo* di;
    const NSegment *seg;
@@ -2008,7 +2051,7 @@ Bool VG_(get_objname) ( Addr a, const HChar** buf )
           && di->text_size > 0
           && di->text_avma <= a 
           && a < di->text_avma + di->text_size) {
-         *buf = di->fsm.filename;
+         *objname = di->fsm.filename;
          return True;
       }
    }
@@ -2019,7 +2062,7 @@ Bool VG_(get_objname) ( Addr a, const HChar** buf )
       when running programs under wine. */
    if ( (seg = VG_(am_find_nsegment)(a)) != NULL 
         && (filename = VG_(am_get_filename)(seg)) != NULL ) {
-     *buf = filename;
+      *objname = filename;
       return True;
    }
    return False;
@@ -2497,11 +2540,6 @@ UWord evalCfiExpr ( const XArray* exprs, Int ix,
                || defined(VGA_ppc64le)
 #           elif defined(VGP_arm64_linux)
             case Creg_ARM64_X30: return eec->uregs->x30;
-#           elif defined(VGA_tilegx)
-            case Creg_TILEGX_IP: return eec->uregs->pc;
-            case Creg_TILEGX_SP: return eec->uregs->sp;
-            case Creg_TILEGX_BP: return eec->uregs->fp;
-            case Creg_TILEGX_LR: return eec->uregs->lr;
 #           else
 #             error "Unsupported arch"
 #           endif
@@ -2652,12 +2690,6 @@ static CFSI_m_CacheEnt cfsi_m_cache[N_CFSI_M_CACHE];
 
 static void cfsi_m_cache__invalidate ( void ) {
    VG_(memset)(&cfsi_m_cache, 0, sizeof(cfsi_m_cache));
-   debuginfo_generation++;
-}
-
-UInt VG_(debuginfo_generation) (void)
-{
-   return debuginfo_generation;
 }
 
 static inline CFSI_m_CacheEnt* cfsi_m_cache__find ( Addr ip )
@@ -2760,16 +2792,6 @@ static Addr compute_cfa ( const D3UnwindRegs* uregs,
       case CFIC_ARM64_X29REL: 
          cfa = cfsi_m->cfa_off + uregs->x29;
          break;
-#     elif defined(VGA_tilegx)
-      case CFIC_IA_SPREL:
-         cfa = cfsi_m->cfa_off + uregs->sp;
-         break;
-      case CFIR_SAME:
-         cfa = uregs->fp;
-         break;
-      case CFIC_IA_BPREL:
-         cfa = cfsi_m->cfa_off + uregs->fp;
-         break;
 #     else
 #       error "Unsupported arch"
 #     endif
@@ -2824,7 +2846,7 @@ Addr ML_(get_CFA) ( Addr ip, Addr sp, Addr fp,
      return compute_cfa(&uregs,
                         min_accessible,  max_accessible, ce->di, ce->cfsi_m);
    }
-#elif defined(VGA_mips32) || defined(VGA_mips64) || defined(VGA_tilegx)
+#elif defined(VGA_mips32) || defined(VGA_mips64)
    { D3UnwindRegs uregs;
      uregs.pc = ip;
      uregs.sp = sp;
@@ -2903,8 +2925,6 @@ Bool VG_(use_CF_info) ( /*MOD*/D3UnwindRegs* uregsHere,
    ipHere = uregsHere->pc;
 #  elif defined(VGA_ppc32) || defined(VGA_ppc64be) || defined(VGA_ppc64le)
 #  elif defined(VGP_arm64_linux)
-   ipHere = uregsHere->pc;
-#  elif defined(VGA_tilegx)
    ipHere = uregsHere->pc;
 #  else
 #    error "Unknown arch"
@@ -2991,10 +3011,6 @@ Bool VG_(use_CF_info) ( /*MOD*/D3UnwindRegs* uregsHere,
    COMPUTE(uregsPrev.sp,  uregsHere->sp,  cfsi_m->sp_how,  cfsi_m->sp_off);
    COMPUTE(uregsPrev.x30, uregsHere->x30, cfsi_m->x30_how, cfsi_m->x30_off);
    COMPUTE(uregsPrev.x29, uregsHere->x29, cfsi_m->x29_how, cfsi_m->x29_off);
-#  elif defined(VGA_tilegx)
-   COMPUTE(uregsPrev.pc, uregsHere->pc, cfsi_m->ra_how, cfsi_m->ra_off);
-   COMPUTE(uregsPrev.sp, uregsHere->sp, cfsi_m->sp_how, cfsi_m->sp_off);
-   COMPUTE(uregsPrev.fp, uregsHere->fp, cfsi_m->fp_how, cfsi_m->fp_off);
 #  else
 #    error "Unknown arch"
 #  endif
@@ -4349,7 +4365,7 @@ const HChar* VG_(pp_SectKind)( VgSectKind kind )
    in *name. The returned name, if any, should be saved away, if there is
    a chance that a debug-info will be discarded and the name is being
    used later on. */
-VgSectKind VG_(DebugInfo_sect_kind)( /*OUT*/const HChar** name, Addr a)
+VgSectKind VG_(DebugInfo_sect_kind)( /*OUT*/const HChar** objname, Addr a)
 {
    DebugInfo* di;
    VgSectKind res = Vg_SectUnknown;
@@ -4426,16 +4442,29 @@ VgSectKind VG_(DebugInfo_sect_kind)( /*OUT*/const HChar** name, Addr a)
    vg_assert( (di == NULL && res == Vg_SectUnknown)
               || (di != NULL && res != Vg_SectUnknown) );
 
-   if (name) {
+   if (objname) {
       if (di && di->fsm.filename) {
-         *name = di->fsm.filename;
+         *objname = di->fsm.filename;
       } else {
-         *name = "???";
+         *objname = "???";
       }
    }
 
    return res;
 
+}
+
+static UInt debuginfo_generation = 0;
+
+UInt VG_(debuginfo_generation) (void)
+{
+   return debuginfo_generation;
+}
+
+static void caches__invalidate ( void ) {
+   cfsi_m_cache__invalidate();
+   sym_name_cache__invalidate();
+   debuginfo_generation++;
 }
 
 /*--------------------------------------------------------------------*/

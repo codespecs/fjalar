@@ -1101,6 +1101,11 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_CmpExpD64:                   // only used by s390 
    case Iop_CmpExpD128:                  // only used by s390 
 
+   case Iop_MaxNumF32:                   // only used by arm
+   case Iop_MinNumF32:                   // only used by arm
+   case Iop_MaxNumF64:                   // only used by arm
+   case Iop_MinNumF64:                   // only used by arm
+
       // 64-bit SIMD integer comparisons
       /* MISC (vector integer cmp != 0) */
 

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2015 Julian Seward
+   Copyright (C) 2000-2017 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -105,11 +105,6 @@ extern void* VG_(arm_linux_REDIR_FOR_memcpy)( void*, void*, Int );
 extern void* VG_(arm_linux_REDIR_FOR_strcmp)( void*, void* );
 #endif
 
-#if defined(VGP_tilegx_linux)
-extern Addr  VG_(tilegx_linux_SUBST_FOR_rt_sigreturn);
-extern UInt  VG_(tilegx_linux_REDIR_FOR_strlen)( void* );
-#endif
-
 #if defined(VGP_arm64_linux)
 extern Addr  VG_(arm64_linux_SUBST_FOR_rt_sigreturn);
 extern ULong VG_(arm64_linux_REDIR_FOR_strlen)( void* );
@@ -154,11 +149,13 @@ extern void* VG_(s390x_linux_REDIR_FOR_index) ( void*, Long );
 #if defined(VGP_mips32_linux)
 extern Addr  VG_(mips32_linux_SUBST_FOR_sigreturn);
 extern Addr  VG_(mips32_linux_SUBST_FOR_rt_sigreturn);
+extern Char* VG_(mips32_linux_REDIR_FOR_index)( const Char*, Int );
 extern UInt  VG_(mips32_linux_REDIR_FOR_strlen)( void* );
 #endif
 
 #if defined(VGP_mips64_linux)
 extern Addr  VG_(mips64_linux_SUBST_FOR_rt_sigreturn);
+extern Char* VG_(mips64_linux_REDIR_FOR_index)( const Char*, Int );
 extern UInt  VG_(mips64_linux_REDIR_FOR_strlen)( void* );
 #endif
 

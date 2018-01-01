@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2013-2015 OpenWorks
+   Copyright (C) 2013-2017 OpenWorks
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -298,10 +298,9 @@ static HReg widen_s_16_to_64 ( ISelEnv* env, HReg src )
    a new register, and return the new register. */
 static HReg widen_z_16_to_64 ( ISelEnv* env, HReg src )
 {
-   HReg      dst = newVRegI(env);
-   ARM64RI6* n48 = ARM64RI6_I6(48);
-   addInstr(env, ARM64Instr_Shift(dst, src, n48, ARM64sh_SHL));
-   addInstr(env, ARM64Instr_Shift(dst, dst, n48, ARM64sh_SHR));
+   HReg      dst  = newVRegI(env);
+   ARM64RIL* mask = ARM64RIL_I13(1, 0, 15); /* encodes 0xFFFF */
+   addInstr(env, ARM64Instr_Logic(dst, src, mask, ARM64lo_AND));
    return dst;
 }
 
@@ -329,10 +328,9 @@ static HReg widen_s_8_to_64 ( ISelEnv* env, HReg src )
 
 static HReg widen_z_8_to_64 ( ISelEnv* env, HReg src )
 {
-   HReg      dst = newVRegI(env);
-   ARM64RI6* n56 = ARM64RI6_I6(56);
-   addInstr(env, ARM64Instr_Shift(dst, src, n56, ARM64sh_SHL));
-   addInstr(env, ARM64Instr_Shift(dst, dst, n56, ARM64sh_SHR));
+   HReg      dst  = newVRegI(env);
+   ARM64RIL* mask = ARM64RIL_I13(1, 0, 7); /* encodes 0xFF */
+   addInstr(env, ARM64Instr_Logic(dst, src, mask, ARM64lo_AND));
    return dst;
 }
 
@@ -449,7 +447,7 @@ void set_FPCR_rounding_mode ( ISelEnv* env, IRExpr* mode )
 static
 Bool mightRequireFixedRegs ( IRExpr* e )
 {
-   if (UNLIKELY(is_IRExpr_VECRET_or_BBPTR(e))) {
+   if (UNLIKELY(is_IRExpr_VECRET_or_GSPTR(e))) {
       // These are always "safe" -- either a copy of SP in some
       // arbitrary vreg, or a copy of x21, respectively.
       return False;
@@ -493,9 +491,9 @@ Bool doHelperCall ( /*OUT*/UInt*   stackAdjustAfterCall,
    *retloc               = mk_RetLoc_INVALID();
 
    /* These are used for cross-checking that IR-level constraints on
-      the use of IRExpr_VECRET() and IRExpr_BBPTR() are observed. */
+      the use of IRExpr_VECRET() and IRExpr_GSPTR() are observed. */
    UInt nVECRETs = 0;
-   UInt nBBPTRs  = 0;
+   UInt nGSPTRs  = 0;
 
    /* Marshal args for a call and do the call.
 
@@ -513,7 +511,7 @@ Bool doHelperCall ( /*OUT*/UInt*   stackAdjustAfterCall,
       preallocate the return space before marshalling any arguments,
       in this case.
 
-      |args| may also contain IRExpr_BBPTR(), in which case the
+      |args| may also contain IRExpr_GSPTR(), in which case the
       value in x21 is passed as the corresponding argument.
 
       Generating code which is both efficient and correct when
@@ -560,14 +558,14 @@ Bool doHelperCall ( /*OUT*/UInt*   stackAdjustAfterCall,
       IRExpr* arg = args[i];
       if (UNLIKELY(arg->tag == Iex_VECRET)) {
          nVECRETs++;
-      } else if (UNLIKELY(arg->tag == Iex_BBPTR)) {
-         nBBPTRs++;
+      } else if (UNLIKELY(arg->tag == Iex_GSPTR)) {
+         nGSPTRs++;
       }
       n_args++;
    }
 
    /* If this fails, the IR is ill-formed */
-   vassert(nBBPTRs == 0 || nBBPTRs == 1);
+   vassert(nGSPTRs == 0 || nGSPTRs == 1);
 
    /* If we have a VECRET, allocate space on the stack for the return
       value, and record the stack pointer after that. */
@@ -640,7 +638,7 @@ Bool doHelperCall ( /*OUT*/UInt*   stackAdjustAfterCall,
          IRExpr* arg = args[i];
 
          IRType  aTy = Ity_INVALID;
-         if (LIKELY(!is_IRExpr_VECRET_or_BBPTR(arg)))
+         if (LIKELY(!is_IRExpr_VECRET_or_GSPTR(arg)))
             aTy = typeOfIRExpr(env->type_env, args[i]);
 
          if (nextArgReg >= ARM64_N_ARGREGS)
@@ -651,7 +649,7 @@ Bool doHelperCall ( /*OUT*/UInt*   stackAdjustAfterCall,
                                            iselIntExpr_R(env, args[i]) ));
             nextArgReg++;
          }
-         else if (arg->tag == Iex_BBPTR) {
+         else if (arg->tag == Iex_GSPTR) {
             vassert(0); //ATC
             addInstr(env, ARM64Instr_MovI( argregs[nextArgReg],
                                            hregARM64_X21() ));
@@ -679,7 +677,7 @@ Bool doHelperCall ( /*OUT*/UInt*   stackAdjustAfterCall,
          IRExpr* arg = args[i];
 
          IRType  aTy = Ity_INVALID;
-         if (LIKELY(!is_IRExpr_VECRET_or_BBPTR(arg)))
+         if (LIKELY(!is_IRExpr_VECRET_or_GSPTR(arg)))
             aTy = typeOfIRExpr(env->type_env, args[i]);
 
          if (nextArgReg >= ARM64_N_ARGREGS)
@@ -689,7 +687,7 @@ Bool doHelperCall ( /*OUT*/UInt*   stackAdjustAfterCall,
             tmpregs[nextArgReg] = iselIntExpr_R(env, args[i]);
             nextArgReg++;
          }
-         else if (arg->tag == Iex_BBPTR) {
+         else if (arg->tag == Iex_GSPTR) {
             vassert(0); //ATC
             tmpregs[nextArgReg] = hregARM64_X21();
             nextArgReg++;
@@ -733,8 +731,8 @@ Bool doHelperCall ( /*OUT*/UInt*   stackAdjustAfterCall,
 
    /* Do final checks, set the return values, and generate the call
       instruction proper. */
-   vassert(nBBPTRs == 0 || nBBPTRs == 1);
-   vassert(nVECRETs == (retTy == Ity_V128 || retTy == Ity_V256) ? 1 : 0);
+   vassert(nGSPTRs == 0 || nGSPTRs == 1);
+   vassert(nVECRETs == ((retTy == Ity_V128 || retTy == Ity_V256) ? 1 : 0));
    vassert(*stackAdjustAfterCall == 0);
    vassert(is_RetLoc_INVALID(*retloc));
    switch (retTy) {
@@ -1383,12 +1381,13 @@ static ARM64CondCode iselCondCode_wrk ( ISelEnv* env, IRExpr* e )
            || e->Iex.Binop.op == Iop_CmpLT64S
            || e->Iex.Binop.op == Iop_CmpLT64U
            || e->Iex.Binop.op == Iop_CmpLE64S
-           || e->Iex.Binop.op == Iop_CmpLE64U)) {
+           || e->Iex.Binop.op == Iop_CmpLE64U
+           || e->Iex.Binop.op == Iop_CasCmpEQ64)) {
       HReg      argL = iselIntExpr_R(env, e->Iex.Binop.arg1);
       ARM64RIA* argR = iselIntExpr_RIA(env, e->Iex.Binop.arg2);
       addInstr(env, ARM64Instr_Cmp(argL, argR, True/*is64*/));
       switch (e->Iex.Binop.op) {
-         case Iop_CmpEQ64:  return ARM64cc_EQ;
+         case Iop_CmpEQ64: case Iop_CasCmpEQ64: return ARM64cc_EQ;
          case Iop_CmpNE64:  return ARM64cc_NE;
          case Iop_CmpLT64S: return ARM64cc_LT;
          case Iop_CmpLT64U: return ARM64cc_CC;
@@ -1405,18 +1404,47 @@ static ARM64CondCode iselCondCode_wrk ( ISelEnv* env, IRExpr* e )
            || e->Iex.Binop.op == Iop_CmpLT32S
            || e->Iex.Binop.op == Iop_CmpLT32U
            || e->Iex.Binop.op == Iop_CmpLE32S
-           || e->Iex.Binop.op == Iop_CmpLE32U)) {
+           || e->Iex.Binop.op == Iop_CmpLE32U
+           || e->Iex.Binop.op == Iop_CasCmpEQ32)) {
       HReg      argL = iselIntExpr_R(env, e->Iex.Binop.arg1);
       ARM64RIA* argR = iselIntExpr_RIA(env, e->Iex.Binop.arg2);
       addInstr(env, ARM64Instr_Cmp(argL, argR, False/*!is64*/));
       switch (e->Iex.Binop.op) {
-         case Iop_CmpEQ32:  return ARM64cc_EQ;
+         case Iop_CmpEQ32: case Iop_CasCmpEQ32: return ARM64cc_EQ;
          case Iop_CmpNE32:  return ARM64cc_NE;
          case Iop_CmpLT32S: return ARM64cc_LT;
          case Iop_CmpLT32U: return ARM64cc_CC;
          case Iop_CmpLE32S: return ARM64cc_LE;
          case Iop_CmpLE32U: return ARM64cc_LS;
          default: vpanic("iselCondCode(arm64): CmpXX32");
+      }
+   }
+
+   /* --- Cmp*16*(x,y) --- */
+   if (e->tag == Iex_Binop
+       && (e->Iex.Binop.op == Iop_CasCmpEQ16)) {
+      HReg argL  = iselIntExpr_R(env, e->Iex.Binop.arg1);
+      HReg argR  = iselIntExpr_R(env, e->Iex.Binop.arg2);
+      HReg argL2 = widen_z_16_to_64(env, argL);
+      HReg argR2 = widen_z_16_to_64(env, argR);
+      addInstr(env, ARM64Instr_Cmp(argL2, ARM64RIA_R(argR2), True/*is64*/));
+      switch (e->Iex.Binop.op) {
+         case Iop_CasCmpEQ16: return ARM64cc_EQ;
+         default: vpanic("iselCondCode(arm64): CmpXX16");
+      }
+   }
+
+   /* --- Cmp*8*(x,y) --- */
+   if (e->tag == Iex_Binop
+       && (e->Iex.Binop.op == Iop_CasCmpEQ8)) {
+      HReg argL  = iselIntExpr_R(env, e->Iex.Binop.arg1);
+      HReg argR  = iselIntExpr_R(env, e->Iex.Binop.arg2);
+      HReg argL2 = widen_z_8_to_64(env, argL);
+      HReg argR2 = widen_z_8_to_64(env, argR);
+      addInstr(env, ARM64Instr_Cmp(argL2, ARM64RIA_R(argR2), True/*is64*/));
+      switch (e->Iex.Binop.op) {
+         case Iop_CasCmpEQ8: return ARM64cc_EQ;
+         default: vpanic("iselCondCode(arm64): CmpXX8");
       }
    }
 
@@ -3830,6 +3858,57 @@ static void iselStmt ( ISelEnv* env, IRStmt* stmt )
                                         ARM64lo_AND));
          return;
       }
+      break;
+   }
+
+   /* --------- ACAS --------- */
+   case Ist_CAS: {
+      if (stmt->Ist.CAS.details->oldHi == IRTemp_INVALID) {
+         /* "normal" singleton CAS */
+         UChar  sz;
+         IRCAS* cas = stmt->Ist.CAS.details;
+         IRType ty  = typeOfIRExpr(env->type_env, cas->dataLo);
+         switch (ty) { 
+            case Ity_I64: sz = 8; break;
+            case Ity_I32: sz = 4; break;
+            case Ity_I16: sz = 2; break;
+            case Ity_I8:  sz = 1; break; 
+            default: goto unhandled_cas;
+         }
+         HReg rAddr = iselIntExpr_R(env, cas->addr);
+         HReg rExpd = iselIntExpr_R(env, cas->expdLo);
+         HReg rData = iselIntExpr_R(env, cas->dataLo);
+         vassert(cas->expdHi == NULL);
+         vassert(cas->dataHi == NULL);
+         addInstr(env, ARM64Instr_MovI(hregARM64_X3(), rAddr));
+         addInstr(env, ARM64Instr_MovI(hregARM64_X5(), rExpd));
+         addInstr(env, ARM64Instr_MovI(hregARM64_X7(), rData));
+         addInstr(env, ARM64Instr_CAS(sz));
+         /* Now we have the lowest szB bytes of x1 are either equal to
+            the lowest szB bytes of x5, indicating success, or they
+            aren't, indicating failure.  The IR semantics actually
+            require us to return the old value at the location,
+            regardless of success or failure, but in the case of
+            failure it's not clear how to do this, since
+            ARM64Instr_CAS can't provide that.  Instead we'll just
+            return the relevant bit of x1, since that's at least
+            guaranteed to be different from the lowest bits of x5 on
+            failure. */
+         HReg rResult = hregARM64_X1();
+         switch (sz) {
+            case 8:  break;
+            case 4:  rResult = widen_z_32_to_64(env, rResult); break;
+            case 2:  rResult = widen_z_16_to_64(env, rResult); break;
+            case 1:  rResult = widen_z_8_to_64(env, rResult); break;
+            default: vassert(0);
+         }
+         // "old" in this case is interpreted somewhat liberally, per
+         // the previous comment.
+         HReg rOld = lookupIRTemp(env, cas->oldLo);
+         addInstr(env, ARM64Instr_MovI(rOld, rResult));
+         return;
+      }
+      unhandled_cas:
       break;
    }
 

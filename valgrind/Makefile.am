@@ -13,7 +13,6 @@ TOOLS =		memcheck \
 		drd \
 		fjalar
 
-
 EXP_TOOLS = 	exp-sgcheck \
 		exp-bbv \
 		exp-dhat
@@ -65,7 +64,7 @@ vglib_DATA = default.supp
 pkgconfigdir = $(libdir)/pkgconfig
 pkgconfig_DATA = valgrind.pc
 
-BUILT_SOURCES  = default.supp valgrind.pc
+BUILT_SOURCES  = default.supp include/vgversion.h valgrind.pc
 CLEANFILES     = default.supp
 
 default.supp: $(DEFAULT_SUPP_FILES)
@@ -119,19 +118,28 @@ EXTRA_DIST = \
 	valgrind.spec \
 	autogen.sh
 
+dist-hook: include/vgversion.h
+	cp -p include/vgversion.h $(distdir)/include/vgversion_dist.h
+
 dist_noinst_SCRIPTS = \
 	vg-in-place
 
-all-local: default.supp
+all-local: default.supp include/vgversion.h
 	mkdir -p $(inplacedir)
 	rm -f $(inplacedir)/default.supp
 	ln -s ../default.supp $(inplacedir)
 
 clean-local:
-	rm -rf $(inplacedir)
+	rm -rf $(inplacedir) include/vgversion.h
 	rm -f config.guess
 	rm -f config.sub
 	rm -f Makefile.in
 
 # Need config.h in the installed tree, since some files depend on it
 pkginclude_HEADERS = config.h
+
+# vgversion.h defines accurate versions to report with -v --version
+include/vgversion.h:
+	$(top_srcdir)/auxprogs/make_or_upd_vgversion_h $(top_srcdir)
+
+.PHONY: include/vgversion.h

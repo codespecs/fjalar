@@ -1,6 +1,7 @@
 /* Basic syscall test, see memcheck/tests/x86-linux/scalar.c for more info. */
 
 #include "scalar.h"
+#include "config.h"
 
 #include <bsm/audit.h>
 #include <nfs/nfs.h>
@@ -9,7 +10,10 @@
 #include <sys/door.h>
 #include <sys/fcntl.h>
 #include <sys/fstyp.h>
-#include <sys/lwp.h>
+#include <sys/lgrp_user.h>
+#if defined(HAVE_SYS_LGRP_USER_IMPL_H)
+#include <sys/lgrp_user_impl.h>
+#endif /* HAVE_SYS_LGRP_USER_IMPL_H */
 #include <sys/mman.h>
 #include <sys/modctl.h>
 #include <sys/mount.h>
@@ -307,6 +311,13 @@ static void sys_fcntl2(void)
 
 __attribute__((noinline))
 static void sys_fcntl3(void)
+{
+   GO(SYS_fcntl, "(DUPFD_CLOEXEC) 3s 0m");
+   SY(SYS_fcntl, x0 - 1, x0 + F_DUPFD_CLOEXEC, x0); FAILx(EBADF);
+}
+
+__attribute__((noinline))
+static void sys_fcntl4(void)
 {
    GO(SYS_fcntl, "(GETLK) 3s 5m");
    SY(SYS_fcntl, x0 - 1, x0 + F_GETLK, x0); FAILx(EBADF);
@@ -692,6 +703,55 @@ static void sys_modctl3(void)
 {
    GO(SYS_modctl, "(MODINFO) 3s 4m");
    SY(SYS_modctl, x0 + MODINFO, x0 + 1, x0 - 1); FAIL;
+}
+
+__attribute__((noinline))
+static void sys_lgrpsys(void)
+{
+   GO(SYS_lgrpsys, "(LGRP_SYS_MEMINFO) 3s 1m");
+   SY(SYS_lgrpsys, x0 + LGRP_SYS_MEMINFO, x0 + 0, x0 + 1); FAIL;
+}
+
+__attribute__((noinline))
+static void sys_lgrpsys2(void)
+{
+   GO(SYS_lgrpsys, "(LGRP_SYS_MEMINFO) 3s 1m");
+   SY(SYS_lgrpsys, x0 + LGRP_SYS_MEMINFO, x0 + 1, x0 + 1); FAIL;
+}
+
+__attribute__((noinline))
+static void sys_lgrpsys3(void)
+{
+   meminfo_t minfo;
+   minfo.mi_inaddr = (void *)(x0 + 1);
+   minfo.mi_info_req = (void *)(x0 + 1);
+   minfo.mi_info_count = x0 + 1;
+   minfo.mi_outdata = (void *)(x0 + 1);
+   minfo.mi_validity = (void *)(x0 + 1);
+
+   GO(SYS_lgrpsys, "(LGRP_SYS_MEMINFO) 4s 4m");
+   SY(SYS_lgrpsys, x0 + LGRP_SYS_MEMINFO, x0 + 1, x0 + &minfo); FAIL;
+}
+
+__attribute__((noinline))
+static void sys_lgrpsys4(void)
+{
+   GO(SYS_lgrpsys, "(LGRP_SYS_GENERATION) 2s 0m");
+   SY(SYS_lgrpsys, x0 + LGRP_SYS_GENERATION, x0 + 0); SUCC;
+}
+
+__attribute__((noinline))
+static void sys_lgrpsys5(void)
+{
+   GO(SYS_lgrpsys, "(LGRP_SYS_VERSION) 2s 0m");
+   SY(SYS_lgrpsys, x0 + LGRP_SYS_VERSION, x0 + 0); SUCC;
+}
+
+__attribute__((noinline))
+static void sys_lgrpsys6(void)
+{
+   GO(SYS_lgrpsys, "(LGRP_SYS_SNAPSHOT) 3s 1m");
+   SY(SYS_lgrpsys, x0 + LGRP_SYS_SNAPSHOT, x0 + 10, x0 + 1); FAIL;
 }
 
 __attribute__((noinline))
@@ -1755,6 +1815,7 @@ int main(void)
    sys_fcntl();
    sys_fcntl2();
    sys_fcntl3();
+   sys_fcntl4();
 
    /* SYS_ulimit                 63 */
    /* XXX Missing wrapper. */
@@ -1878,7 +1939,8 @@ int main(void)
    SY(SYS_sigprocmask, x0, x0 + 1, x0 + 1); FAILx(EFAULT);
 
    /* SYS_sigsuspend             96 */
-   /* XXX Missing wrapper. */
+   GO(SYS_sigsuspend, "1s 1m");
+   SY(SYS_sigsuspend, x0 + 1); FAILx(EFAULT);
 
    /* SYS_sigaltstack            97 */
    GO(SYS_sigaltstack, "2s 2m");
@@ -1926,7 +1988,8 @@ int main(void)
    SY(SYS_waitid, x0 - 1, x0, x0, x0); FAIL;
 
    /* SYS_sigsendsys            108 */
-   /* XXX Missing wrapper. */
+   GO(SYS_sigsendsys, "2s 1m");
+   SY(SYS_sigsendsys, x0 - 1, x0); FAIL;
 
    /* SYS_hrtsys                109 */
    /* XXX Missing wrapper. */
@@ -2130,14 +2193,7 @@ int main(void)
    SY(SYS_lwp_sigmask, x0, x0, x0, x0, x0); FAIL;
 
    /* SYS_lwp_private           166 */
-   GO(SYS_lwp_private, "3s 1m");
-#if defined(__i386)
-   SY(SYS_lwp_private, x0 + _LWP_GETPRIVATE, x0 + _LWP_GSBASE, x0); FAIL;
-#elif defined(__amd64)
-   SY(SYS_lwp_private, x0 + _LWP_GETPRIVATE, x0 + _LWP_FSBASE, x0); FAIL;
-#else
-#error Unsupported platform
-#endif
+   /* Tested in amd64-solaris/scalar and x86-solaris/scalar */
 
    /* SYS_lwp_wait              167 */
    GO(SYS_lwp_wait, "2s 1m");
@@ -2183,7 +2239,12 @@ int main(void)
    /* XXX Missing wrapper. */
 
    /* SYS_lgrpsys               180 */
-   /* XXX Missing wrapper. */
+   sys_lgrpsys();
+   sys_lgrpsys2();
+   sys_lgrpsys3();
+   sys_lgrpsys4();
+   sys_lgrpsys5();
+   sys_lgrpsys6();
 
    /* SYS_rusagesys             181 */
    sys_rusagesys();

@@ -19,7 +19,7 @@
 #   first arg
 #      the alternative load address
 #   all the rest of the args
-#      the gcc invokation to do the final link, that
+#      the gcc invocation to do the final link, that
 #      the build system would have done, left to itself
 #
 # We just let the script 'die' if something is wrong, rather than do
@@ -30,7 +30,7 @@
 #
 # So: what we actually do is:
 #
-# Look at the specified gcc invokation.  Ignore all parts of it except
+# Look at the specified gcc invocation.  Ignore all parts of it except
 # the *.a, *.o and -o outfile parts.  Wrap them up in a new command
 # which looks (eg) as follows:
 #
@@ -38,7 +38,7 @@
 #
 #   /usr/bin/ld -static -arch x86_64 -macosx_version_min 10.6 \
 #      -o memcheck-amd64-darwin -u __start -e __start \
-#      -image_base 0x138000000 -stack_addr 0x13c000000 \
+#      -image_base 0x158000000 -stack_addr 0x13c000000 \
 #      -stack_size 0x800000 \
 #      memcheck_amd*.o \
 #      ../coregrind/libcoregrind-amd64-darwin.a \
@@ -48,7 +48,7 @@
 #
 #   /usr/bin/ld -static -arch i386 -macosx_version_min 10.6 \
 #      -o memcheck-x86-darwin -u __start -e __start \
-#      -image_base 0x38000000 -stack_addr 0x3c000000 \
+#      -image_base 0x58000000 -stack_addr 0x3c000000 \
 #      -stack_size 0x800000 \
 #      memcheck_x86*.o \
 #      ../coregrind/libcoregrind-x86-darwin.a \
@@ -65,7 +65,7 @@
 # executable for which we are linking.  We need to know this because
 # we must tell the linker that, by handing it either "-arch x86_64" or
 # "-arch i386".  Fortunately we can figure this out by scanning the
-# gcc invokation, which itself must contain either "-arch x86_64" or
+# gcc invocation, which itself must contain either "-arch x86_64" or
 # "-arch i386".
 
 use warnings;

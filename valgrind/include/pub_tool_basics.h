@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2015 Julian Seward 
+   Copyright (C) 2000-2017 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -129,6 +129,17 @@ typedef  struct { UWord uw1; UWord uw2; }  UWordPair;
 /* ThreadIds are simply indices into the VG_(threads)[] array. */
 typedef UInt ThreadId;
 
+/* Many data structures need to allocate and release memory.
+   The allocation/release functions must be provided by the caller.
+   The Alloc_Fn_t function must allocate a chunk of memory of size szB.
+   cc is the Cost Centre for this allocated memory. This constant string
+   is used to provide Valgrind's heap profiling, activated by
+   --profile-heap=no|yes.
+   The corresponding Free_Fn_t frees the memory chunk p. */
+
+typedef void* (*Alloc_Fn_t)       ( const HChar* cc, SizeT szB );
+typedef void  (*Free_Fn_t)        ( void* p );
+
 /* An abstraction of syscall return values.
    Linux/MIPS32 and Linux/MIPS64:
       When _isError == False, 
@@ -231,7 +242,7 @@ static inline UWord sr_Err ( SysRes sr ) {
 }
 static inline Bool sr_EQ ( UInt sysno, SysRes sr1, SysRes sr2 ) {
    /* This uglyness of hardcoding syscall numbers is necessary to
-      avoid having this header file be dependant on
+      avoid having this header file be dependent on
       include/vki/vki-scnums-mips{32,64}-linux.h.  It seems pretty
       safe given that it is inconceivable that the syscall numbers
       for such simple syscalls would ever change.  To make it 
@@ -348,8 +359,8 @@ static inline UWord sr_Err ( SysRes sr ) {
 static inline Bool sr_EQ ( UInt sysno, SysRes sr1, SysRes sr2 ) {
    /* sysno is ignored for Solaris */
    return sr1._val == sr2._val
-       && sr1._val2 == sr2._val2
-       && sr1._isError == sr2._isError;
+       && sr1._isError == sr2._isError
+       && (!sr1._isError) ? (sr1._val2 == sr2._val2) : True;
 }
 
 #else
@@ -371,7 +382,7 @@ static inline Bool sr_EQ ( UInt sysno, SysRes sr1, SysRes sr2 ) {
 
 #if defined(VGA_x86) || defined(VGA_amd64) || defined (VGA_arm) \
     || ((defined(VGA_mips32) || defined(VGA_mips64)) && defined (_MIPSEL)) \
-    || defined(VGA_arm64)  || defined(VGA_ppc64le) || defined(VGA_tilegx)
+    || defined(VGA_arm64)  || defined(VGA_ppc64le)
 #  define VG_LITTLEENDIAN 1
 #elif defined(VGA_ppc32) || defined(VGA_ppc64be) || defined(VGA_s390x) \
       || ((defined(VGA_mips32) || defined(VGA_mips64)) && defined (_MIPSEB))
@@ -383,6 +394,10 @@ static inline Bool sr_EQ ( UInt sysno, SysRes sr1, SysRes sr2 ) {
 /* Offsetof */
 #if !defined(offsetof)
 #   define offsetof(type,memb) ((SizeT)(HWord)&((type*)0)->memb)
+#endif
+
+#if !defined(container_of)
+#   define container_of(ptr, type, member) ((type *)((char *)(ptr) - offsetof(type, member)))
 #endif
 
 /* Alignment */
@@ -414,7 +429,7 @@ static inline Bool sr_EQ ( UInt sysno, SysRes sr1, SysRes sr2 ) {
       || defined(VGA_ppc64be) || defined(VGA_ppc64le) \
       || defined(VGA_arm) || defined(VGA_s390x) \
       || defined(VGA_mips32) || defined(VGA_mips64) \
-      || defined(VGA_arm64) || defined(VGA_tilegx)
+      || defined(VGA_arm64)
 #  define VG_REGPARM(n)            /* */
 #else
 #  error Unknown arch
@@ -455,6 +470,18 @@ static inline Bool sr_EQ ( UInt sysno, SysRes sr1, SysRes sr2 ) {
          const T in;      \
          T out;           \
       } var = { .in = x }; var.out;  \
+   })
+
+/* Some architectures (eg. mips, arm) do not support unaligned memory access
+   by hardware, so GCC warns about suspicious situations. This macro could
+   be used to avoid these warnings but only after careful examination. */
+#define ASSUME_ALIGNED(D, x)                 \
+   ({                                        \
+      union {                                \
+         void *in;                           \
+         D out;                              \
+      } var;                                 \
+      var.in = (void *) (x); var.out;        \
    })
 
 // Poor man's static assert

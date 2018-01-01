@@ -1,6 +1,6 @@
-# Valgrind version 3.12.0, released 2016-10-20
-export VALGRIND_REVISION=16102
-export VEX_REVISION=3283
+# Valgrind version 3.13.0, released 2017-06-15
+export VALGRIND_REVISION=16470
+export VEX_REVISION=3400
 
 # Binutils version 2.28.1, released 2017-07-25
 export BINUTILS_VERSION=2.28.1

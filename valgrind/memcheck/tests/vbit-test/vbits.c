@@ -4,7 +4,7 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2012-2015  Florian Krohm
+   Copyright (C) 2012-2017  Florian Krohm
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -1055,7 +1055,7 @@ cmpord_vbits(unsigned v1_num_bits, unsigned v2_num_bits)
    assert( v1_num_bits == v2_num_bits);
 
    /* Comparison only produces 32-bit or 64-bit value where
-    * the lower 3 bits are set to indicate, less than, equal and greater then.
+    * the lower 3 bits are set to indicate, less than, equal and greater than.
     */
    switch (v1_num_bits) {
    case 32:

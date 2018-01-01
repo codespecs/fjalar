@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2015 Julian Seward 
+   Copyright (C) 2000-2017 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -488,6 +488,7 @@ static void os_state_clear(ThreadState *tst)
 {
    tst->os_state.lwpid       = 0;
    tst->os_state.threadgroup = 0;
+   tst->os_state.stk_id = NULL_STK_ID;
 #  if defined(VGO_linux)
    /* no other fields to clear */
 #  elif defined(VGO_darwin)
@@ -504,7 +505,6 @@ static void os_state_clear(ThreadState *tst)
 #  if defined(VGP_x86_solaris)
    tst->os_state.thrptr = 0;
 #  endif
-   tst->os_state.stk_id = (UWord)-1;
    tst->os_state.ustack = NULL;
    tst->os_state.in_door_return = False;
    tst->os_state.door_return_procedure = 0;
@@ -926,6 +926,14 @@ void run_thread_for_a_while ( /*OUT*/HWord* two_words,
    tst->arch.vex.host_EvC_COUNTER = *dispatchCtrP;
    tst->arch.vex.host_EvC_FAILADDR
       = (HWord)VG_(fnptr_to_fnentry)( &VG_(disp_cp_evcheck_fail) );
+
+   /* Invalidate any in-flight LL/SC transactions, in the case that we're
+      using the fallback LL/SC implementation.  See bugs 344524 and 369459. */
+#  if defined(VGP_mips32_linux) || defined(VGP_mips64_linux)
+   tst->arch.vex.guest_LLaddr = (HWord)(-1);
+#  elif defined(VGP_arm64_linux)
+   tst->arch.vex.guest_LLSC_SIZE = 0;
+#  endif
 
    if (0) {
       vki_sigset_t m;
@@ -1447,8 +1455,8 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
             before swapping to another.  That means that short term
             spins waiting for hardware to poke memory won't cause a
             thread swap. */
-	 if (dispatch_ctr > 1000) 
-            dispatch_ctr = 1000;
+         if (dispatch_ctr > 300)
+            dispatch_ctr = 300;
 	 break;
 
       case VG_TRC_INNER_COUNTERZERO:
@@ -1700,9 +1708,6 @@ void VG_(nuke_all_threads_except) ( ThreadId me, VgSchedReturnCode src )
 #  define VG_CLREQ_ARGS       guest_r2
 #  define VG_CLREQ_RET        guest_r3
 #elif defined(VGA_mips32) || defined(VGA_mips64)
-#  define VG_CLREQ_ARGS       guest_r12
-#  define VG_CLREQ_RET        guest_r11
-#elif defined(VGA_tilegx)
 #  define VG_CLREQ_ARGS       guest_r12
 #  define VG_CLREQ_RET        guest_r11
 #else
@@ -2006,6 +2011,15 @@ void do_client_request ( ThreadId tid )
             arg[1], arg[2], "scheduler(VG_USERREQ__DISCARD_TRANSLATIONS)" 
          );
 
+         SET_CLREQ_RETVAL( tid, 0 );     /* return value is meaningless */
+	 break;
+
+      case VG_USERREQ__INNER_THREADS:
+         if (VG_(clo_verbosity) > 2)
+            VG_(printf)( "client request: INNER_THREADS,"
+                         " addr %p\n",
+                         (void*)arg[1] );
+         VG_(inner_threads) = (ThreadState*)arg[1];
          SET_CLREQ_RETVAL( tid, 0 );     /* return value is meaningless */
 	 break;
 

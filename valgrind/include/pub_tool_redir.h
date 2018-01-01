@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2015 Julian Seward
+   Copyright (C) 2000-2017 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -185,9 +185,10 @@
      @         -->  ZA    (at)
      $         -->  ZD    (dollar)
      (         -->  ZL    (left)
+     %         -->  ZP    (percent)
      )         -->  ZR    (right)
+     /         -->  ZS    (slash) 
      Z         -->  ZZ    (Z)
-     /         -->  ZS    (slash)
 
    Everything else is left unchanged.
 */
@@ -243,8 +244,11 @@
 /* --- Soname of the standard C library. --- */
 
 #if defined(VGO_linux) || defined(VGO_solaris)
+# if defined(MUSL_LIBC)
+#  define  VG_Z_LIBC_SONAME  libcZdZa              // libc.*
+#else
 #  define  VG_Z_LIBC_SONAME  libcZdsoZa              // libc.so*
-
+#endif
 #elif defined(VGO_darwin) && (DARWIN_VERS <= DARWIN_10_6)
 #  define  VG_Z_LIBC_SONAME  libSystemZdZaZddylib    // libSystem.*.dylib
 
@@ -275,7 +279,11 @@
 /* --- Soname of the pthreads library. --- */
 
 #if defined(VGO_linux)
+# if defined(MUSL_LIBC)
+#  define  VG_Z_LIBPTHREAD_SONAME  libcZdZa              // libc.*
+#else
 #  define  VG_Z_LIBPTHREAD_SONAME  libpthreadZdsoZd0     // libpthread.so.0
+#endif
 #elif defined(VGO_darwin)
 #  define  VG_Z_LIBPTHREAD_SONAME  libSystemZdZaZddylib  // libSystem.*.dylib
 #elif defined(VGO_solaris)

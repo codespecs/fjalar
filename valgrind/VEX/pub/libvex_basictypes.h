@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2015 OpenWorks LLP
+   Copyright (C) 2004-2017 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -181,10 +181,6 @@ typedef  unsigned long HWord;
 
 #elif defined(__mips__) && (__mips != 64)
 #   define VEX_HOST_WORDSIZE 4
-#   define VEX_REGPARM(_n) /* */
-
-#elif defined(__tilegx__)
-#   define VEX_HOST_WORDSIZE 8
 #   define VEX_REGPARM(_n) /* */
 
 #else

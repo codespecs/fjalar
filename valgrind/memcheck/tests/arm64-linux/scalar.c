@@ -279,7 +279,7 @@ int main(void)
    // For F_GETLK the 3rd arg is 'lock'.  On x86, this fails w/EBADF.  But
    // on amd64 in 32-bit mode it fails w/EFAULT.  We don't check the 1st two
    // args for the reason given above.
-   GO(__NR_fcntl, "(GETLK) 1s 0m");
+   GO(__NR_fcntl, "(GETLK) 1s 5m");
    SY(__NR_fcntl, -1, F_GETLK, x0); FAIL; //FAILx(EBADF);
 
    // __NR_mpx arm64 doesn't implement mpx
@@ -1068,8 +1068,8 @@ int main(void)
    #define FUTEX_WAIT   0
    #endif
    // XXX: again, glibc not doing 6th arg means we have only 5s errors
-   GO(__NR_futex, "5s 2m");
-   SY(__NR_futex, x0+FUTEX_WAIT, x0, x0, x0+1, x0, x0); FAIL;
+   GO(__NR_futex, "4s 2m");
+   SY(__NR_futex, x0+FUTEX_WAIT, x0, x0, x0+1); FAIL;
 
    // __NR_sched_setaffinity 241
    GO(__NR_sched_setaffinity, "3s 1m");

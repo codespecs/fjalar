@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2011-2015 Philippe Waroquiers
+   Copyright (C) 2011-2017 Philippe Waroquiers
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -230,7 +230,7 @@ typedef
    } VgdbShared64;
 
 // The below typedef makes the life of valgrind easier.
-// vgdb must however work explicitely with the specific 32 or 64 bits version.
+// vgdb must however work explicitly with the specific 32 or 64 bits version.
 
 #if VEX_HOST_WORDSIZE == 8
 typedef VgdbShared64 VgdbShared;

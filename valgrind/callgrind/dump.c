@@ -6,7 +6,7 @@
 /*
    This file is part of Callgrind, a Valgrind tool for call tracing.
 
-   Copyright (C) 2002-2015, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2017, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -1215,6 +1215,9 @@ static VgFile *new_dumpfile(int tid, const HChar* trigger)
 
 
     if (!appending) {
+	/* callgrind format specification, has to be on 1st line */
+	VG_(fprintf)(fp, "# callgrind format\n");
+
 	/* version */
 	VG_(fprintf)(fp, "version: 1\n");
 

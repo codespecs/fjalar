@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2015 Julian Seward 
+   Copyright (C) 2000-2017 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -148,13 +148,16 @@ typedef
    } 
    Block;
 
+/* Ensure that Block payloads can be safely cast to various pointers below. */
+STATIC_ASSERT(VG_MIN_MALLOC_SZB % sizeof(void *) == 0);
+
 // A superblock.  'padding' is never used, it just ensures that if the
 // entire Superblock is aligned to VG_MIN_MALLOC_SZB, then payload_bytes[]
 // will be too.  It can add small amounts of padding unnecessarily -- eg.
 // 8-bytes on 32-bit machines with an 8-byte VG_MIN_MALLOC_SZB -- because
 // it's too hard to make a constant expression that works perfectly in all
 // cases.
-// 'unsplittable' is set to NULL if superblock can be splitted, otherwise
+// 'unsplittable' is set to NULL if superblock can be split, otherwise
 // it is set to the address of the superblock. An unsplittable superblock
 // will contain only one allocated block. An unsplittable superblock will
 // be unmapped when its (only) allocated block is freed.
@@ -198,7 +201,7 @@ typedef
       SizeT        min_unsplittable_sblock_szB;
       // Minimum unsplittable superblock size in bytes. To be marked as
       // unsplittable, a superblock must have a 
-      // size >= min_unsplittable_sblock_szB and cannot be splitted.
+      // size >= min_unsplittable_sblock_szB and cannot be split.
       // So, to avoid big overhead, superblocks used to provide aligned
       // blocks on big alignments are splittable.
       // Unsplittable superblocks will be reclaimed when their (only) 
@@ -296,8 +299,9 @@ static __inline__
 SizeT get_bszB_as_is ( Block* b )
 {
    UByte* b2     = (UByte*)b;
-   SizeT bszB_lo = *(SizeT*)&b2[0 + hp_overhead_szB()];
-   SizeT bszB_hi = *(SizeT*)&b2[mk_plain_bszB(bszB_lo) - sizeof(SizeT)];
+   SizeT bszB_lo = *ASSUME_ALIGNED(SizeT*, &b2[0 + hp_overhead_szB()]);
+   SizeT bszB_hi = *ASSUME_ALIGNED(SizeT*,
+                                   &b2[mk_plain_bszB(bszB_lo) - sizeof(SizeT)]);
    vg_assert2(bszB_lo == bszB_hi, 
       "Heap block lo/hi size mismatch: lo = %llu, hi = %llu.\n%s",
       (ULong)bszB_lo, (ULong)bszB_hi, probably_your_fault);
@@ -316,8 +320,8 @@ static __inline__
 void set_bszB ( Block* b, SizeT bszB )
 {
    UByte* b2 = (UByte*)b;
-   *(SizeT*)&b2[0 + hp_overhead_szB()]               = bszB;
-   *(SizeT*)&b2[mk_plain_bszB(bszB) - sizeof(SizeT)] = bszB;
+   *ASSUME_ALIGNED(SizeT*, &b2[0 + hp_overhead_szB()])               = bszB;
+   *ASSUME_ALIGNED(SizeT*, &b2[mk_plain_bszB(bszB) - sizeof(SizeT)]) = bszB;
 }
 
 //---------------------------------------------------------------------------
@@ -408,25 +412,27 @@ static __inline__
 void set_prev_b ( Block* b, Block* prev_p )
 { 
    UByte* b2 = (UByte*)b;
-   *(Block**)&b2[hp_overhead_szB() + sizeof(SizeT)] = prev_p;
+   *ASSUME_ALIGNED(Block**, &b2[hp_overhead_szB() + sizeof(SizeT)]) = prev_p;
 }
 static __inline__
 void set_next_b ( Block* b, Block* next_p )
 {
    UByte* b2 = (UByte*)b;
-   *(Block**)&b2[get_bszB(b) - sizeof(SizeT) - sizeof(void*)] = next_p;
+   *ASSUME_ALIGNED(Block**,
+                   &b2[get_bszB(b) - sizeof(SizeT) - sizeof(void*)]) = next_p;
 }
 static __inline__
 Block* get_prev_b ( Block* b )
 { 
    UByte* b2 = (UByte*)b;
-   return *(Block**)&b2[hp_overhead_szB() + sizeof(SizeT)];
+   return *ASSUME_ALIGNED(Block**, &b2[hp_overhead_szB() + sizeof(SizeT)]);
 }
 static __inline__
 Block* get_next_b ( Block* b )
 { 
    UByte* b2 = (UByte*)b;
-   return *(Block**)&b2[get_bszB(b) - sizeof(SizeT) - sizeof(void*)];
+   return *ASSUME_ALIGNED(Block**,
+                          &b2[get_bszB(b) - sizeof(SizeT) - sizeof(void*)]);
 }
 
 //---------------------------------------------------------------------------
@@ -437,14 +443,14 @@ void set_cc ( Block* b, const HChar* cc )
 { 
    UByte* b2 = (UByte*)b;
    vg_assert( VG_(clo_profile_heap) );
-   *(const HChar**)&b2[0] = cc;
+   *ASSUME_ALIGNED(const HChar**, &b2[0]) = cc;
 }
 static __inline__
 const HChar* get_cc ( Block* b )
 {
    UByte* b2 = (UByte*)b;
    vg_assert( VG_(clo_profile_heap) );
-   return *(const HChar**)&b2[0];
+   return *ASSUME_ALIGNED(const HChar**, &b2[0]);
 }
 
 //---------------------------------------------------------------------------
@@ -454,7 +460,7 @@ static __inline__
 Block* get_predecessor_block ( Block* b )
 {
    UByte* b2 = (UByte*)b;
-   SizeT  bszB = mk_plain_bszB( (*(SizeT*)&b2[-sizeof(SizeT)]) );
+   SizeT  bszB = mk_plain_bszB(*ASSUME_ALIGNED(SizeT*, &b2[-sizeof(SizeT)]));
    return (Block*)&b2[-bszB];
 }
 
@@ -550,7 +556,7 @@ static ArenaId arenaP_to_ArenaId ( Arena *a )
 }
 
 // Initialise an arena.  rz_szB is the (default) minimum redzone size;
-// It might be overriden by VG_(clo_redzone_size) or VG_(clo_core_redzone_size).
+// It might be overridden by VG_(clo_redzone_size) or VG_(clo_core_redzone_size).
 // it might be made bigger to ensure that VG_MIN_MALLOC_SZB is observed.
 static
 void arena_init ( ArenaId aid, const HChar* name, SizeT rz_szB,
@@ -1859,7 +1865,7 @@ void* VG_(arena_malloc) ( ArenaId aid, const HChar* cc, SizeT req_pszB )
    vg_assert(b_bszB >= req_bszB);
 
    // Could we split this block and still get a useful fragment?
-   // A block in an unsplittable superblock can never be splitted.
+   // A block in an unsplittable superblock can never be split.
    frag_bszB = b_bszB - req_bszB;
    if (frag_bszB >= min_useful_bszB(a)
        && (NULL == new_sb || ! new_sb->unsplittable)) {
@@ -2002,7 +2008,7 @@ void deferred_reclaimSuperblock ( Arena* a, Superblock* sb)
 
 /* b must be a free block, of size b_bszB.
    If b is followed by another free block, merge them.
-   If b is preceeded by another free block, merge them.
+   If b is preceded by another free block, merge them.
    If the merge results in the superblock being fully free,
    deferred_reclaimSuperblock the superblock. */
 static void mergeWithFreeNeighbours (Arena* a, Superblock* sb,
@@ -2248,7 +2254,7 @@ void* VG_(arena_memalign) ( ArenaId aid, const HChar* cc,
    {
       /* As we will split the block given back by VG_(arena_malloc),
          we have to (temporarily) disable unsplittable for this arena,
-         as unsplittable superblocks cannot be splitted. */
+         as unsplittable superblocks cannot be split. */
       const SizeT save_min_unsplittable_sblock_szB 
          = a->min_unsplittable_sblock_szB;
       a->min_unsplittable_sblock_szB = MAX_PSZB;

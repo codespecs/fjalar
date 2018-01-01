@@ -7,9 +7,9 @@
   This file is part of Valgrind, a dynamic binary instrumentation
   framework.
 
-  Copyright (C) 2000-2015 Julian Seward 
+  Copyright (C) 2000-2017 Julian Seward 
      jseward@acm.org
-  Copyright (C) 2006-2015 OpenWorks LLP
+  Copyright (C) 2006-2017 OpenWorks LLP
      info@open-works.co.uk
 	
   This program is free software; you can redistribute it and/or
@@ -1217,7 +1217,7 @@ VG_(s390x_linux_SUBST_FOR_rt_sigreturn):
 .type   VG_(s390x_linux_REDIR_FOR_index),@function
 VG_(s390x_linux_REDIR_FOR_index):
 #
-#   %r2 = addess of string
+#   %r2 = address of string
 #   %r3 = character to find
 #
         lghi    %r0,255
@@ -1269,23 +1269,42 @@ VG_(mips32_linux_SUBST_FOR_rt_sigreturn):
 	
 /* There's no particular reason that this needs to be handwritten
    assembly, but since that's what this file contains, here's a
-   simple strlen implementation (written in C and compiled by gcc.)
+   simple index() and strlen() implementations.
 */
+
+.set push
+.set noreorder
+
+.global VG_(mips32_linux_REDIR_FOR_index)
+.type   VG_(mips32_linux_REDIR_FOR_index), @function
+VG_(mips32_linux_REDIR_FOR_index):
+      move $v0, $a0
+   index_loop:
+      lbu $t0, 0($v0)
+      beq $t0, $a1, index_end
+      nop
+      bne $t0, $zero, index_loop
+      addiu $v0, $v0, 1
+      move $v0, $zero
+   index_end:
+      jr $ra
+      nop
+.size VG_(mips32_linux_REDIR_FOR_index), .-VG_(mips32_linux_REDIR_FOR_index)
+
 .global VG_(mips32_linux_REDIR_FOR_strlen)
 .type   VG_(mips32_linux_REDIR_FOR_strlen), @function
 VG_(mips32_linux_REDIR_FOR_strlen):
-      li $v0, 0
-      //la $a0, string
-      j strlen_cond
+      move $v0, $a0
    strlen_loop:
-      addiu $v0, $v0, 1
-      addiu $a0, $a0, 1
-   strlen_cond:
-      lbu $t0, ($a0)
+      lbu $t0, 0($a0)
       bne $t0, $zero, strlen_loop
-    jr $ra
-
+      addiu $a0, $a0, 1
+      subu $v0, $a0, $v0
+      jr $ra
+      addiu $v0, $v0, -1
 .size VG_(mips32_linux_REDIR_FOR_strlen), .-VG_(mips32_linux_REDIR_FOR_strlen)
+
+.set pop
 
 .global VG_(trampoline_stuff_end)
 VG_(trampoline_stuff_end):
@@ -1319,30 +1338,43 @@ VG_(mips64_linux_SUBST_FOR_rt_sigreturn):
 
 /* There's no particular reason that this needs to be handwritten
    assembly, but since that's what this file contains, here's a
-   simple strlen implementation (written in C and compiled by gcc.)
+   simple index() and strlen() implementations.
 */
+
+.set push
+.set noreorder
+
+.global VG_(mips64_linux_REDIR_FOR_index)
+.type   VG_(mips64_linux_REDIR_FOR_index), @function
+VG_(mips64_linux_REDIR_FOR_index):
+      move $v0, $a0
+   index_loop:
+      lbu $t0, 0($v0)
+      beq $t0, $a1, index_end
+      nop
+      bne $t0, $zero, index_loop
+      daddiu $v0, $v0, 1
+      move $v0, $zero
+   index_end:
+      jr $ra
+      nop
+.size VG_(mips64_linux_REDIR_FOR_index), .-VG_(mips64_linux_REDIR_FOR_index)
+
 .global VG_(mips64_linux_REDIR_FOR_strlen)
 .type   VG_(mips64_linux_REDIR_FOR_strlen), @function
 VG_(mips64_linux_REDIR_FOR_strlen):
-        lbu $12, 0($4)
-        li  $13, 0
-        beq $12, $0, M01 
-        nop
-
-M02: 
-        addiu $13, $13, 1 
-        addiu $4, $4, 1 
-        lbu $12, 0($4) 
-        bne $12, $0, M02 
-        nop 
-
-M01: 
-        move $2, $13 
-        jr $31 
-        nop
-
+      move $v0, $a0
+   strlen_loop:
+      lbu $t0, 0($a0)
+      bne $t0, $zero, strlen_loop
+      daddiu $a0, $a0, 1
+      dsubu $v0, $a0, $v0
+      jr $ra
+      daddiu $v0, $v0, -1
 .size VG_(mips64_linux_REDIR_FOR_strlen), .-VG_(mips64_linux_REDIR_FOR_strlen)
 
+.set pop
+
 .global VG_(trampoline_stuff_end)
 VG_(trampoline_stuff_end):
 
@@ -1351,78 +1383,6 @@ VG_(trampoline_stuff_end):
 #	undef UD2_64
 #	undef UD2_256
 #	undef UD2_1024
-#	undef UD2_PAGE
-
-/*---------------------- tilegx-linux ----------------------*/
-#else
-#if defined(VGP_tilegx_linux)
-
-#	define UD2_16     ill ; ill
-#	define UD2_64     UD2_16   ; UD2_16   ; UD2_16   ; UD2_16
-#	define UD2_256    UD2_64   ; UD2_64   ; UD2_64   ; UD2_64
-#	define UD2_1024   UD2_256  ; UD2_256  ; UD2_256  ; UD2_256
-#	define UD2_4K     UD2_1024 ; UD2_1024 ; UD2_1024 ; UD2_1024
-#	define UD2_16K    UD2_4K   ; UD2_4K   ; UD2_4K   ; UD2_4K
-#	define UD2_PAGE   UD2_16K  ; UD2_16K  ; UD2_16K  ; UD2_16K
-	/* a leading page of unexecutable code */
-	UD2_PAGE
-
-.global VG_(trampoline_stuff_start)
-VG_(trampoline_stuff_start):
-
-.global VG_(tilegx_linux_SUBST_FOR_rt_sigreturn)
-VG_(tilegx_linux_SUBST_FOR_rt_sigreturn):
-        /* This is a very specific sequence which GDB uses to
-           recognize signal handler frames. */
-        moveli  r10, __NR_rt_sigreturn
-        swint1
-        ill
-
-.global VG_(tilegx_linux_REDIR_FOR_vgettimeofday)
-.type   VG_(tilegx_linux_REDIR_FOR_vgettimeofday), @function
-VG_(tilegx_linux_REDIR_FOR_vgettimeofday):
-        moveli  r10, __NR_gettimeofday
-        swint1
-        jrp lr
-.size VG_(tilegx_linux_REDIR_FOR_vgettimeofday), .-VG_(tilegx_linux_REDIR_FOR_vgettimeofday)
-	
-.global VG_(tilegx_linux_REDIR_FOR_vtime)
-.type   VG_(tilegx_linux_REDIR_FOR_vtime), @function
-VG_(tilegx_linux_REDIR_FOR_vtime):
-        moveli  r10, __NR_gettimeofday
-        swint1
-        jrp lr
-.size VG_(tilegx_linux_REDIR_FOR_vtime), .-VG_(tilegx_linux_REDIR_FOR_vtime)
-
-.global VG_(tilegx_linux_REDIR_FOR_strlen)
-.type   VG_(tilegx_linux_REDIR_FOR_strlen), @function
-VG_(tilegx_linux_REDIR_FOR_strlen):
-        {
-         movei   r1, 0
-         beqz    r0, 2f
-        }
-1:      {
-         addi     r1, r1, 1
-         ld1s_add r2, r0, 1
-        }
-        bnezt   r2, 1b
-        addi    r1, r1, -1
-2:      move    r0, r1
-        jrp     lr
-.size VG_(tilegx_linux_REDIR_FOR_strlen), .-VG_(tilegx_linux_REDIR_FOR_strlen)
-
-.global VG_(trampoline_stuff_end)
-VG_(trampoline_stuff_end):
-
-	/* and a trailing page of unexecutable code */
-	UD2_PAGE
-
-#	undef UD2_16
-#	undef UD2_64
-#	undef UD2_256
-#	undef UD2_1024
-#	undef UD2_4K
-#	undef UD2_16K
 #	undef UD2_PAGE
 
 /*---------------- x86-solaris ----------------*/
@@ -1495,7 +1455,7 @@ VG_(amd64_solaris_REDIR_FOR_strcpy):
         movq    %rdi, %rdx              /* copy s1 */
 1:
         movzbl  (%rsi), %eax            /* load one input character */
-        movb    %al, (%rdx)             /* copy to output/s2 */
+        movb    %al, (%rdx)             /* copy to output/s1 */
         incq    %rsi                    /* skip to the next output character */
         incq    %rdx                    /* skip to the next input character */
         testb   %al, %al                /* is the copied character null? */
@@ -1516,7 +1476,7 @@ VG_(amd64_solaris_REDIR_FOR_strncpy):
         testq   %rdx, %rdx              /* is the remaining size zero? */
         jz      3f                      /* yes, all done */
         movzbl  (%rsi), %eax            /* load one input character */
-        movb    %al, (%rcx)             /* copy to output/s2 */
+        movb    %al, (%rcx)             /* copy to output/s1 */
         decq    %rdx                    /* decrement the remaining size */
         incq    %rsi                    /* skip to the next output character */
         incq    %rcx                    /* skip to the next input character */
@@ -1608,7 +1568,6 @@ VG_(trampoline_stuff_end):
 #else
 #  error Unknown platform
 
-#endif
 #endif
 #endif
 #endif

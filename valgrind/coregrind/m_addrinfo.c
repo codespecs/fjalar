@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2008-2015 OpenWorks Ltd
+   Copyright (C) 2008-2017 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -222,7 +222,7 @@ void VG_(describe_addr) ( Addr a, /*OUT*/AddrInfo* ai )
       ThreadId   tid;
       StackPos stackPos = StackPos_stacked;
       // Default init to StackPos_stacked, to silence gcc warning.
-      // We assert this value is overriden if a stack descr is produced.
+      // We assert this value is overridden if a stack descr is produced.
 
       // First try to find a tid with stack containing a
       tid = find_tid_with_stack_containing (a);

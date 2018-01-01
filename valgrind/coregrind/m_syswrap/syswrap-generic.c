@@ -9,7 +9,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2015 Julian Seward 
+   Copyright (C) 2000-2017 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -79,16 +79,19 @@ void ML_(guess_and_register_stack) (Addr sp, ThreadState* tst)
       assume that sp starts near its highest possible value, and can
       only go down to the start of the mmaped segment. */
    seg = VG_(am_find_nsegment)(sp);
-   if (seg &&
-       VG_(am_is_valid_for_client)(sp, 1, VKI_PROT_READ | VKI_PROT_WRITE)) {
+   if (seg 
+       && VG_(am_is_valid_for_client)(sp, 1, VKI_PROT_READ | VKI_PROT_WRITE)) {
       tst->client_stack_highest_byte = (Addr)VG_PGROUNDUP(sp)-1;
       tst->client_stack_szB = tst->client_stack_highest_byte - seg->start + 1;
 
-      VG_(register_stack)(seg->start, tst->client_stack_highest_byte);
+      tst->os_state.stk_id 
+         = VG_(register_stack)(seg->start, tst->client_stack_highest_byte);
 
       if (debug)
-	 VG_(printf)("tid %u: guessed client stack range [%#lx-%#lx]\n",
-		     tst->tid, seg->start, tst->client_stack_highest_byte);
+	 VG_(printf)("tid %u: guessed client stack range [%#lx-%#lx]"
+                     " as stk_id %lu\n",
+		     tst->tid, seg->start, tst->client_stack_highest_byte,
+                     tst->os_state.stk_id);
    } else {
       VG_(message)(Vg_UserMsg,
                    "!? New thread %u starts with SP(%#lx) unmapped\n",
@@ -328,8 +331,8 @@ SysRes do_mremap( Addr old_addr, SizeT old_len,
    old_seg = VG_(am_find_nsegment)( old_addr );
    if (old_addr < old_seg->start || old_addr+old_len-1 > old_seg->end)
       goto eINVAL;
-   if (old_seg->kind != SkAnonC && old_seg->kind != SkFileC &&
-       old_seg->kind != SkShmC)
+   if (old_seg->kind != SkAnonC && old_seg->kind != SkFileC 
+       && old_seg->kind != SkShmC)
       goto eINVAL;
 
    vg_assert(old_len > 0);
@@ -969,38 +972,25 @@ void VG_(init_preopened_fds)(void)
 #endif
 }
 
-static
-HChar *strdupcat ( const HChar* cc, const HChar *s1, const HChar *s2,
-                   ArenaId aid )
-{
-   UInt len = VG_(strlen) ( s1 ) + VG_(strlen) ( s2 ) + 1;
-   HChar *result = VG_(arena_malloc) ( aid, cc, len );
-   VG_(strcpy) ( result, s1 );
-   VG_(strcat) ( result, s2 );
-   return result;
-}
-
 static 
 void pre_mem_read_sendmsg ( ThreadId tid, Bool read,
                             const HChar *msg, Addr base, SizeT size )
 {
-   HChar *outmsg = strdupcat ( "di.syswrap.pmrs.1",
-                               "sendmsg", msg, VG_AR_CORE );
+   HChar outmsg[VG_(strlen)(msg) + 10]; // large enough
+   VG_(sprintf)(outmsg, "sendmsg%s", msg);
    PRE_MEM_READ( outmsg, base, size );
-   VG_(free) ( outmsg );
 }
 
 static 
 void pre_mem_write_recvmsg ( ThreadId tid, Bool read,
                              const HChar *msg, Addr base, SizeT size )
 {
-   HChar *outmsg = strdupcat ( "di.syswrap.pmwr.1",
-                               "recvmsg", msg, VG_AR_CORE );
+   HChar outmsg[VG_(strlen)(msg) + 10]; // large enough
+   VG_(sprintf)(outmsg, "recvmsg%s", msg);
    if ( read )
       PRE_MEM_READ( outmsg, base, size );
    else
       PRE_MEM_WRITE( outmsg, base, size );
-   VG_(free) ( outmsg );
 }
 
 static
@@ -1021,21 +1011,36 @@ void msghdr_foreachfield (
         Bool rekv /* "recv" apparently shadows some header decl on OSX108 */
      )
 {
-   HChar *fieldName;
+   HChar fieldName[VG_(strlen)(name) + 32]; // large enough.
+   Addr a;
+   SizeT s;
 
    if ( !msg )
       return;
 
-   fieldName = VG_(malloc) ( "di.syswrap.mfef", VG_(strlen)(name) + 32 );
-
    VG_(sprintf) ( fieldName, "(%s)", name );
 
-   foreach_func ( tid, True, fieldName, (Addr)&msg->msg_name, sizeof( msg->msg_name ) );
-   foreach_func ( tid, True, fieldName, (Addr)&msg->msg_namelen, sizeof( msg->msg_namelen ) );
-   foreach_func ( tid, True, fieldName, (Addr)&msg->msg_iov, sizeof( msg->msg_iov ) );
-   foreach_func ( tid, True, fieldName, (Addr)&msg->msg_iovlen, sizeof( msg->msg_iovlen ) );
-   foreach_func ( tid, True, fieldName, (Addr)&msg->msg_control, sizeof( msg->msg_control ) );
-   foreach_func ( tid, True, fieldName, (Addr)&msg->msg_controllen, sizeof( msg->msg_controllen ) );
+   /* FIELDPAIR helps the compiler do one call to foreach_func
+      for consecutive (no holes) fields. */
+#define FIELDPAIR(f1,f2) \
+   if (offsetof(struct vki_msghdr, f1) + sizeof(msg->f1)                \
+       == offsetof(struct vki_msghdr, f2))                              \
+      s += sizeof(msg->f2);                                             \
+   else {                                                               \
+      foreach_func (tid, True, fieldName, a, s);                        \
+      a = (Addr)&msg->f2;                                               \
+      s = sizeof(msg->f2);                                              \
+   }
+
+   a = (Addr)&msg->msg_name;
+   s = sizeof(msg->msg_name);
+   FIELDPAIR(msg_name,    msg_namelen);
+   FIELDPAIR(msg_namelen, msg_iov);
+   FIELDPAIR(msg_iov,     msg_iovlen);
+   FIELDPAIR(msg_iovlen,  msg_control);
+   FIELDPAIR(msg_control, msg_controllen);
+   foreach_func ( tid, True, fieldName, a, s);
+#undef FIELDPAIR
 
    /* msg_flags is completely ignored for send_mesg, recv_mesg doesn't read
       the field, but does write to it. */
@@ -1054,9 +1059,8 @@ void msghdr_foreachfield (
       struct vki_iovec *iov = msg->msg_iov;
       UInt i;
 
-      VG_(sprintf) ( fieldName, "(%s.msg_iov)", name );
-
       if (ML_(safe_to_deref)(&msg->msg_iovlen, sizeof (UInt))) {
+         VG_(sprintf) ( fieldName, "(%s.msg_iov)", name );
          foreach_func ( tid, True, fieldName, (Addr)iov,
                         msg->msg_iovlen * sizeof( struct vki_iovec ) );
 
@@ -1073,14 +1077,12 @@ void msghdr_foreachfield (
    }
 
    if ( ML_(safe_to_deref) (&msg->msg_control, sizeof (void *))
-        && msg->msg_control )
-   {
+        && msg->msg_control ) {
       VG_(sprintf) ( fieldName, "(%s.msg_control)", name );
       foreach_func ( tid, False, fieldName, 
                      (Addr)msg->msg_control, msg->msg_controllen );
    }
 
-   VG_(free) ( fieldName );
 }
 
 static void check_cmsg_for_fds(ThreadId tid, struct vki_msghdr *msg)
@@ -1088,8 +1090,8 @@ static void check_cmsg_for_fds(ThreadId tid, struct vki_msghdr *msg)
    struct vki_cmsghdr *cm = VKI_CMSG_FIRSTHDR(msg);
 
    while (cm) {
-      if (cm->cmsg_level == VKI_SOL_SOCKET &&
-          cm->cmsg_type == VKI_SCM_RIGHTS ) {
+      if (cm->cmsg_level == VKI_SOL_SOCKET 
+          && cm->cmsg_type == VKI_SCM_RIGHTS ) {
          Int *fds = (Int *) VKI_CMSG_DATA(cm);
          Int fdc = (cm->cmsg_len - VKI_CMSG_ALIGN(sizeof(struct vki_cmsghdr)))
                          / sizeof(int);
@@ -1112,7 +1114,7 @@ void pre_mem_read_sockaddr ( ThreadId tid,
                              const HChar *description,
                              struct vki_sockaddr *sa, UInt salen )
 {
-   HChar *outmsg;
+   HChar outmsg[VG_(strlen)( description ) + 30]; // large enough
    struct vki_sockaddr_un*  saun = (struct vki_sockaddr_un *)sa;
    struct vki_sockaddr_in*  sin  = (struct vki_sockaddr_in *)sa;
    struct vki_sockaddr_in6* sin6 = (struct vki_sockaddr_in6 *)sa;
@@ -1126,17 +1128,12 @@ void pre_mem_read_sockaddr ( ThreadId tid,
    /* NULL/zero-length sockaddrs are legal */
    if ( sa == NULL || salen == 0 ) return;
 
-   outmsg = VG_(malloc) ( "di.syswrap.pmr_sockaddr.1",
-                          VG_(strlen)( description ) + 30 );
-
    VG_(sprintf) ( outmsg, description, "sa_family" );
    PRE_MEM_READ( outmsg, (Addr) &sa->sa_family, sizeof(vki_sa_family_t));
 
    /* Don't do any extra checking if we cannot determine the sa_family. */
-   if (! ML_(safe_to_deref) (&sa->sa_family, sizeof(vki_sa_family_t))) {
-      VG_(free) (outmsg);
+   if (! ML_(safe_to_deref) (&sa->sa_family, sizeof(vki_sa_family_t)))
       return;
-   }
 
    switch (sa->sa_family) {
                   
@@ -1203,8 +1200,6 @@ void pre_mem_read_sockaddr ( ThreadId tid,
                        salen -  sizeof(sa->sa_family));
          break;
    }
-   
-   VG_(free) ( outmsg );
 }
 
 /* Dereference a pointer to a UInt. */
@@ -1327,16 +1322,29 @@ static Addr do_brk ( Addr newbrk, ThreadId tid )
    vg_assert(delta > 0);
    vg_assert(VG_IS_PAGE_ALIGNED(delta));
    
-   Bool overflow;
+   Bool overflow = False;
    if (! VG_(am_extend_into_adjacent_reservation_client)( aseg->start, delta,
                                                           &overflow)) {
-      if (overflow)
-         VG_(umsg)("brk segment overflow in thread #%u: can't grow to %#lx\n",
-                   tid, newbrkP);
-      else
-         VG_(umsg)("Cannot map memory to grow brk segment in thread #%u "
-                   "to %#lx\n", tid, newbrkP);
-      VG_(umsg)("(see section Limitations in user manual)\n");
+      if (overflow) {
+         static Bool alreadyComplained = False;
+         if (!alreadyComplained) {
+            alreadyComplained = True;
+            if (VG_(clo_verbosity) > 0) {
+               VG_(umsg)("brk segment overflow in thread #%u: "
+                         "can't grow to %#lx\n",
+                         tid, newbrkP);
+               VG_(umsg)("(see section Limitations in user manual)\n");
+               VG_(umsg)("NOTE: further instances of this message "
+                         "will not be shown\n");
+            }
+         }
+      } else {
+         if (VG_(clo_verbosity) > 0) {
+            VG_(umsg)("Cannot map memory to grow brk segment in thread #%u "
+                      "to %#lx\n", tid, newbrkP);
+            VG_(umsg)("(see section Limitations in user manual)\n");
+         }
+      }
       goto bad;
    }
 
@@ -2434,19 +2442,6 @@ ML_(generic_PRE_sys_mmap) ( ThreadId tid,
 #define PRE(name)      DEFN_PRE_TEMPLATE(generic, name)
 #define POST(name)     DEFN_POST_TEMPLATE(generic, name)
 
-// Macros to support 64-bit syscall args split into two 32 bit values
-#if defined(VG_LITTLEENDIAN)
-#define MERGE64(lo,hi)   ( ((ULong)(lo)) | (((ULong)(hi)) << 32) )
-#define MERGE64_FIRST(name) name##_low
-#define MERGE64_SECOND(name) name##_high
-#elif defined(VG_BIGENDIAN)
-#define MERGE64(hi,lo)   ( ((ULong)(lo)) | (((ULong)(hi)) << 32) )
-#define MERGE64_FIRST(name) name##_high
-#define MERGE64_SECOND(name) name##_low
-#else
-#error Unknown endianness
-#endif
-
 PRE(sys_exit)
 {
    ThreadState* tst;
@@ -2844,14 +2839,26 @@ PRE(sys_execve)
    SysRes       res;
    Bool         setuid_allowed, trace_this_child;
 
-   PRINT("sys_execve ( %#lx(%s), %#lx, %#lx )", ARG1, (char*)ARG1, ARG2, ARG3);
+   PRINT("sys_execve ( %#lx(%s), %#lx, %#lx )", ARG1, (HChar*)ARG1, ARG2, ARG3);
    PRE_REG_READ3(vki_off_t, "execve",
                  char *, filename, char **, argv, char **, envp);
    PRE_MEM_RASCIIZ( "execve(filename)", ARG1 );
-   if (ARG2 != 0)
+   if (ARG2 != 0) {
+      /* At least the terminating NULL must be addressable. */
+      if (!ML_(safe_to_deref)((HChar **) ARG2, sizeof(HChar *))) {
+         SET_STATUS_Failure(VKI_EFAULT);
+         return;
+      }
       ML_(pre_argv_envp)( ARG2, tid, "execve(argv)", "execve(argv[i])" );
-   if (ARG3 != 0)
+   }
+   if (ARG3 != 0) {
+      /* At least the terminating NULL must be addressable. */
+      if (!ML_(safe_to_deref)((HChar **) ARG3, sizeof(HChar *))) {
+         SET_STATUS_Failure(VKI_EFAULT);
+         return;
+      }
       ML_(pre_argv_envp)( ARG3, tid, "execve(envp)", "execve(envp[i])" );
+   }
 
    vg_assert(VG_(is_valid_tid)(tid));
    tst = VG_(get_ThreadState)(tid);
@@ -3319,18 +3326,6 @@ PRE(sys_fork)
 
       /* restore signal mask */
       VG_(sigprocmask)(VKI_SIG_SETMASK, &fork_saved_mask, NULL);
-
-      /* If --child-silent-after-fork=yes was specified, set the
-         output file descriptors to 'impossible' values.  This is
-         noticed by send_bytes_to_logging_sink in m_libcprint.c, which
-         duly stops writing any further output. */
-      if (VG_(clo_child_silent_after_fork)) {
-         if (!VG_(log_output_sink).is_socket)
-            VG_(log_output_sink).fd = -1;
-         if (!VG_(xml_output_sink).is_socket)
-            VG_(xml_output_sink).fd = -1;
-      }
-
    } else {
       VG_(do_atfork_parent)(tid);
 
@@ -3684,8 +3679,7 @@ void ML_(POST_unknown_ioctl)(ThreadId tid, UInt res, UWord request, UWord arg)
    UInt size = _VKI_IOC_SIZE(request);
    if (size > 0 && (dir & _VKI_IOC_READ)
        && res == 0 
-       && arg != (Addr)NULL)
-   {
+       && arg != (Addr)NULL) {
       POST_MEM_WRITE(arg, size);
    }
 }
@@ -3836,10 +3830,10 @@ PRE(sys_mprotect)
 
       if (grows == VKI_PROT_GROWSDOWN) {
          rseg = VG_(am_next_nsegment)( aseg, False/*backwards*/ );
-         if (rseg &&
-             rseg->kind == SkResvn &&
-             rseg->smode == SmUpper &&
-             rseg->end+1 == aseg->start) {
+         if (rseg
+             && rseg->kind == SkResvn
+             && rseg->smode == SmUpper
+             && rseg->end+1 == aseg->start) {
             Addr end = ARG1 + ARG2;
             ARG1 = aseg->start;
             ARG2 = end - aseg->start;
@@ -3849,10 +3843,10 @@ PRE(sys_mprotect)
          }
       } else if (grows == VKI_PROT_GROWSUP) {
          rseg = VG_(am_next_nsegment)( aseg, True/*forwards*/ );
-         if (rseg &&
-             rseg->kind == SkResvn &&
-             rseg->smode == SmLower &&
-             aseg->end+1 == rseg->start) {
+         if (rseg 
+             && rseg->kind == SkResvn
+             && rseg->smode == SmLower
+             && aseg->end+1 == rseg->start) {
             ARG2 = aseg->end - ARG1 + 1;
             ARG3 &= ~VKI_PROT_GROWSUP;
          } else {
@@ -3993,10 +3987,8 @@ PRE(sys_open)
       SysRes sres;
 
       VG_(sprintf)(name, "/proc/%d/cmdline", VG_(getpid)());
-      if (ML_(safe_to_deref)( arg1s, 1 ) &&
-          (VG_STREQ(arg1s, name) || VG_STREQ(arg1s, "/proc/self/cmdline"))
-         )
-      {
+      if (ML_(safe_to_deref)( arg1s, 1 )
+          && (VG_STREQ(arg1s, name) || VG_STREQ(arg1s, "/proc/self/cmdline"))) {
          sres = VG_(dup)( VG_(cl_cmdline_fd) );
          SET_STATUS_from_SysRes( sres );
          if (!sr_isError(sres)) {
@@ -4062,8 +4054,8 @@ PRE(sys_write)
            && SimHintiS(SimHint_enable_outer, VG_(clo_sim_hints)))
       ok = True;
 #if defined(VGO_solaris)
-   if (!ok && VG_(vfork_fildes_addr) != NULL &&
-       *VG_(vfork_fildes_addr) >= 0 && *VG_(vfork_fildes_addr) == ARG1)
+   if (!ok && VG_(vfork_fildes_addr) != NULL
+       && *VG_(vfork_fildes_addr) >= 0 && *VG_(vfork_fildes_addr) == ARG1)
       ok = True;
 #endif
    if (!ok)
@@ -4139,35 +4131,29 @@ PRE(sys_readlink)
    PRE_MEM_RASCIIZ( "readlink(path)", ARG1 );
    PRE_MEM_WRITE( "readlink(buf)", ARG2,ARG3 );
 
+
    {
+#if defined(VGO_linux) || defined(VGO_solaris)
 #if defined(VGO_linux)
+#define PID_EXEPATH  "/proc/%d/exe"
+#define SELF_EXEPATH "/proc/self/exe"
+#define SELF_EXEFD   "/proc/self/fd/%d"
+#elif defined(VGO_solaris)
+#define PID_EXEPATH  "/proc/%d/path/a.out"
+#define SELF_EXEPATH "/proc/self/path/a.out"
+#define SELF_EXEFD   "/proc/self/path/%d"
+#endif
       /*
        * Handle the case where readlink is looking at /proc/self/exe or
-       * /proc/<pid>/exe.
+       * /proc/<pid>/exe, or equivalent on Solaris.
        */
       HChar  name[30];   // large enough
       HChar* arg1s = (HChar*) ARG1;
-      VG_(sprintf)(name, "/proc/%d/exe", VG_(getpid)());
-      if (ML_(safe_to_deref)(arg1s, 1) &&
-          (VG_STREQ(arg1s, name) || VG_STREQ(arg1s, "/proc/self/exe"))
-         )
-      {
-         VG_(sprintf)(name, "/proc/self/fd/%d", VG_(cl_exec_fd));
+      VG_(sprintf)(name, PID_EXEPATH, VG_(getpid)());
+      if (ML_(safe_to_deref)(arg1s, 1)
+          && (VG_STREQ(arg1s, name) || VG_STREQ(arg1s, SELF_EXEPATH))) {
+         VG_(sprintf)(name, SELF_EXEFD, VG_(cl_exec_fd));
          SET_STATUS_from_SysRes( VG_(do_syscall3)(saved, (UWord)name, 
-                                                         ARG2, ARG3));
-      } else
-#elif defined(VGO_solaris)
-      /* Same for Solaris, but /proc/self/path/a.out and
-         /proc/<pid>/path/a.out. */
-      HChar  name[30];   // large enough
-      HChar* arg1s = (HChar*) ARG1;
-      VG_(sprintf)(name, "/proc/%d/path/a.out", VG_(getpid)());
-      if (ML_(safe_to_deref)(arg1s, 1) &&
-          (VG_STREQ(arg1s, name) || VG_STREQ(arg1s, "/proc/self/path/a.out"))
-         )
-      {
-         VG_(sprintf)(name, "/proc/self/path/%d", VG_(cl_exec_fd));
-         SET_STATUS_from_SysRes( VG_(do_syscall3)(saved, (UWord)name,
                                                          ARG2, ARG3));
       } else
 #endif
