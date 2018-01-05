@@ -292,14 +292,19 @@ else
  nestedfns_CFLAGS	= $(AM_CFLAGS)
  mq_LDADD		= -lrt
 endif
-libvex_test_CFLAGS      = $(AM_CFLAGS) @FLAG_FSANITIZE@
+# fjalar's local changes to VEX/priv/host_amd64_defs.c require the addition
+# of ../../coregrind/libcoregrind-amd64-linux.a to supply the definition
+# for get_fnname.  This means the test must now not use position
+# independent code on systems that support it.  (markro)
+libvex_test_CFLAGS      = $(AM_CFLAGS) @FLAG_FSANITIZE@ @FLAG_NO_PIE@
 libvex_test_LDADD       = ../../VEX/libvex-@VGCONF_ARCH_PRI@-@VGCONF_OS@.a \
 	../../coregrind/libcoregrind-amd64-linux.a @LIB_UBSAN@
-libvexmultiarch_test_CFLAGS= $(AM_CFLAGS) @FLAG_FSANITIZE@
+libvexmultiarch_test_CFLAGS= $(AM_CFLAGS) @FLAG_FSANITIZE@ @FLAG_NO_PIE@
 libvexmultiarch_test_LDADD = \
 	../../VEX/libvexmultiarch-@VGCONF_ARCH_PRI@-@VGCONF_OS@.a \
 	../../VEX/libvex-@VGCONF_ARCH_PRI@-@VGCONF_OS@.a \
 	../../coregrind/libcoregrind-amd64-linux.a @LIB_UBSAN@
+# end fjalar changes
 libvexmultiarch_test_SOURCES = libvex_test.c
 ppoll_alarm_LDADD	= -lpthread
 pselect_alarm_LDADD	= -lpthread
