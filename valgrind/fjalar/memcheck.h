@@ -13,10 +13,10 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2007-2017 University of Washington Computer Science & Engineering Department,
+   Copyright (C) 2007-2018 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
-   Copyright (C) 2000-2017 Julian Seward.  All rights reserved.
+   Copyright (C) 2000-2013 Julian Seward.  All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions

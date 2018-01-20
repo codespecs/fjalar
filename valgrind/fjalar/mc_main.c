@@ -10,7 +10,7 @@
    This file is derived from MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2000-2017 Julian Seward 
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -36,7 +36,7 @@
    This file is part of Fjalar, a dynamic analysis framework for C/C++
    programs.
 
-   Copyright (C) 2007-2017 University of Washington Computer Science & Engineering Department,
+   Copyright (C) 2007-2018 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
@@ -8416,7 +8416,7 @@ static void mc_pre_clo_init(void)
    VG_(details_version)         ("5.6.1");
    VG_(details_description)     ("C/C++ Language Front-End for Daikon with DynComp comparability analysis tool.");
    VG_(details_copyright_author)(
-      "Copyright (C) 2007-2017, University of Washington CSE PLSE Group");
+      "Copyright (C) 2007-2018, University of Washington CSE PLSE Group");
    VG_(details_bug_reports_to)  ("daikon-developers@googlegroups.com");
    // PG - pgbovine - customize the fields above for each Fjalar tool
 

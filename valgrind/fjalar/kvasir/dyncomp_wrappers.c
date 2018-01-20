@@ -4,7 +4,7 @@
   and the Valgrind MemCheck tool (Copyright (C) 2000-2009 Julian
   Seward, jseward@acm.org)
 
-   Copyright (C) 2007-2017 University of Washington Computer Science & Engineering Department,
+   Copyright (C) 2007-2018 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
