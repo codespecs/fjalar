@@ -2,5 +2,5 @@
 export VALGRIND_REVISION=16470
 export VEX_REVISION=3400
 
-# Binutils version 2.28.1, released 2017-07-25
+# Binutils version 2.29.1, released 2017-09-15
 export BINUTILS_VERSION=2.28.1
