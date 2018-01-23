@@ -2,7 +2,7 @@
    This file is part of Fjalar, a dynamic analysis framework for C/C++
    programs.
 
-   Copyright (C) 2007-2018 University of Washington Computer Science & Engineering Department,
+   Copyright (C) 2007-2017 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
    This program is free software; you can redistribute it and/or
@@ -21,7 +21,7 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2000-2013 Julian Seward
+   Copyright (C) 2000-2017 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
