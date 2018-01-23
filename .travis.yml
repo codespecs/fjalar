@@ -23,7 +23,7 @@ before_script:
 - docker pull mdernst/$OS-for-daikon-$JDKVER > /dev/null
 
 script:
-- docker run mdernst/$OS-for-daikon-$JDKVER /bin/sh -c "export JAVA_HOME=\`which javac|xargs readlink -f|xargs dirname|xargs dirname\` && git clone --quiet --depth 9 https://github.com/codespecs/fjalar.git fjalar && cd fjalar && ./.travis-build.sh"
+- docker run mdernst/$OS-for-daikon-$JDKVER /bin/sh -c "lsb_release -a && cat /etc/*release && ldd --version && export JAVA_HOME=\`which javac|xargs readlink -f|xargs dirname|xargs dirname\` && git clone --quiet --depth 9 https://github.com/codespecs/fjalar.git fjalar && cd fjalar && ./.travis-build.sh"
 
 git:
   depth: 9
