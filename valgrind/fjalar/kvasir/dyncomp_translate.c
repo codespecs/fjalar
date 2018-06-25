@@ -450,6 +450,14 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
       case Iop_SubF128:                     // only used by s390
       case Iop_AddD128:                     // only used by ppc s390
       case Iop_SubD128:                     // only used by ppc s390
+      case Iop_Add32Fx4:
+      case Iop_Add32Fx8:
+      case Iop_Add64Fx2:
+      case Iop_Add64Fx4:
+      case Iop_Sub32Fx4:
+      case Iop_Sub32Fx8:
+      case Iop_Sub64Fx2:
+      case Iop_Sub64Fx4:
 
          return mkIRExprCCall (Ity_Word,
                                2 /*Int regparms*/,
@@ -474,7 +482,14 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
       case Iop_DivF128:                     // only used by s390
       case Iop_MulD128:                     // only used by ppc s390
       case Iop_DivD128:                     // only used by ppc s390
-
+      case Iop_Div32Fx4:
+      case Iop_Div32Fx8:
+      case Iop_Div64Fx2:
+      case Iop_Div64Fx4:
+      case Iop_Mul32Fx4:
+      case Iop_Mul32Fx8:
+      case Iop_Mul64Fx2:
+      case Iop_Mul64Fx4:
 
          if (!dyncomp_units_mode) {
             return mkIRExprCCall (Ity_Word,
@@ -749,8 +764,6 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 
       /* --- 32x4 vector FP --- */
 
-   case Iop_Add32Fx4:
-   case Iop_Sub32Fx4:
    case Iop_Max32Fx4:
    case Iop_Min32Fx4:
 
@@ -766,11 +779,8 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 
       /* --- 64x2 vector FP --- */
 
-   case Iop_Add64Fx2:
-   case Iop_Sub64Fx2:
    case Iop_Max64Fx2:
    case Iop_Min64Fx2:
-
    case Iop_Max64Fx4:
    case Iop_Min64Fx4:
 
@@ -781,38 +791,18 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_Max64F0x2:
    case Iop_Min64F0x2:
 
-      /* ------------------ 256-bit SIMD FP. ------------------ */
-
-   case Iop_Add64Fx4:
-   case Iop_Sub64Fx4:
-   case Iop_Add32Fx8:
-   case Iop_Sub32Fx8:
-
       if (!dyncomp_dataflow_comparisons_mode) {
          helper = &MC_(helperc_MERGE_TAGS);
          hname = "MC_(helperc_MERGE_TAGS)";
       }
       break;
 
-      /* --- 32x4 vector FP --- */
-   case Iop_Mul32Fx4:
-   case Iop_Div32Fx4:
       /* --- 32x4 lowest-lane-only scalar FP --- */
    case Iop_Mul32F0x4:
    case Iop_Div32F0x4:
-      /* --- 64x2 vector FP --- */
-   case Iop_Mul64Fx2:
-   case Iop_Div64Fx2:
       /* --- 64x2 lowest-lane-only scalar FP --- */
    case Iop_Mul64F0x2:
    case Iop_Div64F0x2:
-
-      /* ------------------ 256-bit SIMD FP. ------------------ */
-
-   case Iop_Mul64Fx4:
-   case Iop_Div64Fx4:
-   case Iop_Mul32Fx8:
-   case Iop_Div32Fx8:
 
       if (!dyncomp_dataflow_comparisons_mode && !dyncomp_units_mode) {
          helper = &MC_(helperc_MERGE_TAGS);
