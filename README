@@ -1,5 +1,5 @@
 This is the distribution of Fjalar, a dynamic analysis framework for C/C++ programs
-Fjalar version 5.6.5, released April 3, 2018.
+Fjalar version 5.6.6, released July 2, 2018.
 
 The majority of this source tree is a slightly modified version of Valgrind
 (see file valgrind/REVISION for the upstream version of Valgrind).
