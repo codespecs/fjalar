@@ -18,6 +18,7 @@ Makefile*.in
 valgrind/coregrind/link_tool_exe_darwin
 valgrind/coregrind/link_tool_exe_linux
 valgrind/coregrind/link_tool_exe_solaris
+valgrind/include/vgversion.h
 valgrind/aclocal.m4
 valgrind/autom4te.cache
 valgrind/compile
