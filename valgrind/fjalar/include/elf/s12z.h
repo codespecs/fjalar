@@ -1,5 +1,5 @@
-/* d10v ELF support for BFD.
-   Copyright (C) 1998-2019 Free Software Foundation, Inc.
+/* s12z ELF support for BFD.
+   Copyright (C) 1999-2019 Free Software Foundation, Inc.
 
    This file is part of BFD, the Binary File Descriptor library.
 
@@ -17,22 +17,21 @@
    along with this program; if not, write to the Free Software Foundation,
    Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1301, USA.  */
 
-#ifndef _ELF_D10V_H
-#define _ELF_D10V_H
+#ifndef _ELF_S12Z_H
+#define _ELF_S12Z_H
 
 #include "elf/reloc-macros.h"
 
 /* Relocation types.  */
-START_RELOC_NUMBERS (elf_d10v_reloc_type)
-  RELOC_NUMBER (R_D10V_NONE, 0)
-  RELOC_NUMBER (R_D10V_10_PCREL_R, 1)
-  RELOC_NUMBER (R_D10V_10_PCREL_L, 2)
-  RELOC_NUMBER (R_D10V_16, 3)
-  RELOC_NUMBER (R_D10V_18, 4)
-  RELOC_NUMBER (R_D10V_18_PCREL, 5)
-  RELOC_NUMBER (R_D10V_32, 6)
-  RELOC_NUMBER (R_D10V_GNU_VTINHERIT, 7)
-  RELOC_NUMBER (R_D10V_GNU_VTENTRY, 8)
-END_RELOC_NUMBERS (R_D10V_max)
+START_RELOC_NUMBERS (elf_s12z_reloc_type)
+  RELOC_NUMBER (R_S12Z_NONE, 0)
+  RELOC_NUMBER (R_S12Z_OPR, 1)
+  RELOC_NUMBER (R_S12Z_UKNWN_2, 2)
+  RELOC_NUMBER (R_S12Z_PCREL_7_15, 3)
+  RELOC_NUMBER (R_S12Z_EXT24, 4)
+  RELOC_NUMBER (R_S12Z_EXT18, 5)
+  RELOC_NUMBER (R_S12Z_CW32, 6)
+  RELOC_NUMBER (R_S12Z_EXT32, 7)
+END_RELOC_NUMBERS (R_S12Z_max)
 
 #endif
