@@ -1,5 +1,5 @@
 /* dwarf.h - DWARF support header file
-   Copyright (C) 2005-2018 Free Software Foundation, Inc.
+   Copyright (C) 2005-2019 Free Software Foundation, Inc.
 
    This file is part of GNU Binutils.
 
@@ -226,6 +226,7 @@ extern void init_dwarf_regnames_iamcu (void);
 extern void init_dwarf_regnames_x86_64 (void);
 extern void init_dwarf_regnames_aarch64 (void);
 extern void init_dwarf_regnames_s390 (void);
+extern void init_dwarf_regnames_riscv (void);
 
 extern bfd_boolean  load_debug_section (enum dwarf_section_display_enum, void *);
 extern void         free_debug_section (enum dwarf_section_display_enum);
