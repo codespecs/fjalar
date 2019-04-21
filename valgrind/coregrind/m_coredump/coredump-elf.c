@@ -495,7 +495,8 @@ static void fill_fpu(const ThreadState *tst, vki_elf_fpregset_t *fpu)
    I_die_here;
 
 #elif defined(VGP_s390x_linux)
-#  define DO(n)  fpu->fprs[n].ui = arch->vex.guest_f##n
+   /* NOTE: The 16 FP registers map to the first 16 VSX registers. */
+#  define DO(n)  fpu->fprs[n].ui = *(const Double*)(&arch->vex.guest_v##n.w64[0])
    DO(0);  DO(1);  DO(2);  DO(3);  DO(4);  DO(5);  DO(6);  DO(7);
    DO(8);  DO(9);  DO(10); DO(11); DO(12); DO(13); DO(14); DO(15);
 # undef DO
@@ -541,9 +542,12 @@ void dump_one_thread(struct note **notelist, const vki_siginfo_t *si, ThreadId t
 {
    vki_elf_fpregset_t  fpu;
    struct vki_elf_prstatus prstatus;
+   VG_(memset)(&fpu, 0, sizeof(fpu));
+   VG_(memset)(&prstatus, 0, sizeof(prstatus));
 #     if defined(VGP_x86_linux) && !defined(VGPV_x86_linux_android)
       {
          vki_elf_fpxregset_t xfpu;
+         VG_(memset)(&xfpu, 0, sizeof(xfpu));
          fill_xfpu(&VG_(threads)[tid], &xfpu);
          add_note(notelist, "LINUX", NT_PRXFPREG, &xfpu, sizeof(xfpu));
       }
@@ -570,31 +574,32 @@ static
 void make_elf_coredump(ThreadId tid, const vki_siginfo_t *si, ULong max_size)
 {
    HChar* buf = NULL;
-   const HChar *basename = "vgcore";
+   HChar *basename;
    const HChar *coreext = "";
    Int seq = 0;
    Int core_fd;
    NSegment const * seg;
    ESZ(Ehdr) ehdr;
-   ESZ(Phdr) *phdrs;
+   ESZ(Phdr) *phdrs = NULL;
    Int num_phdrs;
    Int i, idx;
    UInt off;
    struct note *notelist, *note;
    UInt notesz;
    struct vki_elf_prpsinfo prpsinfo;
-   Addr *seg_starts;
+   Addr *seg_starts = NULL;
    Int n_seg_starts;
 
    if (VG_(clo_log_fname_unexpanded) != NULL) {
       coreext = ".core";
       basename = VG_(expand_file_name)("--log-file",
                                        VG_(clo_log_fname_unexpanded));
-   }
+   } else
+      basename = VG_(strdup)("coredump-elf.mec.1", "vgcore");
 
    vg_assert(coreext);
    vg_assert(basename);
-   buf = VG_(malloc)( "coredump-elf.mec.1", 
+   buf = VG_(malloc)( "coredump-elf.mec.1",
                       VG_(strlen)(coreext) + VG_(strlen)(basename)
                          + 100/*for the two %ds. */ );
 
@@ -621,7 +626,7 @@ void make_elf_coredump(ThreadId tid, const vki_siginfo_t *si, ULong max_size)
       }
 
       if (sr_isError(sres) && sr_Err(sres) != VKI_EEXIST)
-	 return;		/* can't create file */
+	 goto cleanup; /* can't create file */
    }
 
    /* Get the client segments */
@@ -696,7 +701,7 @@ void make_elf_coredump(ThreadId tid, const vki_siginfo_t *si, ULong max_size)
 
       fill_phdr(&phdrs[idx], seg, off,
                 (seg->end - seg->start + 1 + off) < max_size);
-      
+
       off += phdrs[idx].p_filesz;
 
       idx++;
@@ -708,7 +713,7 @@ void make_elf_coredump(ThreadId tid, const vki_siginfo_t *si, ULong max_size)
 
    for(note = notelist; note != NULL; note = note->next)
       write_note(core_fd, note);
-   
+
    VG_(lseek)(core_fd, phdrs[1].p_offset, VKI_SEEK_SET);
 
    for(i = 0, idx = 1; i < n_seg_starts; i++) {
@@ -718,7 +723,7 @@ void make_elf_coredump(ThreadId tid, const vki_siginfo_t *si, ULong max_size)
 	 continue;
 
       if (phdrs[idx].p_filesz > 0) {
-	 vg_assert(VG_(lseek)(core_fd, phdrs[idx].p_offset, VKI_SEEK_SET) 
+	 vg_assert(VG_(lseek)(core_fd, phdrs[idx].p_offset, VKI_SEEK_SET)
                    == phdrs[idx].p_offset);
 	 vg_assert(seg->end - seg->start + 1 >= phdrs[idx].p_filesz);
 
@@ -727,9 +732,13 @@ void make_elf_coredump(ThreadId tid, const vki_siginfo_t *si, ULong max_size)
       idx++;
    }
 
-   VG_(free)(seg_starts);
-
    VG_(close)(core_fd);
+
+ cleanup:
+   VG_(free)(basename);
+   VG_(free)(buf);
+   VG_(free)(seg_starts);
+   VG_(free)(phdrs);
 }
 
 void VG_(make_coredump)(ThreadId tid, const vki_siginfo_t *si, ULong max_size)

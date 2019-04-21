@@ -64,15 +64,20 @@ const RRegUniverse* getRRegUniverse_AMD64 ( void )
    /* Add the registers.  The initial segment of this array must be
       those available for allocation by reg-alloc, and those that
       follow are not available for allocation. */
-   ru->regs[ru->size++] = hregAMD64_RSI();
-   ru->regs[ru->size++] = hregAMD64_RDI();
-   ru->regs[ru->size++] = hregAMD64_R8();
-   ru->regs[ru->size++] = hregAMD64_R9();
+   ru->allocable_start[HRcInt64] = ru->size;
    ru->regs[ru->size++] = hregAMD64_R12();
    ru->regs[ru->size++] = hregAMD64_R13();
    ru->regs[ru->size++] = hregAMD64_R14();
    ru->regs[ru->size++] = hregAMD64_R15();
    ru->regs[ru->size++] = hregAMD64_RBX();
+   ru->regs[ru->size++] = hregAMD64_RSI();
+   ru->regs[ru->size++] = hregAMD64_RDI();
+   ru->regs[ru->size++] = hregAMD64_R8();
+   ru->regs[ru->size++] = hregAMD64_R9();
+   ru->regs[ru->size++] = hregAMD64_R10();
+   ru->allocable_end[HRcInt64] = ru->size - 1;
+
+   ru->allocable_start[HRcVec128] = ru->size;
    ru->regs[ru->size++] = hregAMD64_XMM3();
    ru->regs[ru->size++] = hregAMD64_XMM4();
    ru->regs[ru->size++] = hregAMD64_XMM5();
@@ -83,8 +88,9 @@ const RRegUniverse* getRRegUniverse_AMD64 ( void )
    ru->regs[ru->size++] = hregAMD64_XMM10();
    ru->regs[ru->size++] = hregAMD64_XMM11();
    ru->regs[ru->size++] = hregAMD64_XMM12();
-   ru->regs[ru->size++] = hregAMD64_R10();
+   ru->allocable_end[HRcVec128] = ru->size - 1;
    ru->allocable = ru->size;
+
    /* And other regs, not available to the allocator. */
    ru->regs[ru->size++] = hregAMD64_RAX();
    ru->regs[ru->size++] = hregAMD64_RCX();
@@ -102,7 +108,7 @@ const RRegUniverse* getRRegUniverse_AMD64 ( void )
 }
 
 
-void ppHRegAMD64 ( HReg reg ) 
+UInt ppHRegAMD64 ( HReg reg )
 {
    Int r;
    static const HChar* ireg64_names[16] 
@@ -110,27 +116,24 @@ void ppHRegAMD64 ( HReg reg )
          "%r8",  "%r9",  "%r10", "%r11", "%r12", "%r13", "%r14", "%r15" };
    /* Be generic for all virtual regs. */
    if (hregIsVirtual(reg)) {
-      ppHReg(reg);
-      return;
+      return ppHReg(reg);
    }
    /* But specific for real regs. */
    switch (hregClass(reg)) {
       case HRcInt64:
          r = hregEncoding(reg);
          vassert(r >= 0 && r < 16);
-         vex_printf("%s", ireg64_names[r]);
-         return;
+         return vex_printf("%s", ireg64_names[r]);
       case HRcVec128:
          r = hregEncoding(reg);
          vassert(r >= 0 && r < 16);
-         vex_printf("%%xmm%d", r);
-         return;
+         return vex_printf("%%xmm%d", r);
       default:
          vpanic("ppHRegAMD64");
    }
 }
 
-static void ppHRegAMD64_lo32 ( HReg reg ) 
+static UInt ppHRegAMD64_lo32 ( HReg reg )
 {
    Int r;
    static const HChar* ireg32_names[16] 
@@ -138,17 +141,16 @@ static void ppHRegAMD64_lo32 ( HReg reg )
          "%r8d", "%r9d", "%r10d", "%r11d", "%r12d", "%r13d", "%r14d", "%r15d" };
    /* Be generic for all virtual regs. */
    if (hregIsVirtual(reg)) {
-      ppHReg(reg);
-      vex_printf("d");
-      return;
+      UInt written = ppHReg(reg);
+      written += vex_printf("d");
+      return written;
    }
    /* But specific for real regs. */
    switch (hregClass(reg)) {
       case HRcInt64:
          r = hregEncoding(reg);
          vassert(r >= 0 && r < 16);
-         vex_printf("%s", ireg32_names[r]);
-         return;
+         return vex_printf("%s", ireg32_names[r]);
       default:
          vpanic("ppHRegAMD64_lo32: invalid regclass");
    }
@@ -1107,7 +1109,8 @@ void ppAMD64Instr ( const AMD64Instr* i, Bool mode64 )
          vex_printf("] 0x%llx", i->Ain.Call.target);
          // (markro) show function name in addition to address
          const HChar *fnname;
-         Bool ok = VG_(get_fnname)(i->Ain.Call.target, &fnname);
+         DiEpoch ep = VG_(current_DiEpoch)();
+         Bool ok = VG_(get_fnname)(ep, i->Ain.Call.target, &fnname);
          if (!ok) fnname = "???";
          vex_printf(" %s", fnname);
          break;
@@ -1410,6 +1413,12 @@ void getRegUsage_AMD64Instr ( HRegUsage* u, const AMD64Instr* i, Bool mode64 )
          addRegUsage_AMD64RMI(u, i->Ain.Alu64R.src);
          if (i->Ain.Alu64R.op == Aalu_MOV) {
             addHRegUse(u, HRmWrite, i->Ain.Alu64R.dst);
+
+            if (i->Ain.Alu64R.src->tag == Armi_Reg) {
+               u->isRegRegMove = True;
+               u->regMoveSrc   = i->Ain.Alu64R.src->Armi.Reg.reg;
+               u->regMoveDst   = i->Ain.Alu64R.dst;
+            }
             return;
          }
          if (i->Ain.Alu64R.op == Aalu_CMP) { 
@@ -1464,18 +1473,16 @@ void getRegUsage_AMD64Instr ( HRegUsage* u, const AMD64Instr* i, Bool mode64 )
          /* This is a bit subtle. */
          /* First off, claim it trashes all the caller-saved regs
             which fall within the register allocator's jurisdiction.
-            These I believe to be: rax rcx rdx rsi rdi r8 r9 r10 r11 
-            and all the xmm registers.
-         */
+            These I believe to be: rax rcx rdx rdi rsi r8 r9 r10
+            and all the xmm registers. */
          addHRegUse(u, HRmWrite, hregAMD64_RAX());
          addHRegUse(u, HRmWrite, hregAMD64_RCX());
          addHRegUse(u, HRmWrite, hregAMD64_RDX());
-         addHRegUse(u, HRmWrite, hregAMD64_RSI());
          addHRegUse(u, HRmWrite, hregAMD64_RDI());
+         addHRegUse(u, HRmWrite, hregAMD64_RSI());
          addHRegUse(u, HRmWrite, hregAMD64_R8());
          addHRegUse(u, HRmWrite, hregAMD64_R9());
          addHRegUse(u, HRmWrite, hregAMD64_R10());
-         addHRegUse(u, HRmWrite, hregAMD64_R11());
          addHRegUse(u, HRmWrite, hregAMD64_XMM0());
          addHRegUse(u, HRmWrite, hregAMD64_XMM1());
          addHRegUse(u, HRmWrite, hregAMD64_XMM3());
@@ -1674,6 +1681,12 @@ void getRegUsage_AMD64Instr ( HRegUsage* u, const AMD64Instr* i, Bool mode64 )
             addHRegUse(u, i->Ain.SseReRg.op == Asse_MOV 
                              ? HRmWrite : HRmModify, 
                           i->Ain.SseReRg.dst);
+
+            if (i->Ain.SseReRg.op == Asse_MOV) {
+               u->isRegRegMove = True;
+               u->regMoveSrc   = i->Ain.SseReRg.src;
+               u->regMoveDst   = i->Ain.SseReRg.dst;
+            }
          }
          return;
       case Ain_SseCMov:
@@ -1700,6 +1713,12 @@ void getRegUsage_AMD64Instr ( HRegUsage* u, const AMD64Instr* i, Bool mode64 )
       //uu       addHRegUse(u, i->Ain.AvxReRg.op == Asse_MOV 
       //uu                        ? HRmWrite : HRmModify, 
       //uu                     i->Ain.AvxReRg.dst);
+      //uu
+      //uu       if (i->Ain.AvxReRg.op == Asse_MOV) {
+      //uu          u->isRegRegMove = True;
+      //uu          u->regMoveSrc   = i->Ain.AvxReRg.src;
+      //uu          u->regMoveDst   = i->Ain.AvxReRg.dst;
+      //uu       }
       //uu    }
       //uu    return;
       case Ain_EvCheck:
@@ -1916,43 +1935,6 @@ void mapRegs_AMD64Instr ( HRegRemap* m, AMD64Instr* i, Bool mode64 )
    }
 }
 
-/* Figure out if i represents a reg-reg move, and if so assign the
-   source and destination to *src and *dst.  If in doubt say No.  Used
-   by the register allocator to do move coalescing. 
-*/
-Bool isMove_AMD64Instr ( const AMD64Instr* i, HReg* src, HReg* dst )
-{
-   switch (i->tag) {
-      case Ain_Alu64R:
-         /* Moves between integer regs */
-         if (i->Ain.Alu64R.op != Aalu_MOV)
-            return False;
-         if (i->Ain.Alu64R.src->tag != Armi_Reg)
-            return False;
-         *src = i->Ain.Alu64R.src->Armi.Reg.reg;
-         *dst = i->Ain.Alu64R.dst;
-         return True;
-      case Ain_SseReRg:
-         /* Moves between SSE regs */
-         if (i->Ain.SseReRg.op != Asse_MOV)
-            return False;
-         *src = i->Ain.SseReRg.src;
-         *dst = i->Ain.SseReRg.dst;
-         return True;
-      //uu case Ain_AvxReRg:
-      //uu    /* Moves between AVX regs */
-      //uu    if (i->Ain.AvxReRg.op != Asse_MOV)
-      //uu       return False;
-      //uu    *src = i->Ain.AvxReRg.src;
-      //uu    *dst = i->Ain.AvxReRg.dst;
-      //uu    return True;
-      default:
-         return False;
-   }
-   /*NOTREACHED*/
-}
-
-
 /* Generate amd64 spill/reload instructions under the direction of the
    register allocator.  Note it's critical these don't write the
    condition codes. */
@@ -1998,6 +1980,19 @@ void genReload_AMD64 ( /*OUT*/HInstr** i1, /*OUT*/HInstr** i2,
       default: 
          ppHRegClass(hregClass(rreg));
          vpanic("genReload_AMD64: unimplemented regclass");
+   }
+}
+
+AMD64Instr* genMove_AMD64(HReg from, HReg to, Bool mode64)
+{
+   switch (hregClass(from)) {
+   case HRcInt64:
+      return AMD64Instr_Alu64R(Aalu_MOV, AMD64RMI_Reg(from), to);
+   case HRcVec128:
+      return AMD64Instr_SseReRg(Asse_MOV, from, to);
+   default:
+      ppHRegClass(hregClass(from));
+      vpanic("genMove_AMD64: unimplemented regclass");
    }
 }
 

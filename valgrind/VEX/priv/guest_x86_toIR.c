@@ -13067,6 +13067,11 @@ DisResult disInstr_X86_WRK (
        goto decode_success;
    }
 
+   /* 67 E8 = CALL with redundant addr16 prefix */
+   if (insn[0] == 0x67 && insn[1] == 0xE8) {
+      delta++;
+   }
+
    /* ---------------------------------------------------- */
    /* --- start of the baseline insn decoder            -- */
    /* ---------------------------------------------------- */
@@ -15401,6 +15406,15 @@ DisResult disInstr_X86_WRK (
          jmp_lit(&dres, Ijk_Sys_syscall, ((Addr32)guest_EIP_bbstart)+delta);
          vassert(dres.whatNext == Dis_StopHere);
          DIP("syscall\n");
+         break;
+
+      /* =-=-=-=-=-=-=-=-=-=- UD2 =-=-=-=-=-=-=-=-=-=-=-= */
+
+      case 0x0B: /* UD2 */
+         stmt( IRStmt_Put( OFFB_EIP, mkU32(guest_EIP_curr_instr) ) );
+         jmp_lit(&dres, Ijk_NoDecode, guest_EIP_curr_instr);
+         vassert(dres.whatNext == Dis_StopHere);
+         DIP("ud2\n");
          break;
 
       /* =-=-=-=-=-=-=-=-=- unimp2 =-=-=-=-=-=-=-=-=-=-= */

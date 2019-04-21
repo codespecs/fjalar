@@ -1,6 +1,7 @@
-# Valgrind version 3.13.0, released 2017-06-15
-export VALGRIND_REVISION=16470
-export VEX_REVISION=3400
+# Valgrind version 3.14.0, released 2018-10-09
+# Valgrind repository now git not syn; these REVISIONs now meaningless.
+#export VALGRIND_REVISION=
+#export VEX_REVISION=
 
-# Binutils version 2.30, released 2019-02-02
+# Binutils version 2.32, released 2019-02-02
 export BINUTILS_VERSION=2.32

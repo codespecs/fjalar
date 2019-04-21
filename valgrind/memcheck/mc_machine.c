@@ -194,6 +194,7 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
    if (o == GOF(TFIAR)     && sz == 8) return -1;
    if (o == GOF(PPR)       && sz == 8) return -1;
    if (o == GOF(PSPB)      && sz == 8) return -1;
+   if (o == GOF(DSCR)      && sz == 8) return -1;
 
    // With ISA 2.06, the "Vector-Scalar Floating-point" category
    // provides facilities to support vector and scalar binary floating-
@@ -782,13 +783,19 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
 
 
    /* fprs are accessed 4 or 8 byte at once. Again, we track that change for
-      the full register */
-   if ((sz == 8 || sz == 4) && o >= GOF(f0) && o <= GOF(f15)+8-sz)
-      return GOF(f0) + ((o-GOF(f0)) & -8) ;
+      the full register
+      NOTE: FPRs are mapped to first double word of VRs[0-15] */
+   if ((sz == 8 || sz == 4) && o >= GOF(v0) && o <= GOF(v15)+8-sz)
+      return GOF(v0) + ((o-GOF(v0)) & -8) ;
 
    /* access registers are accessed 4 bytes at once */
    if (sz == 4 && o >= GOF(a0) && o <= GOF(a15))
       return o;
+
+   /* no matter what byte(s) we change, we have changed the full 16 byte value
+      and need to track this change for the whole register */
+   if (o >= GOF(v0) && sz <= 16 && o <= (GOF(v31) + 16 - sz))
+      return GOF(v0) + ((o-GOF(v0)) & -16) ;
 
    /* we access the guest counter either fully or one of the 4byte words */
    if (o == GOF(counter) && (sz == 8 || sz ==4))
@@ -872,6 +879,7 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
 
    if (o == GOF(FPSCR)    && sz == 4) return -1;
    if (o == GOF(TPIDRURO) && sz == 4) return -1;
+   if (o == GOF(TPIDRURW) && sz == 4) return -1;
    if (o == GOF(ITSTATE)  && sz == 4) return -1;
 
    /* Accesses to F or D registers */
@@ -1161,6 +1169,39 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
    if (o == GOF(LLaddr) && sz == 4) return -1;  /* slot unused */
    if (o == GOF(LLdata) && sz == 4) return -1;  /* slot unused */
 
+   if (o >= GOF(w0)  && o+sz <= GOF(w0)  + SZB(w0))  return GOF(w0);
+   if (o >= GOF(w1)  && o+sz <= GOF(w1)  + SZB(w1))  return GOF(w1);
+   if (o >= GOF(w2)  && o+sz <= GOF(w2)  + SZB(w2))  return GOF(w2);
+   if (o >= GOF(w3)  && o+sz <= GOF(w3)  + SZB(w3))  return GOF(w3);
+   if (o >= GOF(w4)  && o+sz <= GOF(w4)  + SZB(w4))  return GOF(w4);
+   if (o >= GOF(w5)  && o+sz <= GOF(w5)  + SZB(w5))  return GOF(w5);
+   if (o >= GOF(w6)  && o+sz <= GOF(w6)  + SZB(w6))  return GOF(w6);
+   if (o >= GOF(w7)  && o+sz <= GOF(w7)  + SZB(w7))  return GOF(w7);
+   if (o >= GOF(w8)  && o+sz <= GOF(w8)  + SZB(w8))  return GOF(w8);
+   if (o >= GOF(w9)  && o+sz <= GOF(w9)  + SZB(w9))  return GOF(w9);
+   if (o >= GOF(w10) && o+sz <= GOF(w10) + SZB(w10)) return GOF(w10);
+   if (o >= GOF(w11) && o+sz <= GOF(w11) + SZB(w11)) return GOF(w11);
+   if (o >= GOF(w12) && o+sz <= GOF(w12) + SZB(w12)) return GOF(w12);
+   if (o >= GOF(w13) && o+sz <= GOF(w13) + SZB(w13)) return GOF(w13);
+   if (o >= GOF(w14) && o+sz <= GOF(w14) + SZB(w14)) return GOF(w14);
+   if (o >= GOF(w15) && o+sz <= GOF(w15) + SZB(w15)) return GOF(w15);
+   if (o >= GOF(w16) && o+sz <= GOF(w16) + SZB(w16)) return GOF(w16);
+   if (o >= GOF(w17) && o+sz <= GOF(w17) + SZB(w17)) return GOF(w17);
+   if (o >= GOF(w18) && o+sz <= GOF(w18) + SZB(w18)) return GOF(w18);
+   if (o >= GOF(w19) && o+sz <= GOF(w19) + SZB(w19)) return GOF(w19);
+   if (o >= GOF(w20) && o+sz <= GOF(w20) + SZB(w20)) return GOF(w20);
+   if (o >= GOF(w21) && o+sz <= GOF(w21) + SZB(w21)) return GOF(w21);
+   if (o >= GOF(w22) && o+sz <= GOF(w22) + SZB(w22)) return GOF(w22);
+   if (o >= GOF(w23) && o+sz <= GOF(w23) + SZB(w23)) return GOF(w23);
+   if (o >= GOF(w24) && o+sz <= GOF(w24) + SZB(w24)) return GOF(w24);
+   if (o >= GOF(w25) && o+sz <= GOF(w25) + SZB(w25)) return GOF(w25);
+   if (o >= GOF(w26) && o+sz <= GOF(w26) + SZB(w26)) return GOF(w26);
+   if (o >= GOF(w27) && o+sz <= GOF(w27) + SZB(w27)) return GOF(w27);
+   if (o >= GOF(w28) && o+sz <= GOF(w28) + SZB(w28)) return GOF(w28);
+   if (o >= GOF(w29) && o+sz <= GOF(w29) + SZB(w29)) return GOF(w29);
+   if (o >= GOF(w30) && o+sz <= GOF(w30) + SZB(w30)) return GOF(w30);
+   if (o >= GOF(w31) && o+sz <= GOF(w31) + SZB(w31)) return GOF(w31);
+
    VG_(printf)("MC_(get_otrack_shadow_offset)(mips)(off=%d,sz=%d)\n",
                offset,szB);
    tl_assert(0);
@@ -1242,6 +1283,39 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
 
    if (o == GOF(LLaddr) && sz == 8) return -1;  /* slot unused */
    if (o == GOF(LLdata) && sz == 8) return -1;  /* slot unused */
+
+   if (o >= GOF(w0)  && o+sz <= GOF(w0)  + SZB(w0))  return GOF(w0);
+   if (o >= GOF(w1)  && o+sz <= GOF(w1)  + SZB(w1))  return GOF(w1);
+   if (o >= GOF(w2)  && o+sz <= GOF(w2)  + SZB(w2))  return GOF(w2);
+   if (o >= GOF(w3)  && o+sz <= GOF(w3)  + SZB(w3))  return GOF(w3);
+   if (o >= GOF(w4)  && o+sz <= GOF(w4)  + SZB(w4))  return GOF(w4);
+   if (o >= GOF(w5)  && o+sz <= GOF(w5)  + SZB(w5))  return GOF(w5);
+   if (o >= GOF(w6)  && o+sz <= GOF(w6)  + SZB(w6))  return GOF(w6);
+   if (o >= GOF(w7)  && o+sz <= GOF(w7)  + SZB(w7))  return GOF(w7);
+   if (o >= GOF(w8)  && o+sz <= GOF(w8)  + SZB(w8))  return GOF(w8);
+   if (o >= GOF(w9)  && o+sz <= GOF(w9)  + SZB(w9))  return GOF(w9);
+   if (o >= GOF(w10) && o+sz <= GOF(w10) + SZB(w10)) return GOF(w10);
+   if (o >= GOF(w11) && o+sz <= GOF(w11) + SZB(w11)) return GOF(w11);
+   if (o >= GOF(w12) && o+sz <= GOF(w12) + SZB(w12)) return GOF(w12);
+   if (o >= GOF(w13) && o+sz <= GOF(w13) + SZB(w13)) return GOF(w13);
+   if (o >= GOF(w14) && o+sz <= GOF(w14) + SZB(w14)) return GOF(w14);
+   if (o >= GOF(w15) && o+sz <= GOF(w15) + SZB(w15)) return GOF(w15);
+   if (o >= GOF(w16) && o+sz <= GOF(w16) + SZB(w16)) return GOF(w16);
+   if (o >= GOF(w17) && o+sz <= GOF(w17) + SZB(w17)) return GOF(w17);
+   if (o >= GOF(w18) && o+sz <= GOF(w18) + SZB(w18)) return GOF(w18);
+   if (o >= GOF(w19) && o+sz <= GOF(w19) + SZB(w19)) return GOF(w19);
+   if (o >= GOF(w20) && o+sz <= GOF(w20) + SZB(w20)) return GOF(w20);
+   if (o >= GOF(w21) && o+sz <= GOF(w21) + SZB(w21)) return GOF(w21);
+   if (o >= GOF(w22) && o+sz <= GOF(w22) + SZB(w22)) return GOF(w22);
+   if (o >= GOF(w23) && o+sz <= GOF(w23) + SZB(w23)) return GOF(w23);
+   if (o >= GOF(w24) && o+sz <= GOF(w24) + SZB(w24)) return GOF(w24);
+   if (o >= GOF(w25) && o+sz <= GOF(w25) + SZB(w25)) return GOF(w25);
+   if (o >= GOF(w26) && o+sz <= GOF(w26) + SZB(w26)) return GOF(w26);
+   if (o >= GOF(w27) && o+sz <= GOF(w27) + SZB(w27)) return GOF(w27);
+   if (o >= GOF(w28) && o+sz <= GOF(w28) + SZB(w28)) return GOF(w28);
+   if (o >= GOF(w29) && o+sz <= GOF(w29) + SZB(w29)) return GOF(w29);
+   if (o >= GOF(w30) && o+sz <= GOF(w30) + SZB(w30)) return GOF(w30);
+   if (o >= GOF(w31) && o+sz <= GOF(w31) + SZB(w31)) return GOF(w31);
 
    VG_(printf)("MC_(get_otrack_shadow_offset)(mips)(off=%d,sz=%d)\n",
                offset,szB);

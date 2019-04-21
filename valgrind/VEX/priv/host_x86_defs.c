@@ -63,18 +63,25 @@ const RRegUniverse* getRRegUniverse_X86 ( void )
    /* Add the registers.  The initial segment of this array must be
       those available for allocation by reg-alloc, and those that
       follow are not available for allocation. */
-   ru->regs[ru->size++] = hregX86_EAX();
+   ru->allocable_start[HRcInt32] = ru->size;
    ru->regs[ru->size++] = hregX86_EBX();
-   ru->regs[ru->size++] = hregX86_ECX();
-   ru->regs[ru->size++] = hregX86_EDX();
    ru->regs[ru->size++] = hregX86_ESI();
    ru->regs[ru->size++] = hregX86_EDI();
+   ru->regs[ru->size++] = hregX86_EAX();
+   ru->regs[ru->size++] = hregX86_ECX();
+   ru->regs[ru->size++] = hregX86_EDX();
+   ru->allocable_end[HRcInt32] = ru->size - 1;
+
+   ru->allocable_start[HRcFlt64] = ru->size;
    ru->regs[ru->size++] = hregX86_FAKE0();
    ru->regs[ru->size++] = hregX86_FAKE1();
    ru->regs[ru->size++] = hregX86_FAKE2();
    ru->regs[ru->size++] = hregX86_FAKE3();
    ru->regs[ru->size++] = hregX86_FAKE4();
    ru->regs[ru->size++] = hregX86_FAKE5();
+   ru->allocable_end[HRcFlt64] = ru->size - 1;
+
+   ru->allocable_start[HRcVec128] = ru->size;
    ru->regs[ru->size++] = hregX86_XMM0();
    ru->regs[ru->size++] = hregX86_XMM1();
    ru->regs[ru->size++] = hregX86_XMM2();
@@ -83,7 +90,9 @@ const RRegUniverse* getRRegUniverse_X86 ( void )
    ru->regs[ru->size++] = hregX86_XMM5();
    ru->regs[ru->size++] = hregX86_XMM6();
    ru->regs[ru->size++] = hregX86_XMM7();
+   ru->allocable_end[HRcVec128] = ru->size - 1;
    ru->allocable = ru->size;
+
    /* And other regs, not available to the allocator. */
    ru->regs[ru->size++] = hregX86_ESP();
    ru->regs[ru->size++] = hregX86_EBP();
@@ -95,33 +104,29 @@ const RRegUniverse* getRRegUniverse_X86 ( void )
 }
 
 
-void ppHRegX86 ( HReg reg ) 
+UInt ppHRegX86 ( HReg reg )
 {
    Int r;
    static const HChar* ireg32_names[8] 
      = { "%eax", "%ecx", "%edx", "%ebx", "%esp", "%ebp", "%esi", "%edi" };
    /* Be generic for all virtual regs. */
    if (hregIsVirtual(reg)) {
-      ppHReg(reg);
-      return;
+      return ppHReg(reg);
    }
    /* But specific for real regs. */
    switch (hregClass(reg)) {
       case HRcInt32:
          r = hregEncoding(reg);
          vassert(r >= 0 && r < 8);
-         vex_printf("%s", ireg32_names[r]);
-         return;
+         return vex_printf("%s", ireg32_names[r]);
       case HRcFlt64:
          r = hregEncoding(reg);
          vassert(r >= 0 && r < 6);
-         vex_printf("%%fake%d", r);
-         return;
+         return vex_printf("%%fake%d", r);
       case HRcVec128:
          r = hregEncoding(reg);
          vassert(r >= 0 && r < 8);
-         vex_printf("%%xmm%d", r);
-         return;
+         return vex_printf("%%xmm%d", r);
       default:
          vpanic("ppHRegX86");
    }
@@ -1229,6 +1234,12 @@ void getRegUsage_X86Instr (HRegUsage* u, const X86Instr* i, Bool mode64)
          addRegUsage_X86RMI(u, i->Xin.Alu32R.src);
          if (i->Xin.Alu32R.op == Xalu_MOV) {
             addHRegUse(u, HRmWrite, i->Xin.Alu32R.dst);
+
+            if (i->Xin.Alu32R.src->tag == Xrmi_Reg) {
+               u->isRegRegMove = True;
+               u->regMoveSrc   = i->Xin.Alu32R.src->Xrmi.Reg.reg;
+               u->regMoveDst   = i->Xin.Alu32R.dst;
+            }
             return;
          }
          if (i->Xin.Alu32R.op == Xalu_CMP) { 
@@ -1369,6 +1380,12 @@ void getRegUsage_X86Instr (HRegUsage* u, const X86Instr* i, Bool mode64)
       case Xin_FpUnary:
          addHRegUse(u, HRmRead, i->Xin.FpUnary.src);
          addHRegUse(u, HRmWrite, i->Xin.FpUnary.dst);
+
+         if (i->Xin.FpUnary.op == Xfp_MOV) {
+            u->isRegRegMove = True;
+            u->regMoveSrc   = i->Xin.FpUnary.src;
+            u->regMoveDst   = i->Xin.FpUnary.dst;
+         }
          return;
       case Xin_FpBinary:
          addHRegUse(u, HRmRead, i->Xin.FpBinary.srcL);
@@ -1464,6 +1481,12 @@ void getRegUsage_X86Instr (HRegUsage* u, const X86Instr* i, Bool mode64)
             addHRegUse(u, i->Xin.SseReRg.op == Xsse_MOV 
                              ? HRmWrite : HRmModify, 
                           i->Xin.SseReRg.dst);
+
+            if (i->Xin.SseReRg.op == Xsse_MOV) {
+               u->isRegRegMove = True;
+               u->regMoveSrc   = i->Xin.SseReRg.src;
+               u->regMoveDst   = i->Xin.SseReRg.dst;
+            }
          }
          return;
       case Xin_SseCMov:
@@ -1663,41 +1686,6 @@ void mapRegs_X86Instr ( HRegRemap* m, X86Instr* i, Bool mode64 )
    }
 }
 
-/* Figure out if i represents a reg-reg move, and if so assign the
-   source and destination to *src and *dst.  If in doubt say No.  Used
-   by the register allocator to do move coalescing. 
-*/
-Bool isMove_X86Instr ( const X86Instr* i, HReg* src, HReg* dst )
-{
-   /* Moves between integer regs */
-   if (i->tag == Xin_Alu32R) {
-      if (i->Xin.Alu32R.op != Xalu_MOV)
-         return False;
-      if (i->Xin.Alu32R.src->tag != Xrmi_Reg)
-         return False;
-      *src = i->Xin.Alu32R.src->Xrmi.Reg.reg;
-      *dst = i->Xin.Alu32R.dst;
-      return True;
-   }
-   /* Moves between FP regs */
-   if (i->tag == Xin_FpUnary) {
-      if (i->Xin.FpUnary.op != Xfp_MOV)
-         return False;
-      *src = i->Xin.FpUnary.src;
-      *dst = i->Xin.FpUnary.dst;
-      return True;
-   }
-   if (i->tag == Xin_SseReRg) {
-      if (i->Xin.SseReRg.op != Xsse_MOV)
-         return False;
-      *src = i->Xin.SseReRg.src;
-      *dst = i->Xin.SseReRg.dst;
-      return True;
-   }
-   return False;
-}
-
-
 /* Generate x86 spill/reload instructions under the direction of the
    register allocator.  Note it's critical these don't write the
    condition codes. */
@@ -1749,6 +1737,19 @@ void genReload_X86 ( /*OUT*/HInstr** i1, /*OUT*/HInstr** i2,
       default: 
          ppHRegClass(hregClass(rreg));
          vpanic("genReload_X86: unimplemented regclass");
+   }
+}
+
+X86Instr* genMove_X86(HReg from, HReg to, Bool mode64)
+{
+   switch (hregClass(from)) {
+   case HRcInt32:
+      return X86Instr_Alu32R(Xalu_MOV, X86RMI_Reg(from), to);
+   case HRcVec128:
+      return X86Instr_SseReRg(Xsse_MOV, from, to);
+   default:
+      ppHRegClass(hregClass(from));
+      vpanic("genMove_X86: unimplemented regclass");
    }
 }
 

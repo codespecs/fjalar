@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include "pub_core_basics.h"
 #include "macro_load_store.h"
 
 int main()
@@ -31,6 +32,7 @@ int main()
    for (i = 0; i < N*s2; i = i+8)
       TEST1("ld", i, reg_val2);
 
+#if (__mips_isa_rev < 6)
    /* ldl */
    for (i = 0; i < N*s1; i++)
       TEST1("ldl", i, reg_val1);
@@ -44,6 +46,7 @@ int main()
 
    for (i = 0; i < N*s2; i++)
       TEST1("ldr", i, reg_val2);
+#endif
 
    /* lh */
    for (i = 0; i < N*s1; i = i+2)
@@ -66,6 +69,7 @@ int main()
    for (i = 0; i < N*s2; i = i+4)
       TEST1("lw", i, reg_val2);
 
+#if (__mips_isa_rev < 6)
    /* lwl */
    for (i = 0; i < N*s1; i++)
       TEST1("lwl", i, reg_val1);
@@ -79,7 +83,7 @@ int main()
 
    for (i = 0; i < N*s2; i++)
       TEST1("lwr", i, reg_val2);
-
+#endif
    /* lwu */
    for (i = 0; i < N*s1; i = i+4)
       TEST1("lwu", i, reg_val1);
@@ -100,6 +104,7 @@ int main()
    for (i = 0; i < (N-1)*s2; i = i+8)
       TEST2("sd", i);
 
+#if (__mips_isa_rev < 6)
    init_reg_val_zero();
    /* sdl */
    for (i = 0; i < (N-1)*s2; i++)
@@ -109,7 +114,7 @@ int main()
    /* sdr */
    for (i = 8; i < (N-1)*s2; i++)
       TEST2("sdr", i);
-
+#endif
    init_reg_val_zero();
    /* sh */
    for (i = 0; i < (N-1)*s2; i = i+2)
@@ -121,6 +126,8 @@ int main()
       TEST2("sw", i);
 
    init_reg_val_zero();
+
+#if (__mips_isa_rev < 6)
    /* swl */
    for (i = 4; i < (N-1)*s2; i++)
       TEST2("swl", i);
@@ -129,6 +136,6 @@ int main()
    /* swr */
    for (i = 4; i < (N-1)*s2; i++)
       TEST2("swr", i);
-
+#endif
    return 0;
 }

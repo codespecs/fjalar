@@ -52,7 +52,14 @@
    into memory, the rate falls by about a factor of 3. 
 */
 
+#if defined(ENABLE_INNER)
+/* 5 times more memory to be on the safe side:  consider each allocation is
+   8 bytes, and we need 16 bytes redzone before and after. */
+#define N_TEMPORARY_BYTES (5*5000000)
+static Bool mempools_created = False;
+#else
 #define N_TEMPORARY_BYTES 5000000
+#endif
 
 static HChar  temporary[N_TEMPORARY_BYTES] __attribute__((aligned(REQ_ALIGN)));
 static HChar* temporary_first = &temporary[0];
@@ -61,7 +68,12 @@ static HChar* temporary_last  = &temporary[N_TEMPORARY_BYTES-1];
 
 static ULong  temporary_bytes_allocd_TOT = 0;
 
+#if defined(ENABLE_INNER)
+/* See N_TEMPORARY_BYTES */
+#define N_PERMANENT_BYTES (5*10000)
+#else
 #define N_PERMANENT_BYTES 10000
+#endif
 
 static HChar  permanent[N_PERMANENT_BYTES] __attribute__((aligned(REQ_ALIGN)));
 static HChar* permanent_first = &permanent[0];
@@ -178,6 +190,18 @@ void vexSetAllocModeTEMP_and_clear ( void )
    temporary_bytes_allocd_TOT 
       += (ULong)(private_LibVEX_alloc_curr - private_LibVEX_alloc_first);
 
+#if defined(ENABLE_INNER)
+   if (mempools_created) {
+      VALGRIND_MEMPOOL_TRIM(&temporary[0], &temporary[0], 0);
+   } else {
+      VALGRIND_CREATE_MEMPOOL(&temporary[0], VEX_REDZONE_SIZEB, 0);
+      VALGRIND_CREATE_MEMPOOL(&permanent[0], VEX_REDZONE_SIZEB, 0);
+      VALGRIND_MAKE_MEM_NOACCESS(&permanent[0], N_PERMANENT_BYTES);
+      mempools_created = True;
+   }
+   VALGRIND_MAKE_MEM_NOACCESS(&temporary[0], N_TEMPORARY_BYTES);
+#endif
+
    mode = VexAllocModeTEMP;
    temporary_curr            = &temporary[0];
    private_LibVEX_alloc_curr = &temporary[0];
@@ -259,13 +283,40 @@ Bool vex_streq ( const HChar* s1, const HChar* s2 )
    }
 }
 
+/* Vectorised memset, copied from Valgrind's m_libcbase.c. */
 void vex_bzero ( void* sV, SizeT n )
 {
-   SizeT i;
-   UChar* s = (UChar*)sV;
-   /* No laughing, please.  Just don't call this too often.  Thank you
-      for your attention. */
-   for (i = 0; i < n; i++) s[i] = 0;
+#  define IS_4_ALIGNED(aaa_p) (0 == (((HWord)(aaa_p)) & ((HWord)0x3)))
+
+   UChar* d = sV;
+
+   while ((!IS_4_ALIGNED(d)) && n >= 1) {
+      d[0] = 0;
+      d++;
+      n--;
+   }
+   if (n == 0)
+      return;
+   while (n >= 16) {
+      ((UInt*)d)[0] = 0;
+      ((UInt*)d)[1] = 0;
+      ((UInt*)d)[2] = 0;
+      ((UInt*)d)[3] = 0;
+      d += 16;
+      n -= 16;
+   }
+   while (n >= 4) {
+      ((UInt*)d)[0] = 0;
+      d += 4;
+      n -= 4;
+   }
+   while (n >= 1) {
+      d[0] = 0;
+      d++;
+      n--;
+   }
+   return;
+#  undef IS_4_ALIGNED
 }
 
 

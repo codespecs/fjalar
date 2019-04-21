@@ -3,6 +3,7 @@
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 unsigned int mem[] = {
    0x4095A266, 0x66666666,
@@ -246,6 +247,9 @@ float mem1f[] = {
           out);                                                  \
 }
 
+#if (__mips==32) && (__mips_isa_rev>=2) && (__mips_isa_rev<6) \
+    && (__mips_fpr==64 || __mips_fpr==xx)
+
 #define TEST_FPU64                \
    __asm__ __volatile__(          \
       "cvt.l.s $f0, $f0"  "\n\t"  \
@@ -258,6 +262,7 @@ static void handler(int sig)
 {
    exit(0);
 }
+#endif
 
 void ppMem(double *m, int len)
 {
@@ -347,7 +352,7 @@ int main()
    TESTINSN5LOADw("lwc1 $f0, 64($t1)", 0, 64, f0);
    TESTINSN5LOADw("lwc1 $f0, 0($t1)", 0, 0, f0);
 
-#if (__mips==32) && (__mips_isa_rev>=2)
+#if (__mips==32) && (__mips_isa_rev>=2) && (__mips_isa_rev<6)
    printf("LWXC1\n");
    TESTINSN6LOADw("lwxc1 $f0, $a3($v0)", 0, f0, a3, v0);
    TESTINSN6LOADw("lwxc1 $f0, $a3($v0)", 4, f0, a3, v0);
@@ -429,7 +434,7 @@ int main()
    TESTINST1(64);
    ppMem(mem1, 16);
 
-#if (__mips==32) && (__mips_isa_rev>=2)
+#if (__mips==32) && (__mips_isa_rev>=2) && (__mips_isa_rev<6)
    printf("SDXC1\n");
    TESTINST1a(0);
    TESTINST1a(8);
@@ -455,7 +460,7 @@ int main()
    TESTINST2(64);
    ppMemF(mem1f, 16);
 
-#if (__mips==32) && (__mips_isa_rev>=2)
+#if (__mips==32) && (__mips_isa_rev>=2) && (__mips_isa_rev<6)
    printf("SWXC1\n");
    TESTINST2a(0);
    TESTINST2a(8);
@@ -469,7 +474,8 @@ int main()
    ppMemF(mem1f, 16);
 #endif
 
-#if (__mips==32) && (__mips_isa_rev>=2) && (__mips_fpr==64 || __mips_fpr==xx)
+#if (__mips==32) && (__mips_isa_rev>=2) && (__mips_isa_rev<6) \
+    && (__mips_fpr==64 || __mips_fpr==xx)
    signal(SIGILL, handler);
    /* Test fpu64 mode. */
    TEST_FPU64;

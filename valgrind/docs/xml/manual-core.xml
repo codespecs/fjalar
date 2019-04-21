@@ -399,7 +399,7 @@ Valgrind prints out one line for each used suppression, giving the number of tim
 it got used, its name and the filename and line number where the suppression is
 defined. Depending on the suppression kind, the filename and line number are optionally
 followed by additional information (such as the number of blocks and bytes suppressed
-by a memcheck leak suppression). Here's the suppressions used by a
+by a Memcheck leak suppression). Here's the suppressions used by a
 run of <computeroutput>valgrind -v --tool=memcheck ls -l</computeroutput>:</para>
 
 <programlisting><![CDATA[
@@ -460,13 +460,15 @@ tool_name1,tool_name2:suppression_name]]></programlisting>
     the chain of function calls that led to it.  There can be up to 24
     of these lines.</para>
 
-    <para>Locations may be names of either shared objects or
-    functions.  They begin
-    <computeroutput>obj:</computeroutput> and
-    <computeroutput>fun:</computeroutput> respectively.  Function and
-    object names to match against may use the wildcard characters
+    <para>Locations may be names of either shared objects, functions,
+    or source lines.  They begin with
+    <computeroutput>obj:</computeroutput>,
+    <computeroutput>fun:</computeroutput>, or
+    <computeroutput>src:</computeroutput> respectively.  Function,
+    object, and file names to match against may use the wildcard characters
     <computeroutput>*</computeroutput> and
-    <computeroutput>?</computeroutput>.</para>
+    <computeroutput>?</computeroutput>.   Source lines are specified
+    using the form <filename>filename[:lineNumber]</filename>.</para>
 
     <para><command>Important note: </command> C++ function names must be
     <command>mangled</command>.  If you are writing suppressions by
@@ -543,9 +545,23 @@ locations is regrettable, but is about all you can hope for, given that
 the X11 libraries shipped on the Linux distro on which this example
 was made have had their symbol tables removed.</para>
 
+<para>An example of the src: specification, again for the Memcheck tool:</para>
+
+<programlisting><![CDATA[
+{
+  libX11.so.6.2/libX11.so.6.2/libXaw.so.7.0
+  Memcheck:Value4
+  src:valid.c:321
+}]]></programlisting>
+
+<para>This suppresses any size-4 uninitialised-value error which occurs
+at line 321 in <filename>valid.c</filename>.</para>
+
 <para>Although the above two examples do not make this clear, you can
-freely mix <computeroutput>obj:</computeroutput> and
-<computeroutput>fun:</computeroutput> lines in a suppression.</para>
+freely mix <computeroutput>obj:</computeroutput>,
+<computeroutput>fun:</computeroutput>, and
+<computeroutput>src:</computeroutput>
+lines in a suppression.</para>
 
 <para>Finally, here's an example using three frame-level wildcards:</para>
 
@@ -1180,6 +1196,19 @@ that can report errors, e.g. Memcheck, but not Cachegrind.</para>
     </listitem>
   </varlistentry>
 
+  <varlistentry id="opt.exit-on-first-error" xreflabel="--exit-on-first-error">
+    <term>
+      <option><![CDATA[--exit-on-first-error=<yes|no> [default: no] ]]></option>
+    </term>
+    <listitem>
+      <para>If this option is enabled, Valgrind exits on the first error.
+      A nonzero exit value must be defined using
+      <computeroutput>--error-exitcode</computeroutput> option.
+      Useful if you are running regression tests or have some other
+      automated test machinery.</para>
+    </listitem>
+  </varlistentry>
+
   <varlistentry id="opt.error-markers" xreflabel="--error-markers">
     <term>
       <option><![CDATA[--error-markers=<begin>,<end> [default: none]]]></option>
@@ -1216,6 +1245,28 @@ that can report errors, e.g. Memcheck, but not Cachegrind.</para>
       and trap the SIGILL signal to detect processor features.  Using
       this flag makes it possible to avoid the diagnostic output
       that you would otherwise get in such cases.</para>
+    </listitem>
+  </varlistentry>
+
+  <varlistentry id="opt.keep-debuginfo" xreflabel="--keep-debuginfo">
+    <term>
+      <option><![CDATA[--keep-debuginfo=<yes|no> [default: no] ]]></option>
+    </term>
+    <listitem>
+      <para>When enabled, keep ("archive") symbols and all other debuginfo
+      for unloaded code. This allows saved stack traces to include file/line
+      info for code that has been dlclose'd (or similar).  Be careful with
+      this, since it can lead to unbounded memory use for programs which
+      repeatedly load and unload shared objects.</para>
+      <para>Some tools and some functionalities have only limited support
+      for archived debug info.  Memcheck fully supports it.  Generally,
+      tools that report errors can use archived debug info to show the error
+      stack traces.  The known limitations are: Helgrind's past access stack
+      trace of a race condition is does not use archived debug info. Massif
+      (and more generally the xtree Massif output format) does not make use
+      of archived debug info. Only Memcheck has been (somewhat) tested
+      with <option>--keep-debuginfo=yes</option>, so other tools may have
+      unknown limitations. </para>
     </listitem>
   </varlistentry>
 
@@ -1728,7 +1779,7 @@ Massif, Helgrind, DRD), the following options apply.</para>
         For massif and helgrind, specifying <varname>full</varname>
         implies to capture a stack trace for each free operation,
         while normally these tools only capture an allocation stack
-        trace.  For memcheck, the cpu overhead for the
+        trace.  For Memcheck, the cpu overhead for the
         value <varname>full</varname> is small, as this can only be
         used in combination with
         <option>--keep-stacktraces=alloc-and-free</option> or
@@ -2086,7 +2137,8 @@ need to use them.</para>
         </listitem>
         <listitem>
           <para><option>no-nptl-pthread-stackcache: </option>
-            This hint is only relevant when running Valgrind on Linux.</para>
+            This hint is only relevant when running Valgrind on Linux;
+            it is ignored on Solaris and Mac OS X.</para>
 
           <para>The GNU glibc pthread library
             (<function>libpthread.so</function>), which is used by
@@ -2545,6 +2597,60 @@ need to use them.</para>
    </listitem>
   </varlistentry>
 
+  <varlistentry id="opt.progress-interval" xreflabel="--progress-interval">
+    <term>
+      <option><![CDATA[--progress-interval=<number> [default: 0, meaning 'disabled'] ]]></option>
+    </term>
+    <listitem>
+      <para>This is an enhancement to Valgrind's debugging output.  It is
+        unlikely to be of interest to end users.</para>
+      <para>When <varname>number</varname> is set to a non-zero value,
+        Valgrind will print a one-line progress summary
+        every <varname>number</varname> seconds.  Valid settings
+        for <varname>number</varname> are between 0 and 3600
+        inclusive.  Here's some example output
+        with <varname>number</varname>
+        set to 10:
+        <programlisting><![CDATA[
+PROGRESS: U 110s, W 113s, 97.3% CPU, EvC 414.79M, TIn 616.7k, TOut 0.5k, #thr 67
+PROGRESS: U 120s, W 124s, 96.8% CPU, EvC 505.27M, TIn 636.6k, TOut 3.0k, #thr 64
+PROGRESS: U 130s, W 134s, 97.0% CPU, EvC 574.90M, TIn 657.5k, TOut 3.0k, #thr 63
+]]></programlisting>
+        Each line shows:
+      <itemizedlist>
+        <listitem><varname>U</varname>: total user time</listitem>
+        <listitem><varname>W</varname>: total wallclock time</listitem>
+        <listitem><varname>CPU</varname>: overall average cpu use</listitem>
+        <listitem><varname>EvC</varname>: number of event checks.  An event
+         check is a backwards branch in the simulated program, so this is a
+         measure of forward progress of the program</listitem>
+        <listitem><varname>TIn</varname>: number of code blocks instrumented
+          by the JIT</listitem>
+        <listitem><varname>TOut</varname>: number of instrumented code
+          blocks that have been thrown away</listitem>
+        <listitem><varname>#thr</varname>: number of threads in the
+        program</listitem>
+      </itemizedlist>
+      From the progress of these, it is possible to observe:
+      <itemizedlist>
+        <listitem>when the program is compute bound (<varname>TIn</varname>
+          rises slowly, <varname>EvC</varname> rises rapidly)</listitem>
+        <listitem>when the program is in a spinloop
+          (<varname>TIn</varname>/<varname>TOut</varname>
+          fixed, <varname>EvC</varname> rises rapidly)</listitem>
+        <listitem>when the program is JIT-bound (<varname>TIn</varname>
+          rises rapidly)</listitem>
+        <listitem>when the program is rapidly discarding code
+          (<varname>TOut</varname> rises rapidly)</listitem>
+        <listitem>when the program is about to achieve some expected state
+          (<varname>EvC</varname> arrives at some value you
+          expect)</listitem>
+        <listitem> when the program is idling (<varname>U</varname> rises
+          more slowly than <varname>W</varname>)</listitem>
+      </itemizedlist>
+      </para>
+   </listitem>
+  </varlistentry>
 
 </variablelist>
 <!-- end of xi:include in the manpage -->

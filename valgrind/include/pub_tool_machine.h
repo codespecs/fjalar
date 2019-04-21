@@ -114,6 +114,12 @@
 Addr VG_(get_IP) ( ThreadId tid );
 Addr VG_(get_SP) ( ThreadId tid );
 
+// Get and set the shadow1 SP register
+Addr VG_(get_SP_s1) ( ThreadId tid );
+void VG_(set_SP_s1) ( ThreadId tid, Addr sp );
+
+// BEGIN - pgbovine
+
 extern Addr VG_(get_SP) ( ThreadId tid );
 extern Addr VG_(get_IP) ( ThreadId tid );
 extern Addr VG_(get_FP) ( ThreadId tid );
@@ -140,8 +146,6 @@ extern UInt* VG_(get_XMM_N) (ThreadId tid, UInt num);
 
 extern void VG_(set_IP) ( ThreadId tid, Addr ip );
 extern void VG_(set_SP) ( ThreadId tid, Addr sp );
-
-// BEGIN - pgbovine
 
 // PG - Hacked for Kvasir (we really need a more elegant solution)
 extern double VG_(get_FPU_stack_top) ( ThreadId tid ); // 64-bit read

@@ -3080,12 +3080,12 @@ ULong dis_op2_E_G ( const VexAbiInfo* vbi,
          putIRegG(size, pfx, rm, mkexpr(dst1));
       } else
       if (op8 == Iop_Add8 && flag == WithFlagCarryX) {
-         /* normal store */
          helper_ADCX_ADOX( True/*isADCX*/, size, dst1, dst0, src );
+         putIRegG(size, pfx, rm, mkexpr(dst1));
       } else
       if (op8 == Iop_Add8 && flag == WithFlagOverX) {
-         /* normal store */
          helper_ADCX_ADOX( False/*!isADCX*/, size, dst1, dst0, src );
+         putIRegG(size, pfx, rm, mkexpr(dst1));
       } else {
          assign( dst1, binop(mkSizedOp(ty,op8), mkexpr(dst0), mkexpr(src)) );
          if (isAddSub(op8))
@@ -18811,7 +18811,7 @@ static Long dis_PCMPxSTRx ( const VexAbiInfo* vbi, Prefix pfx,
                  case 0x13:
       case 0x19: case 0x1B:
       case 0x39: case 0x3B:
-                            case 0x45:
+      case 0x41:            case 0x45:
                  case 0x4B:
          break;
       default:
@@ -24234,12 +24234,12 @@ Long dis_ESC_0F__VEX (
          UInt  rV    = getVexNvvvv(pfx);
          delta++;
          DIP("vmovsd %s,%s,%s\n",
-             nameXMMReg(rE), nameXMMReg(rV), nameXMMReg(rG));
+             nameXMMReg(rG), nameXMMReg(rV), nameXMMReg(rE));
          IRTemp res = newTemp(Ity_V128);
          assign(res, binop(Iop_64HLtoV128,
                            getXMMRegLane64(rV, 1),
-                           getXMMRegLane64(rE, 0)));
-         putYMMRegLoAndZU(rG, mkexpr(res));
+                           getXMMRegLane64(rG, 0)));
+         putYMMRegLoAndZU(rE, mkexpr(res));
          *uses_vvvv = True;
          goto decode_success;
       }
@@ -24264,14 +24264,14 @@ Long dis_ESC_0F__VEX (
          UInt  rV    = getVexNvvvv(pfx);
          delta++;
          DIP("vmovss %s,%s,%s\n",
-             nameXMMReg(rE), nameXMMReg(rV), nameXMMReg(rG));
+             nameXMMReg(rG), nameXMMReg(rV), nameXMMReg(rE));
          IRTemp res = newTemp(Ity_V128);
          assign( res, binop( Iop_64HLtoV128,
                              getXMMRegLane64(rV, 1),
                              binop(Iop_32HLto64,
                                    getXMMRegLane32(rV, 1),
-                                   getXMMRegLane32(rE, 0)) ) );
-         putYMMRegLoAndZU(rG, mkexpr(res));
+                                   getXMMRegLane32(rG, 0)) ) );
+         putYMMRegLoAndZU(rE, mkexpr(res));
          *uses_vvvv = True;
          goto decode_success;
       }

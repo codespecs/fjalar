@@ -56,8 +56,15 @@ static int go(char *feature)
 #else
       return FEATURE_NOT_PRESENT;
 #endif
-   }
-   else if (strcmp(feature, "mips32-dsp") == 0) {
+   } else if (strcmp(feature, "mips-msa") == 0) {
+      const char *msa = "msa";
+      cpuinfo = mipsCPUInfo(msa);
+      if (cpuinfo == 1) {
+         return FEATURE_PRESENT;
+      } else{
+         return FEATURE_NOT_PRESENT;
+      }
+   } else if (strcmp(feature, "mips32-dsp") == 0) {
       const char *dsp = "dsp";
       cpuinfo = mipsCPUInfo(dsp);
       if (cpuinfo == 1) {
@@ -94,6 +101,12 @@ static int go(char *feature)
      return FEATURE_PRESENT;
 #else
      return FEATURE_NOT_PRESENT;
+#endif
+   } else if (strcmp(feature, "mipsr6") == 0) {
+#if (__mips_isa_rev < 6)
+      return FEATURE_NOT_PRESENT;
+#else
+      return FEATURE_PRESENT;
 #endif
    } else {
       return UNRECOGNISED_FEATURE;

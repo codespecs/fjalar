@@ -39,9 +39,14 @@ usage: valgrind [options] prog-and-args
     --demangle=no|yes         automatically demangle C++ names? [yes]
     --num-callers=<number>    show <number> callers in stack traces [12]
     --error-limit=no|yes      stop showing new errors if too many? [yes]
+    --exit-on-first-error=no|yes exit code on the first error found? [no]
     --error-exitcode=<number> exit code to return if errors found [0=disable]
     --error-markers=<begin>,<end> add lines with begin/end markers before/after
                               each error output in plain text mode [none]
+    --keep-debuginfo=no|yes   Keep symbols etc for unloaded code [no]
+                              This allows saved stack traces (e.g. memory leaks)
+                              to include file/line info for code that has been
+                              dlclose'd (or similar)
     --show-below-main=no|yes  continue stack traces below main() [no]
     --default-suppressions=yes|no
                               load default suppressions [yes]
@@ -164,7 +169,9 @@ usage: valgrind [options] prog-and-args
     --core-redzone-size=<number>  set minimum size of redzones added before/after
                               heap blocks allocated for Valgrind internal use (in bytes) [4]
     --wait-for-gdb=yes|no     pause on startup to wait for gdb attach
-    --sym-offsets=yes|no      show syms in form 'name+offset' ? [no]
+    --sym-offsets=yes|no      show syms in form 'name+offset'? [no]
+    --progress-interval=<number>  report progress every <number>
+                                  CPU seconds [0, meaning disabled]
     --command-line-only=no|yes  only use command line options [no]
 
   Vex options for all Valgrind tools:
@@ -198,6 +205,7 @@ usage: valgrind [options] prog-and-args
          0000 0000   show summary profile only
         (Nb: you need --trace-notbelow and/or --trace-notabove
              with --trace-flags for full details)
+    --vex-regalloc-version=2|3             [3]
 
   debugging options for Valgrind tools that report errors
     --dump-error=<number>     show translation for basic block associated

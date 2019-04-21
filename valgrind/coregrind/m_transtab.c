@@ -2452,6 +2452,7 @@ void VG_(init_tt_tc) ( void )
    else if (sizeof(HWord) == 4) {
       vg_assert(sizeof(TTEntryH) <= 20);
 #     if defined(VGP_ppc32_linux) || defined(VGP_mips32_linux) \
+         || (defined(VGP_mips64_linux) && defined(VGABI_N32)) \
          || defined(VGP_arm_linux)
       /* On PPC32, MIPS32, ARM32 platforms, alignof(ULong) == 8, so the
          structure is larger than on other 32 bit targets. */
@@ -2563,6 +2564,11 @@ static Double safe_idiv( ULong a, ULong b )
 UInt VG_(get_bbs_translated) ( void )
 {
    return n_in_count;
+}
+
+UInt VG_(get_bbs_discarded_or_dumped) ( void )
+{
+   return n_disc_count + n_dump_count;
 }
 
 void VG_(print_tt_tc_stats) ( void )

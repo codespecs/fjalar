@@ -129,6 +129,24 @@ typedef  struct { UWord uw1; UWord uw2; }  UWordPair;
 /* ThreadIds are simply indices into the VG_(threads)[] array. */
 typedef UInt ThreadId;
 
+
+/* You need a debuginfo epoch in order to convert an address into any source
+   level entity, since that conversion depends on what objects were mapped
+   in at the time.  An epoch is simply a monotonically increasing counter,
+   which we wrap up in a struct so as to enable the C type system to
+   distinguish it from other kinds of numbers.  m_debuginfo holds and
+   maintains the current epoch number. */
+typedef  struct { UInt n; }  DiEpoch;
+
+static inline DiEpoch DiEpoch_INVALID ( void ) {
+   DiEpoch dep; dep.n = 0; return dep;
+}
+
+static inline Bool is_DiEpoch_INVALID ( DiEpoch dep ) {
+   return dep.n == 0;
+}
+
+
 /* Many data structures need to allocate and release memory.
    The allocation/release functions must be provided by the caller.
    The Alloc_Fn_t function must allocate a chunk of memory of size szB.
@@ -179,7 +197,7 @@ typedef void  (*Free_Fn_t)        ( void* p );
 typedef
    struct {
       Bool  _isError;
-      UWord _val;
+      RegWord _val;
       UWord _valEx;
    }
    SysRes;
@@ -231,7 +249,7 @@ typedef
 static inline Bool sr_isError ( SysRes sr ) {
    return sr._isError;
 }
-static inline UWord sr_Res ( SysRes sr ) {
+static inline RegWord sr_Res ( SysRes sr ) {
    return sr._isError ? 0 : sr._val;
 }
 static inline UWord sr_ResEx ( SysRes sr ) {
@@ -253,6 +271,10 @@ static inline Bool sr_EQ ( UInt sysno, SysRes sr1, SysRes sr2 ) {
    const UInt __nr_Linux = 4000;
    const UInt __nr_pipe  = __nr_Linux + 42;
    const UInt __nr_pipe2 = __nr_Linux + 328;
+#  elif defined(VGP_mips64_linux) && defined(VGABI_N32)
+   const UInt __nr_Linux = 6000;
+   const UInt __nr_pipe  = __nr_Linux + 21;
+   const UInt __nr_pipe2 = __nr_Linux + 291;
 #  else
    const UInt __nr_Linux = 5000;
    const UInt __nr_pipe  = __nr_Linux + 21;

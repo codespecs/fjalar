@@ -68,6 +68,25 @@ const RRegUniverse* getRRegUniverse_PPC ( Bool mode64 )
    // GPR0 = scratch reg where poss. - some ops interpret as value zero
    // GPR1 = stack pointer
    // GPR2 = TOC pointer
+   ru->allocable_start[(mode64) ? HRcInt64 : HRcInt32] = ru->size;
+   // GPR14 and above are callee save. List them first.
+   ru->regs[ru->size++] = hregPPC_GPR14(mode64);
+   ru->regs[ru->size++] = hregPPC_GPR15(mode64);
+   ru->regs[ru->size++] = hregPPC_GPR16(mode64);
+   ru->regs[ru->size++] = hregPPC_GPR17(mode64);
+   ru->regs[ru->size++] = hregPPC_GPR18(mode64);
+   ru->regs[ru->size++] = hregPPC_GPR19(mode64);
+   ru->regs[ru->size++] = hregPPC_GPR20(mode64);
+   ru->regs[ru->size++] = hregPPC_GPR21(mode64);
+   ru->regs[ru->size++] = hregPPC_GPR22(mode64);
+   ru->regs[ru->size++] = hregPPC_GPR23(mode64);
+   ru->regs[ru->size++] = hregPPC_GPR24(mode64);
+   ru->regs[ru->size++] = hregPPC_GPR25(mode64);
+   ru->regs[ru->size++] = hregPPC_GPR26(mode64);
+   ru->regs[ru->size++] = hregPPC_GPR27(mode64);
+   ru->regs[ru->size++] = hregPPC_GPR28(mode64);
+
+   // Caller save registers now.
    ru->regs[ru->size++] = hregPPC_GPR3(mode64);
    ru->regs[ru->size++] = hregPPC_GPR4(mode64);
    ru->regs[ru->size++] = hregPPC_GPR5(mode64);
@@ -84,22 +103,7 @@ const RRegUniverse* getRRegUniverse_PPC ( Bool mode64 )
       ru->regs[ru->size++] = hregPPC_GPR12(mode64);
    }
    // GPR13 = thread specific pointer
-   // GPR14 and above are callee save.  Yay.
-   ru->regs[ru->size++] = hregPPC_GPR14(mode64);
-   ru->regs[ru->size++] = hregPPC_GPR15(mode64);
-   ru->regs[ru->size++] = hregPPC_GPR16(mode64);
-   ru->regs[ru->size++] = hregPPC_GPR17(mode64);
-   ru->regs[ru->size++] = hregPPC_GPR18(mode64);
-   ru->regs[ru->size++] = hregPPC_GPR19(mode64);
-   ru->regs[ru->size++] = hregPPC_GPR20(mode64);
-   ru->regs[ru->size++] = hregPPC_GPR21(mode64);
-   ru->regs[ru->size++] = hregPPC_GPR22(mode64);
-   ru->regs[ru->size++] = hregPPC_GPR23(mode64);
-   ru->regs[ru->size++] = hregPPC_GPR24(mode64);
-   ru->regs[ru->size++] = hregPPC_GPR25(mode64);
-   ru->regs[ru->size++] = hregPPC_GPR26(mode64);
-   ru->regs[ru->size++] = hregPPC_GPR27(mode64);
-   ru->regs[ru->size++] = hregPPC_GPR28(mode64);
+   ru->allocable_end[(mode64) ? HRcInt64 : HRcInt32] = ru->size - 1;
    // GPR29 is reserved for the dispatcher
    // GPR30 is reserved as AltiVec spill reg temporary
    // GPR31 is reserved for the GuestStatePtr
@@ -109,6 +113,7 @@ const RRegUniverse* getRRegUniverse_PPC ( Bool mode64 )
       the occasional extra spill instead. */
    /* For both ppc32-linux and ppc64-linux, f14-f31 are callee save.
       So use them. */
+   ru->allocable_start[HRcFlt64] = ru->size;
    ru->regs[ru->size++] = hregPPC_FPR14(mode64);
    ru->regs[ru->size++] = hregPPC_FPR15(mode64);
    ru->regs[ru->size++] = hregPPC_FPR16(mode64);
@@ -117,11 +122,13 @@ const RRegUniverse* getRRegUniverse_PPC ( Bool mode64 )
    ru->regs[ru->size++] = hregPPC_FPR19(mode64);
    ru->regs[ru->size++] = hregPPC_FPR20(mode64);
    ru->regs[ru->size++] = hregPPC_FPR21(mode64);
+   ru->allocable_end[HRcFlt64] = ru->size - 1;
 
    /* Same deal re Altivec */
    /* For both ppc32-linux and ppc64-linux, v20-v31 are callee save.
       So use them. */
    /* NB, vr29 is used as a scratch temporary -- do not allocate */
+   ru->allocable_start[HRcVec128] = ru->size;
    ru->regs[ru->size++] = hregPPC_VR20(mode64);
    ru->regs[ru->size++] = hregPPC_VR21(mode64);
    ru->regs[ru->size++] = hregPPC_VR22(mode64);
@@ -130,6 +137,7 @@ const RRegUniverse* getRRegUniverse_PPC ( Bool mode64 )
    ru->regs[ru->size++] = hregPPC_VR25(mode64);
    ru->regs[ru->size++] = hregPPC_VR26(mode64);
    ru->regs[ru->size++] = hregPPC_VR27(mode64);
+   ru->allocable_end[HRcVec128] = ru->size - 1;
    ru->allocable = ru->size;
 
    /* And other regs, not available to the allocator. */
@@ -146,7 +154,7 @@ const RRegUniverse* getRRegUniverse_PPC ( Bool mode64 )
 }
 
 
-void ppHRegPPC ( HReg reg ) 
+UInt ppHRegPPC ( HReg reg )
 {
    Int r;
    static const HChar* ireg32_names[32] 
@@ -160,31 +168,26 @@ void ppHRegPPC ( HReg reg )
           "%r28", "%r29", "%r30", "%r31" };
    /* Be generic for all virtual regs. */
    if (hregIsVirtual(reg)) {
-      ppHReg(reg);
-      return;
+      return ppHReg(reg);
    }
    /* But specific for real regs. */
    switch (hregClass(reg)) {
    case HRcInt64:
       r = hregEncoding(reg);
       vassert(r >= 0 && r < 32);
-      vex_printf("%s", ireg32_names[r]);
-      return;
+      return vex_printf("%s", ireg32_names[r]);
    case HRcInt32:
       r = hregEncoding(reg);
       vassert(r >= 0 && r < 32);
-      vex_printf("%s", ireg32_names[r]);
-      return;
+      return vex_printf("%s", ireg32_names[r]);
    case HRcFlt64:
       r = hregEncoding(reg);
       vassert(r >= 0 && r < 32);
-      vex_printf("%%fr%d", r);
-      return;
+      return vex_printf("%%fr%d", r);
    case HRcVec128:
       r = hregEncoding(reg);
       vassert(r >= 0 && r < 32);
-      vex_printf("%%v%d", r);
-      return;
+      return vex_printf("%%v%d", r);
    default:
       vpanic("ppHRegPPC");
    }
@@ -2359,6 +2362,15 @@ void getRegUsage_PPCInstr ( HRegUsage* u, const PPCInstr* i, Bool mode64 )
       addHRegUse(u, HRmRead,  i->Pin.Alu.srcL);
       addRegUsage_PPCRH(u,    i->Pin.Alu.srcR);
       addHRegUse(u, HRmWrite, i->Pin.Alu.dst);
+
+      // or Rd,Rs,Rs == mr Rd,Rs
+      if ((i->Pin.Alu.op == Palu_OR)
+          && (i->Pin.Alu.srcR->tag == Prh_Reg)
+          && sameHReg(i->Pin.Alu.srcR->Prh.Reg.reg, i->Pin.Alu.srcL)) {
+         u->isRegRegMove = True;
+         u->regMoveSrc   = i->Pin.Alu.srcL;
+         u->regMoveDst   = i->Pin.Alu.dst;
+      }
       return;
    case Pin_Shft:
       addHRegUse(u, HRmRead,  i->Pin.Shft.srcL);
@@ -2486,6 +2498,12 @@ void getRegUsage_PPCInstr ( HRegUsage* u, const PPCInstr* i, Bool mode64 )
    case Pin_FpUnary:
       addHRegUse(u, HRmWrite, i->Pin.FpUnary.dst);
       addHRegUse(u, HRmRead,  i->Pin.FpUnary.src);
+
+      if (i->Pin.FpUnary.op == Pfp_MOV) {
+         u->isRegRegMove = True;
+         u->regMoveSrc   = i->Pin.FpUnary.src;
+         u->regMoveDst   = i->Pin.FpUnary.dst;
+      }
       return;
    case Pin_FpBinary:
       addHRegUse(u, HRmWrite, i->Pin.FpBinary.dst);
@@ -3116,37 +3134,6 @@ void mapRegs_PPCInstr ( HRegRemap* m, PPCInstr* i, Bool mode64 )
    }
 }
 
-/* Figure out if i represents a reg-reg move, and if so assign the
-   source and destination to *src and *dst.  If in doubt say No.  Used
-   by the register allocator to do move coalescing. 
-*/
-Bool isMove_PPCInstr ( const PPCInstr* i, HReg* src, HReg* dst )
-{
-   /* Moves between integer regs */
-   if (i->tag == Pin_Alu) {
-      // or Rd,Rs,Rs == mr Rd,Rs
-      if (i->Pin.Alu.op != Palu_OR)
-         return False;
-      if (i->Pin.Alu.srcR->tag != Prh_Reg)
-         return False;
-      if (! sameHReg(i->Pin.Alu.srcR->Prh.Reg.reg, i->Pin.Alu.srcL))
-         return False;
-      *src = i->Pin.Alu.srcL;
-      *dst = i->Pin.Alu.dst;
-      return True;
-   }
-   /* Moves between FP regs */
-   if (i->tag == Pin_FpUnary) {
-      if (i->Pin.FpUnary.op != Pfp_MOV)
-         return False;
-      *src = i->Pin.FpUnary.src;
-      *dst = i->Pin.FpUnary.dst;
-      return True;
-   }
-   return False;
-}
-
-
 /* Generate ppc spill/reload instructions under the direction of the
    register allocator.  Note it's critical these don't write the
    condition codes. */
@@ -3207,6 +3194,20 @@ void genReload_PPC ( /*OUT*/HInstr** i1, /*OUT*/HInstr** i2,
       default: 
          ppHRegClass(hregClass(rreg));
          vpanic("genReload_PPC: unimplemented regclass");
+   }
+}
+
+PPCInstr* genMove_PPC(HReg from, HReg to, Bool mode64)
+{
+   switch (hregClass(from)) {
+   case HRcInt32:
+   case HRcInt64:
+      return PPCInstr_Alu(Palu_OR, to, from, PPCRH_Reg(from));
+   case HRcFlt64:
+      return PPCInstr_FpUnary(Pfp_MOV, to, from);
+   default:
+      ppHRegClass(hregClass(from));
+      vpanic("genMove_PPC: unimplemented regclass");
    }
 }
 

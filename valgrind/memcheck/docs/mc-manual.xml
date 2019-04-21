@@ -904,7 +904,7 @@ is <option>--errors-for-leak-kinds=definite,possible</option>
       </itemizedlist>
       
       <para>The increase or decrease for all events above will also be output in
-        the file to provide the delta (increase or decreaseà between 2
+        the file to provide the delta (increase or decrease) between 2
         successive leak searches. For example, <option>iRB</option> is the
         increase of the <option>RB</option> event, <option>dPBk</option> is the
         decrease of <option>PBk</option> event. The values for the increase and
@@ -941,8 +941,9 @@ is <option>--errors-for-leak-kinds=definite,possible</option>
       <para>Controls whether Memcheck reports
       uses of undefined value errors.  Set this to
       <varname>no</varname> if you don't want to see undefined value
-      errors.  It also has the side effect of speeding up
-      Memcheck somewhat.
+      errors. It also has the side effect of speeding up Memcheck somewhat.
+      AddrCheck (removed in Valgrind 3.1.0) functioned like Memcheck with
+      <option>--undef-value-errors=no</option>.
       </para>
     </listitem>
   </varlistentry>
@@ -1027,19 +1028,33 @@ is <option>--errors-for-leak-kinds=definite,possible</option>
 
   <varlistentry id="opt.expensive-definedness-checks" xreflabel="--expensive-definedness-checks">
     <term>
-      <option><![CDATA[--expensive-definedness-checks=<yes|no> [default: no] ]]></option>
+      <option><![CDATA[--expensive-definedness-checks=<no|auto|yes> [default: auto] ]]></option>
     </term>
     <listitem>
-      <para>Controls whether Memcheck should employ more precise but also more
-      expensive (time consuming) algorithms when checking the definedness of a
-      value. The default setting is not to do that and it is usually
-      sufficient. However, for highly optimised code valgrind may sometimes
-      incorrectly complain. 
-      Invoking valgrind with <option>--expensive-definedness-checks=yes</option> 
-      helps but comes at a performance cost. Runtime degradation of
-      25% have been observed but the extra cost depends a lot on the
-      application at hand.
-      </para>
+      <para>Controls whether Memcheck should employ more precise but also
+        more expensive (time consuming) instrumentation when checking the
+        definedness of certain values.  In particular, this affects the
+        instrumentation of integer adds, subtracts and equality
+        comparisons.</para>
+      <para>Selecting <option>--expensive-definedness-checks=yes</option>
+        causes Memcheck to use the most accurate analysis possible.  This
+        minimises false error rates but can cause up to 30% performance
+        degradation.</para>
+      <para>Selecting <option>--expensive-definedness-checks=no</option>
+        causes Memcheck to use the cheapest instrumentation possible.  This
+        maximises performance but will normally give an unusably high false
+        error rate.</para>
+      <para>The default
+        setting, <option>--expensive-definedness-checks=auto</option>, is
+        strongly recommended.  This causes Memcheck to use the minimum of
+        expensive instrumentation needed to achieve the same false error
+        rate as <option>--expensive-definedness-checks=yes</option>.  It
+        also enables an instrumentation-time analysis pass which aims to
+        further reduce the costs of accurate instrumentation.  Overall, the
+        performance loss is generally around 5% relative to
+        <option>--expensive-definedness-checks=no</option>, although this is
+        strongly workload dependent.  Note that the exact instrumentation
+        settings in this mode are architecture dependent.</para>
     </listitem>
   </varlistentry>
 
@@ -1552,6 +1567,22 @@ is necessary.  This allows GCC to copy
 <varname>s1</varname> into <varname>s2</varname> any way it likes, and a
 warning will only be emitted if the uninitialised values are later
 used.</para>
+
+<para>As explained above, Memcheck maintains 8 V bits for each byte in your
+process, including for bytes that are in shared memory.  However, the same piece
+of shared memory can be mapped multiple times, by several processes or even by
+the same process (for example, if the process wants a read-only and a read-write
+mapping of the same page).  For such multiple mappings, Memcheck tracks the V
+bits for each mapping independently. This can lead to false positive errors, as
+the shared memory can be initialised via a first mapping, and accessed via
+another mapping.  The access via this other mapping will have its own V bits,
+which have not been changed when the memory was initialised via the first
+mapping.  The bypass for these false positives is to use Memcheck's client
+requests <varname>VALGRIND_MAKE_MEM_DEFINED</varname> and
+<varname>VALGRIND_MAKE_MEM_UNDEFINED</varname> to inform
+Memcheck about what your program does (or what another process does)
+to these shared memory mappings.
+</para>
 
 </sect2>
 
@@ -2175,6 +2206,13 @@ Address 0x8049E28 len 1 defined
 
   </listitem>
 
+  <listitem>
+    <para><varname>xtmemory [&lt;filename&gt; default xtmemory.kcg.%p.%n]</varname>
+      requests Memcheck tool to produce an xtree heap memory report.
+      See <xref linkend="manual-core.xtree"/> for
+      a detailed explanation about execution trees. </para>
+  </listitem>
+  
 </itemizedlist>
 
 </sect1>

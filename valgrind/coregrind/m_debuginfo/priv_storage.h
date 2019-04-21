@@ -588,6 +588,36 @@ struct _DebugInfo {
       structure is allocated. */
    ULong handle;
 
+   /* The range of epochs for which this DebugInfo is valid.  These also
+      divide the DebugInfo's lifetime into three parts:
+
+      (1) Allocated: but with only .fsm holding useful info -- in
+          particular, not yet holding any debug info.
+          .first_epoch == DebugInfoEpoch_INVALID
+          .last_epoch  == DebugInfoEpoch_INVALID
+
+      (2) Active: containing debug info, and current.
+          .first_epoch != DebugInfoEpoch_INVALID
+          .last_epoch  == DebugInfoEpoch_INVALID
+
+      (3) Archived: containing debug info, but no longer current.
+          .first_epoch != DebugInfoEpoch_INVALID
+          .last_epoch  != DebugInfoEpoch_INVALID
+
+      State (2) corresponds to an object which is currently mapped.  When
+      the object is unmapped, what happens depends on the setting of
+      --keep-debuginfo:
+
+      * when =no, the DebugInfo is removed from debugInfo_list and
+        deleted.
+
+      * when =yes, the DebugInfo is retained in debugInfo_list, but its
+        .last_epoch field is filled in, and current_epoch is advanced.  This
+        effectively moves the DebugInfo into state (3).
+   */
+   DiEpoch first_epoch;
+   DiEpoch last_epoch;
+
    /* Used for debugging only - indicate what stuff to dump whilst
       reading stuff into the seginfo.  Are computed as early in the
       lifetime of the DebugInfo as possible -- at the point when it is
@@ -638,11 +668,14 @@ struct _DebugInfo {
 
       or the normal case, which is the AND of the following:
       (0) size of at least one rx mapping > 0
-      (1) no two DebugInfos with some rx mapping of size > 0 
+      (1) no two non-archived DebugInfos with some rx mapping of size > 0
           have overlapping rx mappings
-      (2) [cfsi_minavma,cfsi_maxavma] does not extend beyond
-          [avma,+size) of one rx mapping; that is, the former
-          is a subrange or equal to the latter.
+      (2) Each address in [cfsi_minavma,cfsi_maxavma] is in an rx mapping
+          or else no cfsi can cover this address.
+          The typical case is a single rx mapping covering the full range.
+          In some cases, the union of several rx mappings covers the range,
+          with possibly some holes between the rx mappings, and no cfsi fall
+          within such an hole.
       (3) all DiCfSI in the cfsi array all have ranges that fall within
           [avma,+size) of that rx mapping.
       (4) all DiCfSI in the cfsi array are non-overlapping

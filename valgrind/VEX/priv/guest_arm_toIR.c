@@ -486,6 +486,7 @@ static IRExpr* align4if ( IRExpr* e, Bool b )
 
 #define OFFB_FPSCR    offsetof(VexGuestARMState,guest_FPSCR)
 #define OFFB_TPIDRURO offsetof(VexGuestARMState,guest_TPIDRURO)
+#define OFFB_TPIDRURW offsetof(VexGuestARMState,guest_TPIDRURW)
 #define OFFB_ITSTATE  offsetof(VexGuestARMState,guest_ITSTATE)
 #define OFFB_QFLAG32  offsetof(VexGuestARMState,guest_QFLAG32)
 #define OFFB_GEFLAG0  offsetof(VexGuestARMState,guest_GEFLAG0)
@@ -935,6 +936,7 @@ static void putMiscReg32 ( UInt    gsoffset,
       case OFFB_GEFLAG1: break;
       case OFFB_GEFLAG2: break;
       case OFFB_GEFLAG3: break;
+      case OFFB_TPIDRURW: break;
       default: vassert(0); /* awaiting more cases */
    }
    vassert(typeOfIRExpr(irsb->tyenv, e) == Ity_I32);
@@ -9143,8 +9145,11 @@ static Bool decode_V6MEDIA_instruction (
         }
      } else {
         if (INSNA(27,20) == BITS8(0,1,1,0,1,0,0,0) &&
-            INSNA(5,4)   == BITS2(0,1)             &&
-            (INSNA(6,6)  == 0 || INSNA(6,6) == 1) ) {
+            INSNA(5,4)   == BITS2(0,1) /*          &&
+            (INSNA(6,6)  == 0 || INSNA(6,6) == 1)
+            This last bit with INSNA(6,6) is correct, but gcc 8 complains
+            (correctly) that it is always true.  So I commented it out
+            to keep gcc quiet. */ ) {
            regD = INSNA(15,12);
            regN = INSNA(19,16);
            regM = INSNA(3,0);
@@ -18702,6 +18707,35 @@ DisResult disInstr_ARM_WRK (
       /* fall through */
    }
 
+   /* ------------ read/write CP15 TPIDRURW register ----------- */
+   /* mcr     p15, 0, r0,  c13, c0, 2 (r->cr xfer)  up to
+      mcr     p15, 0, r14, c13, c0, 2
+
+      mrc     p15, 0, r0,  c13, c0, 2 (rc->r xfer)  up to
+      mrc     p15, 0, r14, c13, c0, 2
+   */
+   if (0x0E0D0F50 == (insn & 0x0FFF0FFF)) { // MCR
+      UInt rS = INSN(15,12);
+      if (rS <= 14) {
+         /* skip r15, that's too stupid to handle */
+         putMiscReg32(OFFB_TPIDRURW, getIRegA(rS), condT);
+         DIP("mcr%s p15,0, r%u, c13, c0, 2\n", nCC(INSN_COND), rS);
+         goto decode_success;
+      }
+      /* fall through */
+   }
+   if (0x0E1D0F50 == (insn & 0x0FFF0FFF)) { // MRC
+      UInt rD = INSN(15,12);
+      if (rD <= 14) {
+         /* skip r15, that's too stupid to handle */
+         putIRegA(rD, IRExpr_Get(OFFB_TPIDRURW, Ity_I32),
+                      condT, Ijk_Boring);
+         DIP("mrc%s p15,0, r%u, c13, c0, 2\n", nCC(INSN_COND), rD);
+         goto decode_success;
+      }
+      /* fall through */
+   }
+
    /* -------------- read CP15 PMUSRENR register ------------- */
    /* mrc     p15, 0, r0,  c9, c14, 0  up to
       mrc     p15, 0, r14, c9, c14, 0
@@ -23116,6 +23150,32 @@ DisResult disInstr_THUMB_WRK (
       if (!isBadRegT(rD)) {
          putIRegT(rD, IRExpr_Get(OFFB_TPIDRURO, Ity_I32), condT);
          DIP("mrc p15,0, r%u, c13, c0, 3\n", rD);
+         goto decode_success;
+      }
+      /* fall through */
+   }
+
+   /* ------------ read/write CP15 TPIDRURW register ----------- */
+   /* mcr     p15, 0, r0,  c13, c0, 2 (r->cr xfer)  up to
+      mcr     p15, 0, r14, c13, c0, 2
+
+      mrc     p15, 0, r0,  c13, c0, 2 (rc->r xfer)  up to
+      mrc     p15, 0, r14, c13, c0, 2
+   */
+   if ((INSN0(15,0) == 0xEE0D) && (INSN1(11,0) == 0x0F50)) {
+      UInt rS = INSN1(15,12);
+      if (!isBadRegT(rS)) {
+         putMiscReg32(OFFB_TPIDRURW, getIRegT(rS), condT);
+         DIP("mcr p15,0, r%u, c13, c0, 2\n", rS);
+         goto decode_success;
+      }
+      /* fall through */
+   }
+   if ((INSN0(15,0) == 0xEE1D) && (INSN1(11,0) == 0x0F50)) {
+      UInt rD = INSN1(15,12);
+      if (!isBadRegT(rD)) {
+         putIRegT(rD, IRExpr_Get(OFFB_TPIDRURW, Ity_I32), condT);
+         DIP("mrc p15,0, r%u, c13, c0, 2\n", rD);
          goto decode_success;
       }
       /* fall through */

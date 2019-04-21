@@ -68,6 +68,7 @@ const RRegUniverse* getRRegUniverse_ARM ( void )
 
    /* Callee saves ones are listed first, since we prefer them
       if they're available. */
+   ru->allocable_start[HRcInt32] = ru->size;
    ru->regs[ru->size++] = hregARM_R4();
    ru->regs[ru->size++] = hregARM_R5();
    ru->regs[ru->size++] = hregARM_R6();
@@ -80,24 +81,34 @@ const RRegUniverse* getRRegUniverse_ARM ( void )
    ru->regs[ru->size++] = hregARM_R2();
    ru->regs[ru->size++] = hregARM_R3();
    ru->regs[ru->size++] = hregARM_R9();
+   ru->allocable_end[HRcInt32] = ru->size - 1;
+
    /* FP registers.  Note: these are all callee-save.  Yay!  Hence we
       don't need to mention them as trashed in getHRegUsage for
       ARMInstr_Call. */
+   ru->allocable_start[HRcFlt64] = ru->size;
    ru->regs[ru->size++] = hregARM_D8();
    ru->regs[ru->size++] = hregARM_D9();
    ru->regs[ru->size++] = hregARM_D10();
    ru->regs[ru->size++] = hregARM_D11();
    ru->regs[ru->size++] = hregARM_D12();
+   ru->allocable_end[HRcFlt64] = ru->size - 1;
+
+   ru->allocable_start[HRcFlt32] = ru->size;
    ru->regs[ru->size++] = hregARM_S26();
    ru->regs[ru->size++] = hregARM_S27();
    ru->regs[ru->size++] = hregARM_S28();
    ru->regs[ru->size++] = hregARM_S29();
    ru->regs[ru->size++] = hregARM_S30();
+   ru->allocable_end[HRcFlt32] = ru->size - 1;
+
+   ru->allocable_start[HRcVec128] = ru->size;
    ru->regs[ru->size++] = hregARM_Q8();
    ru->regs[ru->size++] = hregARM_Q9();
    ru->regs[ru->size++] = hregARM_Q10();
    ru->regs[ru->size++] = hregARM_Q11();
    ru->regs[ru->size++] = hregARM_Q12();
+   ru->allocable_end[HRcVec128] = ru->size - 1;
    ru->allocable = ru->size;
 
    /* And other regs, not available to the allocator. */
@@ -140,35 +151,30 @@ const RRegUniverse* getRRegUniverse_ARM ( void )
 }
 
 
-void ppHRegARM ( HReg reg )  {
+UInt ppHRegARM ( HReg reg )  {
    Int r;
    /* Be generic for all virtual regs. */
    if (hregIsVirtual(reg)) {
-      ppHReg(reg);
-      return;
+      return ppHReg(reg);
    }
    /* But specific for real regs. */
    switch (hregClass(reg)) {
       case HRcInt32:
          r = hregEncoding(reg);
          vassert(r >= 0 && r < 16);
-         vex_printf("r%d", r);
-         return;
+         return vex_printf("r%d", r);
       case HRcFlt64:
          r = hregEncoding(reg);
          vassert(r >= 0 && r < 32);
-         vex_printf("d%d", r);
-         return;
+         return vex_printf("d%d", r);
       case HRcFlt32:
          r = hregEncoding(reg);
          vassert(r >= 0 && r < 32);
-         vex_printf("s%d", r);
-         return;
+         return vex_printf("s%d", r);
       case HRcVec128:
          r = hregEncoding(reg);
          vassert(r >= 0 && r < 16);
-         vex_printf("q%d", r);
-         return;
+         return vex_printf("q%d", r);
       default:
          vpanic("ppHRegARM");
    }
@@ -2102,6 +2108,12 @@ void getRegUsage_ARMInstr ( HRegUsage* u, const ARMInstr* i, Bool mode64 )
       case ARMin_Mov:
          addHRegUse(u, HRmWrite, i->ARMin.Mov.dst);
          addRegUsage_ARMRI84(u, i->ARMin.Mov.src);
+
+         if (i->ARMin.Mov.src->tag == ARMri84_R) {
+            u->isRegRegMove = True;
+            u->regMoveSrc   = i->ARMin.Mov.src->ARMri84.R.reg;
+            u->regMoveDst   = i->ARMin.Mov.dst;
+         }
          return;
       case ARMin_Imm32:
          addHRegUse(u, HRmWrite, i->ARMin.Imm32.dst);
@@ -2250,10 +2262,22 @@ void getRegUsage_ARMInstr ( HRegUsage* u, const ARMInstr* i, Bool mode64 )
       case ARMin_VUnaryD:
          addHRegUse(u, HRmWrite, i->ARMin.VUnaryD.dst);
          addHRegUse(u, HRmRead, i->ARMin.VUnaryD.src);
+
+         if (i->ARMin.VUnaryD.op == ARMvfpu_COPY) {
+            u->isRegRegMove = True;
+            u->regMoveSrc   = i->ARMin.VUnaryD.src;
+            u->regMoveDst   = i->ARMin.VUnaryD.dst;
+         }
          return;
       case ARMin_VUnaryS:
          addHRegUse(u, HRmWrite, i->ARMin.VUnaryS.dst);
          addHRegUse(u, HRmRead, i->ARMin.VUnaryS.src);
+
+         if (i->ARMin.VUnaryS.op == ARMvfpu_COPY) {
+            u->isRegRegMove = True;
+            u->regMoveSrc   = i->ARMin.VUnaryS.src;
+            u->regMoveDst   = i->ARMin.VUnaryS.dst;
+         }
          return;
       case ARMin_VCmpD:
          addHRegUse(u, HRmRead, i->ARMin.VCmpD.argL);
@@ -2344,6 +2368,12 @@ void getRegUsage_ARMInstr ( HRegUsage* u, const ARMInstr* i, Bool mode64 )
       case ARMin_NUnary:
          addHRegUse(u, HRmWrite, i->ARMin.NUnary.dst);
          addHRegUse(u, HRmRead, i->ARMin.NUnary.src);
+
+         if (i->ARMin.NUnary.op == ARMneon_COPY) {
+            u->isRegRegMove = True;
+            u->regMoveSrc   = i->ARMin.NUnary.src;
+            u->regMoveDst   = i->ARMin.NUnary.dst;
+         }
          return;
       case ARMin_NUnaryS:
          addHRegUse(u, HRmWrite, i->ARMin.NUnaryS.dst->reg);
@@ -2614,50 +2644,6 @@ void mapRegs_ARMInstr ( HRegRemap* m, ARMInstr* i, Bool mode64 )
    }
 }
 
-/* Figure out if i represents a reg-reg move, and if so assign the
-   source and destination to *src and *dst.  If in doubt say No.  Used
-   by the register allocator to do move coalescing. 
-*/
-Bool isMove_ARMInstr ( const ARMInstr* i, HReg* src, HReg* dst )
-{
-   /* Moves between integer regs */
-   switch (i->tag) {
-      case ARMin_Mov:
-         if (i->ARMin.Mov.src->tag == ARMri84_R) {
-            *src = i->ARMin.Mov.src->ARMri84.R.reg;
-            *dst = i->ARMin.Mov.dst;
-            return True;
-         }
-         break;
-      case ARMin_VUnaryD:
-         if (i->ARMin.VUnaryD.op == ARMvfpu_COPY) {
-            *src = i->ARMin.VUnaryD.src;
-            *dst = i->ARMin.VUnaryD.dst;
-            return True;
-         }
-         break;
-      case ARMin_VUnaryS:
-         if (i->ARMin.VUnaryS.op == ARMvfpu_COPY) {
-            *src = i->ARMin.VUnaryS.src;
-            *dst = i->ARMin.VUnaryS.dst;
-            return True;
-         }
-         break;
-      case ARMin_NUnary:
-         if (i->ARMin.NUnary.op == ARMneon_COPY) {
-            *src = i->ARMin.NUnary.src;
-            *dst = i->ARMin.NUnary.dst;
-            return True;
-         }
-         break;
-      default:
-         break;
-   }
-
-   return False;
-}
-
-
 /* Generate arm spill/reload instructions under the direction of the
    register allocator.  Note it's critical these don't write the
    condition codes. */
@@ -2772,6 +2758,22 @@ void genReload_ARM ( /*OUT*/HInstr** i1, /*OUT*/HInstr** i2,
    }
 }
 
+ARMInstr* genMove_ARM(HReg from, HReg to, Bool mode64)
+{
+   switch (hregClass(from)) {
+   case HRcInt32:
+      return ARMInstr_Mov(to, ARMRI84_R(from));
+   case HRcFlt32:
+      return ARMInstr_VUnaryS(ARMvfpu_COPY, to, from);
+   case HRcFlt64:
+      return ARMInstr_VUnaryD(ARMvfpu_COPY, to, from);
+   case HRcVec128:
+      return ARMInstr_NUnary(ARMneon_COPY, to, from, 4, False);
+   default:
+      ppHRegClass(hregClass(from));
+      vpanic("genMove_ARM: unimplemented regclass");
+   }
+}
 
 /* Emit an instruction into buf and return the number of bytes used.
    Note that buf is not the insn's final place, and therefore it is

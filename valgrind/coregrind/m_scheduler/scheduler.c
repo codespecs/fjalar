@@ -172,6 +172,56 @@ static struct sched_lock *the_BigLock;
    Helper functions for the scheduler.
    ------------------------------------------------------------------ */
 
+static void maybe_progress_report ( UInt reporting_interval_seconds )
+{
+   /* This is when the next report is due, in user cpu milliseconds since
+      process start.  This is a global variable so this won't be thread-safe
+      if Valgrind is ever made multithreaded.  For now it's fine. */
+   static UInt next_report_due_at = 0;
+
+   /* First of all, figure out whether another report is due.  It
+      probably isn't. */
+   UInt user_ms = VG_(get_user_milliseconds)();
+   if (LIKELY(user_ms < next_report_due_at))
+      return;
+
+   Bool first_ever_call = next_report_due_at == 0;
+
+   /* A report is due.  First, though, set the time for the next report. */
+   next_report_due_at += 1000 * reporting_interval_seconds;
+
+   /* If it's been an excessively long time since the last check, we
+      might have gone more than one reporting interval forward.  Guard
+      against that. */
+   while (next_report_due_at <= user_ms)
+      next_report_due_at += 1000 * reporting_interval_seconds;
+
+   /* Also we don't want to report anything on the first call, but we
+      have to wait till this point to leave, so that we set up the
+      next-call time correctly. */
+   if (first_ever_call)
+      return;
+
+   /* Print the report. */
+   UInt   user_cpu_seconds  = user_ms / 1000;
+   UInt   wallclock_seconds = VG_(read_millisecond_timer)() / 1000;
+   Double millionEvCs   = ((Double)bbs_done) / 1000000.0;
+   Double thousandTIns  = ((Double)VG_(get_bbs_translated)()) / 1000.0;
+   Double thousandTOuts = ((Double)VG_(get_bbs_discarded_or_dumped)()) / 1000.0;
+   UInt   nThreads      = VG_(count_living_threads)();
+
+   if (VG_(clo_verbosity) > 0) {
+      VG_(dmsg)("PROGRESS: U %'us, W %'us, %.1f%% CPU, EvC %.2fM, "
+                "TIn %.1fk, TOut %.1fk, #thr %u\n",
+                user_cpu_seconds, wallclock_seconds,
+                100.0
+                   * (Double)(user_cpu_seconds)
+                   / (Double)(wallclock_seconds == 0 ? 1 : wallclock_seconds),
+                millionEvCs,
+                thousandTIns, thousandTOuts, nThreads);
+   }
+}
+
 static
 void print_sched_event ( ThreadId tid, const HChar* what )
 {
@@ -930,7 +980,7 @@ void run_thread_for_a_while ( /*OUT*/HWord* two_words,
    /* Invalidate any in-flight LL/SC transactions, in the case that we're
       using the fallback LL/SC implementation.  See bugs 344524 and 369459. */
 #  if defined(VGP_mips32_linux) || defined(VGP_mips64_linux)
-   tst->arch.vex.guest_LLaddr = (HWord)(-1);
+   tst->arch.vex.guest_LLaddr = (RegWord)(-1);
 #  elif defined(VGP_arm64_linux)
    tst->arch.vex.guest_LLSC_SIZE = 0;
 #  endif
@@ -1317,6 +1367,11 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
 	 scheduler_sanity(tid);
 	 VG_(sanity_check_general)(False);
 
+         /* Possibly make a progress report */
+         if (UNLIKELY(VG_(clo_progress_interval) > 0)) {
+            maybe_progress_report( VG_(clo_progress_interval) );
+         }
+
 	 /* Look for any pending signals for this thread, and set them up
 	    for delivery */
 	 VG_(poll_signals)(tid);
@@ -1538,6 +1593,10 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
          VG_(synth_sigbus)(tid);
          break;
 
+      case VEX_TRC_JMP_SIGFPE:
+         VG_(synth_sigfpe)(tid, 0);
+         break;
+
       case VEX_TRC_JMP_SIGFPE_INTDIV:
          VG_(synth_sigfpe)(tid, VKI_FPE_INTDIV);
          break;
@@ -1595,7 +1654,7 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
          break;
 
       case VEX_TRC_JMP_FLUSHDCACHE: {
-         void* start = (void*)VG_(threads)[tid].arch.vex.guest_CMSTART;
+         void* start = (void*)(Addr)VG_(threads)[tid].arch.vex.guest_CMSTART;
          SizeT len   = VG_(threads)[tid].arch.vex.guest_CMLEN;
          VG_(debugLog)(2, "sched", "flush_dcache(%p, %lu)\n", start, len);
          VG_(flush_dcache)(start, len);
@@ -1845,7 +1904,7 @@ Int print_client_message( ThreadId tid, const HChar *format,
 static
 void do_client_request ( ThreadId tid )
 {
-   UWord* arg = (UWord*)(CLREQ_ARGS(VG_(threads)[tid].arch));
+   UWord* arg = (UWord*)(Addr)(CLREQ_ARGS(VG_(threads)[tid].arch));
    UWord req_no = arg[0];
 
    if (0)
@@ -2039,8 +2098,14 @@ void do_client_request ( ThreadId tid )
 
          VG_(memset)(buf64, 0, 64);
          UInt linenum = 0;
+
+         // Unless the guest would become epoch aware (and would need to
+         // describe IP addresses of dlclosed libs), using cur_ep is a
+         // reasonable choice.
+         const DiEpoch cur_ep = VG_(current_DiEpoch)();
+
          Bool ok = VG_(get_filename_linenum)(
-                      ip, &buf, NULL, &linenum
+                      cur_ep, ip, &buf, NULL, &linenum
                    );
          if (ok) {
             /* For backward compatibility truncate the filename to

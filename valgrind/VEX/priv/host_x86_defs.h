@@ -47,12 +47,12 @@
 */
 
 #define ST_IN static inline
-ST_IN HReg hregX86_EAX   ( void ) { return mkHReg(False, HRcInt32,  0,  0); }
-ST_IN HReg hregX86_EBX   ( void ) { return mkHReg(False, HRcInt32,  3,  1); }
-ST_IN HReg hregX86_ECX   ( void ) { return mkHReg(False, HRcInt32,  1,  2); }
-ST_IN HReg hregX86_EDX   ( void ) { return mkHReg(False, HRcInt32,  2,  3); }
-ST_IN HReg hregX86_ESI   ( void ) { return mkHReg(False, HRcInt32,  6,  4); }
-ST_IN HReg hregX86_EDI   ( void ) { return mkHReg(False, HRcInt32,  7,  5); }
+ST_IN HReg hregX86_EBX   ( void ) { return mkHReg(False, HRcInt32,  3,  0); }
+ST_IN HReg hregX86_ESI   ( void ) { return mkHReg(False, HRcInt32,  6,  1); }
+ST_IN HReg hregX86_EDI   ( void ) { return mkHReg(False, HRcInt32,  7,  2); }
+ST_IN HReg hregX86_EAX   ( void ) { return mkHReg(False, HRcInt32,  0,  3); }
+ST_IN HReg hregX86_ECX   ( void ) { return mkHReg(False, HRcInt32,  1,  4); }
+ST_IN HReg hregX86_EDX   ( void ) { return mkHReg(False, HRcInt32,  2,  5); }
 
 ST_IN HReg hregX86_FAKE0 ( void ) { return mkHReg(False, HRcFlt64,  0,  6); }
 ST_IN HReg hregX86_FAKE1 ( void ) { return mkHReg(False, HRcFlt64,  1,  7); }
@@ -74,7 +74,7 @@ ST_IN HReg hregX86_ESP   ( void ) { return mkHReg(False, HRcInt32,  4, 20); }
 ST_IN HReg hregX86_EBP   ( void ) { return mkHReg(False, HRcInt32,  5, 21); }
 #undef ST_IN
 
-extern void ppHRegX86 ( HReg );
+extern UInt ppHRegX86 ( HReg );
 
 
 /* --------- Condition codes, Intel encoding. --------- */
@@ -716,7 +716,6 @@ extern void ppX86Instr ( const X86Instr*, Bool );
    of the underlying instruction set. */
 extern void         getRegUsage_X86Instr ( HRegUsage*, const X86Instr*, Bool );
 extern void         mapRegs_X86Instr     ( HRegRemap*, X86Instr*, Bool );
-extern Bool         isMove_X86Instr      ( const X86Instr*, HReg*, HReg* );
 extern Int          emit_X86Instr   ( /*MB_MOD*/Bool* is_profInc,
                                       UChar* buf, Int nbuf, const X86Instr* i, 
                                       Bool mode64,
@@ -730,7 +729,7 @@ extern void genSpill_X86  ( /*OUT*/HInstr** i1, /*OUT*/HInstr** i2,
                             HReg rreg, Int offset, Bool );
 extern void genReload_X86 ( /*OUT*/HInstr** i1, /*OUT*/HInstr** i2,
                             HReg rreg, Int offset, Bool );
-
+extern X86Instr* genMove_X86(HReg from, HReg to, Bool);
 extern X86Instr* directReload_X86 ( X86Instr* i, HReg vreg, Short spill_off );
 
 extern const RRegUniverse* getRRegUniverse_X86 ( void );

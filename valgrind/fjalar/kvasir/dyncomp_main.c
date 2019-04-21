@@ -196,7 +196,8 @@ UInt val_uf_tag_union(UInt tag1, UInt tag2) {
     tag1_obj = GET_UF_OBJECT_PTR(tag1);
     tag2_obj = GET_UF_OBJECT_PTR(tag2);
     leader = uf_union(tag1_obj, tag2_obj);
-    eip_info = VG_(describe_IP)(eip, NULL);
+    // Describe this (probably live) address with current epoch
+    eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), eip, NULL);
 
     DYNCOMP_TPRINTF("[DynComp-v1] Merging %u with %u to get %u at %s\n",
                     tag1, tag2, leader->tag, eip_info);
@@ -492,7 +493,8 @@ VG_REGPARM(2)
 UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
   Addr eip = VG_(get_IP)(VG_(get_running_tid)());
   const HChar *eip_info;
-  eip_info = VG_(describe_IP)(eip, NULL);
+  // Describe this (probably live) address with current epoch
+  eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), eip, NULL);
 
   if (dyncomp_profile_tags) {
     mergeTagsCount++;

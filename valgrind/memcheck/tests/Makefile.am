@@ -64,6 +64,7 @@ dist_noinst_SCRIPTS = \
 	filter_allocs \
 	filter_dw4 \
 	filter_leak_cases_possible \
+	filter_leak_cpp_interior \
 	filter_stderr filter_xml \
 	filter_strchr \
 	filter_varinfo3 \
@@ -79,6 +80,10 @@ EXTRA_DIST = \
 	atomic_incs.stdout.exp-32bit atomic_incs.stdout.exp-64bit \
 	badaddrvalue.stderr.exp \
 	badaddrvalue.stdout.exp badaddrvalue.vgtest \
+        exit_on_first_error.stderr.exp \
+        exit_on_first_error.vgtest \
+        exit_on_first_error_with_xml.stderr.exp \
+        exit_on_first_error_with_xml.vgtest \
 	badfree-2trace.stderr.exp badfree-2trace.vgtest \
 	badfree.stderr.exp badfree.vgtest \
 	badfree3.stderr.exp badfree3.vgtest \
@@ -113,8 +118,7 @@ EXTRA_DIST = \
 	cond_st.vgtest cond_st.stdout.exp cond_st.stderr.exp-arm \
 		cond_st.stderr.exp-64bit-non-arm \
 		cond_st.stderr.exp-32bit-non-arm \
-	leak_cpp_interior.stderr.exp leak_cpp_interior.stderr.exp-64bit leak_cpp_interior.vgtest \
-		leak_cpp_interior.stderr.exp-solaris leak_cpp_interior.stderr.exp-64bit-solaris \
+	leak_cpp_interior.stderr.exp leak_cpp_interior.stderr.exp-64bit leak_cpp_interior.vgtest libstdc++.supp \
 	custom_alloc.stderr.exp custom_alloc.vgtest \
 		custom_alloc.stderr.exp-s390x-mvc \
 	custom-overlap.stderr.exp custom-overlap.vgtest \
@@ -272,6 +276,10 @@ EXTRA_DIST = \
 	suppfree.stderr.exp suppfree.supp suppfree.vgtest \
 	suppfreecollision.stderr.exp suppfreecollision.supp suppfreecollision.vgtest \
 	supponlyobj.stderr.exp supponlyobj.supp supponlyobj.vgtest \
+	suppsrc_lineno.stderr.exp suppsrc_lineno.stdout.exp suppsrc_lineno.vgtest \
+	suppsrc_lineno.supp \
+	suppsrc_sanlineno.stderr.exp suppsrc_sanlineno.stdout.exp suppsrc_sanlineno.vgtest \
+	suppsrc_sanlineno.supp \
 	suppvarinfo5.stderr.exp suppvarinfo5.supp suppvarinfo5.vgtest \
 	test-plo-no.vgtest test-plo-no.stdout.exp \
 	    test-plo-no.stderr.exp-le64 test-plo-no.stderr.exp-le32 \
@@ -469,7 +477,7 @@ err_disable3_LDADD 	= -lpthread
 err_disable4_LDADD 	= -lpthread
 err_disable4_CFLAGS	= $(AM_CFLAGS)
 if VGCONF_OS_IS_SOLARIS
-err_disable4_CFLAGS	+= -std=c99 -D_XOPEN_SOURCE=600
+err_disable4_CFLAGS	+= -D_XOPEN_SOURCE=600
 endif
 reach_thread_register_CFLAGS	= $(AM_CFLAGS) -O2
 reach_thread_register_LDADD	= -lpthread
@@ -497,7 +505,7 @@ manuel1_CFLAGS = $(AM_CFLAGS) @FLAG_W_NO_UNINITIALIZED@
 
 memalign2_CFLAGS	= $(AM_CFLAGS)
 if VGCONF_OS_IS_SOLARIS
-memalign2_CFLAGS	+= -std=c99 -D__EXTENSIONS__
+memalign2_CFLAGS	+= -D__EXTENSIONS__
 endif
 
 memcmptest_CFLAGS	= $(AM_CFLAGS) -fno-builtin-memcmp
@@ -533,7 +541,7 @@ resvn_stack_CFLAGS      = $(AM_CFLAGS) @FLAG_W_NO_UNINITIALIZED@
 
 sendmsg_CFLAGS		= $(AM_CFLAGS)
 if VGCONF_OS_IS_SOLARIS
-sendmsg_CFLAGS		+= -std=c99 -D_XOPEN_SOURCE=600
+sendmsg_CFLAGS		+= -D_XOPEN_SOURCE=600
 sendmsg_LDADD		= -lsocket -lnsl
 endif
 
@@ -587,7 +595,7 @@ else
  varinfo5so_so_LDFLAGS  = -fpic $(AM_FLAG_M3264_PRI) -shared \
 				-Wl,-soname -Wl,varinfo5so.so
 endif
-varinforestrict_CFLAGS	= $(AM_CFLAGS) -O0 -g -std=c99
+varinforestrict_CFLAGS	= $(AM_CFLAGS) -O0 -g
 
 # Build shared object for wrap7
 wrap7_SOURCES           = wrap7.c

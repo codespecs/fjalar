@@ -158,6 +158,9 @@ typedef
 #define VEX_HWCAPS_S390X_FPEXT (1<<15)  /* Floating point extension facility */
 #define VEX_HWCAPS_S390X_LSC   (1<<16)  /* Conditional load/store facility */
 #define VEX_HWCAPS_S390X_PFPO  (1<<17)  /* Perform floating point ops facility */
+#define VEX_HWCAPS_S390X_VX    (1<<18)  /* Vector facility */
+#define VEX_HWCAPS_S390X_MSA5  (1<<19)  /* message security assistance facility */
+
 
 /* Special value representing all available s390x hwcaps */
 #define VEX_HWCAPS_S390X_ALL   (VEX_HWCAPS_S390X_LDISP | \
@@ -171,7 +174,9 @@ typedef
                                 VEX_HWCAPS_S390X_LSC   | \
                                 VEX_HWCAPS_S390X_ETF3  | \
                                 VEX_HWCAPS_S390X_ETF2  | \
-                                VEX_HWCAPS_S390X_PFPO)
+                                VEX_HWCAPS_S390X_PFPO  | \
+                                VEX_HWCAPS_S390X_VX    | \
+                                VEX_HWCAPS_S390X_MSA5)
 
 #define VEX_HWCAPS_S390X(x)  ((x) & ~VEX_S390X_MODEL_MASK)
 #define VEX_S390X_MODEL(x)   ((x) &  VEX_S390X_MODEL_MASK)
@@ -220,6 +225,7 @@ typedef
  */
 #define VEX_PRID_IMP_34K                0x9500
 #define VEX_PRID_IMP_74K                0x9700
+#define VEX_PRID_IMP_P5600              0xa800
 
 /*
  * Instead of Company Options values, bits 31:24 will be packed with
@@ -246,6 +252,13 @@ typedef
 /* Check if the processor supports MIPS32R2. */
 #define VEX_MIPS_CPU_HAS_MIPS32R2(x) (VEX_MIPS_EX_INFO(x) & \
                                       VEX_MIPS_CPU_ISA_M32R2)
+/* Check if the processor supports MIPS64R2. */
+#define VEX_MIPS_CPU_HAS_MIPS64R2(x) (VEX_MIPS_EX_INFO(x) & \
+                                      VEX_MIPS_CPU_ISA_M64R2)
+/* Check if the processor supports MIPSR6. */
+#define VEX_MIPS_CPU_HAS_MIPSR6(x) (VEX_MIPS_EX_INFO(x) & \
+                                    (VEX_MIPS_CPU_ISA_M32R6 | \
+                                    VEX_MIPS_CPU_ISA_M64R6))
 /* Check if the processor supports DSP ASE Rev 2. */
 #define VEX_MIPS_PROC_DSP2(x) ((VEX_MIPS_COMP_ID(x) == VEX_PRID_COMP_MIPS) && \
                                (VEX_MIPS_PROC_ID(x) == VEX_PRID_IMP_74K))
@@ -253,6 +266,11 @@ typedef
 #define VEX_MIPS_PROC_DSP(x)  (VEX_MIPS_PROC_DSP2(x) || \
                                ((VEX_MIPS_COMP_ID(x) == VEX_PRID_COMP_MIPS) && \
                                (VEX_MIPS_PROC_ID(x) == VEX_PRID_IMP_34K)))
+
+/* Check if the processor supports MIPS MSA (SIMD)*/
+#define VEX_MIPS_PROC_MSA(x) ((VEX_MIPS_COMP_ID(x) == VEX_PRID_COMP_MIPS) && \
+                              (VEX_MIPS_PROC_ID(x) == VEX_PRID_IMP_P5600) && \
+                              (VEX_MIPS_HOST_FP_MODE(x)))
 
 /* These return statically allocated strings. */
 
@@ -415,8 +433,8 @@ typedef
          itself?  True => descriptor, False => code. */
       Bool host_ppc_calls_use_fndescrs;
 
-      /* ??? Description ??? */
-      Bool guest_mips_fp_mode64;
+      /* MIPS32/MIPS64 GUESTS only: emulated FPU mode. */
+      UInt guest_mips_fp_mode;
    }
    VexAbiInfo;
 
@@ -497,6 +515,11 @@ typedef
       /* EXPERIMENTAL: chase across conditional branches?  Not all
          front ends honour this.  Default: NO. */
       Bool guest_chase_cond;
+      /* Register allocator version. Allowed values are:
+         - '2': previous, good and slow implementation.
+         - '3': current, faster implementation; perhaps producing slightly worse
+                spilling decisions. */
+      UInt regalloc_version;
    }
    VexControl;
 

@@ -125,9 +125,14 @@ static void usage_NORETURN ( Bool debug_help )
 "    --demangle=no|yes         automatically demangle C++ names? [yes]\n"
 "    --num-callers=<number>    show <number> callers in stack traces [12]\n"
 "    --error-limit=no|yes      stop showing new errors if too many? [yes]\n"
+"    --exit-on-first-error=no|yes exit code on the first error found? [no]\n"
 "    --error-exitcode=<number> exit code to return if errors found [0=disable]\n"
 "    --error-markers=<begin>,<end> add lines with begin/end markers before/after\n"
 "                              each error output in plain text mode [none]\n"
+"    --keep-debuginfo=no|yes   Keep symbols etc for unloaded code [no]\n"
+"                              This allows saved stack traces (e.g. memory leaks)\n"
+"                              to include file/line info for code that has been\n"
+"                              dlclose'd (or similar)\n"
 "    --show-below-main=no|yes  continue stack traces below main() [no]\n"
 "    --default-suppressions=yes|no\n"
 "                              load default suppressions [yes]\n"
@@ -252,7 +257,9 @@ static void usage_NORETURN ( Bool debug_help )
 "    --core-redzone-size=<number>  set minimum size of redzones added before/after\n"
 "                              heap blocks allocated for Valgrind internal use (in bytes) [4]\n"
 "    --wait-for-gdb=yes|no     pause on startup to wait for gdb attach\n"
-"    --sym-offsets=yes|no      show syms in form 'name+offset' ? [no]\n"
+"    --sym-offsets=yes|no      show syms in form 'name+offset'? [no]\n"
+"    --progress-interval=<number>  report progress every <number>\n"
+"                                  CPU seconds [0, meaning disabled]\n"
 "    --command-line-only=no|yes  only use command line options [no]\n"
 "\n"
 "  Vex options for all Valgrind tools:\n"
@@ -286,6 +293,7 @@ static void usage_NORETURN ( Bool debug_help )
 "         0000 0000   show summary profile only\n"
 "        (Nb: you need --trace-notbelow and/or --trace-notabove\n"
 "             with --trace-flags for full details)\n"
+"    --vex-regalloc-version=2|3             [3]\n"
 "\n"
 "  debugging options for Valgrind tools that report errors\n"
 "    --dump-error=<number>     show translation for basic block associated\n"
@@ -428,12 +436,17 @@ static void early_process_cmd_line_options ( /*OUT*/Int* need_help )
       if (VG_(clo_verbosity) <= 1)
          VG_(printf)("valgrind-" VERSION "\n");
       else
-         VG_(printf)("valgrind-" VERSION "-" VGSVN "-vex-" VEXSVN "\n");
+         VG_(printf)("valgrind-" VERSION "-" VGGIT "\n");
       VG_(exit)(0);
    }
 
    /* For convenience */
    VG_N_THREADS = VG_(clo_max_threads);
+
+#  if defined(VGO_solaris) || defined(VGO_darwin)
+   /* Sim hint no-nptl-pthread-stackcache should be ignored. */
+   VG_(clo_sim_hints) &= ~SimHint2S(SimHint_no_nptl_pthread_stackcache);
+#  endif
 }
 
 /* The main processing for command line options.  See comments above
@@ -595,6 +608,7 @@ void main_process_cmd_line_options( void )
       else if VG_BOOL_CLO(arg, "--demangle",       VG_(clo_demangle)) {}
       else if VG_STR_CLO (arg, "--soname-synonyms",VG_(clo_soname_synonyms)) {}
       else if VG_BOOL_CLO(arg, "--error-limit",    VG_(clo_error_limit)) {}
+      else if VG_BOOL_CLO(arg, "--exit-on-first-error", VG_(clo_exit_on_first_error)) {}
       else if VG_INT_CLO (arg, "--error-exitcode", VG_(clo_error_exitcode)) {}
       else if VG_STR_CLO (arg, "--error-markers",  tmp_str) {
          Int m;
@@ -626,6 +640,7 @@ void main_process_cmd_line_options( void )
       else if VG_BOOL_CLO(arg, "--run-libc-freeres", VG_(clo_run_libc_freeres)) {}
       else if VG_BOOL_CLO(arg, "--run-cxx-freeres",  VG_(clo_run_cxx_freeres)) {}
       else if VG_BOOL_CLO(arg, "--show-below-main",  VG_(clo_show_below_main)) {}
+      else if VG_BOOL_CLO(arg, "--keep-debuginfo",   VG_(clo_keep_debuginfo)) {}
       else if VG_BOOL_CLO(arg, "--time-stamp",       VG_(clo_time_stamp)) {}
       else if VG_BOOL_CLO(arg, "--track-fds",        VG_(clo_track_fds)) {}
       else if VG_BOOL_CLO(arg, "--trace-children",   VG_(clo_trace_children)) {}
@@ -658,6 +673,8 @@ void main_process_cmd_line_options( void )
       else if VG_BOOL_CLO(arg, "--trace-syscalls",   VG_(clo_trace_syscalls)) {}
       else if VG_BOOL_CLO(arg, "--wait-for-gdb",     VG_(clo_wait_for_gdb)) {}
       else if VG_BOOL_CLO(arg, "--sym-offsets",      VG_(clo_sym_offsets)) {}
+      else if VG_BINT_CLO(arg, "--progress-interval",
+                               VG_(clo_progress_interval), 0, 3600) {}
       else if VG_BOOL_CLO(arg, "--read-inline-info", VG_(clo_read_inline_info)) {}
       else if VG_BOOL_CLO(arg, "--read-var-info",    VG_(clo_read_var_info)) {}
 
@@ -703,6 +720,8 @@ void main_process_cmd_line_options( void )
                        VG_(clo_vex_control).iropt_verbosity, 0, 10) {}
       else if VG_BINT_CLO(arg, "--vex-iropt-level",
                        VG_(clo_vex_control).iropt_level, 0, 2) {}
+      else if VG_BINT_CLO(arg, "--vex-regalloc-version",
+                       VG_(clo_vex_control).regalloc_version, 2, 3) {}
 
       else if VG_STRINDEX_CLO(arg, "--vex-iropt-register-updates",
                                    pxStrings, ix) {
@@ -925,6 +944,11 @@ void main_process_cmd_line_options( void )
       VG_(fmsg_bad_option)("--gen-suppressions=yes",
          "Can't use --gen-suppressions= with %s\n"
          "because it doesn't generate errors.\n", VG_(details).name);
+   }
+   if ((VG_(clo_exit_on_first_error)) &&
+       (VG_(clo_error_exitcode)==0)) {
+      VG_(fmsg_bad_option)("--exit-on-first-error=yes",
+         "You must define a non nul exit error code, with --error-exitcode=...\n");
    }
 
 #  if !defined(VGO_darwin)
@@ -1636,10 +1660,10 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
    {
       /* The tool's "needs" will by now be finalised, since it has no
          further opportunity to specify them.  So now sanity check
-         them. */
+         and finish initialising the needs. */
       const HChar* s;
       Bool  ok;
-      ok = VG_(sanity_check_needs)( &s );
+      ok = VG_(finish_needs_init)( &s );
       if (!ok) {
          VG_(core_panic)(s);
       }
@@ -2251,7 +2275,8 @@ static void final_tidyup(ThreadId tid)
    }
 
 #  if defined(VGP_ppc64be_linux)
-   Addr r2 = VG_(get_tocptr)(freeres_wrapper);
+   Addr r2 = VG_(get_tocptr)(VG_(current_DiEpoch)(),
+                             freeres_wrapper);
    if (r2 == 0) {
       VG_(message)(Vg_UserMsg, 
                    "Caught __NR_exit, but can't run __gnu_cxx::__freeres()\n");
