@@ -2157,8 +2157,8 @@ void VG_(synth_sigtrap)(ThreadId tid)
 // Synthesise a SIGFPE.
 void VG_(synth_sigfpe)(ThreadId tid, UInt code)
 {
-// Only tested on mips32 and mips64
-#if !defined(VGA_mips32) && !defined(VGA_mips64)
+// Only tested on mips32, mips64, and s390x
+#if !defined(VGA_mips32) && !defined(VGA_mips64) && !defined(VGA_s390x)
    vg_assert(0);
 #else
    vki_siginfo_t info;
@@ -2778,7 +2778,7 @@ void sync_signalhandler_from_kernel ( ThreadId tid,
 
       VG_(dmsg)("si_code=%d;  Faulting address: %p;  sp: %#lx\n",
                 info->si_code, info->VKI_SIGINFO_si_addr,
-                VG_UCONTEXT_STACK_PTR(uc));
+                (Addr)VG_UCONTEXT_STACK_PTR(uc));
 
       if (0)
          VG_(kill_self)(sigNo);  /* generate a core dump */
@@ -2824,7 +2824,7 @@ void sync_signalhandler ( Int sigNo,
       VG_(dmsg)("sync signal handler: "
                 "signal=%d, si_code=%d, EIP=%#lx, eip=%#lx, from %s\n",
                 sigNo, info->si_code, VG_(get_IP)(tid), 
-                VG_UCONTEXT_INSTR_PTR(uc),
+                (Addr)VG_UCONTEXT_INSTR_PTR(uc),
                 ( from_user ? "user" : "kernel" ));
    }
    vg_assert(sigNo >= 1 && sigNo <= VG_(max_signal));

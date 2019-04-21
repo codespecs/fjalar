@@ -210,12 +210,14 @@ static HChar* get_perm_string(const HChar* s)
 static void get_debug_info(Addr instr_addr, const HChar **dir,
                            const HChar **file, const HChar **fn, UInt* line)
 {
+   DiEpoch ep = VG_(current_DiEpoch)();
    Bool found_file_line = VG_(get_filename_linenum)(
+                             ep,
                              instr_addr, 
                              file, dir,
                              line
                           );
-   Bool found_fn        = VG_(get_fnname)(instr_addr, fn);
+   Bool found_fn        = VG_(get_fnname)(ep, instr_addr, fn);
 
    if (!found_file_line) {
       *file = "???";
@@ -1000,7 +1002,7 @@ void addEvent_Bc ( CgState* cgs, InstrInfo* inode, IRAtom* guard )
    Event* evt;
    tl_assert(isIRAtom(guard));
    tl_assert(typeOfIRExpr(cgs->sbOut->tyenv, guard) 
-             == (sizeof(HWord)==4 ? Ity_I32 : Ity_I64));
+             == (sizeof(RegWord)==4 ? Ity_I32 : Ity_I64));
    if (!clo_branch_sim)
       return;
    if (cgs->events_used == N_EVENTS)
@@ -1020,7 +1022,7 @@ void addEvent_Bi ( CgState* cgs, InstrInfo* inode, IRAtom* whereTo )
    Event* evt;
    tl_assert(isIRAtom(whereTo));
    tl_assert(typeOfIRExpr(cgs->sbOut->tyenv, whereTo) 
-             == (sizeof(HWord)==4 ? Ity_I32 : Ity_I64));
+             == (sizeof(RegWord)==4 ? Ity_I32 : Ity_I64));
    if (!clo_branch_sim)
       return;
    if (cgs->events_used == N_EVENTS)

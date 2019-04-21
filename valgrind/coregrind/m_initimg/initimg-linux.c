@@ -703,6 +703,19 @@ Addr setup_client_stack( void*  init_sp,
                   (and anything above) are not supported by Valgrind. */
                auxv->u.a_val &= VKI_HWCAP_S390_TE - 1;
             }
+#           elif defined(VGP_arm64_linux)
+            {
+               /* Limit the AT_HWCAP to just those features we explicitly
+		  support in VEX.  */
+#define ARM64_SUPPORTED_HWCAP (VKI_HWCAP_AES	        \
+                               | VKI_HWCAP_PMULL        \
+                               | VKI_HWCAP_SHA1         \
+                               | VKI_HWCAP_SHA2         \
+                               | VKI_HWCAP_CRC32        \
+                               | VKI_HWCAP_FP           \
+                               | VKI_HWCAP_ASIMD)
+               auxv->u.a_val &= ARM64_SUPPORTED_HWCAP;
+            }
 #           endif
             break;
 #        if defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)

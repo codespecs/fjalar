@@ -33,6 +33,7 @@
 
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
+#include "pub_core_vkiscnums.h"
 #include "pub_core_debuginfo.h"
 #include "pub_core_libcbase.h"
 #include "pub_core_libcprint.h"
@@ -40,6 +41,7 @@
 #include "pub_core_machine.h"      /* VG_ELF_CLASS */
 #include "pub_core_options.h"
 #include "pub_core_oset.h"
+#include "pub_core_syscall.h"
 #include "pub_core_tooliface.h"    /* VG_(needs) */
 #include "pub_core_xarray.h"
 #include "priv_misc.h"             /* dinfo_zalloc/free/strdup */
@@ -282,6 +284,16 @@ Bool get_elf_symbol_info (
    Bool in_text, in_data, in_sdata, in_rodata, in_bss, in_sbss;
    Addr text_svma, data_svma, sdata_svma, rodata_svma, bss_svma, sbss_svma;
    PtrdiffT text_bias, data_bias, sdata_bias, rodata_bias, bss_bias, sbss_bias;
+#     if defined(VGPV_arm_linux_android) \
+         || defined(VGPV_x86_linux_android) \
+         || defined(VGPV_mips32_linux_android) \
+         || defined(VGPV_arm64_linux_android)
+   Addr available_size = 0;
+#define COMPUTE_AVAILABLE_SIZE(segsvma, segsize) \
+        available_size = segsvma + segsize - sym_svma
+#else
+#define COMPUTE_AVAILABLE_SIZE(segsvma, segsize)
+#endif
 
    /* Set defaults */
    *sym_name_out_ioff = sym_name_ioff;
@@ -360,6 +372,7 @@ Bool get_elf_symbol_info (
        && sym_svma < text_svma + di->text_size) {
       *is_text_out = True;
       (*sym_avmas_out).main += text_bias;
+      COMPUTE_AVAILABLE_SIZE(text_svma, di->text_size);
    } else
    if (di->data_present
        && di->data_size > 0
@@ -367,6 +380,7 @@ Bool get_elf_symbol_info (
        && sym_svma < data_svma + di->data_size) {
       *is_text_out = False;
       (*sym_avmas_out).main += data_bias;
+      COMPUTE_AVAILABLE_SIZE(data_svma, di->data_size);
    } else
    if (di->sdata_present
        && di->sdata_size > 0
@@ -374,6 +388,7 @@ Bool get_elf_symbol_info (
        && sym_svma < sdata_svma + di->sdata_size) {
       *is_text_out = False;
       (*sym_avmas_out).main += sdata_bias;
+      COMPUTE_AVAILABLE_SIZE(sdata_svma, di->sdata_size);
    } else
    if (di->rodata_present
        && di->rodata_size > 0
@@ -381,6 +396,7 @@ Bool get_elf_symbol_info (
        && sym_svma < rodata_svma + di->rodata_size) {
       *is_text_out = False;
       (*sym_avmas_out).main += rodata_bias;
+      COMPUTE_AVAILABLE_SIZE(rodata_svma, di->rodata_size);
    } else
    if (di->bss_present
        && di->bss_size > 0
@@ -388,6 +404,7 @@ Bool get_elf_symbol_info (
        && sym_svma < bss_svma + di->bss_size) {
       *is_text_out = False;
       (*sym_avmas_out).main += bss_bias;
+      COMPUTE_AVAILABLE_SIZE(bss_svma, di->bss_size);
    } else
    if (di->sbss_present
        && di->sbss_size > 0
@@ -395,6 +412,7 @@ Bool get_elf_symbol_info (
        && sym_svma < sbss_svma + di->sbss_size) {
       *is_text_out = False;
       (*sym_avmas_out).main += sbss_bias;
+      COMPUTE_AVAILABLE_SIZE(sbss_svma, di->sbss_size);
    } else {
       /* Assume it's in .text.  Is this a good idea? */
       *is_text_out = True;
@@ -463,7 +481,7 @@ Bool get_elf_symbol_info (
          || defined(VGPV_x86_linux_android) \
          || defined(VGPV_mips32_linux_android) \
          || defined(VGPV_arm64_linux_android)
-      *sym_size_out = 2048;
+      *sym_size_out = available_size ? available_size : 2048;
 #     else
       if (TRACE_SYMTAB_ENABLED) {
          HChar* sym_name = ML_(img_strdup)(escn_strtab->img,
@@ -1119,7 +1137,11 @@ HChar* find_buildid(DiImage* img, Bool rel_ok, Bool search_shdrs)
 
       ElfXX_Ehdr ehdr;
       ML_(img_get)(&ehdr, img, 0, sizeof(ehdr));
-      for (i = 0; i < ehdr.e_phnum; i++) {
+      /* Skip the phdrs when we have to search the shdrs. In separate
+         .debug files the phdrs might not be valid (they are a copy of
+         the main ELF file) and might trigger assertions when getting
+         image notes based on them. */
+      for (i = 0; !search_shdrs && i < ehdr.e_phnum; i++) {
          ElfXX_Phdr phdr;
          ML_(img_get)(&phdr, img,
                       ehdr.e_phoff + i * ehdr.e_phentsize, sizeof(phdr));
@@ -1306,6 +1328,12 @@ DiImage* find_debug_file( struct _DebugInfo* di,
                      VG_(strlen)(objdir) + VG_(strlen)(debugname) + 64
                      + (extrapath ? VG_(strlen)(extrapath) : 0)
                      + (serverpath ? VG_(strlen)(serverpath) : 0));
+
+      if (debugname[0] == '/') {
+         VG_(sprintf)(debugpath, "%s", debugname);
+         dimg = open_debug_file(debugpath, buildid, crc, rel_ok, NULL);
+         if (dimg != NULL) goto dimg_ok;
+      }
 
       VG_(sprintf)(debugpath, "%s/%s", objdir, debugname);
       dimg = open_debug_file(debugpath, buildid, crc, rel_ok, NULL);
@@ -1509,6 +1537,74 @@ static Bool check_compression(ElfXX_Shdr* h, DiSlice* s) {
        }
     }
     return True;
+}
+
+/* Helper function to get the readlink path. Returns a copy of path if the
+   file wasn't a symbolic link. Returns NULL on error. Unless NULL is
+   returned the result needs to be released with dinfo_free.
+*/
+static HChar* readlink_path (const HChar *path)
+{
+   SizeT bufsiz = VG_(strlen)(path);
+   HChar *buf = ML_(dinfo_strdup)("readlink_path.strdup", path);
+   UInt   tries = 6;
+
+   while (tries > 0) {
+      SysRes res;
+#if defined(VGP_arm64_linux)
+      res = VG_(do_syscall4)(__NR_readlinkat, VKI_AT_FDCWD,
+                                              (UWord)path, (UWord)buf, bufsiz);
+#elif defined(VGO_linux) || defined(VGO_darwin)
+      res = VG_(do_syscall3)(__NR_readlink, (UWord)path, (UWord)buf, bufsiz);
+#elif defined(VGO_solaris)
+      res = VG_(do_syscall4)(__NR_readlinkat, VKI_AT_FDCWD, (UWord)path,
+                             (UWord)buf, bufsiz);
+#else
+#       error Unknown OS
+#endif
+      if (sr_isError(res)) {
+         if (sr_Err(res) == VKI_EINVAL)
+            return buf; // It wasn't a symbolic link, return the strdup result.
+         ML_(dinfo_free)(buf);
+         return NULL;
+      }
+
+      SSizeT r = sr_Res(res);
+      if (r < 0) break;
+      if (r == bufsiz) {  // buffer too small; increase and retry
+         bufsiz *= 2 + 16;
+         buf = ML_(dinfo_realloc)("readlink_path.realloc", buf, bufsiz);
+         tries--;
+         continue;
+      }
+      buf[r] = '\0';
+      break;
+   }
+
+   if (tries == 0) { // We tried, but weird long path?
+      ML_(dinfo_free)(buf);
+      return NULL;
+   }
+
+  if (buf[0] == '/')
+    return buf;
+
+  /* Relative path, add link dir.  */
+  HChar *linkdirptr;
+  SizeT linkdir_len = VG_(strlen)(path);
+  if ((linkdirptr = VG_(strrchr)(path, '/')) != NULL)
+    linkdir_len -= VG_(strlen)(linkdirptr + 1);
+
+  SizeT buflen = VG_(strlen)(buf);
+  SizeT needed = linkdir_len + buflen + 1;
+  if (bufsiz < needed)
+    buf = ML_(dinfo_realloc)("readlink_path.linkdir", buf, needed);
+
+  VG_(memmove)(buf + linkdir_len, buf, buflen);
+  VG_(memcpy)(buf, path, linkdir_len);
+  buf[needed - 1] = '\0';
+
+  return buf;
 }
 
 /* The central function for reading ELF debug info.  For the
@@ -1785,7 +1881,7 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
                Bool loaded = False;
                for (j = 0; j < VG_(sizeXA)(di->fsm.maps); j++) {
                   const DebugInfoMapping* map = VG_(indexXA)(di->fsm.maps, j);
-                  if (   (map->rx || map->rw)
+                  if (   (map->rx || map->rw || map->ro)
                       && map->size > 0 /* stay sane */
                       && a_phdr.p_offset >= map->foff
                       && a_phdr.p_offset <  map->foff + map->size
@@ -1813,6 +1909,16 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
                         VG_(addToXA)(svma_ranges, &item);
                         TRACE_SYMTAB(
                            "PT_LOAD[%ld]:   acquired as rx, bias 0x%lx\n",
+                           i, (UWord)item.bias);
+                        loaded = True;
+                     }
+                     if (map->ro
+                         && (a_phdr.p_flags & (PF_R | PF_W | PF_X))
+                            == PF_R) {
+                        item.exec = False;
+                        VG_(addToXA)(svma_ranges, &item);
+                        TRACE_SYMTAB(
+                           "PT_LOAD[%ld]:   acquired as ro, bias 0x%lx\n",
                            i, (UWord)item.bias);
                         loaded = True;
                      }
@@ -2083,17 +2189,25 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
          }
       }
 
-      /* Accept .rodata where mapped as rx (data), even if zero-sized */
+      /* Accept .rodata where mapped as rx or rw (data), even if zero-sized */
       if (0 == VG_(strcmp)(name, ".rodata")) {
-         if (inrx && !di->rodata_present) {
-            di->rodata_present = True;
+         if (!di->rodata_present) {
             di->rodata_svma = svma;
-            di->rodata_avma = svma + inrx->bias;
+            di->rodata_avma = svma;
             di->rodata_size = size;
-            di->rodata_bias = inrx->bias;
             di->rodata_debug_svma = svma;
-            di->rodata_debug_bias = inrx->bias;
-                                    /* NB was 'inrw' prior to r11794 */
+            if (inrx) {
+               di->rodata_avma += inrx->bias;
+               di->rodata_bias = inrx->bias;
+               di->rodata_debug_bias = inrx->bias;
+            } else if (inrw) {
+               di->rodata_avma += inrw->bias;
+               di->rodata_bias = inrw->bias;
+               di->rodata_debug_bias = inrw->bias;
+            } else {
+               BAD(".rodata");
+            }
+            di->rodata_present = True;
             TRACE_SYMTAB("acquiring .rodata svma = %#lx .. %#lx\n",
                          di->rodata_svma,
                          di->rodata_svma + di->rodata_size - 1);
@@ -2910,8 +3024,12 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
                                 (debugaltlink_escn.szB - buildid_offset)
                                 * 2 + 1);
 
-         /* The altfile might be relative to the debug file or main file. */
+         /* The altfile might be relative to the debug file or main file.
+	    Make sure that we got the real file, not a symlink.  */
          HChar *dbgname = di->fsm.dbgname ? di->fsm.dbgname : di->fsm.filename;
+         HChar* rdbgname = readlink_path (dbgname);
+         if (rdbgname == NULL)
+            rdbgname = ML_(dinfo_strdup)("rdbgname", dbgname);
 
          for (j = 0; j < debugaltlink_escn.szB - buildid_offset; j++)
             VG_(sprintf)(
@@ -2921,8 +3039,10 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
                                         + buildid_offset + j));
 
          /* See if we can find a matching debug file */
-         aimg = find_debug_file( di, dbgname, altbuildid,
+         aimg = find_debug_file( di, rdbgname, altbuildid,
                                  altfile_str_m, 0, True );
+
+         ML_(dinfo_free)(rdbgname);
 
          if (altfile_str_m)
             ML_(dinfo_free)(altfile_str_m);

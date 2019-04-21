@@ -30,39 +30,155 @@
 #include "pub_tool_mallocfree.h"
 #include "pub_tool_libcbase.h"
 
+// See below for comments explaining what this is for.
+typedef
+   enum __attribute__((packed)) { HuUnU=0, HuPCa=1, HuOth=2 }
+   HowUsed;
+
+
 /*------------------------------------------------------------*/
 /*--- Memcheck running state, and tmp management.          ---*/
 /*------------------------------------------------------------*/
- /* Carries info about a particular tmp.  The tmp's number is not
-    recorded, as this is implied by (equal to) its index in the tmpMap
-    in MCEnv.  The tmp's type is also not recorded, as this is present
-    in MCEnv.sb->tyenv.
 
-    When .kind is Orig, .shadowV and .shadowB may give the identities
-    of the temps currently holding the associated definedness (shadowV)
-    and origin (shadowB) values, or these may be IRTemp_INVALID if code
-    to compute such values has not yet been emitted.
+/* For a few (maybe 1%) IROps, we have both a cheaper, less exact vbit
+   propagation scheme, and a more expensive, more precise vbit propagation
+   scheme.  This enum describes, for such an IROp, which scheme to use. */
+typedef
+   enum {
+      // Use the cheaper, less-exact variant.
+      DLcheap=4,
+      // Choose between cheap and expensive based on analysis of the block
+      // to be instrumented.  Note that the choice may be done on a
+      // per-instance basis of the IROp that this DetailLevel describes.
+      DLauto,
+      // Use the more expensive, more-exact variant.
+      DLexpensive
+   }
+   DetailLevel;
 
-    When .kind is VSh or BSh then the tmp is holds a V- or B- value,
-    and so .shadowV and .shadowB must be IRTemp_INVALID, since it is
-    illogical for a shadow tmp itself to be shadowed.
- */
- typedef
-    enum { Orig=1, VSh=2, BSh=3, DC=4 }
-    TempKind;
 
- typedef
-    struct {
-       TempKind kind;
-       IRTemp   shadowV;
-       IRTemp   shadowB;
-    }
-    TempMapEnt;
+/* A readonly part of the running state.  For IROps that have both a
+   less-exact and more-exact interpretation, records which interpretation is
+   to be used.  */
+typedef
+   struct {
+      // For Add32/64 and Sub32/64, all 3 settings are allowed.  For the
+      // DLauto case, a per-instance decision is to be made by inspecting
+      // the associated tmp's entry in MCEnv.tmpHowUsed.
+      DetailLevel dl_Add32;
+      DetailLevel dl_Add64;
+      DetailLevel dl_Sub32;
+      DetailLevel dl_Sub64;
+      // For Cmp{EQ,NE}{64,32,16,8}, only DLcheap and DLexpensive are
+      // allowed.
+      DetailLevel dl_CmpEQ64_CmpNE64;
+      DetailLevel dl_CmpEQ32_CmpNE32;
+      DetailLevel dl_CmpEQ16_CmpNE16;
+      DetailLevel dl_CmpEQ8_CmpNE8;
+   }
+   DetailLevelByOp;
+
+static void DetailLevelByOp__set_all ( /*OUT*/DetailLevelByOp* dlbo,
+                                       DetailLevel dl )
+{
+   dlbo->dl_Add32           = dl;
+   dlbo->dl_Add64           = dl;
+   dlbo->dl_Sub32           = dl;
+   dlbo->dl_Sub64           = dl;
+   dlbo->dl_CmpEQ64_CmpNE64 = dl;
+   dlbo->dl_CmpEQ32_CmpNE32 = dl;
+   dlbo->dl_CmpEQ16_CmpNE16 = dl;
+   dlbo->dl_CmpEQ8_CmpNE8   = dl;
+}
+
+static void DetailLevelByOp__check_sanity ( const DetailLevelByOp* dlbo )
+{
+   tl_assert(dlbo->dl_Add32 >= DLcheap && dlbo->dl_Add32 <= DLexpensive);
+   tl_assert(dlbo->dl_Add64 >= DLcheap && dlbo->dl_Add64 <= DLexpensive);
+   tl_assert(dlbo->dl_Sub32 >= DLcheap && dlbo->dl_Sub32 <= DLexpensive);
+   tl_assert(dlbo->dl_Sub64 >= DLcheap && dlbo->dl_Sub64 <= DLexpensive);
+   tl_assert(dlbo->dl_CmpEQ64_CmpNE64 == DLcheap
+             || dlbo->dl_CmpEQ64_CmpNE64 == DLexpensive);
+   tl_assert(dlbo->dl_CmpEQ32_CmpNE32 == DLcheap
+             || dlbo->dl_CmpEQ32_CmpNE32 == DLexpensive);
+   tl_assert(dlbo->dl_CmpEQ16_CmpNE16 == DLcheap
+             || dlbo->dl_CmpEQ16_CmpNE16 == DLexpensive);
+   tl_assert(dlbo->dl_CmpEQ8_CmpNE8 == DLcheap
+             || dlbo->dl_CmpEQ8_CmpNE8 == DLexpensive);
+}
+
+static UInt DetailLevelByOp__count ( const DetailLevelByOp* dlbo,
+                                     DetailLevel dl )
+{
+   UInt n = 0;
+   n += (dlbo->dl_Add32 == dl            ? 1 : 0);
+   n += (dlbo->dl_Add64 == dl            ? 1 : 0);
+   n += (dlbo->dl_Sub32 == dl            ? 1 : 0);
+   n += (dlbo->dl_Sub64 == dl            ? 1 : 0);
+   n += (dlbo->dl_CmpEQ64_CmpNE64 == dl  ? 1 : 0);
+   n += (dlbo->dl_CmpEQ32_CmpNE32 == dl  ? 1 : 0);
+   n += (dlbo->dl_CmpEQ16_CmpNE16 == dl  ? 1 : 0);
+   n += (dlbo->dl_CmpEQ8_CmpNE8 == dl    ? 1 : 0);
+   return n;
+}
+
+
+/* Carries info about a particular tmp.  The tmp's number is not
+   recorded, as this is implied by (equal to) its index in the tmpMap
+   in MCEnv.  The tmp's type is also not recorded, as this is present
+   in MCEnv.sb->tyenv.
+
+   When .kind is Orig, .shadowV and .shadowB may give the identities
+   of the temps currently holding the associated definedness (shadowV)
+   and origin (shadowB) values, or these may be IRTemp_INVALID if code
+   to compute such values has not yet been emitted.
+
+   When .kind is VSh or BSh then the tmp is holds a V- or B- value,
+   and so .shadowV and .shadowB must be IRTemp_INVALID, since it is
+   illogical for a shadow tmp itself to be shadowed.
+*/
+typedef
+   enum { Orig=1, VSh=2, BSh=3, DC=4 }
+   TempKind;
+
+typedef
+   struct {
+      TempKind kind;
+      IRTemp   shadowV;
+      IRTemp   shadowB;
+   }
+   TempMapEnt;
+
+
+/* A |HowUsed| value carries analysis results about how values are used,
+   pertaining to whether we need to instrument integer adds expensively or
+   not.  The running state carries a (readonly) mapping from original tmp to
+   a HowUsed value for it.  A usage value can be one of three values,
+   forming a 3-point chain lattice.
+
+      HuOth   ("Other") used in some arbitrary way
+       |
+      HuPCa   ("PCast") used *only* in effectively a PCast, in which all
+       |      we care about is the all-defined vs not-all-defined distinction
+       |
+      HuUnU   ("Unused") not used at all.
+
+   The "safe" (don't-know) end of the lattice is "HuOth".  See comments
+   below in |preInstrumentationAnalysis| for further details.
+*/
+/* DECLARED ABOVE:
+typedef
+   enum __attribute__((packed)) { HuUnU=0, HuPCa=1, HuOth=2 }
+   HowUsed;
+*/
+
+// Not actually necessary, but we don't want to waste D1 space.
+STATIC_ASSERT(sizeof(HowUsed) == 1);
 
 
 /* Carries around state during memcheck instrumentation. */
 typedef
-struct _MCEnv {
+   struct _MCEnv {
       /* MODIFIED: the superblock being constructed.  IRStmts are
          added. */
       IRSB* sb;
@@ -84,15 +200,14 @@ struct _MCEnv {
          instrumentation process. */
       XArray* /* of TempMapEnt */ tmpMap;
 
-      /* MODIFIED: indicates whether "bogus" literals have so far been
-         found.  Starts off False, and may change to True. */
-      Bool    bogusLiterals;
+      /* READONLY: contains details of which ops should be expensively
+         instrumented. */
+      DetailLevelByOp dlbo;
 
-      /* READONLY: indicates whether we should use expensive
-         interpretations of integer adds, since unfortunately LLVM
-         uses them to do ORs in some circumstances.  Defaulted to True
-         on MacOS and False everywhere else. */
-      Bool    useLLVMworkarounds;
+      /* READONLY: for each original tmp, how the tmp is used.  This is
+         computed by |preInstrumentationAnalysis|.  Valid indices are
+         0 .. #temps_in_sb-1 (same as for tmpMap). */
+      HowUsed* tmpHowUsed;
 
       /* READONLY: the guest layout.  This indicates which parts of
          the guest state should be regarded as 'always defined'. */
@@ -123,10 +238,6 @@ typedef
          Ity_I8.  See comment below. */
       IRTemp* tmpMap;
       UInt     n_originalTmps; /* for range checking */
-
-      /* MODIFIED: indicates whether "bogus" literals have so far been
-         found.  Starts off False, and may change to True. */
-      Bool    bogusLiterals;
 
       /* READONLY: the guest layout.  This indicates which parts of
          the guest state should be regarded as 'always defined'. */
@@ -178,8 +289,11 @@ static inline void assign_DC ( HChar cat, DCEnv* dce, IRTemp tmp, IRExpr* expr )
 }
 
 /* build various kinds of expressions */
+#define triop(_op, _arg1, _arg2, _arg3) \
+                                 IRExpr_Triop((_op),(_arg1),(_arg2),(_arg3))
 #define binop(_op, _arg1, _arg2) IRExpr_Binop((_op),(_arg1),(_arg2))
 #define unop(_op, _arg)          IRExpr_Unop((_op),(_arg))
+#define mkU1(_n)                 IRExpr_Const(IRConst_U1(_n))
 #define mkU8(_n)                 IRExpr_Const(IRConst_U8(_n))
 #define mkU16(_n)                IRExpr_Const(IRConst_U16(_n))
 #define mkU32(_n)                IRExpr_Const(IRConst_U32(_n))

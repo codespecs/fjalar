@@ -29,6 +29,7 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
+#include "vgversion.h"
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
 #include "pub_core_vkiscnums.h"
@@ -52,9 +53,25 @@
 /*=== Printing the preamble                                        ===*/
 /*====================================================================*/
 
-// Print the argument, escaping any chars that require it.
-static void umsg_arg(const HChar *arg)
+// Returns a strdup'd copy of |str| in which characters which are not in the
+// obviously-harmless-ASCII range are replaced with '_'.  Not doing this has
+// been observed to cause xfce4-terminal to assert.  Caller takes ownership
+// of the returned string.
+static HChar* sanitise_arg (const HChar* arg)
 {
+   HChar* clone = VG_(strdup)("m_libcprint.sanitise_arg", arg);
+   for (HChar* p = clone; *p; p++) {
+      UInt c = * ((UChar*)p);
+      if (c < 32 || c > 127) c = '_';
+      *p = (HChar)c;
+   }
+   return clone;
+}
+
+// Print the argument, escaping any chars that require it.
+static void umsg_arg(const HChar *unsanitised_arg)
+{
+   HChar* arg = sanitise_arg(unsanitised_arg);
    SizeT len = VG_(strlen)(arg);
    const HChar *special = " \\<>";
    for (UInt i = 0; i < len; i++) {
@@ -63,12 +80,15 @@ static void umsg_arg(const HChar *arg)
       }
       VG_(umsg)("%c", arg[i]);
    }
+   VG_(free)(arg);
 }
 
 // Send output to the XML-stream and escape any XML meta-characters.
-static void xml_arg(const HChar *arg)
+static void xml_arg(const HChar *unsanitised_arg)
 {
+   HChar* arg = sanitise_arg(unsanitised_arg);
    VG_(printf_xml)("%pS", arg);
+   VG_(free)(arg);
 }
 
 // Write the name and value of log file qualifiers to the xml file.
@@ -164,7 +184,7 @@ void VG_(print_preamble)(Bool logging_to_fd)
       /* Core details */
       umsg_or_xml(
          "%sUsing Valgrind-%s and LibVEX; rerun with -h for copyright info%s\n",
-         xpre, VERSION, xpost);
+         xpre, VG_(clo_verbosity) <= 1 ? VERSION : VERSION "-" VGGIT, xpost);
 
       // Print the command line.  At one point we wrapped at 80 chars and
       // printed a '\' as a line joiner, but that makes it hard to cut and
@@ -526,7 +546,7 @@ void VG_(init_log_xml_sinks)(VgLogTo log_to, VgLogTo xml_to,
          break;
 
       case VgLogTo_Socket:
-         log_fd = prepare_sink_socket(VG_(clo_xml_fname_unexpanded),
+         xml_fd = prepare_sink_socket(VG_(clo_xml_fname_unexpanded),
                                       &VG_(xml_output_sink), True);
          break;
    }
@@ -1162,9 +1182,9 @@ const HChar *VG_(sr_as_string) ( SysRes sr )
    static HChar buf[7+1+2+16+1+1];   // large enough
 
    if (sr_isError(sr))
-      VG_(sprintf)(buf, "Failure(0x%lx)", sr_Err(sr));
+      VG_(sprintf)(buf, "Failure(0x%" FMT_REGWORD "x)", (RegWord)sr_Err(sr));
    else
-      VG_(sprintf)(buf, "Success(0x%lx)", sr_Res(sr));
+      VG_(sprintf)(buf, "Success(0x%" FMT_REGWORD "x)", (RegWord)sr_Res(sr));
    return buf;
 }
 

@@ -47,7 +47,7 @@ endif
 FJALAR_SOURCES_COMMON = \
 	mc_leakcheck.c \
 	mc_malloc_wrappers.c \
-	mc_main.c \
+	mc_main.c mc_main_asm.c \
 	mc_translate.c \
 	mc_machine.c \
 	mc_errors.c \
@@ -79,8 +79,8 @@ fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_SOURCES      = \
     $(FJALAR_SOURCES_COMMON)
 fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CPPFLAGS     = \
 	$(AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@: -O2=-O0)
-fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CFLAGS       = \
-	$(AM_CFLAGS_@VGCONF_PLATFORM_PRI_CAPS@: %-O2=%-O0) $(EXTRA_CFLAGS)
+fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CFLAGS       =   $(LTO_CFLAGS) \
+	$(AM_CFLAGS_@VGCONF_PLATFORM_PRI_CAPS@: -O2=-O0) $(EXTRA_CFLAGS)
 fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_DEPENDENCIES = \
 	$(TOOL_DEPENDENCIES_@VGCONF_PLATFORM_PRI_CAPS@)
 fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LDADD        = \
@@ -99,7 +99,7 @@ fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_SOURCES      = \
     $(FJALAR_SOURCES_COMMON)
 fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CPPFLAGS     = \
 	$(AM_CPPFLAGS_@VGCONF_PLATFORM_SEC_CAPS@: -O2=-O0)
-fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CFLAGS       = \
+fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CFLAGS       = $(LTO_CFLAGS) \
 	$(AM_CFLAGS_@VGCONF_PLATFORM_SEC_CAPS@: -O2=-O0) $(EXTRA_CFLAGS)
 fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_DEPENDENCIES = \
 	$(TOOL_DEPENDENCIES_@VGCONF_PLATFORM_SEC_CAPS@)
@@ -114,11 +114,6 @@ fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LINK = \
 	$(fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CFLAGS) \
 	$(fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LDFLAGS)
 endif
-
-# mc_main.c contains the helper function for fjalar that gets called
-# all the time. To maximise performance, compile with -fomit-frame-pointer
-# Primary beneficiary is x86.
-mc_main.o: CFLAGS += -fomit-frame-pointer
 
 #----------------------------------------------------------------------------
 # vgpreload_fjalar-<platform>.so
@@ -135,6 +130,8 @@ if VGCONF_OS_IS_DARWIN
 noinst_DSYMS = $(noinst_PROGRAMS)
 endif
 
+# mc_replace_strmem.c runs on the simulated CPU, and is built with
+# AM_CFLAGS_PSO_* (see $(top_srcdir)/Makefile.all.am).
 VGPRELOAD_FJALAR_SOURCES_COMMON = mc_replace_strmem.c kvasir/dyncomp_wrappers.c
 
 vgpreload_fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_SOURCES      = \
@@ -163,9 +160,3 @@ vgpreload_fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_LDFLAGS      = \
 	$(LIBREPLACEMALLOC_LDFLAGS_@VGCONF_PLATFORM_SEC_CAPS@)
 endif
 
-# mc_replace_strmem.c runs on the simulated CPU, and it often appears
-# in stack traces shown to the user.  It is built with
-# -fno-omit-frame-pointer so as to guarantee robust backtraces on x86,
-# on which CFI based unwinding is not the "normal" case and so is
-# sometimes fragile.
-mc_replace_strmem.o: CFLAGS += -fno-omit-frame-pointer

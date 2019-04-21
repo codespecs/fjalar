@@ -1185,8 +1185,10 @@ void VG_(redir_notify_delete_DebugInfo)( const DebugInfo* delsi )
 Addr VG_(redir_do_lookup) ( Addr orig, Bool* isWrap )
 {
    Active* r = VG_(OSetGen_Lookup)(activeSet, &orig);
-   if (r == NULL)
+   if (r == NULL) {
+      if (isWrap) *isWrap = False;
       return orig;
+   }
 
    vg_assert(r->to_addr != 0);
    if (isWrap)
@@ -1485,6 +1487,17 @@ void VG_(redir_initialise) ( void )
          (Addr)&VG_(arm_linux_REDIR_FOR_strcmp),
          complain_about_stripped_glibc_ldso
       );
+      /* index */
+      add_hardwired_spec(
+         "ld-linux.so.3", "index",
+         (Addr)&VG_(arm_linux_REDIR_FOR_index),
+         complain_about_stripped_glibc_ldso
+      );
+      add_hardwired_spec(
+         "ld-linux-armhf.so.3", "index",
+         (Addr)&VG_(arm_linux_REDIR_FOR_index),
+         complain_about_stripped_glibc_ldso
+      );
    }
 
 #  elif defined(VGP_arm64_linux)
@@ -1564,7 +1577,6 @@ void VG_(redir_initialise) ( void )
 
 #  elif defined(VGP_mips32_linux)
    if (0==VG_(strcmp)("Memcheck", VG_(details).name)) {
-
       /* this is mandatory - can't sanely continue without it */
       add_hardwired_spec(
          "ld.so.1", "strlen",
@@ -1576,19 +1588,17 @@ void VG_(redir_initialise) ( void )
          (Addr)&VG_(mips32_linux_REDIR_FOR_index),
          complain_about_stripped_glibc_ldso
       );
-#  if defined(VGPV_mips32_linux_android)
+#     if defined(VGPV_mips32_linux_android)
       add_hardwired_spec(
          "NONE", "__dl_strlen",
          (Addr)&VG_(mips32_linux_REDIR_FOR_strlen),
          NULL
       );
-#  endif
-
+#     endif
    }
 
 #  elif defined(VGP_mips64_linux)
    if (0==VG_(strcmp)("Memcheck", VG_(details).name)) {
-
       /* this is mandatory - can't sanely continue without it */
       add_hardwired_spec(
          "ld.so.1", "strlen",
@@ -1600,6 +1610,26 @@ void VG_(redir_initialise) ( void )
          (Addr)&VG_(mips64_linux_REDIR_FOR_index),
          complain_about_stripped_glibc_ldso
       );
+#     if defined(VGABI_64)
+      add_hardwired_spec(
+         "ld-linux-mipsn8.so.1", "strlen",
+         (Addr)&VG_(mips64_linux_REDIR_FOR_strlen),
+         complain_about_stripped_glibc_ldso
+      );
+      add_hardwired_spec(
+         "ld-linux-mipsn8.so.1", "index",
+         (Addr)&VG_(mips64_linux_REDIR_FOR_index),
+         complain_about_stripped_glibc_ldso
+      );
+#     elif defined(VGABI_N32)
+      add_hardwired_spec(
+         "ld.so.1", "strchr",
+         (Addr)&VG_(mips64_linux_REDIR_FOR_index),
+         complain_about_stripped_glibc_ldso
+      );
+#     else
+#     error unknown mips64 ABI
+#     endif
    }
 
 #  elif defined(VGP_x86_solaris)
@@ -1859,15 +1889,16 @@ static void show_active ( const HChar* left, const Active* act )
 {
    Bool ok;
    const HChar *buf;
- 
-   ok = VG_(get_fnname_w_offset)(act->from_addr, &buf);
+
+   DiEpoch ep = VG_(current_DiEpoch)();
+   ok = VG_(get_fnname_w_offset)(ep, act->from_addr, &buf);
    if (!ok) buf = "???";
    // Stash away name1
    HChar name1[VG_(strlen)(buf) + 1];
    VG_(strcpy)(name1, buf);
 
    const HChar *name2;
-   ok = VG_(get_fnname_w_offset)(act->to_addr, &name2);
+   ok = VG_(get_fnname_w_offset)(ep, act->to_addr, &name2);
    if (!ok) name2 = "???";
 
    VG_(message)(Vg_DebugMsg, "%s0x%08lx (%-20s) %s-> (%04d.%d) 0x%08lx %s\n", 

@@ -42,6 +42,7 @@
 #include "pub_core_stacks.h"
 #include "pub_core_stacktrace.h"
 #include "pub_core_syscall.h"
+#include "pub_core_syswrap.h"
 #include "pub_core_tooliface.h"     // For VG_(details).{name,bug_reports_to}
 #include "pub_core_options.h"       // For VG_(clo_xml)
 
@@ -298,17 +299,25 @@ void VG_(client_exit)( Int status )
 static void print_thread_state (Bool stack_usage,
                                 const HChar* prefix, ThreadId i)
 {
-   VgStack *stack 
+   VgStack *stack
       = (VgStack*)VG_(threads)[i].os_state.valgrind_stack_base;
+   HChar syscallno[50];
+   // must be large enough for VG_SYSNUM_STRING result + 10.
 
-   VG_(printf)("\n%sThread %d: status = %s (lwpid %d)\n", prefix, i, 
+   if (VG_(is_in_syscall) (i))
+      VG_(sprintf)(syscallno, " syscall %s",
+                   VG_SYSNUM_STRING(VG_(is_in_syscall_no)(i)));
+   else
+      syscallno[0] = 0;
+   VG_(printf)("\n%sThread %d: status = %s%s (lwpid %d)\n", prefix, i,
                VG_(name_of_ThreadStatus)(VG_(threads)[i].status),
+               syscallno,
                VG_(threads)[i].os_state.lwpid);
    if (VG_(threads)[i].status != VgTs_Empty)
       VG_(get_and_pp_StackTrace)( i, BACKTRACE_DEPTH );
    if (stack_usage && VG_(threads)[i].client_stack_highest_byte != 0 ) {
       Addr start, end;
-      
+
       start = end = 0;
       VG_(stack_limits)(VG_(get_SP)(i), &start, &end);
       if (start != end)
@@ -320,14 +329,19 @@ static void print_thread_state (Bool stack_usage,
                      prefix,
                      (void*)VG_(get_SP)(i));
    }
-   if (stack_usage && stack != 0)
+   if (stack_usage && stack != 0) {
+      Addr stack_low_addr = VG_(am_valgrind_stack_low_addr) (stack);
+
       VG_(printf)
-         ("%svalgrind stack top usage: %lu of %lu\n",
+         ("%svalgrind stack range: [%p %p] top usage: %lu of %lu\n",
           prefix,
+          (void*)stack_low_addr,
+          (void*)(stack_low_addr + VG_(clo_valgrind_stacksize) - 1),
           VG_(clo_valgrind_stacksize)
           - VG_(am_get_VgStack_unused_szB) (stack,
                                             VG_(clo_valgrind_stacksize)),
           (SizeT) VG_(clo_valgrind_stacksize));
+   }
 }
 
 // Print the scheduler status.
@@ -343,7 +357,7 @@ static void show_sched_status_wrk ( Bool host_stacktrace,
       Addr ips[BACKTRACE_DEPTH];
       Int  n_ips;
       ThreadState *tst 
-         = VG_(get_ThreadState)( VG_(lwpid_to_vgtid)( VG_(gettid)() ) );
+         = VG_(get_ThreadState)( VG_(lwpid_to_vgtid_dead_ok)(VG_(gettid)()));
  
       // If necessary, fake up an ExeContext which is of our actual real CPU
       // state.  Could cause problems if we got the panic/exception within the
@@ -369,7 +383,7 @@ static void show_sched_status_wrk ( Bool host_stacktrace,
          );
       VG_(printf)("\nhost stacktrace:\n"); 
       VG_(clo_xml) = False;
-      VG_(pp_StackTrace) (ips, n_ips);
+      VG_(pp_StackTrace) (VG_(current_DiEpoch)(), ips, n_ips);
       VG_(clo_xml) = save_clo_xml;
    }
 
@@ -424,7 +438,7 @@ static void report_and_quit ( const HChar* report,
                               const UnwindStartRegs* startRegsIN )
 {
    show_sched_status_wrk (True,  // host_stacktrace
-                          False, // stack_usage
+                          True,  // stack_usage
                           False, // exited_threads
                           startRegsIN);
    VG_(printf)(

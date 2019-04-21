@@ -835,6 +835,7 @@ static SyscallTableEntry syscall_table[] = {
 
    LINXY(__NR_memfd_create, sys_memfd_create),                        // 350
 
+   LINX_(__NR_membarrier, sys_membarrier),                            // 356
    LINXY(__NR_recvmmsg, sys_recvmmsg),                                // 357
    LINXY(__NR_sendmmsg, sys_sendmmsg),                                // 358
    LINXY(__NR_socket, sys_socket),                                    // 359
@@ -851,7 +852,9 @@ static SyscallTableEntry syscall_table[] = {
    LINX_(__NR_sendmsg, sys_sendmsg),                                  // 270
    LINXY(__NR_recvfrom, sys_recvfrom),                                // 371
    LINXY(__NR_recvmsg, sys_recvmsg),                                  // 372
-   LINX_(__NR_shutdown, sys_shutdown)                                 // 373
+   LINX_(__NR_shutdown, sys_shutdown),                                // 373
+
+   LINXY(__NR_statx, sys_statx),                                      // 379
 };
 
 SyscallTableEntry* ML_(get_linux_syscall_entry) ( UInt sysno )

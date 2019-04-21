@@ -660,7 +660,17 @@ int main(void)
    // __NR_workq_open 367
    // __NR_workq_ops 368
 
-   GO_UNIMP(369-379, "unused");
+   GO_UNIMP(369-373, "unused");
+
+#if DARWIN_VERS >= DARWIN_10_11
+   {
+      long args[8] = { x0+8, x0+0xffffffee, x0+1, x0+1, x0+1, x0+1, x0+1, x0+1 };
+      GO(__NR_kevent_qos, 374, "1s 8m");
+      SY(__NR_kevent_qos, args+x0); FAIL;
+   }
+#endif /* DARWIN_VERS >= DARWIN_10_11 */
+
+   GO_UNIMP(375-379, "unused");
 
    // __NR___mac_execve 380
    // __NR___mac_syscall 381
@@ -676,7 +686,17 @@ int main(void)
    // __NR___mac_get_lcid 391
    // __NR___mac_get_lctx 392
    // __NR___mac_set_lctx 393
+
+#if DARWIN_VERS >= DARWIN_10_11
+   {
+      long args[6] = { x0+8, x0+0xffffffee, x0+1, x0+1, x0+1, x0+1 };
+      GO(__NR_pselect, 394, "1s 6m");
+      SY(__NR_pselect, args+x0); FAIL;
+   }
+#else
    // __NR_setlcid 394
+#endif /* DARWIN_VERS >= DARWIN_10_11 */
+
    // __NR_getlcid 395
 
    // The nocancel syscalls (396--423) are tested in scalar_nocancel.c.

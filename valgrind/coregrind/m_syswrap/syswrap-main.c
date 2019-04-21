@@ -1628,7 +1628,7 @@ SyscallInfo *syscallInfo;
 
 /* The scheduler needs to be able to zero out these records after a
    fork, hence this is exported from m_syswrap. */
-void VG_(clear_syscallInfo) ( Int tid )
+void VG_(clear_syscallInfo) ( ThreadId tid )
 {
    vg_assert(syscallInfo);
    vg_assert(tid >= 0 && tid < VG_N_THREADS);
@@ -1636,10 +1636,16 @@ void VG_(clear_syscallInfo) ( Int tid )
    syscallInfo[tid].status.what = SsIdle;
 }
 
-Bool VG_(is_in_syscall) ( Int tid )
+Bool VG_(is_in_syscall) ( ThreadId tid )
 {
    vg_assert(tid >= 0 && tid < VG_N_THREADS);
    return (syscallInfo[tid].status.what != SsIdle);
+}
+
+Word VG_(is_in_syscall_no) (ThreadId tid )
+{
+   vg_assert(tid >= 0 && tid < VG_N_THREADS);
+   return syscallInfo[tid].orig_args.sysno;
 }
 
 static void ensure_initialised ( void )
@@ -2430,7 +2436,7 @@ void ML_(fixup_guest_state_to_restart_syscall) ( ThreadArchState* arch )
       syscall == 0C 00 00 00
    */
    {
-      UChar *p = (UChar *)(arch->vex.guest_PC);
+      UChar *p = (UChar *)(Addr)(arch->vex.guest_PC);
 #     if defined (VG_LITTLEENDIAN)
       if (p[0] != 0x0c || p[1] != 0x00 || p[2] != 0x00 || p[3] != 0x00)
          VG_(message)(Vg_DebugMsg,
@@ -2570,12 +2576,13 @@ VG_(fixup_guest_state_after_syscall_interrupted)( ThreadId tid,
    if (VG_(clo_trace_signals))
       VG_(message)( Vg_DebugMsg,
                     "interrupted_syscall: tid=%u, ip=%#lx, "
-                    "restart=%s, sres.isErr=%s, sres.val=%lu\n",
+                    "restart=%s, sres.isErr=%s, sres.val=%" FMT_REGWORD "u\n",
                     tid,
                     ip,
                     restart ? "True" : "False",
                     sr_isError(sres) ? "True" : "False",
-                    sr_isError(sres) ? sr_Err(sres) : sr_Res(sres));
+                    sr_isError(sres) ? (RegWord)sr_Err(sres) :
+                                       (RegWord)sr_Res(sres));
 
    vg_assert(VG_(is_valid_tid)(tid));
    vg_assert(tid >= 1 && tid < VG_N_THREADS);

@@ -142,14 +142,17 @@ static HChar* sym (Addr addr, Bool is_code)
    PtrdiffT offset;
    if (w == 2) w = 0;
 
+   // sym is used for debugging/tracing, so cur_ep is a reasonable choice.
+   const DiEpoch cur_ep = VG_(current_DiEpoch)();
+
    if (is_code) {
       const HChar *name;
-      name = VG_(describe_IP) (addr, NULL);
+      name = VG_(describe_IP) (cur_ep, addr, NULL);
       if (buf[w]) VG_(free)(buf[w]);
       buf[w] = VG_(strdup)("gdbserver sym", name);
    } else {
       const HChar *name;
-      VG_(get_datasym_and_offset) (addr, &name, &offset);
+      VG_(get_datasym_and_offset) (cur_ep, addr, &name, &offset);
       if (buf[w]) VG_(free)(buf[w]);
       buf[w] = VG_(strdup)("gdbserver sym", name);
    }
@@ -646,6 +649,10 @@ static void gdbserver_cleanup_in_child_after_fork(ThreadId me)
    
    if (VG_(clo_trace_children)) {
       VG_(gdbserver_prerun_action) (me);
+   } else {
+      /* After fork, if we do not trace the children, disable vgdb
+         poll to avoid gdbserver being called unexpectedly. */
+      VG_(disable_vgdb_poll) ();
    }
 }
 
@@ -872,7 +879,7 @@ void VG_(invoke_gdbserver) ( int check )
       gdbserver. Otherwise, we let the valgrind scheduler invoke
       gdbserver at the next poll.  This poll will be made very soon
       thanks to a call to VG_(force_vgdb_poll). */
-   int n_tid;
+   int n_tid, vgdb_interrupted_tid_local = 0;
 
    vg_assert (check == 0x8BADF00D);
 
@@ -890,7 +897,8 @@ void VG_(invoke_gdbserver) ( int check )
       /* interruptible states. */
       case VgTs_WaitSys:
       case VgTs_Yielding:
-         if (vgdb_interrupted_tid == 0) vgdb_interrupted_tid = n_tid;
+         if (vgdb_interrupted_tid_local == 0)
+            vgdb_interrupted_tid_local = n_tid;
          break;
 
       case VgTs_Empty:     
@@ -907,6 +915,8 @@ void VG_(invoke_gdbserver) ( int check )
       default:             vg_assert(0);
       }
    }
+
+   vgdb_interrupted_tid = vgdb_interrupted_tid_local;
 
    /* .... till here.
       From here onwards, function calls are ok: it is

@@ -249,6 +249,7 @@ PRE(sys_rt_sigreturn)
 PRE(sys_arch_prctl)
 {
    ThreadState* tst;
+   Bool known_option = True;
    PRINT( "arch_prctl ( %ld, %lx )", SARG1, ARG2 );
 
    vg_assert(VG_(is_valid_tid)(tid));
@@ -283,13 +284,16 @@ PRE(sys_arch_prctl)
       POST_MEM_WRITE(ARG2, sizeof(unsigned long));
    }
    else {
-      VG_(core_panic)("Unsupported arch_prctl option");
+      known_option = False;
    }
 
    /* Note; the Status writeback to guest state that happens after
       this wrapper returns does not change guest_FS_CONST or guest_GS_CONST;
       hence that direct assignment to the guest state is safe here. */
-   SET_STATUS_Success( 0 );
+   if (known_option)
+      SET_STATUS_Success( 0 );
+   else
+      SET_STATUS_Failure( VKI_EINVAL );
 }
 
 // Parts of this are amd64-specific, but the *PEEK* cases are generic.
@@ -839,10 +843,15 @@ static SyscallTableEntry syscall_table[] = {
    LINX_(__NR_renameat2,         sys_renameat2),        // 316
 //   LIN__(__NR_seccomp,           sys_ni_syscall),       // 317
    LINXY(__NR_getrandom,         sys_getrandom),        // 318
-   LINXY(__NR_memfd_create,      sys_memfd_create)      // 319
+   LINXY(__NR_memfd_create,      sys_memfd_create),     // 319
 
 //   LIN__(__NR_kexec_file_load,   sys_ni_syscall),       // 320
-//   LIN__(__NR_bpf,               sys_ni_syscall)        // 321
+   LINXY(__NR_bpf,               sys_bpf),              // 321
+
+
+   LINXY(__NR_statx,             sys_statx),             // 332
+
+   LINX_(__NR_membarrier,        sys_membarrier),        // 324
 };
 
 SyscallTableEntry* ML_(get_linux_syscall_entry) ( UInt sysno )

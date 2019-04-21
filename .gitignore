@@ -19,6 +19,7 @@ valgrind/coregrind/link_tool_exe_darwin
 valgrind/coregrind/link_tool_exe_linux
 valgrind/coregrind/link_tool_exe_solaris
 valgrind/include/vgversion.h
+valgrind/include/vgversion_dist.h
 valgrind/aclocal.m4
 valgrind/autom4te.cache
 valgrind/compile
@@ -81,6 +82,7 @@ valgrind/drd/tests/annotate_static
 valgrind/drd/tests/annotate_trace_memory
 valgrind/drd/tests/atomic_var
 valgrind/drd/tests/boost_thread
+valgrind/drd/tests/bug322621
 valgrind/drd/tests/bug-235681
 valgrind/drd/tests/circular_buffer
 valgrind/drd/tests/concurrent_close
@@ -158,6 +160,7 @@ valgrind/gdbserver_tests/gdb.pic
 valgrind/gdbserver_tests/gdb.step
 valgrind/gdbserver_tests/gone
 valgrind/gdbserver_tests/main_pic
+valgrind/gdbserver_tests/mcmain_pic.heur
 valgrind/gdbserver_tests/massif.vgdb.out
 valgrind/gdbserver_tests/passsigalrm
 valgrind/gdbserver_tests/progB.done
@@ -173,6 +176,7 @@ valgrind/helgrind/tests/annotate_hbefore
 valgrind/helgrind/tests/annotate_rwlock
 valgrind/helgrind/tests/bar_bad
 valgrind/helgrind/tests/bar_trivial
+valgrind/helgrind/tests/bug322621
 valgrind/helgrind/tests/cond_init_destroy
 valgrind/helgrind/tests/cond_timedwait_invalid
 valgrind/helgrind/tests/cond_timedwait_test
@@ -274,6 +278,8 @@ valgrind/memcheck/tests/bug155125
 valgrind/memcheck/tests/bug287260
 valgrind/memcheck/tests/bug340392
 valgrind/memcheck/tests/calloc-overflow
+valgrind/memcheck/tests/cdebug_zlib
+valgrind/memcheck/tests/cdebug_zlib_gnu
 valgrind/memcheck/tests/client-msg
 valgrind/memcheck/tests/clientperm
 valgrind/memcheck/tests/clireq_nofill
@@ -299,6 +305,7 @@ valgrind/memcheck/tests/execve1
 valgrind/memcheck/tests/execve2
 valgrind/memcheck/tests/exitprog
 valgrind/memcheck/tests/file_locking
+valgrind/memcheck/tests/filter_leak_cpp_interior
 valgrind/memcheck/tests/fprw
 valgrind/memcheck/tests/fwrite
 valgrind/memcheck/tests/holey_buffer_too_small
@@ -317,6 +324,7 @@ valgrind/memcheck/tests/leak-segv-jmp
 valgrind/memcheck/tests/leak-tree
 valgrind/memcheck/tests/linux/brk
 valgrind/memcheck/tests/linux/capget
+valgrind/memcheck/tests/linux/dlclose_leak
 valgrind/memcheck/tests/linux/getregset
 valgrind/memcheck/tests/linux/ioctl-tiocsig
 valgrind/memcheck/tests/linux/lsframe1
@@ -329,6 +337,7 @@ valgrind/memcheck/tests/linux/stack_switch
 valgrind/memcheck/tests/linux/syscalls-2007
 valgrind/memcheck/tests/linux/syslog-syscall
 valgrind/memcheck/tests/linux/sys-openat
+valgrind/memcheck/tests/linux/sys-statx
 valgrind/memcheck/tests/linux/timerfd-syscall
 valgrind/memcheck/tests/long_namespace_xml
 valgrind/memcheck/tests/long-supps
@@ -527,6 +536,7 @@ valgrind/none/tests/linux/blockfault
 valgrind/none/tests/linux/brk-overflow1
 valgrind/none/tests/linux/brk-overflow2
 valgrind/none/tests/linux/clonev
+valgrind/none/tests/linux/membarrier
 valgrind/none/tests/linux/mremap
 valgrind/none/tests/linux/mremap2
 valgrind/none/tests/linux/mremap3

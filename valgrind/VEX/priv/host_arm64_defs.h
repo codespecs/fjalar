@@ -74,7 +74,7 @@ ST_IN HReg hregARM64_X9  ( void ) { return mkHReg(False, HRcInt64,  9,  27); }
 ST_IN HReg hregARM64_X21 ( void ) { return mkHReg(False, HRcInt64, 21,  28); }
 #undef ST_IN
 
-extern void ppHRegARM64 ( HReg );
+extern UInt ppHRegARM64 ( HReg );
 
 /* Number of registers used arg passing in function calls */
 #define ARM64_N_ARGREGS 8   /* x0 .. x7 */
@@ -993,7 +993,6 @@ extern void ppARM64Instr ( const ARM64Instr* );
    of the underlying instruction set. */
 extern void getRegUsage_ARM64Instr ( HRegUsage*, const ARM64Instr*, Bool );
 extern void mapRegs_ARM64Instr     ( HRegRemap*, ARM64Instr*, Bool );
-extern Bool isMove_ARM64Instr      ( const ARM64Instr*, HReg*, HReg* );
 extern Int  emit_ARM64Instr        ( /*MB_MOD*/Bool* is_profInc,
                                      UChar* buf, Int nbuf, const ARM64Instr* i,
                                      Bool mode64,
@@ -1007,6 +1006,7 @@ extern void genSpill_ARM64  ( /*OUT*/HInstr** i1, /*OUT*/HInstr** i2,
                               HReg rreg, Int offset, Bool );
 extern void genReload_ARM64 ( /*OUT*/HInstr** i1, /*OUT*/HInstr** i2,
                               HReg rreg, Int offset, Bool );
+extern ARM64Instr* genMove_ARM64(HReg from, HReg to, Bool);
 
 extern const RRegUniverse* getRRegUniverse_ARM64 ( void );
 

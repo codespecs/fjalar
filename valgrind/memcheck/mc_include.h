@@ -372,6 +372,12 @@ extern ULong MC_(event_ctr)[MCPE_LAST];
 #define V_BITS64_DEFINED      0ULL
 #define V_BITS64_UNDEFINED    0xFFFFFFFFFFFFFFFFULL
 
+/* Set to 1 to enable handwritten assembly helpers on targets for
+   which it is supported. */
+#define ENABLE_ASSEMBLY_HELPERS 1
+
+/* Comment the below to disable the fast case LOADV */
+#define PERF_FAST_LOADV         1
 
 /*------------------------------------------------------------*/
 /*--- Leak checking                                        ---*/
@@ -569,8 +575,8 @@ Bool MC_(record_fishy_value_error)  ( ThreadId tid, const HChar* function,
 /* Leak kinds tokens to call VG_(parse_enum_set). */
 extern const HChar* MC_(parse_leak_kinds_tokens);
 
-/* prints a description of address a */
-void MC_(pp_describe_addr) (Addr a);
+/* prints a description of address a in the specified debuginfo epoch */
+void MC_(pp_describe_addr) ( DiEpoch ep, Addr a );
 
 /* Is this address in a user-specified "ignored range" ? */
 Bool MC_(in_ignored_range) ( Addr a );
@@ -718,9 +724,19 @@ extern Int MC_(clo_mc_level);
 /* Should we show mismatched frees?  Default: YES */
 extern Bool MC_(clo_show_mismatched_frees);
 
-/* Should we use expensive definedness checking for add/sub and compare
-   operations? Default: NO */
-extern Bool MC_(clo_expensive_definedness_checks);
+/* Indicates the level of detail for Vbit tracking through integer add,
+   subtract, and some integer comparison operations. */
+typedef
+   enum {
+      EdcNO = 1000,  // All operations instrumented cheaply
+      EdcAUTO,       // Chosen dynamically by analysing the block
+      EdcYES         // All operations instrumented expensively
+   }
+   ExpensiveDefinednessChecks;
+
+/* Level of expense in definedness checking for add/sub and compare
+   operations.  Default: EdcAUTO */
+extern ExpensiveDefinednessChecks MC_(clo_expensive_definedness_checks);
 
 /* Do we have a range of stack offsets to ignore?  Default: NO */
 extern Bool MC_(clo_ignore_range_below_sp);

@@ -503,6 +503,12 @@ typedef
 
       Iop_DivModS64to64, // :: I64,I64 -> I128
                          // of which lo half is div and hi half is mod
+      Iop_DivModU64to64, // :: I64,I64 -> I128
+                         // of which lo half is div and hi half is mod
+      Iop_DivModS32to32, // :: I32,I32 -> I64
+                         // of which lo half is div and hi half is mod
+      Iop_DivModU32to32, // :: I32,I32 -> I64
+                         // of which lo half is div and hi half is mod
 
       /* Integer conversions.  Some of these are redundant (eg
          Iop_64to8 is the same as Iop_64to32 and then Iop_32to8), but
@@ -1345,6 +1351,13 @@ typedef
          square root of each element in the operand vector. */
       Iop_RSqrtEst32Fx4,
 
+      /* Scaling of vector with a power of 2  (wd[i] <- ws[i] * 2^wt[i]) */
+      Iop_Scale2_32Fx4,
+
+      /* Vector floating-point base 2 logarithm */
+      Iop_Log2_32Fx4,
+
+
       /* Vector Reciprocal Square Root Step computes (3.0 - arg1 * arg2) / 2.0.
          Note, that of one of the arguments is zero and another one is infiinty
          of arbitrary sign the result of the operation is 1.5. */
@@ -1369,8 +1382,15 @@ typedef
       /* FIXME: what kind of rounding in F32x4 -> F16x4 case? */
       Iop_F32toF16x4, Iop_F16toF32x4,         /* F32x4 <-> F16x4      */
 
+
+
       /* -- Double to/from half conversion -- */
       Iop_F64toF16x2, Iop_F16toF64x2,
+
+      /* Values from two registers converted in smaller type and put in one
+       IRRoundingMode(I32) x (F32x4 | F32x4) -> Q16x8 */
+      Iop_F32x4_2toQ16x8,
+
 
       /* --- 32x4 lowest-lane-only scalar FP --- */
 
@@ -1401,11 +1421,22 @@ typedef
       /* binary :: IRRoundingMode(I32) x V128 -> V128 */
       Iop_Sqrt64Fx2,
 
+      /* Scaling of vector with a power of 2  (wd[i] <- ws[i] * 2^wt[i]) */
+      Iop_Scale2_64Fx2,
+
+      /* Vector floating-point base 2 logarithm */
+      Iop_Log2_64Fx2,
+
       /* see 32Fx4 variants for description */
       Iop_RecipEst64Fx2,    // unary
       Iop_RecipStep64Fx2,   // binary
       Iop_RSqrtEst64Fx2,    // unary
       Iop_RSqrtStep64Fx2,   // binary
+
+
+      /* Values from two registers converted in smaller type and put in one
+       IRRoundingMode(I32) x (F64x2 | F64x2) -> Q32x4 */
+      Iop_F64x2_2toQ32x4,
 
       /* --- 64x2 lowest-lane-only scalar FP --- */
 
@@ -1448,13 +1479,14 @@ typedef
       Iop_AndV128, Iop_OrV128, Iop_XorV128,
 
       /* VECTOR SHIFT (shift amt :: Ity_I8) */
-      Iop_ShlV128, Iop_ShrV128,
+      Iop_ShlV128, Iop_ShrV128, Iop_SarV128,
 
       /* MISC (vector integer cmp != 0) */
       Iop_CmpNEZ8x16, Iop_CmpNEZ16x8, Iop_CmpNEZ32x4, Iop_CmpNEZ64x2,
+      Iop_CmpNEZ128x1,
 
       /* ADDITION (normal / U->U sat / S->S sat) */
-      Iop_Add8x16,   Iop_Add16x8,   Iop_Add32x4,  Iop_Add64x2,
+      Iop_Add8x16,    Iop_Add16x8,    Iop_Add32x4,    Iop_Add64x2,   Iop_Add128x1,
       Iop_QAdd8Ux16, Iop_QAdd16Ux8, Iop_QAdd32Ux4, Iop_QAdd64Ux2,
       Iop_QAdd8Sx16, Iop_QAdd16Sx8, Iop_QAdd32Sx4, Iop_QAdd64Sx2,
 
@@ -1469,14 +1501,14 @@ typedef
       Iop_QAddExtSUsatUU32x4, Iop_QAddExtSUsatUU64x2,
 
       /* SUBTRACTION (normal / unsigned sat / signed sat) */
-      Iop_Sub8x16,   Iop_Sub16x8,   Iop_Sub32x4,  Iop_Sub64x2,
+      Iop_Sub8x16,   Iop_Sub16x8,   Iop_Sub32x4,   Iop_Sub64x2,   Iop_Sub128x1,
       Iop_QSub8Ux16, Iop_QSub16Ux8, Iop_QSub32Ux4, Iop_QSub64Ux2,
       Iop_QSub8Sx16, Iop_QSub16Sx8, Iop_QSub32Sx4, Iop_QSub64Sx2,
 
       /* MULTIPLICATION (normal / high half of signed/unsigned) */
       Iop_Mul8x16,  Iop_Mul16x8,    Iop_Mul32x4,
-      Iop_MulHi16Ux8, Iop_MulHi32Ux4,
-      Iop_MulHi16Sx8, Iop_MulHi32Sx4,
+      Iop_MulHi8Ux16, Iop_MulHi16Ux8, Iop_MulHi32Ux4,
+      Iop_MulHi8Sx16, Iop_MulHi16Sx8, Iop_MulHi32Sx4,
       /* (widening signed/unsigned of even lanes, with lowest lane=zero) */
       Iop_MullEven8Ux16, Iop_MullEven16Ux8, Iop_MullEven32Ux4,
       Iop_MullEven8Sx16, Iop_MullEven16Sx8, Iop_MullEven32Sx4,
@@ -1553,7 +1585,7 @@ typedef
          Example:
             Iop_PwAddL16Ux4( [a,b,c,d] ) = [a+b,c+d]
                where a+b and c+d are unsigned 32-bit values. */
-      Iop_PwAddL8Ux16, Iop_PwAddL16Ux8, Iop_PwAddL32Ux4,
+      Iop_PwAddL8Ux16, Iop_PwAddL16Ux8, Iop_PwAddL32Ux4, Iop_PwAddL64Ux2,
       Iop_PwAddL8Sx16, Iop_PwAddL16Sx8, Iop_PwAddL32Sx4,
 
       /* Other unary pairwise ops */
@@ -1567,8 +1599,8 @@ typedef
       Iop_Abs8x16, Iop_Abs16x8, Iop_Abs32x4, Iop_Abs64x2,
 
       /* AVERAGING: note: (arg1 + arg2 + 1) >>u 1 */
-      Iop_Avg8Ux16, Iop_Avg16Ux8, Iop_Avg32Ux4,
-      Iop_Avg8Sx16, Iop_Avg16Sx8, Iop_Avg32Sx4,
+      Iop_Avg8Ux16, Iop_Avg16Ux8, Iop_Avg32Ux4, Iop_Avg64Ux2,
+      Iop_Avg8Sx16, Iop_Avg16Sx8, Iop_Avg32Sx4, Iop_Avg64Sx2,
 
       /* MIN/MAX */
       Iop_Max8Sx16, Iop_Max16Sx8, Iop_Max32Sx4, Iop_Max64Sx2,
@@ -1755,6 +1787,11 @@ typedef
       Iop_InterleaveOddLanes16x8, Iop_InterleaveEvenLanes16x8,
       Iop_InterleaveOddLanes32x4, Iop_InterleaveEvenLanes32x4,
 
+      /* Pack even/odd lanes. */
+      Iop_PackOddLanes8x16, Iop_PackEvenLanes8x16,
+      Iop_PackOddLanes16x8, Iop_PackEvenLanes16x8,
+      Iop_PackOddLanes32x4, Iop_PackEvenLanes32x4,
+
       /* CONCATENATION -- build a new value by concatenating either
          the even or odd lanes of both operands.  Note that
          Cat{Odd,Even}Lanes64x2 are identical to Interleave{HI,LO}64x2
@@ -1763,9 +1800,11 @@ typedef
       Iop_CatEvenLanes8x16, Iop_CatEvenLanes16x8, Iop_CatEvenLanes32x4,
 
       /* GET elements of VECTOR
-         GET is binop (V128, I8) -> I<elem_size> */
+         GET is binop (V128, I8) -> I<elem_size>
+         SET is triop (V128, I8, I<elem_size>) -> V128 */
       /* Note: the arm back-end handles only constant second argument. */
       Iop_GetElem8x16, Iop_GetElem16x8, Iop_GetElem32x4, Iop_GetElem64x2,
+      Iop_SetElem8x16, Iop_SetElem16x8, Iop_SetElem32x4, Iop_SetElem64x2,
 
       /* DUPLICATING -- copy value to all lanes */
       Iop_Dup8x16, Iop_Dup16x8, Iop_Dup32x4,
@@ -1793,6 +1832,12 @@ typedef
          is undefined. */
       Iop_Perm8x16,
       Iop_Perm32x4, /* ditto, except argR values are restricted to 0 .. 3 */
+
+      /* same, but Triop (argL consists of two 128-bit parts) */
+      /* correct range for argR values is 0..31 */
+      /* (V128, V128, V128) -> V128 */
+      /* (ArgL_first, ArgL_second, ArgR) -> result */
+      Iop_Perm8x16x2,
 
       /* MISC CONVERSION -- get high bits of each byte lane, a la
          x86/amd64 pmovmskb */
@@ -1892,6 +1937,7 @@ typedef
 
       Iop_Max32Fx8, Iop_Min32Fx8,
       Iop_Max64Fx4, Iop_Min64Fx4,
+      Iop_Rotx32, Iop_Rotx64,
       Iop_LAST      /* must be the last enumerator */
    }
    IROp;
@@ -2333,6 +2379,7 @@ typedef
       Ijk_SigTRAP,        /* current instruction synths SIGTRAP */
       Ijk_SigSEGV,        /* current instruction synths SIGSEGV */
       Ijk_SigBUS,         /* current instruction synths SIGBUS */
+      Ijk_SigFPE,         /* current instruction synths generic SIGFPE */
       Ijk_SigFPE_IntDiv,  /* current instruction synths SIGFPE - IntDiv */
       Ijk_SigFPE_IntOvf,  /* current instruction synths SIGFPE - IntOvf */
       /* Unfortunately, various guest-dependent syscall kinds.  They

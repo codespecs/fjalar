@@ -52,6 +52,7 @@ VexRegisterUpdates VG_(clo_px_file_backed) = VexRegUpd_INVALID;
 Bool   VG_(clo_error_limit)    = True;
 Int    VG_(clo_error_exitcode) = 0;
 HChar *VG_(clo_error_markers)[2] = {NULL, NULL};
+Bool   VG_(clo_exit_on_first_error) = False;
 
 #if defined(VGPV_arm_linux_android) \
     || defined(VGPV_x86_linux_android) \
@@ -109,6 +110,8 @@ enum FairSchedType
        VG_(clo_fair_sched)     = disable_fair_sched;
 Bool   VG_(clo_trace_sched)    = False;
 Bool   VG_(clo_profile_heap)   = False;
+UInt   VG_(clo_progress_interval) = 0; /* in seconds, 1 .. 3600,
+                                          or 0 == disabled */
 Int    VG_(clo_core_redzone_size) = CORE_REDZONE_DEFAULT_SZB;
 // A value != -1 overrides the tool-specific value
 // VG_(needs_malloc_replacement).tool_client_redzone_szB
@@ -129,6 +132,7 @@ Bool   VG_(clo_run_libc_freeres) = True;
 Bool   VG_(clo_run_cxx_freeres) = True;
 Bool   VG_(clo_track_fds)      = False;
 Bool   VG_(clo_show_below_main)= False;
+Bool   VG_(clo_keep_debuginfo) = False;
 Bool   VG_(clo_show_emwarns)   = False;
 Word   VG_(clo_max_stackframe) = 2000000;
 UInt   VG_(clo_max_threads)    = MAX_THREADS_DEFAULT;

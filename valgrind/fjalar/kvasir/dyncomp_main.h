@@ -172,7 +172,8 @@ static __inline__ UInt get_tag ( Addr a )
   UInt tag;
   Addr tid = VG_(get_IP)(VG_(get_running_tid)());
   const HChar *eip_info;
-  eip_info = VG_(describe_IP)(tid, NULL);
+  // Describe this (probably live) address with current epoch
+  eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), tid, NULL);
 
   if (IS_SECONDARY_TAG_MAP_NULL(a)) {
     tag = 0; // 0 means NO tag for that byte
@@ -228,7 +229,8 @@ static __inline__ UInt grab_fresh_tag(void) {
 #endif
     Addr tid = VG_(get_IP)(VG_(get_running_tid)());
     const HChar *eip_info;
-    eip_info = VG_(describe_IP)(tid, NULL);
+    // Describe this (probably live) address with current epoch
+    eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), tid, NULL);
 #ifndef MAX_DEBUG_INFO
     DYNCOMP_TPRINTF("[DynComp] Creating fresh tag %d at %s\n", tag, eip_info);
   }

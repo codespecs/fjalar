@@ -27,6 +27,7 @@ sed -e '/^\ \ \ \ \.\.\.$/d'                                        |
 #       remove missing debuginfos
 #       vgdb message
 #       pid numbers
+#       filter 'remote target killed' messages (produced by gdb >= 8.2)
 #       Thread numbers
 #       delete thread switches
 #       info threads output (e.g. which thread is running and syscall)
@@ -41,6 +42,14 @@ sed -e '/^\ \ \ \ \.\.\.$/d'                                        |
 #             (on 32 bits, we have an int_80, on 64 bits, directly select)
 #       and yet another (gdb 7.0 way) to get a system call
 #       and yet another (gdb 7.0 arm way) to get a system call
+#
+#       Additions of 4 expressions to cover glibc 2.27 way to do a select, such as
+#          * 1    Thread 5548 (tid 1 VgTs_WaitSys) 0x0000000004f6203f in __GI___select (
+#              nfds=0, readfds=0x0, writefds=0x0, exceptfds=0x0, timeout=0x30a0e0 <t>)
+#              at ../sysdeps/unix/sysv/linux/select.c:41
+#         If select.c sources are present, we can also get a line containing:
+#              return SYSCALL_CANCEL....
+#
 #       and cleanup some lines for a system call (on ubuntu 10 64 bits)
 #           (pay attention : there are tab characters there in)
 #           + yet another way to get a select system call
@@ -72,8 +81,9 @@ sed -e '/Remote debugging using/,/vgdb launched process attached/d'             
     -e '/^Missing separate debuginfo/d'                                                               \
     -e '/\/_exit.c: No such file or directory/d'                                                      \
     -e '/^Try: zypper install -C/d'                                                                   \
-    -e 's/\(relaying data between gdb and process \)[0-9][0-9]*/\1..../'                              \
+    -e '/relaying data between gdb and process/d'                                                     \
     -e 's/pid [0-9][0-9]*/pid ..../g'                                                                 \
+    -e '/(Remote target) killed/d'                                                                    \
     -e 's/Thread [0-9][0-9]*/Thread ..../g'                                                           \
     -e '/\[Switching to Thread ....\]/d'                                                              \
     -e 's/\(\[Switching to thread [1234] (Thread ....)\]\)#0/\1\n#0/'                                 \
@@ -98,6 +108,10 @@ sed -e '/Remote debugging using/,/vgdb launched process attached/d'             
     -e '/^   from \/lib\/ld-linux.so.*$/d'                                                            \
     -e 's/\(0x........\) in ?? () from \/lib.*$/\1 in syscall .../'                                   \
     -e 's/\(0x........\) in ?? ()$/\1 in syscall .../'                                                \
+    -e 's/in __select .*/in syscall .../'                                      \
+    -e '/exceptfds/d' \
+    -e '/sysv\/linux\/select\.c/d' \
+    -e '/return SYSCALL_CANCEL /d' \
     -e 's/in \(.__\)\{0,1\}select () from \/.*$/in syscall .../'                                      \
     -e '/^   from \/lib\/libc.so.*$/d'                                                                \
     -e '/^   from \/lib64\/libc.so.*$/d'                                                              \
@@ -118,8 +132,8 @@ sed -e '/Remote debugging using/,/vgdb launched process attached/d'             
     -e 's/0x........ in \(main () at clean_after_fork.c:34\)/\1/'                                     \
     -e 's/\(^.*signal SIGFPE.*$\)/\1\nafter trap SIGFPE/'                                             \
     -e 's/p=p@entry=0x/p=0x/'									      \
-    -e 's/\(^Breakpoint 1, tls_ptr (p=0x........\) <tests[0-9+]*>\() at tls.c:55\)/\1\2/'         \
-    -e '/Id   Target Id         Frame/d'                                                              \
+    -e 's/\(^Breakpoint 1, tls_ptr (p=0x........\) <tests[0-9+]*>\() at tls.c:55\)/\1\2/'             \
+    -e '/Id   Target Id *Frame/d'                                                                     \
     -e 's/^\([ \*] [1234] \) *Thread /\1Thread /'                                                     \
     -e 's/^  [0-9] Thread .... (tid [0-9] .*$//'                                                      \
     -e 's/VgTs_WaitSys) 0x/VgTs_WaitSys)  0x/'                                                        \

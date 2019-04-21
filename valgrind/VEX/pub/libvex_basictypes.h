@@ -142,6 +142,15 @@ typedef unsigned long Addr;
    machine. */
 typedef  unsigned long HWord;
 
+/* Size of GPRs */
+#if defined(__mips__) && (__mips == 64) && (_MIPS_SIM == _ABIN32)
+    typedef ULong RegWord;
+#   define FMT_REGWORD "ll"
+#else
+    typedef HWord RegWord;
+#   define FMT_REGWORD "l"
+#endif
+
 /* Set up VEX_HOST_WORDSIZE and VEX_REGPARM. */
 #undef VEX_HOST_WORDSIZE
 #undef VEX_REGPARM
@@ -176,7 +185,11 @@ typedef  unsigned long HWord;
 #   define VEX_REGPARM(_n) /* */
 
 #elif defined(__mips__) && (__mips == 64)
+#if _MIPS_SIM == _ABIN32
+#   define VEX_HOST_WORDSIZE 4
+#else
 #   define VEX_HOST_WORDSIZE 8
+#endif
 #   define VEX_REGPARM(_n) /* */
 
 #elif defined(__mips__) && (__mips != 64)

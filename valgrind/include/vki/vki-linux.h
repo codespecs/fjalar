@@ -242,6 +242,8 @@ typedef		__vki_u64	vki_uint64_t;
 
 typedef		__vki_u16	__vki_le16;
 
+#define __vki_aligned_u64 __vki_u64 __attribute__((aligned(8)))
+
 //----------------------------------------------------------------------
 // From linux-2.6.8.1/include/linux/limits.h
 //----------------------------------------------------------------------
@@ -282,6 +284,10 @@ struct vki_timespec {
 	vki_time_t	tv_sec;		/* seconds */
 	long		tv_nsec;	/* nanoseconds */
 };
+
+/* Special values for vki_timespec.tv_nsec when used with utimensat.  */
+#define VKI_UTIME_NOW  ((1l << 30) - 1l)
+#define VKI_UTIME_OMIT ((1l << 30) - 2l)
 
 struct vki_timeval {
 	vki_time_t	tv_sec;		/* seconds */
@@ -971,6 +977,11 @@ struct vki_sctp_getaddrs {
 // From linux-2.6.8.1/include/linux/resource.h
 //----------------------------------------------------------------------
 
+#define VKI_RUSAGE_SELF     0
+#define VKI_RUSAGE_CHILDREN (-1)
+#define VKI_RUSAGE_BOTH     (-2)        /* sys_wait4() uses this */
+#define VKI_RUSAGE_THREAD   1           /* only the calling thread */
+
 struct	vki_rusage {
 	struct vki_timeval ru_utime;	/* user time used */
 	struct vki_timeval ru_stime;	/* system time used */
@@ -1200,6 +1211,7 @@ struct vki_sembuf {
 union vki_semun {
 	int val;			/* value for SETVAL */
 	struct vki_semid_ds __user *buf;	/* buffer for IPC_STAT & IPC_SET */
+	struct vki_semid64_ds __user *buf64;	/* buffer for IPC_STAT & IPC_SET */
 	unsigned short __user *array;	/* array for GETALL & SETALL */
 	struct vki_seminfo __user *__buf;	/* buffer for IPC_INFO */
 	void __user *__pad;
@@ -1374,6 +1386,44 @@ struct vki_robust_list_head {
 #define VKI_S_IROTH 00004
 #define VKI_S_IWOTH 00002
 #define VKI_S_IXOTH 00001
+
+struct vki_statx_timestamp {
+        __vki_s64   tv_sec;
+        __vki_u32   tv_nsec;
+        __vki_s32   __reserved;
+};
+
+struct vki_statx {
+        /* 0x00 */
+        __vki_u32   stx_mask;       /* What results were written [uncond] */
+        __vki_u32   stx_blksize;    /* Preferred general I/O size [uncond] */
+        __vki_u64   stx_attributes; /* Flags conveying information about the file [uncond] */
+        /* 0x10 */
+        __vki_u32   stx_nlink;      /* Number of hard links */
+        __vki_u32   stx_uid;        /* User ID of owner */
+        __vki_u32   stx_gid;        /* Group ID of owner */
+        __vki_u16   stx_mode;       /* File mode */
+        __vki_u16   __spare0[1];
+        /* 0x20 */
+        __vki_u64   stx_ino;        /* Inode number */
+        __vki_u64   stx_size;       /* File size */
+        __vki_u64   stx_blocks;     /* Number of 512-byte blocks allocated */
+        __vki_u64   stx_attributes_mask; /* Mask to show what's supported in stx_attributes */
+        /* 0x40 */
+        struct vki_statx_timestamp  stx_atime;      /* Last access time */
+        struct vki_statx_timestamp  stx_btime;      /* File creation time */
+        struct vki_statx_timestamp  stx_ctime;      /* Last attribute change time */
+        struct vki_statx_timestamp  stx_mtime;      /* Last data modification time */
+        /* 0x80 */
+        __vki_u32   stx_rdev_major; /* Device ID of special file [if bdev/cdev] */
+        __vki_u32   stx_rdev_minor;
+        __vki_u32   stx_dev_major;  /* ID of device containing file [uncond] */
+        __vki_u32   stx_dev_minor;
+        /* 0x90 */
+        __vki_u64   __spare2[14];   /* Spare space for future expansion */
+        /* 0x100 */
+};
+
 
 //----------------------------------------------------------------------
 // From linux-2.6.8.1/include/linux/dirent.h
@@ -1770,18 +1820,23 @@ struct vki_ppdev_frob_struct {
 
 #define VKI_BLKROSET   _VKI_IO(0x12,93)	/* set device read-only (0 = read-write) */
 #define VKI_BLKROGET   _VKI_IO(0x12,94)	/* get read-only status (0 = read_write) */
+#define VKI_BLKRRPART  _VKI_IO(0x12,95) /* re-read partition table */
 #define VKI_BLKGETSIZE _VKI_IO(0x12,96) /* return device size /512 (long *arg) */
+#define VKI_BLKFLSBUF  _VKI_IO(0x12,97) /* flush buffer cache */
 #define VKI_BLKRASET   _VKI_IO(0x12,98)	/* set read ahead for block device */
 #define VKI_BLKRAGET   _VKI_IO(0x12,99)	/* get current read ahead setting */
 #define VKI_BLKFRASET  _VKI_IO(0x12,100)/* set filesystem (mm/filemap.c) read-ahead */
 #define VKI_BLKFRAGET  _VKI_IO(0x12,101)/* get filesystem (mm/filemap.c) read-ahead */
+#define VKI_BLKSECTSET _VKI_IO(0x12,102)/* set max sectors per request (ll_rw_blk.c) */
 #define VKI_BLKSECTGET _VKI_IO(0x12,103)/* get max sectors per request (ll_rw_blk.c) */
 #define VKI_BLKSSZGET  _VKI_IO(0x12,104)/* get block device sector size */
 #define VKI_BLKBSZGET  _VKI_IOR(0x12,112,vki_size_t)
 #define VKI_BLKBSZSET  _VKI_IOW(0x12,113,vki_size_t)
 #define VKI_BLKGETSIZE64 _VKI_IOR(0x12,114,vki_size_t) /* return device size in bytes (u64 *arg) */
+#define VKI_BLKDISCARD _VKI_IO(0x12,119)
 #define VKI_BLKPBSZGET _VKI_IO(0x12,123)
 #define VKI_BLKDISCARDZEROES _VKI_IO(0x12,124)
+#define VKI_BLKZEROOUT _VKI_IO(0x12,127)
 
 #define VKI_FIBMAP	_VKI_IO(0x00,1)	/* bmap access */
 #define VKI_FIGETBSZ    _VKI_IO(0x00,2)	/* get the block size used for bmap */
@@ -4749,6 +4804,323 @@ struct vki_serial_struct {
 # define VKI_PR_FP_MODE_FRE         (1 << 1)     /* 32b compatibility */
 
 #endif // __VKI_LINUX_H
+
+//----------------------------------------------------------------------
+// From linux-4.10/include/uapi/linux/blkzoned.h
+//----------------------------------------------------------------------
+
+struct vki_blk_zone {
+	__vki_u64	start;
+	__vki_u64	len;
+	__vki_u64	wp;
+	__vki_u8	type;
+	__vki_u8	cond;
+	__vki_u8	non_seq;
+	__vki_u8	reset;
+	__vki_u8	reserved[36];
+};
+
+struct vki_blk_zone_report {
+	__vki_u64		sector;
+	__vki_u32		nr_zones;
+	__vki_u8		reserved[4];
+	struct vki_blk_zone	zones[0];
+};
+
+struct vki_blk_zone_range {
+	__vki_u64		sector;
+	__vki_u64		nr_sectors;
+};
+
+#define VKI_BLKREPORTZONE	_VKI_IOWR(0x12, 130, struct vki_blk_zone_report)
+#define VKI_BLKRESETZONE	_VKI_IOW(0x12, 131, struct vki_blk_zone_range)
+
+//----------------------------------------------------------------------
+// From linux-4.18/include/uapi/linux/bpf.h
+//----------------------------------------------------------------------
+
+struct vki_bpf_insn {
+	__vki_u8	code;		/* opcode */
+	__vki_u8	dst_reg:4;	/* dest register */
+	__vki_u8	src_reg:4;	/* source register */
+	__vki_s16	off;		/* signed offset */
+	__vki_s32	imm;		/* signed immediate constant */
+};
+
+enum vki_bpf_cmd {
+	VKI_BPF_MAP_CREATE,
+	VKI_BPF_MAP_LOOKUP_ELEM,
+	VKI_BPF_MAP_UPDATE_ELEM,
+	VKI_BPF_MAP_DELETE_ELEM,
+	VKI_BPF_MAP_GET_NEXT_KEY,
+	VKI_BPF_PROG_LOAD,
+	VKI_BPF_OBJ_PIN,
+	VKI_BPF_OBJ_GET,
+	VKI_BPF_PROG_ATTACH,
+	VKI_BPF_PROG_DETACH,
+	VKI_BPF_PROG_TEST_RUN,
+	VKI_BPF_PROG_GET_NEXT_ID,
+	VKI_BPF_MAP_GET_NEXT_ID,
+	VKI_BPF_PROG_GET_FD_BY_ID,
+	VKI_BPF_MAP_GET_FD_BY_ID,
+	VKI_BPF_OBJ_GET_INFO_BY_FD,
+	VKI_BPF_PROG_QUERY,
+	VKI_BPF_RAW_TRACEPOINT_OPEN,
+	VKI_BPF_BTF_LOAD,
+	VKI_BPF_BTF_GET_FD_BY_ID,
+	VKI_BPF_TASK_FD_QUERY,
+};
+
+enum vki_bpf_map_type {
+	VKI_BPF_MAP_TYPE_UNSPEC,
+	VKI_BPF_MAP_TYPE_HASH,
+	VKI_BPF_MAP_TYPE_ARRAY,
+	VKI_BPF_MAP_TYPE_PROG_ARRAY,
+	VKI_BPF_MAP_TYPE_PERF_EVENT_ARRAY,
+	VKI_BPF_MAP_TYPE_PERCPU_HASH,
+	VKI_BPF_MAP_TYPE_PERCPU_ARRAY,
+	VKI_BPF_MAP_TYPE_STACK_TRACE,
+	VKI_BPF_MAP_TYPE_CGROUP_ARRAY,
+	VKI_BPF_MAP_TYPE_LRU_HASH,
+	VKI_BPF_MAP_TYPE_LRU_PERCPU_HASH,
+	VKI_BPF_MAP_TYPE_LPM_TRIE,
+	VKI_BPF_MAP_TYPE_ARRAY_OF_MAPS,
+	VKI_BPF_MAP_TYPE_HASH_OF_MAPS,
+	VKI_BPF_MAP_TYPE_DEVMAP,
+	VKI_BPF_MAP_TYPE_SOCKMAP,
+	VKI_BPF_MAP_TYPE_CPUMAP,
+	VKI_BPF_MAP_TYPE_XSKMAP,
+	VKI_BPF_MAP_TYPE_SOCKHASH,
+};
+
+enum vki_bpf_prog_type {
+	VKI_BPF_PROG_TYPE_UNSPEC,
+	VKI_BPF_PROG_TYPE_SOCKET_FILTER,
+	VKI_BPF_PROG_TYPE_KPROBE,
+	VKI_BPF_PROG_TYPE_SCHED_CLS,
+	VKI_BPF_PROG_TYPE_SCHED_ACT,
+	VKI_BPF_PROG_TYPE_TRACEPOINT,
+	VKI_BPF_PROG_TYPE_XDP,
+	VKI_BPF_PROG_TYPE_PERF_EVENT,
+	VKI_BPF_PROG_TYPE_CGROUP_SKB,
+	VKI_BPF_PROG_TYPE_CGROUP_SOCK,
+	VKI_BPF_PROG_TYPE_LWT_IN,
+	VKI_BPF_PROG_TYPE_LWT_OUT,
+	VKI_BPF_PROG_TYPE_LWT_XMIT,
+	VKI_BPF_PROG_TYPE_SOCK_OPS,
+	VKI_BPF_PROG_TYPE_SK_SKB,
+	VKI_BPF_PROG_TYPE_CGROUP_DEVICE,
+	VKI_BPF_PROG_TYPE_SK_MSG,
+	VKI_BPF_PROG_TYPE_RAW_TRACEPOINT,
+	VKI_BPF_PROG_TYPE_CGROUP_SOCK_ADDR,
+	VKI_BPF_PROG_TYPE_LWT_SEG6LOCAL,
+	VKI_BPF_PROG_TYPE_LIRC_MODE2,
+};
+
+enum vki_bpf_attach_type {
+	VKI_BPF_CGROUP_INET_INGRESS,
+	VKI_BPF_CGROUP_INET_EGRESS,
+	VKI_BPF_CGROUP_INET_SOCK_CREATE,
+	VKI_BPF_CGROUP_SOCK_OPS,
+	VKI_BPF_SK_SKB_STREAM_PARSER,
+	VKI_BPF_SK_SKB_STREAM_VERDICT,
+	VKI_BPF_CGROUP_DEVICE,
+	VKI_BPF_SK_MSG_VERDICT,
+	VKI_BPF_CGROUP_INET4_BIND,
+	VKI_BPF_CGROUP_INET6_BIND,
+	VKI_BPF_CGROUP_INET4_CONNECT,
+	VKI_BPF_CGROUP_INET6_CONNECT,
+	VKI_BPF_CGROUP_INET4_POST_BIND,
+	VKI_BPF_CGROUP_INET6_POST_BIND,
+	VKI_BPF_CGROUP_UDP4_SENDMSG,
+	VKI_BPF_CGROUP_UDP6_SENDMSG,
+	VKI_BPF_LIRC_MODE2,
+	__VKI_MAX_BPF_ATTACH_TYPE
+};
+
+/* Specify numa node during map creation */
+#define VKI_BPF_F_NUMA_NODE		(1U << 2)
+
+#define VKI_BPF_OBJ_NAME_LEN 16U
+
+union vki_bpf_attr {
+	struct { /* anonymous struct used by BPF_MAP_CREATE command */
+		__vki_u32	map_type;	/* one of enum bpf_map_type */
+		__vki_u32	key_size;	/* size of key in bytes */
+		__vki_u32	value_size;	/* size of value in bytes */
+		__vki_u32	max_entries;	/* max number of entries in a map */
+		__vki_u32	map_flags;	/* BPF_MAP_CREATE related
+					 * flags defined above.
+					 */
+		__vki_u32	inner_map_fd;	/* fd pointing to the inner map */
+		__vki_u32	numa_node;	/* numa node (effective only if
+					 * BPF_F_NUMA_NODE is set).
+					 */
+		char	map_name[VKI_BPF_OBJ_NAME_LEN];
+		__vki_u32	map_ifindex;	/* ifindex of netdev to create on */
+		__vki_u32	btf_fd;		/* fd pointing to a BTF type data */
+		__vki_u32	btf_key_type_id;	/* BTF type_id of the key */
+		__vki_u32	btf_value_type_id;	/* BTF type_id of the value */
+	};
+
+	struct { /* anonymous struct used by BPF_MAP_*_ELEM commands */
+		__vki_u32		map_fd;
+		__vki_aligned_u64	key;
+		union {
+			__vki_aligned_u64 value;
+			__vki_aligned_u64 next_key;
+		};
+		__vki_u64		flags;
+	};
+
+	struct { /* anonymous struct used by BPF_PROG_LOAD command */
+		__vki_u32		prog_type;	/* one of enum bpf_prog_type */
+		__vki_u32		insn_cnt;
+		__vki_aligned_u64	insns;
+		__vki_aligned_u64	license;
+		__vki_u32		log_level;	/* verbosity level of verifier */
+		__vki_u32		log_size;	/* size of user buffer */
+		__vki_aligned_u64	log_buf;	/* user supplied buffer */
+		__vki_u32		kern_version;	/* checked when prog_type=kprobe */
+		__vki_u32		prog_flags;
+		char		prog_name[VKI_BPF_OBJ_NAME_LEN];
+		__vki_u32		prog_ifindex;	/* ifindex of netdev to prep for */
+		/* For some prog types expected attach type must be known at
+		 * load time to verify attach type specific parts of prog
+		 * (context accesses, allowed helpers, etc).
+		 */
+		__vki_u32		expected_attach_type;
+	};
+
+	struct { /* anonymous struct used by BPF_OBJ_* commands */
+		__vki_aligned_u64	pathname;
+		__vki_u32		bpf_fd;
+		__vki_u32		file_flags;
+	};
+
+	struct { /* anonymous struct used by BPF_PROG_ATTACH/DETACH commands */
+		__vki_u32		target_fd;	/* container object to attach to */
+		__vki_u32		attach_bpf_fd;	/* eBPF program to attach */
+		__vki_u32		attach_type;
+		__vki_u32		attach_flags;
+	};
+
+	struct { /* anonymous struct used by BPF_PROG_TEST_RUN command */
+		__vki_u32		prog_fd;
+		__vki_u32		retval;
+		__vki_u32		data_size_in;
+		__vki_u32		data_size_out;
+		__vki_aligned_u64	data_in;
+		__vki_aligned_u64	data_out;
+		__vki_u32		repeat;
+		__vki_u32		duration;
+	} test;
+
+	struct { /* anonymous struct used by BPF_*_GET_*_ID */
+		union {
+			__vki_u32		start_id;
+			__vki_u32		prog_id;
+			__vki_u32		map_id;
+			__vki_u32		btf_id;
+		};
+		__vki_u32		next_id;
+		__vki_u32		open_flags;
+	};
+
+	struct { /* anonymous struct used by BPF_OBJ_GET_INFO_BY_FD */
+		__vki_u32		bpf_fd;
+		__vki_u32		info_len;
+		__vki_aligned_u64	info;
+	} info;
+
+	struct { /* anonymous struct used by BPF_PROG_QUERY command */
+		__vki_u32		target_fd;	/* container object to query */
+		__vki_u32		attach_type;
+		__vki_u32		query_flags;
+		__vki_u32		attach_flags;
+		__vki_aligned_u64	prog_ids;
+		__vki_u32		prog_cnt;
+	} query;
+
+	struct {
+		__vki_u64 name;
+		__vki_u32 prog_fd;
+	} raw_tracepoint;
+
+	struct { /* anonymous struct for BPF_BTF_LOAD */
+		__vki_aligned_u64	btf;
+		__vki_aligned_u64	btf_log_buf;
+		__vki_u32		btf_size;
+		__vki_u32		btf_log_size;
+		__vki_u32		btf_log_level;
+	};
+
+	struct {
+		__vki_u32		pid;		/* input: pid */
+		__vki_u32		fd;		/* input: fd */
+		__vki_u32		flags;		/* input: flags */
+		__vki_u32		buf_len;	/* input/output: buf len */
+		__vki_aligned_u64	buf;		/* input/output:
+						 *   tp_name for tracepoint
+						 *   symbol for kprobe
+						 *   filename for uprobe
+						 */
+		__vki_u32		prog_id;	/* output: prod_id */
+		__vki_u32		fd_type;	/* output: BPF_FD_TYPE_* */
+		__vki_u64		probe_offset;	/* output: probe_offset */
+		__vki_u64		probe_addr;	/* output: probe_addr */
+	} task_fd_query;
+} __attribute__((aligned(8)));
+
+#define VKI_XDP_PACKET_HEADROOM 256
+
+#define VKI_BPF_TAG_SIZE	8
+
+struct vki_bpf_prog_info {
+	__vki_u32 type;
+	__vki_u32 id;
+	__vki_u8  tag[VKI_BPF_TAG_SIZE];
+	__vki_u32 jited_prog_len;
+	__vki_u32 xlated_prog_len;
+	__vki_aligned_u64 jited_prog_insns;
+	__vki_aligned_u64 xlated_prog_insns;
+	__vki_u64 load_time;	/* ns since boottime */
+	__vki_u32 created_by_uid;
+	__vki_u32 nr_map_ids;
+	__vki_aligned_u64 map_ids;
+	char name[VKI_BPF_OBJ_NAME_LEN];
+	__vki_u32 ifindex;
+	__vki_u32 gpl_compatible:1;
+	__vki_u64 netns_dev;
+	__vki_u64 netns_ino;
+	__vki_u32 nr_jited_ksyms;
+	__vki_u32 nr_jited_func_lens;
+	__vki_aligned_u64 jited_ksyms;
+	__vki_aligned_u64 jited_func_lens;
+} __attribute__((aligned(8)));
+
+struct vki_bpf_map_info {
+	__vki_u32 type;
+	__vki_u32 id;
+	__vki_u32 key_size;
+	__vki_u32 value_size;
+	__vki_u32 max_entries;
+	__vki_u32 map_flags;
+	char  name[VKI_BPF_OBJ_NAME_LEN];
+	__vki_u32 ifindex;
+	__vki_u32 :32;
+	__vki_u64 netns_dev;
+	__vki_u64 netns_ino;
+	__vki_u32 btf_id;
+	__vki_u32 btf_key_type_id;
+	__vki_u32 btf_value_type_id;
+} __attribute__((aligned(8)));
+
+struct vki_bpf_btf_info {
+	__vki_aligned_u64 btf;
+	__vki_u32 btf_size;
+	__vki_u32 id;
+} __attribute__((aligned(8)));
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

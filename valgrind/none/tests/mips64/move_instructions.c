@@ -88,7 +88,7 @@ const double fs2_f[] = {
    printf("dmtc1, mov.d, dmfc1 :: mem: 0x%llx out: 0x%llx\n",  \
           (long long)mem, out);                                \
 }
-
+#if (__mips_isa_rev < 6)
 /* movX.s fd, fs */
 #define TEST3(instruction, FD, FS, cc, offset)    \
 {                                                 \
@@ -135,6 +135,7 @@ const double fs2_f[] = {
    printf("%s :: out: 0x%llx, cc: %d\n",          \
           instruction, out, cc);                  \
 }
+#endif
 
 /* movX.s fd, fs, rt */
 #define TEST4(instruction, offset, RTval, FD, FS, RT)  \
@@ -174,10 +175,11 @@ const double fs2_f[] = {
    printf("%s :: out: 0x%llx\n", instruction, out);     \
 }
 
+#if (__mips_isa_rev < 6)
 /* movf, movt */
 #define TEST5(instruction, RDval, RSval, RD, RS)                  \
 {                                                                 \
-   unsigned long out;                                             \
+   unsigned long long out;                                        \
    __asm__ __volatile__(                                          \
       "c.eq.s      %3,     %4"             "\n\t"                 \
       "move        $"#RD", %1"             "\n\t"                 \
@@ -188,9 +190,10 @@ const double fs2_f[] = {
       : "r" (RDval), "r" (RSval), "f" (fs1_f[i]), "f" (fs2_f[i])  \
       : #RD, #RS                                                  \
    );                                                             \
-   printf("%s ::  RDval: 0x%x, RSval: 0x%x, out: 0x%lx\n",        \
+   printf("%s ::  RDval: 0x%x, RSval: 0x%x, out: 0x%llx\n",       \
           instruction, RDval, RSval, out);                        \
 }
+#endif
 #endif
 
 int main()
@@ -206,6 +209,7 @@ int main()
       TEST2(reg_val2[i]);
    }
 
+#if (__mips_isa_rev < 6)
    printf("--- MOVF.S ---\n");
    TEST3("movf.s  $f4, $f6, $fcc0", f4, f6, 1, 0);
    TEST3("movf.s  $f4, $f6, $fcc0", f4, f6, 1, 8);
@@ -369,6 +373,7 @@ int main()
       TEST5("movt", 0x5555ffff, 0xffffffff, t3, t1);
       TEST5("movt", 0xeeeeeeee, 0xffffeeee, t3, t0);
    }
+#endif
 #endif
    return 0;
 }

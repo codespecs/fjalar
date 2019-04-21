@@ -37,8 +37,8 @@ platforms:
 - PPC32/Linux
 - PPC64/Linux
 - ARM/Linux
-- x86/MacOSX
-- AMD64/MacOSX
+- x86/macOS
+- AMD64/macOS
 - S390X/Linux
 - MIPS32/Linux
 - MIPS64/Linux
@@ -46,7 +46,7 @@ platforms:
 - AMD64/Solaris
 
 Note that AMD64 is just another name for x86_64, and Valgrind runs fine
-on Intel processors.  Also note that the core of MacOSX is called
+on Intel processors.  Also note that the core of macOS is called
 "Darwin" and this name is used sometimes.
 
 Valgrind is licensed under the GNU General Public License, version 2. 
@@ -65,9 +65,9 @@ specified with --prefix= when building.
 
 Building and installing it
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
-To install from the Subversion repository :
+To install from the GIT repository:
 
-  0. Check out the code from SVN, following the instructions at
+  0. Clone the code from GIT, following the instructions at
      http://www.valgrind.org/downloads/repository.html.
 
   1. cd into the source directory.

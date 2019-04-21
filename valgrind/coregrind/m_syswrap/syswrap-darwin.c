@@ -833,6 +833,7 @@ Bool ML_(sync_mappings)(const HChar* when, const HChar* where, UWord num)
    Bool where_iuct = STREQ(where, "iokit_user_client_trap");
    Bool where_MwcN = STREQ(where, "ML_(wqthread_continue_NORETURN)");
    Bool where_woQR = STREQ(where, "workq_ops(QUEUE_REQTHREADS)");
+   Bool where_woQ2 = STREQ(where, "workq_ops(QUEUE_REQTHREADS2)");
    Bool where_woTR = STREQ(where, "workq_ops(THREAD_RETURN)");
    Bool where_ke64 = STREQ(where, "kevent64");
 #  undef STREQ
@@ -840,8 +841,8 @@ Bool ML_(sync_mappings)(const HChar* when, const HChar* where, UWord num)
    vg_assert(
       1 >= ( (where_mmr ? 1 : 0) + (where_mmrU ? 1 : 0) 
              + (where_iuct ? 1 : 0) + (where_MwcN ? 1 : 0)
-             + (where_woQR ? 1 : 0) + (where_woTR ? 1 : 0)
-             + (where_ke64 ? 1 : 0)
+             + (where_woQR ? 1 : 0) + (where_woQ2 ? 1 : 0)
+             + (where_woTR ? 1 : 0) + (where_ke64 ? 1 : 0)
    ));
    // merely to stop gcc complaining of non-use in the case where
    // there's no filter:
@@ -892,6 +893,11 @@ Bool ML_(sync_mappings)(const HChar* when, const HChar* where, UWord num)
       // upd 14434 diff 102+,0-
       check = CheckEvery20;
    }
+/* if (when_after && where_woQ2 && num == 0x00000000) {
+      // after workq_ops(QUEUE_REQTHREADS2) 0x00000000
+      // upd XXXX diff XX+,0-
+      check = CheckEvery20;
+   } */
    else
    if (when_after && where_woTR && num == 0x00000000) {
       // after workq_ops(THREAD_RETURN) 0x00000000
@@ -954,6 +960,11 @@ Bool ML_(sync_mappings)(const HChar* when, const HChar* where, UWord num)
       // upd 1099 diff 37+,0-
       check = CheckEvery20;
    }
+/* if (when_after && where_woQ2 && num == 0x00000000) {
+      // after workq_ops(QUEUE_REQTHREADS2) 0x00000000
+      // upd XXXX diff XX+,0-
+      check = CheckEvery20;
+   } */
    else
    if (when_after && where_woTR && num == 0x00000000) {
       // after workq_ops(THREAD_RETURN) 0x00000000
@@ -2089,12 +2100,17 @@ PRE(workq_open)
 static const HChar *workqop_name(int op)
 {
    switch (op) {
-   case VKI_WQOPS_QUEUE_ADD:        return "QUEUE_ADD";
-   case VKI_WQOPS_QUEUE_REMOVE:     return "QUEUE_REMOVE";
-   case VKI_WQOPS_THREAD_RETURN:    return "THREAD_RETURN";
-   case VKI_WQOPS_THREAD_SETCONC:   return "THREAD_SETCONC";
-   case VKI_WQOPS_QUEUE_NEWSPISUPP: return "QUEUE_NEWSPISUPP";
-   case VKI_WQOPS_QUEUE_REQTHREADS: return "QUEUE_REQTHREADS";
+   case VKI_WQOPS_QUEUE_ADD:                  return "QUEUE_ADD";
+   case VKI_WQOPS_QUEUE_REMOVE:               return "QUEUE_REMOVE";
+   case VKI_WQOPS_THREAD_RETURN:              return "THREAD_RETURN";
+   case VKI_WQOPS_THREAD_SETCONC:             return "THREAD_SETCONC";
+   case VKI_WQOPS_QUEUE_NEWSPISUPP:           return "QUEUE_NEWSPISUPP";
+   case VKI_WQOPS_QUEUE_REQTHREADS:           return "QUEUE_REQTHREADS";
+   case VKI_WQOPS_QUEUE_REQTHREADS2:          return "QUEUE_REQTHREADS2";
+   case VKI_WQOPS_THREAD_KEVENT_RETURN:       return "THREAD_KEVENT_RETURN";
+   case VKI_WQOPS_SET_EVENT_MANAGER_PRIORITY: return "SET_EVENT_MANAGER_PRIORITY";
+   case VKI_WQOPS_THREAD_WORKLOOP_RETURN:     return "THREAD_WORKLOOP_RETURN";
+   case VKI_WQOPS_SHOULD_NARROW:              return "SHOULD_NARROW";
    default: return "?";
    }
 }
@@ -2113,14 +2129,6 @@ PRE(workq_ops)
       // GrP fixme need anything here?
       // GrP fixme may block?
       break;
-   case VKI_WQOPS_QUEUE_NEWSPISUPP:
-      // JRS don't think we need to do anything here -- this just checks
-      // whether some newer functionality is supported
-      break;
-   case VKI_WQOPS_QUEUE_REQTHREADS:
-      // JRS uh, looks like it queues up a bunch of threads, or some such?
-      *flags |= SfMayBlock; // the kernel sources take a spinlock, so play safe
-      break;
    case VKI_WQOPS_THREAD_RETURN: {
       // The interesting case. The kernel will do one of two things:
       // 1. Return normally. We continue; libc proceeds to stop the thread.
@@ -2137,6 +2145,32 @@ PRE(workq_ops)
       *flags |= SfMayBlock;  // GrP fixme true?
       break;
    }
+   case VKI_WQOPS_THREAD_SETCONC:
+      // RK fixme need anything here?
+      // RK fixme may block?
+      break;
+   case VKI_WQOPS_QUEUE_NEWSPISUPP:
+      // JRS don't think we need to do anything here -- this just checks
+      // whether some newer functionality is supported
+      break;
+   case VKI_WQOPS_QUEUE_REQTHREADS:
+   case VKI_WQOPS_QUEUE_REQTHREADS2:
+      // JRS uh, looks like it queues up a bunch of threads, or some such?
+      *flags |= SfMayBlock; // the kernel sources take a spinlock, so play safe
+      break;
+   case VKI_WQOPS_THREAD_KEVENT_RETURN:
+      // RK fixme need anything here?
+      // perhaps similar to VKI_WQOPS_THREAD_RETURN above?
+      break;
+   case VKI_WQOPS_SET_EVENT_MANAGER_PRIORITY:
+      // RK fixme this just sets scheduling priorities - don't think we need
+      // to do anything here
+      break;
+   case VKI_WQOPS_THREAD_WORKLOOP_RETURN:
+   case VKI_WQOPS_SHOULD_NARROW:
+      // RK fixme need anything here?
+      // RK fixme may block?
+      break;
    default:
       VG_(printf)("UNKNOWN workq_ops option %ld\n", ARG1);
       break;
@@ -2152,6 +2186,9 @@ POST(workq_ops)
          break;
       case VKI_WQOPS_QUEUE_REQTHREADS:
          ML_(sync_mappings)("after", "workq_ops(QUEUE_REQTHREADS)", 0);
+         break;
+      case VKI_WQOPS_QUEUE_REQTHREADS2:
+         ML_(sync_mappings)("after", "workq_ops(QUEUE_REQTHREADS2)", 0);
          break;
       default:
          break;
@@ -9580,8 +9617,20 @@ PRE(kernelrpc_mach_port_construct_trap)
 {
    UWord a1; UWord a2; ULong a3; UWord a4;
    munge_wwlw(&a1, &a2, &a3, &a4, ARG1, ARG2, ARG3, ARG4, ARG5);
-   PRINT("kernelrpc_mach_port_construct_trap(FIXME)"
-         "(%lx,%lx,%llx,%lx)", a1, a2, a3, a4);
+   PRINT("kernelrpc_mach_port_construct_trap"
+         "(target: %s, options: %#lx, content: %llx, name: %p)",
+         name_for_port(a1), a2, a3, *(mach_port_name_t**)a4);
+   PRE_MEM_WRITE("kernelrpc_mach_port_construct_trap(name)", a4,
+                 sizeof(mach_port_name_t*));
+}
+POST(kernelrpc_mach_port_construct_trap)
+{
+   UWord a1; UWord a2; ULong a3; UWord a4;
+   munge_wwlw(&a1, &a2, &a3, &a4, ARG1, ARG2, ARG3, ARG4, ARG5);
+   PRINT("-> name:%p", *(mach_port_name_t**)a4);
+   if (ML_(safe_to_deref)((mach_port_name_t*)a4, sizeof(mach_port_name_t*))) {
+      POST_MEM_WRITE(a4, sizeof(mach_port_name_t*));
+   }
 }
 
 PRE(kernelrpc_mach_port_destruct_trap)
@@ -9794,6 +9843,73 @@ PRE(guarded_writev_np)
 
 
 /* ---------------------------------------------------------------------
+   Added for OSX 10.11 (El Capitan)
+   ------------------------------------------------------------------ */
+
+#if DARWIN_VERS >= DARWIN_10_11
+
+PRE(kevent_qos)
+{
+   PRINT("kevent_qos( %ld, %#lx, %ld, %#lx, %ld, %#lx, %ld, %ld )",
+         SARG1, ARG2, SARG3, ARG4, SARG5, ARG6, SARG7, ARG8);
+   PRE_REG_READ8(int,"kevent_qos",
+                 int,kq,
+                 const struct vki_kevent_qos_s *,changelist,
+                 int,nchanges,
+                 struct vki_kevent_qos_s *,eventlist,
+                 int,nevents,
+                 void*,data_out,
+                 size_t*,data_available,
+                 unsigned int,flags);
+
+   if (ARG3) PRE_MEM_READ ("kevent_qos(changelist)",
+                           ARG2, ARG3 * sizeof(struct vki_kevent_qos_s));
+   if (ARG5) PRE_MEM_WRITE("kevent_qos(eventlist)",
+                           ARG4, ARG5 * sizeof(struct vki_kevent_qos_s));
+   if (ARG7) PRE_MEM_WRITE("kevent_qos(data_out)",
+                           ARG6, ARG7 * sizeof(void*));
+
+   *flags |= SfMayBlock;
+}
+
+POST(kevent_qos)
+{
+   PRINT("kevent_qos ret %ld dst %#lx (%zu)", RES, ARG4, sizeof(struct vki_kevent_qos_s));
+   if (RES > 0) {
+      ML_(sync_mappings)("after", "kevent_qos", 0);
+      POST_MEM_WRITE(ARG4, RES * sizeof(struct vki_kevent_qos_s));
+   }
+}
+
+
+PRE(pselect)
+{
+   *flags |= SfMayBlock;
+   PRINT("pselect ( %ld, %#lx, %#lx, %#lx, %#lx, %#lx )", SARG1, ARG2, ARG3,
+         ARG4, ARG5, ARG6);
+   PRE_REG_READ5(long, "pselect",
+                 int, n, vki_fd_set *, readfds, vki_fd_set *, writefds,
+                 vki_fd_set *, exceptfds, struct vki_timeval *, timeout);
+   // XXX: this possibly understates how much memory is read.
+   if (ARG2 != 0)
+      PRE_MEM_READ( "pselect(readfds)",
+		     ARG2, ARG1/8 /* __FD_SETSIZE/8 */ );
+   if (ARG3 != 0)
+      PRE_MEM_READ( "pselect(writefds)",
+		     ARG3, ARG1/8 /* __FD_SETSIZE/8 */ );
+   if (ARG4 != 0)
+      PRE_MEM_READ( "pselect(exceptfds)",
+		     ARG4, ARG1/8 /* __FD_SETSIZE/8 */ );
+   if (ARG5 != 0)
+      PRE_timeval_READ( "pselect(timeout)", ARG5 );
+   if (ARG6 != 0)
+      PRE_MEM_READ( "pselect(sigmask)", ARG6, sizeof(vki_sigset_t) );
+}
+
+#endif /* DARWIN_VERS >= DARWIN_10_11 */
+
+
+/* ---------------------------------------------------------------------
  Added for macOS 10.12 (Sierra)
  ------------------------------------------------------------------ */
 
@@ -9806,12 +9922,45 @@ PRE(getentropy)
                   void*, buffer, size_t, size);
 }
 
+static const HChar *ulop_name(int op)
+{
+   switch (op) {
+      case VKI_UL_UNFAIR_LOCK:          return "UL_UNFAIR_LOCK";
+      case VKI_UL_COMPARE_AND_WAIT:     return "UL_COMPARE_AND_WAIT";
+      default: return "??";
+   }
+}
+
 PRE(ulock_wake)
 {
     PRINT("ulock_wake(operation:%ld, addr:%#lx, wake_value:%ld) FIXME",
         ARG1, ARG2, ARG3);
     PRE_REG_READ3(int, "ulock_wake",
                   uint32_t, operation, void*, addr, uint64_t, wake_value);
+}
+
+PRE(ulock_wait)
+{
+    uint ul_opcode = ARG1 & VKI_UL_OPCODE_MASK;
+    uint ul_flags = ARG1 & VKI_UL_FLAGS_MASK;
+
+    switch (ul_opcode) {
+    case VKI_UL_UNFAIR_LOCK:
+    case VKI_UL_COMPARE_AND_WAIT: {
+      const char* name = ulop_name(ul_opcode);
+      PRINT("ulock_wait(operation:%s (flags: %#x), addr:%#lx, value:%ld, timeout:%ld)",
+            name, ul_flags, ARG2, ARG3, ARG4);
+      PRE_REG_READ4(int, "ulock_wait",
+                    uint32_t, operation, void*, addr, uint64_t, value, uint32_t, timeout);
+      PRE_MEM_READ("ulock_wait(addr)", ARG2, 4 );
+      break;
+    }
+
+    default:
+      PRINT("ulock_wait(operation:%ld (opcode: %u [??], flags: %#x), addr:%#lx, value:%ld, timeout:%ld)", ARG1, ul_opcode, ul_flags, ARG2, ARG3, ARG4);
+      log_decaying("UNKNOWN ulock_wait %ld (opcode: %u [??], flags: %#x)!", ARG1, ul_opcode, ul_flags);
+      break;
+    }
 }
 
 PRE(host_create_mach_voucher_trap)
@@ -9894,6 +10043,32 @@ POST(task_register_dyld_shared_cache_image_info)
     if (!reply->RetCode) {
     } else {
         PRINT("mig return %d", reply->RetCode);
+    }
+}
+
+PRE(mach_generate_activity_id)
+{
+    // munge_www -- no need to call helper
+    PRINT("mach_generate_activity_id"
+        "(target:%s, count:%ld)",
+        name_for_port(ARG1), ARG2);
+    PRE_REG_READ3(long, "mach_generate_activity_id",
+                  mach_port_name_t, target, int, count, uint64_t *, activity_id);
+    if (ARG2 <= 0 || ARG2 > MACH_ACTIVITY_ID_COUNT_MAX) {
+       SET_STATUS_Failure( VKI_EINVAL );
+    }
+    if (ML_(safe_to_deref)( (void*)ARG3, sizeof(vki_uint64_t*) )) {
+       PRE_MEM_WRITE( "mach_generate_activity_id(activity_id)", ARG3, sizeof(vki_uint64_t) );
+    } else {
+       SET_STATUS_Failure( VKI_EFAULT );
+    }
+}
+
+POST(mach_generate_activity_id)
+{
+    if (ML_(safe_to_deref)( (void*)ARG3, sizeof(vki_uint64_t*) )) {
+       POST_MEM_WRITE( ARG3, sizeof(vki_uint64_t) );
+       PRINT("-> activity_id:%#llx", *(uint64_t*)ARG3);
     }
 }
 
@@ -10358,7 +10533,9 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(372)),   // ???
 #endif
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(373)),   // ???
+#if DARWIN_VERS < DARWIN_10_11
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(374)),   // ???
+#endif
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(375)),   // ???
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(376)),   // ???
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(377)),   // ???
@@ -10453,7 +10630,8 @@ const SyscallTableEntry ML_(syscall_table)[] = {
 #endif
 #if DARWIN_VERS >= DARWIN_10_11
 // _____(__NR_kdebug_trace_string),                     // 178
-// _____(__NR_kevent_qos),                              // 374
+   MACXY(__NR_kevent_qos, kevent_qos),                  // 374
+   MACX_(__NR_pselect, pselect),                        // 394
 // _____(__NR_netagent_trigger),                        // 490
 // _____(__NR_stack_snapshot_with_config),              // 491
 // _____(__NR_microstackshot),                          // 492
@@ -10484,13 +10662,25 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(512)),        // ???
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(513)),        // ???
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(514)),        // ???
-// _____(__NR_ulock_wait),                              // 515
+   MACX_(__NR_ulock_wait, ulock_wait),                  // 515
    MACX_(__NR_ulock_wake, ulock_wake),                  // 516
 // _____(__NR_fclonefileat),                            // 517
 // _____(__NR_fs_snapshot),                             // 518
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(519)),        // ???
 // _____(__NR_terminate_with_payload),                  // 520
 // _____(__NR_abort_with_payload),                      // 521
+#endif
+#if DARWIN_VERS >= DARWIN_10_13
+// _____(__NR_thread_selfcounts),                       // 186
+// _____(__NR_kevent_id,                                // 375
+// _____(__NR_necp_session_open),                       // 522
+// _____(__NR_necp_session_action),                     // 523
+// _____(__NR_setattrlistat),                           // 524
+// _____(__NR_net_qos_guideline),                       // 525
+// _____(__NR_fmount),                                  // 526
+// _____(__NR_ntp_adjtime),                             // 527
+// _____(__NR_ntp_gettime),                             // 528
+// _____(__NR_os_fault_with_payload),                   // 529
 #endif
 // _____(__NR_MAXSYSCALL)
    MACX_(__NR_DARWIN_FAKE_SIGRETURN, FAKE_SIGRETURN)
@@ -10563,7 +10753,7 @@ const SyscallTableEntry ML_(mach_trap_table)[] = {
 #  endif
 
 #  if DARWIN_VERS >= DARWIN_10_9
-   MACX_(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(24), kernelrpc_mach_port_construct_trap),
+   MACXY(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(24), kernelrpc_mach_port_construct_trap),
    MACX_(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(25), kernelrpc_mach_port_destruct_trap),
 #  else
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(24)), 
@@ -10594,18 +10784,14 @@ const SyscallTableEntry ML_(mach_trap_table)[] = {
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(42)),
 #  endif
 
-#  if DARWIN_VERS >= DARWIN_10_10
+#  if DARWIN_VERS >= DARWIN_10_12
+   MACXY(__NR_mach_generate_activity_id, mach_generate_activity_id),
+#  elif DARWIN_VERS >= DARWIN_10_10
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(43)),
-#  else
-#    if DARWIN_VERS == DARWIN_10_9
+#  elif defined(VGA_x86) || DARWIN_VERS == DARWIN_10_9
 // _____(__NR_map_fd),
-#    else
-#      if defined(VGA_x86)
-// _____(__NR_map_fd), 
-#      else
+#  else
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(43)),
-#      endif
-#    endif
 #  endif
 
 // _____(__NR_task_name_for_pid), 
@@ -10615,17 +10801,23 @@ const SyscallTableEntry ML_(mach_trap_table)[] = {
 #if defined(VGA_x86)
 // _____(__NR_macx_swapon), 
 // _____(__NR_macx_swapoff), 
+#else
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(48)),
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(49)),
+#endif
+#if DARWIN_VERS >= DARWIN_10_13
+// _____(__NR_thread_get_special_reply_port,            // 50
+#else
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(50)), 
+#endif /* DARWIN_VERS >= DARWIN_10_13 */
+#if defined(VGA_x86)
 // _____(__NR_macx_triggers), 
 // _____(__NR_macx_backing_store_suspend), 
 // _____(__NR_macx_backing_store_recovery), 
 #else
-   _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(48)), 
-   _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(49)), 
-   _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(50)), 
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(51)), 
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(52)), 
-   _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(53)), 
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(53)),
 #endif
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(54)), 
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_MACH(55)), 
