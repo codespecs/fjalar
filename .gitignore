@@ -305,7 +305,6 @@ valgrind/memcheck/tests/execve1
 valgrind/memcheck/tests/execve2
 valgrind/memcheck/tests/exitprog
 valgrind/memcheck/tests/file_locking
-valgrind/memcheck/tests/filter_leak_cpp_interior
 valgrind/memcheck/tests/fprw
 valgrind/memcheck/tests/fwrite
 valgrind/memcheck/tests/holey_buffer_too_small
