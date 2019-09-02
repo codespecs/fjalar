@@ -32,6 +32,8 @@ TEMP-daikon-test: ../daikon
 
 ../daikon:
 	cd .. && git clone https://github.com/codespecs/daikon.git
+# TEMPORARY while testing fix
+	cd ../daikon && git co fix-inlining
 
 clean:
 	cd valgrind && $(MAKE) clean

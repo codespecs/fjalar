@@ -8348,7 +8348,7 @@ static void mc_pre_clo_init(void)
    VG_(details_version)         ("5.7.4");
    VG_(details_description)     ("C/C++ Language Front-End for Daikon with DynComp comparability analysis tool.");
    VG_(details_copyright_author)(
-      "Copyright (C) 2007-2018, University of Washington CSE PLSE Group");
+      "Copyright (C) 2007-2019, University of Washington CSE PLSE Group");
    VG_(details_bug_reports_to)  ("daikon-developers@googlegroups.com");
    // PG - pgbovine - customize the fields above for each Fjalar tool
 

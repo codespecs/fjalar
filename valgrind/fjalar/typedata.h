@@ -540,6 +540,9 @@ char harvest_file_name_table(unsigned long debug_line_offset, XArray* table);
 
 char binary_search_dwarf_entry_array(unsigned long target_ID, unsigned long* index_ptr);
 
+void process_abstract_origin_items(void);
+void process_specification_items(void);
+
 void link_array_type_to_members(dwarf_entry* e, unsigned long dist_to_end);
 void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end);
 void link_function_to_params_and_local_vars(dwarf_entry* e, unsigned long dist_to_end);

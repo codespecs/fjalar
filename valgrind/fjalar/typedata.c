@@ -1357,18 +1357,20 @@ static void link_entries_to_type_entries(void)
 // C++ code produces some fun debugging information!  The basic idea
 // is that we want to have the start_pc and end_pc fields of function
 // entries initialized to proper values.  There can be up to 2 levels
-// of indirection here.  There is an entry with DW_AT_abstract_origin
-// that contains the start_pc and end_pc that we are looking for.
-// That points to an entry with no name but with a
-// DW_AT_specification, which points to an entry with a name.  As far
-// as I can tell, the 'real' entry is the one with the
-// DW_AT_specification, so we want to copy the name from the version
-// with the name and the start_pc/end_pc from the version with the
-// start_pc/end_pc.
+// of indirection here.  In one case there is an entry with DW_AT_abstract_origin
+// that contains the start_pc and end_pc.  That entry points to an
+// entry with no name but with a DW_AT_specification, which points to
+// an entry with a name.  In the other case, there is an entry with
+// DW_AT_specification that contains the start_pc and end_pc.  Here too,
+// the specification points to an entry with the name.
+// As far as I can tell, the 'real' entry is the one with the start_pc
+// and end_pc.  We want to use the entries pointed to by DW_AT_abstract_origin
+// and/or DW_AT_specification to locate the name and copy it into
+// the 'real' entry.
 /*
 
-This one is fake except we really need the start_pc and end_pc from it
-(we can get start_pc from symbol table, but not end_pc ... arggggg!!!)
+This entry is the 'real' one and we need to get the name from the abstract_origin
+pointer to the specification pointer to the name:
 
  <1><180a1>: Abbrev Number: 136 (DW_TAG_subprogram)
      DW_AT_sibling     : <180d1>
@@ -1377,8 +1379,7 @@ This one is fake except we really need the start_pc and end_pc from it
      DW_AT_high_pc     : 0x8048c5d
      DW_AT_frame_base  : 1 byte block: 55         (DW_OP_reg5)
 
-This is the one we want to keep because it contains the actual
-parameters:
+This is a place holder entry to location the specification entry:
 
  <1><18069>: Abbrev Number: 132 (DW_TAG_subprogram)
      DW_AT_sibling     : <1809c>
@@ -1386,7 +1387,7 @@ parameters:
      DW_AT_inline      : 2        (declared as inline but ignored)
 
 Notice that this has is_declaration == 1 so it is a 'fake'
-entry, but we really want to steal its name fields
+entry, but we really want to copy its name fields:
 
  <2><17e25>: Abbrev Number: 56 (DW_TAG_subprogram)
      DW_AT_sibling     : <17e51>
@@ -1415,7 +1416,7 @@ end_pc ... how convenient!
      DW_AT_frame_base  : 1 byte block: 55         (DW_OP_reg5)
 
 Notice that this has is_declaration == 1 so it is a 'fake'
-entry, but we really want to steal its name fields
+entry, but we really want to copy its name fields
 
  <2><18698>: Abbrev Number: 12 (DW_TAG_subprogram)
      DW_AT_sibling     : <186c4>
@@ -1468,22 +1469,31 @@ the type property from the declaration to the definition.
     <1320>   DW_AT_const_value : -2147483648
 */
 
-//  For every function entry e with a non-null specification_ID, attempt to
-//  look up the entry X with the ID given by specification_ID and copy the
-//  start_pc from e to X while copying (aliasing) the name,
-//  mangled_name, return_type_ID, and accessibility from X to e
-static void init_specification_and_abstract_stuff(void) {
+// We use two passes to copy information to where it is needed.
+// First, we copy the interesting fields from the entry pointed
+// to by DW_AT_specification into the entry containing the
+// DW_AT_specification.  Note that we do not overwrite properties
+// that are already present.
+// Next, we do a similar pass that copies the interesting fields
+// from the entry pointed to by DW_AT_abstract_origin into the entry
+// containing the DW_AT_abstract_origin.  Again, note that we do not
+// overwrite properties that are already present.
+void init_specification_and_abstract_stuff(void) {
+  process_specification_items();
+  process_abstract_origin_items();
+}
+
+void process_abstract_origin_items(void) {
   unsigned long idx;
   dwarf_entry* cur_entry = 0;
 
-  // Make a first pass looking for all functions with a
-  // abstract_origin_ID field, find the targets, and copy over the
-  // start_pc and end_pc fields:
   for (idx = 0; idx < dwarf_entry_array_size; idx++) {
     cur_entry = &dwarf_entry_array[idx];
     if (tag_is_function(cur_entry->tag_name)) {
       function* cur_func = (function*)(cur_entry->entry_ptr);
 
+      // Look for all functions with a abstract_origin_ID field, find the targets,
+      // and copy over the name field(s), return type and accessibility.
       if (cur_func->abstract_origin_ID) {
         unsigned long aliased_index = 0;
 
@@ -1493,7 +1503,6 @@ static void init_specification_and_abstract_stuff(void) {
           function* aliased_func_ptr = 0;
 
           tl_assert(tag_is_function(aliased_entry->tag_name));
-
           aliased_func_ptr = (function*)(aliased_entry->entry_ptr);
 
           // We better have start_pc and end_pc fields!
@@ -1503,33 +1512,22 @@ static void init_specification_and_abstract_stuff(void) {
                (e.g., statically linked libc) the assertion failed, so
                let's just keep going. -SMcC */
 
-        // C++ constructors and destructors appear to be a bit different.
-        // We need to copy the compilation unit code base (comp_pc)
-        // over to the aliased function as well. (markro)
-            aliased_func_ptr->comp_pc = cur_func->comp_pc;
-            aliased_func_ptr->start_pc = cur_func->start_pc;
-            aliased_func_ptr->end_pc = cur_func->end_pc;
-
-            aliased_func_ptr->frame_base_offset = cur_func->frame_base_offset;
-            aliased_func_ptr->frame_base_expression = cur_func->frame_base_expression;
-
-            aliased_func_ptr->num_formal_params = cur_func->num_formal_params;
-            aliased_func_ptr->params = cur_func->params;
-
-            aliased_func_ptr->num_local_vars = cur_func->num_local_vars;
-            aliased_func_ptr->local_vars = cur_func->local_vars;
-
-
+            if (!cur_func->name)
+              cur_func->name = aliased_func_ptr->name;
+            if (!cur_func->mangled_name)
+              cur_func->mangled_name = aliased_func_ptr->mangled_name;
+            if (!cur_func->return_type_ID)
+              cur_func->return_type_ID = aliased_func_ptr->return_type_ID;
+            if (!cur_func->accessibility)
+              cur_func->accessibility = aliased_func_ptr->accessibility;
           }
-
-          // Mark cur_func's entry with is_declaration = 1 just to
-          // make sure it gets ignored later:
-          cur_func->is_declaration = 1;
         }
       }
     } else if(tag_is_formal_parameter(cur_entry->tag_name)) {
       formal_parameter* cur_param = (formal_parameter*) (cur_entry->entry_ptr);
 
+      // Look for all formal parameters with a abstract_origin_ID field, find the targets,
+      // and copy over the location field(s) and stack size.
       if (cur_param->abstract_origin_ID) {
         unsigned long aliased_index = 0;
 
@@ -1539,9 +1537,7 @@ static void init_specification_and_abstract_stuff(void) {
           formal_parameter* aliased_formal_param = NULL;
 
           tl_assert(tag_is_formal_parameter(aliased_entry->tag_name));
-
           aliased_formal_param = (formal_parameter*) (aliased_entry->entry_ptr);
-
 
           aliased_formal_param->location_type = cur_param->location_type;
           aliased_formal_param->loc_atom = cur_param->loc_atom;
@@ -1554,13 +1550,15 @@ static void init_specification_and_abstract_stuff(void) {
           cur_param->name = aliased_formal_param->name;
           cur_param->type_ID = aliased_formal_param->type_ID;
           //cur_param->type_ptr = aliased_formal_param->type_ptr;
-
-
-          }
+        }
       }
     }
-
   }
+}
+
+void process_specification_items(void) {
+  unsigned long idx;
+  dwarf_entry* cur_entry = 0;
 
   // Now make a second pass looking for all functions with a
   // specification_ID field, find their targets, and copy over the
@@ -1570,6 +1568,8 @@ static void init_specification_and_abstract_stuff(void) {
     if (tag_is_function(cur_entry->tag_name)) {
       function* cur_func = (function*)(cur_entry->entry_ptr);
 
+      // Look for all functions with a specification_ID field, find the targets,
+      // and copy over the name field(s), return type and accessibility.
       if (cur_func->specification_ID) {
         unsigned long aliased_index = 0;
         FJALAR_DPRINTF("Trying to find %s's specification: %lx\n", cur_func->name, cur_func->specification_ID);
@@ -1580,16 +1580,18 @@ static void init_specification_and_abstract_stuff(void) {
           function* aliased_func_ptr = 0;
 
           tl_assert(tag_is_function(aliased_entry->tag_name));
-
           aliased_func_ptr = (function*)(aliased_entry->entry_ptr);
 
           FJALAR_DPRINTF("   Found %s\n", aliased_func_ptr->name);
 
-
-          cur_func->name = aliased_func_ptr->name;
-          cur_func->mangled_name = aliased_func_ptr->mangled_name;
-          cur_func->return_type_ID = aliased_func_ptr->return_type_ID;
-          cur_func->accessibility = aliased_func_ptr->accessibility;
+          if (!cur_func->name)
+            cur_func->name = aliased_func_ptr->name;
+          if (!cur_func->mangled_name)
+            cur_func->mangled_name = aliased_func_ptr->mangled_name;
+          if (!cur_func->return_type_ID)
+            cur_func->return_type_ID = aliased_func_ptr->return_type_ID;
+          if (!cur_func->accessibility)
+            cur_func->accessibility = aliased_func_ptr->accessibility;
         }
       }
     } else if (tag_is_collection_type(cur_entry->tag_name)) {
