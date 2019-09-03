@@ -33,7 +33,7 @@ TEMP-daikon-test: ../daikon
 # TEMPORARY 2nd line is temporary while testing fix
 ../daikon:
 	cd .. && git clone https://github.com/codespecs/daikon.git
-	cd ../daikon && git co fix-inlining
+	cd ../daikon && git checkout fix-inlining
 
 clean:
 	cd valgrind && $(MAKE) clean
