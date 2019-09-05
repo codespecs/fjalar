@@ -1369,7 +1369,7 @@ static void link_entries_to_type_entries(void)
 // the 'real' entry.
 /*
 
-This entry is the 'real' one and we need to get the name from the abstract_origin
+This entry is the 'real' one; we need to get the name from the abstract_origin
 pointer to the specification pointer to the name:
 
  <1><180a1>: Abbrev Number: 136 (DW_TAG_subprogram)
@@ -1379,7 +1379,7 @@ pointer to the specification pointer to the name:
      DW_AT_high_pc     : 0x8048c5d
      DW_AT_frame_base  : 1 byte block: 55         (DW_OP_reg5)
 
-This is a place holder entry to location the specification entry:
+This is a place holder entry to locate the specification entry:
 
  <1><18069>: Abbrev Number: 132 (DW_TAG_subprogram)
      DW_AT_sibling     : <1809c>

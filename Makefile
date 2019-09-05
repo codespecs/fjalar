@@ -30,10 +30,8 @@ TEMP-daikon-test: ../daikon
 	$(MAKE) -C ../daikon compile daikon.jar kvasir
 	$(MAKE) -C ../daikon/tests/kvasir-tests clean-all TEMP-regression-tests
 
-# TEMPORARY 2nd line is temporary while testing fix
 ../daikon:
 	cd .. && git clone https://github.com/codespecs/daikon.git
-	cd ../daikon && git checkout fix-inlining
 
 clean:
 	cd valgrind && $(MAKE) clean
