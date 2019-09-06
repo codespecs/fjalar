@@ -27,13 +27,13 @@ export JAVA_HOME="${JAVA_HOME:-`which javac|xargs readlink -f|xargs dirname|xarg
 
 # TODO: The tests ought to work even if $DAIKONDIR is not set.
 export DAIKONDIR="${DAIKONDIR:-`pwd`/../daikon}"
-(cd /tmp/plume-scripts && git pull > /dev/null 2>&1) \
-  || (cd /tmp && git clone --depth 1 -q https://github.com/plume-lib/plume-scripts.git)
-eval `/tmp/plume-scripts/ci-info DEFAULT-ORGANIZATION`
 
 if [ -d $DAXONDIR ] ; then
     (cd $DAIKONDIR && git pull -q || true)
 else
+    (cd /tmp/plume-scripts && git pull > /dev/null 2>&1) \
+      || (cd /tmp && git clone --depth 1 -q https://github.com/plume-lib/plume-scripts.git)
+    eval `/tmp/plume-scripts/ci-info DEFAULT-ORGANIZATION`
     REPO=`/tmp/plume-scripts/git-find-fork ${CI_ORGANIZATION} codespecs daikon`
     BRANCH=`/tmp/plume-scripts/git-find-branch ${REPO} ${CI_BRANCH}`
     (cd .. && git clone -b ${BRANCH} --single-branch --depth 1 -q ${REPO}) || (cd .. && git clone -b ${BRANCH} --single-branch --depth 1 -q ${REPO})
