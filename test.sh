@@ -13,15 +13,32 @@ set -e
 # export SHELLOPTS
 
 # Get some system info for debugging.
-cat /proc/version
 gcc --version
 make --version
+lsb_release -a
+cat /etc/*release
+ldd --version
+cat /proc/version
 #find /lib/ | grep -s "libc-"
 #find /lib64/ | grep -s "libc-"
 echo "end of system info"
 
+export JAVA_HOME="${JAVA_HOME:-`which javac|xargs readlink -f|xargs dirname|xargs dirname`}"
+
 # TODO: The tests ought to work even if $DAIKONDIR is not set.
-export DAIKONDIR=`pwd`/../daikon
+export DAIKONDIR="${DAIKONDIR:-`pwd`/../daikon}"
+
+if [ -d $DAXONDIR ] ; then
+    (cd $DAIKONDIR && git pull -q || true)
+else
+    (cd /tmp/plume-scripts && git pull > /dev/null 2>&1) \
+      || (cd /tmp && git clone --depth 1 -q https://github.com/plume-lib/plume-scripts.git)
+    eval `/tmp/plume-scripts/ci-info DEFAULT-ORGANIZATION`
+    REPO=`/tmp/plume-scripts/git-find-fork ${CI_ORGANIZATION} codespecs daikon`
+    BRANCH=`/tmp/plume-scripts/git-find-branch ${REPO} ${CI_BRANCH}`
+    (cd .. && git clone -b ${BRANCH} --single-branch --depth 1 -q ${REPO}) || (cd .. && git clone -b ${BRANCH} --single-branch --depth 1 -q ${REPO})
+fi
+
 
 make build
 

@@ -1,0 +1,31 @@
+jobs:
+
+- job: ubuntu
+  pool:
+    vmImage: 'ubuntu-16.04'
+  container: mdernst/daikon-ubuntu-jdk8-plus:latest
+  steps:
+  - checkout: self
+    fetchDepth: 25
+  - bash: ./test.sh
+    displayName: test.sh
+
+- job: fedora
+  pool:
+    vmImage: 'ubuntu-16.04'
+  container: mdernst/daikon-fedora-jdk8-plus:latest
+  steps:
+  - checkout: self
+    fetchDepth: 25
+  - bash: ./test.sh
+    displayName: test.sh
+
+- job: centos
+  pool:
+    vmImage: 'ubuntu-16.04'
+  container: mdernst/daikon-centos-jdk8-plus:latest
+  steps:
+  - checkout: self
+    fetchDepth: 25
+  - bash: ./test.sh
+    displayName: test.sh
