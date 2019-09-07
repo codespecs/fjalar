@@ -37,6 +37,7 @@ else
     eval `/tmp/plume-scripts/ci-info DEFAULT-ORGANIZATION`
     REPO=`/tmp/plume-scripts/git-find-fork ${CI_ORGANIZATION} codespecs daikon`
     BRANCH=`/tmp/plume-scripts/git-find-branch ${REPO} ${CI_BRANCH}`
+    echo "git clone -b ${BRANCH} --single-branch --depth 1 -q ${REPO} ${DAIKONDIR}"
     git clone -b ${BRANCH} --single-branch --depth 1 -q ${REPO} ${DAIKONDIR} || git clone -b ${BRANCH} --single-branch --depth 1 -q ${REPO} ${DAIKONDIR}
 fi
 
