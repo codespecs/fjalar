@@ -39,6 +39,7 @@ else
     BRANCH=`/tmp/plume-scripts/git-find-branch ${REPO} ${CI_BRANCH}`
     echo "git clone -b ${BRANCH} --single-branch --depth 1 -q ${REPO} ${DAIKONDIR}"
     git clone -b ${BRANCH} --single-branch --depth 1 -q ${REPO} ${DAIKONDIR} || git clone -b ${BRANCH} --single-branch --depth 1 -q ${REPO} ${DAIKONDIR}
+    ln -s `pwd` ${DAIKONDIR}/fjalar
 fi
 
 
