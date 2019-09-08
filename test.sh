@@ -29,19 +29,10 @@ export JAVA_HOME="${JAVA_HOME:-`which javac|xargs readlink -f|xargs dirname|xarg
 export DAIKONDIR="${DAIKONDIR:-`pwd`/../daikon}"
 echo "DAIKONDIR=$DAIKONDIR"
 
-if [ -d "${DAXONDIR}" ] ; then
-    (cd ${DAIKONDIR} && git pull -q || true)
-else
-    (cd /tmp/plume-scripts && git pull > /dev/null 2>&1) \
-      || (cd /tmp && git clone --depth 1 -q https://github.com/plume-lib/plume-scripts.git)
-    eval `/tmp/plume-scripts/ci-info DEFAULT-ORGANIZATION`
-    REPO=`/tmp/plume-scripts/git-find-fork ${CI_ORGANIZATION} codespecs daikon`
-    BRANCH=`/tmp/plume-scripts/git-find-branch ${REPO} ${CI_BRANCH}`
-    echo "git clone -b ${BRANCH} --single-branch --depth 1 -q ${REPO} ${DAIKONDIR}"
-    git clone -b ${BRANCH} --single-branch --depth 1 -q ${REPO} ${DAIKONDIR} || git clone -b ${BRANCH} --single-branch --depth 1 -q ${REPO} ${DAIKONDIR}
-    ln -s `pwd` ${DAIKONDIR}/fjalar
-fi
-
+(cd /tmp/plume-scripts && git pull > /dev/null 2>&1) \
+  || (cd /tmp && git clone --depth 1 -q https://github.com/plume-lib/plume-scripts.git)
+/tmp/plume-scripts/git-clone-related codespecs daikon
+ln -s `pwd` ${DAIKONDIR}/fjalar || true
 
 make build
 
