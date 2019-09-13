@@ -23,7 +23,12 @@ cat /proc/version
 #find /lib64/ | grep -s "libc-"
 echo "end of system info"
 
-export JAVA_HOME="${JAVA_HOME:-`which javac|xargs readlink -f|xargs dirname|xargs dirname`}"
+if [[ "$OSTYPE" == "darwin"* ]]; then
+  JAVA_HOME=${JAVA_HOME:-$(/usr/libexec/java_home)}
+else
+  JAVA_HOME=${JAVA_HOME:-`dirname $(dirname $(readlink -f $(which javac)))`}
+fi
+export JAVA_HOME
 
 # TODO: The tests ought to work even if $DAIKONDIR is not set.
 export DAIKONDIR="${DAIKONDIR:-`pwd`/../daikon}"
