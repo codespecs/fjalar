@@ -186,9 +186,9 @@ make -C $INV/daikon/tests/kvasir-tests clean-all regression-tests
 
 The tests should pass. If any tests fail, fix them, then start over from
 the beginning.
-As of December 31, 2017, all tests pass on a standard UW/CSE machine running CentOS 7.4.1708.
-They also pass on Fedora 23, 24, 25 and Ubuntu 16.04.  (We use Travis/Docker to run
-these configurations.)
+As of March 22, 2020, all tests pass on a standard UW/CSE machine running CentOS 7.7.1908.
+They also pass on Fedora 25, 28, 30 and Ubuntu 16.04, 17.10 and 18.04.
+(We use Azure pipelines and CircleCI workflows to run these configurations.)
 
 At this point, the source trees are ready for the merge.
 However, the Fjalar repository contains
@@ -552,8 +552,8 @@ This keeps the files used during the source merge update to a minimum.
 You will need to make sure @command{gdb} is installed on your machine
 to run these tests. Also, they are very sensitive
 to the system software on the host machine.  In most cases, there will be
-some failures. (Currently, 12 of 687 tests do not pass on a standard UW/CSE
-system running CentOS 7.4.1708.) Rather, it is important to capture the results
+some failures. (Currently, only 1 of 699 tests do not pass on a standard UW/CSE
+system running CentOS 7.7.1908.) Rather, it is important to capture the results
 as they should be identical after the source merge.
 
 To run the @command{regtest} verification tests,
@@ -571,22 +571,11 @@ This will take about 10-15 minutes.  A summary of the @command{regtest}
 results will be at the end of the log file.  We will use these results in
 @ref{Testing Valgrind}.
 
-Here is a copy of the last few lines from the latest run of these tests (03/27/2017)
+Here is a copy of the last few lines from the latest run of these tests (03/22/2020)
 on a UW/CSE CentOS based system:
 
 @example
-== 687 tests, 7 stderr failures, 4 stdout failures, 0 stderrB failures, 1 stdoutB failure, 0 post failures ==
-gdbserver_tests/hgtls                    (stdoutB)
-helgrind/tests/bar_bad                   (stderr)
-exp-sgcheck/tests/bad_percentify         (stdout)
-exp-sgcheck/tests/bad_percentify         (stderr)
-exp-sgcheck/tests/globalerr              (stderr)
-exp-sgcheck/tests/hackedbz2              (stdout)
-exp-sgcheck/tests/hackedbz2              (stderr)
-exp-sgcheck/tests/hsg                    (stdout)
-exp-sgcheck/tests/hsg                    (stderr)
-exp-sgcheck/tests/preen_invars           (stdout)
-exp-sgcheck/tests/preen_invars           (stderr)
+== 699 tests, 1 stderr failure, 0 stdout failures, 0 stderrB failures, 0 stdoutB failures, 0 post failures ==
 exp-sgcheck/tests/stackerr               (stderr)
 
 ...checking makefile consistency
