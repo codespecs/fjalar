@@ -20,6 +20,7 @@ EXTRA_DIST = \
 	images/prev.png \
 	images/up.png \
 	images/kcachegrind_xtree.png \
+	images/dh-tree.png \
 	internals/3_0_BUGSTATUS.txt \
 	internals/3_1_BUGSTATUS.txt \
 	internals/3_2_BUGSTATUS.txt \
@@ -33,6 +34,7 @@ EXTRA_DIST = \
 	internals/3_11_BUGSTATUS.txt \
 	internals/3_12_BUGSTATUS.txt \
 	internals/3_13_BUGSTATUS.txt \
+	internals/3_14_BUGSTATUS.txt \
 	internals/MERGE_3_10_1.txt \
 	internals/arm_thumb_notes_gdbserver.txt \
 	internals/avx-notes.txt \

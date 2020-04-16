@@ -6507,9 +6507,8 @@ Bool dis_neon_data_2reg_and_shift ( UInt theInstr, IRTemp condT )
                }
                return True;
             }
-         } else {
-            /* fall through */
          }
+         /* else fall through */
       case 9:
          dreg = ((theInstr >> 18) & 0x10) | ((theInstr >> 12) & 0xF);
          mreg = ((theInstr >>  1) & 0x10) | (theInstr & 0xF);
@@ -7534,7 +7533,7 @@ Bool dis_neon_data_2reg_misc ( UInt theInstr, IRTemp condT )
                if (mreg & 1)
                   return False;
                mreg >>= 1;
-               putDRegI64(dreg, unop(Iop_F32toF16x4, getQReg(mreg)),
+               putDRegI64(dreg, unop(Iop_F32toF16x4_DEP, getQReg(mreg)),
                                 condT);
                DIP("vcvt.f16.f32 d%u, q%u\n", dreg, mreg);
             }
@@ -7589,22 +7588,22 @@ Bool dis_neon_data_2reg_misc ( UInt theInstr, IRTemp condT )
                return False;
             switch ((B >> 1) & 3) {
                case 0:
-                  op = Q ? Iop_I32StoFx4 : Iop_I32StoFx2;
+                  op = Q ? Iop_I32StoF32x4_DEP : Iop_I32StoF32x2_DEP;
                   DIP("vcvt.f32.s32 %c%u, %c%u\n",
                       Q ? 'q' : 'd', dreg, Q ? 'q' : 'd', mreg);
                   break;
                case 1:
-                  op = Q ? Iop_I32UtoFx4 : Iop_I32UtoFx2;
+                  op = Q ? Iop_I32UtoF32x4_DEP : Iop_I32UtoF32x2_DEP;
                   DIP("vcvt.f32.u32 %c%u, %c%u\n",
                       Q ? 'q' : 'd', dreg, Q ? 'q' : 'd', mreg);
                   break;
                case 2:
-                  op = Q ? Iop_FtoI32Sx4_RZ : Iop_FtoI32Sx2_RZ;
+                  op = Q ? Iop_F32toI32Sx4_RZ : Iop_F32toI32Sx2_RZ;
                   DIP("vcvt.s32.f32 %c%u, %c%u\n",
                       Q ? 'q' : 'd', dreg, Q ? 'q' : 'd', mreg);
                   break;
                case 3:
-                  op = Q ? Iop_FtoI32Ux4_RZ : Iop_FtoI32Ux2_RZ;
+                  op = Q ? Iop_F32toI32Ux4_RZ : Iop_F32toI32Ux2_RZ;
                   DIP("vcvt.u32.f32 %c%u, %c%u\n",
                       Q ? 'q' : 'd', dreg, Q ? 'q' : 'd', mreg);
                   break;
@@ -12816,7 +12815,7 @@ static Bool decode_V8_instruction (
         stmt(IRStmt_Dirty(di));
 
         putQReg(regD >> 1, mkexpr(res), IRTemp_INVALID);
-        DIP("%s.8 q%d, q%d\n", iNames[opc], regD >> 1, regM >> 1);
+        DIP("%s.8 q%u, q%u\n", iNames[opc], regD >> 1, regM >> 1);
         return True;
      }
      /* fall through */

@@ -417,9 +417,9 @@ static void FP_pos_str(VgFile* fp, const HChar* name, UInt pos,
    if (!VG_(clo_xtree_compress_strings))
       FP("%s=%s\n", name, value);
    else if (value_new)
-      FP("%s=(%d) %s\n", name, pos, value);
+      FP("%s=(%u) %s\n", name, pos, value);
    else
-      FP("%s=(%d)\n", name, pos);
+      FP("%s=(%u)\n", name, pos);
 }
 
 void VG_(XT_callgrind_print)
@@ -569,9 +569,9 @@ void VG_(XT_callgrind_print)
             FP_pos_str(fp, "fn", called_fnname_nr,
                        called_fnname, called_fnname_new);
             if (ips_idx == 0)
-               FP("%d %s\n", called_linenum, img);
+               FP("%u %s\n", called_linenum, img);
             else
-               FP("%d\n", called_linenum); //no self cost.
+               FP("%u\n", called_linenum); //no self cost.
             prev_linenum = called_linenum;
             if (ips_idx >= 1) {
                CALLED_FLF(ips_idx-1);
@@ -586,8 +586,8 @@ void VG_(XT_callgrind_print)
                   calls column the nr of stacktrace containing this arc, which
                   is very confusing. So, the less bad is to give a 0 call
                   count. */
-               FP("calls=0 %d\n", called_linenum);
-               FP("%d %s\n", prev_linenum, img);
+               FP("calls=0 %u\n", called_linenum);
+               FP("%u %s\n", prev_linenum, img);
             }
          }
          FP("\n");
@@ -744,8 +744,14 @@ static void ms_make_groups (UInt depth, Ms_Ec* ms_ec, UInt n_ec, SizeT sig_sz,
    VG_(ssort)(*groups, *n_groups, sizeof(Ms_Group), ms_group_revcmp_total);
 }
 
-static void ms_output_group (VgFile* fp, UInt depth, Ms_Group* group,
-                             SizeT sig_sz, double sig_pct_threshold)
+/* Output the given group (located in an xtree at the given depth).
+   indent tells by how much to indent the information output for the group.
+   indent can be bigger than depth when outputting a group that is made
+   of one or more inlined calls: all inlined calls are output with the
+   same depth but with one more indent for each inlined call.  */
+static void ms_output_group (VgFile* fp, UInt depth, UInt indent,
+                             Ms_Group* group, SizeT sig_sz,
+                             double sig_pct_threshold)
 {
    UInt i;
    Ms_Group* groups;
@@ -755,8 +761,8 @@ static void ms_output_group (VgFile* fp, UInt depth, Ms_Group* group,
    if (group->ms_ec == NULL) {
       const HChar* s = ( 1 ==  group->n_ec? "," : "s, all" );
       vg_assert(group->group_ip == 0);
-      FP("%*sn0: %lu in %d place%s below massif's threshold (%.2f%%)\n",
-         depth+1, "", group->total, group->n_ec, s, sig_pct_threshold);
+      FP("%*sn0: %lu in %u place%s below massif's threshold (%.2f%%)\n",
+         (Int)(indent+1), "", group->total, group->n_ec, s, sig_pct_threshold);
       return;
    }
 
@@ -777,21 +783,33 @@ static void ms_output_group (VgFile* fp, UInt depth, Ms_Group* group,
    // Fix not trivial to do, so for the moment, --keep-debuginfo=yes will
    // have no impact on xtree massif output.
 
-   FP("%*s" "n%u: %ld %s\n", 
-      depth + 1, "",
-      n_groups, 
-      group->total,
-      VG_(describe_IP)(cur_ep, group->ms_ec->ips[depth] - 1, NULL));
-   /* XTREE??? Massif original code removes 1 to get the IP description. I am
-      wondering if this is not something that predates revision r8818,
-      which introduced a -1 in the stack unwind (see m_stacktrace.c)
-      Kept for the moment to allow exact comparison with massif output, but
-      probably we should remove this, as we very probably end up 2 bytes before
-      the RA Return Address. */
+   Addr cur_ip = group->ms_ec->ips[depth];
+
+   InlIPCursor *iipc = VG_(new_IIPC)(cur_ep, cur_ip);
+
+   while (True) {
+      const HChar* buf = VG_(describe_IP)(cur_ep, cur_ip, iipc);
+      Bool is_inlined = VG_(next_IIPC)(iipc);
+
+      FP("%*s" "n%u: %lu %s\n",
+         (Int)(indent + 1), "",
+         is_inlined ? 1 : n_groups, // Inlined frames always have one child.
+         group->total,
+         buf);
+
+      if (!is_inlined) {
+         break;
+      }
+
+      indent++;
+   }
+
+   VG_(delete_IIPC)(iipc);
 
    /* Output sub groups of this group. */
    for (i = 0; i < n_groups; i++)
-      ms_output_group(fp, depth+1, &groups[i], sig_sz, sig_pct_threshold);
+      ms_output_group(fp, depth+1, indent+1, &groups[i], sig_sz,
+                      sig_pct_threshold);
 
    VG_(free)(groups);
 }
@@ -963,7 +981,7 @@ void VG_(XT_massif_print)
       /* Output depth 0 groups. */
       DMSG(1, "XT_massif_print outputing %u depth 0 groups\n", n_groups);
       for (i = 0; i < n_groups; i++)
-         ms_output_group(fp, 0, &groups[i], sig_sz, header->sig_threshold);
+         ms_output_group(fp, 0, 0, &groups[i], sig_sz, header->sig_threshold);
 
       VG_(free)(groups);
       VG_(free)(ms_ec);

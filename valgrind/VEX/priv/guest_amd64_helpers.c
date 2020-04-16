@@ -1013,13 +1013,10 @@ static inline Bool isU64 ( IRExpr* e, ULong n )
           && e->Iex.Const.con->Ico.U64 == n;
 }
 
-/* Returns N if E is an immediate of the form 1 << N for N in 1 to 31,
+/* Returns N if W64 is a value of the form 1 << N for N in 1 to 31,
    and zero in any other case. */
-static Int isU64_1_shl_N ( IRExpr* e )
+static Int isU64_1_shl_N_literal ( ULong w64 )
 {
-   if (e->tag != Iex_Const || e->Iex.Const.con->tag != Ico_U64)
-      return 0;
-   ULong w64 = e->Iex.Const.con->Ico.U64;
    if (w64 < (1ULL << 1) || w64 > (1ULL << 31))
       return 0;
    if ((w64 & (w64 - 1)) != 0)
@@ -1034,6 +1031,30 @@ static Int isU64_1_shl_N ( IRExpr* e )
    /*UNREACHED*/
    vassert(0);
    return 0;
+}
+
+/* Returns N if E is an immediate of the form 1 << N for N in 1 to 31,
+   and zero in any other case. */
+static Int isU64_1_shl_N ( IRExpr* e )
+{
+   if (e->tag != Iex_Const || e->Iex.Const.con->tag != Ico_U64)
+      return 0;
+   ULong w64 = e->Iex.Const.con->Ico.U64;
+   return isU64_1_shl_N_literal(w64);
+}
+
+/* Returns N if E is an immediate of the form (1 << N) - 1 for N in 1 to 31,
+   and zero in any other case. */
+static Int isU64_1_shl_N_minus_1 ( IRExpr* e )
+{
+  if (e->tag != Iex_Const || e->Iex.Const.con->tag != Ico_U64)
+    return 0;
+  ULong w64 = e->Iex.Const.con->Ico.U64;
+  // This isn't actually necessary since isU64_1_shl_N_literal will return
+  // zero given a zero argument, but still ..
+  if (w64 == 0xFFFFFFFFFFFFFFFFULL)
+     return 0;
+  return isU64_1_shl_N_literal(w64 + 1);
 }
 
 IRExpr* guest_amd64_spechelper ( const HChar* function_name,
@@ -1258,32 +1279,51 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
         /* It appears that LLVM 5.0 and later have a new way to find out
            whether the top N bits of a word W are all zero, by computing
 
-             W  <u  0---(N-1)---0 1 0---0
+             W  <u   0---(N-1)---0 1 0---0  or
+             W  <=u  0---(N-1)---0 0 1---1
 
            In particular, the result will be defined if the top N bits of W
            are defined, even if the trailing bits -- those corresponding to
-           the 0---0 section -- are undefined.  Rather than make Memcheck
-           more complex, we detect this case where we can and shift out the
-           irrelevant and potentially undefined bits. */
+           the rightmost 0---0 / 1---1 section -- are undefined.  Rather than
+           make Memcheck more complex, we detect this case where we can and
+           shift out the irrelevant and potentially undefined bits. */
         Int n = 0;
-        if (isU64(cc_op, AMD64G_CC_OP_SUBL)
-            && (isU64(cond, AMD64CondB) || isU64(cond, AMD64CondNB))
-            && (n = isU64_1_shl_N(cc_dep2)) > 0) {
-           /* long sub/cmp, then B (unsigned less than),
-              where dep2 is a power of 2:
-                -> CmpLT32(dep1, 1 << N)
-                -> CmpEQ32(dep1 >>u N, 0)
-              and
-              long sub/cmp, then NB (unsigned greater than or equal),
-              where dep2 is a power of 2:
-                -> CmpGE32(dep1, 1 << N)
-                -> CmpNE32(dep1 >>u N, 0)
-              This avoids CmpLT32U/CmpGE32U being applied to potentially
-              uninitialised bits in the area being shifted out. */
+        Bool is_NB_or_NBE = False;
+        if (isU64(cc_op, AMD64G_CC_OP_SUBL)) {
+           if (isU64(cond, AMD64CondB) || isU64(cond, AMD64CondNB)) {
+              /* long sub/cmp, then B (unsigned less than),
+                 where dep2 is a power of 2:
+                   -> CmpLT32U(dep1, 1 << N)
+                   -> CmpEQ32(dep1 >>u N, 0)
+                 and
+                 long sub/cmp, then NB (unsigned greater than or equal),
+                 where dep2 is a power of 2:
+                   -> CmpGE32U(dep1, 1 << N)
+                   -> CmpNE32(dep1 >>u N, 0)
+                 This avoids CmpLT32U/CmpGE32U being applied to potentially
+                 uninitialised bits in the area being shifted out. */
+              n = isU64_1_shl_N(cc_dep2);
+              is_NB_or_NBE = isU64(cond, AMD64CondNB);
+           } else if (isU64(cond, AMD64CondBE) || isU64(cond, AMD64CondNBE)) {
+              /* long sub/cmp, then BE (unsigned less than or equal),
+                 where dep2 is a power of 2 minus 1:
+                  -> CmpLE32U(dep1, (1 << N) - 1)
+                  -> CmpEQ32(dep1 >>u N, 0)
+                 and
+                 long sub/cmp, then NBE (unsigned greater than),
+                 where dep2 is a power of 2 minus 1:
+                   -> CmpGT32U(dep1, (1 << N) - 1)
+                   -> CmpNE32(dep1 >>u N, 0)
+                 This avoids CmpLE32U/CmpGT32U being applied to potentially
+                 uninitialised bits in the area being shifted out. */
+              n = isU64_1_shl_N_minus_1(cc_dep2);
+              is_NB_or_NBE = isU64(cond, AMD64CondNBE);
+           }
+        }
+        if (n > 0) {
            vassert(n >= 1 && n <= 31);
-           Bool isNB = isU64(cond, AMD64CondNB);
            return unop(Iop_1Uto64,
-                       binop(isNB ? Iop_CmpNE32 : Iop_CmpEQ32,
+                       binop(is_NB_or_NBE ? Iop_CmpNE32 : Iop_CmpEQ32,
                              binop(Iop_Shr32, unop(Iop_64to32, cc_dep1),
                                               mkU8(n)),
                              mkU32(0)));
@@ -3273,8 +3313,11 @@ void amd64g_dirtyhelper_CPUID_avx_and_cx16 ( VexGuestAMD64State* st )
    address sizes   : 39 bits physical, 48 bits virtual
    power management:
 */
-void amd64g_dirtyhelper_CPUID_avx2 ( VexGuestAMD64State* st )
+void amd64g_dirtyhelper_CPUID_avx2 ( VexGuestAMD64State* st,
+                                     ULong hasF16C, ULong hasRDRAND )
 {
+   vassert((hasF16C >> 1) == 0ULL);
+   vassert((hasRDRAND >> 1) == 0ULL);
 #  define SET_ABCD(_a,_b,_c,_d)                \
       do { st->guest_RAX = (ULong)(_a);        \
            st->guest_RBX = (ULong)(_b);        \
@@ -3289,10 +3332,14 @@ void amd64g_dirtyhelper_CPUID_avx2 ( VexGuestAMD64State* st )
       case 0x00000000:
          SET_ABCD(0x0000000d, 0x756e6547, 0x6c65746e, 0x49656e69);
          break;
-      case 0x00000001:
-         /* Don't advertise RDRAND support, bit 30 in ECX.  */
-         SET_ABCD(0x000306c3, 0x02100800, 0x3ffafbff, 0xbfebfbff);
+      case 0x00000001: {
+         // As a baseline, advertise neither F16C (ecx:29) nor RDRAND (ecx:30),
+         // but patch in support for them as directed by the caller.
+         UInt ecx_extra
+            = (hasF16C ? (1U << 29) : 0) | (hasRDRAND ? (1U << 30) : 0);
+         SET_ABCD(0x000306c3, 0x02100800, (0x1ffafbff | ecx_extra), 0xbfebfbff);
          break;
+      }
       case 0x00000002:
          SET_ABCD(0x76036301, 0x00f0b6ff, 0x00000000, 0x00c10000);
          break;
@@ -3321,7 +3368,8 @@ void amd64g_dirtyhelper_CPUID_avx2 ( VexGuestAMD64State* st )
          break;
       case 0x00000007:
          switch (old_ecx) {
-            case 0x00000000: SET_ABCD(0x00000000, 0x000027ab,
+            /* Don't advertise FSGSBASE support, bit 0 in EBX.  */
+            case 0x00000000: SET_ABCD(0x00000000, 0x000027aa,
                                       0x00000000, 0x00000000); break;
             default:         SET_ABCD(0x00000000, 0x00000000,
                                       0x00000000, 0x00000000); break;
@@ -3696,6 +3744,34 @@ void amd64g_dirtyhelper_SxDT ( void *address, ULong op ) {
    UChar* p = (UChar*)address;
    p[0] = p[1] = p[2] = p[3] = p[4] = p[5] = 0;
    p[6] = p[7] = p[8] = p[9] = 0;
+#  endif
+}
+
+/* CALLED FROM GENERATED CODE */
+/* DIRTY HELPER (non-referentially-transparent) */
+/* Horrible hack.  On non-amd64 platforms, do nothing.  On amd64 targets, get a
+   32 bit random number using RDRAND, and return it and the associated rflags.C
+   value. */
+ULong amd64g_dirtyhelper_RDRAND ( void ) {
+#  if defined(__x86_64__)
+   ULong res   = 0;
+   ULong cflag = 0;
+   __asm__ __volatile__(
+      "movq $0, %%r11 ; "
+      "movq $0, %%r12 ; "
+      "rdrand %%r11d ; "
+      "setc %%r12b ; "
+      "movq %%r11, %0 ; "
+      "movq %%r12, %1"
+      : "=r"(res), "=r"(cflag) : : "r11", "r12"
+   );
+   res &= 0xFFFFFFFFULL;
+   cflag &= 1ULL;
+   return (cflag << 32) | res;
+#  else
+   /* There's nothing we can sensibly do.  Return a value denoting
+      "I succeeded, and the random bits are all zero" :-/ */
+   return 1ULL << 32;
 #  endif
 }
 

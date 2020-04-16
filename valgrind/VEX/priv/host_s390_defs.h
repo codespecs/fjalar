@@ -202,7 +202,11 @@ typedef enum {
    S390_VEC_ABS,
    S390_VEC_COUNT_LEADING_ZEROES,
    S390_VEC_COUNT_TRAILING_ZEROES,
-   S390_VEC_COUNT_ONES
+   S390_VEC_COUNT_ONES,
+   S390_VEC_FLOAT_NEG,
+   S390_VEC_FLOAT_ABS,
+   S390_VEC_FLOAT_SQRT,
+   S390_UNOP_T_INVALID
 } s390_unop_t;
 
 /* The kind of ternary BFP operations */
@@ -344,7 +348,8 @@ typedef enum {
    S390_VEC_GET_ELEM,
    S390_VEC_ELEM_SHL_INT,
    S390_VEC_ELEM_SHRA_INT,
-   S390_VEC_ELEM_SHRL_INT
+   S390_VEC_ELEM_SHRL_INT,
+   S390_VEC_AMODEOP_T_INVALID
 } s390_vec_amodeop_t;
 
 /* The vector operations with three (vector, amode and integer) operands */
@@ -394,11 +399,21 @@ typedef enum {
    S390_VEC_PWSUM_QW,
 
    S390_VEC_INIT_FROM_GPRS,
+   S390_VEC_FLOAT_ADD,
+   S390_VEC_FLOAT_SUB,
+   S390_VEC_FLOAT_MUL,
+   S390_VEC_FLOAT_DIV,
+   S390_VEC_FLOAT_COMPARE_EQUAL,
+   S390_VEC_FLOAT_COMPARE_LESS_OR_EQUAL,
+   S390_VEC_FLOAT_COMPARE_LESS,
+   S390_VEC_BINOP_T_INVALID
 } s390_vec_binop_t;
 
 /* The vector operations with three operands */
 typedef enum {
-   S390_VEC_PERM
+   S390_VEC_PERM,
+   S390_VEC_FLOAT_MADD,
+   S390_VEC_FLOAT_MSUB
 } s390_vec_triop_t;
 
 /* The details of a CDAS insn. Carved out to keep the size of

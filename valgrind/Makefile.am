@@ -1,21 +1,23 @@
 
-AUTOMAKE_OPTIONS = foreign 1.10 dist-bzip2
+AUTOMAKE_OPTIONS = 1.10
 
 include $(top_srcdir)/Makefile.all.am
 
-TOOLS =		memcheck \
+TOOLS = \
+		memcheck \
 		cachegrind \
 		callgrind \
-		massif \
-		lackey \
-		none \
 		helgrind \
 		drd \
+		massif \
+		dhat \
+		lackey \
+		none \
 		fjalar
 
-EXP_TOOLS = 	exp-sgcheck \
-		exp-bbv \
-		exp-dhat
+EXP_TOOLS = \
+		exp-sgcheck \
+		exp-bbv
 
 # Put docs last because building the HTML is slow and we want to get
 # everything else working before we try it.
@@ -104,6 +106,7 @@ perf: check
 EXTRA_DIST = \
 	COPYING.DOCS \
 	README_DEVELOPERS \
+	README_DEVELOPERS_processes \
 	README_PACKAGERS \
 	README_MISSING_SYSCALL_OR_IOCTL \
 	README.s390 \

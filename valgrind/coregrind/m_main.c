@@ -129,6 +129,9 @@ static void usage_NORETURN ( Bool debug_help )
 "    --error-exitcode=<number> exit code to return if errors found [0=disable]\n"
 "    --error-markers=<begin>,<end> add lines with begin/end markers before/after\n"
 "                              each error output in plain text mode [none]\n"
+"    --show-error-list=no|yes  show detected errors list and\n"
+"                              suppression counts at exit [no]\n"
+"    -s                        same as --show-error-list=yes\n"
 "    --keep-debuginfo=no|yes   Keep symbols etc for unloaded code [no]\n"
 "                              This allows saved stack traces (e.g. memory leaks)\n"
 "                              to include file/line info for code that has been\n"
@@ -176,9 +179,10 @@ static void usage_NORETURN ( Bool debug_help )
 "                              code found in stacks, for all code, or for all\n"
 "                              code except that from file-backed mappings\n"
 "    --read-inline-info=yes|no read debug info about inlined function calls\n"
-"                              and use it to do better stack traces.  [yes]\n"
-"                              on Linux/Android/Solaris for Memcheck/Helgrind/DRD\n"
-"                              only.  [no] for all other tools and platforms.\n"
+"                              and use it to do better stack traces.\n"
+"                              [yes] on Linux/Android/Solaris for the tools\n"
+"                              Memcheck/Massif/Helgrind/DRD only.\n"
+"                              [no] for all other tools and platforms.\n"
 "    --read-var-info=yes|no    read debug info on stack and global variables\n"
 "                              and use it to print better error messages in\n"
 "                              tools that make use of it (Memcheck, Helgrind,\n"
@@ -458,9 +462,11 @@ void main_process_cmd_line_options( void )
    Int   toolname_len = VG_(strlen)(VG_(clo_toolname));
    const HChar* tmp_str;         // Used in a couple of places.
 
-   /* Whether the user has explicitly provided --sigill-diagnostics.
+   /* Whether the user has explicitly provided --sigill-diagnostics
+      or --show-error-list.
       If not explicitly given depends on general verbosity setting. */
    Bool sigill_diag_set = False;
+   Bool show_error_list_set = False;
 
    /* Log to stderr by default, but usage message goes to stdout.  XML
       output is initially disabled. */
@@ -634,6 +640,12 @@ void main_process_cmd_line_options( void )
             }
             startpos = *nextpos ? nextpos + 1 : nextpos;
          }
+      }
+      else if VG_BOOL_CLO(arg, "--show-error-list", VG_(clo_show_error_list)) {
+            show_error_list_set = True; }
+      else if (VG_STREQ(arg, "-s")) {
+         VG_(clo_show_error_list) = True;
+         show_error_list_set = True;
       }
       else if VG_BOOL_CLO(arg, "--show-emwarns",   VG_(clo_show_emwarns)) {}
 
@@ -918,6 +930,13 @@ void main_process_cmd_line_options( void )
 
    if (!sigill_diag_set)
       VG_(clo_sigill_diag) = (VG_(clo_verbosity) > 0);
+
+   if (!show_error_list_set) {
+      if (VG_(clo_xml))
+         VG_(clo_show_error_list) = VG_(clo_verbosity) >= 1;
+      else
+         VG_(clo_show_error_list) = VG_(clo_verbosity) >= 2;
+   }
 
    if (VG_(clo_trace_notbelow) == -1) {
      if (VG_(clo_trace_notabove) == -1) {
@@ -1426,13 +1445,16 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
    early_process_cmd_line_options(&need_help);
 
    // BEGIN HACK
+   // When changing the logic for the VG_(clo_read_inline_info) default,
+   // the manual and --help output have to be changed accordingly.
    vg_assert(VG_(clo_toolname) != NULL);
    vg_assert(VG_(clo_read_inline_info) == False);
 #  if !defined(VGO_darwin)
    if (0 == VG_(strcmp)(VG_(clo_toolname), "memcheck")
        || 0 == VG_(strcmp)(VG_(clo_toolname), "helgrind")
        || 0 == VG_(strcmp)(VG_(clo_toolname), "drd")
-       || 0 == VG_(strcmp)(VG_(clo_toolname), "exp-dhat")) {
+       || 0 == VG_(strcmp)(VG_(clo_toolname), "massif")
+       || 0 == VG_(strcmp)(VG_(clo_toolname), "dhat")) {
       /* Change the default setting.  Later on (just below)
          main_process_cmd_line_options should pick up any
          user-supplied setting for it and will override the default
@@ -2148,15 +2170,22 @@ void shutdown_actions_NORETURN( ThreadId tid,
       the error management machinery. */
    VG_TDICT_CALL(tool_fini, 0/*exitcode*/);
 
-   /* Show the error counts. */
-   if (VG_(clo_xml)
-       && (VG_(needs).core_errors || VG_(needs).tool_errors)) {
-      VG_(show_error_counts_as_XML)();
-   }
+   if (VG_(needs).core_errors || VG_(needs).tool_errors) {
+      if (VG_(clo_verbosity) == 1
+          && !VG_(clo_xml)
+          && !VG_(clo_show_error_list))
+         VG_(message)(Vg_UserMsg,
+                      "For lists of detected and suppressed errors,"
+                      " rerun with: -s\n");
 
-   /* In XML mode, this merely prints the used suppressions. */
-   if (VG_(needs).core_errors || VG_(needs).tool_errors)
+      /* Show the error counts. */
+      if (VG_(clo_xml)) {
+         VG_(show_error_counts_as_XML)();
+      }
+
+      /* In XML mode, this merely prints the used suppressions. */
       VG_(show_all_errors)(VG_(clo_verbosity), VG_(clo_xml));
+   }
 
    if (VG_(clo_xml)) {
       VG_(printf_xml)("\n");
@@ -2300,22 +2329,40 @@ static void final_tidyup(ThreadId tid)
                    "Caught __NR_exit; running %s wrapper\n", msgs[to_run - 1]);
    }
       
-   /* set thread context to point to freeres_wrapper */
-   /* ppc64be-linux note: freeres_wrapper gives us the real
+   /* Set thread context to point to freeres_wrapper.
+      ppc64be-linux note: freeres_wrapper gives us the real
       function entry point, not a fn descriptor, so can use it
       directly.  However, we need to set R2 (the toc pointer)
       appropriately. */
    VG_(set_IP)(tid, freeres_wrapper);
+
 #  if defined(VGP_ppc64be_linux)
    VG_(threads)[tid].arch.vex.guest_GPR2 = r2;
+   VG_TRACK(post_reg_write, Vg_CoreClientReq, tid,
+            offsetof(VexGuestPPC64State, guest_GPR2),
+            sizeof(VG_(threads)[tid].arch.vex.guest_GPR2));
 #  elif  defined(VGP_ppc64le_linux)
    /* setting GPR2 but not really needed, GPR12 is needed */
    VG_(threads)[tid].arch.vex.guest_GPR2  = freeres_wrapper;
+   VG_TRACK(post_reg_write, Vg_CoreClientReq, tid,
+            offsetof(VexGuestPPC64State, guest_GPR2),
+            sizeof(VG_(threads)[tid].arch.vex.guest_GPR2));
    VG_(threads)[tid].arch.vex.guest_GPR12 = freeres_wrapper;
+   VG_TRACK(post_reg_write, Vg_CoreClientReq, tid,
+            offsetof(VexGuestPPC64State, guest_GPR12),
+            sizeof(VG_(threads)[tid].arch.vex.guest_GPR12));
 #  endif
    /* mips-linux note: we need to set t9 */
-#  if defined(VGP_mips32_linux) || defined(VGP_mips64_linux)
+#  if defined(VGP_mips32_linux)
    VG_(threads)[tid].arch.vex.guest_r25 = freeres_wrapper;
+   VG_TRACK(post_reg_write, Vg_CoreClientReq, tid,
+            offsetof(VexGuestMIPS32State, guest_r25),
+            sizeof(VG_(threads)[tid].arch.vex.guest_r25));
+#  elif defined(VGP_mips64_linux)
+   VG_(threads)[tid].arch.vex.guest_r25 = freeres_wrapper;
+   VG_TRACK(post_reg_write, Vg_CoreClientReq, tid,
+            offsetof(VexGuestMIPS64State, guest_r25),
+            sizeof(VG_(threads)[tid].arch.vex.guest_r25));
 #  endif
 
    /* Pass a parameter to freeres_wrapper(). */

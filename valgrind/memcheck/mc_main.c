@@ -1354,6 +1354,9 @@ void mc_LOADV_128_or_256_slow ( /*OUT*/ULong* res,
    tl_assert(szB == 16); // s390 doesn't have > 128 bit SIMD
    /* OK if all loaded bytes are from the same page. */
    Bool alignedOK = ((a & 0xfff) <= 0x1000 - szB);
+#  elif defined(VGA_ppc64be) || defined(VGA_ppc64le)
+   /* lxvd2x might generate an unaligned 128 bit vector load.  */
+   Bool alignedOK = (szB == 16);
 #  else
    /* OK if the address is aligned by the load size. */
    Bool alignedOK = (0 == (a & (szB - 1)));
@@ -1508,6 +1511,9 @@ ULong mc_LOADVn_slow ( Addr a, SizeT nBits, Bool bigendian )
 #  if defined(VGA_mips64) && defined(VGABI_N32)
    if (szB == VG_WORDSIZE * 2 && VG_IS_WORD_ALIGNED(a)
        && n_addrs_bad < VG_WORDSIZE * 2)
+#  elif defined(VGA_ppc64be) || defined(VGA_ppc64le)
+   /* On power unaligned loads of words are OK. */
+   if (szB == VG_WORDSIZE && n_addrs_bad < VG_WORDSIZE)
 #  else
    if (szB == VG_WORDSIZE && VG_IS_WORD_ALIGNED(a)
        && n_addrs_bad < VG_WORDSIZE)
@@ -7997,6 +8003,7 @@ static void mc_fini ( Int exitcode )
                                              MC_(clo_xtree_leak_file));
          lcp.xt_filename = xt_filename;
          lcp.mode = LC_Full;
+         lcp.show_leak_kinds = MC_(all_Reachedness)();
       }
       else
          lcp.xt_filename = NULL;
@@ -8010,11 +8017,6 @@ static void mc_fini ( Int exitcode )
             "\n"
          );
       }
-   }
-
-   if (VG_(clo_verbosity) == 1 && !VG_(clo_xml)) {
-      VG_(message)(Vg_UserMsg, 
-                   "For counts of detected and suppressed errors, rerun with: -v\n");
    }
 
    if (MC_(any_value_errors) && !VG_(clo_xml) && VG_(clo_verbosity) >= 1
