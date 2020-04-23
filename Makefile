@@ -24,6 +24,7 @@ test:
 # Kvasir tests
 daikon-test: ../daikon
 	$(MAKE) -C ../daikon compile daikon.jar kvasir
+	$(MAKE) -C ../daikon/tests/kvasir-tests/SimpleClassesTest show-os
 	$(MAKE) -C ../daikon/tests/kvasir-tests clean-all regression-tests
 
 TEMP-daikon-test: ../daikon
