@@ -223,10 +223,10 @@ Valgrind repository.  However, the Valgrind team has now converted
 to the @command{git} repository tool.  Thus the SVN commands below are
 incorrect and will need to be changed as part of the next Valgrind upgrade.
 
-Execute the following Subversion command:
+Execute the following Git command:
 
 @example
-svn log -l6 svn://svn.valgrind.org/valgrind/tags
+git ls-remote --tags --refs http://sourceware.org/git/valgrind.git
 @end example
 
 @noindent
