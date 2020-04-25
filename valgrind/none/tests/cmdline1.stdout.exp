@@ -43,6 +43,9 @@ usage: valgrind [options] prog-and-args
     --error-exitcode=<number> exit code to return if errors found [0=disable]
     --error-markers=<begin>,<end> add lines with begin/end markers before/after
                               each error output in plain text mode [none]
+    --show-error-list=no|yes  show detected errors list and
+                              suppression counts at exit [no]
+    -s                        same as --show-error-list=yes
     --keep-debuginfo=no|yes   Keep symbols etc for unloaded code [no]
                               This allows saved stack traces (e.g. memory leaks)
                               to include file/line info for code that has been
@@ -90,9 +93,10 @@ usage: valgrind [options] prog-and-args
                               code found in stacks, for all code, or for all
                               code except that from file-backed mappings
     --read-inline-info=yes|no read debug info about inlined function calls
-                              and use it to do better stack traces.  [yes]
-                              on Linux/Android/Solaris for Memcheck/Helgrind/DRD
-                              only.  [no] for all other tools and platforms.
+                              and use it to do better stack traces.
+                              [yes] on Linux/Android/Solaris for the tools
+                              Memcheck/Massif/Helgrind/DRD only.
+                              [no] for all other tools and platforms.
     --read-var-info=yes|no    read debug info on stack and global variables
                               and use it to print better error messages in
                               tools that make use of it (Memcheck, Helgrind,

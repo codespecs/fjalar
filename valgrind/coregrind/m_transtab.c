@@ -457,9 +457,10 @@ static Int    tc_sector_szQ = 0;
 static SECno sector_search_order[MAX_N_SECTORS];
 
 
-/* Fast helper for the TC.  A direct-mapped cache which holds a set of
-   recently used (guest address, host address) pairs.  This array is
-   referred to directly from m_dispatch/dispatch-<platform>.S.
+/* Fast helper for the TC.  A 4-way set-associative cache, with more-or-less LRU
+   replacement.  It holds a set of recently used (guest address, host address)
+   pairs.  This array is referred to directly from
+   m_dispatch/dispatch-<platform>.S.
 
    Entries in tt_fast may refer to any valid TC entry, regardless of
    which sector it's in.  Consequently we must be very careful to
@@ -474,13 +475,19 @@ static SECno sector_search_order[MAX_N_SECTORS];
 /*
 typedef
    struct { 
-      Addr guest;
-      Addr host;
+      Addr guest0;
+      Addr host0;
+      Addr guest1;
+      Addr host1;
+      Addr guest2;
+      Addr host2;
+      Addr guest3;
+      Addr host3;
    }
-   FastCacheEntry;
+   FastCacheSet;
 */
-/*global*/ __attribute__((aligned(16)))
-           FastCacheEntry VG_(tt_fast)[VG_TT_FAST_SIZE];
+/*global*/ __attribute__((aligned(64)))
+           FastCacheSet VG_(tt_fast)[VG_TT_FAST_SETS];
 
 /* Make sure we're not used before initialisation. */
 static Bool init_done = False;
@@ -1455,34 +1462,66 @@ static inline HTTno HASH_TT ( Addr key )
    return (HTTno)(k32 % N_HTTES_PER_SECTOR);
 }
 
-static void setFastCacheEntry ( Addr key, ULong* tcptr )
-{
-   UInt cno = (UInt)VG_TT_FAST_HASH(key);
-   VG_(tt_fast)[cno].guest = key;
-   VG_(tt_fast)[cno].host  = (Addr)tcptr;
-   n_fast_updates++;
-   /* This shouldn't fail.  It should be assured by m_translate
-      which should reject any attempt to make translation of code
-      starting at TRANSTAB_BOGUS_GUEST_ADDR. */
-   vg_assert(VG_(tt_fast)[cno].guest != TRANSTAB_BOGUS_GUEST_ADDR);
-}
-
 /* Invalidate the fast cache VG_(tt_fast). */
 static void invalidateFastCache ( void )
 {
-   UInt j;
-   /* This loop is popular enough to make it worth unrolling a
-      bit, at least on ppc32. */
-   vg_assert(VG_TT_FAST_SIZE > 0 && (VG_TT_FAST_SIZE % 4) == 0);
-   for (j = 0; j < VG_TT_FAST_SIZE; j += 4) {
-      VG_(tt_fast)[j+0].guest = TRANSTAB_BOGUS_GUEST_ADDR;
-      VG_(tt_fast)[j+1].guest = TRANSTAB_BOGUS_GUEST_ADDR;
-      VG_(tt_fast)[j+2].guest = TRANSTAB_BOGUS_GUEST_ADDR;
-      VG_(tt_fast)[j+3].guest = TRANSTAB_BOGUS_GUEST_ADDR;
+   for (UWord j = 0; j < VG_TT_FAST_SETS; j++) {
+      FastCacheSet* set = &VG_(tt_fast)[j];
+      set->guest0 = TRANSTAB_BOGUS_GUEST_ADDR;
+      set->guest1 = TRANSTAB_BOGUS_GUEST_ADDR;
+      set->guest2 = TRANSTAB_BOGUS_GUEST_ADDR;
+      set->guest3 = TRANSTAB_BOGUS_GUEST_ADDR;
    }
-
-   vg_assert(j == VG_TT_FAST_SIZE);
    n_fast_flushes++;
+}
+
+/* Invalidate a single fast cache entry. */
+static void invalidateFastCacheEntry ( Addr guest )
+{
+   /* This shouldn't fail.  It should be assured by m_translate
+      which should reject any attempt to make translation of code
+      starting at TRANSTAB_BOGUS_GUEST_ADDR. */
+   vg_assert(guest != TRANSTAB_BOGUS_GUEST_ADDR);
+   /* If any entry in the line is the right one, just set it to
+      TRANSTAB_BOGUS_GUEST_ADDR.  Doing so ensure that the entry will never
+      be used in future, so will eventually fall off the end of the line,
+      due to LRU replacement, and be replaced with something that's actually
+      useful. */
+   UWord setNo = (UInt)VG_TT_FAST_HASH(guest);
+   FastCacheSet* set = &VG_(tt_fast)[setNo];
+   if (set->guest0 == guest) {
+      set->guest0 = TRANSTAB_BOGUS_GUEST_ADDR;
+   }
+   if (set->guest1 == guest) {
+      set->guest1 = TRANSTAB_BOGUS_GUEST_ADDR;
+   }
+   if (set->guest2 == guest) {
+      set->guest2 = TRANSTAB_BOGUS_GUEST_ADDR;
+   }
+   if (set->guest3 == guest) {
+      set->guest3 = TRANSTAB_BOGUS_GUEST_ADDR;
+   }
+}
+
+static void setFastCacheEntry ( Addr guest, ULong* tcptr )
+{
+   /* This shouldn't fail.  It should be assured by m_translate
+      which should reject any attempt to make translation of code
+      starting at TRANSTAB_BOGUS_GUEST_ADDR. */
+   vg_assert(guest != TRANSTAB_BOGUS_GUEST_ADDR);
+   /* Shift all entries along one, so that the LRU one disappears, and put the
+      new entry at the MRU position. */
+   UWord setNo = (UInt)VG_TT_FAST_HASH(guest);
+   FastCacheSet* set = &VG_(tt_fast)[setNo];
+   set->host3  = set->host2;
+   set->guest3 = set->guest2;
+   set->host2  = set->host1;
+   set->guest2 = set->guest1;
+   set->host1  = set->host0;
+   set->guest1 = set->guest0;
+   set->host0  = (Addr)tcptr;
+   set->guest0 = guest;
+   n_fast_updates++;
 }
 
 
@@ -1796,8 +1835,14 @@ void VG_(add_to_transtab)( const VexGuestExtents* vge,
    TTEntryH__init(&sectors[y].ttH[tteix]);
    sectors[y].ttC[tteix].tcptr  = tcptr;
    sectors[y].ttC[tteix].usage.prof.count  = 0;
-   sectors[y].ttC[tteix].usage.prof.weight = 
-      n_guest_instrs == 0 ? 1 : n_guest_instrs;
+
+   sectors[y].ttC[tteix].usage.prof.weight
+      = False
+           ? // Count guest instrs (assumes all side exits are untaken)
+             (n_guest_instrs == 0 ? 1 : n_guest_instrs)
+           : // Counts some (not very good) approximation to host instructions
+             (code_len == 0 ? 1 : (code_len / 4));
+
    sectors[y].ttC[tteix].entry  = entry;
    TTEntryH__from_VexGuestExtents( &sectors[y].ttH[tteix], vge );
    sectors[y].ttH[tteix].status = InUse;
@@ -1973,7 +2018,8 @@ Bool overlaps ( Addr start, ULong range, const TTEntryH* tteH )
 
 /* Delete a tt entry, and update all the eclass data accordingly. */
 
-static void delete_tte ( /*MOD*/Sector* sec, SECno secNo, TTEno tteno,
+static void delete_tte ( /*OUT*/Addr* ga_deleted,
+                         /*MOD*/Sector* sec, SECno secNo, TTEno tteno,
                          VexArch arch_host, VexEndness endness_host )
 {
    Int      i, ec_idx;
@@ -1987,6 +2033,10 @@ static void delete_tte ( /*MOD*/Sector* sec, SECno secNo, TTEno tteno,
    TTEntryH* tteH = &sec->ttH[tteno];
    vg_assert(tteH->status == InUse);
    vg_assert(tteC->n_tte2ec >= 1 && tteC->n_tte2ec <= 3);
+
+   vg_assert(tteH->vge_n_used >= 1 && tteH->vge_n_used <= 3);
+   vg_assert(tteH->vge_base[0] != TRANSTAB_BOGUS_GUEST_ADDR);
+   *ga_deleted = tteH->vge_base[0];
 
    /* Unchain .. */
    unchain_in_preparation_for_deletion(arch_host, endness_host, secNo, tteno);
@@ -2042,15 +2092,16 @@ static void delete_tte ( /*MOD*/Sector* sec, SECno secNo, TTEno tteno,
    only consider translations in the specified eclass. */
 
 static 
-Bool delete_translations_in_sector_eclass ( /*MOD*/Sector* sec, SECno secNo,
-                                            Addr guest_start, ULong range,
-                                            EClassNo ec,
-                                            VexArch arch_host,
-                                            VexEndness endness_host )
+SizeT delete_translations_in_sector_eclass ( /*OUT*/Addr* ga_deleted,
+                                             /*MOD*/Sector* sec, SECno secNo,
+                                             Addr guest_start, ULong range,
+                                             EClassNo ec,
+                                             VexArch arch_host,
+                                             VexEndness endness_host )
 {
    Int      i;
    TTEno    tteno;
-   Bool     anyDeld = False;
+   SizeT    numDeld = 0;
 
    vg_assert(ec >= 0 && ec < ECLASS_N);
 
@@ -2068,13 +2119,13 @@ Bool delete_translations_in_sector_eclass ( /*MOD*/Sector* sec, SECno secNo,
       vg_assert(tteH->status == InUse);
 
       if (overlaps( guest_start, range, tteH )) {
-         anyDeld = True;
-         delete_tte( sec, secNo, tteno, arch_host, endness_host );
+         numDeld++;
+         delete_tte( ga_deleted, sec, secNo, tteno, arch_host, endness_host );
       }
 
    }
 
-   return anyDeld;
+   return numDeld;
 }
 
 
@@ -2082,13 +2133,14 @@ Bool delete_translations_in_sector_eclass ( /*MOD*/Sector* sec, SECno secNo,
    slow way, by inspecting all translations in sec. */
 
 static 
-Bool delete_translations_in_sector ( /*MOD*/Sector* sec, SECno secNo,
-                                     Addr guest_start, ULong range,
-                                     VexArch arch_host,
-                                     VexEndness endness_host )
+SizeT delete_translations_in_sector ( /*OUT*/Addr* ga_deleted,
+                                      /*MOD*/Sector* sec, SECno secNo,
+                                      Addr guest_start, ULong range,
+                                      VexArch arch_host,
+                                      VexEndness endness_host )
 {
    TTEno i;
-   Bool  anyDeld = False;
+   SizeT numDeld = 0;
 
    for (i = 0; i < N_TTES_PER_SECTOR; i++) {
       /* The entire and only purpose of splitting TTEntry into cold
@@ -2097,12 +2149,12 @@ Bool delete_translations_in_sector ( /*MOD*/Sector* sec, SECno secNo,
          of the cold data up the memory hierarchy. */
       if (UNLIKELY(sec->ttH[i].status == InUse
                    && overlaps( guest_start, range, &sec->ttH[i] ))) {
-         anyDeld = True;
-         delete_tte( sec, secNo, i, arch_host, endness_host );
+         numDeld++;
+         delete_tte( ga_deleted, sec, secNo, i, arch_host, endness_host );
       }
    }
 
-   return anyDeld;
+   return numDeld;
 } 
 
 
@@ -2112,7 +2164,24 @@ void VG_(discard_translations) ( Addr guest_start, ULong range,
    Sector* sec;
    SECno   sno;
    EClassNo ec;
-   Bool    anyDeleted = False;
+
+  /* It is very commonly the case that a call here results in discarding of
+     exactly one superblock.  As an optimisation only, use ga_deleted and
+     numDeleted to detect this situation and to record the guest addr involved.
+     That is then used to avoid calling invalidateFastCache in this case.
+     Instead the individual entry in the fast cache is removed.  This can reduce
+     the overall VG_(fast_cache) miss rate significantly in applications that do
+     a lot of short code discards (basically jit generated code that is
+     subsequently patched).
+
+     ga_deleted is made to hold the guest address of the last superblock deleted
+     (in this call to VG_(discard_translations)).  If more than one superblock
+     is deleted (or none), then we ignore what is written to ga_deleted.  If
+     exactly one superblock is deleted then ga_deleted holds exactly what we
+     want and will be used.
+   */
+   Addr ga_deleted = TRANSTAB_BOGUS_GUEST_ADDR;
+   SizeT numDeleted = 0;
 
    vg_assert(init_done);
 
@@ -2173,13 +2242,13 @@ void VG_(discard_translations) ( Addr guest_start, ULong range,
          sec = &sectors[sno];
          if (sec->tc == NULL)
             continue;
-         anyDeleted |= delete_translations_in_sector_eclass( 
-                          sec, sno, guest_start, range, ec, 
-                          arch_host, endness_host
+         numDeleted += delete_translations_in_sector_eclass(
+                          &ga_deleted, sec, sno, guest_start, range,
+                          ec, arch_host, endness_host
                        );
-         anyDeleted |= delete_translations_in_sector_eclass( 
-                          sec, sno, guest_start, range, ECLASS_MISC,
-                          arch_host, endness_host
+         numDeleted += delete_translations_in_sector_eclass(
+                          &ga_deleted, sec, sno, guest_start, range,
+                          ECLASS_MISC, arch_host, endness_host
                        );
       }
 
@@ -2194,16 +2263,31 @@ void VG_(discard_translations) ( Addr guest_start, ULong range,
          sec = &sectors[sno];
          if (sec->tc == NULL)
             continue;
-         anyDeleted |= delete_translations_in_sector( 
-                          sec, sno, guest_start, range,
+         numDeleted += delete_translations_in_sector(
+                          &ga_deleted, sec, sno, guest_start, range,
                           arch_host, endness_host
                        );
       }
 
    }
 
-   if (anyDeleted)
+   if (numDeleted == 0) {
+      // "ga_deleted was never set"
+      vg_assert(ga_deleted == TRANSTAB_BOGUS_GUEST_ADDR);
+   } else
+   if (numDeleted == 1) {
+      // "ga_deleted was set to something valid"
+      vg_assert(ga_deleted != TRANSTAB_BOGUS_GUEST_ADDR);
+      // Just invalidate the individual VG_(tt_fast) cache entry \o/
+      invalidateFastCacheEntry(ga_deleted);
+      Addr fake_host = 0;
+      vg_assert(! VG_(lookupInFastCache)(&fake_host, ga_deleted));
+   } else {
+      // "ga_deleted was set to something valid"
+      vg_assert(ga_deleted != TRANSTAB_BOGUS_GUEST_ADDR);
+      // Nuke the entire VG_(tt_fast) cache.  Sigh.
       invalidateFastCache();
+   }
 
    /* don't forget the no-redir cache */
    unredir_discard_translations( guest_start, range );
@@ -2432,15 +2516,36 @@ void VG_(init_tt_tc) ( void )
    vg_assert(N_HTTES_PER_SECTOR < INV_TTE);
    vg_assert(N_HTTES_PER_SECTOR < EC2TTE_DELETED);
    vg_assert(N_HTTES_PER_SECTOR < HTT_EMPTY);
-   /* check fast cache entries really are 2 words long */
+
+   /* check fast cache entries really are 8 words long */
    vg_assert(sizeof(Addr) == sizeof(void*));
-   vg_assert(sizeof(FastCacheEntry) == 2 * sizeof(Addr));
+   vg_assert(sizeof(FastCacheSet) == 8 * sizeof(Addr));
    /* check fast cache entries are packed back-to-back with no spaces */
    vg_assert(sizeof( VG_(tt_fast) ) 
-             == VG_TT_FAST_SIZE * sizeof(FastCacheEntry));
+             == VG_TT_FAST_SETS * sizeof(FastCacheSet));
+   /* check fast cache entries have the layout that the handwritten assembly
+      fragments assume. */
+   vg_assert(sizeof(FastCacheSet) == (1 << VG_FAST_CACHE_SET_BITS));
+   vg_assert(offsetof(FastCacheSet,guest0) == FCS_g0);
+   vg_assert(offsetof(FastCacheSet,host0)  == FCS_h0);
+   vg_assert(offsetof(FastCacheSet,guest1) == FCS_g1);
+   vg_assert(offsetof(FastCacheSet,host1)  == FCS_h1);
+   vg_assert(offsetof(FastCacheSet,guest2) == FCS_g2);
+   vg_assert(offsetof(FastCacheSet,host2)  == FCS_h2);
+   vg_assert(offsetof(FastCacheSet,guest3) == FCS_g3);
+   vg_assert(offsetof(FastCacheSet,host3)  == FCS_h3);
+   vg_assert(offsetof(FastCacheSet,guest0) == 0 * sizeof(Addr));
+   vg_assert(offsetof(FastCacheSet,host0)  == 1 * sizeof(Addr));
+   vg_assert(offsetof(FastCacheSet,guest1) == 2 * sizeof(Addr));
+   vg_assert(offsetof(FastCacheSet,host1)  == 3 * sizeof(Addr));
+   vg_assert(offsetof(FastCacheSet,guest2) == 4 * sizeof(Addr));
+   vg_assert(offsetof(FastCacheSet,host2)  == 5 * sizeof(Addr));
+   vg_assert(offsetof(FastCacheSet,guest3) == 6 * sizeof(Addr));
+   vg_assert(offsetof(FastCacheSet,host3)  == 7 * sizeof(Addr));
+
    /* check fast cache is aligned as we requested.  Not fatal if it
       isn't, but we might as well make sure. */
-   vg_assert(VG_IS_16_ALIGNED( ((Addr) & VG_(tt_fast)[0]) ));
+   vg_assert(VG_IS_64_ALIGNED( ((Addr) & VG_(tt_fast)[0]) ));
 
    /* The TTEntryH size is critical for keeping the LLC miss rate down
       when doing a lot of discarding.  Hence check it here.  We also

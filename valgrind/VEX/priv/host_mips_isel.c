@@ -2022,18 +2022,21 @@ static HReg iselWordExpr_R_wrk(ISelEnv * env, IRExpr * e)
             switch (op_unop) {
                case Iop_1Uto64:
                   vassert(mode64);
+                  /* fallthrough */
                case Iop_1Uto8:
                case Iop_1Uto32:
                   mask = toUShort(0x1);
                   break;
                case Iop_8Uto64:
                   vassert(mode64);
+                  /* fallthrough */
                case Iop_8Uto16:
                case Iop_8Uto32:
                   mask = toUShort(0xFF);
                   break;
                case Iop_16Uto64:
                   vassert(mode64);
+                  /* fallthrough */
                case Iop_16Uto32:
                   mask = toUShort(0xFFFF);
                   break;
@@ -2155,6 +2158,7 @@ static HReg iselWordExpr_R_wrk(ISelEnv * env, IRExpr * e)
 
          case Iop_Clz64:
             vassert(mode64);
+	    /* fallthrough */
          case Iop_Clz32: {
             HReg r_dst = newVRegI(env);
             HReg r_src = iselWordExpr_R(env, e->Iex.Unop.arg);
@@ -2237,7 +2241,7 @@ static HReg iselWordExpr_R_wrk(ISelEnv * env, IRExpr * e)
             return reg;
          }
 
-         case Iop_F32toF16x4: {
+         case Iop_F32toF16x4_DEP: {
             vassert(mode64);
             vassert(has_msa);
             HReg v_arg = iselV128Expr(env, e->Iex.Unop.arg);
@@ -3056,7 +3060,7 @@ static HReg iselV128Expr_wrk(ISelEnv* env, IRExpr* e) {
                return v_dst;
             }
 
-         case Iop_I32UtoFx4: {
+         case Iop_I32UtoF32x4_DEP: {
                HReg v_src = iselV128Expr(env, e->Iex.Unop.arg);
                HReg v_dst = newVRegV(env);
                set_guest_MIPS_rounding_mode_MSA(env);
@@ -3066,7 +3070,7 @@ static HReg iselV128Expr_wrk(ISelEnv* env, IRExpr* e) {
                return v_dst;
             }
 
-         case Iop_FtoI32Sx4_RZ: {
+         case Iop_F32toI32Sx4_RZ: {
                HReg v_src = iselV128Expr(env, e->Iex.Unop.arg);
                HReg v_dst = newVRegV(env);
                addInstr(env,
@@ -3074,7 +3078,7 @@ static HReg iselV128Expr_wrk(ISelEnv* env, IRExpr* e) {
                return v_dst;
             }
 
-         case Iop_FtoI32Ux4_RZ: {
+         case Iop_F32toI32Ux4_RZ: {
                HReg v_src = iselV128Expr(env, e->Iex.Unop.arg);
                HReg v_dst = newVRegV(env);
                addInstr(env,
@@ -5819,7 +5823,7 @@ static void iselInt64Expr_wrk(HReg * rHi, HReg * rLo, ISelEnv * env, IRExpr * e)
             return;
          }
 
-         case Iop_F32toF16x4: {
+         case Iop_F32toF16x4_DEP: {
             vassert(has_msa);
             HReg v_arg = iselV128Expr(env, e->Iex.Unop.arg);
             HReg v_src = newVRegV(env);

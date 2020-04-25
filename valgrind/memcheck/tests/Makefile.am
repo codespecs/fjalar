@@ -235,8 +235,10 @@ EXTRA_DIST = \
 	partiallydefinedeq.stdout.exp \
 	partial_load_ok.vgtest partial_load_ok.stderr.exp \
 		partial_load_ok.stderr.exp64 \
+		partial_load_ok.stderr.exp-ppc64 \
 	partial_load_dflt.vgtest partial_load_dflt.stderr.exp \
 		partial_load_dflt.stderr.exp64 \
+		partial_load_dflt.stderr.exp-ppc64 \
 	partial_load_dflt.stderr.expr-s390x-mvc \
 	pdb-realloc.stderr.exp pdb-realloc.vgtest \
 	pdb-realloc2.stderr.exp pdb-realloc2.stdout.exp pdb-realloc2.vgtest \
@@ -260,7 +262,8 @@ EXTRA_DIST = \
 	sh-mem-random.stdout.exp sh-mem-random.vgtest \
 	sigaltstack.stderr.exp sigaltstack.vgtest \
 	sigkill.stderr.exp sigkill.stderr.exp-darwin sigkill.stderr.exp-mips32 \
-	    sigkill.stderr.exp-solaris sigkill.vgtest \
+	    sigkill.stderr.exp-solaris \
+	    sigkill.stderr.exp-glibc-2.28 sigkill.vgtest \
 	signal2.stderr.exp signal2.stdout.exp signal2.vgtest \
 	sigprocmask.stderr.exp sigprocmask.stderr.exp2 sigprocmask.vgtest \
 	static_malloc.stderr.exp static_malloc.vgtest \

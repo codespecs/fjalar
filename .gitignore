@@ -68,6 +68,13 @@ valgrind/callgrind/tests/simwork
 valgrind/callgrind/tests/threads
 valgrind/coregrind/valgrind
 valgrind/coregrind/vgdb
+valgrind/dhat/dhat-amd64-linux
+valgrind/dhat/tests/acc
+valgrind/dhat/tests/basic
+valgrind/dhat/tests/big
+valgrind/dhat/tests/empty
+valgrind/dhat/tests/sig
+valgrind/dhat/tests/single
 valgrind/drd/scripts/download-and-build-splash2
 valgrind/drd/tests/annotate_barrier
 valgrind/drd/tests/annotate_hb_err
@@ -88,6 +95,7 @@ valgrind/drd/tests/circular_buffer
 valgrind/drd/tests/concurrent_close
 valgrind/drd/tests/custom_alloc
 valgrind/drd/tests/dlopen_main
+valgrind/drd/tests/fork
 valgrind/drd/tests/fp_race
 valgrind/drd/tests/free_is_write
 valgrind/drd/tests/hold_lock
@@ -229,6 +237,7 @@ valgrind/massif/tests/custom_alloc
 valgrind/massif/tests/deep
 valgrind/massif/tests/ignored
 valgrind/massif/tests/ignoring
+valgrind/massif/tests/inlinfomalloc
 valgrind/massif/tests/insig
 valgrind/massif/tests/long-names
 valgrind/massif/tests/long-time
@@ -415,6 +424,7 @@ valgrind/memcheck/tests/varinfo5
 valgrind/memcheck/tests/varinfo6
 valgrind/memcheck/tests/varinforestrict
 valgrind/memcheck/tests/vbit-test/vbit-test
+valgrind/memcheck/tests/vbit-test/vbit-test-sec
 valgrind/memcheck/tests/vcpu_fbench
 valgrind/memcheck/tests/vcpu_fnfns
 valgrind/memcheck/tests/wcs
@@ -449,6 +459,7 @@ valgrind/none/tests/amd64/cet_nops
 valgrind/none/tests/amd64/clc
 valgrind/none/tests/amd64/cmpxchg
 valgrind/none/tests/amd64/crc32
+valgrind/none/tests/amd64/f16c
 valgrind/none/tests/amd64/faultstatus
 valgrind/none/tests/amd64/fb_test_amd64
 valgrind/none/tests/amd64/fcmovnu
@@ -488,6 +499,7 @@ valgrind/none/tests/amd64/pcmpstr64w
 valgrind/none/tests/amd64/pcmpxstrx64
 valgrind/none/tests/amd64/pcmpxstrx64w
 valgrind/none/tests/amd64/rcl-amd64
+valgrind/none/tests/amd64/rdrand
 valgrind/none/tests/amd64/redundantRexW
 valgrind/none/tests/amd64/sbbmisc
 valgrind/none/tests/amd64/shrld
@@ -638,6 +650,7 @@ valgrind-listener
 # Ignore generated and installed valgrind tools
 valgrind/inst
 valgrind/.in_place
+valgrind/.vs
 
 # Ignore Doxygen input/output files
 valgrind/fjalar/doxy.config

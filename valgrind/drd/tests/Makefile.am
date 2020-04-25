@@ -109,6 +109,10 @@ EXTRA_DIST =                                        \
 	dlopen.stderr.exp			    \
 	dlopen.stdout.exp			    \
 	dlopen.vgtest				    \
+	fork-serial.stderr.exp			    \
+	fork-serial.vgtest			    \
+	fork-parallel.stderr.exp		    \
+	fork-parallel.vgtest			    \
 	fp_race.stderr.exp                          \
 	fp_race.stderr.exp-mips32-be                \
 	fp_race.stderr.exp-mips32-le                \
@@ -370,6 +374,7 @@ check_PROGRAMS =      \
   concurrent_close    \
   dlopen_main         \
   dlopen_lib.so       \
+  fork                \
   fp_race             \
   free_is_write	      \
   hold_lock           \

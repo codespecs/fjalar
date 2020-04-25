@@ -526,6 +526,14 @@ typedef struct SigQueue {
         (srP)->r_sp = (ULong)((uc)->uc_mcontext.regs.gprs[15]);    \
         (srP)->misc.S390X.r_fp = (uc)->uc_mcontext.regs.gprs[11];  \
         (srP)->misc.S390X.r_lr = (uc)->uc_mcontext.regs.gprs[14];  \
+        (srP)->misc.S390X.r_f0 = (uc)->uc_mcontext.fpregs.fprs[0]; \
+        (srP)->misc.S390X.r_f1 = (uc)->uc_mcontext.fpregs.fprs[1]; \
+        (srP)->misc.S390X.r_f2 = (uc)->uc_mcontext.fpregs.fprs[2]; \
+        (srP)->misc.S390X.r_f3 = (uc)->uc_mcontext.fpregs.fprs[3]; \
+        (srP)->misc.S390X.r_f4 = (uc)->uc_mcontext.fpregs.fprs[4]; \
+        (srP)->misc.S390X.r_f5 = (uc)->uc_mcontext.fpregs.fprs[5]; \
+        (srP)->misc.S390X.r_f6 = (uc)->uc_mcontext.fpregs.fprs[6]; \
+        (srP)->misc.S390X.r_f7 = (uc)->uc_mcontext.fpregs.fprs[7]; \
       }
 
 #elif defined(VGP_mips32_linux)
@@ -1731,7 +1739,7 @@ static void default_action(const vki_siginfo_t *info, ThreadId tid)
         || VG_(clo_xml) ) {
       if (VG_(clo_xml)) {
          VG_(printf_xml)("<fatal_signal>\n");
-         VG_(printf_xml)("  <tid>%d</tid>\n", tid);
+         VG_(printf_xml)("  <tid>%u</tid>\n", tid);
          if (tst->thread_name) {
             VG_(printf_xml)("  <threadname>%s</threadname>\n",
                             tst->thread_name);

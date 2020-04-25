@@ -787,10 +787,12 @@ get_bfp_rounding_mode(ISelEnv *env, IRExpr *irrm)
       IRRoundingMode mode = irrm->Iex.Const.con->Ico.U32;
 
       switch (mode) {
-      case Irrm_NEAREST:  return S390_BFP_ROUND_NEAREST_EVEN;
-      case Irrm_ZERO:     return S390_BFP_ROUND_ZERO;
-      case Irrm_PosINF:   return S390_BFP_ROUND_POSINF;
-      case Irrm_NegINF:   return S390_BFP_ROUND_NEGINF;
+      case Irrm_NEAREST_TIE_AWAY_0: return S390_BFP_ROUND_NEAREST_AWAY;
+      case Irrm_PREPARE_SHORTER:    return S390_BFP_ROUND_PREPARE_SHORT;
+      case Irrm_NEAREST:            return S390_BFP_ROUND_NEAREST_EVEN;
+      case Irrm_ZERO:               return S390_BFP_ROUND_ZERO;
+      case Irrm_PosINF:             return S390_BFP_ROUND_POSINF;
+      case Irrm_NegINF:             return S390_BFP_ROUND_NEGINF;
       default:
          vpanic("get_bfp_rounding_mode");
       }
@@ -3700,9 +3702,10 @@ s390_isel_vec_expr_wrk(ISelEnv *env, IRExpr *expr)
    /* --------- UNARY OP --------- */
    case Iex_Unop: {
       UChar size_for_int_arg = 0;
-      HReg dst;
-      HReg reg1;
-      s390_unop_t vec_op;
+      HReg dst = INVALID_HREG;
+      HReg reg1 = INVALID_HREG;
+      s390_unop_t vec_unop = S390_UNOP_T_INVALID;
+      s390_vec_binop_t vec_binop = S390_VEC_BINOP_T_INVALID;
       IROp op = expr->Iex.Unop.op;
       IRExpr* arg = expr->Iex.Unop.arg;
       switch(op) {
@@ -3760,46 +3763,46 @@ s390_isel_vec_expr_wrk(ISelEnv *env, IRExpr *expr)
 
       case Iop_Dup8x16:
          size = size_for_int_arg = 1;
-         vec_op = S390_VEC_DUPLICATE;
+         vec_unop = S390_VEC_DUPLICATE;
          goto Iop_V_int_wrk;
       case Iop_Dup16x8:
          size = size_for_int_arg = 2;
-         vec_op = S390_VEC_DUPLICATE;
+         vec_unop = S390_VEC_DUPLICATE;
          goto Iop_V_int_wrk;
       case Iop_Dup32x4:
          size = size_for_int_arg = 4;
-         vec_op = S390_VEC_DUPLICATE;
+         vec_unop = S390_VEC_DUPLICATE;
          goto Iop_V_int_wrk;
 
       case Iop_Widen8Sto16x8:
          size = 1;
          size_for_int_arg = 8;
-         vec_op = S390_VEC_UNPACKLOWS;
+         vec_unop = S390_VEC_UNPACKLOWS;
          goto Iop_V_int_wrk;
       case Iop_Widen16Sto32x4:
          size = 2;
          size_for_int_arg = 8;
-         vec_op = S390_VEC_UNPACKLOWS;
+         vec_unop = S390_VEC_UNPACKLOWS;
          goto Iop_V_int_wrk;
       case Iop_Widen32Sto64x2:
          size = 4;
          size_for_int_arg = 8;
-         vec_op = S390_VEC_UNPACKLOWS;
+         vec_unop = S390_VEC_UNPACKLOWS;
          goto Iop_V_int_wrk;
       case Iop_Widen8Uto16x8:
          size = 1;
          size_for_int_arg = 8;
-         vec_op = S390_VEC_UNPACKLOWU;
+         vec_unop = S390_VEC_UNPACKLOWU;
          goto Iop_V_int_wrk;
       case Iop_Widen16Uto32x4:
          size = 2;
          size_for_int_arg = 8;
-         vec_op = S390_VEC_UNPACKLOWU;
+         vec_unop = S390_VEC_UNPACKLOWU;
          goto Iop_V_int_wrk;
       case Iop_Widen32Uto64x2:
          size = 4;
          size_for_int_arg = 8;
-         vec_op = S390_VEC_UNPACKLOWU;
+         vec_unop = S390_VEC_UNPACKLOWU;
          goto Iop_V_int_wrk;
 
       Iop_V_int_wrk: {
@@ -3807,76 +3810,89 @@ s390_isel_vec_expr_wrk(ISelEnv *env, IRExpr *expr)
          s390_amode* amode2 = s390_isel_amode(env, IRExpr_Const(IRConst_U64(0)));
          reg1 = s390_isel_int_expr(env, arg);
 
+         vassert(vec_unop != S390_UNOP_T_INVALID);
          addInstr(env,
                   s390_insn_vec_amodeintop(size_for_int_arg, S390_VEC_SET_ELEM,
                                            vr1, amode2, reg1));
 
          dst = newVRegV(env);
-         addInstr(env, s390_insn_unop(size, vec_op, dst, s390_opnd_reg(vr1)));
+         addInstr(env, s390_insn_unop(size, vec_unop, dst, s390_opnd_reg(vr1)));
          return dst;
       }
 
       case Iop_Abs8x16:
          size = 1;
-         vec_op = S390_VEC_ABS;
+         vec_unop = S390_VEC_ABS;
          goto Iop_V_wrk;
       case Iop_Abs16x8:
          size = 2;
-         vec_op = S390_VEC_ABS;
+         vec_unop = S390_VEC_ABS;
          goto Iop_V_wrk;
       case Iop_Abs32x4:
          size = 4;
-         vec_op = S390_VEC_ABS;
+         vec_unop = S390_VEC_ABS;
          goto Iop_V_wrk;
       case Iop_Abs64x2:
          size = 8;
-         vec_op = S390_VEC_ABS;
+         vec_unop = S390_VEC_ABS;
          goto Iop_V_wrk;
 
       case Iop_Clz8x16:
          size = 1;
-         vec_op = S390_VEC_COUNT_LEADING_ZEROES;
+         vec_unop = S390_VEC_COUNT_LEADING_ZEROES;
          goto Iop_V_wrk;
       case Iop_Ctz8x16:
          size = 1;
-         vec_op = S390_VEC_COUNT_TRAILING_ZEROES;
+         vec_unop = S390_VEC_COUNT_TRAILING_ZEROES;
          goto Iop_V_wrk;
       case Iop_Clz16x8:
          size = 2;
-         vec_op = S390_VEC_COUNT_LEADING_ZEROES;
+         vec_unop = S390_VEC_COUNT_LEADING_ZEROES;
          goto Iop_V_wrk;
       case Iop_Ctz16x8:
          size = 2;
-         vec_op = S390_VEC_COUNT_TRAILING_ZEROES;
+         vec_unop = S390_VEC_COUNT_TRAILING_ZEROES;
          goto Iop_V_wrk;
       case Iop_Clz32x4:
          size = 4;
-         vec_op = S390_VEC_COUNT_LEADING_ZEROES;
+         vec_unop = S390_VEC_COUNT_LEADING_ZEROES;
          goto Iop_V_wrk;
       case Iop_Ctz32x4:
          size = 4;
-         vec_op = S390_VEC_COUNT_TRAILING_ZEROES;
+         vec_unop = S390_VEC_COUNT_TRAILING_ZEROES;
          goto Iop_V_wrk;
       case Iop_Clz64x2:
          size = 8;
-         vec_op = S390_VEC_COUNT_LEADING_ZEROES;
+         vec_unop = S390_VEC_COUNT_LEADING_ZEROES;
          goto Iop_V_wrk;
       case Iop_Ctz64x2:
          size = 8;
-         vec_op = S390_VEC_COUNT_TRAILING_ZEROES;
+         vec_unop = S390_VEC_COUNT_TRAILING_ZEROES;
          goto Iop_V_wrk;
 
       case Iop_Cnt8x16:
          size = 1;
-         vec_op = S390_VEC_COUNT_ONES;
+         vec_unop = S390_VEC_COUNT_ONES;
          goto Iop_V_wrk;
+
+      case Iop_Neg64Fx2:
+         size = 8;
+         vec_unop = S390_VEC_FLOAT_NEG;
+         goto Iop_V_wrk;
+
+      case Iop_Abs64Fx2:
+         size = 8;
+         vec_unop = S390_VEC_FLOAT_ABS;
+         goto Iop_V_wrk;
+
 
       Iop_V_wrk: {
          dst = newVRegV(env);
          reg1 = s390_isel_vec_expr(env, arg);
 
+         vassert(vec_unop != S390_UNOP_T_INVALID);
          addInstr(env,
-                  s390_insn_unop(size, vec_op, dst, s390_opnd_reg(reg1)));
+                  s390_insn_unop(size, vec_unop, dst, s390_opnd_reg(reg1)));
          return dst;
       }
 
@@ -3899,7 +3915,7 @@ s390_isel_vec_expr_wrk(ISelEnv *env, IRExpr *expr)
          } else {
             size = 2;
          }
-         vec_op = S390_VEC_PWSUM_W;
+         vec_binop = S390_VEC_PWSUM_W;
          goto Iop_Pairwise_wrk;
 
       case Iop_PwAddL32Ux4:
@@ -3909,7 +3925,7 @@ s390_isel_vec_expr_wrk(ISelEnv *env, IRExpr *expr)
          } else {
             size = 4;
          }
-         vec_op = S390_VEC_PWSUM_DW;
+         vec_binop = S390_VEC_PWSUM_DW;
          goto Iop_Pairwise_wrk;
 
       case Iop_PwAddL64Ux2:
@@ -3919,15 +3935,15 @@ s390_isel_vec_expr_wrk(ISelEnv *env, IRExpr *expr)
          } else {
             size = 8;
          }
-         vec_op = S390_VEC_PWSUM_QW;
+         vec_binop = S390_VEC_PWSUM_QW;
          goto Iop_Pairwise_wrk;
 
       Iop_Pairwise_wrk: {
          dst = newVRegV(env);
          reg1 = s390_isel_vec_expr(env, arg);
-
+         vassert(vec_binop != S390_VEC_BINOP_T_INVALID);
          addInstr(env,
-                  s390_insn_vec_binop(size, vec_op, dst, reg1,
+                  s390_insn_vec_binop(size, vec_binop, dst, reg1,
                                       vec_generate_zeroes(env)));
          return dst;
       }
@@ -3940,98 +3956,99 @@ s390_isel_vec_expr_wrk(ISelEnv *env, IRExpr *expr)
    /* --------- BINARY OP --------- */
    case Iex_Binop: {
       HReg dst = newVRegV(env);
-      HReg reg1, reg2;
+      HReg reg1 = INVALID_HREG, reg2 = INVALID_HREG;
       IROp op = expr->Iex.Binop.op;
-      s390_vec_binop_t vec_op = 0;
-      s390_vec_amodeop_t shift_op = 0;
+      s390_unop_t vec_unop = S390_UNOP_T_INVALID;
+      s390_vec_binop_t vec_binop = S390_VEC_BINOP_T_INVALID;
+      s390_vec_amodeop_t shift_op = S390_VEC_AMODEOP_T_INVALID;
       IRExpr* arg1 = expr->Iex.Binop.arg1;
       IRExpr* arg2 = expr->Iex.Binop.arg2;
       switch(op) {
       case Iop_QNarrowBin16Uto8Ux16:
          size = 2;
-         vec_op = S390_VEC_PACK_SATURU;
+         vec_binop = S390_VEC_PACK_SATURU;
          goto Iop_VV_wrk;
       case Iop_QNarrowBin16Sto8Sx16:
          size = 2;
-         vec_op = S390_VEC_PACK_SATURS;
+         vec_binop = S390_VEC_PACK_SATURS;
          goto Iop_VV_wrk;
       case Iop_QNarrowBin32Uto16Ux8:
          size = 4;
-         vec_op = S390_VEC_PACK_SATURU;
+         vec_binop = S390_VEC_PACK_SATURU;
          goto Iop_VV_wrk;
       case Iop_QNarrowBin32Sto16Sx8:
          size = 4;
-         vec_op = S390_VEC_PACK_SATURS;
+         vec_binop = S390_VEC_PACK_SATURS;
          goto Iop_VV_wrk;
       case Iop_QNarrowBin64Uto32Ux4:
          size = 8;
-         vec_op = S390_VEC_PACK_SATURU;
+         vec_binop = S390_VEC_PACK_SATURU;
          goto Iop_VV_wrk;
       case Iop_QNarrowBin64Sto32Sx4:
          size = 8;
-         vec_op = S390_VEC_PACK_SATURS;
+         vec_binop = S390_VEC_PACK_SATURS;
          goto Iop_VV_wrk;
 
       case Iop_NarrowBin16to8x16:
          size = 2;
-         vec_op = S390_VEC_PACK;
+         vec_binop = S390_VEC_PACK;
          goto Iop_VV_wrk;
       case Iop_NarrowBin32to16x8:
          size = 4;
-         vec_op = S390_VEC_PACK;
+         vec_binop = S390_VEC_PACK;
          goto Iop_VV_wrk;
       case Iop_NarrowBin64to32x4:
          size = 8;
-         vec_op = S390_VEC_PACK;
+         vec_binop = S390_VEC_PACK;
          goto Iop_VV_wrk;
 
       case Iop_OrV128:
          size = 16;
-         vec_op = S390_VEC_OR;
+         vec_binop = S390_VEC_OR;
          goto Iop_VV_wrk;
 
       case Iop_XorV128:
          size = 16;
-         vec_op = S390_VEC_XOR;
+         vec_binop = S390_VEC_XOR;
          goto Iop_VV_wrk;
 
       case Iop_AndV128:
          size = 16;
-         vec_op = S390_VEC_AND;
+         vec_binop = S390_VEC_AND;
          goto Iop_VV_wrk;
 
       case Iop_InterleaveLO8x16:
          size = 1;
-         vec_op = S390_VEC_MERGEL;
+         vec_binop = S390_VEC_MERGEL;
          goto Iop_VV_wrk;
       case Iop_InterleaveLO16x8:
          size = 2;
-         vec_op = S390_VEC_MERGEL;
+         vec_binop = S390_VEC_MERGEL;
          goto Iop_VV_wrk;
       case Iop_InterleaveLO32x4:
          size = 4;
-         vec_op = S390_VEC_MERGEL;
+         vec_binop = S390_VEC_MERGEL;
          goto Iop_VV_wrk;
       case Iop_InterleaveLO64x2:
          size = 8;
-         vec_op = S390_VEC_MERGEL;
+         vec_binop = S390_VEC_MERGEL;
          goto Iop_VV_wrk;
 
       case Iop_InterleaveHI8x16:
          size = 1;
-         vec_op = S390_VEC_MERGEH;
+         vec_binop = S390_VEC_MERGEH;
          goto Iop_VV_wrk;
       case Iop_InterleaveHI16x8:
          size = 2;
-         vec_op = S390_VEC_MERGEH;
+         vec_binop = S390_VEC_MERGEH;
          goto Iop_VV_wrk;
       case Iop_InterleaveHI32x4:
          size = 4;
-         vec_op = S390_VEC_MERGEH;
+         vec_binop = S390_VEC_MERGEH;
          goto Iop_VV_wrk;
       case Iop_InterleaveHI64x2:
          size = 8;
-         vec_op = S390_VEC_MERGEH;
+         vec_binop = S390_VEC_MERGEH;
          goto Iop_VV_wrk;
 
       case Iop_InterleaveEvenLanes8x16: {
@@ -4068,325 +4085,347 @@ s390_isel_vec_expr_wrk(ISelEnv *env, IRExpr *expr)
 
       case Iop_CmpEQ8x16:
          size = 1;
-         vec_op = S390_VEC_COMPARE_EQUAL;
+         vec_binop = S390_VEC_COMPARE_EQUAL;
          goto Iop_VV_wrk;
       case Iop_CmpEQ16x8:
          size = 2;
-         vec_op = S390_VEC_COMPARE_EQUAL;
+         vec_binop = S390_VEC_COMPARE_EQUAL;
          goto Iop_VV_wrk;
       case Iop_CmpEQ32x4:
          size = 4;
-         vec_op = S390_VEC_COMPARE_EQUAL;
+         vec_binop = S390_VEC_COMPARE_EQUAL;
          goto Iop_VV_wrk;
       case Iop_CmpEQ64x2:
          size = 8;
-         vec_op = S390_VEC_COMPARE_EQUAL;
+         vec_binop = S390_VEC_COMPARE_EQUAL;
          goto Iop_VV_wrk;
 
       case Iop_Add8x16:
          size = 1;
-         vec_op = S390_VEC_INT_ADD;
+         vec_binop = S390_VEC_INT_ADD;
          goto Iop_VV_wrk;
       case Iop_Add16x8:
          size = 2;
-         vec_op = S390_VEC_INT_ADD;
+         vec_binop = S390_VEC_INT_ADD;
          goto Iop_VV_wrk;
       case Iop_Add32x4:
          size = 4;
-         vec_op = S390_VEC_INT_ADD;
+         vec_binop = S390_VEC_INT_ADD;
          goto Iop_VV_wrk;
       case Iop_Add64x2:
          size = 8;
-         vec_op = S390_VEC_INT_ADD;
+         vec_binop = S390_VEC_INT_ADD;
          goto Iop_VV_wrk;
       case Iop_Add128x1:
          size = 16;
-         vec_op = S390_VEC_INT_ADD;
+         vec_binop = S390_VEC_INT_ADD;
          goto Iop_VV_wrk;
 
       case Iop_Sub8x16:
          size = 1;
-         vec_op = S390_VEC_INT_SUB;
+         vec_binop = S390_VEC_INT_SUB;
          goto Iop_VV_wrk;
       case Iop_Sub16x8:
          size = 2;
-         vec_op = S390_VEC_INT_SUB;
+         vec_binop = S390_VEC_INT_SUB;
          goto Iop_VV_wrk;
       case Iop_Sub32x4:
          size = 4;
-         vec_op = S390_VEC_INT_SUB;
+         vec_binop = S390_VEC_INT_SUB;
          goto Iop_VV_wrk;
       case Iop_Sub64x2:
          size = 8;
-         vec_op = S390_VEC_INT_SUB;
+         vec_binop = S390_VEC_INT_SUB;
          goto Iop_VV_wrk;
       case Iop_Sub128x1:
          size = 16;
-         vec_op = S390_VEC_INT_SUB;
+         vec_binop = S390_VEC_INT_SUB;
          goto Iop_VV_wrk;
 
       case Iop_Max8Ux16:
          size = 1;
-         vec_op = S390_VEC_MAXU;
+         vec_binop = S390_VEC_MAXU;
          goto Iop_VV_wrk;
       case Iop_Max8Sx16:
          size = 1;
-         vec_op = S390_VEC_MAXS;
+         vec_binop = S390_VEC_MAXS;
          goto Iop_VV_wrk;
       case Iop_Max16Ux8:
          size = 2;
-         vec_op = S390_VEC_MAXU;
+         vec_binop = S390_VEC_MAXU;
          goto Iop_VV_wrk;
       case Iop_Max16Sx8:
          size = 2;
-         vec_op = S390_VEC_MAXS;
+         vec_binop = S390_VEC_MAXS;
          goto Iop_VV_wrk;
       case Iop_Max32Ux4:
          size = 4;
-         vec_op = S390_VEC_MAXU;
+         vec_binop = S390_VEC_MAXU;
          goto Iop_VV_wrk;
       case Iop_Max32Sx4:
          size = 4;
-         vec_op = S390_VEC_MAXS;
+         vec_binop = S390_VEC_MAXS;
          goto Iop_VV_wrk;
       case Iop_Max64Ux2:
          size = 8;
-         vec_op = S390_VEC_MAXU;
+         vec_binop = S390_VEC_MAXU;
          goto Iop_VV_wrk;
       case Iop_Max64Sx2:
          size = 8;
-         vec_op = S390_VEC_MAXS;
+         vec_binop = S390_VEC_MAXS;
          goto Iop_VV_wrk;
 
       case Iop_Min8Ux16:
          size = 1;
-         vec_op = S390_VEC_MINU;
+         vec_binop = S390_VEC_MINU;
          goto Iop_VV_wrk;
       case Iop_Min8Sx16:
          size = 1;
-         vec_op = S390_VEC_MINS;
+         vec_binop = S390_VEC_MINS;
          goto Iop_VV_wrk;
       case Iop_Min16Ux8:
          size = 2;
-         vec_op = S390_VEC_MINU;
+         vec_binop = S390_VEC_MINU;
          goto Iop_VV_wrk;
       case Iop_Min16Sx8:
          size = 2;
-         vec_op = S390_VEC_MINS;
+         vec_binop = S390_VEC_MINS;
          goto Iop_VV_wrk;
       case Iop_Min32Ux4:
          size = 4;
-         vec_op = S390_VEC_MINU;
+         vec_binop = S390_VEC_MINU;
          goto Iop_VV_wrk;
       case Iop_Min32Sx4:
          size = 4;
-         vec_op = S390_VEC_MINS;
+         vec_binop = S390_VEC_MINS;
          goto Iop_VV_wrk;
       case Iop_Min64Ux2:
          size = 8;
-         vec_op = S390_VEC_MINU;
+         vec_binop = S390_VEC_MINU;
          goto Iop_VV_wrk;
       case Iop_Min64Sx2:
          size = 8;
-         vec_op = S390_VEC_MINS;
+         vec_binop = S390_VEC_MINS;
          goto Iop_VV_wrk;
 
       case Iop_Avg8Ux16:
          size = 1;
-         vec_op = S390_VEC_AVGU;
+         vec_binop = S390_VEC_AVGU;
          goto Iop_VV_wrk;
       case Iop_Avg8Sx16:
          size = 1;
-         vec_op = S390_VEC_AVGS;
+         vec_binop = S390_VEC_AVGS;
          goto Iop_VV_wrk;
       case Iop_Avg16Ux8:
          size = 2;
-         vec_op = S390_VEC_AVGU;
+         vec_binop = S390_VEC_AVGU;
          goto Iop_VV_wrk;
       case Iop_Avg16Sx8:
          size = 2;
-         vec_op = S390_VEC_AVGS;
+         vec_binop = S390_VEC_AVGS;
          goto Iop_VV_wrk;
       case Iop_Avg32Ux4:
          size = 4;
-         vec_op = S390_VEC_AVGU;
+         vec_binop = S390_VEC_AVGU;
          goto Iop_VV_wrk;
       case Iop_Avg32Sx4:
          size = 4;
-         vec_op = S390_VEC_AVGS;
+         vec_binop = S390_VEC_AVGS;
          goto Iop_VV_wrk;
       case Iop_Avg64Ux2:
          size = 8;
-         vec_op = S390_VEC_AVGU;
+         vec_binop = S390_VEC_AVGU;
          goto Iop_VV_wrk;
       case Iop_Avg64Sx2:
          size = 8;
-         vec_op = S390_VEC_AVGS;
+         vec_binop = S390_VEC_AVGS;
          goto Iop_VV_wrk;
 
       case Iop_CmpGT8Ux16:
          size = 1;
-         vec_op = S390_VEC_COMPARE_GREATERU;
+         vec_binop = S390_VEC_COMPARE_GREATERU;
          goto Iop_VV_wrk;
       case Iop_CmpGT8Sx16:
          size = 1;
-         vec_op = S390_VEC_COMPARE_GREATERS;
+         vec_binop = S390_VEC_COMPARE_GREATERS;
          goto Iop_VV_wrk;
       case Iop_CmpGT16Ux8:
          size = 2;
-         vec_op = S390_VEC_COMPARE_GREATERU;
+         vec_binop = S390_VEC_COMPARE_GREATERU;
          goto Iop_VV_wrk;
       case Iop_CmpGT16Sx8:
          size = 2;
-         vec_op = S390_VEC_COMPARE_GREATERS;
+         vec_binop = S390_VEC_COMPARE_GREATERS;
          goto Iop_VV_wrk;
       case Iop_CmpGT32Ux4:
          size = 4;
-         vec_op = S390_VEC_COMPARE_GREATERU;
+         vec_binop = S390_VEC_COMPARE_GREATERU;
          goto Iop_VV_wrk;
       case Iop_CmpGT32Sx4:
          size = 4;
-         vec_op = S390_VEC_COMPARE_GREATERS;
+         vec_binop = S390_VEC_COMPARE_GREATERS;
          goto Iop_VV_wrk;
       case Iop_CmpGT64Ux2:
          size = 8;
-         vec_op = S390_VEC_COMPARE_GREATERU;
+         vec_binop = S390_VEC_COMPARE_GREATERU;
          goto Iop_VV_wrk;
       case Iop_CmpGT64Sx2:
          size = 8;
-         vec_op = S390_VEC_COMPARE_GREATERS;
+         vec_binop = S390_VEC_COMPARE_GREATERS;
          goto Iop_VV_wrk;
 
       case Iop_MulHi8Ux16:
          size = 1;
-         vec_op = S390_VEC_INT_MUL_HIGHU;
+         vec_binop = S390_VEC_INT_MUL_HIGHU;
          goto Iop_VV_wrk;
       case Iop_MulHi8Sx16:
          size = 1;
-         vec_op = S390_VEC_INT_MUL_HIGHS;
+         vec_binop = S390_VEC_INT_MUL_HIGHS;
          goto Iop_VV_wrk;
       case Iop_MulHi16Ux8:
          size = 2;
-         vec_op = S390_VEC_INT_MUL_HIGHU;
+         vec_binop = S390_VEC_INT_MUL_HIGHU;
          goto Iop_VV_wrk;
       case Iop_MulHi16Sx8:
          size = 2;
-         vec_op = S390_VEC_INT_MUL_HIGHS;
+         vec_binop = S390_VEC_INT_MUL_HIGHS;
          goto Iop_VV_wrk;
       case Iop_MulHi32Ux4:
          size = 4;
-         vec_op = S390_VEC_INT_MUL_HIGHU;
+         vec_binop = S390_VEC_INT_MUL_HIGHU;
          goto Iop_VV_wrk;
       case Iop_MulHi32Sx4:
          size = 4;
-         vec_op = S390_VEC_INT_MUL_HIGHS;
+         vec_binop = S390_VEC_INT_MUL_HIGHS;
          goto Iop_VV_wrk;
 
       case Iop_Mul8x16:
          size = 1;
-         vec_op = S390_VEC_INT_MUL_LOW;
+         vec_binop = S390_VEC_INT_MUL_LOW;
          goto Iop_VV_wrk;
       case Iop_Mul16x8:
          size = 2;
-         vec_op = S390_VEC_INT_MUL_LOW;
+         vec_binop = S390_VEC_INT_MUL_LOW;
          goto Iop_VV_wrk;
       case Iop_Mul32x4:
          size = 4;
-         vec_op = S390_VEC_INT_MUL_LOW;
+         vec_binop = S390_VEC_INT_MUL_LOW;
          goto Iop_VV_wrk;
 
       case Iop_MullEven8Sx16:
          size = 1;
-         vec_op = S390_VEC_INT_MUL_EVENS;
+         vec_binop = S390_VEC_INT_MUL_EVENS;
          goto Iop_VV_wrk;
       case Iop_MullEven8Ux16:
          size = 1;
-         vec_op = S390_VEC_INT_MUL_EVENU;
+         vec_binop = S390_VEC_INT_MUL_EVENU;
          goto Iop_VV_wrk;
       case Iop_MullEven16Sx8:
          size = 2;
-         vec_op = S390_VEC_INT_MUL_EVENS;
+         vec_binop = S390_VEC_INT_MUL_EVENS;
          goto Iop_VV_wrk;
       case Iop_MullEven16Ux8:
          size = 2;
-         vec_op = S390_VEC_INT_MUL_EVENU;
+         vec_binop = S390_VEC_INT_MUL_EVENU;
          goto Iop_VV_wrk;
       case Iop_MullEven32Sx4:
          size = 4;
-         vec_op = S390_VEC_INT_MUL_EVENS;
+         vec_binop = S390_VEC_INT_MUL_EVENS;
          goto Iop_VV_wrk;
       case Iop_MullEven32Ux4:
          size = 4;
-         vec_op = S390_VEC_INT_MUL_EVENU;
+         vec_binop = S390_VEC_INT_MUL_EVENU;
          goto Iop_VV_wrk;
 
       case Iop_Shl8x16:
          size = 1;
-         vec_op = S390_VEC_ELEM_SHL_V;
+         vec_binop = S390_VEC_ELEM_SHL_V;
          goto Iop_VV_wrk;
       case Iop_Shl16x8:
          size = 2;
-         vec_op = S390_VEC_ELEM_SHL_V;
+         vec_binop = S390_VEC_ELEM_SHL_V;
          goto Iop_VV_wrk;
       case Iop_Shl32x4:
          size = 4;
-         vec_op = S390_VEC_ELEM_SHL_V;
+         vec_binop = S390_VEC_ELEM_SHL_V;
          goto Iop_VV_wrk;
       case Iop_Shl64x2:
          size = 8;
-         vec_op = S390_VEC_ELEM_SHL_V;
+         vec_binop = S390_VEC_ELEM_SHL_V;
          goto Iop_VV_wrk;
 
       case Iop_Shr8x16:
          size = 1;
-         vec_op = S390_VEC_ELEM_SHRL_V;
+         vec_binop = S390_VEC_ELEM_SHRL_V;
          goto Iop_VV_wrk;
       case Iop_Shr16x8:
          size = 2;
-         vec_op = S390_VEC_ELEM_SHRL_V;
+         vec_binop = S390_VEC_ELEM_SHRL_V;
          goto Iop_VV_wrk;
       case Iop_Shr32x4:
          size = 4;
-         vec_op = S390_VEC_ELEM_SHRL_V;
+         vec_binop = S390_VEC_ELEM_SHRL_V;
          goto Iop_VV_wrk;
       case Iop_Shr64x2:
          size = 8;
-         vec_op = S390_VEC_ELEM_SHRL_V;
+         vec_binop = S390_VEC_ELEM_SHRL_V;
          goto Iop_VV_wrk;
 
       case Iop_Sar8x16:
          size = 1;
-         vec_op = S390_VEC_ELEM_SHRA_V;
+         vec_binop = S390_VEC_ELEM_SHRA_V;
          goto Iop_VV_wrk;
       case Iop_Sar16x8:
          size = 2;
-         vec_op = S390_VEC_ELEM_SHRA_V;
+         vec_binop = S390_VEC_ELEM_SHRA_V;
          goto Iop_VV_wrk;
       case Iop_Sar32x4:
          size = 4;
-         vec_op = S390_VEC_ELEM_SHRA_V;
+         vec_binop = S390_VEC_ELEM_SHRA_V;
          goto Iop_VV_wrk;
       case Iop_Sar64x2:
          size = 8;
-         vec_op = S390_VEC_ELEM_SHRA_V;
+         vec_binop = S390_VEC_ELEM_SHRA_V;
          goto Iop_VV_wrk;
 
       case Iop_Rol8x16:
          size = 1;
-         vec_op = S390_VEC_ELEM_ROLL_V;
+         vec_binop = S390_VEC_ELEM_ROLL_V;
          goto Iop_VV_wrk;
       case Iop_Rol16x8:
          size = 2;
-         vec_op = S390_VEC_ELEM_ROLL_V;
+         vec_binop = S390_VEC_ELEM_ROLL_V;
          goto Iop_VV_wrk;
       case Iop_Rol32x4:
          size = 4;
-         vec_op = S390_VEC_ELEM_ROLL_V;
+         vec_binop = S390_VEC_ELEM_ROLL_V;
          goto Iop_VV_wrk;
       case Iop_Rol64x2:
          size = 8;
-         vec_op = S390_VEC_ELEM_ROLL_V;
+         vec_binop = S390_VEC_ELEM_ROLL_V;
          goto Iop_VV_wrk;
+
+      case Iop_CmpEQ64Fx2:
+         size = 8;
+         vec_binop = S390_VEC_FLOAT_COMPARE_EQUAL;
+         goto Iop_VV_wrk;
+
+      case Iop_CmpLE64Fx2: {
+         size = 8;
+         vec_binop = S390_VEC_FLOAT_COMPARE_LESS_OR_EQUAL;
+         goto Iop_VV_wrk;
+      }
+
+      case Iop_CmpLT64Fx2: {
+         size = 8;
+         vec_binop = S390_VEC_FLOAT_COMPARE_LESS;
+         goto Iop_VV_wrk;
+      }
+
+      case Iop_Sqrt64Fx2:
+         size = 8;
+         vec_unop = S390_VEC_FLOAT_SQRT;
+         goto Iop_irrm_V_wrk;
 
       case Iop_ShlN8x16:
          size = 1;
@@ -4450,16 +4489,17 @@ s390_isel_vec_expr_wrk(ISelEnv *env, IRExpr *expr)
          }
 
       case Iop_ShlV128:
-         vec_op = S390_VEC_SHL_BITS;
+         vec_binop = S390_VEC_SHL_BITS;
          goto Iop_ShiftVV_wrk;
       case Iop_ShrV128:
-         vec_op = S390_VEC_SHRL_BITS;
+         vec_binop = S390_VEC_SHRL_BITS;
          goto Iop_ShiftVV_wrk;
       case Iop_SarV128:
-         vec_op = S390_VEC_SHRA_BITS;
+         vec_binop = S390_VEC_SHRA_BITS;
          goto Iop_ShiftVV_wrk;
 
       Iop_ShiftVV_wrk: {
+         vassert(vec_binop != S390_VEC_BINOP_T_INVALID);
          reg1 = s390_isel_vec_expr(env, arg1);
          reg2 = s390_isel_vec_expr(env, IRExpr_Unop(Iop_Dup8x16, arg2));
 
@@ -4467,29 +4507,39 @@ s390_isel_vec_expr_wrk(ISelEnv *env, IRExpr *expr)
          if (vec_is_bytes_only_shift(arg2))
          {
             /* In this case we skip the BITS shift step. */
-            addInstr(env, s390_insn_vec_binop(16, (vec_op + 1),
+            addInstr(env, s390_insn_vec_binop(16, (vec_binop + 1),
                      dst, reg1, reg2));
 
             return dst;
          }
 
          /* General case (BYTES shift & BITS shift) */
-         addInstr(env, s390_insn_vec_binop(16, (vec_op + 1),
+         addInstr(env, s390_insn_vec_binop(16, (vec_binop + 1),
                   dst, reg1, reg2));
 
-         addInstr(env, s390_insn_vec_binop(16, vec_op,
+         addInstr(env, s390_insn_vec_binop(16, vec_binop,
                   dst, dst, reg2));
 
          return dst;
       }
 
       Iop_VV_wrk: {
+         vassert(vec_binop != S390_VEC_BINOP_T_INVALID);
          reg1 = s390_isel_vec_expr(env, arg1);
          reg2 = s390_isel_vec_expr(env, arg2);
 
-         addInstr(env, s390_insn_vec_binop(size, vec_op,
+         addInstr(env, s390_insn_vec_binop(size, vec_binop,
                   dst, reg1, reg2));
 
+         return dst;
+      }
+
+      Iop_irrm_V_wrk: {
+         vassert(vec_unop != S390_UNOP_T_INVALID);
+         set_bfp_rounding_mode_in_fpc(env, arg1);
+         reg1 = s390_isel_vec_expr(env, arg2);
+
+         addInstr(env, s390_insn_unop(size, vec_unop, dst, s390_opnd_reg(reg1)));
          return dst;
       }
 
@@ -4510,12 +4560,13 @@ s390_isel_vec_expr_wrk(ISelEnv *env, IRExpr *expr)
    /* --------- TERNARY OP --------- */
    case Iex_Triop: {
       HReg dst = newVRegV(env);
-      s390_amode* amode2;
-      HReg reg1, reg2, reg3;
+      s390_amode* amode2 = NULL;
+      HReg reg1 = INVALID_HREG, reg2 = INVALID_HREG, reg3 = INVALID_HREG;
       IROp op = expr->Iex.Triop.details->op;
       IRExpr* arg1 = expr->Iex.Triop.details->arg1;
       IRExpr* arg2 = expr->Iex.Triop.details->arg2;
       IRExpr* arg3 = expr->Iex.Triop.details->arg3;
+      s390_vec_binop_t vec_binop = S390_VEC_BINOP_T_INVALID;
       switch (op) {
       case Iop_SetElem8x16:
          size = 1;
@@ -4550,6 +4601,37 @@ s390_isel_vec_expr_wrk(ISelEnv *env, IRExpr *expr)
          addInstr(env, s390_insn_vec_triop(size, S390_VEC_PERM,
                                            dst, reg1, reg2, reg3));
          return dst;
+
+      case Iop_Add64Fx2:
+         size = 8;
+         vec_binop = S390_VEC_FLOAT_ADD;
+         goto Iop_irrm_VV_wrk;
+
+      case Iop_Sub64Fx2:
+         size = 8;
+         vec_binop = S390_VEC_FLOAT_SUB;
+         goto Iop_irrm_VV_wrk;
+
+      case Iop_Mul64Fx2:
+         size = 8;
+         vec_binop = S390_VEC_FLOAT_MUL;
+         goto Iop_irrm_VV_wrk;
+      case Iop_Div64Fx2:
+         size = 8;
+         vec_binop = S390_VEC_FLOAT_DIV;
+         goto Iop_irrm_VV_wrk;
+
+      Iop_irrm_VV_wrk: {
+         vassert(vec_binop != S390_VEC_BINOP_T_INVALID);
+         set_bfp_rounding_mode_in_fpc(env, arg1);
+         reg1 = s390_isel_vec_expr(env, arg2);
+         reg2 = s390_isel_vec_expr(env, arg3);
+
+         addInstr(env, s390_insn_vec_binop(size, vec_binop,
+                                           dst, reg1, reg2));
+
+         return dst;
+       }
 
       default:
          goto irreducible;

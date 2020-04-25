@@ -92,7 +92,7 @@ sed -e '/Remote debugging using/,/vgdb launched process attached/d'             
     -e 's/^Thread .... received /Program received /'                                                  \
     -e 's/#[0-9]\(  0x........ in sleeper_or_burner\)/#.\1/'                                          \
     -e 's/\(#0  0x........ in do_burn ()\) at sleepers.c:41/\1/'                                      \
-    -e '/^Reading symbols from .*\.\.\.done\./d'                                                      \
+    -e '/^Reading symbols from .*\.\.\.\(done\.\)\?/d'                                                \
     -e '/^Loaded symbols for .*$/d'                                                                   \
     -e '/^Current language.*/d'                                                                       \
     -e '/^The current source language is.*/d'                                                         \
@@ -139,6 +139,7 @@ sed -e '/Remote debugging using/,/vgdb launched process attached/d'             
     -e 's/VgTs_WaitSys) 0x/VgTs_WaitSys)  0x/'                                                        \
     -e '/Cannot access memory at address 0x......../d'                                                \
     -e '/\[New Thread/d'                                                                              \
+    -e 's/^0x........ in \(\w\+ (\)/\1/'                                                              \
     -e '/^$/d'                                                                                     |
 
 # remove all the lines telling where the SIGFPE was trapped.

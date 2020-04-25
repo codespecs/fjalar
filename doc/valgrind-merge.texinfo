@@ -223,10 +223,10 @@ Valgrind repository.  However, the Valgrind team has now converted
 to the @command{git} repository tool.  Thus the SVN commands below are
 incorrect and will need to be changed as part of the next Valgrind upgrade.
 
-Execute the following Subversion command:
+Execute the following Git command:
 
 @example
-svn log -l6 svn://svn.valgrind.org/valgrind/tags
+git ls-remote --tags --refs http://sourceware.org/git/valgrind.git
 @end example
 
 @noindent
@@ -523,9 +523,12 @@ reflected. Most of the changes to the public VEX IR can be discovered
 by running the following command:
 
 @example
-cd $inv/valgrind-new
-svn log -r $@{VEX_REVISION@}:HEAD VEX/pub/libvex_ir.h
+cd $inv
+diff -b valgrind-old/VEX/pub/libvex_ir.h valgrind-new/VEX/pub/libvex_ir.h
 @end example
+
+It is also worth noting that almost all the changes will be for machines
+that we do not support.
 
 The files with all the VEX IR code for DynComp are located in
 @file{dyncomp_translate.[ch]}. @file{dyncomp_translate.c} is structured primarily

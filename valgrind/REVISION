@@ -1,4 +1,4 @@
-# Valgrind version 3.14.0, released 2018-10-09
+# Valgrind version 3.15.0, released 2019-04-14
 # Valgrind repository now git not syn; these REVISIONs now meaningless.
 #export VALGRIND_REVISION=
 #export VEX_REVISION=

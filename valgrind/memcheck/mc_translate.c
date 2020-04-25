@@ -737,6 +737,34 @@ static IRAtom* mkLeft64 ( MCEnv* mce, IRAtom* a1 ) {
    return assignNew('V', mce, Ity_I64, unop(Iop_Left64, a1));
 }
 
+/* --------- The Right-family of operations. --------- */
+
+/* Unfortunately these are a lot more expensive then their Left
+   counterparts.  Fortunately they are only very rarely used -- only for
+   count-leading-zeroes instrumentation. */
+
+static IRAtom* mkRight32 ( MCEnv* mce, IRAtom* a1 )
+{
+   for (Int i = 1; i <= 16; i *= 2) {
+      // a1 |= (a1 >>u i)
+      IRAtom* tmp
+         = assignNew('V', mce, Ity_I32, binop(Iop_Shr32, a1, mkU8(i)));
+      a1 = assignNew('V', mce, Ity_I32, binop(Iop_Or32, a1, tmp));
+   }
+   return a1;
+}
+
+static IRAtom* mkRight64 ( MCEnv* mce, IRAtom* a1 )
+{
+   for (Int i = 1; i <= 32; i *= 2) {
+      // a1 |= (a1 >>u i)
+      IRAtom* tmp
+         = assignNew('V', mce, Ity_I64, binop(Iop_Shr64, a1, mkU8(i)));
+      a1 = assignNew('V', mce, Ity_I64, binop(Iop_Or64, a1, tmp));
+   }
+   return a1;
+}
+
 /* --------- 'Improvement' functions for AND/OR. --------- */
 
 /* ImproveAND(data, vbits) = data OR vbits.  Defined (0) data 0s give
@@ -1280,19 +1308,17 @@ static IRAtom* doCmpORD ( MCEnv*  mce,
                           IRAtom* xxhash, IRAtom* yyhash, 
                           IRAtom* xx,     IRAtom* yy )
 {
-   Bool   m64    = cmp_op == Iop_CmpORD64S || cmp_op == Iop_CmpORD64U;
-   Bool   syned  = cmp_op == Iop_CmpORD64S || cmp_op == Iop_CmpORD32S;
-   IROp   opOR   = m64 ? Iop_Or64  : Iop_Or32;
-   IROp   opAND  = m64 ? Iop_And64 : Iop_And32;
-   IROp   opSHL  = m64 ? Iop_Shl64 : Iop_Shl32;
-   IROp   opSHR  = m64 ? Iop_Shr64 : Iop_Shr32;
-   IRType ty     = m64 ? Ity_I64   : Ity_I32;
-   Int    width  = m64 ? 64        : 32;
+   Bool   m64      = cmp_op == Iop_CmpORD64S || cmp_op == Iop_CmpORD64U;
+   Bool   syned    = cmp_op == Iop_CmpORD64S || cmp_op == Iop_CmpORD32S;
+   IROp   opOR     = m64 ? Iop_Or64   : Iop_Or32;
+   IROp   opAND    = m64 ? Iop_And64  : Iop_And32;
+   IROp   opSHL    = m64 ? Iop_Shl64  : Iop_Shl32;
+   IROp   opSHR    = m64 ? Iop_Shr64  : Iop_Shr32;
+   IROp   op1UtoWS = m64 ? Iop_1Uto64 : Iop_1Uto32;
+   IRType ty       = m64 ? Ity_I64    : Ity_I32;
+   Int    width    = m64 ? 64         : 32;
 
    Bool (*isZero)(IRAtom*) = m64 ? isZeroU64 : isZeroU32;
-
-   IRAtom* threeLeft1 = NULL;
-   IRAtom* sevenLeft1 = NULL;
 
    tl_assert(isShadowAtom(mce,xxhash));
    tl_assert(isShadowAtom(mce,yyhash));
@@ -1312,30 +1338,55 @@ static IRAtom* doCmpORD ( MCEnv*  mce,
       /* fancy interpretation */
       /* if yy is zero, then it must be fully defined (zero#). */
       tl_assert(isZero(yyhash));
-      threeLeft1 = m64 ? mkU64(3<<1) : mkU32(3<<1);
+      // This is still inaccurate, but I don't think it matters, since
+      // nobody writes code of the form
+      // "is <partially-undefined-value> signedly greater than zero?".
+      // We therefore simply declare "x >s 0" to be undefined if any bit in
+      // x is undefined.  That's clearly suboptimal in some cases.  Eg, if
+      // the highest order bit is a defined 1 then x is negative so it
+      // doesn't matter whether the remaining bits are defined or not.
+      IRAtom* t_0_gt_0_0
+         = assignNew(
+              'V', mce,ty,
+              binop(
+                 opAND,
+                 mkPCastTo(mce,ty, xxhash),
+                 m64 ? mkU64(1<<2) : mkU32(1<<2)
+              ));
+      // For "x <s 0", we can just copy the definedness of the top bit of x
+      // and we have a precise result.
+      IRAtom* t_lt_0_0_0
+         = assignNew(
+              'V', mce,ty,
+              binop(
+                 opSHL,
+                 assignNew(
+                    'V', mce,ty,
+                    binop(opSHR, xxhash, mkU8(width-1))),
+                 mkU8(3)
+              ));
+      // For "x == 0" we can hand the problem off to expensiveCmpEQorNE.
+      IRAtom* t_0_0_eq_0
+         = assignNew(
+              'V', mce,ty,
+              binop(
+                 opSHL,
+                 assignNew('V', mce,ty,
+                    unop(
+                    op1UtoWS,
+                    expensiveCmpEQorNE(mce, ty, xxhash, yyhash, xx, yy))
+                 ),
+                 mkU8(1)
+              ));
       return
          binop(
             opOR,
-            assignNew(
-               'V', mce,ty,
-               binop(
-                  opAND,
-                  mkPCastTo(mce,ty, xxhash), 
-                  threeLeft1
-               )),
-            assignNew(
-               'V', mce,ty,
-               binop(
-                  opSHL,
-                  assignNew(
-                     'V', mce,ty,
-                     binop(opSHR, xxhash, mkU8(width-1))),
-                  mkU8(3)
-               ))
-	 );
+            assignNew('V', mce,ty, binop(opOR, t_lt_0_0_0, t_0_gt_0_0)),
+            t_0_0_eq_0
+         );
    } else {
       /* standard interpretation */
-      sevenLeft1 = m64 ? mkU64(7<<1) : mkU32(7<<1);
+      IRAtom* sevenLeft1 = m64 ? mkU64(7<<1) : mkU32(7<<1);
       return 
          binop( 
             opAND, 
@@ -2211,14 +2262,14 @@ IRAtom* expensiveCountTrailingZeroes ( MCEnv* mce, IROp czop,
    tl_assert(sameKindedAtoms(atom,vatom));
 
    switch (czop) {
-      case Iop_Ctz32:
+      case Iop_Ctz32: case Iop_CtzNat32:
          ty = Ity_I32;
          xorOp = Iop_Xor32;
          subOp = Iop_Sub32;
          andOp = Iop_And32;
          one = mkU32(1);
          break;
-      case Iop_Ctz64:
+      case Iop_Ctz64: case Iop_CtzNat64:
          ty = Ity_I64;
          xorOp = Iop_Xor64;
          subOp = Iop_Sub64;
@@ -2232,8 +2283,30 @@ IRAtom* expensiveCountTrailingZeroes ( MCEnv* mce, IROp czop,
 
    // improver = atom ^ (atom - 1)
    //
-   // That is, improver has its low ctz(atom) bits equal to one;
-   // higher bits (if any) equal to zero.
+   // That is, improver has its low ctz(atom)+1 bits equal to one;
+   // higher bits (if any) equal to zero.  So it's exactly the right
+   // mask to use to remove the irrelevant undefined input bits.
+   /* Here are some examples:
+         atom   = U...U 1 0...0
+         atom-1 = U...U 0 1...1
+         ^ed    = 0...0 1 11111, which correctly describes which bits of |atom|
+                                 actually influence the result
+      A boundary case
+         atom   = 0...0
+         atom-1 = 1...1
+         ^ed    = 11111, also a correct mask for the input: all input bits
+                         are relevant
+      Another boundary case
+         atom   = 1..1 1
+         atom-1 = 1..1 0
+         ^ed    = 0..0 1, also a correct mask: only the rightmost input bit
+                          is relevant
+      Now with misc U bits interspersed:
+         atom   = U...U 1 0 U...U 0 1 0...0
+         atom-1 = U...U 1 0 U...U 0 0 1...1
+         ^ed    = 0...0 0 0 0...0 0 1 1...1, also correct
+      (Per re-check/analysis of 14 Nov 2018)
+   */
    improver = assignNew('V', mce,ty,
                         binop(xorOp,
                               atom,
@@ -2242,8 +2315,96 @@ IRAtom* expensiveCountTrailingZeroes ( MCEnv* mce, IROp czop,
 
    // improved = vatom & improver
    //
-   // That is, treat any V bits above the first ctz(atom) bits as
-   // "defined".
+   // That is, treat any V bits to the left of the rightmost ctz(atom)+1
+   // bits as "defined".
+   improved = assignNew('V', mce, ty,
+                        binop(andOp, vatom, improver));
+
+   // Return pessimizing cast of improved.
+   return mkPCastTo(mce, ty, improved);
+}
+
+static
+IRAtom* expensiveCountLeadingZeroes ( MCEnv* mce, IROp czop,
+                                      IRAtom* atom, IRAtom* vatom )
+{
+   IRType ty;
+   IROp shrOp, notOp, andOp;
+   IRAtom* (*mkRight)(MCEnv*, IRAtom*);
+   IRAtom *improver, *improved;
+   tl_assert(isShadowAtom(mce,vatom));
+   tl_assert(isOriginalAtom(mce,atom));
+   tl_assert(sameKindedAtoms(atom,vatom));
+
+   switch (czop) {
+      case Iop_Clz32: case Iop_ClzNat32:
+         ty = Ity_I32;
+         shrOp = Iop_Shr32;
+         notOp = Iop_Not32;
+         andOp = Iop_And32;
+         mkRight = mkRight32;
+         break;
+      case Iop_Clz64: case Iop_ClzNat64:
+         ty = Ity_I64;
+         shrOp = Iop_Shr64;
+         notOp = Iop_Not64;
+         andOp = Iop_And64;
+         mkRight = mkRight64;
+         break;
+      default:
+         ppIROp(czop);
+         VG_(tool_panic)("memcheck:expensiveCountLeadingZeroes");
+   }
+
+   // This is in principle very similar to how expensiveCountTrailingZeroes
+   // works.  That function computed an "improver", which it used to mask
+   // off all but the rightmost 1-bit and the zeroes to the right of it,
+   // hence removing irrelevant bits from the input.  Here, we play the
+   // exact same game but with the left-vs-right roles interchanged.
+   // Unfortunately calculation of the improver in this case is
+   // significantly more expensive.
+   //
+   // improver = ~(RIGHT(atom) >>u 1)
+   //
+   // That is, improver has its upper clz(atom)+1 bits equal to one;
+   // lower bits (if any) equal to zero.  So it's exactly the right
+   // mask to use to remove the irrelevant undefined input bits.
+   /* Here are some examples:
+         atom             = 0...0 1 U...U
+         R(atom)          = 0...0 1 1...1
+         R(atom) >>u 1    = 0...0 0 1...1
+         ~(R(atom) >>u 1) = 1...1 1 0...0
+                            which correctly describes which bits of |atom|
+                            actually influence the result
+      A boundary case
+         atom             = 0...0
+         R(atom)          = 0...0
+         R(atom) >>u 1    = 0...0
+         ~(R(atom) >>u 1) = 1...1
+                            also a correct mask for the input: all input bits
+                            are relevant
+      Another boundary case
+         atom             = 1 1..1
+         R(atom)          = 1 1..1
+         R(atom) >>u 1    = 0 1..1
+         ~(R(atom) >>u 1) = 1 0..0
+                            also a correct mask: only the leftmost input bit
+                            is relevant
+      Now with misc U bits interspersed:
+         atom             = 0...0 1 U...U 0 1 U...U
+         R(atom)          = 0...0 1 1...1 1 1 1...1
+         R(atom) >>u 1    = 0...0 0 1...1 1 1 1...1
+         ~(R(atom) >>u 1) = 1...1 1 0...0 0 0 0...0, also correct
+      (Per initial implementation of 15 Nov 2018)
+   */
+   improver = mkRight(mce, atom);
+   improver = assignNew('V', mce, ty, binop(shrOp, improver, mkU8(1)));
+   improver = assignNew('V', mce, ty, unop(notOp, improver));
+
+   // improved = vatom & improver
+   //
+   // That is, treat any V bits to the right of the leftmost clz(atom)+1
+   // bits as "defined".
    improved = assignNew('V', mce, ty,
                         binop(andOp, vatom, improver));
 
@@ -2649,12 +2810,26 @@ IRAtom* unary64Fx2_w_rm ( MCEnv* mce, IRAtom* vRM, IRAtom* vatomX )
 static
 IRAtom* unary32Fx4_w_rm ( MCEnv* mce, IRAtom* vRM, IRAtom* vatomX )
 {
-   /* Same scheme as unary32Fx4_w_rm. */
+   /* Same scheme as binaryFx4_w_rm. */
    IRAtom* t1 = unary32Fx4(mce, vatomX);
    // PCast the RM, and widen it to 128 bits
    IRAtom* t2 = mkPCastTo(mce, Ity_V128, vRM);
    // Roll it into the result
    t1 = mkUifUV128(mce, t1, t2);
+   return t1;
+}
+
+/* --- ... and ... 32Fx8 versions of the same --- */
+
+static
+IRAtom* unary32Fx8_w_rm ( MCEnv* mce, IRAtom* vRM, IRAtom* vatomX )
+{
+   /* Same scheme as unary32Fx8_w_rm. */
+   IRAtom* t1 = unary32Fx8(mce, vatomX);
+   // PCast the RM, and widen it to 256 bits
+   IRAtom* t2 = mkPCastTo(mce, Ity_V256, vRM);
+   // Roll it into the result
+   t1 = mkUifUV256(mce, t1, t2);
    return t1;
 }
 
@@ -2737,7 +2912,7 @@ IROp vanillaNarrowingOpOfShape ( IROp qnarrowOp )
       case Iop_QNarrowUn32Uto16Ux4:
       case Iop_QNarrowUn32Sto16Sx4:
       case Iop_QNarrowUn32Sto16Ux4:
-      case Iop_F32toF16x4:
+      case Iop_F32toF16x4_DEP:
          return Iop_NarrowUn32to16x4;
       case Iop_QNarrowUn16Uto8Ux8:
       case Iop_QNarrowUn16Sto8Sx8:
@@ -2809,7 +2984,7 @@ IRAtom* vectorNarrowUnV128 ( MCEnv* mce, IROp narrow_op,
       case Iop_NarrowUn16to8x8:
       case Iop_NarrowUn32to16x4:
       case Iop_NarrowUn64to32x2:
-      case Iop_F32toF16x4:
+      case Iop_F32toF16x4_DEP:
          at1 = assignNew('V', mce, Ity_I64, unop(narrow_op, vatom1));
          return at1;
       default:
@@ -3480,10 +3655,22 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
          complainIfUndefined(mce, atom2, NULL);
          return assignNew('V', mce, Ity_I32, binop(op, vatom1, atom2));
 
-      /* Perm8x8: rearrange values in left arg using steering values
-        from right arg.  So rearrange the vbits in the same way but
-        pessimise wrt steering values. */
+      /* Perm8x8: rearrange values in left arg using steering values from
+         right arg.  So rearrange the vbits in the same way but pessimise wrt
+         steering values.  We assume that unused bits in the steering value
+         are defined zeros, so we can safely PCast within each lane of the the
+         steering value without having to take precautions to avoid a
+         dependency on those unused bits.
+
+         This is also correct for PermOrZero8x8, but it is a bit subtle.  For
+         each lane, if bit 7 of the steering value is zero, then we'll steer
+         the shadow value exactly as per Perm8x8.  If that bit is one, then
+         the operation will set the resulting (concrete) value to zero.  That
+         means it is defined, and should have a shadow value of zero.  Hence
+         in both cases (bit 7 is 0 or 1) we can self-shadow (in the same way
+         as Perm8x8) and then pessimise against the steering values.  */
       case Iop_Perm8x8:
+      case Iop_PermOrZero8x8:
          return mkUifU64(
                    mce,
                    assignNew('V', mce, Ity_I64, binop(op, vatom1, atom2)),
@@ -3492,6 +3679,8 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
 
       /* V128-bit SIMD */
 
+      case Iop_I32StoF32x4:
+      case Iop_F32toI32Sx4:
       case Iop_Sqrt32Fx4:
          return unary32Fx4_w_rm(mce, vatom1, vatom2);
       case Iop_Sqrt64Fx2:
@@ -3654,6 +3843,11 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
       case Iop_QDMulHi16Sx8:
       case Iop_QRDMulHi16Sx8:
       case Iop_PolynomialMulAdd16x8:
+      /* PwExtUSMulQAdd8x16 is a bit subtle.  The effect of it is that each
+         16-bit chunk of the output is formed from corresponding 16-bit chunks
+         of the input args, so we can treat it like an other binary 16x8
+         operation.  That's despite it having '8x16' in its name. */
+      case Iop_PwExtUSMulQAdd8x16:
          return binary16Ix8(mce, vatom1, vatom2);
 
       case Iop_Sub32x4:
@@ -3960,10 +4154,12 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
          complainIfUndefined(mce, atom2, NULL);
          return assignNew('V', mce, Ity_I64, binop(op, vatom1, atom2));
 
-     /* Perm8x16: rearrange values in left arg using steering values
-        from right arg.  So rearrange the vbits in the same way but
-        pessimise wrt steering values.  Perm32x4 ditto. */
+      /* Perm8x16: rearrange values in left arg using steering values
+         from right arg.  So rearrange the vbits in the same way but
+         pessimise wrt steering values.  Perm32x4 ditto. */
+      /* PermOrZero8x16: see comments above for PermOrZero8x8. */
       case Iop_Perm8x16:
+      case Iop_PermOrZero8x16:
          return mkUifUV128(
                    mce,
                    assignNew('V', mce, Ity_V128, binop(op, vatom1, atom2)),
@@ -4568,9 +4764,13 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
       case Iop_CmpGT64Sx4:
          return binary64Ix4(mce, vatom1, vatom2);
 
-     /* Perm32x8: rearrange values in left arg using steering values
-        from right arg.  So rearrange the vbits in the same way but
-        pessimise wrt steering values. */
+      case Iop_I32StoF32x8:
+      case Iop_F32toI32Sx8:
+         return unary32Fx8_w_rm(mce, vatom1, vatom2);
+
+      /* Perm32x8: rearrange values in left arg using steering values
+         from right arg.  So rearrange the vbits in the same way but
+         pessimise wrt steering values. */
       case Iop_Perm32x8:
          return mkUifUV256(
                    mce,
@@ -4638,6 +4838,40 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
                           binop(Iop_V128HLtoV256, qV, shV));
       }
 
+      case Iop_F32toF16x4: {
+         // First, PCast the input vector, retaining the 32x4 format.
+         IRAtom* pcasted = mkPCast32x4(mce, vatom2); // :: 32x4
+         // Now truncate each 32 bit lane to 16 bits.  Since we already PCasted
+         // the input, we're not going to lose any information.
+         IRAtom* pcHI64
+            = assignNew('V', mce, Ity_I64, unop(Iop_V128HIto64, pcasted));//32x2
+         IRAtom* pcLO64
+            = assignNew('V', mce, Ity_I64, unop(Iop_V128to64, pcasted)); // 32x2
+         IRAtom* narrowed
+            = assignNew('V', mce, Ity_I64, binop(Iop_NarrowBin32to16x4,
+                                                 pcHI64, pcLO64)); // 16x4
+         // Finally, roll in any badness from the rounding mode.
+         IRAtom* rmPCasted = mkPCastTo(mce, Ity_I64, vatom1);
+         return mkUifU64(mce, narrowed, rmPCasted);
+      }
+
+      case Iop_F32toF16x8: {
+         // Same scheme as for Iop_F32toF16x4.
+         IRAtom* pcasted = mkPCast32x8(mce, vatom2); // :: 32x8
+         IRAtom* pcHI128
+            = assignNew('V', mce, Ity_V128, unop(Iop_V256toV128_1,
+                                                 pcasted)); // 32x4
+         IRAtom* pcLO128
+            = assignNew('V', mce, Ity_V128, unop(Iop_V256toV128_0,
+                                                 pcasted)); // 32x4
+         IRAtom* narrowed
+            = assignNew('V', mce, Ity_V128, binop(Iop_NarrowBin32to16x8,
+                                                  pcHI128, pcLO128)); // 16x8
+         // Finally, roll in any badness from the rounding mode.
+         IRAtom* rmPCasted = mkPCastTo(mce, Ity_V128, vatom1);
+         return mkUifUV128(mce, narrowed, rmPCasted);
+      }
+
       default:
          ppIROp(op);
          VG_(tool_panic)("memcheck:expr2vbits_Binop");
@@ -4676,10 +4910,10 @@ IRExpr* expr2vbits_Unop ( MCEnv* mce, IROp op, IRAtom* atom )
          return unary64Fx4(mce, vatom);
 
       case Iop_RecipEst32Fx4:
-      case Iop_I32UtoFx4:
-      case Iop_I32StoFx4:
-      case Iop_QFtoI32Ux4_RZ:
-      case Iop_QFtoI32Sx4_RZ:
+      case Iop_I32UtoF32x4_DEP:
+      case Iop_I32StoF32x4_DEP:
+      case Iop_QF32toI32Ux4_RZ:
+      case Iop_QF32toI32Sx4_RZ:
       case Iop_RoundF32x4_RM:
       case Iop_RoundF32x4_RP:
       case Iop_RoundF32x4_RN:
@@ -4691,8 +4925,8 @@ IRExpr* expr2vbits_Unop ( MCEnv* mce, IROp op, IRAtom* atom )
       case Iop_Log2_32Fx4:
          return unary32Fx4(mce, vatom);
 
-      case Iop_I32UtoFx2:
-      case Iop_I32StoFx2:
+      case Iop_I32UtoF32x2_DEP:
+      case Iop_I32StoF32x2_DEP:
       case Iop_RecipEst32Fx2:
       case Iop_RecipEst32Ux2:
       case Iop_Abs32Fx2:
@@ -4705,6 +4939,7 @@ IRExpr* expr2vbits_Unop ( MCEnv* mce, IROp op, IRAtom* atom )
       case Iop_RecipEst32F0x4:
          return unary32F0x4(mce, vatom);
 
+      // These are self-shadowing.
       case Iop_32UtoV128:
       case Iop_64UtoV128:
       case Iop_Dup8x16:
@@ -4744,7 +4979,8 @@ IRExpr* expr2vbits_Unop ( MCEnv* mce, IROp op, IRAtom* atom )
       case Iop_MulI128by10:
       case Iop_MulI128by10Carry:
       case Iop_F16toF64x2:
-      case Iop_F64toF16x2:
+      case Iop_F64toF16x2_DEP:
+         // FIXME JRS 2018-Nov-15.  This is surely not correct!
          return vatom;
 
       case Iop_I32StoF128: /* signed I32 -> F128 */
@@ -4770,7 +5006,6 @@ IRExpr* expr2vbits_Unop ( MCEnv* mce, IROp op, IRAtom* atom )
       case Iop_RoundF64toF64_NegINF:
       case Iop_RoundF64toF64_PosINF:
       case Iop_RoundF64toF64_ZERO:
-      case Iop_Clz64:
       case Iop_D32toD64:
       case Iop_I32StoD64:
       case Iop_I32UtoD64:
@@ -4785,17 +5020,32 @@ IRExpr* expr2vbits_Unop ( MCEnv* mce, IROp op, IRAtom* atom )
       case Iop_D64toD128:
          return mkPCastTo(mce, Ity_I128, vatom);
 
-      case Iop_Clz32:
       case Iop_TruncF64asF32:
       case Iop_NegF32:
       case Iop_AbsF32:
       case Iop_F16toF32: 
          return mkPCastTo(mce, Ity_I32, vatom);
 
-      case Iop_Ctz32:
-      case Iop_Ctz64:
+      case Iop_Ctz32: case Iop_CtzNat32:
+      case Iop_Ctz64: case Iop_CtzNat64:
          return expensiveCountTrailingZeroes(mce, op, atom, vatom);
 
+      case Iop_Clz32: case Iop_ClzNat32:
+      case Iop_Clz64: case Iop_ClzNat64:
+         return expensiveCountLeadingZeroes(mce, op, atom, vatom);
+
+      // PopCount32: this is slightly pessimistic.  It is true that the
+      // result depends on all input bits, so that aspect of the PCast is
+      // correct.  However, regardless of the input, only the lowest 5 bits
+      // out of the output can ever be undefined.  So we could actually
+      // "improve" the results here by marking the top 27 bits of output as
+      // defined.  A similar comment applies for PopCount64.
+      case Iop_PopCount32:
+         return mkPCastTo(mce, Ity_I32, vatom);
+      case Iop_PopCount64:
+         return mkPCastTo(mce, Ity_I64, vatom);
+
+      // These are self-shadowing.
       case Iop_1Uto64:
       case Iop_1Sto64:
       case Iop_8Uto64:
@@ -4821,6 +5071,7 @@ IRExpr* expr2vbits_Unop ( MCEnv* mce, IROp op, IRAtom* atom )
       case Iop_V256to64_2: case Iop_V256to64_3:
          return assignNew('V', mce, Ity_I64, unop(op, vatom));
 
+      // These are self-shadowing.
       case Iop_64to32:
       case Iop_64HIto32:
       case Iop_1Uto32:
@@ -4830,8 +5081,10 @@ IRExpr* expr2vbits_Unop ( MCEnv* mce, IROp op, IRAtom* atom )
       case Iop_16Sto32:
       case Iop_8Sto32:
       case Iop_V128to32:
+      case Iop_Reverse8sIn32_x1:
          return assignNew('V', mce, Ity_I32, unop(op, vatom));
 
+      // These are self-shadowing.
       case Iop_8Sto16:
       case Iop_8Uto16:
       case Iop_32to16:
@@ -4840,6 +5093,7 @@ IRExpr* expr2vbits_Unop ( MCEnv* mce, IROp op, IRAtom* atom )
       case Iop_GetMSBs8x16:
          return assignNew('V', mce, Ity_I16, unop(op, vatom));
 
+      // These are self-shadowing.
       case Iop_1Uto8:
       case Iop_1Sto8:
       case Iop_16to8:
@@ -4868,6 +5122,7 @@ IRExpr* expr2vbits_Unop ( MCEnv* mce, IROp op, IRAtom* atom )
       case Iop_Not16:
       case Iop_Not8:
       case Iop_Not1:
+         // FIXME JRS 2018-Nov-15.  This is surely not correct!
          return vatom;
 
       case Iop_CmpNEZ8x8:
@@ -4901,16 +5156,16 @@ IRExpr* expr2vbits_Unop ( MCEnv* mce, IROp op, IRAtom* atom )
       case Iop_CmpNEZ32x2:
       case Iop_Clz32x2:
       case Iop_Cls32x2:
-      case Iop_FtoI32Ux2_RZ:
-      case Iop_FtoI32Sx2_RZ:
+      case Iop_F32toI32Ux2_RZ:
+      case Iop_F32toI32Sx2_RZ:
       case Iop_Abs32x2:
          return mkPCast32x2(mce, vatom);
 
       case Iop_CmpNEZ32x4:
       case Iop_Clz32x4:
       case Iop_Cls32x4:
-      case Iop_FtoI32Ux4_RZ:
-      case Iop_FtoI32Sx4_RZ:
+      case Iop_F32toI32Ux4_RZ:
+      case Iop_F32toI32Sx4_RZ:
       case Iop_Abs32x4:
       case Iop_RSqrtEst32Ux4:
       case Iop_Ctz32x4:
@@ -4929,6 +5184,7 @@ IRExpr* expr2vbits_Unop ( MCEnv* mce, IROp op, IRAtom* atom )
       case Iop_Ctz64x2:
          return mkPCast64x2(mce, vatom);
 
+      // This is self-shadowing.
       case Iop_PwBitMtxXpose64x2:
          return assignNew('V', mce, Ity_V128, unop(op, vatom));
 
@@ -4944,7 +5200,11 @@ IRExpr* expr2vbits_Unop ( MCEnv* mce, IROp op, IRAtom* atom )
       case Iop_QNarrowUn64Sto32Sx2:
       case Iop_QNarrowUn64Sto32Ux2:
       case Iop_QNarrowUn64Uto32Ux2:
-      case Iop_F32toF16x4:
+         return vectorNarrowUnV128(mce, op, vatom);
+
+      // JRS FIXME 2019 Mar 17: per comments on F16toF32x4, this is probably not
+      // right.
+      case Iop_F32toF16x4_DEP:
          return vectorNarrowUnV128(mce, op, vatom);
 
       case Iop_Widen8Sto16x8:
@@ -4953,8 +5213,51 @@ IRExpr* expr2vbits_Unop ( MCEnv* mce, IROp op, IRAtom* atom )
       case Iop_Widen16Uto32x4:
       case Iop_Widen32Sto64x2:
       case Iop_Widen32Uto64x2:
-      case Iop_F16toF32x4:
          return vectorWidenI64(mce, op, vatom);
+
+      case Iop_F16toF32x4:
+         // JRS 2019 Mar 17: this definitely isn't right, but it probably works
+         // OK by accident if -- as seems likely -- the F16 to F32 conversion
+         // preserves will generate an output 32 bits with at least one 1 bit
+         // set if there's one or more 1 bits set in the input 16 bits.  More
+         // correct code for this is just below, but commented out, so as to
+         // avoid short-term backend failures on targets that can't do
+         // Iop_Interleave{LO,HI}16x4.
+         return vectorWidenI64(mce, op, vatom);
+
+      case Iop_F16toF32x8: {
+         // PCast the input at 16x8.  This makes each lane hold either all
+         // zeroes or all ones.
+         IRAtom* pcasted = mkPCast16x8(mce, vatom); // :: I16x8
+         // Now double the width of each lane to 32 bits.  Because the lanes are
+         // all zeroes or all ones, we can just copy the each lane twice into
+         // the result.  Here's the low half:
+         IRAtom* widenedLO // :: I32x4
+            = assignNew('V', mce, Ity_V128, binop(Iop_InterleaveLO16x8,
+                                                  pcasted, pcasted));
+         // And the high half:
+         IRAtom* widenedHI // :: I32x4
+            = assignNew('V', mce, Ity_V128, binop(Iop_InterleaveHI16x8,
+                                                  pcasted, pcasted));
+         // Glue them back together:
+         return assignNew('V', mce, Ity_V256, binop(Iop_V128HLtoV256,
+                                                    widenedHI, widenedLO));
+      }
+
+      // See comment just above, for Iop_F16toF32x4
+      //case Iop_F16toF32x4: {
+      //   // Same scheme as F16toF32x4
+      //   IRAtom* pcasted = mkPCast16x4(mce, vatom); // :: I16x4
+      //   IRAtom* widenedLO // :: I32x2
+      //      = assignNew('V', mce, Ity_I64, binop(Iop_InterleaveLO16x4,
+      //                                            pcasted, pcasted));
+      //   IRAtom* widenedHI // :: I32x4
+      //      = assignNew('V', mce, Ity_I64, binop(Iop_InterleaveHI16x4,
+      //                                            pcasted, pcasted));
+      //   // Glue them back together:
+      //   return assignNew('V', mce, Ity_V128, binop(Iop_64HLtoV128,
+      //                                              widenedHI, widenedLO));
+      //}
 
       case Iop_PwAddL32Ux2:
       case Iop_PwAddL32Sx2:
@@ -7839,6 +8142,7 @@ static inline void noteTmpUsesIn ( /*MOD*/HowUsed* useEnv,
       use info. */
    switch (at->tag) {
       case Iex_GSPTR:
+      case Iex_VECRET:
       case Iex_Const:
          return;
       case Iex_RdTmp: {
@@ -8139,6 +8443,9 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
 #     elif defined(VGA_amd64)
       mce.dlbo.dl_Add64           = DLauto;
       mce.dlbo.dl_CmpEQ32_CmpNE32 = DLexpensive;
+#     elif defined(VGA_ppc64le)
+      // Needed by (at least) set_AV_CR6() in the front end.
+      mce.dlbo.dl_CmpEQ64_CmpNE64 = DLexpensive;
 #     endif
 
       /* preInstrumentationAnalysis() will allocate &mce.tmpHowUsed and then
