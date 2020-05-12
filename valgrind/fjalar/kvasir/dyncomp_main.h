@@ -4,7 +4,7 @@
   and the Valgrind MemCheck tool (Copyright (C) 2000-2005 Julian
   Seward, jseward@acm.org)
 
-   Copyright (C) 2007-2018 University of Washington Computer Science & Engineering Department,
+   Copyright (C) 2007-2020 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
@@ -232,10 +232,10 @@ static __inline__ UInt grab_fresh_tag(void) {
     // Describe this (probably live) address with current epoch
     eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), tid, NULL);
 #ifndef MAX_DEBUG_INFO
-    DYNCOMP_TPRINTF("[DynComp] Creating fresh tag %d at %s\n", tag, eip_info);
+    DYNCOMP_TPRINTF("[DynComp] Creating fresh tag %u at %s\n", tag, eip_info);
   }
 #else
-    printf("[DynComp] Creating fresh tag %d at %s\n", tag, eip_info);
+    printf("[DynComp] Creating fresh tag %u at %s\n", tag, eip_info);
 #endif
   return tag;
 

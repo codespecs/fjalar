@@ -2,7 +2,7 @@
    This file is part of Fjalar, a dynamic analysis framework for C/C++
    programs.
 
-   Copyright (C) 2007-2018 University of Washington Computer Science & Engineering Department,
+   Copyright (C) 2007-2020 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
    This program is free software; you can redistribute it and/or

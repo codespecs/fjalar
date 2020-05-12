@@ -2,7 +2,7 @@
    This file is part of Fjalar, a dynamic analysis framework for C/C++
    programs.
 
-   Copyright (C) 2007-2018 University of Washington Computer Science & Engineering Department,
+   Copyright (C) 2007-2020 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
@@ -852,7 +852,7 @@ void repCheckAllEntries(void) {
           tl_assert(curSuper->className);
           tl_assert(curSuper->class);
           tl_assert(0 == VG_(strcmp)(curSuper->className, curSuper->class->typeName));
-          FJALAR_DPRINTF("  curSuper->className: %s, inheritance: %d\n",
+          FJALAR_DPRINTF("  curSuper->className: %s, inheritance: %u\n",
                       curSuper->className, curSuper->inheritance);
           numSuperclasses++;
         }
@@ -1041,7 +1041,7 @@ static void initializeGlobalVarsList(void)
     if (tag_is_variable(cur_entry->tag_name)) {
       variable* variable_ptr = (variable*)(cur_entry->entry_ptr);
 
-      FJALAR_DPRINTF("\t[initializeGlobalVarsList] lvl %d, ID %lx, %s 0x%x, spec_ID: 0x%lx, static: %d, dec: %d, const: %d global: %d\n",
+      FJALAR_DPRINTF("\t[initializeGlobalVarsList] lvl %d, ID %lx, %s 0x%x, spec_ID: 0x%lx, static: %u, dec: %d, const: %d global: %d\n",
                      cur_entry->level,
                      cur_entry->ID,
                      variable_ptr->name,
@@ -1650,7 +1650,7 @@ void initializeFunctionTable(void)
           cur_func_entry->cuBase = dwarfFunctionPtr->comp_pc;
           cur_func_entry->endPC = dwarfFunctionPtr->end_pc;
 
-          FJALAR_DPRINTF("Frame base exp is:%d - %d\n", dwarfFunctionPtr->frame_base_expression, DW_OP_list);
+          FJALAR_DPRINTF("Frame base exp is:%u - %d\n", dwarfFunctionPtr->frame_base_expression, DW_OP_list);
           cur_func_entry->locList = (dwarfFunctionPtr->frame_base_expression == DW_OP_list);
           cur_func_entry->locListOffset = dwarfFunctionPtr->frame_base_offset;
 
@@ -1896,7 +1896,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
   collectionPtr = (collection_type*)(e->entry_ptr);
 
-  FJALAR_DPRINTF("name %s (dec: %u) (ID: %lu) (size: %ld)\n",
+  FJALAR_DPRINTF("name %s (dec: %d) (ID: %lu) (size: %lu)\n",
               collectionPtr->name,
               collectionPtr->is_declaration,
               e->ID,
@@ -2255,7 +2255,7 @@ static void extractLocalArrayAndStructVariables(FunctionEntry* f,
 
   for (i = 0; i < dwarfFunctionEntry->num_local_vars; i++)
     {
-      FJALAR_DPRINTF("%s - local_vars: %d of %d\n", dwarfFunctionEntry->name, i+1, dwarfFunctionEntry->num_local_vars);
+      FJALAR_DPRINTF("%s - local_vars: %u of %d\n", dwarfFunctionEntry->name, i+1, dwarfFunctionEntry->num_local_vars);
       extractOneLocalArrayOrStructVariable(f,
                                            dwarfFunctionEntry->local_vars[i]);
     }
@@ -2344,7 +2344,7 @@ static int determineVariableByteSize(VariableEntry* var)
       }
 
       for (i = 0; i < var->staticArr->numDimensions; i++) {
-        FJALAR_DPRINTF("  upperBounds[%d] = %d\n", i, var->staticArr->upperBounds[i]);
+        FJALAR_DPRINTF("  upperBounds[%u] = %u\n", i, var->staticArr->upperBounds[i]);
         byteSize *= (var->staticArr->upperBounds[i] + 1);
       }
     }
@@ -2353,7 +2353,7 @@ static int determineVariableByteSize(VariableEntry* var)
     byteSize = sizeof(void*);
   }
 
-  FJALAR_DPRINTF("detDVBS | name: %s, decPtrLvls: %d, isSA: %d, byteSize: %d, return: %d\n",
+  FJALAR_DPRINTF("detDVBS | name: %s, decPtrLvls: %u, isSA: %d, byteSize: %d, return: %d\n",
                  var->name,
                  var->ptrLevels,
                  IS_STATIC_ARRAY_VAR(var) ? 1 : 0,
@@ -2472,7 +2472,7 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     varPtr->byteOffset = paramPtr->location;
     //    varPtr->atom = paramPtr->loc_atom;
 
-    FJALAR_DPRINTF(" location_type: %d, byteOffset: %x\n", varPtr->locationType, varPtr->byteOffset);
+    FJALAR_DPRINTF(" location_type: %u, byteOffset: %x\n", varPtr->locationType, (unsigned int)varPtr->byteOffset);
   }
 
   FJALAR_DPRINTF("EXIT  extractOneFormalParameterVar\n");
@@ -2543,7 +2543,7 @@ static void extractOneLocalArrayOrStructVariable(FunctionEntry* f,
     return;
   }
 
-  FJALAR_DPRINTF("  %s local variable name %s - localArrayAndStructVars %p size = %d\n",
+  FJALAR_DPRINTF("  %s local variable name %s - localArrayAndStructVars %p size = %u\n",
                  f->name,
                  variablePtr->name,
                  &(f->localArrayAndStructVars),
@@ -2621,7 +2621,7 @@ void updateAllVarTypes(void) {
     return;
   }
 
-  FJALAR_DPRINTF("ENTER updateAllVarTypes: %d\n", varsToUpdateTypes.numVars);
+  FJALAR_DPRINTF("ENTER updateAllVarTypes: %u\n", varsToUpdateTypes.numVars);
 
   for (n = varsToUpdateTypes.first;
        n != NULL;
@@ -2843,7 +2843,7 @@ extractOneVariable(VarList* varListPtr,
   varPtr->ptrLevels = ptrLevels;
   varPtr->referenceLevels = referenceLevels;
 
-  FJALAR_DPRINTF("\tptrLevels is %d\n", varPtr->ptrLevels);
+  FJALAR_DPRINTF("\tptrLevels is %u\n", varPtr->ptrLevels);
 
   if (typePtr && ((typePtr->tag_name == DW_TAG_structure_type) ||
                   (typePtr->tag_name == DW_TAG_class_type))) {
@@ -3154,7 +3154,7 @@ static void initMemberFuncs(void) {
   while (hasNextType(typeIt)) {
     TypeEntry* t = nextType(typeIt);
 
-    FJALAR_DPRINTF("Examining %s it has dec_type %d\n", t->typeName, t->decType);
+    FJALAR_DPRINTF("Examining %s it has dec_type %u\n", t->typeName, t->decType);
 
     // Only do this for struct/union types:
     if ((t->decType == D_STRUCT_CLASS) ||
@@ -3658,7 +3658,7 @@ static void XMLprintOneVariable(VariableEntry* var) {
 
     XML_PRINTF("<static-array>\n");
 
-    XML_PRINTF("<num-dimensions>%d</num-dimensions>\n",
+    XML_PRINTF("<num-dimensions>%u</num-dimensions>\n",
                var->staticArr->numDimensions);
 
     for (i = 0; i < var->staticArr->numDimensions; i++) {
@@ -3697,10 +3697,10 @@ static void XMLprintOneVariable(VariableEntry* var) {
     XML_PRINTF("<var-type");
 
     if (var->ptrLevels > 0) {
-      XML_PRINTF(" pointer-levels=\"%d\"", var->ptrLevels);
+      XML_PRINTF(" pointer-levels=\"%u\"", var->ptrLevels);
     }
     if (var->referenceLevels > 0) {
-      XML_PRINTF(" reference-levels=\"%d\"", var->referenceLevels);
+      XML_PRINTF(" reference-levels=\"%u\"", var->referenceLevels);
     }
     if (IS_STRING(var)) {
       XML_PRINTF(" is-string=\"true\"");

@@ -2,7 +2,7 @@
    This file is part of Fjalar, a dynamic analysis framework for C/C++
    programs.
 
-   Copyright (C) 2007-2018 University of Washington Computer Science & Engineering Department,
+   Copyright (C) 2007-2020 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
@@ -2295,8 +2295,8 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
     case DW_TAG_member:
       {
         member* member_ptr = (member*)(e->entry_ptr);
-        FJALAR_DPRINTF("  Name: %s, Type ID: 0x%x, Data member location: %d,\n"
-                       "  Byte size: %d, access: %d, external: %d, is_const: %d, value: 0x%lx\n",
+        FJALAR_DPRINTF("  Name: %s, Type ID: 0x%x, Data member location: %u,\n"
+                       "  Byte size: %u, access: %u, external: %u, is_const: %u, value: 0x%lx\n",
                member_ptr->name,
                (UInt)member_ptr->type_ID,
                (UInt)member_ptr->data_member_location,
@@ -2304,7 +2304,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
                (UInt)member_ptr->accessibility,
                (UInt)member_ptr->is_external,
                (UInt)member_ptr->is_const,
-               member_ptr->const_value);
+               (long unsigned int)member_ptr->const_value);
         break;
       }
     case DW_TAG_enumerator:
@@ -2322,7 +2322,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
     case DW_TAG_enumeration_type:
       {
         collection_type* collection_ptr = (collection_type*)(e->entry_ptr);
-        FJALAR_DPRINTF("  Name: %s, is_decl: %d, byte size: %ld, Num. members: %d %d %d %d\n",
+        FJALAR_DPRINTF("  Name: %s, is_decl: %u, byte size: %lu, Num. members: %d %d %d %d\n",
                        collection_ptr->name,
                        (UInt)collection_ptr->is_declaration,
                        collection_ptr->byte_size,
@@ -2341,7 +2341,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
     case DW_TAG_base_type:
       {
         base_type* base_ptr = (base_type*)(e->entry_ptr);
-        FJALAR_DPRINTF("  Byte size: %ld, Encoding: %ld ",
+        FJALAR_DPRINTF("  Byte size: %lu, Encoding: %lu ",
                base_ptr->byte_size,
                base_ptr->encoding);
 
@@ -2372,7 +2372,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
             break;
           }
 
-        FJALAR_DPRINTF(", Bit size: %ld, Bit offset: %ld\n",
+        FJALAR_DPRINTF(", Bit size: %lu, Bit offset: %lu\n",
                base_ptr->bit_size,
                base_ptr->bit_offset);
 
@@ -2394,7 +2394,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
     case DW_TAG_array_type:
       {
         array_type* array_ptr = (array_type*)(e->entry_ptr);
-        FJALAR_DPRINTF("  Type ID (addr): 0x%lx (0x%lx), Num. subrange entries: %ld\n",
+        FJALAR_DPRINTF("  Type ID (addr): 0x%lx (0x%lx), Num. subrange entries: %lu\n",
                array_ptr->type_ID,
                ((simplified && array_ptr->type_ptr) ?
                 ((UInt)(ptrdiff_t)array_ptr->type_ptr - (UInt)(ptrdiff_t)dwarf_entry_array) :
@@ -2425,7 +2425,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
         variable* variable_ptr = (variable*)(e->entry_ptr);
         FJALAR_DPRINTF("  Name: %s, Type ID: 0x%lx, is_ext: %d,\n"
                        "  cbGlobal: %d, is_static: %d, spec_ID: 0x%lx, globalVarAddr: 0x%lx,\n"
-                       "  offset: %d, access: %ld, is_const: %d, const_value: 0x%lx\n",
+                       "  offset: %d, access: %lu, is_const: %d, const_value: 0x%lx\n",
                variable_ptr->name,
                variable_ptr->type_ID,
                variable_ptr->is_external,
@@ -2436,7 +2436,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
                variable_ptr->offset,
                variable_ptr->accessibility,
                variable_ptr->is_const,
-               variable_ptr->const_value);
+               (long unsigned int) variable_ptr->const_value);
         break;
       }
     case DW_TAG_compile_unit:
@@ -2542,7 +2542,7 @@ void print_dwarf_entry_array()
 void print_dwarf_entry_array_helper(char simplified)
 {
   UInt i;
-  FJALAR_DPRINTF("--- BEGIN DWARF ENTRY ARRAY - size: %ld\n", dwarf_entry_array_size);
+  FJALAR_DPRINTF("--- BEGIN DWARF ENTRY ARRAY - size: %lu\n", dwarf_entry_array_size);
   for (i = 0; i < dwarf_entry_array_size; i++)
     {
 
@@ -2804,8 +2804,8 @@ char harvest_location_list_entry(location_list* ll, unsigned long offset){
   tl_assert(loc_list_map && "Location list map uninitialized");
   ll->next = NULL;
 
-  FJALAR_DPRINTF("Adding the following location to the location list at offset: %lx\noffset\tbegin\tend\texpr\n%lx %lx %lx\t(%d + %llx)\n\n",
-                 ll->offset, ll->offset, ll->begin, ll->end, ll->atom, ll->atom_offset);
+  FJALAR_DPRINTF("Adding the following location to the location list at offset: %lx\noffset\tbegin\tend\texpr\n%lx %lx %lx\t(%u + %llx)\n\n",
+                 ll->offset, ll->offset, ll->begin, ll->end, ll->atom, (long long unsigned int) ll->atom_offset);
 
   if(gencontains(loc_list_map, (void *)offset)) {
     tl_assert((cur_loc = gengettable(loc_list_map, (void *)offset)));

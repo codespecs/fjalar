@@ -36,7 +36,7 @@
    This file is part of Fjalar, a dynamic analysis framework for C/C++
    programs.
 
-   Copyright (C) 2007-2018 University of Washington Computer Science & Engineering Department,
+   Copyright (C) 2007-2020 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
@@ -63,6 +63,7 @@
 #include "pub_tool_replacemalloc.h"
 #include "pub_tool_tooliface.h"
 #include "pub_tool_threadstate.h"
+#include "pub_tool_vki.h"  // needed for VKI_PROT_ defines
 #include "pub_tool_xarray.h"
 #include "pub_tool_xtree.h"
 #include "pub_tool_xtmemory.h"
@@ -71,7 +72,6 @@
 #include "kvasir/dyncomp_main.h"
 #include "fjalar_main.h"
 #include "../coregrind/pub_core_aspacemgr.h"  // needed for am_is_valid_for_client
-#include "pub_tool_vki.h"  // needed for VKI_PROT_ defines
 
 #include "mc_include.h"
 #include "memcheck.h"   /* for client requests */
@@ -291,6 +291,7 @@ static void ocache_sarp_Clear_Origins ( Addr, UWord ); /* fwds */
 #define SM_OFF(aaa)           (((aaa) & 0xffff) >> 2)
 #define SM_OFF_16(aaa)        (((aaa) & 0xffff) >> 3)
 
+#undef INLINE
 // Paranoia:  it's critical for performance that the requested inlining
 // occurs.  So try extra hard.
 #define INLINE    inline __attribute__((always_inline))
@@ -8350,7 +8351,7 @@ static void mc_pre_clo_init(void)
    VG_(details_version)         ("5.8.1");
    VG_(details_description)     ("C/C++ Language Front-End for Daikon with DynComp comparability analysis tool.");
    VG_(details_copyright_author)(
-      "Copyright (C) 2007-2019, University of Washington CSE PLSE Group");
+      "Copyright (C) 2007-2020, University of Washington CSE PLSE Group");
    VG_(details_bug_reports_to)  ("daikon-developers@googlegroups.com");
    // PG - pgbovine - customize the fields above for each Fjalar tool
 

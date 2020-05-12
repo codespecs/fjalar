@@ -2,7 +2,7 @@
    This file is part of Kvasir, a C/C++ front end for the Daikon
    dynamic invariant detector built upon the Fjalar framework
 
-   Copyright (C) 2007-2018 University of Washington Computer Science & Engineering Department,
+   Copyright (C) 2007-2020 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
@@ -947,7 +947,7 @@ printDeclsEntryAction(VariableEntry* var,
           }
 
           fputs(OBJECT_PPT, decls_fp);
-          fprintf(decls_fp, " %d ", cur_par_id);
+          fprintf(decls_fp, " %u ", cur_par_id);
 
 
           if(format == 2) {
@@ -977,7 +977,7 @@ printDeclsEntryAction(VariableEntry* var,
             tl_assert(var->memberVar->structParentType);
             DPRINTF(" parent: %s\n", var->memberVar->structParentType->typeName);
           }
-          fprintf(decls_fp, " %d ", cur_par_id);
+          fprintf(decls_fp, " %u ", cur_par_id);
           fputs(" this->", decls_fp);
           printDaikonExternalVarName(var, var->name, decls_fp);
           //          fputs(var->name, decls_fp);
@@ -1412,7 +1412,7 @@ printDeclsEntryAction(VariableEntry* var,
               //              fputs(typeName, decls_fp);
               fputs(OBJECT_PPT, decls_fp);
               fputs(" ", decls_fp);
-              fprintf(decls_fp, "%d", cur_par_id);
+              fprintf(decls_fp, "%u", cur_par_id);
               cur_par_id++;
               fputs("\n", decls_fp);
             }
@@ -1749,7 +1749,7 @@ harvestObject(VariableEntry* var,
           genputtable(cur_object_table, curClass->class, (void *)(ptrdiff_t)cur_par_id);
           cur_par_id++;
         }
-        DPRINTF("Harvest object %s - %d\n", curClass->class->typeName, cur_par_id);
+        DPRINTF("Harvest object %s - %u\n", curClass->class->typeName, cur_par_id);
 
         curNode = curNode->next;
         i++;

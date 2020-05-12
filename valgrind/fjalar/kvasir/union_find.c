@@ -4,7 +4,7 @@
   and the Valgrind MemCheck tool (Copyright (C) 2000-2005 Julian
   Seward, jseward@acm.org)
 
-   Copyright (C) 2007-2018 University of Washington Computer Science & Engineering Department,
+   Copyright (C) 2007-2020 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
@@ -37,7 +37,7 @@ uf_name uf_find(uf_object *object) {
     object->parent=root;
   }
 
-  DYNCOMP_TPRINTF("[DynComp] uf_find: %p, %d, %p, %d \n", object, object->tag, root, root->tag);
+  DYNCOMP_TPRINTF("[DynComp] uf_find: %p, %u, %p, %u \n", object, object->tag, root, root->tag);
   return root;
 }
 
@@ -62,8 +62,8 @@ void uf_make_set(uf_object *new_object, unsigned int t) {
 uf_name uf_union(uf_object *obj1, uf_object *obj2) {
   uf_name class1 = uf_find(obj1);
   uf_name class2 = uf_find(obj2);
-  DYNCOMP_TPRINTF("[DynComp] union_find1: %p, %d, %p, %d %d\n", obj1, obj1->tag, class1, class1->tag, class1->rank);
-  DYNCOMP_TPRINTF("[DynComp] union_find2: %p, %d, %p, %d %d\n", obj2, obj2->tag, class2, class2->tag, class2->rank);
+  DYNCOMP_TPRINTF("[DynComp] union_find1: %p, %u, %p, %u %d\n", obj1, obj1->tag, class1, class1->tag, class1->rank);
+  DYNCOMP_TPRINTF("[DynComp] union_find2: %p, %u, %p, %u %d\n", obj2, obj2->tag, class2, class2->tag, class2->rank);
   
   // Union-by-rank:
 

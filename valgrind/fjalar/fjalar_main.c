@@ -2,7 +2,7 @@
    This file is part of Fjalar, a dynamic analysis framework for C/C++
    programs.
 
-   Copyright (C) 2007-2018 University of Washington Computer Science & Engineering Department,
+   Copyright (C) 2007-2020 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
@@ -541,7 +541,7 @@ void enter_function(FunctionEntry* f)
   FJALAR_DPRINTF("[enter_function] startPC is: %x, entryPC is: %x, cu_base: %p\n",
                  (UInt)f->startPC, (UInt)f->entryPC,(void *)f->cuBase);
   FJALAR_DPRINTF("Value of edi: %lx, esi: %lx, edx: %lx, ecx: %lx\n",
-      (long)VG_(get_xDI)(tid), (long)VG_(get_xSI)(tid), (long)VG_(get_xDX)(tid), (long)VG_(get_xCX)(tid));
+      (UWord)VG_(get_xDI)(tid), (UWord)VG_(get_xSI)(tid), (UWord)VG_(get_xDX)(tid), (UWord)VG_(get_xCX)(tid));
 
   // Determine the frame pointer for this function using DWARF
   // location lists. This is a "virtual frame pointer" in that it is
@@ -579,7 +579,7 @@ void enter_function(FunctionEntry* f)
       }
 
       if(ll) {
-        FJALAR_DPRINTF("\tFound location list entry, finding location corresponding to dwarf #: %d with offset: %lld\n", ll->atom, ll->atom_offset);
+        FJALAR_DPRINTF("\tFound location list entry, finding location corresponding to dwarf #: %u with offset: %lld\n", ll->atom, ll->atom_offset);
 
         // (comment added 2013)  
         // It turns out it might not be just the contents of a register.  Some
@@ -777,7 +777,7 @@ void exit_function(FunctionEntry* f)
   xAXshadow = VG_(get_shadow_xAX)(currentTID);
   xDXshadow = VG_(get_shadow_xDX)(currentTID);
 
-  FJALAR_DPRINTF("Value of eax: %x, edx: %x\n",(int)xAX, (int)xDX);
+  FJALAR_DPRINTF("Value of eax: %lx, edx: %lx\n",xAX, xDX);
 
   FJALAR_DPRINTF("Exit function: %s\n", f->fjalar_name);
 

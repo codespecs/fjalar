@@ -2,7 +2,7 @@
    This file is part of Fjalar, a dynamic analysis framework for C/C++
    programs.
 
-   Copyright (C) 2007-2018 University of Washington Computer Science & Engineering Department,
+   Copyright (C) 2007-2020 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
@@ -540,6 +540,7 @@ char harvest_file_name_table(unsigned long debug_line_offset, XArray* table);
 
 char binary_search_dwarf_entry_array(unsigned long target_ID, unsigned long* index_ptr);
 
+void init_specification_and_abstract_stuff(void);
 void process_abstract_origin_items(void);
 void process_specification_items(void);
 

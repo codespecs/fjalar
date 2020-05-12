@@ -2,7 +2,7 @@
    This file is part of Fjalar, a dynamic analysis framework for C/C++
    programs.
 
-   Copyright (C) 2007-2018 University of Washington Computer Science & Engineering Department,
+   Copyright (C) 2007-2020 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
@@ -180,6 +180,7 @@ err_out:
   }
   switch (mode&3) {
   case VKI_O_RDWR: tmp->flags|=CANWRITE;
+                   /* Fall through.  */
   case VKI_O_RDONLY: tmp->flags|=CANREAD; break;
   case VKI_O_WRONLY: tmp->flags|=CANWRITE;
   }
@@ -772,8 +773,10 @@ inn_printf:
 #endif
       case 'q':		/* BSD ... */
       case 'L':
-	++flag_long; /* fall through */
+	++flag_long;
+        /* Fall through.  */
 #if __WORDSIZE == 64
+        /* Fall through.  */
       case 'j':
 #endif
       case 'l':
@@ -828,6 +831,7 @@ inn_printf:
       /* print a char or % */
       case 'c':
 	ch=(char)va_arg(arg_ptr,int);
+        /* Fall through.  */
       case '%':
 	A_WRITE(fn,&ch,1); ++len;
 	break;
@@ -914,8 +918,10 @@ print_out:
 	flag_hash=2;
 	flag_long=1;
 	ch='x';
+        /* Fall through.  */
       case 'X':
 	flag_upcase=(ch=='X');
+        /* Fall through.  */
       case 'x':
 	base=16;
 	sz=0;
@@ -930,6 +936,7 @@ print_out:
       case 'd':
       case 'i':
 	flag_in_sign=1;
+        /* Fall through.  */
       case 'u':
 	base=10;
 	sz=0;
@@ -1256,6 +1263,7 @@ int atoi(const char* s) {
   while ( *s == ' '  ||  (unsigned int)(*s - 9) < 5u) s++;
   switch (*s) {
   case '-': sign=-1;
+            /* Fall through.  */
   case '+': ++s;
   }
   while ((unsigned int) (*s - '0') < 10u) {

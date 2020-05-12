@@ -217,65 +217,31 @@ git ls-files --others --exclude-standard
 @node Get Valgrind version tags
 @section Get Valgrind version tags
 
-@strong{IMPORTANT NOTE} @*
-Throughout this document we use Subversion (@command{svn}) commands to access the
-Valgrind repository.  However, the Valgrind team has now converted
-to the @command{git} repository tool.  Thus the SVN commands below are
-incorrect and will need to be changed as part of the next Valgrind upgrade.
-
 Execute the following Git command:
 
 @example
-git ls-remote --tags --refs http://sourceware.org/git/valgrind.git
+git ls-remote --tags --refs http://sourceware.org/git/valgrind.git | grep -v svn | sort -V
 @end example
 
 @noindent
-The output will list the last three releases of Valgrind.  It will
+The output will list the tags of the most recent releases of Valgrind.  It will
 look something like:
 
 @example
-------------------------------------------------------------------------
-r15678 | sewardj | 2015-09-23 06:14:07 -0700 (Wed, 23 Sep 2015) | 2 lines
-
-Swizzle external.
-
-------------------------------------------------------------------------
-r15677 | sewardj | 2015-09-23 06:13:22 -0700 (Wed, 23 Sep 2015) | 2 lines
-
-Create tags/VALGRIND_3_11_0 as a copy of r15676 of branches/VALGRIND_3_11_BRANCH.
-
-------------------------------------------------------------------------
-r14787 | sewardj | 2014-11-25 15:09:39 -0800 (Tue, 25 Nov 2014) | 2 lines
-
-Swizzle external.
-
-------------------------------------------------------------------------
-r14786 | sewardj | 2014-11-25 15:08:25 -0800 (Tue, 25 Nov 2014) | 3 lines
-
-Create tags/VALGRIND_3_10_1 as a copy of branches/VALGRIND_3_10_BRANCH r14785.
-
-------------------------------------------------------------------------
-r14525 | sewardj | 2014-09-12 03:26:44 -0700 (Fri, 12 Sep 2014) | 2 lines
-
-Swizzle external for the 3_10_0 tag.
-
-------------------------------------------------------------------------
-r14524 | sewardj | 2014-09-12 03:20:59 -0700 (Fri, 12 Sep 2014) | 3 lines
-
-Create tags/VALGRIND_3_10_0 as a copy of branches/VALGRIND_3_10_BRANCH, r14523.
-
-------------------------------------------------------------------------
+4b818ef7a776a9a003b5ddaf6f4285caa90e6e47        refs/tags/VALGRIND_3_14_0
+223b0c579b4c31d1cf3c1975a1ded9821bbf7279        refs/tags/VALGRIND_3_15_0
 @end example
+
 Assuming that the Valgrind merge process has been done on a regular basis,
-the first @samp{tags} line will show the next (target) version number and the
-second @samp{tags} line will show the current version number.  You should
+the last @samp{tags} line will show the next (target) version number and the
+second to last @samp{tags} line will show the current version number.  You should
 verify this by comparing with version number from the file @file{valgrind/REVISION}.
 Using this information, set two environment variables to be used in the
 steps below.
 
 @example
-export VOLDVER=VALGRIND_3_10_1
-export VNEWVER=VALGRIND_3_11_0
+export VOLDVER=VALGRIND_3_14_0
+export VNEWVER=VALGRIND_3_15_0
 @end example
 
 
@@ -298,7 +264,7 @@ Otherwise, run the following commands.
 
 @example
 cd $INV
-svn co svn://svn.valgrind.org/valgrind/tags/$VOLDVER valgrind-old
+git clone -b $VOLDVER --depth 1 http://sourceware.org/git/valgrind.git valgrind-old
 @end example
 
 
@@ -310,11 +276,11 @@ latest Valgrind source tree.
 
 @example
 cd $INV
-svn co svn://svn.valgrind.org/valgrind/tags/$VNEWVER valgrind-new
+git clone -b $VNEWVER --depth 1 http://sourceware.org/git/valgrind.git valgrind-new
 @end example
 
 @c For a  full repro of the current Valgrind source:
-@c svn co svn://svn.valgrind.org/valgrind/trunk valgrind-svn
+@c git clone http://sourceware.org/git/valgrind.git valgrind-git
 
 @node Remove files that have been removed upstream
 @section Remove files that have been removed upstream
@@ -325,7 +291,7 @@ merge:
 
 @example
 cd $INV
-diff -qrb -x.svn valgrind-old valgrind-new |grep "Only in valgrind-old"
+diff -qrb -x.git valgrind-old valgrind-new |grep "Only in valgrind-old"
 @end example
 
 Remove these files.
@@ -847,6 +813,30 @@ Keeping the unused code instead of deleting it makes the
 conflicts.  In is unnecessary (and inadvisable) to make any
 modifications to these disabled sections of code.
 
+One complication is that Valgrind is compiled with many more
+compiler warning options that Binutils.  Currently, this list is:
+@example
+-Wcast-align
+-Wcast-qual
+-Wempty-body
+-Wformat
+-Wformat-security
+-Wformat-signedness
+-Wignored-qualifiers
+-Wimplicit-fallthrough=2
+-Wlogical-op
+-Wmissing-declarations
+-Wmissing-parameter-type
+-Wno-cast-qual
+-Wold-style-declaration
+-Wpointer-arith
+-Wwrite-strings
+@end example
+This can cause a very large number of warnings from Binutils code
+that has been merged into Valgrind.  Most are benign, but you will have to
+inspect them all.  It is a good idea to modify the code to remove as
+many of these new warnings as possible to make subsequent merges easier.
+
 Programs written to run under the Valgrind tool must obey certain
 requirements with respect to the use of the C runtime library.
 In particular, most of those routines have been replaced
@@ -1017,22 +1007,8 @@ with those in the new binaries and see if changes to
 
 Any user-visible changes should be documented in
 @file{$INV/daikon/docs/CHANGES}.
-Additionally, @file{fjalar/valgrind/REVISION} should be updated
+Additionally, the first line in @file{fjalar/valgrind/REVISION} should be updated
 with the Valgrind version used for this merge.
-
-The revision for Valgrind can be obtained by:
-
-@example
-export VALGRIND_REVISION_NEW=`(cd $INV/valgrind-new; svn info | \
-    grep "Last Changed Rev: " | cut -d " " --fields=4)`
-echo $VALGRIND_REVISION_NEW
-export VEX_REVISION_NEW=`(cd $INV/valgrind-new/VEX; svn info | \
-    grep "Last Changed Rev: " | cut -d " " --fields=4)`
-echo $VEX_REVISION_NEW
-@end example
-
-You will need to manually edit @file{fjalar/valgrind/REVISION} and
-replace the revision information in the file.
 
 If new Valgrind tests were added, their names should be added to
 the @file{.gitignore} file in the "Ignore generated test drivers"
