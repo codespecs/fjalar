@@ -623,14 +623,16 @@ full Valgrind update was done.
 First, create patch files showing what the Binutils maintainers have
 changed since the last time the readelf code was merged into Fjalar.
 There are two patch files: one for the include files and one for the
-actual readelf files.
+actual readelf files.  Note that you will need to modify the export
+for @env{BUNEWVER}.  The first line of the example below shows how
+to find the correct value.
 
 @c Alternately, could work from the binutils git repository:
 @c   git clone git://sourceware.org/git/binutils-gdb.git
 
 @example
 # Get new version number from @uref{http://ftp.gnu.org/gnu/binutils/?C=M;O=D}
-export BUNEWVER=2.26.1
+export BUNEWVER=2.34
 
 source $INV/fjalar/valgrind/REVISION
 export BUOLDVER=$BINUTILS_VERSION
