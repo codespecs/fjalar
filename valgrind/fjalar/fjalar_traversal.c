@@ -2,7 +2,7 @@
    This file is part of Fjalar, a dynamic analysis framework for C/C++
    programs.
 
-   Copyright (C) 2007-2018 University of Washington Computer Science & Engineering Department,
+   Copyright (C) 2007-2020 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
@@ -412,7 +412,7 @@ void visitClassMemberVariables(VisitArgs* args) {
           char indexStr[5];
           top = stringStackTop(&fullNameStack);
 
-          sprintf(indexStr, "%d", arrayIndex);
+          sprintf(indexStr, "%u", arrayIndex);
 
           // (comment added 2005)  
           // TODO: Subtract and add is a HACK!  Subtract one from the
@@ -941,11 +941,11 @@ void visitVariableGroup(VariableOrigin varOrigin,
         continue;
       }
 
-      FJALAR_DPRINTF("\t[visitVariableGroup] baseAddr: %p, baseAddrGuest: %p var->byteOffset: %x(%d)\n", (void *)stackBaseAddr, (void *)stackBaseAddrGuest, var->byteOffset, var->byteOffset);
+      FJALAR_DPRINTF("\t[visitVariableGroup] baseAddr: %p, baseAddrGuest: %p var->byteOffset: %x(%d)\n", (void *)stackBaseAddr, (void *)stackBaseAddrGuest, (unsigned int)var->byteOffset, var->byteOffset);
       FJALAR_DPRINTF("\t[visitVariableGroup] State of Guest Stack [%p - %p] \n", (void *)funcPtr->guestStackStart, (void *)funcPtr->guestStackEnd);
       FJALAR_DPRINTF("\t[visitVariableGroup] State of Virtual Stack [%p - %p] \n", (void *)funcPtr->lowestVirtSP, (void *)(funcPtr->lowestVirtSP + (funcPtr->guestStackEnd - funcPtr->guestStackStart)));
       FJALAR_DPRINTF("\t[visitVariableGroup] State of Frame Pointer: %p\n", (void *)stackBaseAddrGuest);
-      FJALAR_DPRINTF("\t[visitVariableGroup] Size of DWARF location stack: %d\n", var->location_expression_size);
+      FJALAR_DPRINTF("\t[visitVariableGroup] Size of DWARF location stack: %u\n", var->location_expression_size);
 
       if(var->location_expression_size) {
         Addr var_loc = (Addr) NULL;
@@ -1031,13 +1031,15 @@ void visitVariableGroup(VariableOrigin varOrigin,
             } else if((op >= DW_OP_reg0) && (op <= DW_OP_reg31)) {
               // Get value located in architectural register
               reg_val = (*get_reg[dloc->atom - DW_OP_reg0])(tid);
-              FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %x\n", dwarf_reg_string[dloc->atom - DW_OP_reg0], reg_val);
+              FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %x\n", dwarf_reg_string[dloc->atom - DW_OP_reg0],
+                             (unsigned int)reg_val);
               var_loc = (Addr)&reg_val;
 
             } else if((op >= DW_OP_breg0) && (op <= DW_OP_breg31)) {
               // Get value pointed to by architectural register
               reg_val = (*get_reg[dloc->atom - DW_OP_breg0])(tid);
-              FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %x\n", dwarf_reg_string[dloc->atom - DW_OP_breg0], reg_val);
+              FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %x\n", dwarf_reg_string[dloc->atom - DW_OP_breg0],
+                             (unsigned int) reg_val);
               var_loc = reg_val + dloc->atom_offset;
               FJALAR_DPRINTF("\tAdding %lld to the register value for %p\n", dloc->atom_offset, (void *)var_loc);
               tl_assert(var_loc);
@@ -1096,7 +1098,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
       basePtrValue = basePtrValueGuest = var->globalVar->globalLocation;
 
       if(!basePtrValue && var->isConstant) {
-        FJALAR_DPRINTF("[visitVariableGroup] Invalid globalLocation, but has a constant value (%lu). Overriding address.\n", 
+        FJALAR_DPRINTF("[visitVariableGroup] Invalid globalLocation, but has a constant value (%ld). Overriding address.\n", 
                        var->constValue);
         basePtrValue = (Addr)&var->constValue;
         overrideIsInit = True;
@@ -1799,7 +1801,7 @@ void visitSingleVar(VisitArgs* args) {
             pValueArray = (Addr*)VG_(malloc)("fjalar_traversal.c: vSV.3", numElts * sizeof(Addr));
             pValueArrayGuest = (Addr*)VG_(malloc)("fjalar_traversal.c: vSV.4" ,numElts * sizeof(Addr));
 
-                FJALAR_DPRINTF("numElts is %d\n", numElts);
+                FJALAR_DPRINTF("numElts is %u\n", numElts);
 
             // Build up pValueArray with pointers starting at pNewStartValue
             for (i = 0; i < numElts; i++) {

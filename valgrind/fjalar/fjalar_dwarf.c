@@ -2,7 +2,7 @@
    This file is part of Fjalar, a dynamic analysis framework for C/C++
    programs.
 
-   Copyright (C) 2007-2018 University of Washington Computer Science & Engineering Department,
+   Copyright (C) 2007-2020 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
@@ -331,7 +331,7 @@ location_expression_to_string(enum dwarf_location_atom op) {
   case DW_OP_call_ref:
     return "DW_OP_call_ref";
   default:
-    printf("Invalid location_atom sent to location_expression_to_string: %d", op);
+    printf("Invalid location_atom sent to location_expression_to_string: %u", op);
     tl_assert(0);
     return(0);    // to stop compiler warning
   }

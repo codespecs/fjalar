@@ -7,7 +7,7 @@
   for C/C++ based upon the Valgrind binary instrumentation framework
   and the Valgrind MemCheck tool.
   
-   Copyright (C) 2007-2018 University of Washington Computer Science & Engineering Department,
+   Copyright (C) 2007-2020 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
@@ -46,9 +46,11 @@
 extern char* func_name;
 extern char* cur_var_name;
 
+#if 0  // debuging
 static void dump_function_exit_var_map(DaikonFunctionEntry*);
 static void dump_all_function_exit_var_map(void);
 static uf_name val_uf_tag(UInt);
+#endif // debuging
 static struct genhashtable* regenerate_var_uf_map(UInt, UInt*, struct genhashtable*, UInt*);
 static void reassign_tag(UInt*, UInt, UInt*);
 
@@ -194,12 +196,14 @@ void destroy_ppt_structures(DaikonFunctionEntry* funcPtr, char isEnter) {
 
 // Variable comparability set map (var_uf_map) operations:
 
+#if 0  // debuging
 static uf_name var_uf_map_find(struct genhashtable* var_uf_map, UInt tag) {
   if (!tag) {
     return NULL;
   }
   return (uf_object*)gengettable(var_uf_map, VoidPtr(tag));
 }
+#endif // debuging
 
 static UInt var_uf_map_find_leader(struct genhashtable* var_uf_map, UInt tag) {
   if (!tag) {
@@ -381,7 +385,7 @@ void DC_post_process_for_variable(DaikonFunctionEntry* funcPtr,
       if ((uf_leader == uf_obj->parent) && (uf_leader != uf_obj)) {
         // See if the associated val set has changed since the last observation.
         UInt t = val_uf_find_leader(uf_obj->tag);
-        DYNCOMP_TPRINTF("         %p %8d %u\n", uf_obj, uf_obj->tag, t);
+        DYNCOMP_TPRINTF("         %p %8u %u\n", uf_obj, uf_obj->tag, t);
         if (t !=  uf_obj->tag) {
           // It has, union our current leader with new val set.
           leader = var_uf_map_union(var_uf_map, leader, t);
@@ -491,7 +495,7 @@ void DC_extra_propagation_post_process(DaikonFunctionEntry* funcPtr,
       if ((uf_leader == uf_obj->parent) && (uf_leader != uf_obj)) {
         // See if the associated val set has changed since the last observation.
         UInt t = val_uf_find_leader(uf_obj->tag);
-        DYNCOMP_TPRINTF("  %p %8d %u\n", uf_obj, uf_obj->tag, t);
+        DYNCOMP_TPRINTF("  %p %8u %u\n", uf_obj, uf_obj->tag, t);
         if (t !=  uf_obj->tag) {
           // It has, union our current leader with new val set.
           leader = var_uf_map_union(var_uf_map, leader, t);
@@ -509,7 +513,7 @@ void DC_extra_propagation_post_process(DaikonFunctionEntry* funcPtr,
   }
 
   DYNCOMP_TPRINTF("[DynComp] Variable processing in %s[%d]: merging distinct values "
-		  "%d (old) and %d (new) to %d (final round)\n",
+		  "%u (old) and %u (new) to %u (final round)\n",
 		  funcPtr->funcEntry.name, daikonVarIndex,
 		  var_tags_v, leader, var_tags[daikonVarIndex]);
 }
@@ -601,7 +605,7 @@ int DC_get_comp_number_for_var(DaikonFunctionEntry* funcPtr,
         genputtable(g_compNumberMap, VoidPtr(leader), VoidPtr(comp_number));
       }
       DYNCOMP_TPRINTF("[DynComp] Final tag for Function %s Variable %s - %u\n", funcPtr->funcEntry.name, cur_var_name, leader);
-      DYNCOMP_TPRINTF("tag: %d, leader1: %d, leader2: %d \n", tag, var_uf_map_find_leader(var_uf_map, tag), leader);
+      DYNCOMP_TPRINTF("tag: %u, leader1: %u, leader2: %u \n", tag, var_uf_map_find_leader(var_uf_map, tag), leader);
     }
   }
 
@@ -837,6 +841,8 @@ int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
   offsetof(VexGuestX86State, guest_CMLEN)
 };
 
+#if 0  // debuging
+
 static uf_name val_uf_tag(UInt tag) {
   if (IS_ZERO_TAG(tag) || IS_SECONDARY_UF_NULL(tag)) {
      return NULL;
@@ -862,7 +868,7 @@ static void dump_function_exit_var_map(DaikonFunctionEntry* funcPtr) {
     while (exit_var_item) {
       uf_object* uf_obj = (uf_object*)(exit_var_item->object);
       if (uf_obj == uf_obj->parent) {
-        printf("  %p %8d %4d\n", uf_obj, uf_obj->tag, uf_obj->rank);
+        printf("  %p %8u %4d\n", uf_obj, uf_obj->tag, uf_obj->rank);
       } else {
         uf_object* uf_obj2 = uf_obj;
         int depth = 0;
@@ -870,12 +876,12 @@ static void dump_function_exit_var_map(DaikonFunctionEntry* funcPtr) {
           depth++;
           uf_obj2 = uf_obj2->parent;
         }
-        printf("  %p %8d %4d %p %2d %8d\n", uf_obj, uf_obj->tag, uf_obj->rank, uf_obj->parent, depth, uf_obj2->tag);
+        printf("  %p %8u %4d %p %2d %8u\n", uf_obj, uf_obj->tag, uf_obj->rank, uf_obj->parent, depth, uf_obj2->tag);
       }
       exit_var_item = exit_var_item->inext;
     }
 
-    printf("\nFunction: %s, num_vars: %d\n", funcPtr->funcEntry.name, funcPtr->num_exit_daikon_vars);
+    printf("\nFunction: %s, num_vars: %u\n", funcPtr->funcEntry.name, funcPtr->num_exit_daikon_vars);
 
     var_set_map = genallocatehashtable(NULL, // no hash function needed for u_int keys
                                        (int (*)(void *,void *)) &equivalentIDs);
@@ -959,7 +965,7 @@ static void dump_all_function_exit_var_map() {
   printf("partial val leaders:\n");
   for (i = 0; i < alist_size; i++) {
     a = alist[i];
-    printf("  %p %8d\n", (void*)a, val_uf_find_leader(get_tag(a)));
+    printf("  %p %8u\n", (void*)a, val_uf_find_leader(get_tag(a)));
   }
   printf("\n");
 
@@ -971,6 +977,8 @@ static void dump_all_function_exit_var_map() {
   }
   deleteFuncIterator(funcIt);
 }
+
+#endif // debuging
 
 // Pre: the ppt_entry/exit_var_tags array has been updated to reflect
 // the changes in the val tag numbers.

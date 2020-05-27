@@ -10,7 +10,7 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2000-2018 Julian Seward 
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -29,6 +29,16 @@
    02111-1307, USA.
 
    The GNU General Public License is contained in the file COPYING.
+*/
+
+/* mc_main_asm.c
+
+   This file is part of Fjalar, a dynamic analysis framework for C/C++
+   programs.
+
+   Copyright (C) 2007-2020 University of Washington Computer Science & Engineering Department,
+   Programming Languages and Software Engineering Group
+
 */
 
 /* Having these in mc_main.c gives undefined references at link time,

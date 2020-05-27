@@ -2,7 +2,7 @@
    This file is part of Kvasir, a C/C++ front end for the Daikon
    dynamic invariant detector built upon the Fjalar framework
 
-   Copyright (C) 2007-2018 University of Washington Computer Science & Engineering Department,
+   Copyright (C) 2007-2020 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
@@ -109,14 +109,14 @@ static void printDtraceFunctionHeader(FunctionEntry* funcPtr, char isEnter)
     fputs(ENTER_PPT, dtrace_fp);
     fputs("\n", dtrace_fp);
     fputs("this_invocation_nonce\n", dtrace_fp);
-    DTRACE_PRINTF("%d\n", funcPtr->nonce);
+    DTRACE_PRINTF("%u\n", funcPtr->nonce);
 
   }
   else {
     fputs(EXIT_PPT, dtrace_fp);
     fputs("\n", dtrace_fp);
     fputs("this_invocation_nonce\n", dtrace_fp);
-    DTRACE_PRINTF("%d\n", funcPtr->nonce);
+    DTRACE_PRINTF("%u\n", funcPtr->nonce);
   }
 
 
@@ -435,7 +435,7 @@ static char printDtraceSingleVar(VariableEntry* var,
     // Since we observed all of these bytes as one value, we will
     // merge all of their tags in memory
     if (kvasir_with_dyncomp && !IS_STATIC_ARRAY_VAR(var)) {
-      DYNCOMP_TPRINTF("dtrace call val_uf_union_tags_in_range(%p, %zd) (pointer)\n",
+      DYNCOMP_TPRINTF("dtrace call val_uf_union_tags_in_range(%p, %zu) (pointer)\n",
 		      (void *)pValue, sizeof(void*));
       val_uf_union_tags_in_range((Addr)pValue, sizeof(void*));
     }
@@ -519,7 +519,7 @@ static char printDtraceSequence(VariableEntry* var,
   char firstInitEltFound = 0;
   Addr firstInitElt = 0;
 
-  DPRINTF("pValueArray: %p - pValueArrayGuest: %p\nnumElts: %d\n", (void *)pValueArray, (void *)pValueArrayGuest, numElts);
+  DPRINTF("pValueArray: %p - pValueArrayGuest: %p\nnumElts: %u\n", (void *)pValueArray, (void *)pValueArrayGuest, numElts);
 
 /*   if(numElts > 10) { */
 /*     printf("%s - numElts: %d\n", var->name, numElts); */
@@ -620,7 +620,7 @@ static char printDtraceSequence(VariableEntry* var,
           // TODO: This may cause unnecessarily large comparability
           // sets - watch out!
           if (kvasir_with_dyncomp && firstInitElt) {
-            DYNCOMP_TPRINTF("dtrace call val_uf_union_tags_in_range(%p, %zd) (sequence)\n",
+            DYNCOMP_TPRINTF("dtrace call val_uf_union_tags_in_range(%p, %zu) (sequence)\n",
 		            (void *)pCurValue, sizeof(void*));
             val_uf_union_tags_in_range((Addr)pCurValue, sizeof(void*));
             val_uf_union_tags_at_addr((Addr)firstInitElt, (Addr)pCurValue);
@@ -1020,7 +1020,7 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
   cur_var_name = varName;
 
   DPRINTF("pValue: %p\n pValueGuest: %p\n pValueArray: %p\n pValueArrayGuest:%p\n", (void *)pValue, (void *)pValueGuest, (void *)pValueArray, (void *)pValueGuest);
-  DPRINTF("numelts: %d\n", numElts);
+  DPRINTF("numelts: %u\n", numElts);
 
 
   if(pValue)

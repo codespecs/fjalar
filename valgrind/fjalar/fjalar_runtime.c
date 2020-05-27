@@ -2,7 +2,7 @@
    This file is part of Fjalar, a dynamic analysis framework for C/C++
    programs.
 
-   Copyright (C) 2007-2018 University of Washington Computer Science & Engineering Department,
+   Copyright (C) 2007-2020 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
@@ -97,7 +97,7 @@ FunctionExecutionState* returnFunctionExecutionStateWithAddress(Addr a)
   cur_fn = fnStackTop(tid);
 
   if ((cur_fn->FP >= a) && (cur_fn->lowestSP <= a)) {
-    FJALAR_DPRINTF("Returning functionEntry: %zx\n", (ptrdiff_t)cur_fn);
+    FJALAR_DPRINTF("Returning functionEntry: %zx\n", (size_t)cur_fn);
     return cur_fn;
   }
 
@@ -137,7 +137,7 @@ static VariableEntry* searchForArrayWithinStruct(VariableEntry* structVar,
 
       potentialVar = v->var;
       tl_assert(IS_MEMBER_VAR(potentialVar));
-      FJALAR_DPRINTF("examining: %s, offset: %ld\n", potentialVar->name,
+      FJALAR_DPRINTF("examining: %s, offset: %lu\n", potentialVar->name,
                       potentialVar->memberVar->data_member_location);
 
 //      FJALAR_DPRINTF("staticArr: %p, ptrLevels: %d, varType: %d\n",
@@ -209,7 +209,7 @@ returnArrayVariableWithAddr(VarList* varList,
       continue;
 
     FJALAR_DPRINTF("Examining potential var: %s, offset: 0x%x, locType: 0x%x\n",
-                    potentialVar->name, potentialVar->byteOffset, potentialVar->locationType);
+                    potentialVar->name, (unsigned int) potentialVar->byteOffset, potentialVar->locationType);
 
     if (isGlobal) {
       tl_assert(IS_GLOBAL_VAR(potentialVar));
@@ -253,13 +253,13 @@ returnArrayVariableWithAddr(VarList* varList,
         } else if((op >= DW_OP_reg0) && (op <= DW_OP_reg31)) {
           // Get value located in architectural register
           reg_val = (*get_reg[dloc->atom - DW_OP_reg0])(tid);
-          FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %x\n", dwarf_reg_string[dloc->atom - DW_OP_reg0], reg_val);
+          FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %x\n", dwarf_reg_string[dloc->atom - DW_OP_reg0], (unsigned int) reg_val);
           var_loc = (Addr)&reg_val;
 
         } else if((op >= DW_OP_breg0) && (op <= DW_OP_breg31)) {
           // Get value pointed to by architectural register
           reg_val = (*get_reg[dloc->atom - DW_OP_breg0])(tid);
-          FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %x\n", dwarf_reg_string[dloc->atom - DW_OP_breg0], reg_val);
+          FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %x\n", dwarf_reg_string[dloc->atom - DW_OP_breg0], (unsigned int) reg_val);
           var_loc = reg_val + dloc->atom_offset;
           FJALAR_DPRINTF("\tAdding %lld to the register value for %p\n", dloc->atom_offset, (void *)var_loc);
           tl_assert(var_loc);
@@ -278,7 +278,7 @@ returnArrayVariableWithAddr(VarList* varList,
         FJALAR_DPRINTF("\tApplying DWARF Stack Operation %s - %p\n",location_expression_to_string(op), (void *)var_loc);
       }
     }
-    FJALAR_DPRINTF("addr: %p, potential var_loc: %p, staticArr: %p, ptrLevels: %d, varType: %d\n",
+    FJALAR_DPRINTF("addr: %p, potential var_loc: %p, staticArr: %p, ptrLevels: %u, varType: %u\n",
                    (void*)a, (void*)potentialVarBaseAddr, potentialVar->staticArr, potentialVar->ptrLevels,
                    (potentialVar->varType ? potentialVar->varType->decType : 0));
 
@@ -288,7 +288,7 @@ returnArrayVariableWithAddr(VarList* varList,
         (a < (potentialVarBaseAddr + (potentialVar->staticArr->upperBounds[0] *
                                       getBytesBetweenElts(potentialVar))))) {
 
-      FJALAR_DPRINTF("returnArrayVar: found matching array with upperBounds[0]: %d\n", potentialVar->staticArr->upperBounds[0]);
+      FJALAR_DPRINTF("returnArrayVar: found matching array with upperBounds[0]: %u\n", potentialVar->staticArr->upperBounds[0]);
       *baseAddr = potentialVarBaseAddr;
       return potentialVar;
     }
@@ -483,7 +483,7 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
     if (e) {
       VarList* localArrayAndStructVars = &(e->func->localArrayAndStructVars);
       FJALAR_DPRINTF(" e->FP is %p\n", (void *)e->FP);
-      FJALAR_DPRINTF(" localArrayAndSTructVars: %p, numVars: %d\n", localArrayAndStructVars, localArrayAndStructVars->numVars);
+      FJALAR_DPRINTF(" localArrayAndSTructVars: %p, numVars: %u\n", localArrayAndStructVars, localArrayAndStructVars->numVars);
 
       tl_assert(!localArrayAndStructVars || (Addr)localArrayAndStructVars > 0x100);
 

@@ -1,5 +1,5 @@
 /* ELF support for BFD.
-   Copyright (C) 1991-2019 Free Software Foundation, Inc.
+   Copyright (C) 1991-2020 Free Software Foundation, Inc.
 
    Written by Fred Fish @ Cygnus Support, from information published
    in "UNIX System V Release 4, Programmers Guide: ANSI C and
@@ -650,6 +650,8 @@
 					/*   note name must be "LINUX".  */
 #define NT_ARM_SVE	0x405		/* AArch SVE registers.  */
 					/*   note name must be "LINUX".  */
+#define NT_ARM_PAC_MASK	0x406		/* AArch pointer authentication code masks */
+					/*   note name must be "LINUX".  */
 #define NT_SIGINFO	0x53494749	/* Fields of siginfo_t.  */
 #define NT_FILE		0x46494c45	/* Description of mapped files.  */
 
@@ -827,6 +829,7 @@
 #define GNU_PROPERTY_X86_ISA_1_AVX512_VBMI	(1U << 21)
 #define GNU_PROPERTY_X86_ISA_1_AVX512_VBMI2	(1U << 22)
 #define GNU_PROPERTY_X86_ISA_1_AVX512_VNNI	(1U << 23)
+#define GNU_PROPERTY_X86_ISA_1_AVX512_BF16	(1U << 24)
 
 #define GNU_PROPERTY_X86_FEATURE_2_X86		(1U << 0)
 #define GNU_PROPERTY_X86_FEATURE_2_X87		(1U << 1)
@@ -838,6 +841,12 @@
 #define GNU_PROPERTY_X86_FEATURE_2_XSAVE	(1U << 7)
 #define GNU_PROPERTY_X86_FEATURE_2_XSAVEOPT	(1U << 8)
 #define GNU_PROPERTY_X86_FEATURE_2_XSAVEC	(1U << 9)
+
+/* AArch64 specific GNU PROPERTY.  */
+#define GNU_PROPERTY_AARCH64_FEATURE_1_AND	0xc0000000
+
+#define GNU_PROPERTY_AARCH64_FEATURE_1_BTI	(1U << 0)
+#define GNU_PROPERTY_AARCH64_FEATURE_1_PAC	(1U << 1)
 
 /* Values used in GNU .note.ABI-tag notes (NT_GNU_ABI_TAG).  */
 #define GNU_ABI_TAG_LINUX	0

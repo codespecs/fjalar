@@ -25,6 +25,10 @@ EXTRA_CFLAGS +=  -O0
 CFLAGS   += -Wno-cast-qual
 CXXFLAGS += -Wno-cast-qual
 
+# Compile fjalar without --fno-common (gcc version 10 default)
+CFLAGS   += -fcommon
+CXXFLAGS += -fcommon
+
 #----------------------------------------------------------------------------
 # Headers
 #----------------------------------------------------------------------------

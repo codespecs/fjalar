@@ -34,7 +34,7 @@
    This file is part of Fjalar, a dynamic analysis framework for C/C++
    programs.
 
-   Copyright (C) 2007-2018 University of Washington Computer Science & Engineering Department,
+   Copyright (C) 2007-2020 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
@@ -157,6 +157,55 @@ static IRExpr* expr2vbits ( struct _MCEnv* mce, IRExpr* e,
 static IRTemp  findShadowTmpB ( struct _MCEnv* mce, IRTemp orig );
 
 static IRExpr *i128_const_zero(void);
+
+
+/*------------------------------------------------------------*/
+/*--- Memcheck running state, and tmp management.          ---*/
+/*------------------------------------------------------------*/
+
+static void DetailLevelByOp__set_all ( /*OUT*/DetailLevelByOp* dlbo,
+                                       DetailLevel dl )
+{
+   dlbo->dl_Add32           = dl;
+   dlbo->dl_Add64           = dl;
+   dlbo->dl_Sub32           = dl;
+   dlbo->dl_Sub64           = dl;
+   dlbo->dl_CmpEQ64_CmpNE64 = dl;
+   dlbo->dl_CmpEQ32_CmpNE32 = dl;
+   dlbo->dl_CmpEQ16_CmpNE16 = dl;
+   dlbo->dl_CmpEQ8_CmpNE8   = dl;
+}
+
+static void DetailLevelByOp__check_sanity ( const DetailLevelByOp* dlbo )
+{
+   tl_assert(dlbo->dl_Add32 >= DLcheap && dlbo->dl_Add32 <= DLexpensive);
+   tl_assert(dlbo->dl_Add64 >= DLcheap && dlbo->dl_Add64 <= DLexpensive);
+   tl_assert(dlbo->dl_Sub32 >= DLcheap && dlbo->dl_Sub32 <= DLexpensive);
+   tl_assert(dlbo->dl_Sub64 >= DLcheap && dlbo->dl_Sub64 <= DLexpensive);
+   tl_assert(dlbo->dl_CmpEQ64_CmpNE64 == DLcheap
+             || dlbo->dl_CmpEQ64_CmpNE64 == DLexpensive);
+   tl_assert(dlbo->dl_CmpEQ32_CmpNE32 == DLcheap
+             || dlbo->dl_CmpEQ32_CmpNE32 == DLexpensive);
+   tl_assert(dlbo->dl_CmpEQ16_CmpNE16 == DLcheap
+             || dlbo->dl_CmpEQ16_CmpNE16 == DLexpensive);
+   tl_assert(dlbo->dl_CmpEQ8_CmpNE8 == DLcheap
+             || dlbo->dl_CmpEQ8_CmpNE8 == DLexpensive);
+}
+
+static UInt DetailLevelByOp__count ( const DetailLevelByOp* dlbo,
+                                     DetailLevel dl )
+{
+   UInt n = 0;
+   n += (dlbo->dl_Add32 == dl            ? 1 : 0);
+   n += (dlbo->dl_Add64 == dl            ? 1 : 0);
+   n += (dlbo->dl_Sub32 == dl            ? 1 : 0);
+   n += (dlbo->dl_Sub64 == dl            ? 1 : 0);
+   n += (dlbo->dl_CmpEQ64_CmpNE64 == dl  ? 1 : 0);
+   n += (dlbo->dl_CmpEQ32_CmpNE32 == dl  ? 1 : 0);
+   n += (dlbo->dl_CmpEQ16_CmpNE16 == dl  ? 1 : 0);
+   n += (dlbo->dl_CmpEQ8_CmpNE8 == dl    ? 1 : 0);
+   return n;
+}
 
 
 /* SHADOW TMP MANAGEMENT.  Shadow tmps are allocated lazily (on
