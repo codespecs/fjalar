@@ -19,8 +19,8 @@ lsb_release -a
 cat /etc/*release
 ldd --version
 cat /proc/version
-#find /lib/ | grep -s "libc-"
-#find /lib64/ | grep -s "libc-"
+find /lib/ | grep -s "libc-"
+find /lib64/ | grep -s "libc-"
 echo "end of system info"
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
