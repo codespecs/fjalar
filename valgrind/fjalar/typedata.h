@@ -64,7 +64,7 @@ typedef struct
 
 // Entries for individual types
 
-// RUDD - struct representing the location list.
+// Struct representing the location list.
 // Representned as a linked list.
 typedef struct _location_list
 {
@@ -76,7 +76,7 @@ typedef struct _location_list
   struct _location_list *next;
 } location_list;
 
-// RUDD - struct representing a debug_frame block.
+// Struct representing a debug_frame block.
 // Represented as a linked list.
 typedef struct _debug_frame
 {
@@ -424,6 +424,8 @@ extern dwarf_entry* dwarf_entry_array;
 extern compile_unit** comp_unit_info;
 extern unsigned long dwarf_entry_array_size;
 extern location_list *debug_loc_list;
+extern Bool clang_producer;
+extern Bool other_producer;
 
 unsigned int hashString(const char* str);
 int equivalentStrings(char* str1, char* str2);
@@ -514,6 +516,7 @@ char harvest_const_value(dwarf_entry* e, unsigned long value);
 char harvest_name(dwarf_entry* e, const char* str);
 char harvest_mangled_name(dwarf_entry* e, const char* str);
 char harvest_comp_dir(dwarf_entry* e, const char* str);
+char harvest_producer(dwarf_entry* e, const char* str);
 char harvest_formal_param_location_offset(dwarf_entry* e, long value);
 char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom atom, long value);
 char harvest_data_member_location(dwarf_entry* e, unsigned long value);

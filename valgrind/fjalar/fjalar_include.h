@@ -607,10 +607,11 @@ typedef struct _FunctionEntry {
   // True if globally visible, False if file-static scope
   Bool isExternal;
 
-  // True if there's a location list for this function
-  Bool locList;
-
-  unsigned long locListOffset;
+  enum dwarf_location_atom frame_base_atom;
+  // If frame_base_atom == DW_OP_list, then frame_base_offset is a pointer
+  // to a location list; otherwise, it is an offset from the register
+  // indicated by frame_base_atom.
+  long frame_base_offset;
 
   VarList formalParameters;        // List of formal parameter variables
 
@@ -1076,7 +1077,6 @@ Bool fjalar_output_struct_vars;            // --output-struct-vars
 Bool fjalar_flatten_arrays;                // --flatten-arrays
 Bool fjalar_func_disambig_ptrs;            // --func-disambig-ptrs
 Bool fjalar_disambig_ptrs;                 // --disambig-ptrs
-Bool fjalar_gcc3;                          // --gcc3
 
 int  fjalar_array_length_limit;            // --array-length-limit
 

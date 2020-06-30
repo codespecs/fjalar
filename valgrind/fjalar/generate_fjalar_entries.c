@@ -1650,9 +1650,10 @@ void initializeFunctionTable(void)
           cur_func_entry->cuBase = dwarfFunctionPtr->comp_pc;
           cur_func_entry->endPC = dwarfFunctionPtr->end_pc;
 
-          FJALAR_DPRINTF("Frame base exp is:%u - %d\n", dwarfFunctionPtr->frame_base_expression, DW_OP_list);
-          cur_func_entry->locList = (dwarfFunctionPtr->frame_base_expression == DW_OP_list);
-          cur_func_entry->locListOffset = dwarfFunctionPtr->frame_base_offset;
+          FJALAR_DPRINTF("Frame base exp is: %u + %ld\n", dwarfFunctionPtr->frame_base_expression,
+                                                         dwarfFunctionPtr->frame_base_offset);
+          cur_func_entry->frame_base_atom = dwarfFunctionPtr->frame_base_expression;
+          cur_func_entry->frame_base_offset = dwarfFunctionPtr->frame_base_offset;
 
 
           cur_func_entry->isExternal = dwarfFunctionPtr->is_external;
@@ -3409,6 +3410,8 @@ static void XMLprintOneFunction(FunctionEntry* cur_entry,
 
   XML_PRINTF("<start-PC>%p</start-PC>\n",
              (void*)cur_entry->startPC);
+  XML_PRINTF("<entry-PC>%p</entry-PC>\n",
+             (void*)cur_entry->entryPC);
   XML_PRINTF("<end-PC>%p</end-PC>\n",
              (void*)cur_entry->endPC);
 
