@@ -40,8 +40,6 @@
 
    This file interprets the DWARF debugging information within
    the ELF binary and then calls functions in typedata.c
-
-   A few of the Fjalar changes are denoted by // PG or RUDD marks
 */
 
 // Fjalar code
@@ -132,7 +130,7 @@ unsigned int eh_addr_size;
 //   Are we displaying the DWARF debug information?
 #define DO_NOT_PRINT      0
 #define OK_TO_PRINT       1
-// PG - Number of relevant entries to record in the dwarf_entry array
+// Number of relevant entries to record in the dwarf_entry array
 unsigned long num_relevant_entries = 0;
 
 char *string_table;
@@ -2662,6 +2660,7 @@ read_and_display_attr_value (unsigned long           attribute,
 #endif // This code is not needed for Fjalar.
 
     // DW_AT_name/DW_AT_comp_dir can be a string, or an indirect string ... (see below)
+    // also used for DW_AT_producer by Fjalar
     case DW_FORM_string:
       if (ok_to_harvest)
          harvest_string(entry, attribute, (const char*)data);
@@ -3282,6 +3281,7 @@ read_and_display_attr_value (unsigned long           attribute,
       if (block_start)
 	{
 	  int need_frame_base;
+          location_list* ll = VG_(calloc)("dwarf.c: read_and_display_attr_value", sizeof(location_list), 1);
 
 	  printf ("\t(");
 	  need_frame_base = decode_location_expression (block_start,
@@ -3290,16 +3290,21 @@ read_and_display_attr_value (unsigned long           attribute,
 							dwarf_version,
 							uvalue,
 							cu_offset,
-							section, pass2, ok_to_harvest, entry, 0);
+							section, pass2, ok_to_harvest, entry, ll);
 	  printf (")");
+          if (ok_to_harvest) {
+              // frame base expression
+              harvest_frame_base(entry, ll->atom, ll->atom_offset);
+          }
 	  if (need_frame_base && !have_frame_base)
 	    printf (_(" [without DW_AT_frame_base]"));
 	}
       else if (form == DW_FORM_data4 || form == DW_FORM_data8)
 	  {
-          // RUDD
-          if (ok_to_harvest)
+          if (ok_to_harvest) {
+              // frame base location list
               harvest_frame_base(entry, DW_OP_list, uvalue);
+          }
           printf ("(");
           printf ("location list");
           printf (")");
@@ -3938,8 +3943,8 @@ process_debug_info (struct dwarf_section *           section,
             temp_tag_name = entry->tag;
 
             if (tag_is_relevant_entry(entry->tag)) {
-              // PG - This is where all the action takes place
-              //      store the info. as a dwarf_entry struct in dwarf_entry_array
+              // This is where all the action takes place
+              // store the info. as a dwarf_entry struct in dwarf_entry_array
 
               // Fill the ID and tag_name fields:
               dwarf_entry_array[idx].ID = temp_ID;

@@ -79,6 +79,9 @@ debug_frame* debug_frame_TAIL = 0;
 
 unsigned int comp_unit_base = 0;
 
+// Target program producer info
+Bool clang_producer = False;
+Bool other_producer = False;
 
 // The addresses and sizes of the sections (.data, .bss, .rodata, and .data.rel.ro)
 // that hold global variables (initialized in readelf.c):
@@ -125,27 +128,27 @@ char tag_is_relevant_entry(unsigned long tag)
 {
   switch (tag)
     {
+    case DW_TAG_array_type:
+    case DW_TAG_base_type:
+    case DW_TAG_class_type:
+    case DW_TAG_compile_unit:
+    case DW_TAG_const_type:
     case DW_TAG_enumeration_type:
+    case DW_TAG_enumerator:
     case DW_TAG_formal_parameter:
+    case DW_TAG_inheritance:
     case DW_TAG_member:
+    case DW_TAG_namespace:
     case DW_TAG_pointer_type:
     case DW_TAG_reference_type:
-    case DW_TAG_class_type:
     case DW_TAG_structure_type:
-    case DW_TAG_union_type:
-    case DW_TAG_base_type:
-    case DW_TAG_const_type:
-    case DW_TAG_enumerator:
     case DW_TAG_subprogram:
-    case DW_TAG_volatile_type:
-    case DW_TAG_compile_unit:
-    case DW_TAG_subroutine_type:
-    case DW_TAG_array_type:
     case DW_TAG_subrange_type:
+    case DW_TAG_subroutine_type:
     case DW_TAG_typedef:
+    case DW_TAG_union_type:
     case DW_TAG_variable:
-    case DW_TAG_inheritance:
-    case DW_TAG_namespace:
+    case DW_TAG_volatile_type:
       return 1;
     default:
       return 0;
@@ -165,9 +168,9 @@ char tag_is_modifier_type(unsigned long tag)
 {
   switch (tag)
     {
+    case DW_TAG_const_type:
     case DW_TAG_pointer_type:
     case DW_TAG_reference_type:
-    case DW_TAG_const_type:
     case DW_TAG_volatile_type:
       return 1;
     default:
@@ -269,28 +272,31 @@ static char tag_is_namespace(unsigned long tag) {
 
 // List of attributes and the types which listen for them:
 
-// DW_AT_location: formal_parameter, variable
-// DW_AT_data_member_location: member, inheritance
-// DW_AT_name: collection_type, member, enumerator, function, formal_parameter, compile_unit, variable, typedef, namespace
-// DW_AT_byte_size: base_type, collection_type, member
+// DW_AT_abstract_origin: function, formal_parameter
+// DW_AT_accessibility: function, inheritance, member, variable
+// DW_AT_artificial: variable
 // DW_AT_bit_offset: base_type, member
 // DW_AT_bit_size: base_type, member
-// DW_AT_const_value: enumerator
-// DW_AT_type: modifier, member, function, formal_parameter, array_type, subrange_type, variable, typedef, inheritance
-// DW_AT_encoding: base_type
+// DW_AT_byte_size: base_type, collection_type, member
 // DW_AT_comp_dir: compile_unit
-// DW_AT_external: function, variable
-// DW_AT_low_pc: function
-// DW_AT_high_pc: function
-// DW_AT_upper_bound: subrange_type
-// DW_AT_sibling: collection_type, array_type, function_type, function, enumerator
-// DW_AT_MIPS_linkage_name: function, variable
-// DW_AT_specification: function, variable
+// DW_AT_const_value: enumerator
+// DW_AT_data_member_location: member, inheritance
 // DW_AT_declaration: function, variable, collection_type
-// DW_AT_artificial: variable
-// DW_AT_accessibility: function, inheritance, member, variable
-// DW_AT_abstract_origin: function, variable
 // DW_AT_decl_file: variable, member
+// DW_AT_encoding: base_type
+// DW_AT_external: function, variable, member
+// DW_AT_frame_base: compile_unit, function
+// DW_AT_high_pc: function
+// DW_AT_location: formal_parameter, variable
+// DW_AT_low_pc: compile_unit, function
+// DW_AT_MIPS_linkage_name: function, variable
+// DW_AT_name: collection_type, member, enumerator, function, formal_parameter, compile_unit, typedef, namespace, variable
+// DW_AT_producer: compile_unit
+// DW_AT_sibling: collection_type, function_type, enumerator, function, array_type
+// DW_AT_specification: function, variable, collection_type
+// DW_AT_stmt_list: compile_unit
+// DW_AT_type: modifier_type, member, function, formal_parameter, function_type, array_type, typedef, variable, inheritance
+// DW_AT_upper_bound: array_subrange_type
 
 // Returns: 1 if the entry has a type that is listening for the
 // given attribute (attr), 0 otherwise
@@ -353,6 +359,8 @@ char entry_is_listening_for_attribute(dwarf_entry* e, unsigned long attr)
     case DW_AT_encoding:
       return tag_is_base_type(tag);
     case DW_AT_comp_dir:
+      return tag_is_compile_unit(tag);
+    case DW_AT_producer:
       return tag_is_compile_unit(tag);
     case DW_AT_external:
       return (tag_is_function(tag) ||
@@ -898,6 +906,34 @@ char harvest_comp_dir(dwarf_entry* e, const char* str1)
     return 0;
 }
 
+char harvest_producer(dwarf_entry* e, const char* str1)
+{
+  unsigned long tag;
+  char* producer;
+  if ((e == 0) || (e->entry_ptr == 0))
+    return 0;
+
+  tag = e->tag_name;
+
+  if (tag_is_compile_unit(tag))
+    {
+      producer = VG_(strdup)("typedata.c: harv_producer", str1);
+      FJALAR_DPRINTF("  Producer: %s\n", producer);
+
+      if (VG_(strncmp) (producer, "clang ", 6) == 0) {
+        clang_producer = True;
+      } else {
+        other_producer = True;
+      }
+      if (clang_producer && other_producer) {
+        printf( "  Warning! Target program created with mixed clang and non-clang compilers.\n");
+      }
+      return 1;
+    }
+  else
+    return 0;
+}
+
 char harvest_stmt_list(dwarf_entry* e, unsigned long value)
 {
   unsigned long tag;
@@ -1009,6 +1045,8 @@ char harvest_string(dwarf_entry* e, unsigned long attr, const char* str1)
     return harvest_name(e, str1);
   else if (attr == DW_AT_comp_dir)
     return harvest_comp_dir(e, str1);
+  else if (attr == DW_AT_producer)
+    return harvest_producer(e, str1);
   else if (attr == DW_AT_MIPS_linkage_name)
     return harvest_mangled_name(e, str1);
   else
@@ -1828,7 +1866,7 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
   // enumerations expect DW_TAG_enumerator as member "variables"
   // structs/classes expect DW_TAG_variable as static member variables,
   // GCC 4.4.x+ denote static member variables via
-  // DW_TAG_member + DW_AT_external (rudd)
+  // DW_TAG_member + DW_AT_external
   // This has changed again. GCC 4.7.x (perhaps earlier?) now represents a 
   // static member variable with a DW_TAG_member at the declation and a 
   // DW_TAG_variable at the definition.  This entry has a DW_AT_specification
@@ -2761,7 +2799,6 @@ unsigned long findFunctionStartPCForVariableEntry(dwarf_entry* e)
   return 0;
 }
 
-// RUDD
 char harvest_frame_base(dwarf_entry *e, enum dwarf_location_atom a, long offset) {
   unsigned long tag;
   // FJALAR_DPRINTF("Attempting to harvest the frame_base\n");

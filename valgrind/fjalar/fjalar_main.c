@@ -179,7 +179,7 @@ extern void setNOBUF(FILE *stream);
 /*--- Entry and Exit Handling                              ---*/
 /*------------------------------------------------------------*/
 
-// (comment added 2005)  
+// (comment added 2005)
 // TODO: We cannot sub-class FunctionExecutionState unless we make
 // this into an array of pointers. Have one stack for
 // each thread. We'll be wasteful and just have the maximum number
@@ -197,10 +197,9 @@ int *fn_stack_first_free_index;
 typedef VG_REGPARM(1) void entry_func(FunctionEntry *);
 
 // This inserts an IR Statement responsible for calling func
-// code before the instruction at addr is executed. This is primarily
+// code before the instruction at addr is executed. This is
 // used for inserting the call to enter_function on function entry.
-// It is also used for handling of 'function priming' for GCC 3 (see
-// comment above prime_function). The result of looking up addr in
+// The result of looking up addr in
 // table will be passed to func as it's only argument. This function
 // does nothing if it is unable to successfully look up addr in the
 // provided table.
@@ -210,6 +209,7 @@ static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
 				       entry_func func) {
   IRDirty  *di;
   FunctionEntry *entry = gengettable(table, (void *)(Addr)addr);
+  FJALAR_DPRINTF("handle_possible_entry_func: addr: %p entry: %p\n", (void *)addr, entry);
 
   if(!entry) {
       return;
@@ -284,7 +284,7 @@ static Addr currentAddr = 0;
 static struct  genhashtable *funcs_handled = NULL;
 
 
-static void find_entry_pt(IRSB* bb_orig, FunctionEntry *f);
+static void find_entry_point(IRSB* bb_orig, FunctionEntry *f);
 
 // This is called whenever we encounter an IMark statement.  From the
 // IR documentation (Copyright (c) 2004-2005 OpenWorks LLP):
@@ -310,41 +310,18 @@ void handle_possible_entry(MCEnv* mce, Addr64 addr, IRSB* bb_orig) {
   // properly:
   currentAddr = (Addr)addr;
 
-  if(!fjalar_gcc3) {
-    FunctionEntry *entry = gengettable(FunctionTable, (void *)(Addr)addr);
-    if(entry) {
-      find_entry_pt(bb_orig, entry);
-    }
+  FunctionEntry *entry = gengettable(FunctionTable, (void *)(Addr)addr);
+  FJALAR_DPRINTF("handle_possible_entry: addr: %p entry: %p\n", (void *)addr, entry);
+
+  // If this is first instruction in a function, find the preferred entry point.
+  if(entry) {
+    find_entry_point(bb_orig, entry);
   }
 
-  // We're not splitting entry handling based on GCC version.
-  // for GCC 3.x we're going to enter at the instruction
-  // corresponding to the first line of code in a function
-  // (f->entryPC in Fjalar's terms)
-
-  // For GCC 4.x we're going to use a special heuristic for
-  // determining the instruction to enter at. See comment
-  // "HANDLING FUNCTION ENTRY" above find_entry_pt()
-  if(fjalar_gcc3) {
-
-    /* If this is the very first instruction in the function, add a call
-       to the prime_function helper. */
-    handle_possible_entry_func(mce, addr, FunctionTable,
-			       "prime_function",
-			       &prime_function);
-
-    /* If this is the first instruction in the function after the prolog
-       (not exclusive with the condition above), add a call to the
-       enter_function helper. */
-    handle_possible_entry_func(mce, addr, FunctionTable_by_entryPC,
+  // See if the current address is the preferred entry point.
+  handle_possible_entry_func(mce, addr, FunctionTable_by_endOfBb,
 			       "enter_function",
 			       &enter_function);
-  } else {
-    handle_possible_entry_func(mce, addr, FunctionTable_by_endOfBb,
-			       "enter_function",
-			       &enter_function);
-  }
-
 }
 
 
@@ -383,8 +360,8 @@ void handle_possible_entry(MCEnv* mce, Addr64 addr, IRSB* bb_orig) {
 
 // If the first basic block of a function ends before entryPC, use
 // the last instruction of that basic block as our entrypoint. Otherwise
-// use entryPC
-static void find_entry_pt(IRSB* bb_orig, FunctionEntry *f) {
+// use the last instruction prior to entryPC.
+static void find_entry_point(IRSB* bb_orig, FunctionEntry *f) {
   int i;
   Addr entry_pt = 0;
 
@@ -401,13 +378,13 @@ static void find_entry_pt(IRSB* bb_orig, FunctionEntry *f) {
     dyncomp_delayed_print_IR = False;
   }
 
-  FJALAR_DPRINTF("[find_entry_pt] Searching %s for entry address %x\n", f->fjalar_name, (UInt)f->entryPC);
+  FJALAR_DPRINTF("[find_entry_point] Searching %s for entry address %x\n", f->fjalar_name, (UInt)f->entryPC);
   for(i=0 ; i <  bb_orig->stmts_used; i++) {
     IRStmt *st = bb_orig->stmts[i];
     if(st->tag == Ist_IMark) {
       FJALAR_DPRINTF("\tEncountered IMark for address %x\n", (UInt)st->Ist.IMark.addr);
       if(st->Ist.IMark.addr <= f->entryPC) {
-	entry_pt = st->Ist.IMark.addr;
+        entry_pt = st->Ist.IMark.addr;
       }
     }
   }
@@ -417,9 +394,7 @@ static void find_entry_pt(IRSB* bb_orig, FunctionEntry *f) {
 
   genputtable(funcs_handled, (void *)f, (void *)1);
 
-  genputtable(FunctionTable_by_endOfBb,
-	      (void *)entry_pt,
-	      (void *)f);
+  genputtable(FunctionTable_by_endOfBb, (void *)entry_pt, (void *)f);
 
 }
 
@@ -544,73 +519,80 @@ void enter_function(FunctionEntry* f)
       (UWord)VG_(get_xDI)(tid), (UWord)VG_(get_xSI)(tid), (UWord)VG_(get_xDX)(tid), (UWord)VG_(get_xCX)(tid));
 
   // Determine the frame pointer for this function using DWARF
-  // location lists. This is a "virtual frame pointer" in that it is
+  // location information. This may take one of two forms: a
+  // location expression or a location list. The first implies that
+  // the frame pointer is the same at any point in the function.
+  // A location list contains at series of address ranges and
+  // matching location expressions that give the value of the
+  // frame pointer for any address within the function.
+  //
+  // This is a "virtual frame pointer" in that it is
   // used by the DWARF debugging information in providing the address
   // of formal parameters and local variables, but it may or may not
   // correspond to an actual frame pointer in the architecture. For
   // example: This will not always return %xbp on x86{-64} platforms
-  // and *SHOULD*(untested) work with the -fomit-frame-pointer flag in GCC
+  // and *SHOULD*(untested) work with the -fomit-frame-pointer flag in GCC.
+  // It usually points just above the function return address.
   //
-  // It usually points just above the function return address.  The
-  // .debug_loc info tells how to find (calculate) the frame base
-  // at any point in the program.   (markro)
-  if(f->locList) {
+  // If there is no frame pointer information or if we fail to find one
+  // using the location list data, then we assume
+  // that after the function prolog, EBP will be the frame pointer.
+
+  if (f->frame_base_atom != 0) {
     Addr eip = f->entryPC;
-    location_list *ll;
     eip =  eip - f->cuBase;
-
     FJALAR_DPRINTF("\tCurrent EIP is: %x\n", (UInt)eip);
-    FJALAR_DPRINTF("\tLocation list based function(offset from base: %x). offset is %lu\n",(UInt)eip, f->locListOffset);
 
-    if (gencontains(loc_list_map, (void *)f->locListOffset)) {
-      ll = gengettable(loc_list_map, (void *)f->locListOffset);
+    if (f->frame_base_atom == DW_OP_list) {
+      location_list *ll;
 
-      // (comment added 2009)  
-      // HACK. g++ and GCC handle location lists differently. GCC puts lists offsets
-      // relative to the compilation unit, g++ uses the actual address. I'm going to
-      // compare the location list ranges both to the cu_base offset, as well as
-      // the function's entry point. This might break if there's every a case
-      // where the compilation unit offset is a valid address in the program
-      while(ll &&
-            !(((ll->begin <= eip) && (ll->end >= eip)) ||
-              ((ll->begin <= f->entryPC) && (ll->end >= f->entryPC)))) {
-        FJALAR_DPRINTF("\tExamining loc list entry: %x - %x - %x\n", (UInt)ll->offset, (UInt)ll->begin, (UInt)ll->end);
-        ll = ll->next;
-      }
+      FJALAR_DPRINTF("\tLocation list based function(offset from base: %x). offset is %ld\n", (UInt)eip, f->frame_base_offset);
 
-      if(ll) {
-        FJALAR_DPRINTF("\tFound location list entry, finding location corresponding to dwarf #: %u with offset: %lld\n", ll->atom, ll->atom_offset);
+      if (gencontains(loc_list_map, (void *)f->frame_base_offset)) {
+        ll = gengettable(loc_list_map, (void *)f->frame_base_offset);
 
-        // (comment added 2013)  
-        // It turns out it might not be just the contents of a register.  Some
-        // 32bit x86 code does some tricky stack alignment and has to save a
-        // pointer to the orginal stack frame.  This means we get passed a 
-        // DW_OP_deref instead of a DW_OP_breg.  The tricky bit is we don't
-        // want to go back to that address because it probably won't be equal
-        // to the local frame pointer due to the stack alignment.  So the HACK
-        // is to just assume the frame pointer is at EBP+8 like normal.  (markro)
-        if (ll->atom == DW_OP_deref) {
-            ll->atom = DW_OP_breg5;
-            ll->atom_offset = 8;
-        }    
-        if(get_reg[ll->atom - DW_OP_breg0]) {
-          frame_ptr = (*get_reg[ll->atom - DW_OP_breg0])(tid) + ll->atom_offset;
+        // (comment added 2009)
+        // HACK. g++ and GCC handle location lists differently. GCC puts lists offsets
+        // relative to the compilation unit, g++ uses the actual address. I'm going to
+        // compare the location list ranges both to the cu_base offset, as well as
+        // the function's entry point. This might break if there's every a case
+        // where the compilation unit offset is a valid address in the program
+        while(ll &&
+              !(((ll->begin <= eip) && (ll->end >= eip)) ||
+                ((ll->begin <= f->entryPC) && (ll->end >= f->entryPC)))) {
+          FJALAR_DPRINTF("\tExamining loc list entry: %x - %x - %x\n", (UInt)ll->offset, (UInt)ll->begin, (UInt)ll->end);
+          ll = ll->next;
+        }
+
+        if(ll) {
+          FJALAR_DPRINTF("\tFound location list entry, finding location corresponding to dwarf #: %u with offset: %lld\n", ll->atom, ll->atom_offset);
+
+          // (comment added 2013)
+          // It turns out it might not be just the contents of a register.  Some
+          // 32bit x86 code does some tricky stack alignment and has to save a
+          // pointer to the orginal stack frame.  This means we get passed a
+          // DW_OP_deref instead of a DW_OP_breg.  The tricky bit is we don't
+          // want to go back to that address because it probably won't be equal
+          // to the local frame pointer due to the stack alignment.  So the HACK
+          // is to just assume the frame pointer is at EBP+8 like normal.  (markro)
+          if (ll->atom == DW_OP_deref) {
+              ll->atom = DW_OP_breg5;
+              ll->atom_offset = 8;
+          }
+          if(get_reg[ll->atom - DW_OP_breg0]) {
+            frame_ptr = (*get_reg[ll->atom - DW_OP_breg0])(tid) + ll->atom_offset;
+          }
         }
       }
+    } else {
+      // simple location expression
+      frame_ptr = (*get_reg[f->frame_base_atom - DW_OP_reg0])(tid) + f->frame_base_offset;
     }
   }
 
-
-  // This is the old code to determine the frame. Fallback to it if we don't
-  // have a frame_base from the location_list path. This should keep GCC 3 working
-  // fine.
+  // If there is no frame pointer information or if we failed to find a frame_base using the locList data,
+  // then we fall back to use EBP.
   if(frame_ptr == 0) {
-    if (f != primed_function) {
-      printf("No location list or frame pointer giving up(Mangled name: %s)\n", f->mangled_name);
-      return;
-    }
-    primed_function = 0;
-
     if (f->entryPC != f->startPC) {
       /* Prolog has run, so just use the real %ebp */
       frame_ptr = VG_(get_FP)(VG_(get_running_tid)());
@@ -998,7 +980,7 @@ void fjalar_pre_clo_init()
 /*   VG_(memset)(FunctionExecutionStateStack, 0, */
 /* 	      FN_STACK_SIZE * sizeof(*FunctionExecutionStateStack)); */
 
-  // (comment added 2005)  
+  // (comment added 2005)
   // TODO: Do we need to clear all global variables before processing
   // command-line options?  We don't need to as long as this function
   // is only run once at the beginning of program execution.
@@ -1015,7 +997,7 @@ void fjalar_post_clo_init()
 
   // We need to turn off some VEX IR optimizations (primarily the one which
   // causes separate basic blocks to be stitched together) for the purpose of
-  // detecting entry in main. see "HANDLING FUNCTION ENTRY" in find_entry_pt()
+  // detecting entry in main. see "HANDLING FUNCTION ENTRY" in find_entry_point()
   VG_(clo_vex_control).iropt_unroll_thresh = 0;
   VG_(clo_vex_control).guest_chase_thresh = 0;
 
@@ -1149,7 +1131,6 @@ Bool fjalar_process_cmd_line_option(const HChar* arg)
   else if VG_YESNO_CLO(arg, "merge-constants", fjalar_merge_constants) {}
   else if VG_YESNO_CLO(arg, "ignore-static-vars", fjalar_ignore_static_vars) {}
   else if VG_YESNO_CLO(arg, "all-static-vars", fjalar_all_static_vars) {}
-  else if VG_YESNO_CLO(arg, "gcc3", fjalar_gcc3) {}
   else if VG_YESNO_CLO(arg, "disambig", fjalar_default_disambig) {}
   else if VG_YESNO_CLO(arg, "smart-disambig", fjalar_smart_disambig) {}
   else if VG_YESNO_CLO(arg, "output-struct-vars", fjalar_output_struct_vars) {}
