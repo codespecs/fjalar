@@ -20,8 +20,24 @@
 
 // Fjalar added some typedefs to reduce number of include files needed
 typedef int bfd_boolean;
+
+#if __WORDSIZE == 64
 typedef unsigned long int uintptr_t;
+#ifndef _BITS_STDINT_UINTN_H
 typedef unsigned long int uint64_t;
+#endif
+#else
+typedef unsigned int uintptr_t;
+#ifndef _BITS_STDINT_UINTN_H
+typedef unsigned int uint64_t;
+#endif
+#endif
+#ifndef _bfd_int64_low
+#define _bfd_int64_low(x) ((unsigned long) (((x) & 0xffffffff)))
+#endif
+#ifndef _bfd_int64_high
+#define _bfd_int64_high(x) ((unsigned long) (((x) >> 32 ) & 0xffffffff))
+#endif
 
 #include "dwarf2.h" /* for enum dwarf_unit_type */
 
