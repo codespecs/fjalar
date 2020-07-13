@@ -1358,10 +1358,12 @@ dump_relocations (Filedata *          filedata,
 	  FJALAR_DPRINTF (do_wide
 		  ? "%8.8lx%8.8lx  %8.8lx%8.8lx "
 		  : "%4.4lx%8.8lx  %4.4lx%8.8lx ",
-		  _bfd_int64_high (offset),
-		  _bfd_int64_low (offset),
-		  _bfd_int64_high (inf),
-		  _bfd_int64_low (inf));
+		  (unsigned long) (offset>>32) & 0xffffffff,
+		  (unsigned long) offset & 0xffffffff,
+		  (unsigned long) (inf>>32) & 0xffffffff,
+		  (unsigned long) inf & 0xffffffff);
+
+
 #endif
 	}
 

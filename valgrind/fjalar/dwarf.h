@@ -18,10 +18,8 @@
    Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston,
    MA 02110-1301, USA.  */
 
-// Fjalar added some typedefs to reduce number of include files needed
+// Fjalar add a typedef to reduce number of include files needed
 typedef int bfd_boolean;
-typedef unsigned long int uintptr_t;
-typedef unsigned long int uint64_t;
 
 #include "dwarf2.h" /* for enum dwarf_unit_type */
 
