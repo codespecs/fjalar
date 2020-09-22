@@ -616,10 +616,12 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_Mul16:                       // unused
    case Iop_Mul32: 
    case Iop_Mul64:                       // only used by mips ppc arm64 
+   case Iop_Or1:
    case Iop_Or8:  
    case Iop_Or16:  
    case Iop_Or32:  
    case Iop_Or64:
+   case Iop_And1:
    case Iop_And8: 
    case Iop_And16: 
    case Iop_And32: 
@@ -1796,6 +1798,7 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
    // Iop_Left64:                      // unused
    // Iop_Left8:                       // unused
    // Iop_Log2_32Fx4:                  // used only by mips
+   // Iop_Exp2_32Fx4:                  // ??????
    // Iop_Log2_64Fx2:                  // used only by mips
    // Iop_MulHi8Sx16:                  // used only by s390
    // Iop_MulHi8Ux16:                  // used only by s390

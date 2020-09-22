@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 
@@ -156,6 +154,35 @@
  *   register" (i.e, the part on the left side).
  *
  */
+
+/* Notes on handling subnormal results:
+ *
+ * The various vector floating point instructions:
+ *    vmaddfp, vaddfp, vsubfp, vmaxfp, vminfp, vrefp, vexptefp,
+ *    vlogefp, vcmpeqfp, vcmpgefp, vcmpgtfp, vcmpbfp, vrfin, vrfiz,
+ *     vrfip, vrfim
+ * generate subnormal results that are controled by the VSCR[NJ] bit setting.
+ *
+ * The following describes how the host and guest is setup so that the function
+ * dnorm_adj_Vector() can properly handle the results of the Iops in the guest
+ * state.
+ *
+ *   At startup, on all host variants, we set VSCR[NJ].host = 0 (don't flush to
+ *   zero).  It stays at 0 permanently.
+ *
+ *   At startup, we set VSCR[NJ].guest = (if BE then 1 else 0)
+ *
+ *   When running, guest insns can set/clear/query VSCR[NJ].guest as they
+ *   like.
+ *
+ *   When running, any (guest) insn whose result depends on VSCR[NJ] will query
+ *   VSCR[NJ].guest and the results will be truncated accordingly, by
+ *   dnorm_adj_Vector().  Because VSCR[NJ].host is always 0, we will always
+ *   be able to provide correct guest results for either value of
+ *   VSCR[NJ].guest.
+ */
+
+
 /* Translates PPC32/64 code to IR. */
 
 /* References
@@ -469,23 +496,6 @@ typedef enum {
 #define MASK_FPSCR_C_FPCC 0x1F000ULL     // Floating-Point Condition code FPCC
 
 #define MASK_VSCR_VALID 0x00010001
-
-
-/*------------------------------------------------------------*/
-/*---  FP Helpers                                          ---*/
-/*------------------------------------------------------------*/
-
-/* Produce the 32-bit pattern corresponding to the supplied
-   float. */
-static UInt float_to_bits ( Float f )
-{
-   union { UInt i; Float f; } u;
-   vassert(4 == sizeof(UInt));
-   vassert(4 == sizeof(Float));
-   vassert(4 == sizeof(u));
-   u.f = f;
-   return u.i;
-}
 
 
 /*------------------------------------------------------------*/
@@ -3668,6 +3678,7 @@ static IRExpr * fp_exp_part( IRType size, IRTemp src )
 #define I32_EXP_MASK       0x7F800000
 #define I32_FRACTION_MASK  0x007FFFFF
 #define I32_MSB_FRACTION_MASK  0x00400000
+#define I32_SIGN_MASK      0x80000000
 #define I64_EXP_MASK       0x7FF0000000000000ULL
 #define I64_FRACTION_MASK  0x000FFFFFFFFFFFFFULL
 #define I64_MSB_FRACTION_MASK  0x0008000000000000ULL
@@ -3945,6 +3956,117 @@ static IRExpr * is_Denorm( IRType size, IRTemp src )
    return  mkAND1( zero_exp, not_zero_frac );
 }
 
+static IRExpr * is_Zero_Vector( IRType element_size, IRExpr *src )
+{
+/* Check elements of a 128-bit floating point vector, with element size
+   element_size, are zero.  Return 1's in the elements of the vector
+   which are values. */
+   IRTemp exp_maskV128 = newTemp( Ity_V128 );
+   IRTemp exp_zeroV128 = newTemp( Ity_V128 );
+   IRTemp frac_maskV128 = newTemp( Ity_V128 );
+   IRTemp frac_zeroV128 = newTemp( Ity_V128 );
+   IRTemp zeroV128 = newTemp( Ity_V128 );
+
+   assign( zeroV128, mkV128( 0 ) );
+
+   if ( element_size == Ity_I32 ) {
+      assign( exp_maskV128, unop( Iop_Dup32x4, mkU32( I32_EXP_MASK ) ) );
+      assign( frac_maskV128, unop( Iop_Dup32x4, mkU32( I32_FRACTION_MASK ) ) );
+
+   } else
+      vex_printf("ERROR, is_Zero_Vector:  Unknown input size\n");
+
+   /* CmpEQ32x4 returns all 1's in elements where comparison is true */
+   assign( exp_zeroV128,
+           binop( Iop_CmpEQ32x4,
+                  binop( Iop_AndV128,
+                         mkexpr( exp_maskV128 ), src ),
+                  mkexpr( zeroV128 ) ) );
+
+   assign( frac_zeroV128,
+           binop( Iop_CmpEQ32x4,
+                  binop( Iop_AndV128,
+                         mkexpr( frac_maskV128 ), src ),
+                  mkexpr( zeroV128 ) ) );
+
+   return binop( Iop_AndV128, mkexpr( exp_zeroV128 ),
+                 mkexpr( frac_zeroV128 ) );
+}
+
+static IRExpr * is_Denorm_Vector( IRType element_size, IRExpr *src )
+{
+/* Check elements of a 128-bit floating point vector, with element size
+   element_size, are Denorm.  Return 1's in the elements of the vector
+   which are denormalized values. */
+   IRTemp exp_maskV128 = newTemp( Ity_V128 );
+   IRTemp exp_zeroV128 = newTemp( Ity_V128 );
+   IRTemp frac_maskV128 = newTemp( Ity_V128 );
+   IRTemp frac_nonzeroV128 = newTemp( Ity_V128 );
+   IRTemp zeroV128 = newTemp( Ity_V128 );
+
+   assign( zeroV128, mkV128(0 ) );
+
+   if ( element_size == Ity_I32 ) {
+      assign( exp_maskV128, unop( Iop_Dup32x4, mkU32( I32_EXP_MASK ) ) );
+      assign( frac_maskV128, unop( Iop_Dup32x4, mkU32( I32_FRACTION_MASK ) ) );
+
+   } else
+      vex_printf("ERROR, is_Denorm_Vector:  Unknown input size\n");
+
+   /* CmpEQ32x4 returns all 1's in elements where comparison is true */
+   assign( exp_zeroV128,
+           binop( Iop_CmpEQ32x4,
+                  binop( Iop_AndV128,
+                         mkexpr( exp_maskV128 ), src ),
+                  mkexpr( zeroV128 ) ) );
+
+   assign( frac_nonzeroV128,
+           unop( Iop_NotV128,
+                 binop( Iop_CmpEQ32x4,
+                        binop( Iop_AndV128,
+                               mkexpr( frac_maskV128 ), src ),
+                        mkexpr( zeroV128 ) ) ) );
+
+   return binop( Iop_AndV128, mkexpr( exp_zeroV128 ),
+                 mkexpr( frac_nonzeroV128 ) );
+}
+
+static IRExpr * is_NaN_Vector( IRType element_size, IRExpr *src )
+{
+   IRTemp max_expV128 = newTemp( Ity_V128 );
+   IRTemp not_zero_fracV128 = newTemp( Ity_V128 );
+   IRTemp zeroV128  = newTemp( Ity_V128 );
+   IRTemp exp_maskV128 = newTemp( Ity_V128 );
+   IRTemp frac_maskV128 = newTemp( Ity_V128 );
+   IROp   opCmpEQ;
+
+   assign( zeroV128, mkV128( 0 ) );
+
+   if ( element_size == Ity_I32 ) {
+      assign( exp_maskV128, unop( Iop_Dup32x4, mkU32( I32_EXP_MASK ) ) );
+      assign( frac_maskV128, unop( Iop_Dup32x4, mkU32( I32_FRACTION_MASK ) ) );
+      opCmpEQ = Iop_CmpEQ32x4;
+
+   } else
+      vex_printf("ERROR, is_NaN_Vector:  Unknown input size\n");
+
+   /* check exponent is all ones, i.e. (exp AND exp_mask) = exp_mask */
+   assign( max_expV128,
+           binop( opCmpEQ,
+                  binop( Iop_AndV128, src, mkexpr( exp_maskV128 ) ),
+                  mkexpr( exp_maskV128 ) ) );
+
+   /* check fractional part is not zero */
+   assign( not_zero_fracV128,
+           unop( Iop_NotV128,
+           binop( opCmpEQ,
+                        binop( Iop_AndV128, src, mkexpr( frac_maskV128 ) ),
+                        mkexpr( zeroV128 ) ) ) );
+
+   return  binop( Iop_AndV128, mkexpr( max_expV128 ),
+                  mkexpr( not_zero_fracV128 ) );
+}
+
 #if 0
 /* Normalized number has exponent between 1 and max_exp -1, or in other words
    the exponent is not zero and not equal to the max exponent value. */
@@ -4171,6 +4293,31 @@ static IRTemp getNegatedResult_32(IRTemp intermediateResult)
                          mkU8( 31 ) ) ) );
 
    return negatedResult;
+}
+
+static IRExpr* negate_Vector ( IRType element_size, IRExpr* value )
+{
+   /* This function takes a vector of floats.  If the value is
+      not a NaN, the value is negated.  */
+
+   IRTemp not_nan_mask = newTemp( Ity_V128 );
+   IRTemp sign_maskV128 = newTemp( Ity_V128 );
+
+   if ( element_size == Ity_I32 ) {
+      assign( sign_maskV128, unop( Iop_Dup32x4, mkU32( I32_SIGN_MASK ) ) );
+
+   } else
+      vex_printf("ERROR, negate_Vector:  Unknown input size\n");
+
+   /* Determine if vector elementes are not a NaN, negate sign bit
+      for non NaN elements */
+   assign ( not_nan_mask,
+            unop( Iop_NotV128, is_NaN_Vector( element_size, value ) ) );
+
+   return binop( Iop_XorV128,
+                 binop( Iop_AndV128,
+                        mkexpr( sign_maskV128 ), mkexpr( not_nan_mask ) ),
+                 value );
 }
 
 /* This function takes two quad_precision floating point numbers of type
@@ -4806,6 +4953,106 @@ static IRExpr * UNSIGNED_CMP_GT_V128 ( IRExpr *vA, IRExpr *vB ) {
                          mkOR1( mkAND1( eq_word3_2, gt_word1 ),
                                 mkAND1( eq_word3_2_1, gt_word0 ) ) ) );
    return mkexpr( result );
+}
+
+/*------------------------------------------------------------*/
+/*---  FP Helpers                                          ---*/
+/*------------------------------------------------------------*/
+
+/* Produce the 32-bit pattern corresponding to the supplied
+   float. */
+static UInt float_to_bits ( Float f )
+{
+   union { UInt i; Float f; } u;
+   vassert(4 == sizeof(UInt));
+   vassert(4 == sizeof(Float));
+   vassert(4 == sizeof(u));
+   u.f = f;
+   return u.i;
+}
+
+static IRExpr* dnorm_adj_Vector ( IRExpr* src )
+{
+   /* This function takes a vector of 32-bit floats.  It does the required
+      adjustment on denormalized values based on the setting of the
+      VSCR[NJ] bit.
+
+      The VSCR[NJ] bit controlls how subnormal (denormalized) results for
+      vector floating point operations are handled. VSCR[NJ] is bit 17
+      (bit 111 IBM numbering).
+
+      VSCR[NJ] = 0  Denormalized values are handled as
+                    specified by Java and the IEEE standard.
+
+      VSCR[NJ] = 1  If an element in a source VR contains a denormalized
+                    value, the value 0 is used instead. If an instruction
+                    causes an Underflow Exception, the corresponding element
+                    in the target VR is set to 0.  In both cases the 0 has
+                    the same sign as the denormalized or underflowing value.
+                    Convert negative zero to positive zero.
+
+      The ABI for LE requires VSCR[NJ] = 0.  For BE mode, VSCR[NJ] = 1 by
+      default.  The PPC guest state is initialized to match the HW setup.
+   */
+   IRTemp sign_bit_maskV128 = newTemp( Ity_V128 );
+   IRTemp ones_maskV128 = newTemp( Ity_V128 );
+   IRTemp clear_dnorm_maskV128 = newTemp( Ity_V128 );
+   IRTemp adj_valueV128 = newTemp( Ity_V128 );
+   IRTemp dnormV128 = newTemp( Ity_V128 );
+   IRTemp zeroV128  = newTemp( Ity_V128 );
+   IRTemp VSCR_NJ = newTemp( Ity_I64 );
+   IRTemp VSCR_NJ_mask = newTemp( Ity_V128 );
+   IRTemp resultV128 = newTemp( Ity_V128 );
+
+   /* get the VSCR[NJ] bit */
+   assign( VSCR_NJ,
+           unop( Iop_1Sto64,
+                 unop( Iop_32to1,
+                       binop( Iop_Shr32,
+                              getGST( PPC_GST_VSCR ),
+                              mkU8( 16 ) ) ) ) );
+
+   assign ( VSCR_NJ_mask, binop( Iop_64HLtoV128,
+                                 mkexpr( VSCR_NJ ) ,
+                                 mkexpr( VSCR_NJ ) ) );
+
+   /* Create the masks to do the rounding of dnorm values and absolute
+      value of zero. */
+   assign( dnormV128, is_Denorm_Vector( Ity_I32, src ) );
+   assign( zeroV128, is_Zero_Vector( Ity_I32, src ) );
+
+   /* If the value is dnorm, then we need to clear the significand and
+      exponent but leave the sign bit. Put 1'x in elements that are not
+      denormalized values.  */
+   assign( sign_bit_maskV128, unop( Iop_Dup32x4, mkU32( 0x80000000 ) ) );
+
+   assign( clear_dnorm_maskV128,
+           binop( Iop_OrV128,
+                  binop( Iop_AndV128,
+                         mkexpr( dnormV128 ),
+                         mkexpr( sign_bit_maskV128 ) ),
+                  unop( Iop_NotV128, mkexpr( dnormV128 ) ) ) );
+
+   assign( ones_maskV128, mkV128( 0xFFFF ) );
+
+   assign( adj_valueV128, binop( Iop_AndV128,
+                                 mkexpr( clear_dnorm_maskV128 ),
+                                 binop( Iop_AndV128,
+                                        src,
+                                        mkexpr( ones_maskV128 ) ) ) );
+
+   /* If the VSCR[NJ] bit is 1, then clear the denormalized values,
+      otherwise just return the input unchanged.  */
+   assign( resultV128,
+           binop( Iop_OrV128,
+                  binop( Iop_AndV128,
+                         mkexpr( VSCR_NJ_mask ),
+                         mkexpr( adj_valueV128 ) ),
+                  binop( Iop_AndV128,
+                         unop( Iop_NotV128, mkexpr( VSCR_NJ_mask ) ),
+                         src ) ) );
+
+   return mkexpr(resultV128);
 }
 
 /*------------------------------------------------------------*/
@@ -7941,9 +8188,7 @@ static IRExpr* /* :: Ity_I32 */ branch_cond_ok( UInt BO, UInt BI )
 */
 static Bool dis_branch ( UInt theInstr, 
                          const VexAbiInfo* vbi,
-                         /*OUT*/DisResult* dres,
-                         Bool (*resteerOkFn)(void*,Addr),
-                         void* callback_opaque )
+                         /*OUT*/DisResult* dres )
 {
    UChar opc1    = ifieldOPC(theInstr);
    UChar BO      = ifieldRegDS(theInstr);
@@ -8003,13 +8248,8 @@ static Bool dis_branch ( UInt theInstr,
          }
       }
 
-      if (resteerOkFn( callback_opaque, tgt )) {
-         dres->whatNext   = Dis_ResteerU;
-         dres->continueAt = tgt;
-      } else {
-         dres->jk_StopHere = flag_LK ? Ijk_Call : Ijk_Boring; ;
-         putGST( PPC_GST_CIA, mkSzImm(ty, tgt) );
-      }
+      dres->jk_StopHere = flag_LK ? Ijk_Call : Ijk_Boring; ;
+      putGST( PPC_GST_CIA, mkSzImm(ty, tgt) );
       break;
       
    case 0x10: // bc    (Branch Conditional, PPC32 p361)
@@ -8537,7 +8777,7 @@ static Bool dis_memsync ( UInt theInstr )
    /* X-Form, XL-Form */
    UChar opc1    = ifieldOPC(theInstr);
    UInt  b11to25 = IFIELD(theInstr, 11, 15);
-   UChar flag_L  = ifieldRegDS(theInstr);
+   UChar flag_L  = IFIELD(theInstr, 21, 2);   //ISA 3.0
    UInt  b11to20 = IFIELD(theInstr, 11, 10);
    UInt  M0      = IFIELD(theInstr, 11, 5);
    UChar rD_addr = ifieldRegDS(theInstr);
@@ -27366,22 +27606,33 @@ static Bool dis_av_fp_arith ( UInt theInstr )
       DIP("vmaddfp v%d,v%d,v%d,v%d\n",
           vD_addr, vA_addr, vC_addr, vB_addr);
       putVReg( vD_addr,
-               triop(Iop_Add32Fx4, mkU32(Irrm_NEAREST),
-                     mkexpr(vB),
-                     triop(Iop_Mul32Fx4, mkU32(Irrm_NEAREST),
-                           mkexpr(vA), mkexpr(vC))) );
+               dnorm_adj_Vector(
+                  triop( Iop_Add32Fx4,
+                         mkU32( Irrm_NEAREST ),
+                         dnorm_adj_Vector( mkexpr( vB ) ),
+                         dnorm_adj_Vector( triop( Iop_Mul32Fx4,
+                                                  mkU32( Irrm_NEAREST ),
+                                                  dnorm_adj_Vector( mkexpr( vA ) ),
+                                                  dnorm_adj_Vector( mkexpr( vC ) ) )
+                            ) ) ) );
       return True;
 
    case 0x2F: { // vnmsubfp (Negative Multiply-Subtract FP, AV p215)
       DIP("vnmsubfp v%d,v%d,v%d,v%d\n",
           vD_addr, vA_addr, vC_addr, vB_addr);
       putVReg( vD_addr,
-               triop(Iop_Sub32Fx4, mkU32(Irrm_NEAREST),
-                     mkexpr(vB),
-                     triop(Iop_Mul32Fx4, mkU32(Irrm_NEAREST),
-                           mkexpr(vA), mkexpr(vC))) );
-      return True;
-   }
+               negate_Vector( Ity_I32,
+                  dnorm_adj_Vector(
+                     triop( Iop_Sub32Fx4,
+                            mkU32( Irrm_NEAREST ),
+                            dnorm_adj_Vector(
+                               triop( Iop_Mul32Fx4,
+                                      mkU32( Irrm_NEAREST ),
+                                      dnorm_adj_Vector( mkexpr( vA ) ),
+                                      dnorm_adj_Vector( mkexpr( vC ) ) ) ),
+                            dnorm_adj_Vector( mkexpr( vB ) ) ) ) ) );
+       return True;
+    }
 
    default:
      break; // Fall through...
@@ -27391,24 +27642,32 @@ static Bool dis_av_fp_arith ( UInt theInstr )
    switch (opc2) {
    case 0x00A: // vaddfp (Add FP, AV p137)
       DIP("vaddfp v%d,v%d,v%d\n", vD_addr, vA_addr, vB_addr);
-      putVReg( vD_addr, triop(Iop_Add32Fx4,
-                              mkU32(Irrm_NEAREST), mkexpr(vA), mkexpr(vB)) );
+      putVReg( vD_addr,
+               dnorm_adj_Vector( triop( Iop_Add32Fx4, mkU32( Irrm_NEAREST ),
+                                        dnorm_adj_Vector( mkexpr( vA ) ),
+                                        dnorm_adj_Vector( mkexpr( vB ) ) ) ) );
       return True;
 
   case 0x04A: // vsubfp (Subtract FP, AV p261)
       DIP("vsubfp v%d,v%d,v%d\n", vD_addr, vA_addr, vB_addr);
-      putVReg( vD_addr, triop(Iop_Sub32Fx4,
-                              mkU32(Irrm_NEAREST), mkexpr(vA), mkexpr(vB)) );
+      putVReg( vD_addr,
+               dnorm_adj_Vector( triop( Iop_Sub32Fx4, mkU32( Irrm_NEAREST ),
+                                        dnorm_adj_Vector( mkexpr( vA ) ),
+                                        dnorm_adj_Vector( mkexpr( vB ) ) ) ) );
       return True;
 
    case 0x40A: // vmaxfp (Maximum FP, AV p178)
       DIP("vmaxfp v%d,v%d,v%d\n", vD_addr, vA_addr, vB_addr);
-      putVReg( vD_addr, binop(Iop_Max32Fx4, mkexpr(vA), mkexpr(vB)) );
+      putVReg( vD_addr,
+               dnorm_adj_Vector( binop( Iop_Max32Fx4,
+                                        mkexpr( vA ), mkexpr( vB ) ) ) );
       return True;
 
    case 0x44A: // vminfp (Minimum FP, AV p187)
       DIP("vminfp v%d,v%d,v%d\n", vD_addr, vA_addr, vB_addr);
-      putVReg( vD_addr, binop(Iop_Min32Fx4, mkexpr(vA), mkexpr(vB)) );
+      putVReg( vD_addr,
+               dnorm_adj_Vector( binop( Iop_Min32Fx4,
+                                    mkexpr( vA ), mkexpr( vB ) ) ) );
       return True;
 
    default:
@@ -27424,23 +27683,33 @@ static Bool dis_av_fp_arith ( UInt theInstr )
    switch (opc2) {
    case 0x10A: // vrefp (Reciprocal Esimate FP, AV p228)
       DIP("vrefp v%d,v%d\n", vD_addr, vB_addr);
-      putVReg( vD_addr, unop(Iop_RecipEst32Fx4, mkexpr(vB)) );
+      putVReg( vD_addr, dnorm_adj_Vector( unop( Iop_RecipEst32Fx4,
+                                            dnorm_adj_Vector( mkexpr( vB ) ) ) ) );
       return True;
 
    case 0x14A: // vrsqrtefp (Reciprocal Sqrt Estimate FP, AV p237)
       DIP("vrsqrtefp v%d,v%d\n", vD_addr, vB_addr);
-      putVReg( vD_addr, unop(Iop_RSqrtEst32Fx4, mkexpr(vB)) );
+      putVReg( vD_addr, dnorm_adj_Vector( unop( Iop_RSqrtEst32Fx4,
+                                            dnorm_adj_Vector( mkexpr( vB ) ) ) ) );
       return True;
 
    case 0x18A: // vexptefp (2 Raised to the Exp Est FP, AV p173)
       DIP("vexptefp v%d,v%d\n", vD_addr, vB_addr);
-      DIP(" => not implemented\n");
-      return False;
+      /* NOTE, need to address dnormalized value handling when this is
+         implemented.  */
+      putVReg( vD_addr,
+               dnorm_adj_Vector( unop( Iop_Exp2_32Fx4,
+                                       dnorm_adj_Vector( mkexpr( vB ) ) ) ) );
+      return True;
 
    case 0x1CA: // vlogefp (Log2 Estimate FP, AV p175)
       DIP("vlogefp v%d,v%d\n", vD_addr, vB_addr);
-      DIP(" => not implemented\n");
-      return False;
+      /* NOTE, need to address dnormalized value handling when this is
+         implemented.  */
+      putVReg( vD_addr,
+               dnorm_adj_Vector( unop( Iop_Log2_32Fx4,
+                                       dnorm_adj_Vector( mkexpr( vB ) ) ) ) );
+      return True;
 
    default:
       vex_printf("dis_av_fp_arith(ppc)(opc2=0x%x)\n",opc2);
@@ -27479,25 +27748,34 @@ static Bool dis_av_fp_cmp ( UInt theInstr )
    case 0x0C6: // vcmpeqfp (Compare Equal-to FP, AV p159)
       DIP("vcmpeqfp%s v%d,v%d,v%d\n", (flag_rC ? ".":""),
                                       vD_addr, vA_addr, vB_addr);
-      assign( vD, binop(Iop_CmpEQ32Fx4, mkexpr(vA), mkexpr(vB)) );
+      assign( vD, binop( Iop_CmpEQ32Fx4,
+                         dnorm_adj_Vector( mkexpr( vA ) ),
+                         dnorm_adj_Vector( mkexpr( vB ) ) ) );
       break;
 
    case 0x1C6: // vcmpgefp (Compare Greater-than-or-Equal-to, AV p163)
       DIP("vcmpgefp%s v%d,v%d,v%d\n", (flag_rC ? ".":""),
                                       vD_addr, vA_addr, vB_addr);
-      assign( vD, binop(Iop_CmpGE32Fx4, mkexpr(vA), mkexpr(vB)) );
+      assign( vD, binop( Iop_CmpGE32Fx4,
+                         dnorm_adj_Vector( mkexpr( vA ) ),
+                         dnorm_adj_Vector( mkexpr( vB ) ) ) );
       break;
 
    case 0x2C6: // vcmpgtfp (Compare Greater-than FP, AV p164)
       DIP("vcmpgtfp%s v%d,v%d,v%d\n", (flag_rC ? ".":""),
                                       vD_addr, vA_addr, vB_addr);
-      assign( vD, binop(Iop_CmpGT32Fx4, mkexpr(vA), mkexpr(vB)) );
+      assign( vD, binop( Iop_CmpGT32Fx4,
+                         dnorm_adj_Vector( mkexpr( vA ) ),
+                         dnorm_adj_Vector( mkexpr( vB ) ) ) );
       break;
 
    case 0x3C6: { // vcmpbfp (Compare Bounds FP, AV p157)
       IRTemp gt      = newTemp(Ity_V128);
       IRTemp lt      = newTemp(Ity_V128);
       IRTemp zeros   = newTemp(Ity_V128);
+      IRTemp srcA    = newTemp(Ity_V128);
+      IRTemp srcB    = newTemp(Ity_V128);
+
       DIP("vcmpbfp%s v%d,v%d,v%d\n", (flag_rC ? ".":""),
                                      vD_addr, vA_addr, vB_addr);
       cmp_bounds = True;
@@ -27511,13 +27789,17 @@ static Bool dis_av_fp_cmp ( UInt theInstr )
          need this for the other compares too (vcmpeqfp etc)...
          Better still, tighten down the spec for compare irops.
        */
-      assign( gt, unop(Iop_NotV128,
-                       binop(Iop_CmpLE32Fx4, mkexpr(vA), mkexpr(vB))) );
-      assign( lt, unop(Iop_NotV128,
-                       binop(Iop_CmpGE32Fx4, mkexpr(vA),
-                             triop(Iop_Sub32Fx4, mkU32(Irrm_NEAREST),
-                                   mkexpr(zeros),
-                                   mkexpr(vB)))) );
+      assign ( srcA, dnorm_adj_Vector( mkexpr( vA ) ) );
+      assign ( srcB, dnorm_adj_Vector( mkexpr( vB ) ) );
+
+      assign( gt, unop( Iop_NotV128,
+                        binop( Iop_CmpLE32Fx4, mkexpr( srcA ),
+                               mkexpr( srcB ) ) ) );
+      assign( lt, unop( Iop_NotV128,
+                        binop( Iop_CmpGE32Fx4, mkexpr( srcA ),
+                               triop( Iop_Sub32Fx4, mkU32( Irrm_NEAREST ),
+                                      mkexpr( zeros ),
+                                      mkexpr( srcB ) ) ) ) );
 
       // finally, just shift gt,lt to correct position
       assign( vD, binop(Iop_ShlN32x4,
@@ -27619,22 +27901,26 @@ static Bool dis_av_fp_convert ( UInt theInstr )
    switch (opc2) {
    case 0x20A: // vrfin (Round to FP Integer Nearest, AV p231)
       DIP("vrfin v%d,v%d\n", vD_addr, vB_addr);
-      putVReg( vD_addr, unop(Iop_RoundF32x4_RN, mkexpr(vB)) );
+      putVReg( vD_addr, unop(Iop_RoundF32x4_RN,
+                             dnorm_adj_Vector( mkexpr( vB ) ) ) );
       break;
 
    case 0x24A: // vrfiz (Round to FP Integer toward zero, AV p233)
       DIP("vrfiz v%d,v%d\n", vD_addr, vB_addr);
-      putVReg( vD_addr, unop(Iop_RoundF32x4_RZ, mkexpr(vB)) );
+      putVReg( vD_addr, unop(Iop_RoundF32x4_RZ,
+                             dnorm_adj_Vector( mkexpr( vB ) ) ) );
       break;
 
    case 0x28A: // vrfip (Round to FP Integer toward +inf, AV p232)
       DIP("vrfip v%d,v%d\n", vD_addr, vB_addr);
-      putVReg( vD_addr, unop(Iop_RoundF32x4_RP, mkexpr(vB)) );
+      putVReg( vD_addr, unop(Iop_RoundF32x4_RP,
+                             dnorm_adj_Vector( mkexpr( vB ) ) ) );
       break;
 
    case 0x2CA: // vrfim (Round to FP Integer toward -inf, AV p230)
       DIP("vrfim v%d,v%d\n", vD_addr, vB_addr);
-      putVReg( vD_addr, unop(Iop_RoundF32x4_RM, mkexpr(vB)) );
+      putVReg( vD_addr, unop(Iop_RoundF32x4_RM,
+                             dnorm_adj_Vector( mkexpr(vB ) ) ) );
       break;
 
    default:
@@ -27646,9 +27932,7 @@ static Bool dis_av_fp_convert ( UInt theInstr )
 
 static Bool dis_transactional_memory ( UInt theInstr, UInt nextInstr,
                                        const VexAbiInfo* vbi,
-                                       /*OUT*/DisResult* dres,
-                                       Bool (*resteerOkFn)(void*,Addr),
-                                       void* callback_opaque )
+                                       /*OUT*/DisResult* dres )
 {
    UInt   opc2      = IFIELD( theInstr, 1, 10 );
 
@@ -28126,9 +28410,6 @@ static UInt get_VSX60_opc2(UInt opc2_full, UInt theInstr)
 
 static   
 DisResult disInstr_PPC_WRK ( 
-             Bool         (*resteerOkFn) ( /*opaque*/void*, Addr ),
-             Bool         resteerCisOk,
-             void*        callback_opaque,
              Long         delta64,
              const VexArchInfo* archinfo,
              const VexAbiInfo*  abiinfo,
@@ -28181,7 +28462,6 @@ DisResult disInstr_PPC_WRK (
    /* Set result defaults. */
    dres.whatNext    = Dis_Continue;
    dres.len         = 0;
-   dres.continueAt  = 0;
    dres.jk_StopHere = Ijk_INVALID;
    dres.hint        = Dis_HintNone;
 
@@ -28369,8 +28649,7 @@ DisResult disInstr_PPC_WRK (
 
    /* Branch Instructions */
    case 0x12: case 0x10: // b, bc
-      if (dis_branch(theInstr, abiinfo, &dres, 
-                               resteerOkFn, callback_opaque)) 
+      if (dis_branch(theInstr, abiinfo, &dres)) 
          goto decode_success;
       goto decode_failure;
 
@@ -29025,8 +29304,7 @@ DisResult disInstr_PPC_WRK (
          
       /* Branch Instructions */
       case 0x210: case 0x010: // bcctr, bclr
-         if (dis_branch(theInstr, abiinfo, &dres, 
-                                  resteerOkFn, callback_opaque)) 
+         if (dis_branch(theInstr, abiinfo, &dres)) 
             goto decode_success;
          goto decode_failure;
          
@@ -29127,8 +29405,7 @@ DisResult disInstr_PPC_WRK (
       case 0x38E: case 0x3AE: case 0x3EE: // tabort., treclaim., trechkpt.
       if (dis_transactional_memory( theInstr,
                                     getUIntPPCendianly( &guest_code[delta + 4]),
-                                    abiinfo, &dres,
-                                    resteerOkFn, callback_opaque))
+                                    abiinfo, &dres))
             goto decode_success;
          goto decode_failure;
 
@@ -29844,7 +30121,6 @@ DisResult disInstr_PPC_WRK (
    dres.len         = 0;
    dres.whatNext    = Dis_StopHere;
    dres.jk_StopHere = Ijk_NoDecode;
-   dres.continueAt  = 0;
    return dres;
    } /* switch (opc) for the main (primary) opcode switch. */
 
@@ -29853,10 +30129,6 @@ DisResult disInstr_PPC_WRK (
    switch (dres.whatNext) {
       case Dis_Continue:
          putGST( PPC_GST_CIA, mkSzImm(ty, guest_CIA_curr_instr + 4));
-         break;
-      case Dis_ResteerU:
-      case Dis_ResteerC:
-         putGST( PPC_GST_CIA, mkSzImm(ty, dres.continueAt));
          break;
       case Dis_StopHere:
          break;
@@ -29885,9 +30157,6 @@ DisResult disInstr_PPC_WRK (
    is located in host memory at &guest_code[delta]. */
 
 DisResult disInstr_PPC ( IRSB*        irsb_IN,
-                         Bool         (*resteerOkFn) ( void*, Addr ),
-                         Bool         resteerCisOk,
-                         void*        callback_opaque,
                          const UChar* guest_code_IN,
                          Long         delta,
                          Addr         guest_IP,
@@ -29912,7 +30181,6 @@ DisResult disInstr_PPC ( IRSB*        irsb_IN,
       dres.len         = 0;
       dres.whatNext    = Dis_StopHere;
       dres.jk_StopHere = Ijk_NoDecode;
-      dres.continueAt   = 0;
       dres.hint        = Dis_HintNone;
       return dres;
    }
@@ -29940,8 +30208,7 @@ DisResult disInstr_PPC ( IRSB*        irsb_IN,
    guest_CIA_curr_instr = mkSzAddr(ty, guest_IP);
    guest_CIA_bbstart    = mkSzAddr(ty, guest_IP - delta);
 
-   dres = disInstr_PPC_WRK ( resteerOkFn, resteerCisOk, callback_opaque,
-                             delta, archinfo, abiinfo, sigill_diag_IN);
+   dres = disInstr_PPC_WRK ( delta, archinfo, abiinfo, sigill_diag_IN );
 
    return dres;
 }

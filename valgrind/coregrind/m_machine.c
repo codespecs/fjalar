@@ -20,9 +20,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -304,7 +302,7 @@ void VG_(get_UnwindStartRegs) ( /*OUT*/UnwindStartRegs* regs,
       = VG_(threads)[tid].arch.vex.guest_v6.w64[0];
    regs->misc.S390X.r_f7
       = VG_(threads)[tid].arch.vex.guest_v7.w64[0];
-#  elif defined(VGA_mips32)
+#  elif defined(VGA_mips32) || defined(VGP_nanomips_linux)
    regs->r_pc = VG_(threads)[tid].arch.vex.guest_PC;
    regs->r_sp = VG_(threads)[tid].arch.vex.guest_r29;
    regs->misc.MIPS32.r30
@@ -474,7 +472,7 @@ static void apply_to_GPs_of_tid(ThreadId tid, void (*f)(ThreadId,
    (*f)(tid, "r13", vex->guest_r13);
    (*f)(tid, "r14", vex->guest_r14);
    (*f)(tid, "r15", vex->guest_r15);
-#elif defined(VGA_mips32) || defined(VGA_mips64)
+#elif defined(VGA_mips32) || defined(VGA_mips64) || defined(VGP_nanomips_linux)
    (*f)(tid, "r0" , vex->guest_r0 );
    (*f)(tid, "r1" , vex->guest_r1 );
    (*f)(tid, "r2" , vex->guest_r2 );
@@ -648,7 +646,8 @@ Int VG_(machine_arm_archlevel) = 4;
 /* For hwcaps detection on ppc32/64, s390x, and arm we'll need to do SIGILL
    testing, so we need a VG_MINIMAL_JMP_BUF. */
 #if defined(VGA_ppc32) || defined(VGA_ppc64be) || defined(VGA_ppc64le) \
-    || defined(VGA_arm) || defined(VGA_s390x) || defined(VGA_mips32) || defined(VGA_mips64)
+    || defined(VGA_arm) || defined(VGA_s390x) || defined(VGA_mips32) \
+    || defined(VGA_mips64)
 #include "pub_core_libcsetjmp.h"
 static VG_MINIMAL_JMP_BUF(env_unsup_insn);
 static void handler_unsup_insn ( Int x ) {
@@ -749,6 +748,10 @@ static UInt VG_(get_machine_model)(void)
       { "2828", VEX_S390X_MODEL_ZBC12 },
       { "2964", VEX_S390X_MODEL_Z13 },
       { "2965", VEX_S390X_MODEL_Z13S },
+      { "3906", VEX_S390X_MODEL_Z14 },
+      { "3907", VEX_S390X_MODEL_Z14_ZR1 },
+      { "8561", VEX_S390X_MODEL_Z15 },
+      { "8562", VEX_S390X_MODEL_Z15 },
    };
 
    Int    model, n, fh;
@@ -1247,10 +1250,10 @@ Bool VG_(machine_get_hwcaps)( void )
         have_avx2 = (ebx & (1<<5)) != 0; /* True => have AVX2 */
      }
 
-     /* Sanity check for RDRAND and F16C.  These don't actually *need* AVX2, but
-        it's convenient to restrict them to the AVX2 case since the simulated
-        CPUID we'll offer them on has AVX2 as a base. */
-     if (!have_avx2) {
+     /* Sanity check for RDRAND and F16C.  These don't actually *need* AVX, but
+        it's convenient to restrict them to the AVX case since the simulated
+        CPUID we'll offer them on has AVX as a base. */
+     if (!have_avx) {
         have_f16c   = False;
         have_rdrand = False;
      }
@@ -1703,7 +1706,9 @@ Bool VG_(machine_get_hwcaps)( void )
         { False, S390_FAC_LSC,   VEX_HWCAPS_S390X_LSC,   "LSC"   },
         { False, S390_FAC_PFPO,  VEX_HWCAPS_S390X_PFPO,  "PFPO"  },
         { False, S390_FAC_VX,    VEX_HWCAPS_S390X_VX,    "VX"    },
-        { False, S390_FAC_MSA5,  VEX_HWCAPS_S390X_MSA5,  "MSA5"  }
+        { False, S390_FAC_MSA5,  VEX_HWCAPS_S390X_MSA5,  "MSA5"  },
+        { False, S390_FAC_MI2,   VEX_HWCAPS_S390X_MI2,   "MI2"   },
+        { False, S390_FAC_LSC2,  VEX_HWCAPS_S390X_LSC2,  "LSC2"  },
      };
 
      /* Set hwcaps according to the detected facilities */
@@ -2094,6 +2099,25 @@ Bool VG_(machine_get_hwcaps)( void )
      return True;
    }
 
+#elif defined(VGP_nanomips_linux)
+   {
+     va = VexArchNANOMIPS;
+     vai.hwcaps = 0;
+
+#    if defined(VKI_LITTLE_ENDIAN)
+     vai.endness = VexEndnessLE;
+#    elif defined(VKI_BIG_ENDIAN)
+     vai.endness = VexEndnessBE;
+#    else
+     vai.endness = VexEndness_INVALID;
+#    endif
+
+     VG_(debugLog)(1, "machine", "hwcaps = 0x%x\n", vai.hwcaps);
+
+     VG_(machine_get_cache_info)(&vai);
+
+     return True;
+   }
 #else
 #  error "Unknown arch"
 #endif
@@ -2219,7 +2243,7 @@ Int VG_(machine_get_size_of_largest_guest_register) ( void )
    /* ARM64 always has Neon, AFAICS. */
    return 16;
 
-#  elif defined(VGA_mips32)
+#  elif defined(VGA_mips32) || defined(VGP_nanomips_linux)
    /* The guest state implies 4, but that can't really be true, can
       it? */
    return 8;
@@ -2242,7 +2266,8 @@ void* VG_(fnptr_to_fnentry)( void* f )
       || defined(VGP_ppc32_linux) || defined(VGP_ppc64le_linux) \
       || defined(VGP_s390x_linux) || defined(VGP_mips32_linux) \
       || defined(VGP_mips64_linux) || defined(VGP_arm64_linux) \
-      || defined(VGP_x86_solaris) || defined(VGP_amd64_solaris)
+      || defined(VGP_x86_solaris) || defined(VGP_amd64_solaris) \
+      || defined(VGP_nanomips_linux)
    return f;
 #  elif defined(VGP_ppc64be_linux)
    /* ppc64-linux uses the AIX scheme, in which f is a pointer to a

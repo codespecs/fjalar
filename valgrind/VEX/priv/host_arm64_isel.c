@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -1312,6 +1310,21 @@ static ARM64CondCode iselCondCode_wrk ( ISelEnv* env, IRExpr* e )
       return ARM64cc_NE;
    }
 
+   /* Constant 1:Bit */
+   if (e->tag == Iex_Const) {
+      /* This is a very stupid translation.  Hopefully it doesn't occur much,
+         if ever. */
+      vassert(e->Iex.Const.con->tag == Ico_U1);
+      vassert(e->Iex.Const.con->Ico.U1 == True
+              || e->Iex.Const.con->Ico.U1 == False);
+      HReg rTmp = newVRegI(env);
+      addInstr(env, ARM64Instr_Imm64(rTmp, 0));
+      ARM64RIL* one = mb_mkARM64RIL_I(1);
+      vassert(one);
+      addInstr(env, ARM64Instr_Test(rTmp, one));
+      return e->Iex.Const.con->Ico.U1 ? ARM64cc_EQ : ARM64cc_NE;
+   }
+
    /* Not1(e) */
    if (e->tag == Iex_Unop && e->Iex.Unop.op == Iop_Not1) {
       /* Generate code for the arg, and negate the test condition */
@@ -1382,13 +1395,14 @@ static ARM64CondCode iselCondCode_wrk ( ISelEnv* env, IRExpr* e )
            || e->Iex.Binop.op == Iop_CmpLT64U
            || e->Iex.Binop.op == Iop_CmpLE64S
            || e->Iex.Binop.op == Iop_CmpLE64U
-           || e->Iex.Binop.op == Iop_CasCmpEQ64)) {
+           || e->Iex.Binop.op == Iop_CasCmpEQ64
+           || e->Iex.Binop.op == Iop_CasCmpNE64)) {
       HReg      argL = iselIntExpr_R(env, e->Iex.Binop.arg1);
       ARM64RIA* argR = iselIntExpr_RIA(env, e->Iex.Binop.arg2);
       addInstr(env, ARM64Instr_Cmp(argL, argR, True/*is64*/));
       switch (e->Iex.Binop.op) {
          case Iop_CmpEQ64: case Iop_CasCmpEQ64: return ARM64cc_EQ;
-         case Iop_CmpNE64:  return ARM64cc_NE;
+         case Iop_CmpNE64: case Iop_CasCmpNE64: return ARM64cc_NE;
          case Iop_CmpLT64S: return ARM64cc_LT;
          case Iop_CmpLT64U: return ARM64cc_CC;
          case Iop_CmpLE64S: return ARM64cc_LE;
@@ -1405,13 +1419,14 @@ static ARM64CondCode iselCondCode_wrk ( ISelEnv* env, IRExpr* e )
            || e->Iex.Binop.op == Iop_CmpLT32U
            || e->Iex.Binop.op == Iop_CmpLE32S
            || e->Iex.Binop.op == Iop_CmpLE32U
-           || e->Iex.Binop.op == Iop_CasCmpEQ32)) {
+           || e->Iex.Binop.op == Iop_CasCmpEQ32
+           || e->Iex.Binop.op == Iop_CasCmpNE32)) {
       HReg      argL = iselIntExpr_R(env, e->Iex.Binop.arg1);
       ARM64RIA* argR = iselIntExpr_RIA(env, e->Iex.Binop.arg2);
       addInstr(env, ARM64Instr_Cmp(argL, argR, False/*!is64*/));
       switch (e->Iex.Binop.op) {
          case Iop_CmpEQ32: case Iop_CasCmpEQ32: return ARM64cc_EQ;
-         case Iop_CmpNE32:  return ARM64cc_NE;
+         case Iop_CmpNE32: case Iop_CasCmpNE32: return ARM64cc_NE;
          case Iop_CmpLT32S: return ARM64cc_LT;
          case Iop_CmpLT32U: return ARM64cc_CC;
          case Iop_CmpLE32S: return ARM64cc_LE;
@@ -1422,7 +1437,8 @@ static ARM64CondCode iselCondCode_wrk ( ISelEnv* env, IRExpr* e )
 
    /* --- Cmp*16*(x,y) --- */
    if (e->tag == Iex_Binop
-       && (e->Iex.Binop.op == Iop_CasCmpEQ16)) {
+       && (e->Iex.Binop.op == Iop_CasCmpEQ16
+           || e->Iex.Binop.op == Iop_CasCmpNE16)) {
       HReg argL  = iselIntExpr_R(env, e->Iex.Binop.arg1);
       HReg argR  = iselIntExpr_R(env, e->Iex.Binop.arg2);
       HReg argL2 = widen_z_16_to_64(env, argL);
@@ -1430,13 +1446,15 @@ static ARM64CondCode iselCondCode_wrk ( ISelEnv* env, IRExpr* e )
       addInstr(env, ARM64Instr_Cmp(argL2, ARM64RIA_R(argR2), True/*is64*/));
       switch (e->Iex.Binop.op) {
          case Iop_CasCmpEQ16: return ARM64cc_EQ;
+         case Iop_CasCmpNE16: return ARM64cc_NE;
          default: vpanic("iselCondCode(arm64): CmpXX16");
       }
    }
 
    /* --- Cmp*8*(x,y) --- */
    if (e->tag == Iex_Binop
-       && (e->Iex.Binop.op == Iop_CasCmpEQ8)) {
+       && (e->Iex.Binop.op == Iop_CasCmpEQ8
+           || e->Iex.Binop.op == Iop_CasCmpNE8)) {
       HReg argL  = iselIntExpr_R(env, e->Iex.Binop.arg1);
       HReg argR  = iselIntExpr_R(env, e->Iex.Binop.arg2);
       HReg argL2 = widen_z_8_to_64(env, argL);
@@ -1444,9 +1462,35 @@ static ARM64CondCode iselCondCode_wrk ( ISelEnv* env, IRExpr* e )
       addInstr(env, ARM64Instr_Cmp(argL2, ARM64RIA_R(argR2), True/*is64*/));
       switch (e->Iex.Binop.op) {
          case Iop_CasCmpEQ8: return ARM64cc_EQ;
+         case Iop_CasCmpNE8: return ARM64cc_NE;
          default: vpanic("iselCondCode(arm64): CmpXX8");
       }
    }
+
+   /* --- And1(x,y), Or1(x,y) --- */
+   /* FIXME: We could (and probably should) do a lot better here, by using the
+      iselCondCode_C/_R scheme used in the amd64 insn selector. */
+    if (e->tag == Iex_Binop
+        && (e->Iex.Binop.op == Iop_And1 || e->Iex.Binop.op == Iop_Or1)) {
+       HReg x_as_64 = newVRegI(env);
+       ARM64CondCode cc_x = iselCondCode(env, e->Iex.Binop.arg1);
+       addInstr(env, ARM64Instr_Set64(x_as_64, cc_x));
+
+       HReg y_as_64 = newVRegI(env);
+       ARM64CondCode cc_y = iselCondCode(env, e->Iex.Binop.arg2);
+       addInstr(env, ARM64Instr_Set64(y_as_64, cc_y));
+
+       HReg tmp = newVRegI(env);
+       ARM64LogicOp lop
+          = e->Iex.Binop.op == Iop_And1 ? ARM64lo_AND : ARM64lo_OR;
+       addInstr(env, ARM64Instr_Logic(tmp, x_as_64, ARM64RIL_R(y_as_64), lop));
+
+       ARM64RIL* one = mb_mkARM64RIL_I(1);
+       vassert(one);
+       addInstr(env, ARM64Instr_Test(tmp, one));
+
+       return ARM64cc_NE;
+    }
 
    ppIRExpr(e);
    vpanic("iselCondCode");
@@ -2991,6 +3035,54 @@ static HReg iselV128Expr_wrk ( ISelEnv* env, IRExpr* e )
 
    } /* if (e->tag == Iex_Triop) */
 
+   if (e->tag == Iex_ITE) {
+      // This code sequence is pretty feeble.  We'd do better to generate BSL
+      // here.
+      HReg rX = newVRegI(env);
+
+      ARM64CondCode cc = iselCondCode(env, e->Iex.ITE.cond);
+      addInstr(env, ARM64Instr_Set64(rX, cc));
+      // cond: rX = 1   !cond: rX = 0
+
+      // Mask the Set64 result.  This is paranoia (should be unnecessary).
+      ARM64RIL* one = mb_mkARM64RIL_I(1);
+      vassert(one);
+      addInstr(env, ARM64Instr_Logic(rX, rX, one, ARM64lo_AND));
+      // cond: rX = 1   !cond: rX = 0
+
+      // Propagate to all bits in the 64 bit word by subtracting 1 from it.
+      // This also inverts the sense of the value.
+      addInstr(env, ARM64Instr_Arith(rX, rX, ARM64RIA_I12(1,0),
+                                     /*isAdd=*/False));
+      // cond: rX = 0-(62)-0   !cond: rX = 1-(62)-1
+
+      // Duplicate rX into a vector register
+      HReg vMask = newVRegV(env);
+      addInstr(env, ARM64Instr_VQfromXX(vMask, rX, rX));
+      // cond: vMask = 0-(126)-0   !cond: vMask = 1-(126)-1
+
+      HReg vIfTrue = iselV128Expr(env, e->Iex.ITE.iftrue);
+      HReg vIfFalse = iselV128Expr(env, e->Iex.ITE.iffalse);
+
+      // Mask out iffalse value as needed
+      addInstr(env,
+               ARM64Instr_VBinV(ARM64vecb_AND, vIfFalse, vIfFalse, vMask));
+
+      // Invert the mask so we can use it for the iftrue value
+      addInstr(env, ARM64Instr_VUnaryV(ARM64vecu_NOT, vMask, vMask));
+      // cond: vMask = 1-(126)-1   !cond: vMask = 0-(126)-0
+
+      // Mask out iftrue value as needed
+      addInstr(env,
+               ARM64Instr_VBinV(ARM64vecb_AND, vIfTrue, vIfTrue, vMask));
+
+      // Merge the masked iftrue and iffalse results.
+      HReg res = newVRegV(env);
+      addInstr(env, ARM64Instr_VBinV(ARM64vecb_ORR, res, vIfTrue, vIfFalse));
+
+      return res;
+   }
+
   v128_expr_bad:
    ppIRExpr(e);
    vpanic("iselV128Expr_wrk");
@@ -3896,14 +3988,7 @@ static void iselStmt ( ISelEnv* env, IRStmt* stmt )
          addInstr(env, ARM64Instr_CAS(sz));
          /* Now we have the lowest szB bytes of x1 are either equal to
             the lowest szB bytes of x5, indicating success, or they
-            aren't, indicating failure.  The IR semantics actually
-            require us to return the old value at the location,
-            regardless of success or failure, but in the case of
-            failure it's not clear how to do this, since
-            ARM64Instr_CAS can't provide that.  Instead we'll just
-            return the relevant bit of x1, since that's at least
-            guaranteed to be different from the lowest bits of x5 on
-            failure. */
+            aren't, indicating failure. */
          HReg rResult = hregARM64_X1();
          switch (sz) {
             case 8:  break;
@@ -3916,6 +4001,51 @@ static void iselStmt ( ISelEnv* env, IRStmt* stmt )
          // the previous comment.
          HReg rOld = lookupIRTemp(env, cas->oldLo);
          addInstr(env, ARM64Instr_MovI(rOld, rResult));
+         return;
+      }
+      else {
+         /* Paired register CAS, i.e. CASP */
+         UChar  sz;
+         IRCAS* cas = stmt->Ist.CAS.details;
+         IRType ty  = typeOfIRExpr(env->type_env, cas->dataLo);
+         switch (ty) {
+            case Ity_I64: sz = 8; break;
+            case Ity_I32: sz = 4; break;
+            default: goto unhandled_cas;
+         }
+         HReg rAddr = iselIntExpr_R(env, cas->addr);
+
+         HReg rExpd0 = iselIntExpr_R(env, cas->expdLo);
+         vassert(cas->expdHi != NULL);
+         HReg rExpd1 = iselIntExpr_R(env, cas->expdHi);
+
+         HReg rData0 = iselIntExpr_R(env, cas->dataLo);
+         vassert(cas->dataHi != NULL);
+         HReg rData1 = iselIntExpr_R(env, cas->dataHi);
+
+         addInstr(env, ARM64Instr_MovI(hregARM64_X2(), rAddr));
+
+         addInstr(env, ARM64Instr_MovI(hregARM64_X4(), rExpd0));
+         addInstr(env, ARM64Instr_MovI(hregARM64_X5(), rExpd1));
+
+         addInstr(env, ARM64Instr_MovI(hregARM64_X6(), rData0));
+         addInstr(env, ARM64Instr_MovI(hregARM64_X7(), rData1));
+
+         addInstr(env, ARM64Instr_CASP(sz));
+
+         HReg rResult0 = hregARM64_X0();
+         HReg rResult1 = hregARM64_X1();
+         switch (sz) {
+            case 8:  break;
+            case 4:  rResult0 = widen_z_32_to_64(env, rResult0);
+                     rResult1 = widen_z_32_to_64(env, rResult1);
+                     break;
+            default: vassert(0);
+         }
+         HReg rOldLo = lookupIRTemp(env, cas->oldLo);
+         HReg rOldHi = lookupIRTemp(env, cas->oldHi);
+         addInstr(env, ARM64Instr_MovI(rOldLo, rResult0));
+         addInstr(env, ARM64Instr_MovI(rOldHi, rResult1));
          return;
       }
       unhandled_cas:

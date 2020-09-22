@@ -35,9 +35,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 
@@ -1074,7 +1072,7 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
 
    /* --------------------- mips32 --------------------- */
 
-#  elif defined(VGA_mips32)
+#  elif defined(VGA_mips32) || defined(VGA_nanomips)
 
 #  define GOF(_fieldname) \
       (offsetof(VexGuestMIPS32State,guest_##_fieldname))
@@ -1448,6 +1446,12 @@ IRType MC_(get_otrack_reg_array_equiv_int_type) ( IRRegArray* arr )
    printf("get_reg_array_equiv_int_type(mips32): unhandled: ");
    ppIRRegArray(arr);
    printf("\n");
+   tl_assert(0);
+/* --------------------- nanomips ------------------- */
+#  elif defined(VGA_nanomips)
+   VG_(printf)("get_reg_array_equiv_int_type(nanomips): unhandled: ");
+   ppIRRegArray(arr);
+   VG_(printf)("\n");
    tl_assert(0);
 
    /* --------------------- mips64 --------------------- */

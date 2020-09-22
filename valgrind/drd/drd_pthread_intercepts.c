@@ -18,9 +18,7 @@
   General Public License for more details.
 
   You should have received a copy of the GNU General Public License
-  along with this program; if not, write to the Free Software
-  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-  02111-1307, USA.
+  along with this program; if not, see <http://www.gnu.org/licenses/>.
 
   The GNU General Public License is contained in the file COPYING.
 */
@@ -366,30 +364,37 @@ static MutexT DRD_(thread_to_drd_mutex_type)(int type)
  */
 static __always_inline MutexT DRD_(mutex_type)(pthread_mutex_t* mutex)
 {
+   MutexT mutex_type = mutex_type_unknown;
+
+   ANNOTATE_IGNORE_READS_BEGIN();
 #if defined(HAVE_PTHREAD_MUTEX_T__M_KIND)
    /* glibc + LinuxThreads. */
    if (IS_ALIGNED(&mutex->__m_kind))
    {
       const int kind = mutex->__m_kind & 3;
-      return DRD_(pthread_to_drd_mutex_type)(kind);
+      mutex_type = DRD_(pthread_to_drd_mutex_type)(kind);
    }
 #elif defined(HAVE_PTHREAD_MUTEX_T__DATA__KIND)
    /* glibc + NPTL. */
    if (IS_ALIGNED(&mutex->__data.__kind))
    {
       const int kind = mutex->__data.__kind & 3;
-      return DRD_(pthread_to_drd_mutex_type)(kind);
+      mutex_type = DRD_(pthread_to_drd_mutex_type)(kind);
    }
 #elif defined(VGO_solaris)
+   {
       const int type = ((mutex_t *) mutex)->vki_mutex_type;
-      return DRD_(thread_to_drd_mutex_type)(type);
+      mutex_type = DRD_(thread_to_drd_mutex_type)(type);
+   }
 #else
    /*
     * Another POSIX threads implementation. The mutex type won't be printed
     * when enabling --trace-mutex=yes.
     */
 #endif
-   return mutex_type_unknown;
+   ANNOTATE_IGNORE_READS_END();
+
+   return mutex_type;
 }
 
 /**
@@ -1395,6 +1400,9 @@ sem_t* sem_open_intercept(const char *name, int oflag, mode_t mode,
    VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__PRE_SEM_OPEN,
                                    name, oflag, mode, value, 0);
    CALL_FN_W_WWWW(ret, fn, name, oflag, mode, value);
+   // To do: figure out why gcc 9.2.1 miscompiles this function if the printf()
+   // call below is left out.
+   printf("");
    VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__POST_SEM_OPEN,
                                    ret != SEM_FAILED ? ret : 0,
                                    name, oflag, mode, value);

@@ -20,9 +20,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -819,7 +817,7 @@ static SyscallTableEntry syscall_table[] = {
    LINXY(__NR_open_by_handle_at, sys_open_by_handle_at),              // 336
    LINXY(__NR_clock_adjtime, sys_clock_adjtime),                      // 337
    LINX_(__NR_syncfs, sys_syncfs),                                    // 338
-// ?????(__NR_setns, ),                                               // 339
+   LINX_(__NR_setns, sys_setns),                                      // 339
 
    LINXY(__NR_process_vm_readv, sys_process_vm_readv),                // 340
    LINX_(__NR_process_vm_writev, sys_process_vm_writev),              // 341
@@ -853,6 +851,10 @@ static SyscallTableEntry syscall_table[] = {
    LINXY(__NR_recvfrom, sys_recvfrom),                                // 371
    LINXY(__NR_recvmsg, sys_recvmsg),                                  // 372
    LINX_(__NR_shutdown, sys_shutdown),                                // 373
+
+   LINX_(__NR_copy_file_range, sys_copy_file_range),                  // 375
+   LINXY(__NR_preadv2, sys_preadv2),                                  // 376
+   LINX_(__NR_pwritev2, sys_pwritev2),                                // 377
 
    LINXY(__NR_statx, sys_statx),                                      // 379
 };

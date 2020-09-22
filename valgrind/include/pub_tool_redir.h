@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -313,8 +311,12 @@
 #define  VG_Z_LD_SO_1               ldZdsoZd1                  // ld.so.1
 #define  VG_U_LD_SO_1               "ld.so.1"
 
+#define  VG_Z_LD_LINUX_AARCH64_SO_1  ldZhlinuxZhaarch64ZdsoZd1
 #define  VG_U_LD_LINUX_AARCH64_SO_1 "ld-linux-aarch64.so.1"
+
 #define  VG_U_LD_LINUX_ARMHF_SO_3   "ld-linux-armhf.so.3"
+
+#define  VG_U_LD_LINUX_MIPSN8_S0_1  "ld-linux-mipsn8.so.1"
 
 #endif
 

@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -1006,7 +1004,8 @@ void run_thread_for_a_while ( /*OUT*/HWord* two_words,
 
    /* Invalidate any in-flight LL/SC transactions, in the case that we're
       using the fallback LL/SC implementation.  See bugs 344524 and 369459. */
-#  if defined(VGP_mips32_linux) || defined(VGP_mips64_linux)
+#  if defined(VGP_mips32_linux) || defined(VGP_mips64_linux) \
+      || defined(VGP_nanomips_linux)
    tst->arch.vex.guest_LLaddr = (RegWord)(-1);
 #  elif defined(VGP_arm64_linux)
    tst->arch.vex.guest_LLSC_SIZE = 0;
@@ -1325,10 +1324,6 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
             VG_(force_vgdb_poll) ();
          else
             VG_(disable_vgdb_poll) ();
-
-         vg_assert (VG_(dyn_vgdb_error) == VG_(clo_vgdb_error));
-         /* As we are initializing, VG_(dyn_vgdb_error) can't have been
-            changed yet. */
 
          VG_(gdbserver_prerun_action) (1);
       } else {
@@ -1799,7 +1794,7 @@ void VG_(nuke_all_threads_except) ( ThreadId me, VgSchedReturnCode src )
 #elif defined (VGA_s390x)
 #  define VG_CLREQ_ARGS       guest_r2
 #  define VG_CLREQ_RET        guest_r3
-#elif defined(VGA_mips32) || defined(VGA_mips64)
+#elif defined(VGA_mips32) || defined(VGA_mips64) || defined(VGA_nanomips)
 #  define VG_CLREQ_ARGS       guest_r12
 #  define VG_CLREQ_RET        guest_r11
 #else
@@ -2119,6 +2114,11 @@ void do_client_request ( ThreadId tid )
          SET_CLREQ_RETVAL( tid, VG_(get_n_errs_found)() );
          break;
 
+      case VG_USERREQ__CLO_CHANGE:
+         VG_(process_dynamic_option) (cloD, (HChar *)arg[1]);
+         SET_CLREQ_RETVAL( tid, 0 );     /* return value is meaningless */
+         break;
+
       case VG_USERREQ__LOAD_PDB_DEBUGINFO:
          VG_(di_notify_pdb_debuginfo)( arg[1], arg[2], arg[3], arg[4] );
          SET_CLREQ_RETVAL( tid, 0 );     /* return value is meaningless */
@@ -2247,7 +2247,7 @@ void do_client_request ( ThreadId tid )
       "to recompile such code, using the header files from this version of\n"
       "Valgrind, and not any previous version.\n"
       "\n"
-      "If you see this mesage in any other circumstances, it is probably\n"
+      "If you see this message in any other circumstances, it is probably\n"
       "a bug in Valgrind.  In this case, please file a bug report at\n"
       "\n"
       "   http://www.valgrind.org/support/bug_reports.html\n"

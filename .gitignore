@@ -136,6 +136,7 @@ valgrind/drd/tests/sem_wait
 valgrind/drd/tests/sigalrm
 valgrind/drd/tests/std_atomic
 valgrind/drd/tests/std_list
+valgrind/drd/tests/std_mutex
 valgrind/drd/tests/std_string
 valgrind/drd/tests/std_thread
 valgrind/drd/tests/std_thread2
@@ -153,12 +154,6 @@ valgrind/exp-bbv/tests/amd64-linux/fldcw_check
 valgrind/exp-bbv/tests/amd64-linux/ll
 valgrind/exp-bbv/tests/amd64-linux/million
 valgrind/exp-bbv/tests/amd64-linux/rep_prefix
-valgrind/exp-sgcheck/tests/bad_percentify
-valgrind/exp-sgcheck/tests/globalerr
-valgrind/exp-sgcheck/tests/hackedbz2
-valgrind/exp-sgcheck/tests/hsg
-valgrind/exp-sgcheck/tests/preen_invars
-valgrind/exp-sgcheck/tests/stackerr
 valgrind/gdbserver_tests/clean_after_fork
 valgrind/gdbserver_tests/fork_chain
 valgrind/gdbserver_tests/garbage.filtered.out
@@ -289,6 +284,7 @@ valgrind/memcheck/tests/bug340392
 valgrind/memcheck/tests/calloc-overflow
 valgrind/memcheck/tests/cdebug_zlib
 valgrind/memcheck/tests/cdebug_zlib_gnu
+valgrind/memcheck/tests/check_execveat
 valgrind/memcheck/tests/client-msg
 valgrind/memcheck/tests/clientperm
 valgrind/memcheck/tests/clireq_nofill
@@ -332,7 +328,9 @@ valgrind/memcheck/tests/leak-segv-jmp
 valgrind/memcheck/tests/leak-tree
 valgrind/memcheck/tests/linux/brk
 valgrind/memcheck/tests/linux/capget
+valgrind/memcheck/tests/linux/check_preadv2_pwritev2
 valgrind/memcheck/tests/linux/dlclose_leak
+valgrind/memcheck/tests/linux/filter_stderr
 valgrind/memcheck/tests/linux/getregset
 valgrind/memcheck/tests/linux/ioctl-tiocsig
 valgrind/memcheck/tests/linux/lsframe1
@@ -345,6 +343,7 @@ valgrind/memcheck/tests/linux/stack_switch
 valgrind/memcheck/tests/linux/syscalls-2007
 valgrind/memcheck/tests/linux/syslog-syscall
 valgrind/memcheck/tests/linux/sys-openat
+valgrind/memcheck/tests/linux/sys-preadv_pwritev
 valgrind/memcheck/tests/linux/sys-statx
 valgrind/memcheck/tests/linux/timerfd-syscall
 valgrind/memcheck/tests/long_namespace_xml
@@ -409,6 +408,7 @@ valgrind/memcheck/tests/supp1
 valgrind/memcheck/tests/supp2
 valgrind/memcheck/tests/suppfree
 valgrind/memcheck/tests/supp_unknown
+valgrind/memcheck/tests/sys_execveat
 valgrind/memcheck/tests/test-plo
 valgrind/memcheck/tests/thread_alloca
 valgrind/memcheck/tests/threadname
@@ -446,6 +446,7 @@ valgrind/none/tests/amd64/aes
 valgrind/none/tests/amd64/allexec
 valgrind/none/tests/amd64/amd64locked
 valgrind/none/tests/amd64/asorep
+valgrind/none/tests/amd64/avx_estimate_insn
 valgrind/none/tests/amd64/avx-1
 valgrind/none/tests/amd64/avx2-1
 valgrind/none/tests/amd64/bmi
@@ -562,6 +563,7 @@ valgrind/none/tests/map_unmap
 valgrind/none/tests/mmap_fcntl_bug
 valgrind/none/tests/mq
 valgrind/none/tests/munmap_exe
+valgrind/none/tests/nanomips
 valgrind/none/tests/nestedfns
 valgrind/none/tests/nocwd
 valgrind/none/tests/pending
@@ -583,6 +585,7 @@ valgrind/none/tests/pth_exit2
 valgrind/none/tests/pth_mutexspeed
 valgrind/none/tests/pth_once
 valgrind/none/tests/pth_rwlock
+valgrind/none/tests/pth_self_kill
 valgrind/none/tests/pth_stackalign
 valgrind/none/tests/pth_term_signal
 valgrind/none/tests/rcrl
@@ -598,6 +601,7 @@ valgrind/none/tests/semlimit
 valgrind/none/tests/sha1_test
 valgrind/none/tests/shortpush
 valgrind/none/tests/shorts
+valgrind/none/tests/sigprocmask
 valgrind/none/tests/sigstackgrowth
 valgrind/none/tests/sigsusp
 valgrind/none/tests/stackgrowth

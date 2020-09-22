@@ -1,4 +1,4 @@
-# Valgrind version 3.15.0, released 2019-04-14
+# Valgrind version 3.16.1, released 2020-22-06
 
 # Binutils version 2.34, released 2020-02-01
 export BINUTILS_VERSION=2.34

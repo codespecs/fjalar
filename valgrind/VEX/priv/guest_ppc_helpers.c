@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 
@@ -835,7 +833,15 @@ void LibVEX_GuestPPC32_initialise ( /*OUT*/VexGuestPPC32State* vex_state )
 
    vex_state->guest_VRSAVE = 0;
 
-   vex_state->guest_VSCR = 0x0;  // Non-Java mode = 0
+# if defined(VGP_ppc64be_linux)
+   /* By default, the HW for BE sets the VSCR[NJ] bit to 1.
+      VSR is a 128-bit register, NJ bit is bit 111 (IBM numbering).
+      However, VSCR is modeled as a 64-bit register. */
+   vex_state->guest_VSCR = 0x1 << (127 - 111);
+# else
+   /* LE API requires NJ be set to 0. */
+   vex_state->guest_VSCR = 0x0;
+#endif
 
    vex_state->guest_EMNOTE = EmNote_NONE;
 
@@ -1002,7 +1008,15 @@ void LibVEX_GuestPPC64_initialise ( /*OUT*/VexGuestPPC64State* vex_state )
 
    vex_state->guest_VRSAVE = 0;
 
-   vex_state->guest_VSCR = 0x0;  // Non-Java mode = 0
+# if defined(VGP_ppc64be_linux)
+   /* By default, the HW for BE sets the VSCR[NJ] bit to 1.
+      VSR is a 128-bit register, NJ bit is bit 111 (IBM numbering).
+      However, VSCR is modeled as a 64-bit register. */
+   vex_state->guest_VSCR = 0x1 << (127 - 111);
+# else
+   /* LE API requires NJ be set to 0. */
+   vex_state->guest_VSCR = 0x0;
+#endif
 
    vex_state->guest_EMNOTE = EmNote_NONE;
 

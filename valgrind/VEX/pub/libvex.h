@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 
@@ -60,7 +58,8 @@ typedef
       VexArchPPC64,
       VexArchS390X,
       VexArchMIPS32,
-      VexArchMIPS64
+      VexArchMIPS64,
+      VexArchNANOMIPS,
    }
    VexArch;
 
@@ -146,7 +145,10 @@ typedef
 #define VEX_S390X_MODEL_ZBC12    11
 #define VEX_S390X_MODEL_Z13      12
 #define VEX_S390X_MODEL_Z13S     13
-#define VEX_S390X_MODEL_UNKNOWN  14     /* always last in list */
+#define VEX_S390X_MODEL_Z14      14
+#define VEX_S390X_MODEL_Z14_ZR1  15
+#define VEX_S390X_MODEL_Z15      16
+#define VEX_S390X_MODEL_UNKNOWN  17     /* always last in list */
 #define VEX_S390X_MODEL_MASK     0x3F
 
 #define VEX_HWCAPS_S390X_LDISP (1<<6)   /* Long-displacement facility */
@@ -163,6 +165,8 @@ typedef
 #define VEX_HWCAPS_S390X_PFPO  (1<<17)  /* Perform floating point ops facility */
 #define VEX_HWCAPS_S390X_VX    (1<<18)  /* Vector facility */
 #define VEX_HWCAPS_S390X_MSA5  (1<<19)  /* message security assistance facility */
+#define VEX_HWCAPS_S390X_MI2   (1<<20)  /* miscellaneous-instruction-extensions facility 2 */
+#define VEX_HWCAPS_S390X_LSC2  (1<<21)  /* Conditional load/store facility2 */
 
 
 /* Special value representing all available s390x hwcaps */
@@ -179,7 +183,9 @@ typedef
                                 VEX_HWCAPS_S390X_ETF2  | \
                                 VEX_HWCAPS_S390X_PFPO  | \
                                 VEX_HWCAPS_S390X_VX    | \
-                                VEX_HWCAPS_S390X_MSA5)
+                                VEX_HWCAPS_S390X_MSA5  | \
+                                VEX_HWCAPS_S390X_MI2   | \
+                                VEX_HWCAPS_S390X_LSC2)
 
 #define VEX_HWCAPS_S390X(x)  ((x) & ~VEX_S390X_MODEL_MASK)
 #define VEX_S390X_MODEL(x)   ((x) &  VEX_S390X_MODEL_MASK)
@@ -509,15 +515,12 @@ typedef
          BBs longer than this are split up.  Default=60 (guest
          insns). */
       Int guest_max_insns;
-      /* How aggressive should front ends be in following
-         unconditional branches to known destinations?  Default=10,
-         meaning that if a block contains less than 10 guest insns so
-         far, the front end(s) will attempt to chase into its
-         successor. A setting of zero disables chasing.  */
-      Int guest_chase_thresh;
-      /* EXPERIMENTAL: chase across conditional branches?  Not all
-         front ends honour this.  Default: NO. */
-      Bool guest_chase_cond;
+      /* Should Vex try to construct superblocks, by chasing unconditional
+         branches/calls to known destinations, and performing AND/OR idiom
+         recognition?  It is recommended to set this to True as that possibly
+         improves performance a bit, and also is important for avoiding certain
+         kinds of false positives in Memcheck.  Default=True.  */
+      Bool guest_chase;
       /* Register allocator version. Allowed values are:
          - '2': previous, good and slow implementation.
          - '3': current, faster implementation; perhaps producing slightly worse
@@ -700,6 +703,12 @@ typedef
       /* Stats only: the number of guest insns included in the
          translation.  It may be zero (!). */
       UInt n_guest_instrs;
+      /* Stats only: the number of unconditional branches incorporated into the
+         trace. */
+      UShort n_uncond_in_trace;
+      /* Stats only: the number of conditional branches incorporated into the
+         trace. */
+      UShort n_cond_in_trace;
    }
    VexTranslateResult;
 

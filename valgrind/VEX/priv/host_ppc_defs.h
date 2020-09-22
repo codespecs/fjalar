@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 
@@ -491,7 +489,7 @@ typedef
       Pavfp_CMPEQF, Pavfp_CMPGTF, Pavfp_CMPGEF,
 
       /* Floating point unary */
-      Pavfp_RCPF, Pavfp_RSQRTF,
+      Pavfp_RCPF, Pavfp_RSQRTF, Pavfp_Log2, Pavfp_Exp2,
       Pavfp_CVTU2F, Pavfp_CVTS2F, Pavfp_QCVTF2U, Pavfp_QCVTF2S,
       Pavfp_ROUNDM, Pavfp_ROUNDP, Pavfp_ROUNDN, Pavfp_ROUNDZ,
    }

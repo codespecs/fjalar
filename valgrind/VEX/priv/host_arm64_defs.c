@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -872,6 +870,13 @@ ARM64Instr* ARM64Instr_Unary ( HReg dst, HReg src, ARM64UnaryOp op ) {
    i->ARM64in.Unary.op  = op;
    return i;
 }
+ARM64Instr* ARM64Instr_Set64 ( HReg dst, ARM64CondCode cond ) {
+   ARM64Instr* i = LibVEX_Alloc_inline(sizeof(ARM64Instr));
+   i->tag                = ARM64in_Set64;
+   i->ARM64in.Set64.dst  = dst;
+   i->ARM64in.Set64.cond = cond;
+   return i;
+}
 ARM64Instr* ARM64Instr_MovI ( HReg dst, HReg src ) {
    ARM64Instr* i      = LibVEX_Alloc_inline(sizeof(ARM64Instr));
    i->tag             = ARM64in_MovI;
@@ -1013,6 +1018,13 @@ ARM64Instr* ARM64Instr_CAS ( Int szB ) {
    i->tag             = ARM64in_CAS;
    i->ARM64in.CAS.szB = szB;
    vassert(szB == 8 || szB == 4 || szB == 2 || szB == 1);
+   return i;
+}
+ARM64Instr* ARM64Instr_CASP ( Int szB ) {
+   ARM64Instr* i = LibVEX_Alloc_inline(sizeof(ARM64Instr));
+   i->tag              = ARM64in_CASP;
+   i->ARM64in.CASP.szB = szB;
+   vassert(szB == 8 || szB == 4);
    return i;
 }
 ARM64Instr* ARM64Instr_MFence ( void ) {
@@ -1419,6 +1431,11 @@ void ppARM64Instr ( const ARM64Instr* i ) {
          vex_printf(", ");
          ppHRegARM64(i->ARM64in.Unary.src);
          return;
+      case ARM64in_Set64:
+         vex_printf("cset   ");
+         ppHRegARM64(i->ARM64in.Set64.dst);
+         vex_printf(", %s", showARM64CondCode(i->ARM64in.Set64.cond));
+         return;
       case ARM64in_MovI:
          vex_printf("mov    ");
          ppHRegARM64(i->ARM64in.MovI.dst);
@@ -1581,6 +1598,10 @@ void ppARM64Instr ( const ARM64Instr* i ) {
       }
       case ARM64in_CAS: {
          vex_printf("x1 = cas(%dbit)(x3, x5 -> x7)", 8 * i->ARM64in.CAS.szB);
+         return;
+      }
+      case ARM64in_CASP: {
+         vex_printf("x0,x1 = casp(%dbit)(x2, x4,x5 -> x6,x7)", 8 * i->ARM64in.CASP.szB);
          return;
       }
       case ARM64in_MFence:
@@ -1955,6 +1976,9 @@ void getRegUsage_ARM64Instr ( HRegUsage* u, const ARM64Instr* i, Bool mode64 )
          addHRegUse(u, HRmWrite, i->ARM64in.Unary.dst);
          addHRegUse(u, HRmRead, i->ARM64in.Unary.src);
          return;
+      case ARM64in_Set64:
+         addHRegUse(u, HRmWrite, i->ARM64in.Set64.dst);
+         return;
       case ARM64in_MovI:
          addHRegUse(u, HRmWrite, i->ARM64in.MovI.dst);
          addHRegUse(u, HRmRead,  i->ARM64in.MovI.src);
@@ -2087,6 +2111,17 @@ void getRegUsage_ARM64Instr ( HRegUsage* u, const ARM64Instr* i, Bool mode64 )
          addHRegUse(u, HRmRead, hregARM64_X7());
          addHRegUse(u, HRmWrite, hregARM64_X1());
          /* Pointless to state this since X8 is not available to RA. */
+         addHRegUse(u, HRmWrite, hregARM64_X8());
+         break;
+      case ARM64in_CASP:
+         addHRegUse(u, HRmRead, hregARM64_X2());
+         addHRegUse(u, HRmRead, hregARM64_X4());
+         addHRegUse(u, HRmRead, hregARM64_X5());
+         addHRegUse(u, HRmRead, hregARM64_X6());
+         addHRegUse(u, HRmRead, hregARM64_X7());
+         addHRegUse(u, HRmWrite, hregARM64_X0());
+         addHRegUse(u, HRmWrite, hregARM64_X1());
+         addHRegUse(u, HRmWrite, hregARM64_X9());
          addHRegUse(u, HRmWrite, hregARM64_X8());
          break;
       case ARM64in_MFence:
@@ -2297,6 +2332,9 @@ void mapRegs_ARM64Instr ( HRegRemap* m, ARM64Instr* i, Bool mode64 )
          i->ARM64in.Unary.dst = lookupHRegRemap(m, i->ARM64in.Unary.dst);
          i->ARM64in.Unary.src = lookupHRegRemap(m, i->ARM64in.Unary.src);
          return;
+      case ARM64in_Set64:
+         i->ARM64in.Set64.dst = lookupHRegRemap(m, i->ARM64in.Set64.dst);
+         return;
       case ARM64in_MovI:
          i->ARM64in.MovI.dst = lookupHRegRemap(m, i->ARM64in.MovI.dst);
          i->ARM64in.MovI.src = lookupHRegRemap(m, i->ARM64in.MovI.src);
@@ -2355,6 +2393,8 @@ void mapRegs_ARM64Instr ( HRegRemap* m, ARM64Instr* i, Bool mode64 )
       case ARM64in_StrEX:
          return;
       case ARM64in_CAS:
+         return;
+      case ARM64in_CASP:
          return;
       case ARM64in_MFence:
          return;
@@ -3484,6 +3524,15 @@ Int emit_ARM64Instr ( /*MB_MOD*/Bool* is_profInc,
          }
          goto bad;
       }
+      case ARM64in_Set64: {
+         /* 1 00 1101 0100 11111 invert(cond) 01 11111 Rd   CSET Rd, Cond */
+         UInt rDst = iregEnc(i->ARM64in.Set64.dst);
+         UInt cc = (UInt)i->ARM64in.Set64.cond;
+         vassert(cc < 14);
+         *p++ = X_3_8_5_6_5_5(X100, X11010100, X11111,
+                              ((cc ^ 1) << 2) | X01, X11111, rDst);
+         goto done;
+      }
       case ARM64in_MovI: {
          /* We generate the "preferred form", ORR Xd, XZR, Xm
             101 01010 00 0 m 000000 11111 d
@@ -3827,9 +3876,14 @@ Int emit_ARM64Instr ( /*MB_MOD*/Bool* is_profInc,
       }
       case ARM64in_CAS: {
          /* This isn't simple.  For an explanation see the comment in
-            host_arm64_defs.h on the the definition of ARM64Instr case
-            CAS. */
+            host_arm64_defs.h on the definition of ARM64Instr case CAS.
+
+            NOTE: We could place "loop:" after mov/and but then we need
+                  an additional scratch register.
+         */
          /* Generate:
+
+            loop:
               -- one of:
               mov     x8, x5                 // AA0503E8
               and     x8, x5, #0xFFFFFFFF    // 92407CA8
@@ -3847,13 +3901,13 @@ Int emit_ARM64Instr ( /*MB_MOD*/Bool* is_profInc,
               bne     out                    // 54000061
 
               -- one of:
-              stxr    w1, x7, [x3]           // C8017C67
-              stxr    w1, w7, [x3]           // 88017C67
-              stxrh   w1, w7, [x3]           // 48017C67
-              stxrb   w1, w7, [x3]           // 08017C67
+              stxr    w8, x7, [x3]           // C8087C67
+              stxr    w8, w7, [x3]           // 88087C67
+              stxrh   w8, w7, [x3]           // 48087C67
+              stxrb   w8, w7, [x3]           // 08087C67
 
               -- always:
-              eor     x1, x5, x1             // CA0100A1
+              cbne    w8, loop               // 35FFFF68
             out:
          */
          switch (i->ARM64in.CAS.szB) {
@@ -3872,12 +3926,74 @@ Int emit_ARM64Instr ( /*MB_MOD*/Bool* is_profInc,
          *p++ = 0xEB08003F;
          *p++ = 0x54000061;
          switch (i->ARM64in.CAS.szB) {
-            case 8:  *p++ = 0xC8017C67; break;
-            case 4:  *p++ = 0x88017C67; break;
-            case 2:  *p++ = 0x48017C67; break;
-            case 1:  *p++ = 0x08017C67; break;
+            case 8:  *p++ = 0xC8087C67; break;
+            case 4:  *p++ = 0x88087C67; break;
+            case 2:  *p++ = 0x48087C67; break;
+            case 1:  *p++ = 0x08087C67; break;
          }
-         *p++ = 0xCA0100A1;
+         *p++ = 0x35FFFF68;
+         goto done;
+      }
+      case ARM64in_CASP: {
+         /* Generate:
+            CASP <Xs>, <X(s+1)>, <Xt>, <X(t+1)>, [<Xn|SP>{,#0}]
+
+            Register allocation (see ARM64in_CASP in getRegUsage_ARM64Instr):
+            Xn:         memory address
+                        -> X2 (INPUT)
+            Xs, X(s+1): values to be compared with value read from address
+                        -> X4,X5 (INPUTS)
+                        -> X0,X1 (OUTPUTS) loaded from memory and compared with
+                           scratch registers X8,X9 (CLOBBERED) which contain
+                           contents of X4,X5
+            Xt, X(t+1): values to be stored to memory if X0,X1==X8,X9
+                        -> X6,X7 (INPUT)
+
+            loop:
+              -- two of:
+              mov     x8, x4                 // AA0403E8
+              mov     x9, x5                 // AA0503E9
+              and     x8, x4, #0xFFFFFFFF    // 92407C88
+              and     x9, x5, #0xFFFFFFFF    // 92407CA9
+
+              -- one of:
+              ldxp    x0,x1, [x2]            // C87F0440
+              ldxp    w0,w1, [x2]            // 887F0440
+
+              -- always:
+              cmp     x0, x8                 // EB08001F
+              bne     out                    // 540000E1 (b.ne #28 <out>)
+              cmp     x1, x9                 // EB09003F
+              bne     out                    // 540000A1 (b.ne #20 <out>)
+
+              -- one of:
+              stxp    w1, x6, x7, [x2]       // C8211C46
+              stxp    w1, w6, w7, [x2]       // 88211C46
+
+              -- always:
+              cbnz    w1, loop               // 35FFFE81 (cbnz w1, #-48 <loop>)
+            out:
+         */
+         switch (i->ARM64in.CASP.szB) {
+            case 8:  *p++ = 0xAA0403E8; *p++ = 0xAA0503E9; break;
+            case 4:  *p++ = 0x92407C88; *p++ = 0x92407CA9; break;
+            default: vassert(0);
+         }
+         switch (i->ARM64in.CASP.szB) {
+            case 8:  *p++ = 0xC87F0440; break;
+            case 4:  *p++ = 0x887F0440; break;
+            default: vassert(0);
+         }
+         *p++ = 0xEB08001F;
+         *p++ = 0x540000E1;
+         *p++ = 0xEB09003F;
+         *p++ = 0x540000A1;
+         switch (i->ARM64in.CASP.szB) {
+            case 8:  *p++ = 0xC8211C46; break;
+            case 4:  *p++ = 0x88211C46; break;
+            default: vassert(0);
+         }
+         *p++ = 0x35FFFE81;
          goto done;
       }
       case ARM64in_MFence: {

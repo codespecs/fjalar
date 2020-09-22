@@ -20,16 +20,20 @@ EXTRA_DIST = \
 	stack_switch.stderr.exp stack_switch.vgtest \
 	syscalls-2007.vgtest syscalls-2007.stderr.exp \
 	syslog-syscall.vgtest syslog-syscall.stderr.exp \
+	sys-copy_file_range.vgtest sys-copy_file_range.stderr.exp \
 	sys-openat.vgtest sys-openat.stderr.exp sys-openat.stdout.exp \
 	sys-statx.vgtest sys-statx.stderr.exp \
 	timerfd-syscall.vgtest timerfd-syscall.stderr.exp \
 	with-space.stderr.exp with-space.stdout.exp with-space.vgtest \
 	proc-auxv.vgtest proc-auxv.stderr.exp getregset.vgtest \
-	getregset.stderr.exp getregset.stdout.exp
+	getregset.stderr.exp getregset.stdout.exp \
+	sys-preadv_pwritev.vgtest sys-preadv_pwritev.stderr.exp \
+	sys-preadv2_pwritev2.vgtest sys-preadv2_pwritev2.stderr.exp
 
 check_PROGRAMS = \
 	brk \
 	capget \
+	check_preadv2_pwritev2 \
 	dlclose_leak dlclose_leak_so.so \
 	ioctl-tiocsig \
 	getregset \
@@ -47,6 +51,18 @@ check_PROGRAMS = \
 
 if HAVE_AT_FDCWD
 check_PROGRAMS += sys-openat
+endif
+
+if HAVE_COPY_FILE_RANGE
+        check_PROGRAMS += sys-copy_file_range
+endif
+
+if HAVE_PREADV_PWRITEV
+        check_PROGRAMS += sys-preadv_pwritev
+endif
+
+if HAVE_PREADV2_PWRITEV2
+        check_PROGRAMS += sys-preadv2_pwritev2
 endif
 
 AM_CFLAGS   += $(AM_FLAG_M3264_PRI)
