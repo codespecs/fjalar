@@ -22,9 +22,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -707,7 +705,8 @@ Addr setup_client_stack( void*  init_sp,
             {
                /* Limit the AT_HWCAP to just those features we explicitly
 		  support in VEX.  */
-#define ARM64_SUPPORTED_HWCAP (VKI_HWCAP_AES	        \
+#define ARM64_SUPPORTED_HWCAP (VKI_HWCAP_ATOMICS        \
+                               | VKI_HWCAP_AES          \
                                | VKI_HWCAP_PMULL        \
                                | VKI_HWCAP_SHA1         \
                                | VKI_HWCAP_SHA2         \
@@ -803,7 +802,8 @@ Addr setup_client_stack( void*  init_sp,
 
 #        if !defined(VGP_ppc32_linux) && !defined(VGP_ppc64be_linux) \
             && !defined(VGP_ppc64le_linux) \
-            && !defined(VGP_mips32_linux) && !defined(VGP_mips64_linux)
+            && !defined(VGP_mips32_linux) && !defined(VGP_mips64_linux) \
+            && !defined(VGP_nanomips_linux)
          case AT_SYSINFO_EHDR: {
             /* Trash this, because we don't reproduce it */
             const NSegment* ehdrseg = VG_(am_find_nsegment)((Addr)auxv->u.a_ptr);
@@ -1180,7 +1180,7 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
       process startup. */
 #define PRECISE_GUEST_REG_DEFINEDNESS_AT_STARTUP 1
 
-#  elif defined(VGP_mips32_linux)
+#  elif defined(VGP_mips32_linux) || defined(VGP_nanomips_linux)
    vg_assert(0 == sizeof(VexGuestMIPS32State) % LibVEX_GUEST_STATE_ALIGN);
    /* Zero out the initial state, and set up the simulated FPU in a
       sane way. */
@@ -1194,11 +1194,13 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
    arch->vex.guest_PC = iifii.initial_client_IP;
    arch->vex.guest_r31 = iifii.initial_client_SP;
 
+#  if !defined(VGP_nanomips_linux)
    if (iifii.arch_elf_state.overall_fp_mode == VKI_FP_FR1) {
       arch->vex.guest_CP0_status |= MIPS_CP0_STATUS_FR;
    }
 
-#   elif defined(VGP_mips64_linux)
+#  endif
+#  elif defined(VGP_mips64_linux)
    vg_assert(0 == sizeof(VexGuestMIPS64State) % LibVEX_GUEST_STATE_ALIGN);
    /* Zero out the initial state, and set up the simulated FPU in a
       sane way. */

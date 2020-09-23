@@ -23,9 +23,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -2735,6 +2733,7 @@ PRE(sys_sync)
    PRE_REG_READ0(long, "sync");
 }
 
+#if !defined(VGP_nanomips_linux)
 PRE(sys_fstatfs)
 {
    FUSE_COMPATIBLE_MAY_BLOCK();
@@ -2762,6 +2761,7 @@ POST(sys_fstatfs64)
 {
    POST_MEM_WRITE( ARG3, ARG2 );
 }
+#endif
 
 PRE(sys_getsid)
 {
@@ -3301,6 +3301,7 @@ PRE(sys_fchmod)
    PRE_REG_READ2(long, "fchmod", unsigned int, fildes, vki_mode_t, mode);
 }
 
+#if !defined(VGP_nanomips_linux)
 PRE(sys_newfstat)
 {
    FUSE_COMPATIBLE_MAY_BLOCK();
@@ -3313,8 +3314,10 @@ POST(sys_newfstat)
 {
    POST_MEM_WRITE( ARG2, sizeof(struct vki_stat) );
 }
+#endif
 
-#if !defined(VGO_solaris) && !defined(VGP_arm64_linux)
+#if !defined(VGO_solaris) && !defined(VGP_arm64_linux) && \
+    !defined(VGP_nanomips_linux)
 static vki_sigset_t fork_saved_mask;
 
 // In Linux, the sys_fork() function varies across architectures, but we
@@ -3757,20 +3760,26 @@ Bool ML_(do_sigkill)(Int pid, Int tgid)
    if (tgid != -1 && tst->os_state.threadgroup != tgid)
       return False;		/* not the right thread group */
 
-   /* Check to see that the target isn't already exiting. */
-   if (!VG_(is_exiting)(tid)) {
-      if (VG_(clo_trace_signals))
-	 VG_(message)(Vg_DebugMsg,
-                      "Thread %u being killed with SIGKILL\n", 
-                      tst->tid);
-      
-      tst->exitreason = VgSrc_FatalSig;
-      tst->os_state.fatalsig = VKI_SIGKILL;
-      
-      if (!VG_(is_running_thread)(tid))
-	 VG_(get_thread_out_of_syscall)(tid);
-   }
-   
+   /* Fatal SIGKILL sent to one of our threads.
+      "Handle" the signal ourselves, as trying to have tid
+      handling the signal causes termination problems (see #409367
+      and #409141).
+      Moreover, as a process cannot do anything when receiving SIGKILL,
+      it is not particularly crucial that "tid" does the work to
+      terminate the process.  */
+
+   if (VG_(clo_trace_signals))
+      VG_(message)(Vg_DebugMsg,
+                   "Thread %u %s being killed with SIGKILL, running tid: %u\n",
+                   tst->tid, VG_(name_of_ThreadStatus) (tst->status), VG_(running_tid));
+
+   if (!VG_(is_running_thread)(tid))
+      tst = VG_(get_ThreadState)(VG_(running_tid));
+   VG_(nuke_all_threads_except) (VG_(running_tid), VgSrc_FatalSig);
+   VG_(reap_threads)(VG_(running_tid));
+   tst->exitreason = VgSrc_FatalSig;
+   tst->os_state.fatalsig = VKI_SIGKILL;
+
    return True;
 }
 
@@ -3813,6 +3822,7 @@ PRE(sys_link)
    PRE_MEM_RASCIIZ( "link(newpath)", ARG2);
 }
 
+#if !defined(VGP_nanomips_linux)
 PRE(sys_newlstat)
 {
    PRINT("sys_newlstat ( %#" FMT_REGWORD "x(%s), %#" FMT_REGWORD "x )", ARG1,
@@ -3827,6 +3837,7 @@ POST(sys_newlstat)
    vg_assert(SUCCESS);
    POST_MEM_WRITE( ARG2, sizeof(struct vki_stat) );
 }
+#endif
 
 PRE(sys_mkdir)
 {
@@ -3844,12 +3855,28 @@ PRE(sys_mprotect)
    PRE_REG_READ3(long, "mprotect",
                  unsigned long, addr, vki_size_t, len, unsigned long, prot);
 
-   if (!ML_(valid_client_addr)(ARG1, ARG2, tid, "mprotect")) {
+   Addr addr = ARG1;
+   SizeT len = ARG2;
+   Int prot  = ARG3;
+
+   handle_sys_mprotect (tid, status, &addr, &len, &prot);
+
+   ARG1 = addr;
+   ARG2 = len;
+   ARG3 = prot;
+}
+/* This will be called from the generic mprotect, or the linux specific
+   pkey_mprotect. Pass pointers to ARG1, ARG2 and ARG3 as addr, len and prot,
+   they might be adjusted and have to assigned back to ARG1, ARG2 and ARG3.  */
+void handle_sys_mprotect(ThreadId tid, SyscallStatus* status,
+                         Addr *addr, SizeT *len, Int *prot)
+{
+   if (!ML_(valid_client_addr)(*addr, *len, tid, "mprotect")) {
       SET_STATUS_Failure( VKI_ENOMEM );
    } 
 #if defined(VKI_PROT_GROWSDOWN)
    else 
-   if (ARG3 & (VKI_PROT_GROWSDOWN|VKI_PROT_GROWSUP)) {
+   if (*prot & (VKI_PROT_GROWSDOWN|VKI_PROT_GROWSUP)) {
       /* Deal with mprotects on growable stack areas.
 
          The critical files to understand all this are mm/mprotect.c
@@ -3864,8 +3891,8 @@ PRE(sys_mprotect)
 
          The sanity check provided by the kernel is that the vma must
          have the VM_GROWSDOWN/VM_GROWSUP flag set as appropriate.  */
-      UInt grows = ARG3 & (VKI_PROT_GROWSDOWN|VKI_PROT_GROWSUP);
-      NSegment const *aseg = VG_(am_find_nsegment)(ARG1);
+      UInt grows = *prot & (VKI_PROT_GROWSDOWN|VKI_PROT_GROWSUP);
+      NSegment const *aseg = VG_(am_find_nsegment)(*addr);
       NSegment const *rseg;
 
       vg_assert(aseg);
@@ -3876,10 +3903,10 @@ PRE(sys_mprotect)
              && rseg->kind == SkResvn
              && rseg->smode == SmUpper
              && rseg->end+1 == aseg->start) {
-            Addr end = ARG1 + ARG2;
-            ARG1 = aseg->start;
-            ARG2 = end - aseg->start;
-            ARG3 &= ~VKI_PROT_GROWSDOWN;
+            Addr end = *addr + *len;
+            *addr = aseg->start;
+            *len = end - aseg->start;
+            *prot &= ~VKI_PROT_GROWSDOWN;
          } else {
             SET_STATUS_Failure( VKI_EINVAL );
          }
@@ -3889,8 +3916,8 @@ PRE(sys_mprotect)
              && rseg->kind == SkResvn
              && rseg->smode == SmLower
              && aseg->end+1 == rseg->start) {
-            ARG2 = aseg->end - ARG1 + 1;
-            ARG3 &= ~VKI_PROT_GROWSUP;
+            *len = aseg->end - *addr + 1;
+            *prot &= ~VKI_PROT_GROWSUP;
          } else {
             SET_STATUS_Failure( VKI_EINVAL );
          }
@@ -4414,6 +4441,7 @@ PRE(sys_setuid)
    PRE_REG_READ1(long, "setuid", vki_uid_t, uid);
 }
 
+#if !defined(VGP_nanomips_linux)
 PRE(sys_newstat)
 {
    FUSE_COMPATIBLE_MAY_BLOCK();
@@ -4456,6 +4484,7 @@ POST(sys_statfs64)
 {
    POST_MEM_WRITE( ARG3, ARG2 );
 }
+#endif
 
 PRE(sys_symlink)
 {

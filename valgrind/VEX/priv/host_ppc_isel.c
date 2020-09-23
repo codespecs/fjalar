@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 
@@ -3097,13 +3095,15 @@ static PPCCondCode iselCondCode_wrk ( ISelEnv* env, const IRExpr* e,
    vassert(typeOfIRExpr(env->type_env,e) == Ity_I1);
 
    /* Constant 1:Bit */
-   if (e->tag == Iex_Const && e->Iex.Const.con->Ico.U1 == True) {
-      // Make a compare that will always be true:
+   if (e->tag == Iex_Const) {
+      // Make a compare that will always be true (or always false):
+      vassert(e->Iex.Const.con->Ico.U1 == True || e->Iex.Const.con->Ico.U1 == False);
       HReg r_zero = newVRegI(env);
       addInstr(env, PPCInstr_LI(r_zero, 0, env->mode64));
       addInstr(env, PPCInstr_Cmp(False/*unsigned*/, True/*32bit cmp*/,
                                  7/*cr*/, r_zero, PPCRH_Reg(r_zero)));
-      return mk_PPCCondCode( Pct_TRUE, Pcf_7EQ );
+      return mk_PPCCondCode( e->Iex.Const.con->Ico.U1 ? Pct_TRUE : Pct_FALSE,
+                             Pcf_7EQ );
    }
 
    /* Not1(...) */
@@ -3259,6 +3259,29 @@ static PPCCondCode iselCondCode_wrk ( ISelEnv* env, const IRExpr* e,
       addInstr(env,
                PPCInstr_Cmp(False/*unsigned*/, True/*32bit cmp*/,
                             7/*cr*/, src_masked, PPCRH_Imm(False,1)));
+      return mk_PPCCondCode( Pct_TRUE, Pcf_7EQ );
+   }
+
+   /* --- And1(x,y), Or1(x,y) --- */
+   /* FIXME: We could (and probably should) do a lot better here, by using the
+      iselCondCode_C/_R scheme used in the amd64 insn selector. */
+   if (e->tag == Iex_Binop
+        && (e->Iex.Binop.op == Iop_And1 || e->Iex.Binop.op == Iop_Or1)) {
+      HReg x_as_int = newVRegI(env);
+      PPCCondCode cc_x = iselCondCode(env, e->Iex.Binop.arg1, IEndianess);
+      addInstr(env, PPCInstr_Set(cc_x, x_as_int));
+
+      HReg y_as_int = newVRegI(env);
+      PPCCondCode cc_y = iselCondCode(env, e->Iex.Binop.arg2, IEndianess);
+      addInstr(env, PPCInstr_Set(cc_y, y_as_int));
+
+      HReg tmp = newVRegI(env);
+      PPCAluOp op = e->Iex.Binop.op == Iop_And1 ? Palu_AND : Palu_OR;
+      addInstr(env, PPCInstr_Alu(op, tmp, x_as_int, PPCRH_Reg(y_as_int)));
+
+      addInstr(env, PPCInstr_Alu(Palu_AND, tmp, tmp, PPCRH_Imm(False,1)));
+      addInstr(env, PPCInstr_Cmp(False/*unsigned*/, True/*32bit cmp*/,
+                                 7/*cr*/, tmp, PPCRH_Imm(False,1)));
       return mk_PPCCondCode( Pct_TRUE, Pcf_7EQ );
    }
 
@@ -5564,6 +5587,18 @@ static HReg iselVecExpr_wrk ( ISelEnv* env, const IRExpr* e,
    vassert(e);
    vassert(ty == Ity_V128);
 
+   if (e->tag == Iex_ITE) {
+      HReg r1 = iselVecExpr( env, e->Iex.ITE.iftrue, IEndianess );
+      HReg r0 = iselVecExpr( env, e->Iex.ITE.iffalse, IEndianess );
+      HReg r_dst = newVRegV(env);
+
+      // Use OR operator to do move r1 to r_dst
+      addInstr(env, PPCInstr_AvBinary( Pav_OR, r_dst, r0, r0));
+      PPCCondCode cc = iselCondCode(env, e->Iex.ITE.cond, IEndianess);
+      addInstr(env, PPCInstr_AvCMov(cc, r_dst, r1));
+      return r_dst;
+   }
+
    if (e->tag == Iex_RdTmp) {
       return lookupIRTemp(env, e->Iex.RdTmp.tmp);
    }
@@ -5781,6 +5816,8 @@ static HReg iselVecExpr_wrk ( ISelEnv* env, const IRExpr* e,
 
       case Iop_RecipEst32Fx4: fpop = Pavfp_RCPF;    goto do_32Fx4_unary;
       case Iop_RSqrtEst32Fx4: fpop = Pavfp_RSQRTF;  goto do_32Fx4_unary;
+      case Iop_Log2_32Fx4:    fpop = Pavfp_Log2;    goto do_32Fx4_unary;
+      case Iop_Exp2_32Fx4:    fpop = Pavfp_Exp2;    goto do_32Fx4_unary;
       case Iop_I32UtoF32x4_DEP: fpop = Pavfp_CVTU2F;  goto do_32Fx4_unary;
       case Iop_I32StoF32x4_DEP: fpop = Pavfp_CVTS2F;  goto do_32Fx4_unary;
       case Iop_QF32toI32Ux4_RZ: fpop = Pavfp_QCVTF2U; goto do_32Fx4_unary;
@@ -6539,7 +6576,10 @@ static void iselStmt ( ISelEnv* env, IRStmt* stmt, IREndness IEndianess )
          return;
       }
       if (!mode64 && ty == Ity_I128) {
-         HReg r_srcHi, r_srcMedHi, r_srcMedLo, r_srcLo;
+         HReg r_srcHi    = INVALID_HREG;
+         HReg r_srcMedHi = INVALID_HREG;
+         HReg r_srcMedLo = INVALID_HREG;
+         HReg r_srcLo    = INVALID_HREG;
          HReg r_dstHi, r_dstMedHi, r_dstMedLo, r_dstLo;
 
          iselInt128Expr_to_32x4(&r_srcHi, &r_srcMedHi,

@@ -999,7 +999,7 @@ void fjalar_post_clo_init()
   // causes separate basic blocks to be stitched together) for the purpose of
   // detecting entry in main. see "HANDLING FUNCTION ENTRY" in find_entry_point()
   VG_(clo_vex_control).iropt_unroll_thresh = 0;
-  VG_(clo_vex_control).guest_chase_thresh = 0;
+  VG_(clo_vex_control).guest_chase = False;
 
   executable_filename = VG_(args_the_exename);
 

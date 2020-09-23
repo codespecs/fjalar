@@ -540,12 +540,13 @@ This will take about 10-15 minutes.  A summary of the @command{regtest}
 results will be at the end of the log file.  We will use these results in
 @ref{Testing Valgrind}.
 
-Here is a copy of the last few lines from the latest run of these tests (03/22/2020)
+Here is a copy of the last few lines from the latest run of these tests (09/21/2020)
 on a UW/CSE CentOS based system:
 
 @example
-== 699 tests, 1 stderr failure, 0 stdout failures, 0 stderrB failures, 0 stdoutB failures, 0 post failures ==
-exp-sgcheck/tests/stackerr               (stderr)
+== 713 tests, 2 stderr failure, 0 stdout failures, 0 stderrB failures, 0 stdoutB failures, 0 post failures ==
+none/tests/libvex_test                   (stderr)
+none/tests/libvexmultiarch_test          (stderr)
 
 ...checking makefile consistency
 ...checking header files and include directives

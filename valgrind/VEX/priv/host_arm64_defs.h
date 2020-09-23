@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -465,6 +463,7 @@ typedef
       ARM64in_Test,
       ARM64in_Shift,
       ARM64in_Unary,
+      ARM64in_Set64,
       ARM64in_MovI,        /* int reg-reg move */
       ARM64in_Imm64,
       ARM64in_LdSt64,
@@ -482,6 +481,7 @@ typedef
       ARM64in_LdrEX,
       ARM64in_StrEX,
       ARM64in_CAS,
+      ARM64in_CASP,
       ARM64in_MFence,
       ARM64in_ClrEX,
       /* ARM64in_V*: scalar ops involving vector registers */
@@ -568,6 +568,11 @@ typedef
             HReg         src;
             ARM64UnaryOp op;
          } Unary;
+         /* CSET -- Convert a condition code to a 64-bit value (0 or 1). */
+         struct {
+            HReg          dst;
+            ARM64CondCode cond;
+         } Set64;
          /* MOV dst, src -- reg-reg move for integer registers */
          struct {
             HReg dst;
@@ -675,6 +680,7 @@ typedef
             Uses x8 as scratch (but that's not allocatable).
             Hence: RD x3, x5, x7; WR x1
 
+           loop:
             (szB=8)  mov  x8, x5
             (szB=4)  and  x8, x5, #0xFFFFFFFF
             (szB=2)  and  x8, x5, #0xFFFF
@@ -686,15 +692,18 @@ typedef
             bne     after
             -- if branch taken, failure; x1[[8*szB-1 : 0] holds old value
             -- attempt to store
-            stxr    w1, x7, [x3]
+            stxr    w8, x7, [x3]
             -- if store successful, x1==0, so the eor is "x1 := x5"
-            -- if store failed,     x1==1, so the eor makes x1 != x5
-            eor     x1, x5, x1
+            -- if store failed,     branch back and try again.
+            cbne    w8, loop
            after:
          */
          struct {
             Int szB; /* 1, 2, 4 or 8 */
          } CAS;
+         struct {
+            Int szB; /* 4 or 8 */
+         } CASP;
          /* Mem fence.  An insn which fences all loads and stores as
             much as possible before continuing.  On ARM64 we emit the
             sequence "dsb sy ; dmb sy ; isb sy", which is probably
@@ -917,6 +926,7 @@ extern ARM64Instr* ARM64Instr_Logic   ( HReg, HReg, ARM64RIL*, ARM64LogicOp );
 extern ARM64Instr* ARM64Instr_Test    ( HReg, ARM64RIL* );
 extern ARM64Instr* ARM64Instr_Shift   ( HReg, HReg, ARM64RI6*, ARM64ShiftOp );
 extern ARM64Instr* ARM64Instr_Unary   ( HReg, HReg, ARM64UnaryOp );
+extern ARM64Instr* ARM64Instr_Set64   ( HReg, ARM64CondCode );
 extern ARM64Instr* ARM64Instr_MovI    ( HReg, HReg );
 extern ARM64Instr* ARM64Instr_Imm64   ( HReg, ULong );
 extern ARM64Instr* ARM64Instr_LdSt64  ( Bool isLoad, HReg, ARM64AMode* );
@@ -940,6 +950,7 @@ extern ARM64Instr* ARM64Instr_Mul     ( HReg dst, HReg argL, HReg argR,
 extern ARM64Instr* ARM64Instr_LdrEX   ( Int szB );
 extern ARM64Instr* ARM64Instr_StrEX   ( Int szB );
 extern ARM64Instr* ARM64Instr_CAS     ( Int szB );
+extern ARM64Instr* ARM64Instr_CASP    ( Int szB );
 extern ARM64Instr* ARM64Instr_MFence  ( void );
 extern ARM64Instr* ARM64Instr_ClrEX   ( void );
 extern ARM64Instr* ARM64Instr_VLdStH  ( Bool isLoad, HReg sD, HReg rN,

@@ -9,6 +9,12 @@
 # you need to re-run autogen.sh and configure to make it take effect.
 BUILD_ALL_DOCS=yes
 
+# Whether to run xmlto pdf --with-fop
+# This is de fault, set to empty to use the default fo to pdf
+# processor that xmlto uses (which might be pdfxmltex, which is
+# known to be broken).
+WITH_FOP=--with-fop
+
 ##-------------------------------------------------------------
 ## END OF HACK
 ##-------------------------------------------------------------
@@ -35,6 +41,7 @@ EXTRA_DIST = \
 	internals/3_12_BUGSTATUS.txt \
 	internals/3_13_BUGSTATUS.txt \
 	internals/3_14_BUGSTATUS.txt \
+	internals/3_15_BUGSTATUS.txt \
 	internals/MERGE_3_10_1.txt \
 	internals/arm_thumb_notes_gdbserver.txt \
 	internals/avx-notes.txt \
@@ -113,10 +120,7 @@ LOGFILE = print.log
 
 # validation stuff
 XMLLINT       = xmllint
-LINT_FLAGS    = --noblanks --noout --xinclude --postvalid --noent
-# validate with docbook 4.3 'cos it supports xml:base natively
-VALID_FLAGS   = --dtdvalid http://www.oasis-open.org/docbook/xml/4.3/docbookx.dtd 
-XMLLINT_FLAGS = $(LINT_FLAGS) $(VALID_FLAGS)
+XMLLINT_FLAGS = --noblanks --noout --xinclude --postvalid --noent
 
 # stylesheet processor
 XSLTPROC       = xsltproc
@@ -135,7 +139,12 @@ XSL_MAN_STYLES = \
 all-docs: FAQ.txt man-pages html-docs print-docs
 
 valid:
-	$(XMLLINT) $(XMLLINT_FLAGS) $(myxmldir)/index.xml
+	if type $(XMLLINT) 2>/dev/null; then \
+	  $(XMLLINT) $(XMLLINT_FLAGS) $(myxmldir)/index.xml; \
+	  $(XMLLINT) $(XMLLINT_FLAGS) $(myxmldir)/manpages-index.xml; \
+	fi
+
+check-local: valid
 
 # The text version of the FAQ.
 FAQ.txt:
@@ -179,14 +188,13 @@ print-docs:
 	mkdir -p $(myprintdir) && \
 	mkdir -p $(myprintdir)/images && \
 	cp $(myimgdir)/*.png $(myprintdir)/images && \
-	$(XSLTPROC) $(XSLTPROC_FLAGS) -o $(myprintdir)/index.fo $(XSL_FO_STYLE) $(myxmldir)/index.xml && \
-	(cd $(myprintdir) && \
-         ( pdfxmltex index.fo && \
-	   pdfxmltex index.fo && \
-	   pdfxmltex index.fo ) &> $(LOGFILE) < /dev/null && \
-	 echo "Generating PS file: $(myprintdir)/index.ps ..." && \
-	 pdftops index.pdf && \
-	 rm -f *.log *.aux *.fo *.out)
+	xmlto -v $(WITH_FOP) --stringparam=keep.relative.image.uris="1" \
+	      -x $(XSL_FO_STYLE) \
+	      --searchpath print pdf $(myxmldir)/index.xml &> $(LOGFILE) && \
+	echo "Generating PS file: $(myprintdir)/index.ps ..." && \
+	pdftops index.pdf && \
+	mv index.pdf index.ps $(myprintdir) && \
+	rm $(LOGFILE)
 
 # If the docs have been built, install them.  But don't worry if they have 
 # not -- developers do 'make install' not from a 'make dist'-ified distro all
@@ -292,11 +300,11 @@ download-docs:
 	@echo "Generating valgrind_manual.pdf ..."
 	mkdir -p $(vgdir)/print
 	mkdir -p $(vgdir)/print/images
-	$(XSLTPROC) $(XSLTPROC_FLAGS) -o $(vgdir)/print/manual.fo $(XSL_FO_STYLE) $(myxmldir)/index.xml
-	(cd $(vgdir)/print/ && \
-		( pdfxmltex manual.fo && \
-		  pdfxmltex manual.fo && \
-		  pdfxmltex manual.fo ) &> $(LOGFILE) < /dev/null )
+	cp $(myimgdir)/*.png $(vgdir)/print/images/
+	xmlto -v $(WITH_FOP) --stringparam=keep.relative.image.uris="1" \
+	      -x $(XSL_FO_STYLE) \
+	      --searchpath print pdf $(myxmldir)/index.xml &> $(LOGFILE)
+	mv index.pdf $(vgdir)/print/manual.pdf
 	@echo ""
 	@echo "Generating valgrind_manual.ps.bz2 ..."
 	(cd $(vgdir)/print/ && \
@@ -304,4 +312,4 @@ download-docs:
 	mv $(vgdir)/print/manual.pdf $(downloadsdir)/valgrind_manual.pdf
 	mv $(vgdir)/print/manual.ps $(downloadsdir)/valgrind_manual.ps
 	bzip2 $(downloadsdir)/valgrind_manual.ps
-	/bin/rm -fr $(vgdir)
+	/bin/rm -fr $(vgdir) $(LOGFILE)

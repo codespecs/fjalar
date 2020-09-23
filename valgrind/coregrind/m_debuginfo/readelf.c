@@ -22,9 +22,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -1318,10 +1316,16 @@ DiImage* find_debug_file( struct _DebugInfo* di,
 
    if (dimg == NULL && debugname != NULL) {
       HChar *objdir = ML_(dinfo_strdup)("di.fdf.2", objpath);
+      HChar *usrmerge_objdir;
       HChar *objdirptr;
 
       if ((objdirptr = VG_(strrchr)(objdir, '/')) != NULL)
          *objdirptr = '\0';
+
+      if ((objdirptr = VG_(strstr)(objdir, "usr")) != NULL)
+         usrmerge_objdir = objdirptr + VG_(strlen)("usr");
+      else
+         usrmerge_objdir = NULL;
 
       debugpath = ML_(dinfo_zalloc)(
                      "di.fdf.3",
@@ -1329,30 +1333,36 @@ DiImage* find_debug_file( struct _DebugInfo* di,
                      + (extrapath ? VG_(strlen)(extrapath) : 0)
                      + (serverpath ? VG_(strlen)(serverpath) : 0));
 
+#     define TRY_OBJDIR(format, ...)                                    \
+      do {                                                              \
+         VG_(sprintf)(debugpath, format, __VA_ARGS__);                  \
+         dimg = open_debug_file(debugpath, buildid, crc, rel_ok, NULL); \
+         if (dimg != NULL) goto dimg_ok;                                \
+      } while (0);
+
+#     define TRY_OBJDIR_USRMERGE_OBJDIR(format)                         \
+      do {                                                              \
+         TRY_OBJDIR(format, objdir, debugname);                         \
+         if (usrmerge_objdir != NULL) {                                 \
+            TRY_OBJDIR(format, usrmerge_objdir, debugname);             \
+         }                                                              \
+      } while (0)
+
       if (debugname[0] == '/') {
-         VG_(sprintf)(debugpath, "%s", debugname);
-         dimg = open_debug_file(debugpath, buildid, crc, rel_ok, NULL);
-         if (dimg != NULL) goto dimg_ok;
+         TRY_OBJDIR("%s", debugname);
       }
 
-      VG_(sprintf)(debugpath, "%s/%s", objdir, debugname);
-      dimg = open_debug_file(debugpath, buildid, crc, rel_ok, NULL);
-      if (dimg != NULL) goto dimg_ok;
-
-      VG_(sprintf)(debugpath, "%s/.debug/%s", objdir, debugname);
-      dimg = open_debug_file(debugpath, buildid, crc, rel_ok, NULL);
-      if (dimg != NULL) goto dimg_ok;
-      
-      VG_(sprintf)(debugpath, "/usr/lib/debug%s/%s", objdir, debugname);
-      dimg = open_debug_file(debugpath, buildid, crc, rel_ok, NULL);
-      if (dimg != NULL) goto dimg_ok;
+      TRY_OBJDIR_USRMERGE_OBJDIR("%s/%s");
+      TRY_OBJDIR_USRMERGE_OBJDIR("%s/.debug/%s");
+      TRY_OBJDIR_USRMERGE_OBJDIR("/usr/lib/debug%s/%s");
 
       if (extrapath) {
-         VG_(sprintf)(debugpath, "%s%s/%s", extrapath,
-                                            objdir, debugname);
-         dimg = open_debug_file(debugpath, buildid, crc, rel_ok, NULL);
-         if (dimg != NULL) goto dimg_ok;
+         TRY_OBJDIR("%s%s/%s", extrapath, objdir, debugname);
+         if (usrmerge_objdir != NULL)
+            TRY_OBJDIR("%s%s/%s", extrapath, usrmerge_objdir, debugname);
       }
+#     undef TRY_OBJDIR
+#     undef TRY_OBJDIRS
 
       if (serverpath) {
          /* When looking on the debuginfo server, always just pass the
@@ -1551,7 +1561,7 @@ static HChar* readlink_path (const HChar *path)
 
    while (tries > 0) {
       SysRes res;
-#if defined(VGP_arm64_linux)
+#if defined(VGP_arm64_linux) || defined(VGP_nanomips_linux)
       res = VG_(do_syscall4)(__NR_readlinkat, VKI_AT_FDCWD,
                                               (UWord)path, (UWord)buf, bufsiz);
 #elif defined(VGO_linux) || defined(VGO_darwin)
@@ -2392,7 +2402,7 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
 #     if defined(VGP_x86_linux) || defined(VGP_amd64_linux) \
          || defined(VGP_arm_linux) || defined (VGP_s390x_linux) \
          || defined(VGP_mips32_linux) || defined(VGP_mips64_linux) \
-         || defined(VGP_arm64_linux) \
+         || defined(VGP_arm64_linux) || defined(VGP_nanomips_linux) \
          || defined(VGP_x86_solaris) || defined(VGP_amd64_solaris)
       /* Accept .plt where mapped as rx (code) */
       if (0 == VG_(strcmp)(name, ".plt")) {

@@ -24,9 +24,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 
@@ -5956,14 +5954,13 @@ static void hg_post_clo_init ( void )
 {
    Thr* hbthr_root;
 
-   if (HG_(clo_delta_stacktrace)
-       && VG_(clo_vex_control).guest_chase_thresh != 0) {
+   if (HG_(clo_delta_stacktrace) && VG_(clo_vex_control).guest_chase) {
       if (VG_(clo_verbosity) >= 2)
          VG_(message)(Vg_UserMsg,
                       "helgrind --delta-stacktrace=yes only works with "
-                      "--vex-guest-chase-thresh=0\n"
-                      "=> (re-setting it to 0\n");
-      VG_(clo_vex_control).guest_chase_thresh = 0;
+                      "--vex-guest-chase=no\n"
+                      "=> (re-setting it to 'no')\n");
+      VG_(clo_vex_control).guest_chase = False;
    }
 
 
