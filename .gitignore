@@ -563,7 +563,6 @@ valgrind/none/tests/map_unmap
 valgrind/none/tests/mmap_fcntl_bug
 valgrind/none/tests/mq
 valgrind/none/tests/munmap_exe
-valgrind/none/tests/nanomips
 valgrind/none/tests/nestedfns
 valgrind/none/tests/nocwd
 valgrind/none/tests/pending
