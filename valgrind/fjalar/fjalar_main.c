@@ -209,7 +209,8 @@ static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
 				       entry_func func) {
   IRDirty  *di;
   FunctionEntry *entry = gengettable(table, (void *)(Addr)addr);
-  FJALAR_DPRINTF("handle_possible_entry_func: addr: %p entry: %p\n", (void *)addr, entry);
+  // debug code
+  //FJALAR_DPRINTF("handle_possible_entry_func: addr: %p entry: %p\n", (void *)addr, entry);
 
   if(!entry) {
       return;
@@ -311,7 +312,8 @@ void handle_possible_entry(MCEnv* mce, Addr64 addr, IRSB* bb_orig) {
   currentAddr = (Addr)addr;
 
   FunctionEntry *entry = gengettable(FunctionTable, (void *)(Addr)addr);
-  FJALAR_DPRINTF("handle_possible_entry: addr: %p entry: %p\n", (void *)addr, entry);
+  // debug code
+  //FJALAR_DPRINTF("handle_possible_entry: addr: %p entry: %p\n", (void *)addr, entry);
 
   // If this is first instruction in a function, find the preferred entry point.
   if(entry) {
