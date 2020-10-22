@@ -32,6 +32,8 @@ typedef struct
 {
   dwarf_vma	 li_length;
   unsigned short li_version;
+  unsigned char  li_address_size;
+  unsigned char  li_segment_size;
   dwarf_vma      li_prologue_length;
   unsigned char  li_min_insn_length;
   unsigned char  li_max_ops_per_insn;
@@ -212,6 +214,7 @@ extern int do_debug_frames;
 extern int do_debug_frames_interp;
 extern int do_debug_macinfo;
 extern int do_debug_str;
+extern int do_debug_str_offsets;
 extern int do_debug_loc;
 extern int do_gdb_index;
 extern int do_trace_info;
@@ -222,6 +225,7 @@ extern int do_debug_cu_index;
 extern int do_wide;
 extern int do_debug_links;
 extern int do_follow_links;
+extern bfd_boolean do_checks;
 
 extern int dwarf_cutoff_level;
 extern unsigned long dwarf_start_die;
@@ -270,13 +274,15 @@ extern unsigned char * get_build_id (void *);
 
 #if 0  // This code is not needed for Fjalar.
 
+extern void error (const char *, ...) ATTRIBUTE_PRINTF_1;
+
 static inline void
-report_leb_status (int status)
+report_leb_status (int status, const char *file, unsigned long lnum)
 {
   if ((status & 1) != 0)
-    error (_("LEB end of data\n"));
+    error (_("%s:%lu: end of data encountered whilst reading LEB\n"), file, lnum);
   else if ((status & 2) != 0)
-    error (_("LEB value too large\n"));
+    error (_("%s:%lu: read LEB value is too large to store in destination variable\n"), file, lnum);
 }
 
 #endif // This code is not needed for Fjalar.
@@ -284,13 +290,13 @@ report_leb_status (int status)
 // start of Fjalar code
 // convert report_leb_status to macro to solve duplicate 'error' definition problem
 
-#define report_leb_status(status)                               \
+#define report_leb_status(status, file, lnum)                   \
   do                                                            \
     {                                                           \
       if ((status & 1) != 0)                                    \
-        error (_("LEB end of data\n"));                         \
+        error (_("%s:%lu: end of data encountered whilst reading LEB\n"), file, lnum); \
       else if ((status & 2) != 0)                               \
-        error (_("LEB value too large\n"));                     \
+        error (_("%s:%lu: read LEB value is too large to store in destination variable\n"), file, lnum); \
     } while (0)                                                 \
 
 // end of Fjalar code
@@ -301,7 +307,8 @@ report_leb_status (int status)
       unsigned int _len;					\
       read_leb128 (start, end, FALSE, &_len, NULL);		\
       start += _len;						\
-    } while (0)
+    }								\
+  while (0)
 
 #define SKIP_SLEB(start, end)					\
   do								\
@@ -309,7 +316,8 @@ report_leb_status (int status)
       unsigned int _len;					\
       read_leb128 (start, end, TRUE, &_len, NULL);		\
       start += _len;						\
-    } while (0)
+    }								\
+  while (0)
 
 #define READ_ULEB(var, start, end)				\
   do								\
@@ -323,8 +331,9 @@ report_leb_status (int status)
       (var) = _val;						\
       if ((var) != _val)					\
 	_status |= 2;						\
-      report_leb_status (_status);				\
-    } while (0)
+      report_leb_status (_status, __FILE__, __LINE__);		\
+    }								\
+  while (0)
 
 #define READ_SLEB(var, start, end)				\
   do								\
@@ -338,5 +347,6 @@ report_leb_status (int status)
       (var) = _val;						\
       if ((var) != _val)					\
 	_status |= 2;						\
-      report_leb_status (_status);				\
-    } while (0)
+      report_leb_status (_status, __FILE__, __LINE__);		\
+    }								\
+  while (0)
