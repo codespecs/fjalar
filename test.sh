@@ -13,6 +13,7 @@ set -e
 # export SHELLOPTS
 
 # Get some system info for debugging.
+echo "start of system info"
 gcc --version
 make --version
 lsb_release -a
