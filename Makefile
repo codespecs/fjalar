@@ -23,7 +23,11 @@ test:
 
 # Kvasir tests
 daikon-test: ../daikon
+	ls -l valgrind/inst/bin/valgrind valgrind/inst/lib/valgrind/fjalar-amd64-linux
+	ls -l ../daikon/fjalar/valgrind/inst/bin/valgrind ../daikon/fjalar/valgrind/inst/lib/valgrind/fjalar-amd64-linux
 	$(MAKE) -C ../daikon compile daikon.jar kvasir
+	ls -l valgrind/inst/bin/valgrind valgrind/inst/lib/valgrind/fjalar-amd64-linux
+	ls -l ../daikon/fjalar/valgrind/inst/bin/valgrind ../daikon/fjalar/valgrind/inst/lib/valgrind/fjalar-amd64-linux
 	$(MAKE) -C ../daikon/tests/kvasir-tests clean-all regression-tests
 
 TEMP-daikon-test: ../daikon
