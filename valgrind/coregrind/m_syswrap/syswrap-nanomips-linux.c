@@ -8,7 +8,6 @@
    framework.
 
    Copyright (C) 2017-2018 RT-RK
-      mips-valgrind@rt-rk.com
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -805,12 +804,14 @@ static SyscallTableEntry syscall_main_table[] = {
    LINX_ (__NR_process_vm_writev,      sys_process_vm_writev),
    LINX_ (__NR_kcmp,                   sys_kcmp),
    LINX_ (__NR_renameat2,              sys_renameat2),
+   LINX_ (__NR_sched_setattr,          sys_sched_setattr),
+   LINXY (__NR_sched_getattr,          sys_sched_getattr),
    LINXY (__NR_getrandom,              sys_getrandom),
    LINXY (__NR_memfd_create,           sys_memfd_create),
    LINXY (__NR_statx,                  sys_statx),
    LINX_ (__NR_setns,                  sys_setns),
    //    (__NR_bpf,                    sys_ni_syscall),
-   //    (__NR_execveat,               sys_ni_syscall),
+   LINX_ (__NR_execveat,               sys_execveat),
    //    (__NR_userfaultfd,            sys_ni_syscall),
    LINX_ (__NR_membarrier,             sys_membarrier),
    //    (__NR_mlock2,                 sys_ni_syscall),
@@ -820,6 +821,10 @@ static SyscallTableEntry syscall_main_table[] = {
    //    (__NR_pkey_mprotect,          sys_ni_syscall),
    //    (__NR_pkey_alloc,             sys_ni_syscall),
    //    (__NR_pkey_free,              sys_ni_syscall),
+   LINXY (__NR_io_uring_setup,         sys_io_uring_setup),
+   LINXY (__NR_io_uring_enter,         sys_io_uring_enter),
+   LINXY (__NR_io_uring_register,      sys_io_uring_register),
+   LINX_ (__NR_faccessat2,             sys_faccessat2),
 };
 
 SyscallTableEntry* ML_(get_linux_syscall_entry) (UInt sysno)

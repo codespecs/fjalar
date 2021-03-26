@@ -89,7 +89,7 @@
         || (__VALGRIND_MAJOR__ == 3 && __VALGRIND_MINOR__ >= 6))
 */
 #define __VALGRIND_MAJOR__    3
-#define __VALGRIND_MINOR__    16
+#define __VALGRIND_MINOR__    17
 
 
 #include <stdarg.h>
@@ -876,7 +876,8 @@ typedef
                     /* results = r3 */                           \
                     "lgr %0, 3\n\t"                              \
                     : "=d" (_zzq_result)                         \
-                    : "a" (&_zzq_args[0]), "0" (_zzq_default)    \
+                    : "a" (&_zzq_args[0]),                       \
+                      "0" ((unsigned long int)_zzq_default)      \
                     : "cc", "2", "3", "memory"                   \
                    );                                            \
    _zzq_result;                                                  \

@@ -8,7 +8,7 @@
 ##------------------------------------------------------------##
 
 # Process this file with autoconf to produce a configure script.
-AC_INIT([Valgrind],[3.16.1.Fjalar],[daikon-developers@googlegroups.com])
+AC_INIT([Valgrind],[3.17.0.Fjalar],[daikon-developers@googlegroups.com])
 AC_CONFIG_SRCDIR(coregrind/m_main.c)
 AC_CONFIG_HEADERS([config.h])
 AM_INIT_AUTOMAKE([foreign dist-bzip2 subdir-objects])
@@ -1147,7 +1147,7 @@ case "${GLIBC_VERSION}" in
      musl)
 	AC_MSG_RESULT(Musl)
 	AC_DEFINE([MUSL_LIBC], 1, [Define to 1 if you're using Musl libc])
-	# no DEFAULT_SUPP file yet for musl libc.
+	DEFAULT_SUPP="musl.supp ${DEFAULT_SUPP}"
 	;;
      2.0|2.1|*)
 	AC_MSG_RESULT([unsupported version ${GLIBC_VERSION}])
@@ -1455,7 +1455,9 @@ AC_HWCAP_CONTAINS_FLAG([arch_2_05],[HWCAP_HAS_ISA_2_05])
 AC_HWCAP_CONTAINS_FLAG([arch_2_06],[HWCAP_HAS_ISA_2_06])
 AC_HWCAP_CONTAINS_FLAG([arch_2_07],[HWCAP_HAS_ISA_2_07])
 AC_HWCAP_CONTAINS_FLAG([arch_3_00],[HWCAP_HAS_ISA_3_00])
+AC_HWCAP_CONTAINS_FLAG([arch_3_1],[HWCAP_HAS_ISA_3_1])
 AC_HWCAP_CONTAINS_FLAG([htm],[HWCAP_HAS_HTM])
+AC_HWCAP_CONTAINS_FLAG([mma],[HWCAP_HAS_MMA])
 
 # ISA Levels
 AM_CONDITIONAL(HAS_ISA_2_05, [test x$HWCAP_HAS_ISA_2_05 = xyes])
@@ -1624,7 +1626,7 @@ AM_CONDITIONAL(SUPPORTS_HTM, test x$ac_compiler_supports_htm = xyes \
                                -a x$ac_compiler_sees_htm_builtins = xyes \
                                -a x$HWCAP_HAS_HTM = xyes )
 
-# isa 3.0 checking
+# isa 3.0 checking. (actually 3.0 or newer)
 AC_MSG_CHECKING([that assembler knows ISA 3.00 ])
 
 AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
@@ -1638,8 +1640,42 @@ ac_asm_have_isa_3_00=no
 AC_MSG_RESULT([no])
 ])
 
+# xscvhpdp checking
+AC_MSG_CHECKING([that assembler knows xscvhpdp ])
+
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+]], [[
+  __asm__ __volatile__("xscvhpdp 1,2 ");
+]])], [
+ac_asm_have_xscvhpdp=yes
+AC_MSG_RESULT([yes])
+], [
+ac_asm_have_xscvhpdp=no
+AC_MSG_RESULT([no])
+])
+
+# isa 3.01 checking
+AC_MSG_CHECKING([that assembler knows ISA 3.1 ])
+
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+]], [[
+  __asm__ __volatile__("brh 1,2 ");
+]])], [
+ac_asm_have_isa_3_1=yes
+AC_MSG_RESULT([yes])
+], [
+ac_asm_have_isa_3_1=no
+AC_MSG_RESULT([no])
+])
+
+
 AM_CONDITIONAL(HAS_ISA_3_00, [test x$ac_asm_have_isa_3_00 = xyes \
                              -a x$HWCAP_HAS_ISA_3_00 = xyes])
+
+AM_CONDITIONAL(HAS_XSCVHPDP, [test x$ac_asm_have_xscvhpdp = xyes])
+
+AM_CONDITIONAL(HAS_ISA_3_1, [test x$ac_asm_have_isa_3_1 = xyes \
+                             -a x$HWCAP_HAS_ISA_3_1 = xyes])
 
 # Check for pthread_create@GLIBC2.0
 AC_MSG_CHECKING([for pthread_create@GLIBC2.0()])
@@ -2266,6 +2302,54 @@ CXXFLAGS=$safe_CXXFLAGS
 AC_LANG(C)
 
 AC_SUBST(FLAG_FALIGNED_NEW)
+
+# does this compiler support -fsized-deallocation ?
+AC_MSG_CHECKING([if g++ accepts -fsized-deallocation])
+
+safe_CXXFLAGS=$CXXFLAGS
+CXXFLAGS="-fsized-deallocation -Werror"
+
+AC_LANG(C++)
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[
+  return 0;
+]])], [
+FLAG_FSIZED_DEALLOCATION="-fsized-deallocation"
+ac_have_sized_deallocation=yes
+AC_MSG_RESULT([yes])
+], [
+FLAG_FSIZED_DEALLOCATION=""
+ac_have_sized_deallocation=no
+AC_MSG_RESULT([no])
+])
+CXXFLAGS=$safe_CXXFLAGS
+AC_LANG(C)
+
+AC_SUBST(FLAG_FSIZED_DEALLOCATION)
+AM_CONDITIONAL([HAVE_FSIZED_DEALLOCATION], [test x$ac_have_sized_deallocation = xyes])
+
+# does this compiler support C++17 aligned new/delete?
+AC_MSG_CHECKING([if g++ supports aligned new and delete])
+
+safe_CXXFLAGS=$CXXFLAGS
+CXXFLAGS="-std=c++17"
+
+AC_LANG(C++)
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+#include <cstdlib>
+#include <new>
+]], [[
+  operator delete(nullptr, std::align_val_t(64U));
+]])], [
+ac_have_aligned_cxx_alloc=yes
+AC_MSG_RESULT([yes])
+], [
+ac_have_aligned_cxx_alloc=no
+AC_MSG_RESULT([no])
+])
+CXXFLAGS=$safe_CXXFLAGS
+AC_LANG(C)
+
+AM_CONDITIONAL([HAVE_ALIGNED_CXX_ALLOC], [test x$ac_have_aligned_cxx_alloc = xyes])
 
 # does this compiler support -fno-stack-protector ?
 AC_MSG_CHECKING([if gcc accepts -fno-stack-protector])
@@ -3034,6 +3118,26 @@ AC_MSG_RESULT([no])
 
 AM_CONDITIONAL(BUILD_RDRAND_TESTS, test x$ac_have_as_rdrand = xyes)
 
+# does the amd64 assembler understand the RDSEED instruction?
+# Note, this doesn't generate a C-level symbol.  It generates a
+# automake-level symbol (BUILD_RDSEED_TESTS), used in test Makefile.am's
+AC_MSG_CHECKING([if amd64 assembler knows the RDSEED instruction])
+
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[
+  do {
+    asm ("rdseed %r14");
+    asm ("rdseed %r14d");
+    asm ("rdseed %r14w");
+  } while (0)
+]])], [
+ac_have_as_rdseed=yes
+AC_MSG_RESULT([yes])
+], [
+ac_have_as_rdseed=no
+AC_MSG_RESULT([no])
+])
+
+AM_CONDITIONAL(BUILD_RDSEED_TESTS, test x$ac_have_as_rdseed = xyes)
 
 # does the amd64 assembler understand the F16C instructions (VCVTPH2PS and
 # VCVTPS2PH) ?
@@ -3157,6 +3261,31 @@ AC_MSG_RESULT([no])
 CFLAGS="$save_CFLAGS"
 
 AM_CONDITIONAL(BUILD_ARMV81_TESTS, test x$ac_have_armv81_feature = xyes)
+
+
+# Does the C compiler support the armv82 flag and the assembler v8.2 instructions
+# Note, this doesn't generate a C-level symbol.  It generates a
+# automake-level symbol (BUILD_ARMV82_TESTS), used in test Makefile.am's
+AC_MSG_CHECKING([if gcc supports the armv82 feature flag and assembler supports v8.2 instructions])
+
+save_CFLAGS="$CFLAGS"
+CFLAGS="$CFLAGS -march=armv8.2-a+fp16 -Werror"
+AC_COMPILE_IFELSE([AC_LANG_SOURCE([[
+int main()
+{
+    __asm__ __volatile__("faddp h0, v1.2h");
+    return 0;
+}
+]])], [
+ac_have_armv82_feature=yes
+AC_MSG_RESULT([yes])
+], [
+ac_have_armv82_feature=no
+AC_MSG_RESULT([no])
+])
+CFLAGS="$save_CFLAGS"
+
+AM_CONDITIONAL(BUILD_ARMV82_TESTS, test x$ac_have_armv82_feature = xyes)
 
 
 # XXX JRS 2010 Oct 13: what is this for?  For sure, we don't need this
@@ -4252,6 +4381,7 @@ AC_CHECK_FUNCS([     \
         klogctl      \
         mallinfo     \
         memchr       \
+        memfd_create \
         memset       \
         mkdir        \
         mremap       \
@@ -4303,6 +4433,8 @@ AM_CONDITIONAL([HAVE_PREADV_PWRITEV],
                [test x$ac_cv_func_preadv = xyes && test x$ac_cv_func_pwritev = xyes])
 AM_CONDITIONAL([HAVE_PREADV2_PWRITEV2],
                [test x$ac_cv_func_preadv2 = xyes && test x$ac_cv_func_pwritev2 = xyes])
+AM_CONDITIONAL([HAVE_MEMFD_CREATE],
+               [test x$ac_cv_func_memfd_create = xyes])
 
 if test x$VGCONF_PLATFORM_PRI_CAPS = xMIPS32_LINUX \
      -o x$VGCONF_PLATFORM_PRI_CAPS = xMIPS64_LINUX \
@@ -4795,6 +4927,7 @@ AC_CONFIG_FILES([
    memcheck/tests/amd64/Makefile
    memcheck/tests/x86/Makefile
    memcheck/tests/linux/Makefile
+   memcheck/tests/linux/debuginfod-check.vgtest
    memcheck/tests/darwin/Makefile
    memcheck/tests/solaris/Makefile
    memcheck/tests/amd64-linux/Makefile

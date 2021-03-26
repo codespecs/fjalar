@@ -379,6 +379,9 @@ find -size 0 -exec touch $INV'/fjalar/valgrind/@{@}' \;
 find -not -type d -executable -exec chmod +x $INV'/fjalar/valgrind/@{@}' \;
 @end example
 
+@c The 'find' commands above didn't work for me this time as the names contained a '.'
+@c that file system did not like.  I had to do:
+@c find -size 0 -exec sh -c "echo $INV'/fjalar/valgrind{}' | sed 's|\./|/|'" \;|xargs -p touch
 
 @node Coregrind Conflicts
 @section Coregrind Conflicts
@@ -414,7 +417,7 @@ will explain how to deal with these shortly.  If there are massive
 numbers of conflicts or some other indication of failure,
 there might have been a problem in the previous diffing step.
 
-You may wish to experiment with the fuzz factor option.  I find
+You may wish to experiment with the fuzz factor option, the default is @option{-F2}.  I find
 that @option{-F3} often increases the success rate (reduces the
 number of conflicts), but this can be
 dangerous as it ignores more of the context in the patch file, which
@@ -544,11 +547,12 @@ Here is a copy of the last few lines from the latest run of these tests (09/21/2
 on a UW/CSE CentOS based system:
 
 @example
-== 713 tests, 2 stderr failure, 0 stdout failures, 0 stderrB failures, 0 stdoutB failures, 0 post failures ==
+== 719 tests, 2 stderr failure, 0 stdout failures, 0 stderrB failures, 0 stdoutB failures, 0 post failures ==
 none/tests/libvex_test                   (stderr)
 none/tests/libvexmultiarch_test          (stderr)
 
 ...checking makefile consistency
+massif/tests/Makefile.am:1: error: deep-D.post.exp-ppc64 is missing in EXTRA_DIST
 ...checking header files and include directives
 *** File fjalar/mc_main.c must not include ../coregrind/pub_core_aspacemgr.h
 make[1]: *** [regtest] Error 1

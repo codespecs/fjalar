@@ -330,6 +330,72 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
    if (o >= GOF(VSR48) && o+sz <= GOF(VSR48)+SZB(VSR48)) return 0+ GOF(VSR48);
    if (o >= GOF(VSR49) && o+sz <= GOF(VSR49)+SZB(VSR49)) return 0+ GOF(VSR49);
    if (o >= GOF(VSR50) && o+sz <= GOF(VSR50)+SZB(VSR50)) return 0+ GOF(VSR50);
+   /* ACC register file.  Each register is 128 bits. */
+   if (o >= GOF(ACC_0_r0) && o+sz <= GOF(ACC_0_r0)+SZB(ACC_0_r0))
+      return 0+ GOF(ACC_0_r0);
+   if (o >= GOF(ACC_0_r1) && o+sz <= GOF(ACC_0_r1)+SZB(ACC_0_r1))
+      return 0+ GOF(ACC_0_r1);
+   if (o >= GOF(ACC_0_r2) && o+sz <= GOF(ACC_0_r2)+SZB(ACC_0_r2))
+      return 0+ GOF(ACC_0_r2);
+   if (o >= GOF(ACC_0_r3) && o+sz <= GOF(ACC_0_r3)+SZB(ACC_0_r3))
+      return 0+ GOF(ACC_0_r3);
+   if (o >= GOF(ACC_1_r0) && o+sz <= GOF(ACC_1_r0)+SZB(ACC_1_r0))
+      return 0+ GOF(ACC_1_r0);
+   if (o >= GOF(ACC_1_r1) && o+sz <= GOF(ACC_1_r1)+SZB(ACC_1_r1))
+      return 0+ GOF(ACC_1_r1);
+   if (o >= GOF(ACC_1_r2) && o+sz <= GOF(ACC_1_r2)+SZB(ACC_1_r2))
+      return 0+ GOF(ACC_1_r2);
+   if (o >= GOF(ACC_1_r3) && o+sz <= GOF(ACC_1_r3)+SZB(ACC_1_r3))
+      return 0+ GOF(ACC_1_r3);
+   if (o >= GOF(ACC_2_r0) && o+sz <= GOF(ACC_2_r0)+SZB(ACC_2_r0))
+      return 0+ GOF(ACC_2_r0);
+   if (o >= GOF(ACC_2_r1) && o+sz <= GOF(ACC_2_r1)+SZB(ACC_2_r1))
+      return 0+ GOF(ACC_2_r1);
+   if (o >= GOF(ACC_2_r2) && o+sz <= GOF(ACC_2_r2)+SZB(ACC_2_r2))
+      return 0+ GOF(ACC_2_r2);
+   if (o >= GOF(ACC_2_r3) && o+sz <= GOF(ACC_2_r3)+SZB(ACC_2_r3))
+      return 0+ GOF(ACC_2_r3);
+   if (o >= GOF(ACC_3_r0) && o+sz <= GOF(ACC_3_r0)+SZB(ACC_3_r0))
+      return 0+ GOF(ACC_3_r0);
+   if (o >= GOF(ACC_3_r1) && o+sz <= GOF(ACC_3_r1)+SZB(ACC_3_r1))
+      return 0+ GOF(ACC_3_r1);
+   if (o >= GOF(ACC_3_r2) && o+sz <= GOF(ACC_3_r2)+SZB(ACC_3_r2))
+      return 0+ GOF(ACC_3_r2);
+   if (o >= GOF(ACC_3_r3) && o+sz <= GOF(ACC_3_r3)+SZB(ACC_3_r3))
+      return 0+ GOF(ACC_3_r3);
+   if (o >= GOF(ACC_4_r0) && o+sz <= GOF(ACC_4_r0)+SZB(ACC_4_r0))
+      return 0+ GOF(ACC_4_r0);
+   if (o >= GOF(ACC_4_r1) && o+sz <= GOF(ACC_4_r1)+SZB(ACC_4_r1))
+      return 0+ GOF(ACC_4_r1);
+   if (o >= GOF(ACC_4_r2) && o+sz <= GOF(ACC_4_r2)+SZB(ACC_4_r2))
+      return 0+ GOF(ACC_4_r2);
+   if (o >= GOF(ACC_4_r3) && o+sz <= GOF(ACC_4_r3)+SZB(ACC_4_r3))
+      return 0+ GOF(ACC_4_r3);
+   if (o >= GOF(ACC_5_r0) && o+sz <= GOF(ACC_5_r0)+SZB(ACC_5_r0))
+      return 0+ GOF(ACC_5_r0);
+   if (o >= GOF(ACC_5_r1) && o+sz <= GOF(ACC_5_r1)+SZB(ACC_5_r1))
+      return 0+ GOF(ACC_5_r1);
+   if (o >= GOF(ACC_5_r2) && o+sz <= GOF(ACC_5_r2)+SZB(ACC_5_r2))
+      return 0+ GOF(ACC_5_r2);
+   if (o >= GOF(ACC_5_r3) && o+sz <= GOF(ACC_5_r3)+SZB(ACC_5_r3))
+      return 0+ GOF(ACC_5_r3);
+   if (o >= GOF(ACC_6_r0) && o+sz <= GOF(ACC_6_r0)+SZB(ACC_6_r0))
+      return 0+ GOF(ACC_6_r0);
+   if (o >= GOF(ACC_6_r1) && o+sz <= GOF(ACC_6_r1)+SZB(ACC_6_r1))
+      return 0+ GOF(ACC_6_r1);
+   if (o >= GOF(ACC_6_r2) && o+sz <= GOF(ACC_6_r2)+SZB(ACC_6_r2))
+      return 0+ GOF(ACC_6_r2);
+   if (o >= GOF(ACC_6_r3) && o+sz <= GOF(ACC_6_r3)+SZB(ACC_6_r3))
+      return 0+ GOF(ACC_6_r3);
+   if (o >= GOF(ACC_7_r0) && o+sz <= GOF(ACC_7_r0)+SZB(ACC_7_r0))
+      return 0+ GOF(ACC_7_r0);
+   if (o >= GOF(ACC_7_r1) && o+sz <= GOF(ACC_7_r1)+SZB(ACC_7_r1))
+      return 0+ GOF(ACC_7_r1);
+   if (o >= GOF(ACC_7_r2) && o+sz <= GOF(ACC_7_r2)+SZB(ACC_7_r2))
+      return 0+ GOF(ACC_7_r2);
+   if (o >= GOF(ACC_7_r3) && o+sz <= GOF(ACC_7_r3)+SZB(ACC_7_r3))
+      return 0+ GOF(ACC_7_r3);
+
    if (o >= GOF(VSR51) && o+sz <= GOF(VSR51)+SZB(VSR51)) return 0+ GOF(VSR51);
    if (o >= GOF(VSR52) && o+sz <= GOF(VSR52)+SZB(VSR52)) return 0+ GOF(VSR52);
    if (o >= GOF(VSR53) && o+sz <= GOF(VSR53)+SZB(VSR53)) return 0+ GOF(VSR53);
@@ -533,6 +599,8 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
    if (o >= GOF(VSR48) && o+sz <= GOF(VSR48)+SZB(VSR48)) return 0+ GOF(VSR48);
    if (o >= GOF(VSR49) && o+sz <= GOF(VSR49)+SZB(VSR49)) return 0+ GOF(VSR49);
    if (o >= GOF(VSR50) && o+sz <= GOF(VSR50)+SZB(VSR50)) return 0+ GOF(VSR50);
+   /* ACC registers are not supported on ppc32.  */
+
    if (o >= GOF(VSR51) && o+sz <= GOF(VSR51)+SZB(VSR51)) return 0+ GOF(VSR51);
    if (o >= GOF(VSR52) && o+sz <= GOF(VSR52)+SZB(VSR52)) return 0+ GOF(VSR52);
    if (o >= GOF(VSR53) && o+sz <= GOF(VSR53)+SZB(VSR53)) return 0+ GOF(VSR53);

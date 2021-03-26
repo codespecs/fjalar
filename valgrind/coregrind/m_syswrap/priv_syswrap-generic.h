@@ -106,6 +106,10 @@ extern Bool
 ML_(handle_auxv_open)(SyscallStatus *status, const HChar *filename,
                       int flags);
 
+extern Bool
+ML_(handle_self_exe_open)(SyscallStatus *status, const HChar *filename,
+                          int flags);
+
 /* Helper function for generic mprotect and linux pkey_mprotect. */
 extern void handle_sys_mprotect (ThreadId tid, SyscallStatus *status,
                                  Addr *addr, SizeT *len, Int *prot);
@@ -122,6 +126,11 @@ extern
 void handle_sys_pwritev(ThreadId tid, SyscallStatus* status,
                         Int fd, Addr vector, Int count,
                         const char *str);
+
+extern
+void handle_pre_sys_execve(ThreadId tid, SyscallStatus *status, Addr pathname,
+                           Addr arg_2, Addr arg_3, Bool is_execveat,
+                           Bool check_pathptr);
 
 DECL_TEMPLATE(generic, sys_ni_syscall);            // * P -- unimplemented
 DECL_TEMPLATE(generic, sys_exit);
