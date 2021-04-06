@@ -333,6 +333,7 @@ valgrind/memcheck/tests/leak-tree
 valgrind/memcheck/tests/linux/brk
 valgrind/memcheck/tests/linux/capget
 valgrind/memcheck/tests/linux/check_preadv2_pwritev2
+valgrind/memcheck/tests/linux/debuginfod-check.vgtest
 valgrind/memcheck/tests/linux/dlclose_leak
 valgrind/memcheck/tests/linux/enomem
 valgrind/memcheck/tests/linux/getregset
