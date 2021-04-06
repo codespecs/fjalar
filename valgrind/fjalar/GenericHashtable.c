@@ -25,6 +25,14 @@
 
 #define MAXINT 2147483647
 
+int genputstringtable(struct genhashtable *ht, const char * key, void * object) {
+  if (ht->string_type) {
+    return genputtable(ht, (void *)(VG_(strdup)("getputstringtable", key)), object);
+  } else {
+    return genputtable(ht, (void *)(key), object);
+  }
+}
+
 int genputtable(struct genhashtable *ht, void * key, void * object) {
   unsigned int bin=genhashfunction(ht,key);
   struct genpointerlist * newptrlist=(struct genpointerlist *) VG_(calloc)("GenericHashTable.c: genputtable.1", 1,sizeof(struct genpointerlist));
@@ -90,9 +98,9 @@ void * getnext(struct genhashtable *ht, void * key) {
   while(ptr!=NULL) {
     if (((ht->comp_function==NULL)&&(ptr->src==key))||((ht->comp_function!=NULL)&&(*ht->comp_function)(ptr->src,key))) {
       if (ptr->inext!=NULL) {
-	return ptr->inext->src;
+        return ptr->inext->src;
       } else {
-	  return NULL;
+        return NULL;
       }
     }
     ptr=ptr->next;
@@ -102,7 +110,8 @@ void * getnext(struct genhashtable *ht, void * key) {
 }
 
 int gencontains(struct genhashtable *ht, void * key) {
-  struct genpointerlist * ptr=ht->bins[genhashfunction(ht,key)];
+  unsigned int bin=genhashfunction(ht,key);
+  struct genpointerlist * ptr=ht->bins[bin];
   //printf("In gencontains2\n");fflush(NULL);
   while(ptr!=NULL) {
     if (((ht->comp_function==NULL)&&(ptr->src==key))||((ht->comp_function!=NULL)&&(*ht->comp_function)(ptr->src,key)))
@@ -140,13 +149,13 @@ void genfreekey(struct genhashtable *ht, void * key) {
       struct genpointerlist *tmpptr=ptr->next;
       ptr->next=tmpptr->next;
       if (tmpptr==ht->list)
-	ht->list=tmpptr->inext;
+        ht->list=tmpptr->inext;
       if (tmpptr==ht->last)
-	ht->last=tmpptr->iprev;
+        ht->last=tmpptr->iprev;
       if (tmpptr->iprev!=NULL)
-	tmpptr->iprev->inext=tmpptr->inext;
+        tmpptr->iprev->inext=tmpptr->inext;
       if (tmpptr->inext!=NULL)
-	tmpptr->inext->iprev=tmpptr->iprev;
+        tmpptr->inext->iprev=tmpptr->iprev;
       VG_(free)(tmpptr);
       ht->counter--;
       return;
@@ -176,6 +185,7 @@ struct genhashtable * genallocatehashtable(unsigned int (*hash_function)(void *)
   ght->counter=0;
   ght->list=NULL;
   ght->last=NULL;
+  ght->string_type = False;
   return ght;
 }
 
@@ -194,6 +204,7 @@ struct genhashtable * genallocateSMALLhashtable(unsigned int (*hash_function)(vo
   ght->counter=0;
   ght->list=NULL;
   ght->last=NULL;
+  ght->string_type = False;
   return ght;
 }
 
@@ -203,9 +214,12 @@ void genfreehashtable(struct genhashtable * ht) {
     if (ht->bins[i]!=NULL) {
       struct genpointerlist *genptr=ht->bins[i];
       while(genptr!=NULL) {
-	struct genpointerlist *tmpptr=genptr->next;
-	VG_(free)(genptr);
-	genptr=tmpptr;
+        struct genpointerlist *tmpptr=genptr->next;
+        if (ht->string_type) {
+          VG_(free)(genptr->src);
+        }
+        VG_(free)(genptr);
+        genptr=tmpptr;
       }
     }
   }
@@ -223,10 +237,13 @@ void genfreehashtableandvalues(struct genhashtable * ht) {
       struct genpointerlist *genptr=ht->bins[i];
       while(genptr!=NULL) {
 
-	struct genpointerlist *tmpptr=genptr->next;
+        struct genpointerlist *tmpptr=genptr->next;
+        if (ht->string_type) {
+          VG_(free)(genptr->src);
+        }
         VG_(free)(genptr->object); // Also free the object in the hash table
-	VG_(free)(genptr);
-	genptr=tmpptr;
+        VG_(free)(genptr);
+        genptr=tmpptr;
       }
       ht->bins[i] = 0;
     }

@@ -19,6 +19,8 @@
 
 // implements a generic hash table
 
+#include "pub_tool_basics.h"
+
 #ifndef GENHASHTABLE
 #define GENHASHTABLE
 #define geninitialnumbins 4999
@@ -31,6 +33,7 @@ struct genhashtable {
   struct genpointerlist ** bins;
   long counter;
   int currentsize;
+  Bool string_type;
   struct genpointerlist *list;
   struct genpointerlist *last;
 };
@@ -58,6 +61,7 @@ void genfreehashtableandvalues(struct genhashtable * ht);
 
 void * getnext(struct genhashtable *,void *);
 int genputtable(struct genhashtable *, void *, void *);
+int genputstringtable(struct genhashtable *, const char *, void *);
 void * gengettable(struct genhashtable *, void *);
 int gencontains(struct genhashtable *, void *);
 unsigned int genhashfunction(struct genhashtable *,void *);
