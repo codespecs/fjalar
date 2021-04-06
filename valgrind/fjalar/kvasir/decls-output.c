@@ -339,6 +339,7 @@ void DC_outputDeclsAtEnd() {
     varsDeclaredTable =
       genallocatehashtable((unsigned int (*)(void *)) &hashString,
                            (int (*)(void *,void *)) &equivalentStrings);
+    varsDeclaredTable->string_type = True;
     // print global tag values
     fputs("ppt GLOBALS\n", decls_fp);
     visitVariableGroup(GLOBAL_VAR,
@@ -1018,7 +1019,7 @@ printDeclsEntryAction(VariableEntry* var,
       }
 
     //Insert this variable into the declared vars table
-    genputtable(varsDeclaredTable, (void*)varName, (void *)1);
+    genputstringtable(varsDeclaredTable, varName, (void *)1);
 
     // We are done!
     return DISREGARD_PTR_DEREFS;
@@ -1212,6 +1213,7 @@ printDeclsEntryAction(VariableEntry* var,
     varsDeclaredTable =
       genallocatehashtable((unsigned int (*)(void *)) &hashString,
                            (int (*)(void *,void *)) &equivalentStrings);
+    varsDeclaredTable->string_type = True;
 
     // Print out globals (visitVariableGroup() ignores the globals if
     // --ignore-globals is used):
@@ -1439,6 +1441,7 @@ printDeclsEntryAction(VariableEntry* var,
           varsDeclaredTable =
             genallocateSMALLhashtable((unsigned int (*)(void *)) &hashString,
                                  (int (*)(void *,void *)) &equivalentStrings);
+          varsDeclaredTable->string_type = True;
 
           visitClassMembersNoValues(cur_type, &printDeclsEntryAction);
           cur_type_for_printing_object_ppt = 0;
@@ -1483,6 +1486,7 @@ printDeclsEntryAction(VariableEntry* var,
     varsDeclaredTable =
       genallocatehashtable((unsigned int (*)(void *)) &hashString,
                            (int (*)(void *,void *)) &equivalentStrings);
+    varsDeclaredTable->string_type = True;
 
     // print global tag values
     fputs("ppt GLOBALS\n", decls_fp);
