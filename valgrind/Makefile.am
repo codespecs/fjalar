@@ -58,7 +58,7 @@ DEFAULT_SUPP_FILES = @DEFAULT_SUPP@
 # default.supp, as it is built from the base .supp files at compile-time.
 dist_noinst_DATA = $(SUPP_FILES)
 
-vglibdir = $(pkglibdir)
+vglibdir = $(pkglibexecdir)
 vglib_DATA = default.supp
 
 pkgconfigdir = $(libdir)/pkgconfig
@@ -95,6 +95,10 @@ exp-regtest: check
 ## Preprend @PERL@ because tests/vg_perf isn't executable
 perf: check
 	@PERL@ perf/vg_perf perf
+
+# Auxiliary test suites run under valgrind
+auxchecks: all
+	$(MAKE) -C auxprogs auxchecks
 
 # Nb: no need to include any Makefile.am files here, or files included from
 # them, as automake includes them automatically.  Also not COPYING, README

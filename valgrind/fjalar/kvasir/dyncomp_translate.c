@@ -455,6 +455,7 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
       case Iop_AddD128:                     // only used by ppc s390
       case Iop_SubD128:                     // only used by ppc s390
       case Iop_Add32Fx4:
+      case Iop_Add16Fx8:
       case Iop_Add32Fx8:
       case Iop_Add64Fx2:
       case Iop_Add64Fx4:
@@ -540,6 +541,7 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
       case Iop_F64x2_2toQ32x4:              // only used by mips
       case Iop_Scale2_32Fx4:                // only used by mips
       case Iop_Scale2_64Fx2:                // only used by mips
+      case Iop_2xMultU64Add128CarryOut:
 
       default:
          ppIROp(op);
@@ -650,6 +652,13 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_DivU32E:                     // only used by ppc
    case Iop_DivU64:                      // only used by ppc arm64
    case Iop_DivU64E:                     // only used by ppc
+   case Iop_DivU128:
+   case Iop_DivS128:
+   case Iop_DivU128E:
+   case Iop_DivS128E:
+   case Iop_ModU128:
+   case Iop_ModS128:
+
 
    case Iop_DivModU64to32: // :: I64,I32 -> I64
                            // of which lo half is div and hi half is mod
@@ -1392,9 +1401,11 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_I64UtoF32:   /* IRRoundingMode(I32) x I64 -> F32   */
    case Iop_I64UtoF64:   /* IRRoundingMode(I32) x I64 -> F64   */
 
+   case Iop_SqrtF16:
    case Iop_SqrtF32:     /* IRRoundingMode(I32) x F32 -> F32   */
    case Iop_SqrtF64:     /* IRRoundingMode(I32) x F64 -> F64   */
    case Iop_SqrtF128:    /* IRRoundingMode(I32) x F128 -> F128 */
+   case Iop_Sqrt16Fx8:
    case Iop_Sqrt32Fx4:   /* IRRoundingMode(I32) x V128 -> V128 */
    case Iop_Sqrt64Fx2:   /* IRRoundingMode(I32) x V128 -> V128 */
    case Iop_SinF64:      /* IRRoundingMode(I32) x F64 -> F64   */
@@ -1408,6 +1419,9 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_RoundF32toInt:  /* IRRoundingMode(I32) x F32 -> I32   */
    case Iop_RoundF64toInt:  /* IRRoundingMode(I32) x F64 -> I64   */
    case Iop_RoundF64toF32:  /* IRRoundingMode(I32) x F64 -> F32   */
+   case Iop_I128UtoF128:      /* I128 -> F128 */
+   case Iop_I128StoF128:      /* I128 -> F128 */
+   case Iop_I128StoD128:
 
       if (!dyncomp_dataflow_comparisons_mode) {
          return vatom2;
@@ -1426,6 +1440,7 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_D128toI32U:                  // only used by s390
    case Iop_D128toI64S:                  // only used by ppc s390
    case Iop_D128toI64U:                  // only used by s390
+   case Iop_D128toI128S:
    case Iop_D32toF128:                   // only used by s390
    case Iop_D32toF32:                    // only used by s390
    case Iop_D32toF64:                    // only used by s390
@@ -1676,12 +1691,15 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
    // Iop_64to32
    // Iop_64to8
    // Iop_64UtoV128
+   // Iop_1Sto16
    // Iop_8Sto16
    // Iop_8Sto32
    // Iop_8Sto64
    // Iop_8Uto16
    // Iop_8Uto32
    // Iop_8Uto64
+   // Iop_Abs16Fx8:
+   // Iop_Neg16Fx8:
    // Iop_Abs16x4:                     // only used by arm
    // Iop_Abs16x8:                     // only used by arm arm64 
    // Iop_Abs32Fx2:                    // only used by arm
@@ -1694,7 +1712,8 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
    // Iop_Abs8x8:                      // only used by arm
    // Iop_AbsF128:                     // only used by s390 
    // Iop_AbsF32:                      // only used by arm mips ppc s390 arm64 
-   // Iop_AbsF64
+   // Iop_AbsF64:
+   // Iop_AbsF16:
    // Iop_BCDtoDPB:                    // only used by ppc 
    // Iop_BCD128toI128S:
    // Iop_CipherSV128:                 // only used by ppc 
@@ -1811,15 +1830,16 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
    // Iop_Neg32Fx4:                    // only used by arm arm64 
    // Iop_Neg64Fx2:                    // only used by arm64 
    // Iop_NegF128:                     // only used by s390 
-   // Iop_NegF32
-   // Iop_NegF64
+   // Iop_NegF16:
+   // Iop_NegF32:
+   // Iop_NegF64:
    // Iop_Not1:                        // only used by arm mips ppc s390 
-   // Iop_Not8
+   // Iop_Not8:
    // Iop_Not16:                       // only used by mips 
-   // Iop_Not32
-   // Iop_Not64
-   // Iop_NotV128
-   // Iop_NotV256
+   // Iop_Not32:
+   // Iop_Not64:
+   // Iop_NotV128:
+   // Iop_NotV256:
    // Iop_PopCount32:                  // only used by ppc
    // Iop_PopCount64:                  // only used by ppc
    // Iop_PwAddL16Sx4:                 // only used by arm
@@ -1898,6 +1918,11 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
    // Iop_TruncF128toI32S:
    // Iop_TruncF128toI64U:
    // Iop_TruncF128toI32U:
+   // Iop_TruncF128toI128S:
+   // Iop_TruncF128toI128U:
+   // Iop_ReinterpV128asI128:
+   // Iop_ReinterpI128asF128:
+   // Iop_ReinterpF128asI128:
    // Iop_V128HIto64
    // Iop_V128to32
    // Iop_V128to64
@@ -2016,6 +2041,7 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
    case Iop_ZeroHI120ofV128:             // only used by arm64 
    case Iop_ZeroHI64ofV128:              // only used by arm64 
    case Iop_ZeroHI96ofV128:              // only used by arm64 
+   case Iop_ReinterpI128asV128:
  */
 
 /* Worker function; do not call directly. */

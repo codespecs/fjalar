@@ -8,7 +8,6 @@
    framework.
 
    Copyright (C) 2010-2017 RT-RK
-      mips-valgrind@rt-rk.com
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -799,8 +798,11 @@ static SyscallTableEntry syscall_main_table[] = {
    LINXY (__NR_clock_adjtime, sys_clock_adjtime),
    LINXY (__NR_process_vm_readv, sys_process_vm_readv),
    LINX_ (__NR_process_vm_writev, sys_process_vm_writev),
+   LINX_ (__NR_sched_setattr, sys_sched_setattr),
+   LINXY (__NR_sched_getattr, sys_sched_getattr),
    LINXY (__NR_getrandom, sys_getrandom),
    LINXY (__NR_memfd_create, sys_memfd_create),
+   LINX_ (__NR_execveat, sys_execveat),
    LINX_ (__NR_membarrier, sys_membarrier),
    LINX_ (__NR_copy_file_range, sys_copy_file_range),
    LINXY (__NR_preadv, sys_preadv),
@@ -810,6 +812,10 @@ static SyscallTableEntry syscall_main_table[] = {
    LINX_ (__NR_syncfs, sys_syncfs),
    LINXY (__NR_statx, sys_statx),
    LINX_ (__NR_setns, sys_setns),
+   LINXY (__NR_io_uring_setup, sys_io_uring_setup),
+   LINXY (__NR_io_uring_enter, sys_io_uring_enter),
+   LINXY (__NR_io_uring_register, sys_io_uring_register),
+   LINX_ (__NR_faccessat2, sys_faccessat2),
 };
 
 SyscallTableEntry * ML_(get_linux_syscall_entry) ( UInt sysno )
