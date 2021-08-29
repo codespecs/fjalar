@@ -1,5 +1,5 @@
 /* bucomm.h -- binutils common include file.
-   Copyright (C) 1991-2020 Free Software Foundation, Inc.
+   Copyright (C) 1991-2021 Free Software Foundation, Inc.
 
    This file is part of GNU Binutils.
 
@@ -51,7 +51,7 @@ int display_info (void);
 
 void print_arelt_descr (FILE *, bfd *, bfd_boolean, bfd_boolean);
 
-char *make_tempname (const char *);
+char *make_tempname (const char *, int *);
 char *make_tempdir (const char *);
 
 bfd_vma parse_vma (const char *, const char *);
