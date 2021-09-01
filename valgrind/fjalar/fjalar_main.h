@@ -70,8 +70,6 @@
    : get_64bit_elf_symbols (file, section))
 #endif
 
-extern int is_32bit_elf;
-
 #define ARRAY_SIZE(a) (sizeof (a) / sizeof ((a)[0]))
 
 void handle_possible_entry(MCEnv* mce, Addr64 addr, IRSB* sb_orig);
