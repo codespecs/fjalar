@@ -317,7 +317,7 @@
 #define EM_BA2 		202 	/* Beyond BA2 CPU architecture */
 #define EM_XCORE 	203 	/* XMOS xCORE processor family */
 #define EM_MCHP_PIC 	204 	/* Microchip 8-bit PIC(r) family */
-#define EM_INTEL205	205	/* Reserved by Intel */
+#define EM_INTELGT	205	/* Intel Graphics Technology */
 #define EM_INTEL206	206	/* Reserved by Intel */
 #define EM_INTEL207	207	/* Reserved by Intel */
 #define EM_INTEL208	208	/* Reserved by Intel */
@@ -352,7 +352,7 @@
 #define EM_ARC_COMPACT3	255	/* Synopsys ARCv2.3 32-bit */
 #define EM_KVX		256	/* Kalray VLIW core of the MPPA processor family */
 #define EM_65816	257	/* WDC 65816/65C816 */
-#define EM_LOONGARCH	258	/* Loongson Loongarch */
+#define EM_LOONGARCH	258	/* LoongArch */
 #define EM_KF32		259	/* ChipON KungFu32 */
 
 /* If it is necessary to assign new unofficial EM_* values, please pick large
@@ -672,10 +672,25 @@
 					/*   note name must be "LINUX".  */
 #define NT_ARM_PAC_MASK	0x406		/* AArch pointer authentication code masks */
 					/*   note name must be "LINUX".  */
+#define NT_ARM_TAGGED_ADDR_CTRL	0x409	/* AArch64 tagged address control
+					   (prctl()) */
+					/*   note name must be "LINUX".  */
 #define NT_ARC_V2	0x600		/* ARC HS accumulator/extra registers.  */
 					/*   note name must be "LINUX".  */
+#define NT_RISCV_CSR    0x900		/* RISC-V Control and Status Registers */
+					/*   note name must be "CORE".  */
 #define NT_SIGINFO	0x53494749	/* Fields of siginfo_t.  */
 #define NT_FILE		0x46494c45	/* Description of mapped files.  */
+
+/* The range 0xff000000 to 0xffffffff is set aside for notes that don't
+   originate from any particular operating system.  */
+#define NT_GDB_TDESC	0xff000000	/* Contains copy of GDB's target description XML.  */
+#define NT_MEMTAG	0xff000001	/* Contains a copy of the memory tags.  */
+
+/* NT_MEMTAG record types.  */
+
+/* ARM-specific NT_MEMTAG types.  */
+#define NT_MEMTAG_TYPE_AARCH_MTE  0x400	/* MTE memory tags for AArch64.  */
 
 /* Note segments for core files on dir-style procfs systems.  */
 
@@ -733,6 +748,7 @@
 
 #define NT_VERSION	1		/* Contains a version string.  */
 #define NT_ARCH		2		/* Contains an architecture string.  */
+#define NT_GO_BUILDID	4		/* Contains GO buildid data.  */
 
 /* Values for notes in non-core files using name "GNU".  */
 
@@ -765,6 +781,16 @@
 /* Values used in GNU .note.gnu.property notes (NT_GNU_PROPERTY_TYPE_0).  */
 #define GNU_PROPERTY_STACK_SIZE			1
 #define GNU_PROPERTY_NO_COPY_ON_PROTECTED	2
+
+/* A 4-byte unsigned integer property: A bit is set if it is set in all
+   relocatable inputs.  */
+#define GNU_PROPERTY_UINT32_AND_LO	0xb0000000
+#define GNU_PROPERTY_UINT32_AND_HI	0xb0007fff
+
+/* A 4-byte unsigned integer property: A bit is set if it is set in any
+   relocatable inputs.  */
+#define GNU_PROPERTY_UINT32_OR_LO	0xb0008000
+#define GNU_PROPERTY_UINT32_OR_HI	0xb000ffff
 
 /* Processor-specific semantics, lo */
 #define GNU_PROPERTY_LOPROC  0xc0000000
@@ -909,6 +935,15 @@
 
 #define NT_NETBSD_IDENT		1
 #define NT_NETBSD_MARCH		5
+
+/* Values for NetBSD .note.netbsd.ident notes.  Note name is "PaX".  */
+#define NT_NETBSD_PAX		3
+#define NT_NETBSD_PAX_MPROTECT		0x01	/* Force enable Mprotect.  */
+#define NT_NETBSD_PAX_NOMPROTECT	0x02	/* Force disable Mprotect.  */
+#define NT_NETBSD_PAX_GUARD		0x04	/* Force enable Segvguard.  */
+#define NT_NETBSD_PAX_NOGUARD		0x08	/* Force disable Segvguard.  */
+#define NT_NETBSD_PAX_ASLR		0x10	/* Force enable ASLR.  */
+#define NT_NETBSD_PAX_NOASLR		0x20	/* Force disable ASLR.  */
 
 /* Values for OpenBSD .note.openbsd.ident notes.  Note name is "OpenBSD".  */
 
