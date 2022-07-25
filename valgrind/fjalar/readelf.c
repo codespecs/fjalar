@@ -96,7 +96,7 @@
 #define BFD64
 #endif
 
-// 2022.07.06 uWX1176834 added startswith macro
+// 2022.07.06 sharkov63: added startswith macro
 // that essentially removes the startswith declaration
 // from bfd.h header
 #define startswith startswith_BFD_H__
@@ -22534,7 +22534,7 @@ main (int argc, char ** argv)
 // PG insert a fake main which is a hacked copy that can be called
 // with a filename argument
 
-// 2022.07.06 uWX1176834 changed return type from bfd_boolean to int
+// 2022.07.06 sharkov63: changed return type from bfd_boolean to int
 int
 process_elf_binary_data (const HChar* filename)
 {

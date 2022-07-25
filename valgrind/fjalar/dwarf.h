@@ -19,7 +19,7 @@
    MA 02110-1301, USA.  */
 
 // Fjalar add a typedef to reduce number of include files needed
-// 2022.07.06 uWX1176834 removed this typedef
+// 2022.07.06 sharkov63: removed this typedef
 // typedef int bfd_boolean;
 
 #include "dwarf2.h" /* for enum dwarf_unit_type */
