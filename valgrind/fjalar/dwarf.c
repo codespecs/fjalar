@@ -58,7 +58,12 @@
 # define ngettext(Msgid1, Msgid2, n) \
   (n == 1 ? Msgid1 : Msgid2)
 //#include "libiberty.h"
+// 2022.07.06 uWX1176834 added startswith macro
+// that essentially removes the startswith declaration
+// from bfd.h header
+#define startswith startswith_BFD_H__
 #include "bfd.h"
+#undef startswith
 #include <stdint.h>
 #include "bucomm.h"
 #include "elfcomm.h"

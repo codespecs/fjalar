@@ -1328,7 +1328,8 @@ char *strtok(char *s, const char *delim)
 
 /* Copied from coregrind/m_syscall.c, since that version isn't
    exported to tools! */
-const char* strerror(int errnum)
+// 2022.07.06 uWX1176834 removed const qualifier
+char* strerror(int errnum)
 {
    switch (errnum) {
       case VKI_EPERM:       return "Operation not permitted";

@@ -202,7 +202,8 @@ int atoi(const char* s);
 /* string.h */
 
 char *strtok(char *s, const char *delim);
-const char* strerror(int errnum);
+// 2022.07.06 uWX1176834 removed const qualifier
+char* strerror(int errnum);
 
 /* unistd.h */
 
