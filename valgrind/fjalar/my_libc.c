@@ -839,7 +839,7 @@ inn_printf:
 #ifdef WANT_ERROR_PRINTF
       /* print an error message */
       case 'm':
-	s=strerror(_errno);
+	s=my_strerror(_errno);
 	sz=VG_(strlen)(s);
 	A_WRITE(fn,s,sz); len+=sz;
 	break;
@@ -1328,7 +1328,7 @@ char *strtok(char *s, const char *delim)
 
 /* Copied from coregrind/m_syscall.c, since that version isn't
    exported to tools! */
-const char* strerror(int errnum)
+const char* my_strerror(int errnum)
 {
    switch (errnum) {
       case VKI_EPERM:       return "Operation not permitted";

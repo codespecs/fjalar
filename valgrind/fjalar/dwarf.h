@@ -18,9 +18,6 @@
    Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston,
    MA 02110-1301, USA.  */
 
-// Fjalar add a typedef to reduce number of include files needed
-typedef int bfd_boolean;
-
 #include "dwarf2.h" /* for enum dwarf_unit_type */
 
 typedef unsigned HOST_WIDEST_INT  dwarf_vma;
