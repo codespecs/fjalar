@@ -202,7 +202,7 @@ int atoi(const char* s);
 /* string.h */
 
 char *strtok(char *s, const char *delim);
-const char* strerror(int errnum);
+const char* my_strerror(int errnum);
 
 /* unistd.h */
 

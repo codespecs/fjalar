@@ -184,7 +184,7 @@ static void createDeclsAndDtraceFiles(const HChar* appname)
   res = VG_(mkdir)(decls_folder, 0777); // more abbreviated UNIX form
   if (sr_isError(res) && sr_Err(res) != VKI_EEXIST)
     printf( "Couldn't create %s: %s\n", decls_folder,
-		 strerror(sr_Err(res)));
+		 my_strerror(sr_Err(res)));
 
   // ASSUME mkdir succeeded! (or that the directory already exists)
 
@@ -224,7 +224,7 @@ static void createDeclsAndDtraceFiles(const HChar* appname)
 
     if (!decls_fp)
       printf("Failed to open %s for declarations: %s\n",
-             newpath_decls, strerror(errno));
+             newpath_decls, my_strerror(errno));
   }
   else { // Default
     openTheDtraceFile();
@@ -327,13 +327,13 @@ static int createFIFO(const char *filename) {
   ret = VG_(unlink)((char *)filename);
   if (ret == -1) {
     printf( "Couldn't replace old file %s: %s\n", filename,
-		 strerror(ret));
+		 my_strerror(ret));
     return 0;
   }
   ret = mkfifo(filename, 0666);
   if (ret == -1) {
     printf( "Couldn't make %s as a FIFO: %s\n", filename,
-		 strerror(errno));
+		 my_strerror(errno));
     return 0;
   }
   return 1;
@@ -350,7 +350,7 @@ static int openRedirectFile(const char *fname) {
     sr = VG_(dup)(atoi(fname + 1));
     if (sr_isError(sr)) {
       printf( "Couldn't duplicate FD `%s': %s\n",
-		   fname+1, strerror(sr_Err(sr)));
+		   fname+1, my_strerror(sr_Err(sr)));
       return -1;
     }
     new_fd = sr_Res(sr);
@@ -359,7 +359,7 @@ static int openRedirectFile(const char *fname) {
 		  0666);
     if (sr_isError(sr)) {
       printf( "Couldn't open %s for writing: %s\n",
-		   fname, strerror(sr_Err(sr)));
+		   fname, my_strerror(sr_Err(sr)));
       return -1;
     }
     new_fd = sr_Res(sr);

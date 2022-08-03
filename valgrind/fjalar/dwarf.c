@@ -58,7 +58,14 @@
 # define ngettext(Msgid1, Msgid2, n) \
   (n == 1 ? Msgid1 : Msgid2)
 //#include "libiberty.h"
+
+// Newer versions of bfd.h include a startswith function.  We cannot
+// use it as it references strncmp and strlen (we need VG_ versions).
+// The define changes its name to keep us from using it.
+#define startswith startswith_BFD_H
 #include "bfd.h"
+#undef startswith
+
 #include <stdint.h>
 #include "bucomm.h"
 #include "elfcomm.h"

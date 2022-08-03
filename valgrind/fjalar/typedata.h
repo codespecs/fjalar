@@ -491,7 +491,7 @@ unsigned int relrodata_section_size;
 
 // From readelf.c
 const char *get_TAG_name(unsigned long tag);
-int process_elf_binary_data(const HChar* filename);
+bool process_elf_binary_data(const HChar* filename);
 
 // From typedata.c
 char tag_is_relevant_entry(unsigned long tag);

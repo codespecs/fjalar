@@ -96,7 +96,13 @@
 #define BFD64
 #endif
 
+// Newer versions of bfd.h include a startswith function.  We cannot
+// use it as it references strncmp and strlen (we need VG_ versions).
+// The define changes its name to keep us from using it.
+#define startswith startswith_BFD_H
 #include "bfd.h"
+#undef startswith
+
 // some versions of bfd.h do not include stat.h (markro)
 #include <sys/stat.h>
 #include "bucomm.h"
@@ -21698,13 +21704,13 @@ open_debug_file (const char * pathname)
 
 // START OF CODE ADDED FOR FJALAR
 
-static bfd_boolean
+static bool
 fjalar_process_file (const char * file_name)
 {
   Filedata * filedata = NULL;
   struct vg_stat statbuf;
   unsigned int i;
-  bfd_boolean res = TRUE;
+  bool res = TRUE;
 
   SysRes sys_res = VG_(stat) (file_name, &statbuf);
   if (sr_isError(sys_res))
@@ -21713,7 +21719,7 @@ fjalar_process_file (const char * file_name)
         error (_("'%s': No such file\n"), file_name);
       else
         error (_("Could not locate '%s'.  System error message: %s\n"),
-               file_name, strerror (errno));
+               file_name, my_strerror (errno));
       return FALSE;
     }
 
@@ -22383,7 +22389,7 @@ process_file (char * file_name)
 	error (_("'%s': No such file\n"), file_name);
       else
 	error (_("Could not locate '%s'.  System error message: %s\n"),
-	       file_name, strerror (errno));
+	       file_name, my_strerror (errno));
       return false;
     }
 
@@ -22529,11 +22535,11 @@ main (int argc, char ** argv)
 // PG insert a fake main which is a hacked copy that can be called
 // with a filename argument
 
-bfd_boolean
+bool
 process_elf_binary_data (const HChar* filename)
 {
 
-  bfd_boolean err;
+  bool err;
   // FJALAR_DPRINTF("Entry: process_elf_binary_data\n");
 
   do_syms++;
