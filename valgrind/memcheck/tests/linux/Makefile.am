@@ -15,7 +15,7 @@ EXTRA_DIST = \
 	ioctl-tiocsig.vgtest ioctl-tiocsig.stderr.exp \
 	lsframe1.vgtest lsframe1.stdout.exp lsframe1.stderr.exp \
 	lsframe2.vgtest lsframe2.stdout.exp lsframe2.stderr.exp \
-	memfd.vgtest memfd.stderr.exp \
+	memfd_create.vgtest memfd_create.stderr.exp \
 	rfcomm.vgtest rfcomm.stderr.exp \
 	sigqueue.vgtest sigqueue.stderr.exp \
 	stack_changes.stderr.exp stack_changes.stdout.exp \
@@ -47,7 +47,6 @@ check_PROGRAMS = \
 	lsframe2 \
 	rfcomm \
 	sigqueue \
-	stack_changes \
 	stack_switch \
 	syscalls-2007 \
 	syslog-syscall \
@@ -63,7 +62,7 @@ check_PROGRAMS += sys-openat
 endif
 
 if HAVE_MEMFD_CREATE
-check_PROGRAMS += memfd
+check_PROGRAMS += memfd_create
 endif
 
 if HAVE_COPY_FILE_RANGE
@@ -76,6 +75,10 @@ endif
 
 if HAVE_PREADV2_PWRITEV2
         check_PROGRAMS += sys-preadv2_pwritev2
+endif
+
+if HAVE_SETCONTEXT
+        check_PROGRAMS += stack_changes
 endif
 
 AM_CFLAGS   += $(AM_FLAG_M3264_PRI)

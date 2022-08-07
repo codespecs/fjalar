@@ -1,0 +1,2 @@
+valgrind: You cannot run './libvexmultiarch_test' directly.
+valgrind: You should use $prefix/bin/valgrind.

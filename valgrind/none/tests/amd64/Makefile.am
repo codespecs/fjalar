@@ -27,7 +27,8 @@ EXTRA_DIST = \
 	aes.vgtest aes.stdout.exp aes.stderr.exp \
 	amd64locked.vgtest amd64locked.stdout.exp amd64locked.stderr.exp \
 	avx-1.vgtest avx-1.stdout.exp avx-1.stderr.exp \
-	avx_estimate_insn.vgtest avx_estimate_insn.stdout.exp avx_estimate_insn.stderr.exp \
+	avx_estimate_insn.vgtest avx_estimate_insn.stderr.exp \
+	avx_estimate_insn.stdout.exp avx_estimate_insn.stdout.exp-amd \
 	avx2-1.vgtest avx2-1.stdout.exp avx2-1.stderr.exp \
 	asorep.stderr.exp asorep.stdout.exp asorep.vgtest \
 	bmi.stderr.exp bmi.stdout.exp bmi.vgtest \
@@ -97,7 +98,8 @@ EXTRA_DIST = \
 	tm1.vgtest tm1.stderr.exp tm1.stdout.exp \
 	x87trigOOR.vgtest x87trigOOR.stderr.exp x87trigOOR.stdout.exp \
 	xacq_xrel.stderr.exp xacq_xrel.stdout.exp xacq_xrel.vgtest \
-	xadd.stderr.exp xadd.stdout.exp xadd.vgtest
+	xadd.stderr.exp xadd.stdout.exp xadd.vgtest \
+	sse4-64.stdout.exp.freebsd sse4-64.stdout.exp-freebsd-clang
 
 check_PROGRAMS = \
 	allexec \
@@ -230,5 +232,5 @@ looper_CFLAGS		= $(AM_CFLAGS) @FLAG_NO_PIE@
 sbbmisc_CFLAGS		= $(AM_CFLAGS) @FLAG_NO_PIE@
 shrld_CFLAGS		= $(AM_CFLAGS) @FLAG_NO_PIE@
 
-.def.c: $(srcdir)/gen_insn_test.pl
+.def.c:
 	$(PERL) $(srcdir)/gen_insn_test.pl < $< > $@

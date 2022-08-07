@@ -113,18 +113,23 @@ valkyriedir  = $(top_builddir)/docs/vg-html
 downloadsdir = $(top_builddir)/docs/downloads
 vgdir        = $(top_builddir)/docs/valgrind
 
+if VGCONF_OS_IS_FREEBSD
+XML_CATALOG_FILES = /usr/local/share/xml/catalog
+else
 XML_CATALOG_FILES = /etc/xml/catalog
+endif
 
 # file to log print output to
 LOGFILE = print.log
 
 # validation stuff
 XMLLINT       = xmllint
-XMLLINT_FLAGS = --noblanks --noout --xinclude --postvalid --noent
+XMLLINT_FLAGS = --noblanks --noout --xinclude --postvalid --noent \
+		--path $(top_builddir)/docs/xml
 
 # stylesheet processor
 XSLTPROC       = xsltproc
-XSLTPROC_FLAGS = --nonet --xinclude
+XSLTPROC_FLAGS = --nonet --xinclude --path $(top_builddir)/docs/xml
 
 # stylesheets
 XSL_HTML_CHUNK_STYLE  = $(mylibdir)/vg-html-chunk.xsl
@@ -132,13 +137,14 @@ XSL_FO_STYLE          = $(mylibdir)/vg-fo.xsl
 XSL_TEXT_STYLE        = $(mylibdir)/vg-faq2txt.xsl
 XSL_WEBSITE_STYLE     = $(mylibdir)/vg-html-website.xsl
 XSL_MAN_STYLES = \
+    /usr/local/share/xsl/docbook/manpages/docbook.xsl \
     /usr/share/sgml/docbook/xsl-stylesheets/manpages/docbook.xsl \
     /usr/share/xml/docbook/stylesheet/nwalsh/current/manpages/docbook.xsl \
     /usr/share/xml/docbook/stylesheet/nwalsh/manpages/docbook.xsl
 
 # Input files for valid-manual and valid-manpages
 MANUAL_XML_FILES = $(myxmldir)/index.xml \
-		     $(myxmldir)/vg-entities.xml \
+		     $(top_builddir)/docs/xml/vg-entities.xml \
 		     $(myxmldir)/quick-start-guide.xml \
 		     $(myxmldir)/manual.xml \
 		       $(myxmldir)/manual-intro.xml \
@@ -233,7 +239,8 @@ print-docs:
 	cp $(myimgdir)/*.png $(myprintdir)/images && \
 	xmlto -v $(WITH_FOP) --stringparam=keep.relative.image.uris="1" \
 	      -x $(XSL_FO_STYLE) \
-	      --searchpath print pdf $(myxmldir)/index.xml &> $(LOGFILE) && \
+	      --searchpath $(top_builddir)/docs/xml:print \
+	      pdf $(myxmldir)/index.xml &> $(LOGFILE) && \
 	echo "Generating PS file: $(myprintdir)/index.ps ..." && \
 	pdftops index.pdf && \
 	mv index.pdf index.ps $(myprintdir) && \
@@ -348,7 +355,8 @@ download-docs:
 	cp $(myimgdir)/*.png $(vgdir)/print/images/
 	xmlto -v $(WITH_FOP) --stringparam=keep.relative.image.uris="1" \
 	      -x $(XSL_FO_STYLE) \
-	      --searchpath print pdf $(myxmldir)/index.xml &> $(LOGFILE)
+	      --searchpath $(top_builddir)/docs/xml:print \
+	      pdf $(myxmldir)/index.xml &> $(LOGFILE)
 	mv index.pdf $(vgdir)/print/manual.pdf
 	@echo ""
 	@echo "Generating valgrind_manual.ps.bz2 ..."

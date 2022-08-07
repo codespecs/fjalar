@@ -368,7 +368,7 @@ Int VG_(strcasecmp) ( const HChar* s1, const HChar* s2 )
       UChar c2 = (UChar)VG_(tolower)(*s2);
       if (c1 < c2) return -1;
       if (c1 > c2) return 1;
-
+      
       /* c1 == c2 */
       if (c1 == 0) return 0;
 
@@ -383,7 +383,7 @@ Int VG_(strncmp) ( const HChar* s1, const HChar* s2, SizeT nmax )
       if (n >= nmax) return 0;
       if (*(const UChar*)s1 < *(const UChar*)s2) return -1;
       if (*(const UChar*)s1 > *(const UChar*)s2) return 1;
-
+      
       /* *s1 == *s2 */
       if (*s1 == 0) return 0;
 

@@ -30,6 +30,7 @@
 #include "pub_core_threadstate.h"
 #include "pub_core_libcassert.h"
 #include "pub_core_libcbase.h"
+#include "pub_core_libcprint.h"
 #include "pub_core_libcfile.h"
 #include "pub_core_libcprint.h"
 #include "pub_core_libcproc.h"
@@ -1075,6 +1076,20 @@ Bool VG_(machine_get_hwcaps)( void )
      if (!have_cx8)
         return False;
 
+#if defined(VGP_x86_freebsd)
+     if (have_sse1 || have_sse2) {
+	Int sc, error;
+	SizeT scl;
+	/* Regardless of whether cpuid says, the OS has to enable SSE first! */
+	scl = sizeof(sc);
+	error = VG_(sysctlbyname)("hw.instruction_sse", &sc, &scl, 0, 0);
+	if (error == -1 || sc != 1) {
+	    have_sse1 = 0;
+	    have_sse2 = 0;
+	    VG_(message)(Vg_UserMsg, "Warning: cpu has SSE, but the OS has not enabled it.  Disabling in valgrind!");
+	}
+     }
+#endif
      /* Figure out if this is an AMD that can do MMXEXT. */
      have_mmxext = False;
      if (0 == VG_(strcmp)(vstr, "AuthenticAMD")
@@ -1400,10 +1415,12 @@ Bool VG_(machine_get_hwcaps)( void )
      if (VG_MINIMAL_SETJMP(env_unsup_insn)) {
         have_isa_3_0 = False;
      } else {
-        __asm__ __volatile__(".long 0x7d205434"); /* cnttzw RT, RB */
+        __asm__ __volatile__(".long 0x7f140434":::"r20"); /* cnttzw r20,r24 */
      }
 
      // ISA 3.1 not supported on 32-bit systems
+
+     // scv instruction not supported on 32-bit systems.
 
      /* determine dcbz/dcbzl sizes while we still have the signal
       * handlers registered */
@@ -1443,6 +1460,7 @@ Bool VG_(machine_get_hwcaps)( void )
      if (have_isa_2_07) vai.hwcaps |= VEX_HWCAPS_PPC32_ISA2_07;
      if (have_isa_3_0) vai.hwcaps |= VEX_HWCAPS_PPC32_ISA3_0;
      /* ISA 3.1 not supported on 32-bit systems.  */
+     /* SCV not supported on PPC32 */
 
      VG_(machine_get_cache_info)(&vai);
 
@@ -1511,7 +1529,7 @@ Bool VG_(machine_get_hwcaps)( void )
      if (VG_MINIMAL_SETJMP(env_unsup_insn)) {
         have_V = False;
      } else {
-        __asm__ __volatile__(".long 0x10000484"); /*vor 0,0,0*/
+        __asm__ __volatile__(".long 0x10000484"); /* vor v0,v0,v0 */
      }
 
      /* General-Purpose optional (fsqrt, fsqrts) */
@@ -1519,7 +1537,7 @@ Bool VG_(machine_get_hwcaps)( void )
      if (VG_MINIMAL_SETJMP(env_unsup_insn)) {
         have_FX = False;
      } else {
-        __asm__ __volatile__(".long 0xFC00002C"); /*fsqrt 0,0*/
+        __asm__ __volatile__(".long 0xFC00002C"); /* fsqrt f0,f0 */
      }
 
      /* Graphics optional (stfiwx, fres, frsqrte, fsel) */
@@ -1527,7 +1545,7 @@ Bool VG_(machine_get_hwcaps)( void )
      if (VG_MINIMAL_SETJMP(env_unsup_insn)) {
         have_GX = False;
      } else {
-        __asm__ __volatile__(".long 0xFC000034"); /*frsqrte 0,0*/
+        __asm__ __volatile__(".long 0xFC000034"); /* frsqrte f0,f0 */
      }
 
      /* VSX support implies Power ISA 2.06 */
@@ -1535,7 +1553,7 @@ Bool VG_(machine_get_hwcaps)( void )
      if (VG_MINIMAL_SETJMP(env_unsup_insn)) {
         have_VX = False;
      } else {
-        __asm__ __volatile__(".long 0xf0000564"); /* xsabsdp XT,XB */
+        __asm__ __volatile__(".long 0xf0000564"); /* xsabsdp vs0,vs0 */
      }
 
      /* Check for Decimal Floating Point (DFP) support. */
@@ -1543,7 +1561,7 @@ Bool VG_(machine_get_hwcaps)( void )
      if (VG_MINIMAL_SETJMP(env_unsup_insn)) {
         have_DFP = False;
      } else {
-        __asm__ __volatile__(".long 0xee4e8005"); /* dadd  FRT,FRA, FRB */
+        __asm__ __volatile__(".long 0xec0e8005"); /* dadd f0,f14,f16 */
      }
 
      /* Check for ISA 2.07 support. */
@@ -1551,7 +1569,7 @@ Bool VG_(machine_get_hwcaps)( void )
      if (VG_MINIMAL_SETJMP(env_unsup_insn)) {
         have_isa_2_07 = False;
      } else {
-        __asm__ __volatile__(".long 0x7c000166"); /* mtvsrd XT,RA */
+        __asm__ __volatile__(".long 0x7c000166"); /* mtvsrd f0,r0 */
      }
 
      /* Check for ISA 3.0 support. */
@@ -1559,15 +1577,28 @@ Bool VG_(machine_get_hwcaps)( void )
      if (VG_MINIMAL_SETJMP(env_unsup_insn)) {
         have_isa_3_0 = False;
      } else {
-        __asm__ __volatile__(".long  0x7d205434"); /* cnttzw RT, RB */
+        __asm__ __volatile__(".long 0x7f140434":::"r20"); /* cnttzw r20,r24 */
      }
+
+     /* Check if Host supports scv instruction.
+        Note, can not use the usual method of issuing the scv instruction and
+        checking if it is supported or not.  Issuing scv on a system that does
+        not have scv support in the HWCAPS generates a message in dmesg,
+        "Facility 'SCV' unavailable (12), exception".  It is considered bad
+        form to issue and scv on systems that do not support it.
+
+        The function VG_(machine_ppc64_set_scv_support), is called in
+        initimg-linux.c to set the flag ppc_scv_supported based on HWCAPS2
+        value.  The flag ppc_scv_supported is defined struct VexArchInfo,
+        in file libvex.h  The setting of ppc_scv_supported in VexArchInfo
+        is checked in disInstr_PPC_WRK() to set the allow_scv flag.  */
 
      /* Check for ISA 3.1 support. */
      have_isa_3_1 = True;
      if (VG_MINIMAL_SETJMP(env_unsup_insn)) {
         have_isa_3_1 = False;
      } else {
-        __asm__ __volatile__(".long 0x7f1401b6"); /* brh  RA, RS */
+        __asm__ __volatile__(".long 0x7f1401b6":::"r20"); /* brh r20,r24 */
      }
 
      /* determine dcbz/dcbzl sizes while we still have the signal
@@ -1608,8 +1639,9 @@ Bool VG_(machine_get_hwcaps)( void )
 
      VG_(machine_get_cache_info)(&vai);
 
-     /* But we're not done yet: VG_(machine_ppc64_set_clszB) must be
-        called before we're ready to go. */
+     /* But we're not done yet: VG_(machine_ppc64_set_clszB) and
+        VG_(machine_ppc64_set_scv_support) must be called before we're
+        ready to go. */
      return True;
    }
 
@@ -2402,6 +2434,13 @@ void VG_(machine_ppc64_set_clszB)( Int szB )
    vg_assert(szB == 16 || szB == 32 || szB == 64 || szB == 128);
    vai.ppc_icache_line_szB = szB;
 }
+
+void VG_(machine_ppc64_set_scv_support)( Int is_supported )
+{
+   vg_assert(hwcaps_done);
+   vai.ppc_scv_supported = is_supported;
+}
+
 #endif
 
 
@@ -2508,7 +2547,7 @@ Int VG_(machine_get_size_of_largest_guest_register) ( void )
 void* VG_(fnptr_to_fnentry)( void* f )
 {
 #  if defined(VGP_x86_linux) || defined(VGP_amd64_linux)  \
-      || defined(VGP_arm_linux) || defined(VGO_darwin)          \
+      || defined(VGP_arm_linux) || defined(VGO_darwin) || defined(VGO_freebsd) \
       || defined(VGP_ppc32_linux) || defined(VGP_ppc64le_linux) \
       || defined(VGP_s390x_linux) || defined(VGP_mips32_linux) \
       || defined(VGP_mips64_linux) || defined(VGP_arm64_linux) \

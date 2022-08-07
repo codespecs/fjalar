@@ -8,7 +8,30 @@
 ##------------------------------------------------------------##
 
 # Process this file with autoconf to produce a configure script.
-AC_INIT([Valgrind],[3.17.0.Fjalar],[daikon-developers@googlegroups.com])
+#
+# Define major, minor, micro and suffix here once, then reuse them
+# for version number in valgrind.h and vg-entities (documentation).
+# suffix must be empty for a release, otherwise it is GIT or RC1, etc.
+# Also set the (expected/last) release date here.
+# Do not forget to rerun ./autogen.sh
+m4_define([v_major_ver], [3])
+m4_define([v_minor_ver], [19])
+m4_define([v_micro_ver], [0])
+m4_define([v_suffix_ver], [])
+m4_define([v_rel_date], ["11 Aug 2022"])
+m4_define([v_version],
+     m4_if(v_suffix_ver, [],
+       [v_major_ver.v_minor_ver.v_micro_ver],
+       [v_major_ver.v_minor_ver.v_micro_ver.v_suffix_ver]))
+AC_INIT([Valgrind],[v_version.Fjalar],[daikon-developers@googlegroups.com])
+
+# For valgrind.h
+AC_SUBST(VG_VER_MAJOR, v_major_ver)
+AC_SUBST(VG_VER_MINOR, v_minor_ver)
+
+# For docs/xml/vg-entities.xml
+AC_SUBST(VG_DATE, v_rel_date)
+
 AC_CONFIG_SRCDIR(coregrind/m_main.c)
 AC_CONFIG_HEADERS([config.h])
 AM_INIT_AUTOMAKE([foreign dist-bzip2 subdir-objects])
@@ -115,7 +138,7 @@ rm $tmpfile
 
 # Make sure we can compile in C99 mode.
 AC_PROG_CC_C99
-if test "$ac_cv_prog_cc_c99" == "no"; then
+if test "$ac_cv_prog_cc_c99" = "no"; then
     AC_MSG_ERROR([Valgrind relies on a C compiler supporting C99])
 fi
 
@@ -175,7 +198,7 @@ case "${is_clang}-${gcc_version}" in
      applellvm-5.1|applellvm-[[6-9]].*|applellvm-[[1-9][0-9]]*)
 	AC_MSG_RESULT([ok (Apple LLVM version ${gcc_version})])
 	;;
-     icc-1[[3-9]].*)
+     icc-1[[3-9]].*|icc-202[[0-9]].*)
 	AC_MSG_RESULT([ok (ICC version ${gcc_version})])
 	;;
      notclang-[[3-9]]|notclang-[[3-9]].*|notclang-[[1-9][0-9]]*)
@@ -224,7 +247,7 @@ case "${host_cpu}" in
         ARCH_MAX="x86"
         ;;
 
-     x86_64) 
+     x86_64|amd64) 
         AC_MSG_RESULT([ok (${host_cpu})])
         ARCH_MAX="amd64"
         ;;
@@ -360,6 +383,80 @@ case "${host_os}" in
 
         ;;
 
+     *freebsd*)
+        AC_MSG_RESULT([ok (${host_os})])
+        VGCONF_OS="freebsd"
+        AC_DEFINE([FREEBSD_10], 1000, [FREEBSD_VERS value for FreeBSD 10.x])
+        freebsd_10=1000
+        AC_DEFINE([FREEBSD_11], 1100, [FREEBSD_VERS value for FreeBSD 11.x])
+        freebsd_11=1100
+        AC_DEFINE([FREEBSD_12], 1200, [FREEBSD_VERS value for FreeBSD 12.0 to 12.1])
+        freebsd_12=1200
+        AC_DEFINE([FREEBSD_12_2], 1220, [FREEBSD_VERS value for FreeBSD 12.2])
+        freebsd_12_2=1220
+        AC_DEFINE([FREEBSD_13_0], 1300, [FREEBSD_VERS value for FreeBSD 13.0])
+        freebsd_13_0=1300
+        AC_DEFINE([FREEBSD_13_1], 1310, [FREEBSD_VERS value for FreeBSD 13.1+])
+        freebsd_13_1=1310
+        AC_DEFINE([FREEBSD_14], 1400, [FREEBSD_VERS value for FreeBSD 14.x])
+        freebsd_14=1400
+
+        AC_MSG_CHECKING([for the kernel version])
+        kernel=`uname -r`
+
+        case "${kernel}" in
+        10.*)
+           AC_MSG_RESULT([FreeBSD 10.x (${kernel})])
+           AC_DEFINE([FREEBSD_VERS], FREEBSD_10, [FreeBSD version])
+           freebsd_vers=$freebsd_10
+           ;;
+        11.*)
+           AC_MSG_RESULT([FreeBSD 11.x (${kernel})])
+           AC_DEFINE([FREEBSD_VERS], FREEBSD_11, [FreeBSD version])
+           freebsd_vers=$freebsd_11
+           ;;
+        12.*)
+           case "${kernel}" in
+           12.[[0-1]]-*)
+              AC_MSG_RESULT([FreeBSD 12.x (${kernel})])
+              AC_DEFINE([FREEBSD_VERS], FREEBSD_12, [FreeBSD version])
+              freebsd_vers=$freebsd_12
+              ;;
+           *)
+              AC_MSG_RESULT([FreeBSD 12.x (${kernel})])
+              AC_DEFINE([FREEBSD_VERS], FREEBSD_12_2, [FreeBSD version])
+              freebsd_vers=$freebsd_12_2
+              ;;
+           esac
+           ;;
+        13.*)
+           case "${kernel}" in
+           13.0-*)
+              AC_MSG_RESULT([FreeBSD 13.0 (${kernel})])
+              AC_DEFINE([FREEBSD_VERS], FREEBSD_13_0, [FreeBSD version])
+              freebsd_vers=$freebsd_13_0
+              ;;
+           *)
+              AC_MSG_RESULT([FreeBSD 13.1+ (${kernel})])
+              AC_DEFINE([FREEBSD_VERS], FREEBSD_13_1, [FreeBSD version])
+              freebsd_vers=$freebsd_13_1
+              ;;
+           esac
+           ;;
+        14.*)
+           AC_MSG_RESULT([FreeBSD 14.x (${kernel})])
+           AC_DEFINE([FREEBSD_VERS], FREEBSD_14, [FreeBSD version])
+           freebsd_vers=$freebsd_14
+           ;;
+        *)
+           AC_MSG_RESULT([unsupported (${kernel})])
+           AC_MSG_ERROR([Valgrind works on FreeBSD 10.x to 14.x])
+           ;;
+        esac
+
+        DEFAULT_SUPP="$srcdir/freebsd.supp $srcdir/freebsd-helgrind.supp $srcdir/freebsd-drd.supp ${DEFAULT_SUPP}"
+        ;;
+
      *darwin*)
         AC_MSG_RESULT([ok (${host_os})])
         VGCONF_OS="darwin"
@@ -396,56 +493,56 @@ case "${host_os}" in
 	     9.*)
 		  AC_MSG_RESULT([Darwin 9.x (${kernel}) / Mac OS X 10.5 Leopard])
 		  AC_DEFINE([DARWIN_VERS], DARWIN_10_5, [Darwin / Mac OS X version])
-		  DEFAULT_SUPP="darwin9.supp ${DEFAULT_SUPP}"
-		  DEFAULT_SUPP="darwin9-drd.supp ${DEFAULT_SUPP}"
+                  DEFAULT_SUPP="$srcdir/darwin9.supp ${DEFAULT_SUPP}"
+                  DEFAULT_SUPP="$srcdir/darwin9-drd.supp ${DEFAULT_SUPP}"
 		  ;;
 	     10.*)
 		  AC_MSG_RESULT([Darwin 10.x (${kernel}) / Mac OS X 10.6 Snow Leopard])
 		  AC_DEFINE([DARWIN_VERS], DARWIN_10_6, [Darwin / Mac OS X version])
-		  DEFAULT_SUPP="darwin10.supp ${DEFAULT_SUPP}"
-		  DEFAULT_SUPP="darwin10-drd.supp ${DEFAULT_SUPP}"
+                  DEFAULT_SUPP="$srcdir/darwin10.supp ${DEFAULT_SUPP}"
+                  DEFAULT_SUPP="$srcdir/darwin10-drd.supp ${DEFAULT_SUPP}"
 		  ;;
 	     11.*)
 		  AC_MSG_RESULT([Darwin 11.x (${kernel}) / Mac OS X 10.7 Lion])
 		  AC_DEFINE([DARWIN_VERS], DARWIN_10_7, [Darwin / Mac OS X version])
-		  DEFAULT_SUPP="darwin11.supp ${DEFAULT_SUPP}"
-		  DEFAULT_SUPP="darwin10-drd.supp ${DEFAULT_SUPP}"
+                  DEFAULT_SUPP="$srcdir/darwin11.supp ${DEFAULT_SUPP}"
+                  DEFAULT_SUPP="$srcdir/darwin10-drd.supp ${DEFAULT_SUPP}"
 		  ;;
 	     12.*)
 		  AC_MSG_RESULT([Darwin 12.x (${kernel}) / Mac OS X 10.8 Mountain Lion])
 		  AC_DEFINE([DARWIN_VERS], DARWIN_10_8, [Darwin / Mac OS X version])
-		  DEFAULT_SUPP="darwin12.supp ${DEFAULT_SUPP}"
-		  DEFAULT_SUPP="darwin10-drd.supp ${DEFAULT_SUPP}"
+                  DEFAULT_SUPP="$srcdir/darwin12.supp ${DEFAULT_SUPP}"
+                  DEFAULT_SUPP="$srcdir/darwin10-drd.supp ${DEFAULT_SUPP}"
 		  ;;
 	     13.*)
 		  AC_MSG_RESULT([Darwin 13.x (${kernel}) / Mac OS X 10.9 Mavericks])
 		  AC_DEFINE([DARWIN_VERS], DARWIN_10_9, [Darwin / Mac OS X version])
-		  DEFAULT_SUPP="darwin13.supp ${DEFAULT_SUPP}"
-		  DEFAULT_SUPP="darwin10-drd.supp ${DEFAULT_SUPP}"
+                  DEFAULT_SUPP="$srcdir/darwin13.supp ${DEFAULT_SUPP}"
+                  DEFAULT_SUPP="$srcdir/darwin10-drd.supp ${DEFAULT_SUPP}"
 		  ;;
 	     14.*)
 		  AC_MSG_RESULT([Darwin 14.x (${kernel}) / Mac OS X 10.10 Yosemite])
 		  AC_DEFINE([DARWIN_VERS], DARWIN_10_10, [Darwin / Mac OS X version])
-		  DEFAULT_SUPP="darwin14.supp ${DEFAULT_SUPP}"
-		  DEFAULT_SUPP="darwin10-drd.supp ${DEFAULT_SUPP}"
+                  DEFAULT_SUPP="$srcdir/darwin14.supp ${DEFAULT_SUPP}"
+                  DEFAULT_SUPP="$srcdir/darwin10-drd.supp ${DEFAULT_SUPP}"
 		  ;;
 	     15.*)
 		  AC_MSG_RESULT([Darwin 15.x (${kernel}) / Mac OS X 10.11 El Capitan])
 		  AC_DEFINE([DARWIN_VERS], DARWIN_10_11, [Darwin / Mac OS X version])
-		  DEFAULT_SUPP="darwin15.supp ${DEFAULT_SUPP}"
-		  DEFAULT_SUPP="darwin10-drd.supp ${DEFAULT_SUPP}"
+                  DEFAULT_SUPP="$srcdir/darwin15.supp ${DEFAULT_SUPP}"
+                  DEFAULT_SUPP="$srcdir/darwin10-drd.supp ${DEFAULT_SUPP}"
 		  ;;
 	     16.*)
 		  AC_MSG_RESULT([Darwin 16.x (${kernel}) / macOS 10.12 Sierra])
 		  AC_DEFINE([DARWIN_VERS], DARWIN_10_12, [Darwin / Mac OS X version])
-		  DEFAULT_SUPP="darwin16.supp ${DEFAULT_SUPP}"
-		  DEFAULT_SUPP="darwin10-drd.supp ${DEFAULT_SUPP}"
+                  DEFAULT_SUPP="$srcdir/darwin16.supp ${DEFAULT_SUPP}"
+                  DEFAULT_SUPP="$srcdir/darwin10-drd.supp ${DEFAULT_SUPP}"
 		  ;;
 	     17.*)
 		  AC_MSG_RESULT([Darwin 17.x (${kernel}) / macOS 10.13 High Sierra])
 		  AC_DEFINE([DARWIN_VERS], DARWIN_10_13, [Darwin / Mac OS X version])
-		  DEFAULT_SUPP="darwin17.supp ${DEFAULT_SUPP}"
-		  DEFAULT_SUPP="darwin10-drd.supp ${DEFAULT_SUPP}"
+		  DEFAULT_SUPP="$srcdir/darwin17.supp ${DEFAULT_SUPP}"
+		  DEFAULT_SUPP="$srcdir/darwin10-drd.supp ${DEFAULT_SUPP}"
 		  ;;
              *) 
 		  AC_MSG_RESULT([unsupported (${kernel})])
@@ -461,10 +558,10 @@ case "${host_os}" in
         uname_v=$( uname -v )
         case "$uname_v" in
              11.4.*)
-                 DEFAULT_SUPP="solaris12.supp ${DEFAULT_SUPP}"
+                 DEFAULT_SUPP="$srcdir/solaris12.supp ${DEFAULT_SUPP}"
                  ;;
              *)
-                 DEFAULT_SUPP="solaris11.supp ${DEFAULT_SUPP}"
+                 DEFAULT_SUPP="$srcdir/solaris11.supp ${DEFAULT_SUPP}"
                  ;;
 	esac
         ;;
@@ -472,7 +569,7 @@ case "${host_os}" in
      solaris2.12*)
         AC_MSG_RESULT([ok (${host_os})])
         VGCONF_OS="solaris"
-        DEFAULT_SUPP="solaris12.supp ${DEFAULT_SUPP}"
+        DEFAULT_SUPP="$srcdir/solaris12.supp ${DEFAULT_SUPP}"
         ;;
 
      *) 
@@ -660,6 +757,48 @@ case "$ARCH_MAX-$VGCONF_OS" in
         valt_load_address_pri_inner="0x38000000"
         AC_MSG_RESULT([ok (${ARCH_MAX}-${VGCONF_OS})])
        ;;
+     x86-freebsd)
+        VGCONF_ARCH_PRI="x86"
+        VGCONF_ARCH_SEC=""
+        VGCONF_PLATFORM_PRI_CAPS="X86_FREEBSD"
+        VGCONF_PLATFORM_SEC_CAPS=""
+        valt_load_address_pri_norml="0x38000000"
+        valt_load_address_pri_inner="0x28000000"
+        valt_load_address_sec_norml="0xUNSET"
+        valt_load_address_sec_inner="0xUNSET"
+        AC_MSG_RESULT([ok (${ARCH_MAX}-${VGCONF_OS})])
+        ;;
+     amd64-freebsd)
+        if test x$vg_cv_only64bit = xyes; then
+           VGCONF_ARCH_PRI="amd64"
+           VGCONF_ARCH_SEC=""
+           VGCONF_PLATFORM_PRI_CAPS="AMD64_FREEBSD"
+           VGCONF_PLATFORM_SEC_CAPS=""
+        elif test x$vg_cv_only32bit = xyes; then
+           VGCONF_ARCH_PRI="x86"
+           VGCONF_ARCH_SEC=""
+           VGCONF_PLATFORM_PRI_CAPS="X86_FREEBSD"
+           VGCONF_PLATFORM_SEC_CAPS=""
+        else
+           VGCONF_ARCH_PRI="amd64"
+           VGCONF_ARCH_SEC="x86"
+           VGCONF_PLATFORM_PRI_CAPS="AMD64_FREEBSD"
+           VGCONF_PLATFORM_SEC_CAPS="X86_FREEBSD"
+        fi
+	# These work with either base clang or ports installed gcc
+	# Hand rolled compilers probably need INSTALL_DIR/lib (at least for gcc)
+        if test x$is_clang = xclang ; then
+           FLAG_32ON64="-B/usr/lib32"
+        else
+           GCC_MAJOR_VERSION=`${CC} -dumpversion | $SED 's/\..*//' 2>/dev/null`
+           FLAG_32ON64="-B/usr/local/lib32/gcc${GCC_MAJOR_VERSION} -Wl,-rpath,/usr/local/lib32/gcc${GCC_MAJOR_VERSION}/"
+        fi
+        valt_load_address_pri_norml="0x38000000"
+        valt_load_address_pri_inner="0x28000000"
+        valt_load_address_sec_norml="0x38000000"
+        valt_load_address_sec_inner="0x28000000"
+        AC_MSG_RESULT([ok (${ARCH_MAX}-${VGCONF_OS})])
+        ;;
      # Darwin gets identified as 32-bit even when it supports 64-bit.
      # (Not sure why, possibly because 'uname' returns "i386"?)  Just about
      # all Macs support both 32-bit and 64-bit, so we just build both.  If
@@ -860,12 +999,15 @@ esac
 AM_CONDITIONAL(VGCONF_ARCHS_INCLUDE_X86,   
                test x$VGCONF_PLATFORM_PRI_CAPS = xX86_LINUX \
                  -o x$VGCONF_PLATFORM_SEC_CAPS = xX86_LINUX \
+                 -o x$VGCONF_PLATFORM_PRI_CAPS = xX86_FREEBSD \
+                 -o x$VGCONF_PLATFORM_SEC_CAPS = xX86_FREEBSD \
                  -o x$VGCONF_PLATFORM_PRI_CAPS = xX86_DARWIN \
                  -o x$VGCONF_PLATFORM_SEC_CAPS = xX86_DARWIN \
                  -o x$VGCONF_PLATFORM_PRI_CAPS = xX86_SOLARIS \
                  -o x$VGCONF_PLATFORM_SEC_CAPS = xX86_SOLARIS )
 AM_CONDITIONAL(VGCONF_ARCHS_INCLUDE_AMD64, 
                test x$VGCONF_PLATFORM_PRI_CAPS = xAMD64_LINUX \
+                 -o x$VGCONF_PLATFORM_PRI_CAPS = xAMD64_FREEBSD \
                  -o x$VGCONF_PLATFORM_PRI_CAPS = xAMD64_DARWIN \
                  -o x$VGCONF_PLATFORM_PRI_CAPS = xAMD64_SOLARIS )
 AM_CONDITIONAL(VGCONF_ARCHS_INCLUDE_PPC32, 
@@ -918,7 +1060,12 @@ AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_MIPS64_LINUX,
                test x$VGCONF_PLATFORM_PRI_CAPS = xMIPS64_LINUX)
 AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_NANOMIPS_LINUX,
                test x$VGCONF_PLATFORM_PRI_CAPS = xNANOMIPS_LINUX)
-AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_X86_DARWIN,   
+AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_X86_FREEBSD,
+               test x$VGCONF_PLATFORM_PRI_CAPS = xX86_FREEBSD \
+                 -o x$VGCONF_PLATFORM_SEC_CAPS = xX86_FREEBSD)
+AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_AMD64_FREEBSD, 
+               test x$VGCONF_PLATFORM_PRI_CAPS = xAMD64_FREEBSD)
+AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_X86_DARWIN,
                test x$VGCONF_PLATFORM_PRI_CAPS = xX86_DARWIN \
                  -o x$VGCONF_PLATFORM_SEC_CAPS = xX86_DARWIN)
 AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN, 
@@ -945,12 +1092,20 @@ AM_CONDITIONAL(VGCONF_OS_IS_LINUX,
                  -o x$VGCONF_PLATFORM_PRI_CAPS = xMIPS32_LINUX \
                  -o x$VGCONF_PLATFORM_PRI_CAPS = xMIPS64_LINUX \
                  -o x$VGCONF_PLATFORM_PRI_CAPS = xNANOMIPS_LINUX)
+AM_CONDITIONAL(VGCONF_OS_IS_FREEBSD,
+               test x$VGCONF_PLATFORM_PRI_CAPS = xX86_FREEBSD \
+                 -o x$VGCONF_PLATFORM_PRI_CAPS = xAMD64_FREEBSD)
 AM_CONDITIONAL(VGCONF_OS_IS_DARWIN,
                test x$VGCONF_PLATFORM_PRI_CAPS = xX86_DARWIN \
                  -o x$VGCONF_PLATFORM_PRI_CAPS = xAMD64_DARWIN)
 AM_CONDITIONAL(VGCONF_OS_IS_SOLARIS,
                test x$VGCONF_PLATFORM_PRI_CAPS = xX86_SOLARIS \
                  -o x$VGCONF_PLATFORM_PRI_CAPS = xAMD64_SOLARIS)
+AM_CONDITIONAL(VGCONF_OS_IS_DARWIN_OR_FREEBSD,
+               test x$VGCONF_PLATFORM_PRI_CAPS = xX86_FREEBSD \
+                 -o x$VGCONF_PLATFORM_PRI_CAPS = xAMD64_FREEBSD \
+                 -o x$VGCONF_PLATFORM_PRI_CAPS = xX86_DARWIN \
+                 -o x$VGCONF_PLATFORM_PRI_CAPS = xAMD64_DARWIN)
 
 
 # Sometimes, in the Makefile.am files, it's useful to know whether or not
@@ -1068,6 +1223,14 @@ AC_EGREP_CPP([DARWIN_LIBC], [
 ],
 GLIBC_VERSION="darwin")
 
+AC_EGREP_CPP([FREEBSD_LIBC], [
+#include <sys/cdefs.h>
+#if defined(__FreeBSD__)
+  FREEBSD_LIBC
+#endif
+],
+GLIBC_VERSION="freebsd")
+
 # not really a version check
 AC_EGREP_CPP([BIONIC_LIBC], [
 #if defined(__ANDROID__)
@@ -1090,25 +1253,50 @@ if test x$GLIBC_VERSION = x; then
     fi
 fi
 
+# If this is glibc then figure out the generic (in file) libc.so and
+# libpthread.so file paths to use in suppressions. Before 2.34 libpthread
+# was a separate library, afterwards it was merged into libc.so and
+# the library is called libc.so.6 (before it was libc-2.[0-9]+.so).
+# Use this fact to set GLIBC_LIBC_PATH and GLIBC_LIBPTHREAD_PATH.
+case ${GLIBC_VERSION} in
+2*)
+  AC_MSG_CHECKING([whether pthread_create needs libpthread])
+  AC_LINK_IFELSE([AC_LANG_CALL([], [pthread_create])],
+  [
+    AC_MSG_RESULT([no])
+    GLIBC_LIBC_PATH="*/lib*/libc.so.6"
+    GLIBC_LIBPTHREAD_PATH="$GLIBC_LIBC_PATH"
+  ], [
+    AC_MSG_RESULT([yes])
+    GLIBC_LIBC_PATH="*/lib*/libc-2.*so*"
+    GLIBC_LIBPTHREAD_PATH="*/lib*/libpthread-2.*so*"
+  ])
+  ;;
+*)
+  AC_MSG_CHECKING([not glibc...])
+  AC_MSG_RESULT([${GLIBC_VERSION}])
+  ;;
+esac
+
 AC_MSG_CHECKING([the glibc version])
 
 case "${GLIBC_VERSION}" in
      2.2)
 	AC_MSG_RESULT(${GLIBC_VERSION} family)
-	DEFAULT_SUPP="glibc-2.2.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.2-LinuxThreads-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+        DEFAULT_SUPP="$srcdir/glibc-2.2.supp ${DEFAULT_SUPP}"
+        DEFAULT_SUPP="$srcdir/glibc-2.2-LinuxThreads-helgrind.supp ${DEFAULT_SUPP}"
+        DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
 	;;
      2.[[3-6]])
 	AC_MSG_RESULT(${GLIBC_VERSION} family)
-	DEFAULT_SUPP="glibc-${GLIBC_VERSION}.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+        DEFAULT_SUPP="$srcdir/glibc-${GLIBC_VERSION}.supp ${DEFAULT_SUPP}"
+        DEFAULT_SUPP="glibc-2.X-helgrind.supp ${DEFAULT_SUPP}"
+        DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
 	;;
      2.[[7-9]])
 	AC_MSG_RESULT(${GLIBC_VERSION} family)
 	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.X-helgrind.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
 	;;
      2.10|2.11)
@@ -1116,8 +1304,8 @@ case "${GLIBC_VERSION}" in
 	AC_DEFINE([GLIBC_MANDATORY_STRLEN_REDIRECT], 1,
 		  [Define to 1 if strlen() has been optimized heavily (amd64 glibc >= 2.10)])
 	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+        DEFAULT_SUPP="glibc-2.X-helgrind.supp ${DEFAULT_SUPP}"
+        DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
 	;;
      2.*)
 	AC_MSG_RESULT(${GLIBC_VERSION} family)
@@ -1126,18 +1314,23 @@ case "${GLIBC_VERSION}" in
 	AC_DEFINE([GLIBC_MANDATORY_INDEX_AND_STRLEN_REDIRECT], 1,
 		  [Define to 1 if index() and strlen() have been optimized heavily (x86 glibc >= 2.12)])
 	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+        DEFAULT_SUPP="glibc-2.X-helgrind.supp ${DEFAULT_SUPP}"
+        DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
 	;;
      darwin)
 	AC_MSG_RESULT(Darwin)
 	AC_DEFINE([DARWIN_LIBC], 1, [Define to 1 if you're using Darwin])
 	# DEFAULT_SUPP set by kernel version check above.
 	;;
+     freebsd)
+	AC_MSG_RESULT(FreeBSD)
+	AC_DEFINE([FREEBSD_LIBC], 1, [Define to 1 if you're using FreeBSD])
+	# DEFAULT_SUPP set by kernel version check above.
+	;;
      bionic)
 	AC_MSG_RESULT(Bionic)
 	AC_DEFINE([BIONIC_LIBC], 1, [Define to 1 if you're using Bionic])
-	DEFAULT_SUPP="bionic.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="$srcdir/bionic.supp ${DEFAULT_SUPP}"
 	;;
      solaris)
 	AC_MSG_RESULT(Solaris)
@@ -1147,7 +1340,7 @@ case "${GLIBC_VERSION}" in
      musl)
 	AC_MSG_RESULT(Musl)
 	AC_DEFINE([MUSL_LIBC], 1, [Define to 1 if you're using Musl libc])
-	DEFAULT_SUPP="musl.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="$srcdir/musl.supp ${DEFAULT_SUPP}"
 	;;
      2.0|2.1|*)
 	AC_MSG_RESULT([unsupported version ${GLIBC_VERSION}])
@@ -1157,6 +1350,8 @@ case "${GLIBC_VERSION}" in
 esac
 
 AC_SUBST(GLIBC_VERSION)
+AC_SUBST(GLIBC_LIBC_PATH)
+AC_SUBST(GLIBC_LIBPTHREAD_PATH)
 
 
 if test "$VGCONF_OS" != "solaris"; then
@@ -1164,8 +1359,8 @@ if test "$VGCONF_OS" != "solaris"; then
     # attempt to detect whether such libraries are installed on the
     # build machine (or even if any X facilities are present); just
     # add the suppressions antidisirregardless.
-    DEFAULT_SUPP="xfree-4.supp ${DEFAULT_SUPP}"
-    DEFAULT_SUPP="xfree-3.supp ${DEFAULT_SUPP}"
+    DEFAULT_SUPP="$srcdir/xfree-4.supp ${DEFAULT_SUPP}"
+    DEFAULT_SUPP="$srcdir/xfree-3.supp ${DEFAULT_SUPP}"
 fi
 
 
@@ -1437,7 +1632,7 @@ AC_CHECK_MEMBER([pthread_mutex_t.__data.__kind],
 AC_DEFUN([AC_HWCAP_CONTAINS_FLAG],[
   AUXV_CHECK_FOR=$1
   AC_MSG_CHECKING([if AT_HWCAP contains the $AUXV_CHECK_FOR indicator])
-  if LD_SHOW_AUXV=1 `which true` | grep ^AT_HWCAP | grep -q -w ${AUXV_CHECK_FOR}
+  if env LD_SHOW_AUXV=1 true | grep ^AT_HWCAP | grep -q -w ${AUXV_CHECK_FOR}
   then
     AC_MSG_RESULT([yes])
     AC_SUBST([$2],[yes])
@@ -1536,14 +1731,17 @@ AM_CONDITIONAL([HAS_VSX], [test x$ac_compiler_supports_vsx_flag = xyes \
                              -a x$HWCAP_HAS_VSX = xyes ])
 
 # DFP (Decimal Float)
+# The initial DFP support was added in Power 6.  The dcffix instruction
+# support was added in Power 7.
 AC_MSG_CHECKING([that assembler knows DFP])
 AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
 ]], [[
   #ifdef __s390__
   __asm__ __volatile__("adtr 1, 2, 3")
   #else
-  __asm__ __volatile__("dadd 1, 2, 3");
-  __asm__ __volatile__("dcffix 1, 2");
+__asm__ __volatile__(".machine power7;\n" \
+  "dadd 1, 2, 3;\n" \
+  "dcffix 1, 2");
   #endif
 ]])], [
 ac_asm_have_dfp=yes
@@ -1555,13 +1753,16 @@ AC_MSG_RESULT([no])
 AC_MSG_CHECKING([that compiler knows -mhard-dfp switch])
 safe_CFLAGS=$CFLAGS
 CFLAGS="-mhard-dfp -Werror"
+
+# The dcffix instruction is Power 7
 AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
 ]], [[
   #ifdef __s390__
   __asm__ __volatile__("adtr 1, 2, 3")
   #else
-  __asm__ __volatile__("dadd 1, 2, 3");
-  __asm__ __volatile__("dcffix 1, 2");
+  __asm__ __volatile__(".machine power7;\n" \
+  "dadd 1, 2, 3;\n" \
+  "dcffix 1, 2");
   #endif
 ]])], [
 ac_compiler_have_dfp=yes
@@ -1631,21 +1832,28 @@ AC_MSG_CHECKING([that assembler knows ISA 3.00 ])
 
 AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
 ]], [[
-  __asm__ __volatile__("cnttzw 1,2 ");
+__asm__ __volatile__ (".machine power9;\n" \
+	"cnttzw   1,3; \n" );
 ]])], [
+# guest_ppc_helpers.c needs the HAS_ISA_3_OO to enable copy, paste,
+# cpabort support
+safe_CFLAGS=$CFLAGS
+CFLAGS="-DHAS_ISA_3_00"
 ac_asm_have_isa_3_00=yes
 AC_MSG_RESULT([yes])
 ], [
 ac_asm_have_isa_3_00=no
 AC_MSG_RESULT([no])
 ])
+CFLAGS=$safe_CFLAGS
 
 # xscvhpdp checking
 AC_MSG_CHECKING([that assembler knows xscvhpdp ])
 
 AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
 ]], [[
-  __asm__ __volatile__("xscvhpdp 1,2 ");
+__asm__ __volatile__ (".machine power9;\n" \
+	"xscvhpdp 1,2;\n" );
 ]])], [
 ac_asm_have_xscvhpdp=yes
 AC_MSG_RESULT([yes])
@@ -1654,12 +1862,26 @@ ac_asm_have_xscvhpdp=no
 AC_MSG_RESULT([no])
 ])
 
-# isa 3.01 checking
-AC_MSG_CHECKING([that assembler knows ISA 3.1 ])
+# darn instruction checking
+AC_MSG_CHECKING([that assembler knows darn instruction ])
 
 AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
 ]], [[
-  __asm__ __volatile__("brh 1,2 ");
+  __asm__ __volatile__(".machine power9; darn 1,0 ");
+]])], [
+ac_asm_have_darn_inst=yes
+AC_MSG_RESULT([yes])
+], [
+ac_asm_have_darn_inst=no
+AC_MSG_RESULT([no])
+])
+
+# isa 3.01 checking
+AC_MSG_CHECKING([that assembler knows ISA 3.1 ])
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+]], [[
+__asm__ __volatile__ (".machine power10;\n" \
+	"brh 1,2;\n ");
 ]])], [
 ac_asm_have_isa_3_1=yes
 AC_MSG_RESULT([yes])
@@ -1673,6 +1895,7 @@ AM_CONDITIONAL(HAS_ISA_3_00, [test x$ac_asm_have_isa_3_00 = xyes \
                              -a x$HWCAP_HAS_ISA_3_00 = xyes])
 
 AM_CONDITIONAL(HAS_XSCVHPDP, [test x$ac_asm_have_xscvhpdp = xyes])
+AM_CONDITIONAL(HAS_DARN, [test x$ac_asm_have_darn_inst = xyes])
 
 AM_CONDITIONAL(HAS_ISA_3_1, [test x$ac_asm_have_isa_3_1 = xyes \
                              -a x$HWCAP_HAS_ISA_3_1 = xyes])
@@ -1789,6 +2012,73 @@ AC_LANG(C)
 
 AM_CONDITIONAL(CXX_CAN_INCLUDE_THREAD_HEADER, test x$ac_cxx_can_include_thread_header = xyes)
 
+# Check whether compiler can process #include <condition_variable> without errors
+
+AC_MSG_CHECKING([that C++ compiler can include <condition_variable> header file])
+AC_LANG(C++)
+safe_CXXFLAGS=$CXXFLAGS
+CXXFLAGS=-std=c++0x
+
+AC_COMPILE_IFELSE([AC_LANG_SOURCE([
+#include <condition_variable> 
+])],
+[
+ac_cxx_can_include_condition_variable_header=yes
+AC_MSG_RESULT([yes])
+], [
+ac_cxx_can_include_condition_variable_header=no
+AC_MSG_RESULT([no])
+])
+CXXFLAGS=$safe_CXXFLAGS
+AC_LANG(C)
+
+AM_CONDITIONAL(CXX_CAN_INCLUDE_CONDITION_VARIABLE_HEADER, test x$ac_cxx_can_include_condition_variable_header = xyes)
+
+# check for std::shared_timed_mutex, this is a C++ 14 feature
+
+AC_MSG_CHECKING([that C++ compiler can use std::shared_timed_mutex])
+AC_LANG(C++)
+safe_CXXFLAGS=$CXXFLAGS
+CXXFLAGS="-std=c++1y -pthread"
+
+AC_COMPILE_IFELSE([AC_LANG_SOURCE([
+#include <shared_mutex>
+std::shared_timed_mutex test_mutex;
+])],
+[
+ac_cxx_can_use_shared_timed_mutex=yes
+AC_MSG_RESULT([yes])
+], [
+ac_cxx_can_use_shared_timed_mutex=no
+AC_MSG_RESULT([no])
+])
+CXXFLAGS=$safe_CXXFLAGS
+AC_LANG(C)
+
+AM_CONDITIONAL(CXX_CAN_USE_SHARED_TIMED_MUTEX, test x$ac_cxx_can_use_shared_timed_mutex = xyes)
+
+# check for std::shared_mutex, this is a C++ 11 feature
+
+AC_MSG_CHECKING([that C++ compiler can use std::timed_mutex])
+AC_LANG(C++)
+safe_CXXFLAGS=$CXXFLAGS
+CXXFLAGS="-std=c++0x -pthread"
+
+AC_COMPILE_IFELSE([AC_LANG_SOURCE([
+#include <mutex>
+std::timed_mutex test_mutex;
+])],
+[
+ac_cxx_can_use_timed_mutex=yes
+AC_MSG_RESULT([yes])
+], [
+ac_cxx_can_use_timed_mutex=no
+AC_MSG_RESULT([no])
+])
+CXXFLAGS=$safe_CXXFLAGS
+AC_LANG(C)
+
+AM_CONDITIONAL(CXX_CAN_USE_TIMED_MUTEX, test x$ac_cxx_can_use_timed_mutex = xyes)
 
 # On aarch64 before glibc 2.20 we would get the kernel user_pt_regs instead
 # of the user_regs_struct from sys/user.h. They are structurally the same
@@ -1874,12 +2164,12 @@ case "${host_cpu}" in
         AC_MSG_CHECKING([if gcc accepts -m32])
 
         safe_CFLAGS=$CFLAGS
-        CFLAGS="-m32 -Werror"
+        CFLAGS="${FLAG_32ON64} -m32 -Werror"
 
         AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[
           return 0;
         ]])], [
-        FLAG_M32="-m32"
+        FLAG_M32="${FLAG_32ON64} -m32"
         AC_MSG_RESULT([yes])
         ], [
         FLAG_M32=""
@@ -2218,6 +2508,7 @@ AC_GCC_WARNING_SUBST_NO([unused-function], [FLAG_W_NO_UNUSED_FUNCTION])
 AC_GCC_WARNING_SUBST_NO([static-local-in-inline], [FLAG_W_NO_STATIC_LOCAL_IN_INLINE])
 AC_GCC_WARNING_SUBST_NO([mismatched-new-delete], [FLAG_W_NO_MISMATCHED_NEW_DELETE])
 AC_GCC_WARNING_SUBST_NO([infinite-recursion], [FLAG_W_NO_INFINITE_RECURSION])
+AC_GCC_WARNING_SUBST_NO([expansion-to-defined], [FLAG_W_NO_EXPANSION_TO_DEFINED])
 
 AC_GCC_WARNING_SUBST([write-strings], [FLAG_W_WRITE_STRINGS])
 AC_GCC_WARNING_SUBST([empty-body], [FLAG_W_EMPTY_BODY])
@@ -2601,7 +2892,7 @@ CFLAGS=$safe_CFLAGS
 AC_MSG_CHECKING([if gcc accepts -no-pie])
 
 safe_CFLAGS=$CFLAGS
-CFLAGS="-no-pie"
+CFLAGS="-no-pie -Werror"
 
 AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[ ]], [[
   return 0;
@@ -2624,30 +2915,52 @@ CFLAGS=$safe_CFLAGS
 # will reside. -Ttext aligns just the .text section start (but not any
 # other section).
 #
-# So test for -Ttext-segment which is supported by all bfd ld versions
+# LLVM ld.lld 10.0 changed the semantics of its -Ttext. See "Breaking changes"
+# in https://releases.llvm.org/10.0.0/tools/lld/docs/ReleaseNotes.html
+# The --image-base option (since version 6.0?) provides the semantics needed.
+# -Ttext-segment generates an error, but -Ttext now more closely
+# follows the GNU (bfd) ld's -Ttext.
+#
+# So test first for --image-base support, and if that fails then
+# for -Ttext-segment which is supported by all bfd ld versions
 # and use that if it exists. If it doesn't exist it must be an older
 # version of gold and we can fall back to using -Ttext which has the
 # right semantics.
 
-AC_MSG_CHECKING([if the linker accepts -Wl,-Ttext-segment])
-
 safe_CFLAGS=$CFLAGS
-CFLAGS="-static -nodefaultlibs -nostartfiles -Wl,-Ttext-segment=$valt_load_address_pri_norml -Werror"
+AC_MSG_CHECKING([if the linker accepts -Wl,--image-base])
+
+CFLAGS="-static -nodefaultlibs -nostartfiles -Wl,--image-base=$valt_load_address_pri_norml -Werror"
 
 AC_LINK_IFELSE(
 [AC_LANG_SOURCE([int _start () { return 0; }])],
 [
   linker_using_t_text="no"
-  AC_SUBST([FLAG_T_TEXT], ["-Ttext-segment"])
+  AC_SUBST([FLAG_T_TEXT], ["--image-base"])
   AC_MSG_RESULT([yes])
 ], [
-  linker_using_t_text="yes"
-  AC_SUBST([FLAG_T_TEXT], ["-Ttext"])
   AC_MSG_RESULT([no])
+
+  AC_MSG_CHECKING([if the linker accepts -Wl,-Ttext-segment])
+
+  CFLAGS="-static -nodefaultlibs -nostartfiles -Wl,-Ttext-segment=$valt_load_address_pri_norml -Werror"
+
+  AC_LINK_IFELSE(
+  [AC_LANG_SOURCE([int _start () { return 0; }])],
+  [
+    linker_using_t_text="no"
+    AC_SUBST([FLAG_T_TEXT], ["-Ttext-segment"])
+    AC_MSG_RESULT([yes])
+  ], [
+    linker_using_t_text="yes"
+    AC_SUBST([FLAG_T_TEXT], ["-Ttext"])
+    AC_MSG_RESULT([no])
+  ])
 ])
+
 CFLAGS=$safe_CFLAGS
 
-# If the linker only supports -Ttext (not -Ttext-segment) then we will
+# If the linker only supports -Ttext (not -Ttext-segment or --image-base) then we will
 # have to strip any build-id ELF NOTEs from the statically linked tools.
 # Otherwise the build-id NOTE might end up at the default load address.
 # (Pedantically if the linker is gold then -Ttext is fine, but newer
@@ -2673,7 +2986,7 @@ AC_LINK_IFELSE(
   AC_MSG_RESULT([no])
 ])
 else
-AC_MSG_NOTICE([ld -Ttext-segment used, no need to strip build-id NOTEs.])
+AC_MSG_NOTICE([ld --image-base or -Ttext-segment used, no need to strip build-id NOTEs.])
 AC_SUBST([FLAG_NO_BUILD_ID], [""])
 fi
 CFLAGS=$safe_CFLAGS
@@ -4312,6 +4625,25 @@ AM_CONDITIONAL(SOLARIS_RESERVE_SYSSTAT_ZONE_ADDR, false)
 AM_CONDITIONAL(SOLARIS_SYSTEM_STATS_SYSCALL, false)
 fi # test "$VGCONF_OS" = "solaris"
 
+#----------------------------------------------------------------------------
+# FreeBSD-specific checks.
+#----------------------------------------------------------------------------
+
+# Rather than having a large number of feature test as above with Solaris
+# these tests are per-version. This may not be entirely relialable for
+# FreeBSD development branches (XX.Y-CURRENT) or pre-release branches
+# (XX.Y-STABLE) but it should work for XX-Y-RELEASE
+
+if test "$VGCONF_OS" = "freebsd" ; then
+
+AM_CONDITIONAL(FREEBSD_VERS_13_PLUS, test $freebsd_vers -ge $freebsd_13_0)
+
+else
+
+AM_CONDITIONAL(FREEBSD_VERS_13_PLUS, false)
+
+fi # test "$VGCONF_OS" = "freebsd"
+
 
 #----------------------------------------------------------------------------
 # Checks for C header files.
@@ -4362,7 +4694,15 @@ CFLAGS="$save_CFLAGS"
 AC_TYPE_UID_T
 AC_TYPE_OFF_T
 AC_TYPE_SIZE_T
-AC_HEADER_TIME
+AC_CHECK_HEADERS_ONCE([sys/time.h])
+
+AC_CHECK_TYPE([struct statx], [
+  AC_DEFINE([HAVE_STRUCT_STATX_IN_SYS_STAT_H], 1,
+            [Define to 1 if <sys/stat.h> declares struct statx.])
+], [], [
+  #define _GNU_SOURCE
+  #include <sys/stat.h>
+])
 
 
 #----------------------------------------------------------------------------
@@ -4376,6 +4716,7 @@ AC_CHECK_LIB([rt], [clock_gettime])
 
 AC_CHECK_FUNCS([     \
         clock_gettime\
+        copy_file_range \
         epoll_create \
         epoll_pwait  \
         klogctl      \
@@ -4386,16 +4727,24 @@ AC_CHECK_FUNCS([     \
         mkdir        \
         mremap       \
         ppoll        \
+        preadv       \
+        preadv2      \
+        process_vm_readv  \
+        process_vm_writev \
         pthread_barrier_init       \
         pthread_condattr_setclock  \
         pthread_mutex_timedlock    \
         pthread_rwlock_timedrdlock \
         pthread_rwlock_timedwrlock \
+        pthread_setname_np         \
         pthread_spin_lock          \
         pthread_yield              \
-        pthread_setname_np         \
+        pwritev      \
+        pwritev2     \
+        rawmemchr    \
         readlinkat   \
         semtimedop   \
+        setcontext   \
         signalfd     \
         sigwaitinfo  \
         strchr       \
@@ -4403,15 +4752,9 @@ AC_CHECK_FUNCS([     \
         strpbrk      \
         strrchr      \
         strstr       \
+        swapcontext  \
         syscall      \
         utimensat    \
-        process_vm_readv  \
-        process_vm_writev \
-        copy_file_range \
-        preadv \
-        pwritev \
-        preadv2 \
-        pwritev2 \
         ])
 
 # AC_CHECK_LIB adds any library found to the variable LIBS, and links these
@@ -4433,6 +4776,8 @@ AM_CONDITIONAL([HAVE_PREADV_PWRITEV],
                [test x$ac_cv_func_preadv = xyes && test x$ac_cv_func_pwritev = xyes])
 AM_CONDITIONAL([HAVE_PREADV2_PWRITEV2],
                [test x$ac_cv_func_preadv2 = xyes && test x$ac_cv_func_pwritev2 = xyes])
+AM_CONDITIONAL([HAVE_SETCONTEXT], [test x$ac_cv_func_setcontext = xyes])
+AM_CONDITIONAL([HAVE_SWAPCONTEXT], [test x$ac_cv_func_swapcontext = xyes])
 AM_CONDITIONAL([HAVE_MEMFD_CREATE],
                [test x$ac_cv_func_memfd_create = xyes])
 
@@ -4456,6 +4801,7 @@ AC_PATH_PROG([MPI_CC], [mpicc], [mpicc],
 
 mflag_primary=
 if test x$VGCONF_PLATFORM_PRI_CAPS = xX86_LINUX \
+     -o x$VGCONF_PLATFORM_PRI_CAPS = xX86_FREEBSD \
      -o x$VGCONF_PLATFORM_PRI_CAPS = xPPC32_LINUX \
      -o x$VGCONF_PLATFORM_PRI_CAPS = xARM_LINUX \
      -o x$VGCONF_PLATFORM_PRI_CAPS = xMIPS32_LINUX \
@@ -4463,6 +4809,7 @@ if test x$VGCONF_PLATFORM_PRI_CAPS = xX86_LINUX \
      -o x$VGCONF_PLATFORM_PRI_CAPS = xX86_SOLARIS ; then
   mflag_primary=$FLAG_M32
 elif test x$VGCONF_PLATFORM_PRI_CAPS = xAMD64_LINUX \
+       -o x$VGCONF_PLATFORM_PRI_CAPS = xAMD64_FREEBSD \
        -o x$VGCONF_PLATFORM_PRI_CAPS = xPPC64_LINUX \
        -o x$VGCONF_PLATFORM_PRI_CAPS = xARM64_LINUX \
        -o x$VGCONF_PLATFORM_PRI_CAPS = xMIPS64_LINUX \
@@ -4478,7 +4825,8 @@ mflag_secondary=
 if test x$VGCONF_PLATFORM_SEC_CAPS = xX86_LINUX \
      -o x$VGCONF_PLATFORM_SEC_CAPS = xPPC32_LINUX \
      -o x$VGCONF_PLATFORM_SEC_CAPS = xX86_SOLARIS \
-     -o x$VGCONF_PLATFORM_SEC_CAPS = xMIPS32_LINUX ; then
+     -o x$VGCONF_PLATFORM_SEC_CAPS = xMIPS32_LINUX \
+     -o x$VGCONF_PLATFORM_SEC_CAPS = xX86_FREEBSD ; then
   mflag_secondary=$FLAG_M32
 elif test x$VGCONF_PLATFORM_SEC_CAPS = xX86_DARWIN ; then
   mflag_secondary="$FLAG_M32 -arch i386"
@@ -4497,6 +4845,9 @@ AC_SUBST(MPI_CC)
 ## We leave the MPI_FLAG_M3264_ logic in mpi/Makefile.am and assume that
 ## mflag_primary/mflag_secondary are sufficient approximations of that behavior
 AM_COND_IF([VGCONF_OS_IS_LINUX],
+           [CFLAGS_MPI="-g -O -fno-omit-frame-pointer -Wall -fpic"
+            LDFLAGS_MPI="-fpic -shared"])
+AM_COND_IF([VGCONF_OS_IS_FREEBSD],
            [CFLAGS_MPI="-g -O -fno-omit-frame-pointer -Wall -fpic"
             LDFLAGS_MPI="-fpic -shared"])
 AM_COND_IF([VGCONF_OS_IS_DARWIN],
@@ -4909,8 +5260,12 @@ AC_CONFIG_FILES([
    valgrind.spec
    valgrind.pc
    glibc-2.X.supp
+   glibc-2.X-helgrind.supp
+   glibc-2.X-drd.supp
+   include/valgrind.h
    fjalar/Makefile 
    docs/Makefile 
+   docs/xml/vg-entities.xml
    tests/Makefile 
    tests/vg_regtest 
    perf/Makefile 
@@ -4930,11 +5285,14 @@ AC_CONFIG_FILES([
    memcheck/tests/linux/debuginfod-check.vgtest
    memcheck/tests/darwin/Makefile
    memcheck/tests/solaris/Makefile
+   memcheck/tests/freebsd/Makefile
    memcheck/tests/amd64-linux/Makefile
    memcheck/tests/arm64-linux/Makefile
    memcheck/tests/x86-linux/Makefile
    memcheck/tests/amd64-solaris/Makefile
    memcheck/tests/x86-solaris/Makefile
+   memcheck/tests/amd64-freebsd/Makefile
+   memcheck/tests/x86-freebsd/Makefile
    memcheck/tests/ppc32/Makefile
    memcheck/tests/ppc64/Makefile
    memcheck/tests/s390x/Makefile
@@ -4978,6 +5336,7 @@ AC_CONFIG_FILES([
    none/tests/linux/Makefile
    none/tests/darwin/Makefile
    none/tests/solaris/Makefile
+   none/tests/freebsd/Makefile
    none/tests/amd64-linux/Makefile
    none/tests/x86-linux/Makefile
    none/tests/amd64-darwin/Makefile
@@ -4996,14 +5355,51 @@ AC_CONFIG_FILES([
 ])
 AC_CONFIG_FILES([coregrind/link_tool_exe_linux],
                 [chmod +x coregrind/link_tool_exe_linux])
+AC_CONFIG_FILES([coregrind/link_tool_exe_freebsd],
+                [chmod +x coregrind/link_tool_exe_freebsd])
 AC_CONFIG_FILES([coregrind/link_tool_exe_darwin],
                 [chmod +x coregrind/link_tool_exe_darwin])
 AC_CONFIG_FILES([coregrind/link_tool_exe_solaris],
                 [chmod +x coregrind/link_tool_exe_solaris])
+AC_CONFIG_FILES([tests/filter_stderr_basic],
+                [chmod +x tests/filter_stderr_basic])
+AC_CONFIG_FILES([tests/filter_discards],
+                [chmod +x tests/filter_discards])
+AC_CONFIG_FILES([memcheck/tests/filter_stderr],
+                [chmod +x memcheck/tests/filter_stderr])
+AC_CONFIG_FILES([memcheck/tests/filter_dw4],
+                [chmod +x memcheck/tests/filter_dw4])
+AC_CONFIG_FILES([memcheck/tests/filter_overlaperror],
+                [chmod +x memcheck/tests/filter_overlaperror])
+AC_CONFIG_FILES([memcheck/tests/x86/filter_pushfpopf],
+                [chmod +x memcheck/tests/x86/filter_pushfpopf])
+AC_CONFIG_FILES([gdbserver_tests/filter_gdb],
+                [chmod +x gdbserver_tests/filter_gdb])
+AC_CONFIG_FILES([gdbserver_tests/filter_memcheck_monitor],
+                [chmod +x gdbserver_tests/filter_memcheck_monitor])
+AC_CONFIG_FILES([gdbserver_tests/filter_stderr],
+                [chmod +x gdbserver_tests/filter_stderr])
+AC_CONFIG_FILES([gdbserver_tests/filter_vgdb],
+                [chmod +x gdbserver_tests/filter_vgdb])
+AC_CONFIG_FILES([drd/tests/filter_stderr],
+                [chmod +x drd/tests/filter_stderr])
+AC_CONFIG_FILES([drd/tests/filter_error_count],
+                [chmod +x drd/tests/filter_error_count])
+AC_CONFIG_FILES([drd/tests/filter_error_summary],
+                [chmod +x drd/tests/filter_error_summary])
+AC_CONFIG_FILES([drd/tests/filter_stderr_and_thread_no_and_offset],
+                [chmod +x drd/tests/filter_stderr_and_thread_no_and_offset])
+AC_CONFIG_FILES([drd/tests/filter_thread_no],
+                [chmod +x drd/tests/filter_thread_no])
+AC_CONFIG_FILES([drd/tests/filter_xml_and_thread_no],
+                [chmod +x drd/tests/filter_xml_and_thread_no])
+AC_CONFIG_FILES([helgrind/tests/filter_stderr],
+                [chmod +x helgrind/tests/filter_stderr])
 AC_OUTPUT
 
 cat<<EOF
 
+                    Version: ${VERSION}
          Maximum build arch: ${ARCH_MAX}
          Primary build arch: ${VGCONF_ARCH_PRI}
        Secondary build arch: ${VGCONF_ARCH_SEC}

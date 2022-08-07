@@ -337,6 +337,7 @@ typedef
       ARM64vecb_FADD64x2,    ARM64vecb_FADD32x4,
       ARM64vecb_FADD16x8,
       ARM64vecb_FSUB64x2,    ARM64vecb_FSUB32x4,
+      ARM64vecb_FSUB16x8,
       ARM64vecb_FMUL64x2,    ARM64vecb_FMUL32x4,
       ARM64vecb_FDIV64x2,    ARM64vecb_FDIV32x4,
       ARM64vecb_FMAX64x2,    ARM64vecb_FMAX32x4,
@@ -361,6 +362,8 @@ typedef
       ARM64vecb_FCMEQ64x2,   ARM64vecb_FCMEQ32x4,
       ARM64vecb_FCMGE64x2,   ARM64vecb_FCMGE32x4,
       ARM64vecb_FCMGT64x2,   ARM64vecb_FCMGT32x4,
+      ARM64vecb_FCMGE16x8,   ARM64vecb_FCMGT16x8,
+      ARM64vecb_FCMEQ16x8,
       ARM64vecb_TBL1,
       ARM64vecb_UZP164x2,    ARM64vecb_UZP132x4,
       ARM64vecb_UZP116x8,    ARM64vecb_UZP18x16,
@@ -506,8 +509,10 @@ typedef
       ARM64in_AddToSP,     /* move SP by small, signed constant */
       ARM64in_FromSP,      /* move SP to integer register */
       ARM64in_Mul,
-      ARM64in_LdrEX,
-      ARM64in_StrEX,
+      ARM64in_LdrEX,       /* load exclusive, single register */
+      ARM64in_StrEX,       /* store exclusive, single register */
+      ARM64in_LdrEXP,      /* load exclusive, register pair, 2x64-bit only */
+      ARM64in_StrEXP,      /* store exclusive, register pair, 2x64-bit only */
       ARM64in_CAS,
       ARM64in_CASP,
       ARM64in_MFence,
@@ -527,10 +532,12 @@ typedef
       ARM64in_VUnaryH,
       ARM64in_VBinD,
       ARM64in_VBinS,
+      ARM64in_VBinH,
       ARM64in_VTriD,
       ARM64in_VTriS,
       ARM64in_VCmpD,
       ARM64in_VCmpS,
+      ARM64in_VCmpH,
       ARM64in_VFCSel,
       ARM64in_FPCR,
       ARM64in_FPSR,
@@ -714,7 +721,14 @@ typedef
          struct {
             Int  szB; /* 1, 2, 4 or 8 */
          } StrEX;
+         /* LDXP x2, x3, [x4].  This is 2x64-bit only. */
+         struct {
+         } LdrEXP;
+         /* STXP w0, x2, x3, [x4].  This is 2x64-bit only. */
+         struct {
+         } StrEXP;
          /* x1 = CAS(x3(addr), x5(expected) -> x7(new)),
+            and trashes x8
             where x1[8*szB-1 : 0] == x5[8*szB-1 : 0] indicates success,
                   x1[8*szB-1 : 0] != x5[8*szB-1 : 0] indicates failure.
             Uses x8 as scratch (but that's not allocatable).
@@ -733,7 +747,7 @@ typedef
             -- if branch taken, failure; x1[[8*szB-1 : 0] holds old value
             -- attempt to store
             stxr    w8, x7, [x3]
-            -- if store successful, x1==0, so the eor is "x1 := x5"
+            -- if store successful, x8==0
             -- if store failed,     branch back and try again.
             cbne    w8, loop
            after:
@@ -741,6 +755,12 @@ typedef
          struct {
             Int szB; /* 1, 2, 4 or 8 */
          } CAS;
+         /* Doubleworld CAS, 2 x 32 bit or 2 x 64 bit
+            x0(oldLSW),x1(oldMSW)
+               = DCAS(x2(addr), x4(expectedLSW),x5(expectedMSW)
+                                -> x6(newLSW),x7(newMSW))
+            and trashes x8, x9 and x3
+         */
          struct {
             Int szB; /* 4 or 8 */
          } CASP;
@@ -845,6 +865,13 @@ typedef
             HReg         argL;
             HReg         argR;
          } VBinS;
+         /* 16-bit FP binary arithmetic */
+         struct {
+            ARM64FpBinOp op;
+            HReg         dst;
+            HReg         argL;
+            HReg         argR;
+         } VBinH;
          /* 64-bit FP ternary arithmetic */
          struct {
             ARM64FpTriOp op;
@@ -871,6 +898,11 @@ typedef
             HReg argL;
             HReg argR;
          } VCmpS;
+         /* 16-bit FP compare */
+         struct {
+            HReg argL;
+            HReg argR;
+         } VCmpH;
          /* 32- or 64-bit FP conditional select */
          struct {
             HReg          dst;
@@ -1013,6 +1045,8 @@ extern ARM64Instr* ARM64Instr_Mul     ( HReg dst, HReg argL, HReg argR,
                                         ARM64MulOp op );
 extern ARM64Instr* ARM64Instr_LdrEX   ( Int szB );
 extern ARM64Instr* ARM64Instr_StrEX   ( Int szB );
+extern ARM64Instr* ARM64Instr_LdrEXP  ( void );
+extern ARM64Instr* ARM64Instr_StrEXP  ( void );
 extern ARM64Instr* ARM64Instr_CAS     ( Int szB );
 extern ARM64Instr* ARM64Instr_CASP    ( Int szB );
 extern ARM64Instr* ARM64Instr_MFence  ( void );
@@ -1035,12 +1069,14 @@ extern ARM64Instr* ARM64Instr_VUnaryS ( ARM64FpUnaryOp op, HReg dst, HReg src );
 extern ARM64Instr* ARM64Instr_VUnaryH ( ARM64FpUnaryOp op, HReg dst, HReg src );
 extern ARM64Instr* ARM64Instr_VBinD   ( ARM64FpBinOp op, HReg, HReg, HReg );
 extern ARM64Instr* ARM64Instr_VBinS   ( ARM64FpBinOp op, HReg, HReg, HReg );
+extern ARM64Instr* ARM64Instr_VBinH   ( ARM64FpBinOp op, HReg, HReg, HReg );
 extern ARM64Instr* ARM64Instr_VTriD   ( ARM64FpTriOp op, HReg dst,
                                         HReg, HReg, HReg );
 extern ARM64Instr* ARM64Instr_VTriS   ( ARM64FpTriOp op, HReg dst,
                                         HReg, HReg, HReg );
 extern ARM64Instr* ARM64Instr_VCmpD   ( HReg argL, HReg argR );
 extern ARM64Instr* ARM64Instr_VCmpS   ( HReg argL, HReg argR );
+extern ARM64Instr* ARM64Instr_VCmpH   ( HReg argL, HReg argR );
 extern ARM64Instr* ARM64Instr_VFCSel  ( HReg dst, HReg argL, HReg argR,
                                         ARM64CondCode cond, Bool isD );
 extern ARM64Instr* ARM64Instr_FPCR    ( Bool toFPCR, HReg iReg );

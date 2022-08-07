@@ -1,0 +1,5 @@
+--- libvex_test.stderr.exp	2022-08-03 11:30:53.706309390 -0700
++++ libvex_test.stderr.out	2022-08-04 11:59:00.940901618 -0700
+@@ -0,0 +1,2 @@
++valgrind: You cannot run './libvex_test' directly.
++valgrind: You should use $prefix/bin/valgrind.
