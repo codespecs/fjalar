@@ -398,9 +398,11 @@ valgrind/memcheck/tests/linux/sigqueue
 valgrind/memcheck/tests/linux/stack_changes
 valgrind/memcheck/tests/linux/stack_switch
 valgrind/memcheck/tests/linux/syscalls-2007
+valgrind/memcheck/tests/linux/sys-copy_file_range
 valgrind/memcheck/tests/linux/sys-execveat
 valgrind/memcheck/tests/linux/syslog-syscall
 valgrind/memcheck/tests/linux/sys-openat
+valgrind/memcheck/tests/linux/sys-preadv2_pwritev2
 valgrind/memcheck/tests/linux/sys-preadv_pwritev
 valgrind/memcheck/tests/linux/sys-statx
 valgrind/memcheck/tests/linux/timerfd-syscall
@@ -502,6 +504,8 @@ valgrind/memcheck/tests/wrapmallocstatic
 valgrind/memcheck/tests/writev1
 valgrind/memcheck/tests/x86/filter_pushfpopf
 valgrind/memcheck/tests/xml1
+
+# /none/
 valgrind/none/tests/allexec32
 valgrind/none/tests/allexec64
 valgrind/none/tests/amd64/aes
