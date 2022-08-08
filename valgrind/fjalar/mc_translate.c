@@ -32,7 +32,7 @@
    This file is part of Fjalar, a dynamic analysis framework for C/C++
    programs.
 
-   Copyright (C) 2007-2021 University of Washington Computer Science & Engineering Department,
+   Copyright (C) 2007-2022 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
@@ -1823,6 +1823,18 @@ IRAtom* mkLazy3 ( MCEnv* mce, IRType finalVty,
       return at;
    }
 
+   /* I32 x I16 x I16 -> I16 */
+   /* 16-bit half-precision FP idiom, as (eg) happens on arm64 v8.2 onwards */
+   if (t1 == Ity_I32 && t2 == Ity_I16 && t3 == Ity_I16
+       && finalVty == Ity_I16) {
+      if (0) VG_(printf)("mkLazy3: I32 x I16 x I16 -> I16\n");
+      at = mkPCastTo(mce, Ity_I16, va1);
+      at = mkUifU(mce, Ity_I16, at, va2);
+      at = mkUifU(mce, Ity_I16, at, va3);
+      at = mkPCastTo(mce, Ity_I16, at);
+      return at;
+   }
+
    /* I32 x I128 x I128 -> I128 */
    /* Standard FP idiom: rm x FParg1 x FParg2 -> FPresult */
    if (t1 == Ity_I32 && t2 == Ity_I128 && t3 == Ity_I128
@@ -3251,6 +3263,10 @@ IRAtom* expr2vbits_Triop ( MCEnv* mce,
       case Iop_DivF32:
          /* I32(rm) x F32 x F32 -> I32 */
          return mkLazy3(mce, Ity_I32, vatom1, vatom2, vatom3);
+      case Iop_AddF16:
+      case Iop_SubF16:
+         /* I32(rm) x F16 x F16 -> I16 */
+         return mkLazy3(mce, Ity_I16, vatom1, vatom2, vatom3);
       case Iop_SignificanceRoundD64:
          /* IRRoundingMode(I32) x I8 x D64 -> D64 */
          return mkLazy3(mce, Ity_I64, vatom1, vatom2, vatom3);
@@ -3314,6 +3330,7 @@ IRAtom* expr2vbits_Triop ( MCEnv* mce,
          IR is implemented.
       */
       case Iop_Add16Fx8:
+      case Iop_Sub16Fx8:
         return binary16Fx8_w_rm(mce, vatom1, vatom2, vatom3);
 
       case Iop_Add32Fx8:
@@ -3893,6 +3910,11 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
       case Iop_RSqrtStep64Fx2:
          return binary64Fx2(mce, vatom1, vatom2);
 
+      case Iop_CmpLT16Fx8:
+      case Iop_CmpLE16Fx8:
+      case Iop_CmpEQ16Fx8:
+         return binary16Fx8(mce, vatom1, vatom2);
+
       case Iop_Sub64F0x2:
       case Iop_Mul64F0x2:
       case Iop_Min64F0x2:
@@ -4376,6 +4398,7 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
          /*  I64 x I128 -> D128 */
          return mkLazy2(mce, Ity_I128, vatom1, vatom2);
 
+      case Iop_CmpF16:
       case Iop_CmpF32:
       case Iop_CmpF64:
       case Iop_CmpF128:
@@ -5331,8 +5354,11 @@ IRAtom* expr2vbits_Load_WRK ( MCEnv* mce,
       the address (shadow) to 'defined' following the test. */
    //complainIfUndefined( mce, addr, guard ); // pgbovine
 
-   /* Now cook up a call to the relevant helper function, to read the
-      data V bits from shadow memory. */
+   /* Now cook up a call to the relevant helper function, to read the data V
+      bits from shadow memory.  Note that I128 loads are done by pretending
+      we're doing a V128 load, and then converting the resulting V128 vbits
+      word to an I128, right at the end of this function -- see `castedToI128`
+      below.  (It's only a minor hack :-) This pertains to bug 444399. */
    ty = shadowTypeV(ty);
 
    void*        helper           = NULL;
@@ -5345,6 +5371,7 @@ IRAtom* expr2vbits_Load_WRK ( MCEnv* mce,
                         hname = "MC_(helperc_LOADV256le)";
                         ret_via_outparam = True;
                         break;
+         case Ity_I128: // fallthrough.  See comment above.
          case Ity_V128: helper = &MC_(helperc_LOADV128le);
                         hname = "MC_(helperc_LOADV128le)";
                         ret_via_outparam = True;
@@ -5410,7 +5437,7 @@ IRAtom* expr2vbits_Load_WRK ( MCEnv* mce,
 
    /* We need to have a place to park the V bits we're just about to
       read. */
-   IRTemp datavbits = newTemp(mce, ty, VSh);
+   IRTemp datavbits = newTemp(mce, ty == Ity_I128 ? Ity_V128 : ty, VSh);
 
    /* Here's the call. */
    IRDirty* di;
@@ -5437,7 +5464,14 @@ IRAtom* expr2vbits_Load_WRK ( MCEnv* mce,
    }
    stmt( 'V', mce, IRStmt_Dirty(di) );
 
-   return mkexpr(datavbits);
+   if (ty == Ity_I128) {
+      IRAtom* castedToI128
+         = assignNew('V', mce, Ity_I128,
+                     unop(Iop_ReinterpV128asI128, mkexpr(datavbits)));
+      return castedToI128;
+   } else {
+      return mkexpr(datavbits);
+   }
 }
 
 
@@ -5465,6 +5499,7 @@ IRAtom* expr2vbits_Load ( MCEnv* mce,
       case Ity_I16:
       case Ity_I32:
       case Ity_I64:
+      case Ity_I128:
       case Ity_V128:
       case Ity_V256:
          return expr2vbits_Load_WRK(mce, end, ty, addr, bias, guard);
@@ -5762,6 +5797,7 @@ void do_shadow_Store ( MCEnv* mce,
                         c = IRConst_V256(V_BITS32_DEFINED); break;
          case Ity_V128: // V128 weirdness -- used twice
                         c = IRConst_V128(V_BITS16_DEFINED); break;
+         case Ity_I128: c = IRConst_U128(V_BITS16_DEFINED); break;
          case Ity_I64:  c = IRConst_U64 (V_BITS64_DEFINED); break;
          case Ity_I32:  c = IRConst_U32 (V_BITS32_DEFINED); break;
          case Ity_I16:  c = IRConst_U16 (V_BITS16_DEFINED); break;
@@ -5782,6 +5818,7 @@ void do_shadow_Store ( MCEnv* mce,
       switch (ty) {
          case Ity_V256: /* we'll use the helper four times */
          case Ity_V128: /* we'll use the helper twice */
+         case Ity_I128: /* we'll use the helper twice */
          case Ity_I64: helper = &MC_(helperc_STOREV64le);
                        hname = "MC_(helperc_STOREV64le)";
                        break;
@@ -5885,9 +5922,9 @@ void do_shadow_Store ( MCEnv* mce,
       stmt( 'V', mce, IRStmt_Dirty(diQ3) );
 
    } 
-   else if (UNLIKELY(ty == Ity_V128)) {
+   else if (UNLIKELY(ty == Ity_V128 || ty == Ity_I128)) {
 
-      /* V128-bit case */
+      /* V128/I128-bit case */
       /* See comment in next clause re 64-bit regparms */
       /* also, need to be careful about endianness */
 
@@ -5896,6 +5933,7 @@ void do_shadow_Store ( MCEnv* mce,
       IRAtom  *addrLo64, *addrHi64;
       IRAtom  *vdataLo64, *vdataHi64;
       IRAtom  *eBiasLo64, *eBiasHi64;
+      IROp    opGetLO64,  opGetHI64;
 
       if (end == Iend_LE) {
          offLo64 = 0;
@@ -5905,9 +5943,17 @@ void do_shadow_Store ( MCEnv* mce,
          offHi64 = 0;
       }
 
+      if (ty == Ity_V128) {
+         opGetLO64 = Iop_V128to64;
+         opGetHI64 = Iop_V128HIto64;
+      } else {
+         opGetLO64 = Iop_128to64;
+         opGetHI64 = Iop_128HIto64;
+      }
+
       eBiasLo64 = tyAddr==Ity_I32 ? mkU32(bias+offLo64) : mkU64(bias+offLo64);
       addrLo64  = assignNew('V', mce, tyAddr, binop(mkAdd, addr, eBiasLo64) );
-      vdataLo64 = assignNew('V', mce, Ity_I64, unop(Iop_V128to64, vdata));
+      vdataLo64 = assignNew('V', mce, Ity_I64, unop(opGetLO64, vdata));
       diLo64    = unsafeIRDirty_0_N(
                      1/*regparms*/,
                      hname, VG_(fnptr_to_fnentry)( helper ),
@@ -5915,7 +5961,7 @@ void do_shadow_Store ( MCEnv* mce,
                   );
       eBiasHi64 = tyAddr==Ity_I32 ? mkU32(bias+offHi64) : mkU64(bias+offHi64);
       addrHi64  = assignNew('V', mce, tyAddr, binop(mkAdd, addr, eBiasHi64) );
-      vdataHi64 = assignNew('V', mce, Ity_I64, unop(Iop_V128HIto64, vdata));
+      vdataHi64 = assignNew('V', mce, Ity_I64, unop(opGetHI64, vdata));
       diHi64    = unsafeIRDirty_0_N(
                      1/*regparms*/,
                      hname, VG_(fnptr_to_fnentry)( helper ),
@@ -6722,7 +6768,7 @@ static void do_shadow_LLSC ( MCEnv*    mce,
       /* Just treat this as a normal load, followed by an assignment of
          the value to .result. */
       /* Stay sane */
-      tl_assert(resTy == Ity_I64 || resTy == Ity_I32
+      tl_assert(resTy == Ity_I128 || resTy == Ity_I64 || resTy == Ity_I32
                 || resTy == Ity_I16 || resTy == Ity_I8);
       assign( 'V', mce, resTmp,
                    expr2vbits_Load(
@@ -6733,7 +6779,7 @@ static void do_shadow_LLSC ( MCEnv*    mce,
       /* Stay sane */
       IRType dataTy = typeOfIRExpr(mce->sb->tyenv,
                                    stStoredata);
-      tl_assert(dataTy == Ity_I64 || dataTy == Ity_I32
+      tl_assert(dataTy == Ity_I128 || dataTy == Ity_I64 || dataTy == Ity_I32
                 || dataTy == Ity_I16 || dataTy == Ity_I8);
       do_shadow_Store( mce, stEnd,
                             stAddr, 0/* addr bias */,
@@ -7519,7 +7565,7 @@ static void schemeS ( MCEnv* mce, IRStmt* st )
                = typeOfIRTemp(mce->sb->tyenv, st->Ist.LLSC.result);
             IRExpr* vanillaLoad
                = IRExpr_Load(st->Ist.LLSC.end, resTy, st->Ist.LLSC.addr);
-            tl_assert(resTy == Ity_I64 || resTy == Ity_I32
+            tl_assert(resTy == Ity_I128 || resTy == Ity_I64 || resTy == Ity_I32
                       || resTy == Ity_I16 || resTy == Ity_I8);
             assign( 'B', mce, findShadowTmpB(mce, st->Ist.LLSC.result),
                               schemeE(mce, vanillaLoad));

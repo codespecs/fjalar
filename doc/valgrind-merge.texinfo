@@ -220,7 +220,7 @@ git ls-files --others --exclude-standard
 Execute the following Git command:
 
 @example
-git ls-remote --tags --refs http://sourceware.org/git/valgrind.git | grep -v svn | sort -V
+git ls-remote --tags --refs http://sourceware.org/git/valgrind.git | grep -v svn | sort -k2V
 @end example
 
 @noindent

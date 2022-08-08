@@ -269,6 +269,8 @@ typedef
       Ico_U16,
       Ico_U32,
       Ico_U64,
+      Ico_U128,  /* 128-bit restricted integer constant,
+                    same encoding scheme as V128 */
       Ico_F32,   /* 32-bit IEEE754 floating */
       Ico_F32i,  /* 32-bit unsigned int to be interpreted literally
                     as a IEEE754 single value. */
@@ -295,6 +297,7 @@ typedef
          UShort U16;
          UInt   U32;
          ULong  U64;
+         UShort U128;
          Float  F32;
          UInt   F32i;
          Double F64;
@@ -311,6 +314,7 @@ extern IRConst* IRConst_U8   ( UChar );
 extern IRConst* IRConst_U16  ( UShort );
 extern IRConst* IRConst_U32  ( UInt );
 extern IRConst* IRConst_U64  ( ULong );
+extern IRConst* IRConst_U128 ( UShort );
 extern IRConst* IRConst_F32  ( Float );
 extern IRConst* IRConst_F32i ( UInt );
 extern IRConst* IRConst_F64  ( Double );
@@ -614,6 +618,9 @@ typedef
       /* :: IRRoundingMode(I32) x F16 -> F16 */
       Iop_SqrtF16,
 
+      /* :: IRRoundingMode(I32) x F16 x F16 -> F16 */
+      Iop_SubF16, Iop_AddF16,
+
       /* Comparison, yielding GT/LT/EQ/UN(ordered), as per the following:
             0x45 Unordered
             0x01 LT
@@ -625,6 +632,7 @@ typedef
       /* :: F64 x F64 -> IRCmpF64Result(I32) */
       Iop_CmpF64,
       Iop_CmpF32,
+      Iop_CmpF16,
       Iop_CmpF128,
 
       /* --- Int to/from FP conversions. --- */
@@ -1373,8 +1381,18 @@ typedef
 
       /* --- 16x8 vector FP --- */
 
+      /* binary :: IRRoundingMode(I32) x V128 -> V128 */
+      Iop_Sqrt16Fx8,
+
       /* ternary :: IRRoundingMode(I32) x V128 x V128 -> V128 */
-      Iop_Add16Fx8,
+      Iop_Add16Fx8, Iop_Sub16Fx8,
+
+      /* binary */
+      Iop_CmpLT16Fx8, Iop_CmpLE16Fx8, Iop_CmpEQ16Fx8,
+
+      /* unary */
+      Iop_Abs16Fx8,
+      Iop_Neg16Fx8,
 
       /* --- 32x4 vector FP --- */
 
@@ -1393,13 +1411,10 @@ typedef
       Iop_PwMax32Fx4, Iop_PwMin32Fx4,
 
       /* unary */
-      Iop_Abs16Fx8,
       Iop_Abs32Fx4,
-      Iop_Neg16Fx8,
       Iop_Neg32Fx4,
 
       /* binary :: IRRoundingMode(I32) x V128 -> V128 */
-      Iop_Sqrt16Fx8,
       Iop_Sqrt32Fx4,
 
       /* Vector Reciprocal Estimate finds an approximate reciprocal of each

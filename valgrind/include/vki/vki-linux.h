@@ -577,6 +577,16 @@ typedef struct vki_siginfo {
 #define VKI_TRAP_TRACE      (__VKI_SI_FAULT|2)  /* process trace trap */
 
 /*
+ * SIGCHLD si_codes
+ */
+#define VKI_CLD_EXITED    (__VKI_SI_FAULT|1)  /* child has exited */
+#define VKI_CLD_KILLED    (__VKI_SI_FAULT|2)  /* child was killed */
+#define VKI_CLD_DUMPED    (__VKI_SI_FAULT|3)  /* child terminated abnormally */
+#define VKI_CLD_TRAPPED   (__VKI_SI_FAULT|4)  /* traced child has trapped */
+#define VKI_CLD_STOPPED   (__VKI_SI_FAULT|5)  /* child has stopped */
+#define VKI_CLD_CONTINUED (__VKI_SI_FAULT|6)  /* stopped child has continued */
+
+/*
  * This works because the alignment is ok on all current architectures
  * but we leave open this being overridden in the future
  */
@@ -4966,6 +4976,8 @@ enum vki_bpf_cmd {
 	VKI_BPF_BTF_LOAD,
 	VKI_BPF_BTF_GET_FD_BY_ID,
 	VKI_BPF_TASK_FD_QUERY,
+	VKI_BPF_MAP_LOOKUP_AND_DELETE_ELEM,
+	VKI_BPF_MAP_FREEZE,
 };
 
 enum vki_bpf_map_type {
@@ -5368,6 +5380,9 @@ struct vki_itimerspec64 {
 #endif
 
 #define VKI_RLIM64_INFINITY (~0ULL)
+
+#define VKI_CLOSE_RANGE_UNSHARE (1U << 1)
+#define VKI_CLOSE_RANGE_CLOEXEC (1U << 2)
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

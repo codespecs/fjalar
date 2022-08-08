@@ -39,12 +39,12 @@
 #include "pub_core_basics.h"      // UnwindStartRegs
 
 // XXX: this is *really* the wrong spot for these things
-#if defined(VGP_x86_linux) || defined(VGP_x86_solaris)
+#if defined(VGP_x86_linux) || defined(VGP_x86_solaris) || defined(VGP_x86_freebsd)
 #  define VG_ELF_DATA2XXX     ELFDATA2LSB
 #  define VG_ELF_MACHINE      EM_386
 #  define VG_ELF_CLASS        ELFCLASS32
 #  undef  VG_PLAT_USES_PPCTOC
-#elif defined(VGP_amd64_linux) || defined(VGP_amd64_solaris)
+#elif defined(VGP_amd64_linux) || defined(VGP_amd64_solaris) || defined(VGP_amd64_freebsd)
 #  define VG_ELF_DATA2XXX     ELFDATA2LSB
 #  define VG_ELF_MACHINE      EM_X86_64
 #  define VG_ELF_CLASS        ELFCLASS64
@@ -237,6 +237,7 @@ void VG_(get_UnwindStartRegs) ( /*OUT*/UnwindStartRegs* regs,
    -------------
    ppc64: initially:  call VG_(machine_get_hwcaps)
                       call VG_(machine_ppc64_set_clszB)
+                      call VG_(machine_ppc64_set_scv_support)
 
           then safe to use VG_(machine_get_VexArchInfo)
                        and VG_(machine_ppc64_has_VMX)
@@ -271,6 +272,7 @@ extern void VG_(machine_ppc32_set_clszB)( Int );
 
 #if defined(VGA_ppc64be) || defined(VGA_ppc64le)
 extern void VG_(machine_ppc64_set_clszB)( Int );
+extern void VG_(machine_ppc64_set_scv_support)( Int );
 #endif
 
 #if defined(VGA_arm)

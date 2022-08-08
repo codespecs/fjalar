@@ -703,7 +703,8 @@ Addr setup_client_stack( void*  init_sp,
                   itself, is not supported by Valgrind. */
                auxv->u.a_val &= ((VKI_HWCAP_S390_TE - 1)
                                  | VKI_HWCAP_S390_VXRS
-                                 | VKI_HWCAP_S390_VXRS_EXT);
+                                 | VKI_HWCAP_S390_VXRS_EXT
+                                 | VKI_HWCAP_S390_VXRS_EXT2);
             }
 #           elif defined(VGP_arm64_linux)
             {
@@ -726,6 +727,7 @@ Addr setup_client_stack( void*  init_sp,
             Bool auxv_2_07, hw_caps_2_07;
             Bool auxv_3_0, hw_caps_3_0;
             Bool auxv_3_1, hw_caps_3_1;
+            Bool auxv_scv_supported;
 
 	    /* The HWCAP2 field may contain an arch_2_07 entry that indicates
              * if the processor is compliant with the 2.07 ISA. (i.e. Power 8
@@ -796,6 +798,18 @@ Addr setup_client_stack( void*  init_sp,
 
                 ADD PUBLIC LINK WHEN AVAILABLE
             */
+
+            /* Check for SCV support, Can not test scv instruction to see
+               if the system supports scv.  Issuing an scv intruction on a
+               system that does not have scv in the HWCAPS results in a
+               message in dmsg  "Facility 'SCV' unavailable (12), exception".
+               Will have to just use the scv setting from HWCAPS2 to determine
+               if the host supports scv.  */
+            auxv_scv_supported = (auxv->u.a_val & 0x00100000ULL)
+               == 0x00100000ULL;
+
+            VG_(machine_ppc64_set_scv_support)(auxv_scv_supported);
+
             /* ISA 3.1 */
             auxv_3_1 = (auxv->u.a_val & 0x00040000ULL) == 0x00040000ULL;
             hw_caps_3_1 = (vex_archinfo->hwcaps & VEX_HWCAPS_PPC64_ISA3_1)
@@ -810,8 +824,9 @@ Addr setup_client_stack( void*  init_sp,
              * explicit support in VEX. Filter out HTM bits since the
              * transaction begin instruction (tbegin) is always failed in
              * Valgrind causing the code to execute the failure path.
-             * Also filter out the DARN random number (bug #411189).
-             * And the SCV syscall (bug #431157).
+             * The DARN random number (bug #411189) and the SCV syscall
+             * (bug #431157) have been fixed.  Can now include them in the
+             * HWCAP bits.
              */
             auxv->u.a_val &= (0x80000000ULL     /* ARCH_2_07 */
                               | 0x20000000ULL   /* DSCR */
@@ -820,8 +835,11 @@ Addr setup_client_stack( void*  init_sp,
                               | 0x04000000ULL   /* TAR */
                               | 0x04000000ULL   /* VEC_CRYPTO */
                               | 0x00800000ULL   /* ARCH_3_00 */
+                              | 0x00100000ULL   /* PPC_FEATURE2_SCV */
                               | 0x00400000ULL   /* HAS_IEEE128 */
-                              | 0x00040000ULL); /* ARCH_3_1 */
+                              | 0x00200000ULL   /* PPC_FEATURE2_DARN */
+                              | 0x00040000ULL   /* ARCH_3_1 */
+                              | 0x00020000ULL); /* MMA instruction support */
          }
 
             break;
@@ -873,7 +891,8 @@ Addr setup_client_stack( void*  init_sp,
 #        if !defined(VGP_ppc32_linux) && !defined(VGP_ppc64be_linux) \
             && !defined(VGP_ppc64le_linux) \
             && !defined(VGP_mips32_linux) && !defined(VGP_mips64_linux) \
-            && !defined(VGP_nanomips_linux)
+            && !defined(VGP_nanomips_linux) \
+            && !defined(VGP_s390x_linux)
          case AT_SYSINFO_EHDR: {
             /* Trash this, because we don't reproduce it */
             const NSegment* ehdrseg = VG_(am_find_nsegment)((Addr)auxv->u.a_ptr);

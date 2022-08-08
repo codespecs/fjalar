@@ -2,7 +2,7 @@
    This file is part of Fjalar, a dynamic analysis framework for C/C++
    programs.
 
-   Copyright (C) 2007-2021 University of Washington Computer Science & Engineering Department,
+   Copyright (C) 2007-2022 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
    This program is free software; you can redistribute it and/or
@@ -395,6 +395,7 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
       return 0+ GOF(ACC_7_r2);
    if (o >= GOF(ACC_7_r3) && o+sz <= GOF(ACC_7_r3)+SZB(ACC_7_r3))
       return 0+ GOF(ACC_7_r3);
+   if (o == GOF(syscall_flag) && sz == 4) return -1;
 
    if (o >= GOF(VSR51) && o+sz <= GOF(VSR51)+SZB(VSR51)) return 0+ GOF(VSR51);
    if (o >= GOF(VSR52) && o+sz <= GOF(VSR52)+SZB(VSR52)) return 0+ GOF(VSR52);
@@ -1128,9 +1129,10 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
    if (o == GOF(CMSTART) && sz == 8) return -1; // untracked
    if (o == GOF(CMLEN)   && sz == 8) return -1; // untracked
 
-   if (o == GOF(LLSC_SIZE) && sz == 8) return -1; // untracked
-   if (o == GOF(LLSC_ADDR) && sz == 8) return o;
-   if (o == GOF(LLSC_DATA) && sz == 8) return o;
+   if (o == GOF(LLSC_SIZE)      && sz == 8) return -1; // untracked
+   if (o == GOF(LLSC_ADDR)      && sz == 8) return o;
+   if (o == GOF(LLSC_DATA_LO64) && sz == 8) return o;
+   if (o == GOF(LLSC_DATA_HI64) && sz == 8) return o;
 
    VG_(printf)("MC_(get_otrack_shadow_offset)(arm64)(off=%d,sz=%d)\n",
                offset,szB);

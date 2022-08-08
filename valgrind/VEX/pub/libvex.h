@@ -125,6 +125,8 @@ typedef
 #define VEX_HWCAPS_PPC64_ISA2_07   (1<<20) /* ISA 2.07 -- e.g., mtvsrd */
 #define VEX_HWCAPS_PPC64_ISA3_0    (1<<22) /* ISA 3.0  -- e.g., cnttzw */
 #define VEX_HWCAPS_PPC64_ISA3_1    (1<<23) /* ISA 3.1  -- e.g., brh */
+#define VEX_HWCAPS_PPC64_SCV       (1<<24) /* ISA 3.0, Kernel supports scv
+                                              instruction. */
 
 /* s390x: Hardware capability encoding
 
@@ -360,6 +362,8 @@ typedef
       /* PPC32/PPC64 only: sizes zeroed by the dcbz/dcbzl instructions
          (bug#135264) */
       UInt ppc_dcbz_szB;
+      /* PPC32/PPC64 only: True scv is supported */
+      Bool ppc_scv_supported;
       UInt ppc_dcbzl_szB; /* 0 means unsupported (SIGILL) */
       /* ARM64: I- and D- minimum line sizes in log2(bytes), as
          obtained from ctr_el0.DminLine and .IminLine.  For example, a
@@ -437,6 +441,11 @@ typedef
          instructions using the assumption that %gs always contains
          the same value? (typically 0x60 on darwin)? */
       Bool guest_amd64_assume_gs_is_const;
+
+      /* AMD64 GUESTS only: for a misaligned memory access, for which we should
+         generate a trap, should we generate SigBUS (a la FreeBSD) or SIGSEGV
+         (Linux, OSX) ?? */
+      Bool guest_amd64_sigbus_on_misalign;
 
       /* PPC GUESTS only: should we zap the stack red zone at a 'blr'
          (function return) ? */
@@ -682,7 +691,7 @@ typedef
 extern void LibVEX_Init (
 
    /* failure exit function */
-#  if __cplusplus == 1 && __GNUC__ && __GNUC__ <= 3
+#  if defined(__cplusplus) && defined(__GNUC__) && __GNUC__ <= 3
    /* g++ 3.x doesn't understand attributes on function parameters.
       See #265762. */
 #  else

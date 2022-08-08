@@ -1,0 +1,5 @@
+--- libvexmultiarch_test.stderr.exp	2022-08-03 11:30:53.833310523 -0700
++++ libvexmultiarch_test.stderr.out	2022-08-04 11:59:01.202903934 -0700
+@@ -0,0 +1,2 @@
++valgrind: You cannot run './libvexmultiarch_test' directly.
++valgrind: You should use $prefix/bin/valgrind.
