@@ -1,5 +1,7 @@
-/* ELF support for BFD for the WebAssembly target
-   Copyright (C) 2017-2022 Free Software Foundation, Inc.
+/* demanguse.h -- libiberty demangler usage
+   Copyright (C) 2021-2022 Free Software Foundation, Inc.
+
+   This file is part of GNU Binutils.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -12,19 +14,21 @@
    GNU General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software Foundation,
-   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1301, USA.  */
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston, MA
+   02110-1301, USA.  */
 
-#ifndef _ELF_WASM32_H
-#define _ELF_WASM32_H
+#ifndef DEMANGUSE_H
+#define DEMANGUSE_H
 
-#include "elf/reloc-macros.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-/* Relocation types.  */
+void display_demangler_styles (FILE *, const char *);
 
-START_RELOC_NUMBERS (elf_wasm32_reloc_type)
-  RELOC_NUMBER (R_WASM32_NONE,            	  0)
-  RELOC_NUMBER (R_WASM32_32,           	  	  1)
-END_RELOC_NUMBERS (R_WASM32_max = 1)
+#ifdef __cplusplus
+}
+#endif
 
-#endif /* _ELF_WASM32_H */
+#endif /* DEMANGUSE_H */
