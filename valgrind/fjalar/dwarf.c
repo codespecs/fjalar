@@ -86,6 +86,11 @@
 #define CHAR_BIT 8
 #endif
 
+// some versions of ansidecl.h no longer define PTR
+#ifndef PTR
+#define PTR void *
+#endif
+
 // Fjalar code
 
 #include "elf/internal.h"
