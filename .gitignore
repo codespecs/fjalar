@@ -391,7 +391,7 @@ valgrind/memcheck/tests/linux/getregset
 valgrind/memcheck/tests/linux/ioctl-tiocsig
 valgrind/memcheck/tests/linux/lsframe1
 valgrind/memcheck/tests/linux/lsframe2
-valgrind/memcheck/tests/linux/memfd
+valgrind/memcheck/tests/linux/memfd_create
 valgrind/memcheck/tests/linux/proc-auxv
 valgrind/memcheck/tests/linux/rfcomm
 valgrind/memcheck/tests/linux/sigqueue

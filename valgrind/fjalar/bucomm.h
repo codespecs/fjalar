@@ -1,5 +1,5 @@
 /* bucomm.h -- binutils common include file.
-   Copyright (C) 1991-2021 Free Software Foundation, Inc.
+   Copyright (C) 1991-2022 Free Software Foundation, Inc.
 
    This file is part of GNU Binutils.
 
@@ -38,6 +38,8 @@ void report (const char *, va_list) ATTRIBUTE_PRINTF(1,0);
 void fatal (const char *, ...) ATTRIBUTE_PRINTF_1 ATTRIBUTE_NORETURN;
 
 void non_fatal (const char *, ...) ATTRIBUTE_PRINTF_1;
+
+void *bfd_xalloc (bfd *, size_t);
 
 void set_default_bfd_target (void);
 

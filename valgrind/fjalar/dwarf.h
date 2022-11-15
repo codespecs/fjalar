@@ -1,5 +1,5 @@
 /* dwarf.h - DWARF support header file
-   Copyright (C) 2005-2021 Free Software Foundation, Inc.
+   Copyright (C) 2005-2022 Free Software Foundation, Inc.
 
    This file is part of GNU Binutils.
 
@@ -92,10 +92,12 @@ enum dwarf_section_display_enum
   line_str,
   loc,
   loclists,
+  loclists_dwo,
   pubtypes,
   gnu_pubtypes,
   ranges,
   rnglists,
+  rnglists_dwo,
   static_func,
   static_vars,
   types,
@@ -122,17 +124,20 @@ enum dwarf_section_display_enum
   gnu_debugaltlink,
   debug_sup,
   separate_debug_str,
+  note_gnu_build_id,
   max
 };
 
 struct dwarf_section
 {
   /* A debug section has a different name when it's stored compressed
-     or not.  COMPRESSED_NAME and UNCOMPRESSED_NAME are the two
+     or not.  XCOFF DWARF section also have a special name.
+     COMPRESSED_NAME, UNCOMPRESSED_NAME and XCOFF_NAME are the three
      possibilities.  NAME is set to whichever one is used for this
      input file, as determined by load_debug_section().  */
   const char *                     uncompressed_name;
   const char *                     compressed_name;
+  const char *                     xcoff_name;
   const char *                     name;
   /* If non-NULL then FILENAME is the name of the separate debug info
      file containing the section.  */
@@ -178,13 +183,19 @@ typedef struct
   /* This is an array of offsets to the location view table.  */
   dwarf_vma *    loc_views;
   int *          have_frame_base;
+
+  /* Information for associating location lists with CUs.  */
   unsigned int   num_loc_offsets;
   unsigned int   max_loc_offsets;
   unsigned int   num_loc_views;
+  dwarf_vma      loclists_base;
+
   /* List of .debug_ranges offsets seen in this .debug_info.  */
   dwarf_vma *    range_lists;
   unsigned int   num_range_lists;
   unsigned int   max_range_lists;
+  dwarf_vma      rnglists_base;
+  dwarf_vma      str_offsets_base;
 }
 debug_info;
 
@@ -221,6 +232,9 @@ extern int do_debug_cu_index;
 extern int do_wide;
 extern int do_debug_links;
 extern int do_follow_links;
+#ifdef HAVE_LIBDEBUGINFOD
+extern int use_debuginfod;
+#endif
 extern bool do_checks;
 
 extern int dwarf_cutoff_level;
@@ -245,8 +259,8 @@ extern void *open_debug_file (const char *);
 
 extern void free_debug_memory (void);
 
-extern void dwarf_select_sections_by_names (const char *);
-extern void dwarf_select_sections_by_letters (const char *);
+extern int dwarf_select_sections_by_names (const char *);
+extern int dwarf_select_sections_by_letters (const char *);
 extern void dwarf_select_sections_all (void);
 
 extern unsigned int * find_cu_tu_set (void *, unsigned int);
@@ -271,12 +285,12 @@ extern unsigned char * get_build_id (void *);
 #if 0  // This code is not needed for Fjalar.
 
 static inline void
-report_leb_status (int status, const char *file, unsigned long lnum)
+report_leb_status (int status)
 {
   if ((status & 1) != 0)
-    error (_("%s:%lu: end of data encountered whilst reading LEB\n"), file, lnum);
+    error (_("end of data encountered whilst reading LEB\n"));
   else if ((status & 2) != 0)
-    error (_("%s:%lu: read LEB value is too large to store in destination variable\n"), file, lnum);
+    error (_("read LEB value is too large to store in destination variable\n"));
 }
 
 #endif // This code is not needed for Fjalar.
@@ -284,13 +298,13 @@ report_leb_status (int status, const char *file, unsigned long lnum)
 // start of Fjalar code
 // convert report_leb_status to macro to solve duplicate 'error' definition problem
 
-#define report_leb_status(status, file, lnum)                   \
+#define report_leb_status(status)                               \
   do                                                            \
     {                                                           \
       if ((status & 1) != 0)                                    \
-        error (_("%s:%lu: end of data encountered whilst reading LEB\n"), file, lnum); \
+        error (_("%s:%lu: end of data encountered whilst reading LEB\n")); \
       else if ((status & 2) != 0)                               \
-        error (_("%s:%lu: read LEB value is too large to store in destination variable\n"), file, lnum); \
+        error (_("%s:%lu: read LEB value is too large to store in destination variable\n")); \
     } while (0)                                                 \
 
 // end of Fjalar code
@@ -325,7 +339,7 @@ report_leb_status (int status, const char *file, unsigned long lnum)
       (var) = _val;						\
       if ((var) != _val)					\
 	_status |= 2;						\
-      report_leb_status (_status, __FILE__, __LINE__);		\
+      report_leb_status (_status);				\
     }								\
   while (0)
 
@@ -341,6 +355,6 @@ report_leb_status (int status, const char *file, unsigned long lnum)
       (var) = _val;						\
       if ((var) != _val)					\
 	_status |= 2;						\
-      report_leb_status (_status, __FILE__, __LINE__);		\
+      report_leb_status (_status);				\
     }								\
   while (0)
