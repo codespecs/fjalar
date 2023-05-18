@@ -20,10 +20,10 @@ jobs:
   - bash: ./test.sh
     displayName: test.sh
 
-- job: centos
+- job: rocky
   pool:
     vmImage: 'ubuntu-latest'
-  container: mdernst/daikon-centos-jdk8-plus:latest
+  container: mdernst/daikon-rockylinux-jdk8-plus:latest
   steps:
   - checkout: self
     fetchDepth: 25
