@@ -20,7 +20,7 @@ jobs:
   - bash: ./test.sh
     displayName: test.sh
 
-- job: centos
+- job: rocky
   pool:
     vmImage: 'ubuntu-latest'
   container: mdernst/daikon-rockylinux-jdk8-plus:latest
