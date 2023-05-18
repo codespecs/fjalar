@@ -120,6 +120,16 @@
 #include "fjalar_main.h"
 #include "fjalar_dwarf.h"
 #include "typedata.h"
+
+// Newer versions of bfd.h no longer define BFD_VMA_FMT.
+// This is a temporary fix until we upgrade to binutils-2.40.
+#ifndef BFD_VMA_FMT
+#define BFD_VMA_FMT "l"
+#define fprintf_vma(f,x) fprintf (f, "%016" BFD_VMA_FMT "x", x)
+#define sprintf_vma(s,x) sprintf (s, "%016" BFD_VMA_FMT "x", x)
+#define printf_vma(x) fprintf_vma(stdout,x)
+#endif
+
 // end of includes needed by Fjalar
 
 #include "elf/common.h"
