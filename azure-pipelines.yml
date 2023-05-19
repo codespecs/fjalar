@@ -1,6 +1,6 @@
 jobs:
 
-- job: ubuntu stable
+- job: ubuntu_stable
   pool:
     vmImage: 'ubuntu-latest'
   container: mdernst/daikon-ubuntu-jdk8-plus:latest
@@ -10,7 +10,7 @@ jobs:
   - bash: ./test.sh
     displayName: test.sh
 
-- job: ubuntu rolling
+- job: ubuntu_rolling
   pool:
     vmImage: 'ubuntu-latest'
   container: mdernst/daikon-ubuntu-jdk19-plus-testing:latest
