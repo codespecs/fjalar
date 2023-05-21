@@ -13,7 +13,7 @@ jobs:
 - job: ubuntu_rolling
   pool:
     vmImage: 'ubuntu-latest'
-  container: mdernst/daikon-ubuntu-jdk19-plus-testing:latest
+  container: mdernst/daikon-ubuntu-jdk19-plus:latest
   steps:
   - checkout: self
     fetchDepth: 25
