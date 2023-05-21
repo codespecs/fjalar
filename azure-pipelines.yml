@@ -1,9 +1,19 @@
 jobs:
 
-- job: ubuntu
+- job: ubuntu_stable
   pool:
     vmImage: 'ubuntu-latest'
   container: mdernst/daikon-ubuntu-jdk8-plus:latest
+  steps:
+  - checkout: self
+    fetchDepth: 25
+  - bash: ./test.sh
+    displayName: test.sh
+
+- job: ubuntu_rolling
+  pool:
+    vmImage: 'ubuntu-latest'
+  container: mdernst/daikon-ubuntu-jdk19-plus:latest
   steps:
   - checkout: self
     fetchDepth: 25
