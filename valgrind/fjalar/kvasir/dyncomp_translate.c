@@ -1255,8 +1255,10 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_ShrN16x4:
    case Iop_ShrN32x2:
 
-   case Iop_Perm8x8:                     // only used by arm
+   case Iop_Perm8x8:
    case Iop_PermOrZero8x8:
+   case Iop_Perm8x16:
+   case Iop_PermOrZero8x16:
 
       /* ------------------ 256-bit SIMD Integer. ------------------ */
    case Iop_SarN16x16:
@@ -1506,8 +1508,6 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_PackOddLanes16x8:            // only used by mips
    case Iop_PackOddLanes32x4:            // only used by mips
    case Iop_PackOddLanes8x16:            // only used by mips
-   case Iop_Perm8x16:                    // only used by ppc arm64
-   case Iop_PermOrZero8x16:
    case Iop_PolynomialMulAdd16x8:        // only used by ppc
    case Iop_PolynomialMulAdd32x4:        // only used by ppc
    case Iop_PolynomialMulAdd64x2:        // only used by ppc
@@ -2145,7 +2145,9 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
       case Ity_I32:
       case Ity_I64:
          return expr2tags_LDle_WRK_DC(dce, ty, addr, bias);
+      case Ity_I128:
       case Ity_V128:
+      case Ity_V256:  // not right, should do 4 times?
          v64lo = expr2tags_LDle_WRK_DC(dce, Ity_I64, addr, bias);
          v64hi = expr2tags_LDle_WRK_DC(dce, Ity_I64, addr, bias+8);
 
@@ -2442,7 +2444,9 @@ void do_shadow_STle_DC ( DCEnv* dce,
    /* Now decide which helper function to call to write the data tag
       into shadow memory. */
    switch (ty) {
+      case Ity_V256: // not right, should do 4 times?
       case Ity_V128: /* we'll use the helper twice */
+      case Ity_I128: /* we'll use the helper twice */
       case Ity_I64: helper = &MC_(helperc_STORE_TAG_8);
                     hname = "MC_(helperc_STORE_TAG_8)";
                     break;
