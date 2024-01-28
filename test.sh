@@ -36,12 +36,13 @@ export JAVA_HOME
 export DAIKONDIR="${DAIKONDIR:-$(pwd)/../daikon}"
 echo "DAIKONDIR=$DAIKONDIR"
 
-if [ -d "/tmp/plume-scripts" ] ; then
-  (cd /tmp/plume-scripts && git -C pull -q) > /dev/null 2>&1
+
+if [ -d "/tmp/git-scripts" ] ; then
+  (cd /tmp/git-scripts && git -C pull -q) > /dev/null 2>&1
 else
-  (cd /tmp && git clone --depth 1 -q https://github.com/plume-lib/plume-scripts.git)
+  (cd /tmp && git clone --depth 1 -q https://github.com/plume-lib/git-scripts.git)
 fi
-/tmp/plume-scripts/git-clone-related codespecs daikon
+/tmp/git-scripts/git-clone-related codespecs daikon
 ln -s "$(pwd)" "${DAIKONDIR}/fjalar" || true
 
 make build
