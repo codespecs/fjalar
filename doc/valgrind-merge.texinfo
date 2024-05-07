@@ -524,9 +524,9 @@ This keeps the files used during the source merge update to a minimum.
 You will need to make sure @command{gdb} is installed on your machine
 to run these tests. Also, they are very sensitive
 to the system software on the host machine.  In most cases, there will be
-some failures. (Currently, only 1 of 699 tests do not pass on a standard UW/CSE
-system running CentOS 7.7.1908.) Rather, it is important to capture the results
-as they should be identical after the source merge.
+some failures. Rather, it is important to capture the results
+as they should be similar after the source merge. They may not be
+identical due to Valgrind improvements or the addition of new test cases.
 
 To run the @command{regtest} verification tests,
 return to the root of your @file{valgrind-new} directory.  Then run
@@ -543,11 +543,13 @@ This will take about 10-15 minutes.  A summary of the @command{regtest}
 results will be at the end of the log file.  We will use these results in
 @ref{Testing Valgrind}.
 
-Here is a copy of the last few lines from the latest run of these tests (09/21/2020)
+Here is a copy of the last few lines from the latest run of these tests (07/11/2023)
 on a UW/CSE CentOS based system:
 
 @example
-== 719 tests, 2 stderr failure, 0 stdout failures, 0 stderrB failures, 0 stdoutB failures, 0 post failures ==
+== 726 tests, 4 stderr failures, 0 stdout failures, 0 stderrB failures, 0 stdoutB failures, 0 post failures ==
+drd/tests/pth_mutex_signal               (stderr)
+drd/tests/shared_timed_mutex             (stderr)
 none/tests/libvex_test                   (stderr)
 none/tests/libvexmultiarch_test          (stderr)
 
@@ -562,7 +564,32 @@ make: *** [test] Error 2
 
 (Note the final include file failure - this is expected behavior.)
 
+Here is a another example from the latest run of these tests (07/11/2023)
+on a UW/CSE Rocky based system:
 
+@example
+== 730 tests, 8 stderr failures, 0 stdout failures, 1 stderrB failure, 1 stdoutB failure, 0 post failures ==
+gdbserver_tests/hginfo                   (stderrB)
+gdbserver_tests/nlvgdbsigqueue           (stderr)
+gdbserver_tests/nlvgdbsigqueue           (stdoutB)
+memcheck/tests/overlap                   (stderr)
+helgrind/tests/tls_threads               (stderr)
+drd/tests/pth_barrier_thr_cr             (stderr)
+drd/tests/pth_mutex_signal               (stderr)
+drd/tests/shared_timed_mutex             (stderr)
+none/tests/libvex_test                   (stderr)
+none/tests/libvexmultiarch_test          (stderr)
+
+...checking makefile consistency
+...checking header files and include directives
+*** File fjalar/mc_main.c must not include ../coregrind/pub_core_aspacemgr.h
+make[1]: *** [Makefile:1419: regtest] Error 1
+make[1]: Leaving directory '/scratch/markro/clones/fjalar/valgrind'
+make: *** [Makefile:22: test] Error 2
+@end example
+
+As you can see, the results vary depending on the host system.  The important thing to verify
+is that the results are the same before and after any Binutil changes.
 
 @node Updating Readelf from Binutils
 @chapter Updating Readelf from Binutils
