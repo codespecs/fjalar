@@ -729,6 +729,8 @@ void repCheckAllEntries(void) {
       VarNode* n;
       unsigned int numMemberVars = 0;
       unsigned int prev_data_member_location = 0;
+      unsigned int prev_data_member_size = 0;
+      unsigned int prev_data_member_bit_size = 0;
 
       SimpleNode* memberFunctionNode;
       SimpleNode* superclassNode;
@@ -758,19 +760,21 @@ void repCheckAllEntries(void) {
           tl_assert(0 == curMember->byteOffset);
 
           // For a struct, check that data_member_location is greater
-          // than the one of the previous member variable.  Notice that
-          // data_member_location can be 0.
+          // than or equal to that of the previous member variable.
+          // Don't do this check for bitfields.
           if (D_STRUCT_CLASS == t->decType) {
             // We don't check bit-fields as the compiler may
             // allocate them to a previous location.
             // (We currently don't support bit-fields.)
-            // FJALAR_DPRINTF("addr: %lx, bitfield?: %d %d %d\n", curMember->memberVar->data_member_location,
-            //     curMember->memberVar->internalByteSize,
-            //     curMember->memberVar->internalBitOffset,
-            //     curMember->memberVar->internalBitSize);
-            if ((curMember->memberVar->internalByteSize == 0) && (curMember->memberVar->data_member_location != 0))
-              tl_assert(curMember->memberVar->data_member_location > prev_data_member_location);
+            FJALAR_DPRINTF("addr: %lx, bitfield?: %d %d %d\n", curMember->memberVar->data_member_location,
+                 curMember->memberVar->internalByteSize,
+                 curMember->memberVar->internalBitOffset,
+                 curMember->memberVar->internalBitSize);
+            if ((curMember->memberVar->internalBitSize == 0) && (prev_data_member_bit_size == 0))
+              tl_assert(curMember->memberVar->data_member_location >= prev_data_member_location + prev_data_member_size);
             prev_data_member_location = curMember->memberVar->data_member_location;
+            prev_data_member_size = curMember->memberVar->internalByteSize;
+            prev_data_member_bit_size = curMember->memberVar->internalBitSize;
           }
           // For a union, all offsets should be 0
           else if (D_UNION == t->decType) {
