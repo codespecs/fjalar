@@ -100,7 +100,7 @@ Notes [Jan 2019]
 -----------------
 For Ubuntu 18.04, to build HTML docs I had to:
 
-  sudo apt-get install xsltproc
+  sudo apt -yqq install xsltproc
 
 Notes [May 2017]
 ----------------
@@ -187,7 +187,7 @@ Notes [May 2009]
 -----------------
 For Ubuntu 9.04, to build HTML docs I had to:
 
-  sudo apt-get install docbook docbook-xsl
+  sudo apt -yqq install docbook docbook-xsl
 
 Actually, I'm not sure if the 'docbook' is necessary, but 'docbook-xsl'
 definitely is.
