@@ -128,7 +128,7 @@ git clone https://github.com/codespecs/fjalar.git
 
 If your operating system is Ubuntu, run
 @example
-sudo apt-get install binutils-dev
+sudo apt -yqq install binutils-dev
 @end example
 
 
