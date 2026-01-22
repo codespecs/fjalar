@@ -3,7 +3,7 @@
    for C/C++ based upon the Valgrind binary instrumentation framework
    and the Valgrind MemCheck tool.
 
-   Copyright (C) 2007-2022 University of Washington Computer Science & Engineering Department,
+   Copyright (C) 2007-2026 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
@@ -158,9 +158,17 @@ void val_uf_make_set_for_tag(UInt tag) {
   if (IS_ZERO_TAG(tag))
     return;
 
+  uf_object* new_uf_obj_array;
+
   if (IS_SECONDARY_UF_NULL(tag)) {
-    uf_object* new_uf_obj_array =
-      (uf_object*)VG_(am_shadow_alloc)(SECONDARY_SIZE * sizeof(*new_uf_obj_array));
+    SysRes sres = VG_(am_shadow_alloc)(SECONDARY_SIZE * sizeof(*new_uf_obj_array));
+    if (sr_isError(sres)) {
+      printf("Out of memory allocating new_uf_obj_array\n");
+      printf("Terminating program.\n");
+      VG_(exit)(1);
+    }
+
+    new_uf_obj_array = (uf_object*)(Addr)sr_Res(sres);
 
     // PG - We can skip this step and leave them uninitialized
     //      until somebody explicitly calls val_uf_make_set_for_tag() on

@@ -42,7 +42,7 @@ void   HG_(free)   ( void* p );
 HChar* HG_(strdup) ( const HChar* cc, const HChar* s );
 
 static inline Bool HG_(is_sane_ThreadId) ( ThreadId coretid ) {
-   return coretid >= 0 && coretid < VG_N_THREADS;
+   return coretid < VG_N_THREADS;
 }
 
 
@@ -90,6 +90,9 @@ extern Bool HG_(clo_cmp_race_err_addrs);
       we might need to show them later, and so is expensive (although
       very useful). */
 extern UWord HG_(clo_history_level);
+
+/* Controls how many IPs an history stack records. */
+extern UInt HG_(clo_history_backtrace_size);
 
 /* For full history level, determines how the stack trace is computed.
    no : a stacktrace is always computed from scratch, typically

@@ -2,6 +2,9 @@ usage: valgrind [options] prog-and-args
 
   tool-selection option, with default in [ ]:
     --tool=<name>             use the Valgrind tool named <name> [memcheck]
+                              available tools are:
+                              memcheck cachegrind callgrind helgrind drd
+                              massif dhat lackey none exp-bbv
 
   basic user options for all Valgrind tools, with defaults in [ ]:
     -h --help                 show this message
@@ -24,13 +27,15 @@ usage: valgrind [options] prog-and-args
                               and follow the on-screen directions
     --vgdb-stop-at=event1,event2,... invoke gdbserver for given events [none]
          where event is one of:
-           startup exit valgrindabexit all none
+           startup exit abexit valgrindabexit all none
     --track-fds=no|yes|all    track open file descriptors? [no]
                               all includes reporting stdin, stdout and stderr
     --time-stamp=no|yes       add timestamps to log messages? [no]
     --log-fd=<number>         log messages to file descriptor [2=stderr]
     --log-file=<file>         log messages to <file>
     --log-socket=ipaddr:port  log messages to socket ipaddr:port
+    --enable-debuginfod=no|yes query debuginfod servers for missing
+                              debuginfo [yes]
 
   user options for Valgrind tools that report errors:
     --xml=yes                 emit error output in XML (some tools only)
@@ -45,8 +50,9 @@ usage: valgrind [options] prog-and-args
     --error-exitcode=<number> exit code to return if errors found [0=disable]
     --error-markers=<begin>,<end> add lines with begin/end markers before/after
                               each error output in plain text mode [none]
-    --show-error-list=no|yes  show detected errors list and
-                              suppression counts at exit [no]
+    --show-error-list=no|yes|all  show detected errors list and
+                              suppression counts at exit [no].
+                              all means to also print suppressed errors.
     -s                        same as --show-error-list=yes
     --keep-debuginfo=no|yes   Keep symbols etc for unloaded code [no]
                               This allows saved stack traces (e.g. memory leaks)
@@ -74,6 +80,10 @@ usage: valgrind [options] prog-and-args
                               size/blocks, full: profile current and cumulative
                               allocated size/blocks and freed size/blocks.
     --xtree-memory-file=<file>   xtree memory report file [xtmemory.kcg.%p]
+    --realloc-zero-bytes-frees=yes|no [yes on Linux glibc, no otherwise]
+                              should calls to realloc with a size of 0
+                              free memory and return NULL or
+                              allocate/resize and return non-NULL
 
   uncommon user options for all Valgrind tools:
     --fullpath-after=         (with nothing after the '=')
@@ -113,6 +123,8 @@ usage: valgrind [options] prog-and-args
          where hint is one of:
            lax-ioctls lax-doors fuse-compatible enable-outer
            no-inner-prefix no-nptl-pthread-stackcache fallback-llsc none
+    --scheduling-quantum=<number>  thread-scheduling timeslice in number of
+           basic blocks [100000]
     --fair-sched=no|yes|try   schedule threads fairly on multicore systems [no]
     --kernel-variant=variant1,variant2,...
          handle non-standard kernel variants [none]
@@ -155,6 +167,10 @@ usage: valgrind [options] prog-and-args
     -d                        show verbose debugging output
     --stats=no|yes            show tool and core statistics [no]
     --sanity-level=<number>   level of sanity checking to do [1]
+                              1 - does occasional stack checking
+                              2 - more stack checks and malloc checks
+                              3 - as 2 and mmap checks
+                              4 - as 3 and translation sector checks
     --trace-flags=<XXXXXXXX>   show generated code? (X = 0|1) [00000000]
     --profile-flags=<XXXXXXXX> ditto, but for profiling (X = 0|1) [00000000]
     --profile-interval=<number> show profile every <number> event checks
@@ -225,9 +241,9 @@ usage: valgrind [options] prog-and-args
 
   Extra options read from ~/.valgrindrc, $VALGRIND_OPTS, ./.valgrindrc
 
-  Nulgrind is Copyright (C) 2002-2017, and GNU GPL'd, by Nicholas Nethercote.
-  Valgrind is Copyright (C) 2000-2017, and GNU GPL'd, by Julian Seward et al.
-  LibVEX is Copyright (C) 2004-2017, and GNU GPL'd, by OpenWorks LLP et al.
+  Nulgrind is Copyright (C) 2000, and GNU GPL'd, by Nicholas Nethercote et al.
+  Valgrind is Copyright (C) 2000, and GNU GPL'd, by Julian Seward et al.
+  LibVEX is Copyright (C) 2000, and GNU GPL'd, by OpenWorks LLP et al.
 
   Bug reports, feedback, admiration, abuse, etc, to: www.valgrind.org.
 

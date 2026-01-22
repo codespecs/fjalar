@@ -549,7 +549,6 @@ static Bool ranges_overlap (Addr s1, SizeT len1, Addr s2, SizeT len2 )
    return True;
 }
 
-
 /* Do the basic mappings of the two DebugInfos overlap in any way? */
 static Bool do_DebugInfos_overlap ( const DebugInfo* di1, const DebugInfo* di2 )
 {
@@ -560,8 +559,9 @@ static Bool do_DebugInfos_overlap ( const DebugInfo* di1, const DebugInfo* di2 )
       const DebugInfoMapping* map1 = VG_(indexXA)(di1->fsm.maps, i);
       for (j = 0; j < VG_(sizeXA)(di2->fsm.maps); j++) {
          const DebugInfoMapping* map2 = VG_(indexXA)(di2->fsm.maps, j);
-         if (ranges_overlap(map1->avma, map1->size, map2->avma, map2->size))
+         if (ranges_overlap(map1->avma, map1->size, map2->avma, map2->size)) {
             return True;
+         }
       }
    }
 
@@ -665,7 +665,6 @@ static void check_CFSI_related_invariants ( const DebugInfo* di )
       been successfully read.  And that shouldn't happen until we have
       both a r-x and rw- mapping for the object.  Hence: */
    vg_assert(di->fsm.have_rx_map);
-   vg_assert(di->fsm.have_rw_map);
    for (i = 0; i < VG_(sizeXA)(di->fsm.maps); i++) {
       const DebugInfoMapping* map = VG_(indexXA)(di->fsm.maps, i);
       /* We are interested in r-x mappings only */
@@ -694,7 +693,6 @@ static void check_CFSI_related_invariants ( const DebugInfo* di )
                        "DiCfsi invariant (1) verification failed");
          }
       }
-      di2 = NULL;
    }
 
    /* degenerate case: all r-x sections are empty */
@@ -959,14 +957,16 @@ static ULong di_notify_ACHIEVE_ACCEPT_STATE ( struct _DebugInfo* di )
    discard_DebugInfos_which_overlap_with( di );
 
    /* The DebugInfoMappings that now exist in the FSM may involve
-      overlaps.  This confuses ML_(read_elf_debug_info), and may cause
+      overlaps.  This confuses ML_(read_elf_*), and may cause
       it to compute wrong biases.  So de-overlap them now.
       See http://bugzilla.mozilla.org/show_bug.cgi?id=788974 */
    truncate_DebugInfoMapping_overlaps( di, di->fsm.maps );
 
    /* And acquire new info. */
 #  if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_freebsd)
-   ok = ML_(read_elf_debug_info)( di );
+   ok = ML_(read_elf_object)( di );
+   if (ok)
+      di->deferred = True;
 #  elif defined(VGO_darwin)
    ok = ML_(read_macho_debug_info)( di );
 #  else
@@ -1024,15 +1024,96 @@ static ULong di_notify_ACHIEVE_ACCEPT_STATE ( struct _DebugInfo* di )
 
 
 /* Notify the debuginfo system about a new mapping.  This is the way
-   new debug information gets loaded.  If allow_SkFileV is True, it
-   will try load debug info if the mapping at 'a' belongs to Valgrind;
-   whereas normally (False) it will not do that.  This allows us to
-   carefully control when the thing will read symbols from the
-   Valgrind executable itself.
+   new debug information gets loaded.
+
+   readelf -e will output something like
+
+   Program Headers:
+  Type           Offset             VirtAddr           PhysAddr
+                 FileSiz            MemSiz              Flg    Align
+  PHDR           0x0000000000000040 0x0000000000200040 0x0000000000200040
+                 0x0000000000000268 0x0000000000000268  R      0x8
+  INTERP         0x00000000000002a8 0x00000000002002a8 0x00000000002002a8
+                 0x0000000000000015 0x0000000000000015  R      0x1
+      [Requesting program interpreter: /libexec/ld-elf.so.1]
+  LOAD           0x0000000000000000 0x0000000000200000 0x0000000000200000
+                 0x0000000000002acc 0x0000000000002acc  R      0x1000
+  LOAD           0x0000000000002ad0 0x0000000000203ad0 0x0000000000203ad0
+                 0x0000000000004a70 0x0000000000004a70  R E    0x1000
+  LOAD           0x0000000000007540 0x0000000000209540 0x0000000000209540
+                 0x00000000000001d8 0x00000000000001d8  RW     0x1000
+  LOAD           0x0000000000007720 0x000000000020a720 0x000000000020a720
+                 0x00000000000002b8 0x00000000000005a0  RW     0x1000
+  DYNAMIC        0x0000000000007570 0x0000000000209570 0x0000000000209570
+                 0x00000000000001a0 0x00000000000001a0  RW     0x8
+  GNU_RELRO      0x0000000000007540 0x0000000000209540 0x0000000000209540
+                 0x00000000000001d8 0x00000000000001d8  R      0x1
+  GNU_EH_FRAME   0x0000000000002334 0x0000000000202334 0x0000000000202334
+                 0x000000000000012c 0x000000000000012c  R      0x4
+  GNU_STACK      0x0000000000000000 0x0000000000000000 0x0000000000000000
+                 0x0000000000000000 0x0000000000000000  RW     0
+  NOTE           0x00000000000002c0 0x00000000002002c0 0x00000000002002c0
+                 0x0000000000000048 0x0000000000000048  R      0x4
+
+   This function will be called for the "LOAD" segments above.
+
+   This function gets called from 2 contexts
+
+   "HOST TRIGGERED"
+
+   1a. For the tool exe, called from valgrind_main. This is already
+       mmap'd when the host starts so we look at something like the
+       /proc filesystem to get the mapping after the event and build
+       up the NSegments from that.
+
+   1b. Then the host loads ld.so and the guest exe. This is done in
+       the sequence
+          load_client -> VG_(do_exec) -> VG_(do_exec_inner) ->
+          exe_handlers->load_fn ( == VG_(load_ELF) )
+          [or load_MACHO].
+
+       This does the mmap'ing and creates the associated NSegments.
+
+       The NSegments may get merged, (see maybe_merge_nsegments)
+       so there could be more PT_LOADs than there are NSegments.
+       VG_(di_notify_mmap) is called by iterating over the
+       NSegments
+
+   "GUEST TRIGGERED"
+
+   2.  When the guest loads any further shared libs (valgrind core and
+       tool preload shared libraries, libc, other dependencies, dlopens)
+       using mmap. The call will be from ML_(generic_PRE_sys_mmap) or
+       a platform-specific variation.
+
+       There are a few variations for syswraps/platforms.
+
+       In this case the NSegment could possibly be merged,
+       but that is irrelevant because di_notify_mmap is being
+       called directly on the mmap result.
+
+   If allow_SkFileV is True, it will try load debug info if the
+   mapping at 'a' belongs to Valgrind; whereas normally (False)
+   it will not do that.  This allows us to carefully control when
+   the thing will read symbols from the Valgrind executable itself.
 
    If use_fd is not -1, that is used instead of the filename; this
    avoids perturbing fcntl locks, which are released by simply
    re-opening and closing the same file (even via different fd!).
+
+   Read-only mappings will be ignored.
+   There may be 1 or 2 RW mappings.
+   There will also be 1 RX mapping.
+
+   If there is no RX or no RW mapping then we will not attempt to
+   read debuginfo for the file.
+
+   In order to know whether there are 1 or 2 RW mappings we
+   need to check the ELF headers. And in the case that we
+   detect 2 RW mappings we need to double check that they
+   aren't contiguous in memory resulting in merged NSegemnts.
+
+   This does not apply to Darwin which just checks the Mach-O header
 
    If a call to VG_(di_notify_mmap) causes debug info to be read, then
    the returned ULong is an abstract handle which can later be used to
@@ -1044,12 +1125,26 @@ static ULong di_notify_ACHIEVE_ACCEPT_STATE ( struct _DebugInfo* di )
 ULong VG_(di_notify_mmap)( Addr a, Bool allow_SkFileV, Int use_fd )
 {
    NSegment const * seg;
+   Int rw_load_count;
    const HChar* filename;
    Bool       is_rx_map, is_rw_map, is_ro_map;
+
    DebugInfo* di;
    Int        actual_fd, oflags;
+#if defined(VGO_darwin)
    SysRes     preadres;
-   HChar      buf1k[1024];
+   // @todo PJF make this dynamic
+   // that probably means reading the sizeofcmds from the mach_header then
+   // allocating enough space for it
+   // and then one day maybe doing something for fat binaries
+   HChar      buf4k[4096];
+#else
+   Bool       elf_ok;
+#endif
+#if defined(VGO_freebsd)
+   static Bool first_fixed_file = True;
+#endif
+
    const Bool       debug = VG_(debugLog_getLevel)() >= 3;
    SysRes     statres;
    struct vg_stat statbuf;
@@ -1207,13 +1302,27 @@ ULong VG_(di_notify_mmap)( Addr a, Bool allow_SkFileV, Int use_fd )
 #if defined(VGO_freebsd)
    /* Ignore non-fixed read-only mappings.  The dynamic linker may be
     * mapping something for its own transient purposes. */
-   if (!seg->isFF && is_ro_map)
-      return 0;
+   if (!seg->isFF && is_ro_map) {
+      if (first_fixed_file) {
+         if (debug) {
+            VG_(dmsg)("di_notify_mmap-4: first non-fixed ro map\n");
+         }
+         first_fixed_file = False;
+      } else {
+         if (debug) {
+            VG_(dmsg)("di_notify_mmap-5: not first non-fixed ro map, ignored\n");
+         }
+         return 0;
+      }
+   }
 #endif
 
+#if defined(VGO_darwin)
    /* Peer at the first few bytes of the file, to see if it is an ELF */
    /* object file. Ignore the file if we do not have read permission. */
-   VG_(memset)(buf1k, 0, sizeof(buf1k));
+   VG_(memset)(buf4k, 0, sizeof(buf4k));
+#endif
+
    oflags = VKI_O_RDONLY;
 #  if defined(VKI_O_LARGEFILE)
    oflags |= VKI_O_LARGEFILE;
@@ -1237,7 +1346,8 @@ ULong VG_(di_notify_mmap)( Addr a, Bool allow_SkFileV, Int use_fd )
       actual_fd = use_fd;
    }
 
-   preadres = VG_(pread)( actual_fd, buf1k, sizeof(buf1k), 0 );
+#if defined(VGO_darwin)
+   preadres = VG_(pread)( actual_fd, buf4k, sizeof(buf4k), 0 );
    if (use_fd == -1) {
       VG_(close)( actual_fd );
    }
@@ -1246,22 +1356,34 @@ ULong VG_(di_notify_mmap)( Addr a, Bool allow_SkFileV, Int use_fd )
       DebugInfo fake_di;
       VG_(memset)(&fake_di, 0, sizeof(fake_di));
       fake_di.fsm.filename = ML_(dinfo_strdup)("di.debuginfo.nmm", filename);
-      ML_(symerr)(&fake_di, True, "can't read file to inspect ELF header");
+      ML_(symerr)(&fake_di, True, "can't read file to inspect Mach-O headers");
       return 0;
    }
    if (sr_Res(preadres) == 0)
       return 0;
-   vg_assert(sr_Res(preadres) > 0 && sr_Res(preadres) <= sizeof(buf1k) );
+   vg_assert(sr_Res(preadres) > 0 && sr_Res(preadres) <= sizeof(buf4k) );
+
+   rw_load_count = 0;
+
+   if (!ML_(check_macho_and_get_rw_loads)( buf4k, (SizeT)sr_Res(preadres), &rw_load_count ))
+      return 0;
+#endif
 
    /* We're only interested in mappings of object files. */
 #  if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_freebsd)
-   if (!ML_(is_elf_object_file)( buf1k, (SizeT)sr_Res(preadres), False ))
+
+   rw_load_count = 0;
+
+   elf_ok = ML_(check_elf_and_get_rw_loads) ( actual_fd, filename, &rw_load_count );
+
+   if (use_fd == -1) {
+      VG_(close)( actual_fd );
+   }
+
+   if (!elf_ok) {
       return 0;
-#  elif defined(VGO_darwin)
-   if (!ML_(is_macho_object_file)( buf1k, (SizeT)sr_Res(preadres) ))
-      return 0;
-#  else
-#    error "unknown OS"
+   }
+
 #  endif
 
    /* See if we have a DebugInfo for this filename.  If not,
@@ -1304,6 +1426,9 @@ ULong VG_(di_notify_mmap)( Addr a, Bool allow_SkFileV, Int use_fd )
    map.avma = seg->start;
    map.size = seg->end + 1 - seg->start;
    map.foff = seg->offset;
+#if defined(VGO_freebsd)
+   map.ignore_foff = seg->ignore_offset;
+#endif
    map.rx   = is_rx_map;
    map.rw   = is_rw_map;
    map.ro   = is_ro_map;
@@ -1311,15 +1436,19 @@ ULong VG_(di_notify_mmap)( Addr a, Bool allow_SkFileV, Int use_fd )
 
    /* Update flags about what kind of mappings we've already seen. */
    di->fsm.have_rx_map |= is_rx_map;
-   di->fsm.have_rw_map |= is_rw_map;
+   /* This is a bit of a hack, using a Bool as a counter */
+   if (is_rw_map)
+     ++di->fsm.rw_map_count;
    di->fsm.have_ro_map |= is_ro_map;
 
    /* So, finally, are we in an accept state? */
    vg_assert(!di->have_dinfo);
-   if (di->fsm.have_rx_map && di->fsm.have_rw_map) {
+   if (di->fsm.have_rx_map &&
+       di->fsm.rw_map_count == rw_load_count) {
       /* Ok, so, finally, we found what we need, and we haven't
          already read debuginfo for this object.  So let's do so now.
          Yee-ha! */
+
       if (debug)
          VG_(dmsg)("di_notify_mmap-5: "
                    "achieved accept state for %s\n", filename);
@@ -1333,6 +1462,51 @@ ULong VG_(di_notify_mmap)( Addr a, Bool allow_SkFileV, Int use_fd )
    }
 }
 
+/* Load DI if it hasn't already been been loaded.  */
+void VG_(di_load_di)( DebugInfo *di )
+{
+   if (di->deferred) {
+      di->deferred = False;
+#if defined(VGO_darwin)
+      ML_(read_macho_debug_info) (di);
+#else
+      ML_(read_elf_debug) (di);
+#endif
+      ML_(canonicaliseTables)( di );
+
+      /* Check invariants listed in
+         Comment_on_IMPORTANT_REPRESENTATIONAL_INVARIANTS in
+         priv_storage.h. */
+      check_CFSI_related_invariants(di);
+      ML_(finish_CFSI_arrays)(di);
+   }
+}
+
+/* Load DI if it has a text segment containing A and DI hasn't already
+   been loaded.  */
+
+void VG_(load_di)( DebugInfo *di, Addr a)
+{
+   if (!di->text_present
+       || di->text_size <= 0
+       || di->text_avma > a
+       || a >= di->text_avma + di->text_size)
+      return;
+
+   VG_(di_load_di)(di);
+}
+
+/* Attempt to load DebugInfo with a text segment containing A,
+   if such a debuginfo hasn't already been loaded.  */
+
+void VG_(addr_load_di)( Addr a )
+{
+   DebugInfo *di;
+
+   di = VG_(find_DebugInfo)(VG_(current_DiEpoch)(), a);
+   if (di != NULL)
+      VG_(di_load_di)(di);
+}
 
 /* Unmap is simpler - throw away any SegInfos intersecting 
    [a, a+len).  */
@@ -1416,7 +1590,7 @@ void VG_(di_notify_vm_protect)( Addr a, SizeT len, UInt prot )
          continue; /* need to have a r-- mapping for this object */
       if (di->fsm.have_rx_map)
          continue; /* rx- mapping already exists */
-      if (!di->fsm.have_rw_map)
+      if (!di->fsm.rw_map_count)
          continue; /* need to have a rw- mapping */
       /* Try to find a mapping matching the memory area. */
       for (i = 0; i < VG_(sizeXA)(di->fsm.maps); i++) {
@@ -1454,7 +1628,7 @@ void VG_(di_notify_vm_protect)( Addr a, SizeT len, UInt prot )
    }
 
    /* Check if we're now in an accept state and read debuginfo.  Finally. */
-   if (di->fsm.have_rx_map && di->fsm.have_rw_map && !di->have_dinfo) {
+   if (di->fsm.have_rx_map && di->fsm.rw_map_count && !di->have_dinfo) {
       if (debug)
          VG_(dmsg)("di_notify_vm_protect-5: "
                      "achieved accept state for %s\n", di->fsm.filename);
@@ -1669,7 +1843,7 @@ void VG_(di_notify_pdb_debuginfo)( Int fd_obj, Addr avma_obj,
    { DebugInfo* di = find_or_create_DebugInfo_for(exename);
 
      /* this di must be new, since we just nuked any old stuff in the range */
-     vg_assert(di && !di->fsm.have_rx_map && !di->fsm.have_rw_map);
+     vg_assert(di && !di->fsm.have_rx_map && !di->fsm.rw_map_count);
      vg_assert(!di->have_dinfo);
 
      /* don't set up any of the di-> fields; let
@@ -2179,6 +2353,32 @@ Bool VG_(get_fnname) ( DiEpoch ep, Addr a, const HChar** buf )
                          /*offsetP*/NULL );
 }
 
+
+Bool VG_(get_fnname_inl) ( DiEpoch ep, Addr a, const HChar** buf,
+                                   const InlIPCursor* iipc )
+{
+   if (iipc) {
+      vg_assert(is_DI_valid_for_epoch(iipc->di, ep));
+   }
+
+   if (is_bottom(iipc)) {
+      return get_sym_name ( /*C++-demangle*/True, /*Z-demangle*/True,
+                            /*below-main-renaming*/True,
+                            ep, a, buf,
+                            /*match_anywhere_in_fun*/True,
+                            /*show offset?*/False,
+                            /*text sym*/True,
+                            /*offsetP*/NULL );
+   } else {
+      const DiInlLoc *next_inl = iipc && iipc->next_inltab >= 0
+         ? & iipc->di->inltab[iipc->next_inltab]
+         : NULL;
+      vg_assert (next_inl);
+      *buf = next_inl->inlinedfn;
+      return True;
+   }
+}
+
 /* This is available to tools... always demangle C++ names,
    match anywhere in function, and show offset if nonzero.
    NOTE: See IMPORTANT COMMENT above about persistence and ownership
@@ -2610,13 +2810,18 @@ const HChar* VG_(describe_IP)(DiEpoch ep, Addr eip, const InlIPCursor *iipc)
    Bool  know_objname;
    Bool  know_srcloc;
 
+   if (iipc && iipc->di)
+      VG_(load_di) (iipc->di, eip);
+   else
+      VG_(addr_load_di) (eip);
+
    if (is_bottom(iipc)) {
       // At the bottom (towards main), we describe the fn at eip.
       know_fnname = VG_(clo_sym_offsets)
                     ? VG_(get_fnname_w_offset) (ep, eip, &buf_fn)
                     : VG_(get_fnname) (ep, eip, &buf_fn);
    } else {
-      const DiInlLoc *next_inl = iipc && iipc->next_inltab >= 0
+      const DiInlLoc *next_inl = iipc && iipc->di && iipc->next_inltab >= 0
          ? & iipc->di->inltab[iipc->next_inltab]
          : NULL;
       vg_assert (next_inl);
@@ -2644,7 +2849,7 @@ const HChar* VG_(describe_IP)(DiEpoch ep, Addr eip, const InlIPCursor *iipc)
                      );
       know_dirinfo = buf_dirname[0] != '\0';
    } else {
-      const DiInlLoc *cur_inl = iipc && iipc->cur_inltab >= 0
+      const DiInlLoc *cur_inl = iipc && iipc->di && iipc->cur_inltab >= 0
          ? & iipc->di->inltab[iipc->cur_inltab]
          : NULL;
       vg_assert (cur_inl);
@@ -2884,7 +3089,7 @@ UWord evalCfiExpr ( const XArray* exprs, Int ix,
             case Creg_MIPS_RA: return eec->uregs->ra;
 #           elif defined(VGA_ppc32) || defined(VGA_ppc64be) \
                || defined(VGA_ppc64le)
-#           elif defined(VGP_arm64_linux)
+#           elif defined(VGP_arm64_linux) || defined(VGP_arm64_freebsd)
             case Creg_ARM64_SP: return eec->uregs->sp;
             case Creg_ARM64_X30: return eec->uregs->x30;
             case Creg_ARM64_X29: return eec->uregs->x29;
@@ -2953,6 +3158,8 @@ static void find_DiCfSI ( /*OUT*/DebugInfo** diP,
 
       if (!is_DI_valid_for_epoch(di, curr_epoch))
          continue;
+
+      VG_(load_di)(di, ip);
 
       /* Use the per-DebugInfo summary address ranges to skip
          inapplicable DebugInfos quickly. */
@@ -3159,6 +3366,14 @@ static Addr compute_cfa ( const D3UnwindRegs* uregs,
       case CFIC_ARM64_X29REL: 
          cfa = cfsi_m->cfa_off + uregs->x29;
          break;
+#     elif defined(VGP_arm64_freebsd)
+   case CFIC_ARM64_SPREL:
+      cfa = cfsi_m->cfa_off + uregs->sp;
+      break;
+   case CFIC_ARM64_X29REL:
+      cfa = cfsi_m->cfa_off + uregs->x29;
+      break;
+
 #     else
 #       error "Unsupported arch"
 #     endif
@@ -3304,6 +3519,8 @@ Bool VG_(use_CF_info) ( /*MOD*/D3UnwindRegs* uregsHere,
 #  elif defined(VGA_ppc32) || defined(VGA_ppc64be) || defined(VGA_ppc64le)
 #  elif defined(VGP_arm64_linux)
    ipHere = uregsHere->pc;
+#  elif defined(VGP_arm64_freebsd)
+   ipHere = uregsHere->pc;
 #  else
 #    error "Unknown arch"
 #  endif
@@ -3444,7 +3661,7 @@ Bool VG_(use_CF_info) ( /*MOD*/D3UnwindRegs* uregsHere,
    COMPUTE(uregsPrev.sp, uregsHere->sp, cfsi_m->sp_how, cfsi_m->sp_off);
    COMPUTE(uregsPrev.fp, uregsHere->fp, cfsi_m->fp_how, cfsi_m->fp_off);
 #  elif defined(VGA_ppc32) || defined(VGA_ppc64be) || defined(VGA_ppc64le)
-#  elif defined(VGP_arm64_linux)
+#  elif defined(VGP_arm64_linux) || defined(VGP_arm64_freebsd)
    COMPUTE(uregsPrev.pc,  uregsHere->pc,  cfsi_m->ra_how,  cfsi_m->ra_off);
    COMPUTE(uregsPrev.sp,  uregsHere->sp,  cfsi_m->sp_how,  cfsi_m->sp_off);
    COMPUTE(uregsPrev.x30, uregsHere->x30, cfsi_m->x30_how, cfsi_m->x30_off);
@@ -4250,7 +4467,7 @@ Bool VG_(get_data_description)(
    n_frames = VG_(get_StackTrace)( tid, ips, N_FRAMES,
                                    sps, fps, 0/*first_ip_delta*/ );
 
-   vg_assert(n_frames >= 0 && n_frames <= N_FRAMES);
+   vg_assert(n_frames <= N_FRAMES);
    for (j = 0; j < n_frames; j++) {
       if (consider_vars_in_frame( dname1, dname2,
                                   ep, data_addr,
@@ -4912,6 +5129,21 @@ static void caches__invalidate ( void ) {
    sym_name_cache__invalidate();
    debuginfo_generation++;
 }
+
+#if defined(VGO_freebsd)
+/*
+ * Used by FreeBSD if we detect a syscall cap_enter. That
+ * means capability mode, and lots of things won't work any more.
+ * Like opening new file handles. So try to make the most of a bad job
+ * and read all debuginfo in one go.
+ */
+void VG_(load_all_debuginfo) (void)
+{
+   for (DebugInfo* di = debugInfo_list; di; di = di->next) {
+      VG_(di_load_di)(di);
+   }
+}
+#endif
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

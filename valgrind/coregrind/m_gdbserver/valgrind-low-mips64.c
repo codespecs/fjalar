@@ -131,12 +131,7 @@ CORE_ADDR get_pc (void)
 static
 void set_pc (CORE_ADDR newpc)
 {
-   Bool mod;
-   supply_register_by_name ("pc", &newpc, &mod);
-   if (mod)
-      dlog(1, "set pc to %p\n", C2v (newpc));
-   else
-      dlog(1, "set pc not changed %p\n", C2v (newpc));
+   supply_register_by_name ("pc", &newpc);
 }
 
 /* These are the fields of 32 bit mips instructions. */
@@ -370,8 +365,8 @@ static CORE_ADDR** target_get_dtv (ThreadState *tst)
 
 static struct valgrind_target_ops low_target = {
    num_regs,
-   regs,
    29, //sp = r29, which is register offset 29 in regs
+   regs,
    transfer_register,
    get_pc,
    set_pc,

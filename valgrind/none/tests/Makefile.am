@@ -70,10 +70,13 @@ endif
 if VGCONF_PLATFORMS_INCLUDE_X86_SOLARIS
 SUBDIRS += x86-solaris
 endif
+if VGCONF_PLATFORMS_INCLUDE_X86_FREEBSD
+SUBDIRS += x86-freebsd
+endif
 
 DIST_SUBDIRS = x86 amd64 ppc32 ppc64 arm arm64 s390x mips32 mips64 nanomips \
                linux darwin solaris freebsd amd64-linux x86-linux amd64-darwin \
-               x86-darwin amd64-solaris x86-solaris scripts .
+               x86-darwin amd64-solaris x86-solaris x86-freebsd scripts .
 
 dist_noinst_SCRIPTS = \
 	filter_cmdline0 \
@@ -101,11 +104,18 @@ EXTRA_DIST = \
 	closeall.stderr.exp closeall.vgtest \
 	cmdline0.stderr.exp cmdline0.stdout.exp cmdline0.vgtest \
 	cmdline1.stderr.exp cmdline1.stdout.exp cmdline1.vgtest \
+		cmdline1.stdout.exp-non-linux \
 	cmdline2.stderr.exp cmdline2.stdout.exp cmdline2.vgtest \
+		cmdline2.stdout.exp-non-linux \
 	cmdline3.stderr.exp cmdline3.vgtest \
 	cmdline4.stderr.exp cmdline4.vgtest \
 	cmdline5.stderr.exp cmdline5.vgtest \
 	cmdline6.stderr.exp cmdline6.vgtest \
+	cmdline7.stderr.exp cmdline7.vgtest \
+	cmdline8.stderr.exp cmdline8.vgtest \
+	cmdline9.stderr.exp cmdline9.vgtest \
+	cmdline10.stderr.exp cmdline10.vgtest \
+	cmdline11.stderr.exp cmdline11.vgtest \
 	cmd-with-special.stderr.exp cmd-with-special.vgtest \
 	coolo_sigaction.stderr.exp \
 	coolo_sigaction.stdout.exp coolo_sigaction.vgtest \
@@ -141,6 +151,7 @@ EXTRA_DIST = \
 	map_unmap.stderr.exp map_unmap.stdout.exp map_unmap.vgtest \
 	mmap_fcntl_bug.vgtest mmap_fcntl_bug.stdout.exp \
 		mmap_fcntl_bug.stderr.exp \
+	mmap_o_direct.stderr.exp mmap_o_direct.vgtest \
 	mq.stderr.exp mq.vgtest \
 	munmap_exe.stderr.exp munmap_exe.vgtest \
 	nestedfns.stderr.exp nestedfns.stdout.exp nestedfns.vgtest \
@@ -178,6 +189,7 @@ EXTRA_DIST = \
 	pth_stackalign.stdout.exp pth_stackalign.vgtest \
 	pth_2sig.stderr.exp-linux pth_2sig.stderr.exp-solaris pth_2sig.vgtest \
 	pth_term_signal.stderr.exp pth_term_signal.vgtest \
+	rc_option_with_spaces.stderr.exp rc_option_with_spaces.vgtest \
 	rcrl.stderr.exp rcrl.stdout.exp rcrl.vgtest \
 	readline1.stderr.exp readline1.stdout.exp \
 	readline1.vgtest \
@@ -214,7 +226,10 @@ EXTRA_DIST = \
 	vgprintf.stderr.exp vgprintf.vgtest \
 	vgprintf_nvalgrind.stderr.exp vgprintf_nvalgrind.vgtest \
 	process_vm_readv_writev.stderr.exp process_vm_readv_writev.vgtest \
-	sigprocmask.stderr.exp sigprocmask.vgtest
+	sigprocmask.stderr.exp sigprocmask.vgtest \
+	socket_close.stderr.exp socket_close.vgtest \
+	file_dclose.stderr.exp file_dclose.vgtest \
+	double_close_range.stderr.exp double_close_range.vgtest
 
 
 check_PROGRAMS = \
@@ -233,6 +248,7 @@ check_PROGRAMS = \
 	libvexmultiarch_test \
 	manythreads \
 	mmap_fcntl_bug \
+	mmap_o_direct \
 	munmap_exe map_unaligned map_unmap mq \
 	nocwd \
 	pending \
@@ -264,7 +280,13 @@ check_PROGRAMS = \
 	coolo_sigaction \
 	gxx304 \
 	process_vm_readv_writev \
-	sigprocmask
+	sigprocmask \
+	socket_close \
+	file_dclose
+
+if HAVE_CLOSE_RANGE
+   check_PROGRAMS += double_close_range
+endif
 
 if HAVE_NESTED_FUNCTIONS
    check_PROGRAMS += nestedfns
@@ -279,8 +301,8 @@ if ! VGCONF_OS_IS_DARWIN
    check_PROGRAMS += ppoll_alarm
 endif
 
-# clang does not know -ansi
-if ! COMPILER_IS_CLANG
+# older (?) clang does not know -ansi
+if HAVE_ANSI
    check_PROGRAMS += ansi
 endif
 
@@ -301,6 +323,15 @@ fdleak_cmsg_LDADD	= -lsocket -lnsl
 fdleak_ipv4_LDADD	= -lsocket -lnsl
 fdleak_creat_LDADD	= -lsocket -lnsl
 fdleak_socketpair_LDADD	= -lsocket -lnsl
+socket_close_LDADD	= -lsocket -lnsl
+else
+fcntl_setown_LDADD	= $(AL_LDFLAGS)
+fdleak_cmsg_CFLAGS	= $(AM_CFLAGS)
+fdleak_cmsg_LDADD	= $(AM_LDFLAGS)
+fdleak_ipv4_LDADD	= $(AM_LDFLAGS)
+fdleak_creat_LDADD	= $(AM_LDFLAGS)
+fdleak_socketpair_LDADD	= $(AM_LDFLAGS)
+socket_close_LDADD	= $(AM_LDFLAGS)
 endif
 floored_LDADD 		= -lm
 ifunc_CFLAGS		= $(AM_CFLAGS) -Wno-unused-function
@@ -367,6 +398,7 @@ thread_exits_LDADD	= -lpthread
 threaded_fork_LDADD	= -lpthread
 threadederrno_CFLAGS	= $(AM_CFLAGS)
 threadederrno_LDADD	= -lpthread
+timestamp_CFLAGS	= ${AM_CFLAGS} @FLAG_W_NO_USE_AFTER_FREE@
 tls_SOURCES		= tls.c tls2.c
 tls_DEPENDENCIES	= tls.so tls2.so
 tls_LDFLAGS		= -Wl,-rpath,$(abs_top_builddir)/none/tests

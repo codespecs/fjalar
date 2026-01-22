@@ -118,6 +118,8 @@ model_info models[] = {
    { "3907", "z14 ZR1"},
    { "8561", "z15"    },
    { "8562", "z15"    },
+   { "3931", "z16"    },
+   { "3932", "z16"    },
 };
 
 
@@ -273,7 +275,7 @@ static int go(char *feature, char *cpu)
    } else if (strcmp(feature, "s390x-mi3") == 0 ) {
       match = facilities[0] & FAC_BIT(61);
    } else if (strcmp(feature, "s390x-vx2") == 0 ) {
-      match = facilities[2] & FAC_BIT(20);
+      match = (GET_HWCAP() & 0x800) && (facilities[2] & FAC_BIT(20));
    } else {
       return 2;          // Unrecognised feature.
    }

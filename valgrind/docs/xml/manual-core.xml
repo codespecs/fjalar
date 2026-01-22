@@ -82,6 +82,11 @@ To make it easier to write suppressions, you can use the
 print out a suppression for each reported error, which you can then
 copy into a suppressions file.</para>
 
+<para>Valgrind will try to match the behaviour of applications
+compiled to run on the same OS and libraries that Valgrind was
+built with. If you use different libraries or a different
+OS version there may be some small differences in behaviour.</para>
+
 <para>Different error-checking tools report different kinds of errors.
 The suppression mechanism therefore allows you to say which tool or
 tool(s) each suppression applies to.</para>
@@ -599,19 +604,20 @@ to <computeroutput>malloc.</computeroutput>.</para>
 <para id="debuginfod.para.1">Valgrind supports the downloading of debuginfo
 files via debuginfod, an HTTP server for distributing ELF/DWARF debugging
 information. When a debuginfo file cannot be found locally, Valgrind is able
-to query debuginfod servers for the file using its build-id.</para>
+to query debuginfod servers for the file using the file's build-id.</para>
 
 <para id="debuginfod.para.2">In order to use this feature
-<computeroutput>debuginfod-find</computeroutput> must be installed and
-<computeroutput>$DEBUGINFOD_URLS</computeroutput> must contain URLs of
-debuginfod servers. Valgrind does not support
+<computeroutput>debuginfod-find</computeroutput> must be installed and the
+<computeroutput>$DEBUGINFOD_URLS</computeroutput> environment variable must
+contain space-separated URLs of debuginfod servers. Valgrind does not support
 <computeroutput>debuginfod-find</computeroutput> verbose output that is
 normally enabled with <computeroutput>$DEBUGINFOD_PROGRESS</computeroutput>
 and <computeroutput>$DEBUGINFOD_VERBOSE</computeroutput>. These environment
-variables will be ignored.</para>
+variables will be ignored. This feature is supported on Linux only.</para>
 
 <para id="debuginfod.para.3">For more information regarding debuginfod, see
-https://sourceware.org/elfutils/Debuginfod.html</para>
+<ulink url="https://sourceware.org/elfutils/Debuginfod.html">Elfutils Debuginfod</ulink>
+.</para>
 
 </sect1>
 
@@ -847,13 +853,17 @@ in most cases.  We group the available options by rough categories.</para>
       for other events, specified in one of the following ways:  </para>
       <itemizedlist>
         <listitem><para>a comma separated list of one or more of
-            <option>startup exit valgrindabexit</option>.</para>
+            <option>startup exit abexit valgrindabexit</option>.</para>
 
           <para>The values <option>startup</option> <option>exit</option>
-          <option>valgrindabexit</option> respectively indicate to
-          invoke gdbserver before your program is executed, after the
-          last instruction of your program, on Valgrind abnormal exit
-          (e.g. internal error, out of memory, ...).</para>
+          <option>valgrindabexit</option> respectively indicate to invoke
+          gdbserver before your program is executed, after the last instruction
+          of your program, on Valgrind abnormal exit (e.g. internal error, out
+          of memory, ...).</para>
+
+          <para>The option <option>abexit</option> is similar to <option>exit</option>
+          but tells to invoke gdbserver only when your application exits abnormally
+          (i.e. with an exit code different of 0). </para>
 
           <para>Note: <option>startup</option> and
           <option>--vgdb-error=0</option> will both cause Valgrind
@@ -865,7 +875,7 @@ in most cases.  We group the available options by rough categories.</para>
         
         <listitem><para><option>all</option> to specify the complete set.
             It is equivalent to
-            <option>--vgdb-stop-at=startup,exit,valgrindabexit</option>.</para>
+            <option>--vgdb-stop-at=startup,exit,abexit,valgrindabexit</option>.</para>
         </listitem>
         
         <listitem><para><option>none</option> for the empty set.</para>
@@ -986,6 +996,21 @@ in most cases.  We group the available options by rough categories.</para>
       further details, see 
       <link linkend="&vg-comment-id;">the commentary</link>
       in the manual.</para>
+    </listitem>
+  </varlistentry>
+
+  <varlistentry id="opt.enable-debuginfod" xreflabel="--enable-debuginfod">
+    <term>
+      <option><![CDATA[--enable-debuginfod=<no|yes> [default: yes] ]]></option>
+    </term>
+    <listitem>
+      <para>When enabled Valgrind will attempt to download missing debuginfo
+      from debuginfod servers if space-separated server URLs are present
+      in the <computeroutput>$DEBUGINFOD_URLS</computeroutput> environment
+      variable.  This option is supported on Linux only.
+      <!-- commented out because it causes broken links in the man page
+      For more information see <xref linkend="manual-core.debuginfod"/>.
+      --></para>
     </listitem>
   </varlistentry>
 
@@ -1223,7 +1248,11 @@ that can report errors, e.g. Memcheck, but not Cachegrind.</para>
       that value is returned instead, if Valgrind detects any errors.
       This is useful for using Valgrind as part of an automated test
       suite, since it makes it easy to detect test cases for which
-      Valgrind has reported errors, just by inspecting return codes.</para>
+      Valgrind has reported errors, just by inspecting return codes.
+      When set to a nonzero value and Valgrind detects no error,
+      the return value of Valgrind will be the return value of the
+      program being simulated.
+      </para>
     </listitem>
   </varlistentry>
 
@@ -1259,12 +1288,13 @@ that can report errors, e.g. Memcheck, but not Cachegrind.</para>
 
   <varlistentry id="opt.show-error-list" xreflabel="--show-error-list">
     <term>
-      <option><![CDATA[--show-error-list=no|yes [default: no]]]></option>
+      <option><![CDATA[--show-error-list=no|yes|all [default: no]]]></option>
     </term>
     <listitem>
-      <para>If this option is enabled, for tools that report errors, valgrind
+      <para>If this option is yes, for tools that report errors, valgrind
         will show the list of detected errors and the list of used suppressions
-        at exit.
+        at exit. The value all indicates to also show the list of suppressed
+        errors.
       </para>
       <para>Note that at verbosity 2 and above, valgrind automatically shows
         the list of detected errors and the list of used suppressions
@@ -1598,9 +1628,9 @@ that can report errors, e.g. Memcheck, but not Cachegrind.</para>
     </term>
     <listitem>
       <para>This option is only relevant when running Valgrind on
-      Mac OS X.</para>
+      macOS.</para>
 
-      <para>Mac OS X uses a deferred debug information (debuginfo)
+      <para>macOS uses a deferred debug information (debuginfo)
       linking scheme.  When object files containing debuginfo are
       linked into a <computeroutput>.dylib</computeroutput> or an
       executable, the debuginfo is not copied into the final file.
@@ -1754,6 +1784,31 @@ that can report errors, e.g. Memcheck, but not Cachegrind.</para>
       Occasionally, that number is too small. Use this option to
       provide a different limit. E.g.
       <computeroutput>--max-threads=3000</computeroutput>.
+      </para>
+    </listitem>
+  </varlistentry>
+
+    <varlistentry id="opt.realloc-zero-bytes-frees" xreflabel="--realloc-zero-bytes-frees">
+    <term>
+      <option><![CDATA[--realloc-zero-bytes-frees=yes|no [default: yes for glibc no otherwise] ]]></option>
+    </term>
+    <listitem>
+      <para>The behaviour of <computeroutput>realloc()</computeroutput> is
+      implementation defined (in C17, in C23 it is likely to become
+      undefined). Valgrind tries to work in the same way as the
+      underlying system and C runtime library that it was configured and built on.
+      However, if you use a different C runtime library then this default may be wrong.
+      If the value is <option>yes</option> then <varname>realloc</varname> will
+      deallocate the memory and return NULL. If the value is <option>no</option> then
+      <varname>realloc</varname> will not deallocate the memory and
+      the size will be handled as though it were one byte.</para>
+      <para>As an example, if you use Valgrind installed via a package on a
+      Linux distro using GNU libc but link your test executable with musl libc or
+      the JEMalloc library then consider using
+      <computeroutput>--realloc-zero-bytes-frees=no</computeroutput>.
+      </para>
+      <para>Address Sanitizer has a similar and even wordier option
+      <computeroutput>allocator_frees_and_returns_null_on_realloc_zero</computeroutput>.
       </para>
     </listitem>
   </varlistentry>
@@ -1963,7 +2018,7 @@ need to use them.</para>
       startup and makes it use more memory (typically for each inlined
       piece of code, 6 words and space for the function name), but it
       results in more descriptive stacktraces.  Currently,
-      this functionality is enabled by default only for Linux,
+      this functionality is enabled by default only for Linux, FreeBSD,
       Android and Solaris targets and only for the tools Memcheck, Massif,
       Helgrind and DRD.  Here is an example of some stacktraces with
       <option>--read-inline-info=no</option>:
@@ -2093,7 +2148,8 @@ need to use them.</para>
       <option><![CDATA[--run-libc-freeres=<yes|no> [default: yes] ]]></option>
     </term>
     <listitem>
-      <para>This option is only relevant when running Valgrind on Linux.</para>
+      <para>This option is only relevant when running Valgrind on Linux with
+      GNU libc.</para>
 
       <para>The GNU C library (<function>libc.so</function>), which is
       used by all programs, may allocate memory for its own uses.
@@ -2127,8 +2183,8 @@ need to use them.</para>
       <option><![CDATA[--run-cxx-freeres=<yes|no> [default: yes] ]]></option>
     </term>
     <listitem>
-      <para>This option is only relevant when running Valgrind on Linux
-            or Solaris C++ programs.</para>
+      <para>This option is only relevant when running Valgrind on Linux,
+      FreeBSD or Solaris C++ programs using libstdc++.</para>
 
       <para>The GNU Standard C++ library (<function>libstdc++.so</function>),
       which is used by all C++ programs compiled with g++, may allocate memory
@@ -2201,7 +2257,7 @@ need to use them.</para>
         <listitem>
           <para><option>no-nptl-pthread-stackcache: </option>
             This hint is only relevant when running Valgrind on Linux;
-            it is ignored on Solaris and Mac OS X.</para>
+            it is ignored on FreeBSD, Solaris and macOS.</para>
 
           <para>The GNU glibc pthread library
             (<function>libpthread.so</function>), which is used by
@@ -2276,6 +2332,23 @@ need to use them.</para>
           </para>
         </listitem>
       </itemizedlist>
+    </listitem>
+  </varlistentry>
+
+  <varlistentry id="opt.scheduling-quantum" xreflabel="--scheduling-quantum">
+    <term>
+      <option><![CDATA[--scheduling-quantum=<number>   [default: 100000] ]]></option>
+    </term>
+    <listitem>
+      <para>The <option>--scheduling-quantum</option> option controls
+      the maximum number of basic blocks executed by a thread before releasing
+      the lock used by Valgrind to serialise thread execution.  Smaller values
+      give finer interleaving but increases the scheduling overhead. Finer
+      interleaving can be useful to reproduce race conditions with helgrind or
+      DRD.  For more details about the Valgrind thread serialisation scheme and
+      its impact on performance and thread scheduling, see
+      <xref linkend="&vg-pthreads-perf-sched-id;"/>.
+      </para>
     </listitem>
   </varlistentry>
 
@@ -2629,13 +2702,6 @@ need to use them.</para>
           option <option>--soname-synonyms=somalloc=NONE</option>.
           Note that a NONE pattern will match the main executable and
           any shared library having no soname. </para>
-        </listitem>
-
-        <listitem>
-          <para>To run a "default" Firefox build for Linux, in which
-          JEMalloc is linked in to the main executable,
-          use <option>--soname-synonyms=somalloc=NONE</option>.
-          </para>
         </listitem>
 
 	<listitem>

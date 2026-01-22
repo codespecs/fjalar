@@ -33,6 +33,7 @@
 #include <string.h>
 #include <strings.h>
 #include <fcntl.h>
+#include "../../config.h"
 
 #ifndef HAVE_GNU_LD
 #define _sys_nerr	sys_nerr
@@ -264,8 +265,7 @@ test_stpcpy (void)
   SIMPLE_COPY(stpcpy, 16, "6666666666666666", 59);
 }
 
-// DDD: better done by testing for the function.
-#if !defined(__APPLE__) && !defined(__FreeBSD__)
+#if defined(HAVE_STPNCPY)
 static void
 test_stpncpy (void)
 {
@@ -466,8 +466,7 @@ test_strchr (void)
    }
 }
 
-// DDD: better done by testing for the function.
-#if !defined(__APPLE__) && !defined(__FreeBSD__)
+#if defined(HAVE_STRCHRNUL)
 static void
 test_strchrnul (void)
 {
@@ -578,8 +577,7 @@ test_strrchr (void)
    }
 }
 
-// DDD: better done by testing for the function.
-#if !defined(__APPLE__) && !defined(__sun) && !defined(__FreeBSD__)
+#if defined(HAVE_MEMRCHR)
 static void
 test_memrchr (void)
 {
@@ -981,14 +979,14 @@ static void
 test_memcmp (void)
 {
   it = "memcmp";
-  check(memcmp("a", "a", 1) == 0, 1);		/* Identity. */
-  check(memcmp("abc", "abc", 3) == 0, 2);	/* Multicharacter. */
-  check(memcmp("abcd", "abce", 4) < 0, 3);	/* Honestly unequal. */
-  check(memcmp("abce", "abcd", 4) > 0, 4);
-  check(memcmp("alph", "beta", 4) < 0, 5);
-  check(memcmp("a\203", "a\003", 2) > 0, 6);
-  check(memcmp("abce", "abcd", 3) == 0, 7);	/* Count limited. */
-  check(memcmp("abc", "def", 0) == 0, 8);	/* Zero count. */
+  check((memcmp)("a", "a", 1) == 0, 1);		/* Identity. */
+  check((memcmp)("abc", "abc", 3) == 0, 2);	/* Multicharacter. */
+  check((memcmp)("abcd", "abce", 4) < 0, 3);	/* Honestly unequal. */
+  check((memcmp)("abce", "abcd", 4) > 0, 4);
+  check((memcmp)("alph", "beta", 4) < 0, 5);
+  check((memcmp)("a\203", "a\003", 2) > 0, 6);
+  check((memcmp)("abce", "abcd", 3) == 0, 7);	/* Count limited. */
+  check((memcmp)("abc", "def", 0) == 0, 8);	/* Zero count. */
 }
 
 static void
@@ -1071,7 +1069,7 @@ test_memcpy (void)
     }
 }
 
-#if !defined(__APPLE__) && !defined(__sun) && !defined(__FreeBSD__)
+#if defined(HAVE_MEMPCPY)
 static void
 test_mempcpy (void)
 {
@@ -1287,7 +1285,7 @@ test_bzero (void)
   equal(one, "abcdef", 4);		/* Zero-length copy. */
 }
 
-#if !defined(__APPLE__) && !defined(__FreeBSD__)
+#if defined(HAVE_STRNDUP)
 static void
 test_strndup (void)
 {
@@ -1422,7 +1420,7 @@ main (void)
   /* A closely related function is stpcpy.  */
   test_stpcpy ();
 
-#if !defined(__APPLE__) && !defined(__FreeBSD__)
+#if defined(HAVE_STPNCPY)
   /* stpncpy.  */
   test_stpncpy ();
 #endif
@@ -1445,7 +1443,7 @@ main (void)
   /* strchr.  */
   test_strchr ();
 
-# if !defined(__APPLE__) && !defined(__FreeBSD__)
+# if defined(HAVE_STRCHRNUL)
   /* strchrnul.  */
   test_strchrnul ();
 # endif
@@ -1461,7 +1459,7 @@ main (void)
   /* strrchr.  */
   test_strrchr ();
 
-# if !defined(__APPLE__) && !defined(__sun) && !defined(__FreeBSD__)
+# if defined(HAVE_MEMRCHR)
   /* memrchr.  */
   test_memrchr ();
 # endif
@@ -1502,7 +1500,7 @@ main (void)
   /* memmove - must work on overlap.  */
   test_memmove ();
 
-# if !defined(__APPLE__) && !defined(__sun) && !defined(__FreeBSD__)
+# if defined(HAVE_MEMPCPY)
   /* mempcpy */
   test_mempcpy ();
 # endif
@@ -1522,7 +1520,7 @@ main (void)
   /* bcmp - somewhat like memcmp.  */
   test_bcmp ();
 
-#if !defined(__APPLE__) && !defined(__FreeBSD__)
+#if defined(HAVE_STRNDUP)
   /* strndup.  */
   test_strndup ();
 #endif

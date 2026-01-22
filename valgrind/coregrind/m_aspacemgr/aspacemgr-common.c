@@ -177,7 +177,7 @@ SysRes VG_(am_do_mmap_NO_NOTIFY)( Addr start, SizeT length, UInt prot,
       fd = -1;
    res = VG_(do_syscall7)(__NR_mmap, (UWord)start, length,
 			  prot, flags, fd, offset, offset >> 32ul);
-#  elif defined(VGP_amd64_freebsd)
+#  elif defined(VGP_amd64_freebsd) || defined(VGP_arm64_freebsd)
    if ((flags & VKI_MAP_ANONYMOUS) && fd == 0)
       fd = -1;
    res = VG_(do_syscall6)(__NR_mmap, (UWord)start, length,
@@ -223,7 +223,7 @@ SysRes ML_(am_do_extend_mapping_NO_NOTIFY)(
    /* Extend the mapping old_addr .. old_addr+old_len-1 to have length
       new_len, WITHOUT moving it.  If it can't be extended in place,
       fail. */
-#  if defined(VGO_linux)
+#  if defined(VGO_linux) || defined(VGO_solaris)
    return VG_(do_syscall5)(
              __NR_mremap, 
              old_addr, old_len, new_len, 
@@ -244,7 +244,7 @@ SysRes ML_(am_do_relocate_nooverlap_mapping_NO_NOTIFY)(
       location and with the new length.  Only needs to handle the case
       where the two areas do not overlap, neither length is zero, and
       all args are page aligned. */
-#  if defined(VGO_linux)
+#  if defined(VGO_linux) || defined(VGO_solaris)
    return VG_(do_syscall5)(
              __NR_mremap, 
              old_addr, old_len, new_len, 
@@ -386,10 +386,11 @@ Bool ML_(am_get_fd_d_i_m)( Int fd,
    }
    return False;
 #  elif defined(VGO_freebsd)
+#if (FREEBSD_VERS < FREEBSD_12)
    struct vki_freebsd11_stat buf;
-#if (FREEBSD_VERS >= FREEBSD_12)
-   SysRes res = VG_(do_syscall2)(__NR_freebsd11_fstat, fd, (UWord)&buf);
+   SysRes res = VG_(do_syscall2)(__NR_fstat, fd, (UWord)&buf);
 #else
+   struct vki_stat buf;
    SysRes res = VG_(do_syscall2)(__NR_fstat, fd, (UWord)&buf);
 #endif
    if (!sr_isError(res)) {
@@ -422,6 +423,9 @@ Bool ML_(am_resolve_filename) ( Int fd, /*OUT*/HChar* buf, Int nbuf )
       return False;
 
 #elif defined(VGO_freebsd)
+
+
+#if (1)
    Int mib[4];
    SysRes sres;
    vki_size_t len;
@@ -444,15 +448,29 @@ Bool ML_(am_resolve_filename) ( Int fd, /*OUT*/HChar* buf, Int nbuf )
    eb = filedesc_buf + len;
    while (bp < eb) {
       kf = (struct vki_kinfo_file *)bp;
-      if (kf->kf_fd == fd)
+      if (kf->vki_kf_fd == fd)
          break;
-      bp += kf->kf_structsize;
+      bp += kf->vki_kf_structsize;
    }
-   if (bp >= eb || *kf->kf_path == '\0')
+   if (bp >= eb || *kf->vki_kf_path == '\0')
      VG_(strncpy)( buf, "[unknown]", nbuf );
    else
-     VG_(strncpy)( buf, kf->kf_path, nbuf );
+     VG_(strncpy)( buf, kf->vki_kf_path, nbuf );
    return True;
+#else
+   // PJF it will be a relief to get rid of the above bit of ugliness
+   struct vki_kinfo_file kinfo_file;
+   kinfo_file.vki_kf_structsize = VKI_KINFO_FILE_SIZE;
+   if (0 == ML_(am_fcntl) ( fd, VKI_F_KINFO, (Addr)&kinfo_file )) {
+      if (nbuf > 0) {
+         VG_(strncpy)( buf, kinfo_file.vki_kf_path, nbuf < VKI_PATH_MAX ? nbuf : VKI_PATH_MAX );
+         buf[nbuf-1] = 0;
+      }
+      if (buf[0] == '/') return True;
+   }
+   return False;
+#endif
+
 #elif defined(VGO_darwin)
    HChar tmp[VKI_MAXPATHLEN+1];
    if (0 == ML_(am_fcntl)(fd, VKI_F_GETPATH, (UWord)tmp)) {

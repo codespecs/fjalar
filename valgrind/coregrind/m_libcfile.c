@@ -57,13 +57,25 @@ Int VG_(safe_fd)(Int oldfd)
    vg_assert(VG_(fd_hard_limit) != -1);
 
    newfd = VG_(fcntl)(oldfd, VKI_F_DUPFD, VG_(fd_hard_limit));
-   if (newfd != -1)
-      VG_(close)(oldfd);
+
+   if (newfd == -1) {
+      VG_(debugLog)(0, "libcfile", "Valgrind: FATAL: "
+                       "Private file creation failed.\n"
+                       "   The current file descriptor limit is %d.\n"
+                       "   If you are running in Docker please consider\n"
+                       "   lowering this limit with the shell built-in limit command.\n",
+                       VG_(fd_hard_limit));
+      VG_(debugLog)(0, "libcfile", "Exiting now.\n");
+      VG_(exit)(1);
+   }
+
+   vg_assert(newfd >= VG_(fd_hard_limit));
+
+   VG_(close)(oldfd);
 
    /* Set the close-on-exec flag for this fd. */
    VG_(fcntl)(newfd, VKI_F_SETFD, VKI_FD_CLOEXEC);
 
-   vg_assert(newfd >= VG_(fd_hard_limit));
    return newfd;
 }
 
@@ -119,10 +131,13 @@ Bool VG_(resolve_filename) ( Int fd, const HChar** result )
       return False;
 
 #elif defined(VGO_freebsd)
+
+#if (1)
    Int mib[4];
    SysRes sres;
    vki_size_t len;
-   Char *bp, *eb;
+   Char *bp;
+   Char *eb;
    struct vki_kinfo_file *kf;
    static HChar *buf = NULL;
    static SizeT  bufsiz = 0;
@@ -148,16 +163,38 @@ Bool VG_(resolve_filename) ( Int fd, const HChar** result )
    eb = filedesc_buf + len;
    while (bp < eb) {
       kf = (struct vki_kinfo_file *)bp;
-      if (kf->kf_fd == fd)
+      if (kf->vki_kf_fd == fd) {
          break;
-      bp += kf->kf_structsize;
+      }
+      bp += kf->vki_kf_structsize;
    }
-   if (bp >= eb || *kf->kf_path == '\0')
+   if (bp >= eb || *kf->vki_kf_path == '\0') {
      VG_(strncpy)( buf, "[unknown]", bufsiz );
-   else
-     VG_(strncpy)( buf, kf->kf_path, bufsiz );
+   } else {
+     VG_(strncpy)( buf, kf->vki_kf_path, bufsiz );
+   }
    *result = buf;
    return True;
+#else
+   // PJF it will be a relief to get rid of the above bit of ugliness
+   // however it does not seem to have the same functionality
+   // regarding pipes where it profuces just an empty string
+   struct vki_kinfo_file kinfo_file;
+   kinfo_file.vki_kf_structsize = VKI_KINFO_FILE_SIZE;
+   if (0 == VG_(fcntl) ( fd, VKI_F_KINFO, (Addr)&kinfo_file )) {
+      static HChar *buf = NULL;
+
+      if (buf == NULL)
+         buf = VG_(malloc)("resolve_filename", VKI_PATH_MAX);
+
+      *result = buf;
+      VG_(strcpy)( buf, kinfo_file.vki_kf_path );
+      if (buf[0] == '/') return True;
+   }
+   *result = NULL;
+   return False;
+#endif
+
 #  elif defined(VGO_darwin)
    HChar tmp[VKI_MAXPATHLEN+1];
    if (0 == VG_(fcntl)(fd, VKI_F_GETPATH, (UWord)tmp)) {
@@ -181,12 +218,15 @@ Bool VG_(resolve_filename) ( Int fd, const HChar** result )
 
 #if defined(VGO_freebsd)
 
+
+#if (1)
 /* This should only be called after a successful call to
  * Bool VG_(resolve_filename) ( Int fd, const HChar** result )
  * so that filedesc_buf is still valid for fd */
 Bool VG_(resolve_filemode) ( Int fd, Int * result )
 {
-   Char *bp, *eb;
+   Char *bp;
+   Char *eb;
    struct vki_kinfo_file *kf;
 
    /* Walk though the list. */
@@ -194,16 +234,31 @@ Bool VG_(resolve_filemode) ( Int fd, Int * result )
    eb = filedesc_buf + sizeof(filedesc_buf);
    while (bp < eb) {
       kf = (struct vki_kinfo_file *)bp;
-      if (kf->kf_fd == fd)
+      if (kf->vki_kf_fd == fd) {
          break;
-      bp += kf->kf_structsize;
+      }
+      bp += kf->vki_kf_structsize;
    }
-   if (bp >= eb)
+   if (bp >= eb) {
      *result = -1;
-   else
-     *result = kf->kf_flags;
+   } else {
+     *result = kf->vki_kf_flags;
+   }
    return True;
 }
+#else
+/* less ugly version, no dependency on resolve_filename */
+Bool VG_(resolve_filemode) ( Int fd, Int * result )
+{
+   struct vki_kinfo_file kinfo_file;
+   kinfo_file.vki_kf_structsize = VKI_KINFO_FILE_SIZE;
+   if (0 == VG_(fcntl) ( fd, VKI_F_KINFO, (Addr)&kinfo_file )) {
+      *result = kinfo_file.vki_kf_flags;
+      return True;
+   }
+   return False;
+}
+#endif
 #endif
 
 
@@ -217,8 +272,13 @@ SysRes VG_(mknod) ( const HChar* pathname, Int mode, UWord dev )
    SysRes res = VG_(do_syscall3)(__NR_mknod,
                                  (UWord)pathname, mode, dev);
 #  elif defined(VGO_freebsd)
+#if (FREEBSD_VERS < FREEBSD_12)
    SysRes res = VG_(do_syscall3)(__NR_freebsd11_mknod,
                                  (UWord)pathname, mode, dev);
+#else
+   SysRes res = VG_(do_syscall4)(__NR_mknodat, VKI_AT_FDCWD,
+                                 (UWord)pathname, mode, dev);
+#endif
 #  elif defined(VGO_solaris)
    SysRes res = VG_(do_syscall4)(__NR_mknodat,
                                  VKI_AT_FDCWD, (UWord)pathname, mode, dev);
@@ -368,7 +428,7 @@ Int VG_(pipe) ( Int fd[2] )
 
 Off64T VG_(lseek) ( Int fd, Off64T offset, Int whence )
 {
-#  if defined(VGO_linux) || defined(VGP_amd64_darwin) || defined(VGP_amd64_freebsd)
+#  if defined(VGO_linux) || defined(VGP_amd64_darwin) || defined(VGP_amd64_freebsd) || defined(VGP_arm64_freebsd)
 #  if defined(__NR__llseek)
    Off64T result;
    SysRes res = VG_(do_syscall5)(__NR__llseek, fd,
@@ -513,14 +573,16 @@ SysRes VG_(stat) ( const HChar* file_name, struct vg_stat* vgbuf )
    }
 #  elif defined(VGO_freebsd)
    {
+#if (FREEBSD_VERS < FREEBSD_12)
       struct vki_freebsd11_stat buf;
-#if (FREEBSD_VERS >= FREEBSD_12)
-      res = VG_(do_syscall2)(__NR_freebsd11_stat, (UWord)file_name, (UWord)&buf);
-#else
       res = VG_(do_syscall2)(__NR_stat, (UWord)file_name, (UWord)&buf);
+#else
+      struct vki_stat buf;
+      res = VG_(do_syscall4)(__NR_fstatat, VKI_AT_FDCWD, (UWord)file_name, (UWord)&buf, 0);
 #endif
-      if (!sr_isError(res))
+      if (!sr_isError(res)) {
          TRANSLATE_TO_vg_stat(vgbuf, &buf);
+      }
       return res;
    }
 #  else
@@ -588,10 +650,11 @@ Int VG_(fstat) ( Int fd, struct vg_stat* vgbuf )
    }
 #  elif defined(VGO_freebsd)
    {
+#if (FREEBSD_VERS < FREEBSD_12)
      struct vki_freebsd11_stat buf;
-#if (FREEBSD_VERS >= FREEBSD_12)
-     res = VG_(do_syscall2)(__NR_freebsd11_fstat, (RegWord)fd, (RegWord)(Addr)&buf);
+     res = VG_(do_syscall2)(__NR_fstat, (RegWord)fd, (RegWord)(Addr)&buf);
 #else
+      struct vki_stat buf;
      res = VG_(do_syscall2)(__NR_fstat, (RegWord)fd, (RegWord)(Addr)&buf);
 #endif
      if (!sr_isError(res)) {
@@ -603,6 +666,27 @@ Int VG_(fstat) ( Int fd, struct vg_stat* vgbuf )
 #    error Unknown OS
 #  endif
 }
+
+#if defined(VGO_freebsd)
+/* extend this to other OSes as and when needed */
+SysRes VG_(lstat) ( const HChar* file_name, struct vg_stat* vgbuf )
+{
+   SysRes res;
+   VG_(memset)(vgbuf, 0, sizeof(*vgbuf));
+
+#if (FREEBSD_VERS < FREEBSD_12)
+   struct vki_freebsd11_stat buf;
+   res = VG_(do_syscall2)(__NR_lstat, (UWord)file_name, (UWord)&buf);
+#else
+   struct vki_stat buf;
+   res = VG_(do_syscall4)(__NR_fstatat, VKI_AT_FDCWD, (UWord)file_name, (UWord)&buf, VKI_AT_SYMLINK_NOFOLLOW);
+#endif
+   if (!sr_isError(res)) {
+      TRANSLATE_TO_vg_stat(vgbuf, &buf);
+   }
+   return res;
+}
+#endif
 
 #undef TRANSLATE_TO_vg_stat
 #undef TRANSLATE_statx_TO_vg_stat
@@ -681,7 +765,11 @@ Int VG_(fcntl) ( Int fd, Int cmd, Addr arg )
 #  else
 #    error "Unknown OS"
 #  endif
-   return sr_isError(res) ? -1 : sr_Res(res);
+   if (sr_isError(res)) {
+      VG_(debugLog)(1, "VG_(fcntl)", "fcntl error %lu %s\n", sr_Err(res), VG_(strerror)(sr_Err(res)));
+      return -1;
+   }
+   return (Int)sr_Res(res);
 }
 
 // RUDD - OK?
@@ -1061,7 +1149,7 @@ SysRes VG_(pread) ( Int fd, void* buf, Int count, OffT offset )
       || defined(VGP_mips64_linux) || defined(VGP_arm64_linux)
    res = VG_(do_syscall4)(__NR_pread64, fd, (UWord)buf, count, offset);
    return res;
-#  elif defined(VGP_amd64_freebsd)
+#  elif defined(VGP_amd64_freebsd) || defined(VGP_arm64_freebsd)
    vg_assert(sizeof(OffT) == 8);
    res = VG_(do_syscall4)(__NR_pread, fd, (UWord)buf, count, offset);
    return res;
@@ -1701,6 +1789,60 @@ const HChar *VG_(dirname)(const HChar *path)
 
    return buf;
 }
+
+#if defined(VGO_freebsd)
+/*
+ * I did look at nicking this from FreeBSD, it's fairly easy to port
+ * but I was put off by the copyright and 3-clause licence
+ * Then I looked at nicking it from glibc but that is full of
+ * macros private functions and conditions for Windows.
+ * So I gave up as it is only for FreeBSD 11 and 12.
+ *
+ * It is somewhat hard-coded for sysctl_kern_proc_pathname
+ * and PRE(sys___sysctl) assuming resolved has
+ * VKI_PATH_MAX space.
+ */
+Bool VG_(realpath)(const HChar *path, HChar *resolved)
+{
+   vg_assert(path);
+   vg_assert(resolved);
+#if (FREEBSD_VERS >= FREEBSD_13_0)
+   return !sr_isError(VG_(do_syscall5)(__NR___realpathat, VKI_AT_FDCWD, (RegWord)path, (RegWord)resolved, VKI_PATH_MAX, 0));
+#else
+   // poor man's realpath
+   const HChar *resolved_name;
+   HChar tmp[VKI_PATH_MAX];
+
+   struct vg_stat statbuf;
+   SysRes res = VG_(lstat)(path, &statbuf);
+
+   if (sr_isError(res)) {
+      return False;
+   }
+
+   if (VKI_S_ISLNK(statbuf.mode)) {
+      SizeT link_len = VG_(readlink)(path, tmp, VKI_PATH_MAX);
+      tmp[link_len] = '\0';
+      resolved_name = tmp;
+   } else {
+      // not a link
+      resolved_name = path;
+   }
+
+   if (resolved_name[0] != '/') {
+      // relative path
+      if (resolved_name[0] == '.' && resolved_name[1] == '/') {
+         resolved_name += 2;
+      }
+      VG_(snprintf)(resolved, VKI_PATH_MAX, "%s/%s", VG_(get_startup_wd)(), resolved_name);
+   } else {
+      VG_(snprintf)(resolved, VKI_PATH_MAX, "%s", resolved_name);
+   }
+
+   return True;
+#endif
+}
+#endif
 
 
 /*--------------------------------------------------------------------*/
