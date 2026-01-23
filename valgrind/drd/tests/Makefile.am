@@ -4,19 +4,21 @@ include $(top_srcdir)/Makefile.tool-tests.am
 dist_noinst_SCRIPTS =		    \
 	compare_error_count_with    \
 	filter_annotate_barrier_xml \
-	filter_error_count	    \
-	filter_error_summary	    \
 	filter_lambda               \
-	filter_stderr               \
 	filter_stderr_and_thread_no \
-	filter_stderr_and_thread_no_and_offset \
 	filter_stderr_solaris       \
-	filter_thread_no	    \
 	filter_thread_name_xml      \
-	filter_xml_and_thread_no    \
 	run_openmp_test             \
 	supported_libpthread	    \
 	supported_sem_init
+
+noinst_SCRIPTS = \
+	filter_error_count \
+	filter_error_summary \
+	filter_stderr \
+	filter_stderr_and_thread_no_and_offset \
+	filter_thread_no \
+	filter_xml_and_thread_no
 
 noinst_HEADERS =                                    \
 	tsan_thread_wrappers_pthread.h		    \
@@ -68,11 +70,15 @@ EXTRA_DIST =                                        \
 	annotate_ignore_write2.stderr.exp	    \
 	annotate_ignore_write2.stderr.exp-solaris   \
 	annotate_ignore_write2.vgtest		    \
+	annotate_trace_memory.stderr.exp-arm        \
 	annotate_trace_memory.stderr.exp-32bit	    \
+	annotate_trace_memory.stderr.exp-32bit-clang \
 	annotate_trace_memory.stderr.exp-64bit	    \
-	annotate_trace_memory.stderr.exp-mips32	   \
+	annotate_trace_memory.stderr.exp-mips32	    \
 	annotate_trace_memory.vgtest		    \
+	annotate_trace_memory_xml.stderr.exp-arm    \
 	annotate_trace_memory_xml.stderr.exp-32bit  \
+	annotate_trace_memory_xml.stderr.exp-32bit-clang \
 	annotate_trace_memory_xml.stderr.exp-64bit  \
 	annotate_trace_memory_xml.stderr.exp-mips32 \
 	annotate_trace_memory_xml.vgtest	    \
@@ -85,11 +91,13 @@ EXTRA_DIST =                                        \
 	bug322621.vgtest			    \
 	bug322621.stderr.exp			    \
 	bar_bad.stderr.exp			    \
+	bar_bad.stderr.exp-no-barrier		    \
 	bar_bad.stderr.exp-nohang		    \
 	bar_bad.stderr.exp-solaris		    \
 	bar_bad.stderr.exp-freebsd		    \
 	bar_bad.vgtest				    \
 	bar_bad_xml.stderr.exp			    \
+	bar_bad_xml.stderr.exp-no-barrier	    \
 	bar_bad_xml.stderr.exp-nohang		    \
 	bar_bad_xml.stderr.exp-solaris		    \
 	bar_bad_xml.stderr.exp-freebsd		    \
@@ -150,6 +158,8 @@ EXTRA_DIST =                                        \
 	hold_lock_1.vgtest                          \
 	hold_lock_2.stderr.exp                      \
 	hold_lock_2.vgtest                          \
+	getaddrinfo.stderr.exp                      \
+	getaddrinfo.vgtest                          \
 	linuxthreads_det.stderr.exp                 \
 	linuxthreads_det.stderr.exp-linuxthreads    \
 	linuxthreads_det.stdout.exp                 \
@@ -261,6 +271,9 @@ EXTRA_DIST =                                        \
 	sem_as_mutex3.stderr.exp-mips32-be          \
 	sem_as_mutex3.stderr.exp-mips32-le          \
 	sem_as_mutex3.vgtest                        \
+	sem_clockwait_np.stderr.exp                 \
+	sem_clockwait_np.stdout.exp                 \
+	sem_clockwait_np.vgtest                     \
 	sem_open.stderr.exp                         \
 	sem_open.stderr.exp-mips32-be               \
 	sem_open.stderr.exp-mips32-le               \
@@ -345,6 +358,7 @@ EXTRA_DIST =                                        \
 	tc18_semabuse.vgtest                        \
 	tc19_shadowmem.stderr.exp-32bit             \
 	tc19_shadowmem.stderr.exp-32bit-BE          \
+	tc19_shadowmem.stderr.exp-32on64            \
 	tc19_shadowmem.stderr.exp-64bit             \
 	tc19_shadowmem.vgtest                       \
 	tc21_pthonce.stderr.exp                     \
@@ -361,6 +375,8 @@ EXTRA_DIST =                                        \
 	tc23_bogus_condwait.vgtest                  \
 	tc24_nonzero_sem.stderr.exp                 \
 	tc24_nonzero_sem.vgtest                     \
+	thrd_create.stderr.exp			    \
+	thrd_create.vgtest			    \
 	thread_name.stderr.exp			    \
 	thread_name.vgtest			    \
 	thread_name_xml.stderr.exp		    \
@@ -509,6 +525,10 @@ if HAVE_SWAPCONTEXT
 check_PROGRAMS += swapcontext
 endif
 
+if HAVE_THRD_CREATE
+check_PROGRAMS += thrd_create
+endif
+
 if !VGCONF_OS_IS_DARWIN
 check_PROGRAMS += sem_wait
 endif
@@ -524,7 +544,8 @@ AM_CXXFLAGS += $(AM_FLAG_M3264_PRI) @FLAG_W_EXTRA@ @FLAG_FALIGNED_NEW@ \
 
 LDADD = -lpthread
 
-
+annotate_sem_CFLAGS         = $(AM_CFLAGS) @FLAG_W_NO_UNUSED_BUT_SET_VARIABLE@
+annotate_rwlock_CFLAGS      = $(AM_CFLAGS) @FLAG_W_NO_UNUSED_BUT_SET_VARIABLE@
 bug322621_SOURCES           = bug322621.cpp
 condvar_SOURCES		    = condvar.cpp
 condvar_CXXFLAGS            = $(AM_CXXFLAGS) -std=c++0x
@@ -602,7 +623,7 @@ if HAVE_PTHREAD_BARRIER
 matinv_LDADD                = $(LDADD) -lm
 endif
 
-rwlock_test_CFLAGS          = $(AM_CFLAGS)
+rwlock_test_CFLAGS          = $(AM_CFLAGS) @FLAG_W_NO_UNUSED_BUT_SET_VARIABLE@
 if VGCONF_OS_IS_SOLARIS
 rwlock_test_CFLAGS          += -D__EXTENSIONS__
 endif
@@ -611,16 +632,17 @@ shared_timed_mutex_SOURCES  = shared_timed_mutex.cpp
 shared_timed_mutex_CXXFLAGS = $(AM_CXXFLAGS) -std=c++1y
 
 std_atomic_SOURCES          = std_atomic.cpp
-std_atomic_CXXFLAGS         = $(AM_CXXFLAGS) -std=c++0x -Wno-sign-compare
+std_atomic_CXXFLAGS         = $(AM_CXXFLAGS) -std=c++0x @FLAG_W_NO_SIGN_COMPARE@
 
 std_list_SOURCES            = std_list.cpp
-std_list_CXXFLAGS           = $(AM_CXXFLAGS) -std=c++0x -Wno-sign-compare
+std_list_CXXFLAGS           = $(AM_CXXFLAGS) -std=c++0x @FLAG_W_NO_SIGN_COMPARE@
 
 std_mutex_SOURCES           = std_mutex.cpp
-std_mutex_CXXFLAGS          = $(AM_CXXFLAGS) -std=c++0x -Wno-sign-compare
+std_mutex_CXXFLAGS          = $(AM_CXXFLAGS) -std=c++0x @FLAG_W_NO_SIGN_COMPARE@
+std_mutex_LDFLAGS           = -pthread
 
 std_string_SOURCES          = std_string.cpp
-std_string_CXXFLAGS         = $(AM_CXXFLAGS) -std=c++0x -Wno-sign-compare
+std_string_CXXFLAGS         = $(AM_CXXFLAGS) -std=c++0x @FLAG_W_NO_SIGN_COMPARE@
 
 # Note: -Wl,--no-as-needed is a workaround for
 # https://bugs.launchpad.net/ubuntu/+source/gcc-defaults/+bug/1228201
@@ -647,3 +669,8 @@ endif
 
 timed_mutex_SOURCES         = timed_mutex.cpp
 timed_mutex_CXXFLAGS        = $(AM_CXXFLAGS) -std=c++0x
+
+thrd_create_SOURCES	    = thrd_create.c
+if VGCONF_OS_IS_FREEBSD
+thrd_create_LDFLAGS          = -lstdthreads
+endif

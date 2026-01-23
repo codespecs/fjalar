@@ -4,6 +4,7 @@
 
 /* tinfl.c v1.11 - public domain inflate with zlib header parsing/adler32
    checking (inflate-only subset of miniz.c)
+   See "unlicense" statement at the end of this file.
 
    Rich Geldreich <richgel99@gmail.com>, last updated May 20, 2011
 
@@ -51,7 +52,6 @@ typedef ULong  mz_uint64;
 #define MINIZ_USE_UNALIGNED_LOADS_AND_STORES 1
 #endif
 
-#define MINIZ_LITTLE_ENDIAN       ( defined(VG_LITTLEENDIAN) )
 #define MINIZ_HAS_64BIT_REGISTERS ( VG_WORDSIZE == 8 )
 
 // Works around MSVC's spammy "warning C4127: conditional expression is
@@ -179,7 +179,7 @@ struct tinfl_decompressor_tag
 #define MZ_MIN(a,b) (((a)<(b))?(a):(b))
 #define MZ_CLEAR_OBJ(obj) VG_(memset)(&(obj), 0, sizeof(obj))
 
-#if MINIZ_USE_UNALIGNED_LOADS_AND_STORES && MINIZ_LITTLE_ENDIAN
+#if MINIZ_USE_UNALIGNED_LOADS_AND_STORES && defined(VG_LITTLEENDIAN)
   #define MZ_READ_LE16(p) *((const mz_uint16 *)(p))
   #define MZ_READ_LE32(p) *((const mz_uint32 *)(p))
 #else
@@ -595,3 +595,30 @@ int tinfl_decompress_mem_to_callback(const void *pIn_buf, SizeT *pIn_buf_size, t
 }
 
 #endif // #ifndef TINFL_HEADER_FILE_ONLY
+
+/* 
+  This is free and unencumbered software released into the public domain.
+
+  Anyone is free to copy, modify, publish, use, compile, sell, or
+  distribute this software, either in source code form or as a compiled
+  binary, for any purpose, commercial or non-commercial, and by any
+  means.
+
+  In jurisdictions that recognize copyright laws, the author or authors
+  of this software dedicate any and all copyright interest in the
+  software to the public domain. We make this dedication for the benefit
+  of the public at large and to the detriment of our heirs and
+  successors. We intend this dedication to be an overt act of
+  relinquishment in perpetuity of all present and future rights to this
+  software under copyright law.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+  IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+  OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+  ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+  OTHER DEALINGS IN THE SOFTWARE.
+
+  For more information, please refer to <http://unlicense.org/>
+*/

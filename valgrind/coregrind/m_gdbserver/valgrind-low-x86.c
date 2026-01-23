@@ -104,12 +104,7 @@ CORE_ADDR get_pc (void)
 static
 void set_pc (CORE_ADDR newpc)
 {
-   Bool mod;
-   supply_register_by_name ("eip", &newpc, &mod);
-   if (mod)
-      dlog(1, "set pc to %p\n", C2v (newpc));
-   else
-      dlog(1, "set pc not changed %p\n", C2v (newpc));
+   supply_register_by_name ("eip", &newpc);
 }
 
 /* store registers in the guest state (gdbserver_to_valgrind)
@@ -278,8 +273,8 @@ static CORE_ADDR** target_get_dtv (ThreadState *tst)
 
 static struct valgrind_target_ops low_target = {
    num_regs,
-   regs,
    4, //ESP
+   regs,
    transfer_register,
    get_pc,
    set_pc,

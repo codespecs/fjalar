@@ -1,12 +1,16 @@
 
 include $(top_srcdir)/Makefile.tool-tests.am
 
-dist_noinst_SCRIPTS = filter_stderr   \
+dist_noinst_SCRIPTS = \
 		      filter_stderr_solaris \
 		      filter_helgrind \
 		      filter_xml \
 		      filter_freebsd.awk \
-		      filter_stderr_freebsd
+		      filter_stderr_freebsd \
+		      filter_bug392331
+
+noinst_SCRIPTS = \
+	filter_stderr
 
 EXTRA_DIST = \
 	annotate_hbefore.vgtest annotate_hbefore.stdout.exp \
@@ -16,6 +20,11 @@ EXTRA_DIST = \
 	annotate_smart_pointer.vgtest annotate_smart_pointer.stdout.exp \
 		annotate_smart_pointer.stderr.exp \
 	bug322621.vgtest bug322621.stderr.exp \
+	bug327548.vgtest bug327548.stderr.exp \
+	bug392331.vgtest bug392331.stdout.exp bug392331.stderr.exp \
+	bug392331_supp.vgtest bug392331_supp.stdout.exp bug392331_supp.stderr.exp \
+	bug392331.supp \
+	bug484480.vgtest bug484480.stderr.exp bug484480.stdout.exp \
 	cond_init_destroy.vgtest cond_init_destroy.stderr.exp \
 	cond_timedwait_invalid.vgtest cond_timedwait_invalid.stdout.exp \
 		cond_timedwait_invalid.stderr.exp \
@@ -27,10 +36,12 @@ EXTRA_DIST = \
 	bar_trivial.vgtest bar_trivial.stdout.exp bar_trivial.stderr.exp \
 	free_is_write.vgtest free_is_write.stdout.exp \
 		free_is_write.stderr.exp \
+	getaddrinfo.vgtest getaddrinfo.stderr.exp \
 	hg01_all_ok.vgtest hg01_all_ok.stdout.exp hg01_all_ok.stderr.exp \
 	hg02_deadlock.vgtest hg02_deadlock.stdout.exp hg02_deadlock.stderr.exp \
 	hg03_inherit.vgtest hg03_inherit.stdout.exp hg03_inherit.stderr.exp \
 	hg04_race.vgtest hg04_race.stdout.exp hg04_race.stderr.exp \
+	hg04_race_h9.vgtest hg04_race_h9.stdout.exp hg04_race_h9.stderr.exp \
 	hg05_race2.vgtest hg05_race2.stdout.exp hg05_race2.stderr.exp \
 	hg06_readshared.vgtest hg06_readshared.stdout.exp \
 		hg06_readshared.stderr.exp \
@@ -52,8 +63,7 @@ EXTRA_DIST = \
 	pth_barrier2.vgtest pth_barrier2.stdout.exp pth_barrier2.stderr.exp \
 	pth_barrier3.vgtest pth_barrier3.stdout.exp pth_barrier3.stderr.exp \
 	pth_destroy_cond.vgtest \
-		pth_destroy_cond.stdout.exp \
-		pth_destroy_cond.stderr.exp pth_destroy_cond.stderr.exp2 \
+		pth_destroy_cond.stdout.exp pth_destroy_cond.stderr.exp \
 	pth_cond_destroy_busy.vgtest pth_cond_destroy_busy.stderr.exp \
 		pth_cond_destroy_busy.stderr.exp-ppc64 \
 		pth_cond_destroy_busy.stderr.exp-solaris \
@@ -62,6 +72,10 @@ EXTRA_DIST = \
 	pth_spinlock.vgtest pth_spinlock.stdout.exp pth_spinlock.stderr.exp \
 	rwlock_race.vgtest rwlock_race.stdout.exp rwlock_race.stderr.exp \
 	rwlock_test.vgtest rwlock_test.stdout.exp rwlock_test.stderr.exp \
+	sem_clockwait_np.vgtest sem_clockwait_np.stdout.exp \
+		sem_clockwait_np.stderr.exp \
+	sem_timedwait.vgtest sem_timedwait.stdout.exp sem_timedwait.stderr.exp \
+	shared_timed_mutex.vgtest shared_timed_mutex.stderr.exp \
 	shmem_abits.vgtest shmem_abits.stdout.exp shmem_abits.stderr.exp \
 	stackteardown.vgtest stackteardown.stdout.exp stackteardown.stderr.exp \
 	t2t_laog.vgtest t2t_laog.stdout.exp t2t_laog.stderr.exp \
@@ -130,7 +144,9 @@ EXTRA_DIST = \
 	tc24_nonzero_sem.vgtest tc24_nonzero_sem.stdout.exp \
 		tc24_nonzero_sem.stderr.exp \
 	tls_threads.vgtest tls_threads.stdout.exp \
-		tls_threads.stderr.exp
+		tls_threads.stderr.exp \
+	tls_threads2.vgtest tls_threads2.stderr.exp \
+	trylock.vgtest trylock.stderr.exp
 
 # Wrapper headers used by some check programs.
 noinst_HEADERS = safe-pthread.h safe-semaphore.h
@@ -139,6 +155,8 @@ noinst_HEADERS = safe-pthread.h safe-semaphore.h
 # should be conditionally compiled like tc20_verifywrap is.
 check_PROGRAMS = \
 	annotate_hbefore \
+	bug327548 \
+	bug484480 \
 	cond_init_destroy \
 	cond_timedwait_invalid \
 	cond_timedwait_test \
@@ -224,6 +242,19 @@ endif
 
 if HAVE_BUILTIN_ATOMIC
 check_PROGRAMS += annotate_rwlock
+annotate_rwlock_CFLAGS = $(AM_CFLAGS) @FLAG_W_NO_UNUSED_BUT_SET_VARIABLE@
+endif
+
+if HAVE_GETADDRINFO
+check_PROGRAMS += getaddrinfo
+endif
+
+if HAVE_SEM_CLOCKWAIT_NP
+check_PROGRAMS += sem_clockwait_np
+endif
+
+if HAVE_SEM_TIMEDWAIT
+check_PROGRAMS += sem_timedwait
 endif
 
 AM_CFLAGS   += $(AM_FLAG_M3264_PRI)
@@ -238,3 +269,9 @@ annotate_hbefore_CFLAGS = $(AM_CFLAGS)
 endif
 
 bug322621_SOURCES = bug322621.cpp
+if HAVE_CXX17
+check_PROGRAMS += bug392331
+bug392331_SOURCES = bug392331.cpp
+bug392331_CXXFLAGS = $(AM_CXXFLAGS) -std=c++17
+endif
+

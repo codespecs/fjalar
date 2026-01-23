@@ -44,8 +44,7 @@
      least significant mantissa bit is incorrect.  Fix: use the IR
      multiply-add IROps instead.
 
-   * FRINTA, FRINTN are kludged .. they just round to nearest.  No special
-     handling for the "ties" case.  FRINTX might be dubious too.
+   * FRINTX might be need updating to set the inexact computation FPSR flag
 
    * Ditto FCVTXN.  No idea what "round to odd" means.  This implementation
      just rounds to nearest.
@@ -2385,7 +2384,7 @@ Bool dbm_DecodeBitMasks ( /*OUT*/ULong* wmask, /*OUT*/ULong* tmask,
 
    vassert(len >= 1 && len <= 6);
    ULong levels = // (zeroes(6 - len) << (6-len)) | ones(len);
-                  (1 << len) - 1;
+                  (1UL << len) - 1;
    vassert(levels >= 1 && levels <= 63);
 
    if (immediate && ((imms & levels) == levels)) { 
@@ -2403,7 +2402,7 @@ Bool dbm_DecodeBitMasks ( /*OUT*/ULong* wmask, /*OUT*/ULong* tmask,
    /* Be careful of these (1ULL << (S+1)) - 1 expressions, and the
       same below with d.  S can be 63 in which case we have an out of
       range and hence undefined shift. */
-   vassert(S >= 0 && S <= 63);
+   vassert(S <= 63);
    vassert(esize >= (S+1));
    ULong elem_s = // Zeroes(esize-(S+1)):Ones(S+1)
                   //(1ULL << (S+1)) - 1;
@@ -2737,7 +2736,7 @@ Bool dis_ARM64_data_processing_immediate(/*MB_OUT*/DisResult* dres,
          }
       }
 
-      if (is64 && immS >= 0 && immS <= 62
+      if (is64 && immS <= 62
           && immR == immS + 1 && opc == BITS2(1,0)) {
          // 64-bit shift left
          UInt shift = 64 - immR;
@@ -2747,7 +2746,7 @@ Bool dis_ARM64_data_processing_immediate(/*MB_OUT*/DisResult* dres,
              nameIRegOrZR(is64, dd), nameIRegOrZR(is64, nn), shift);
          return True;
       }
-      if (!is64 && immS >= 0 && immS <= 30
+      if (!is64 && immS <= 30
           && immR == immS + 1 && opc == BITS2(1,0)) {
          // 32-bit shift left
          UInt shift = 32 - immR;
@@ -3654,7 +3653,7 @@ Bool dis_ARM64_data_processing_register(/*MB_OUT*/DisResult* dres,
       UInt sz    = INSN(11,10);
       UInt nn    = INSN(9,5);
       UInt dd    = INSN(4,0);
-      vassert(sz >= 0 && sz <= 3);
+      vassert(sz <= 3);
       if ((bitSF == 0 && sz <= BITS2(1,0))
           || (bitSF == 1 && sz == BITS2(1,1))) {
          UInt ix = (bitC == 1 ? 4 : 0) | sz;
@@ -3690,7 +3689,7 @@ Bool dis_ARM64_data_processing_register(/*MB_OUT*/DisResult* dres,
                vassert(0);
          }
 
-         vassert(ix >= 0 && ix <= 7);
+         vassert(ix <= 7);
 
          putIReg64orZR(
             dd,
@@ -4430,7 +4429,7 @@ void math_INTERLEAVE2_64( /*OUTx2*/ IRTemp* i0, IRTemp* i1,
       return;
    }
 
-   vassert(laneSzBlg2 >= 0 && laneSzBlg2 <= 2);
+   vassert(laneSzBlg2 <= 2);
    IROp doubler = Iop_INVALID, halver = Iop_INVALID;
    math_get_doubler_and_halver(&doubler, &halver, laneSzBlg2);
 
@@ -4461,7 +4460,7 @@ void math_INTERLEAVE3_64(
       return;
    }
 
-   vassert(laneSzBlg2 >= 0 && laneSzBlg2 <= 2);
+   vassert(laneSzBlg2 <= 2);
    IROp doubler = Iop_INVALID, halver = Iop_INVALID;
    math_get_doubler_and_halver(&doubler, &halver, laneSzBlg2);
 
@@ -4497,7 +4496,7 @@ void math_INTERLEAVE4_64(
       return;
    }
 
-   vassert(laneSzBlg2 >= 0 && laneSzBlg2 <= 2);
+   vassert(laneSzBlg2 <= 2);
    IROp doubler = Iop_INVALID, halver = Iop_INVALID;
    math_get_doubler_and_halver(&doubler, &halver, laneSzBlg2);
 
@@ -4543,7 +4542,7 @@ void math_DEINTERLEAVE2_64( /*OUTx2*/ IRTemp* u0, IRTemp* u1,
       return;
    }
 
-   vassert(laneSzBlg2 >= 0 && laneSzBlg2 <= 2);
+   vassert(laneSzBlg2 <= 2);
    IROp doubler = Iop_INVALID, halver = Iop_INVALID;
    math_get_doubler_and_halver(&doubler, &halver, laneSzBlg2);
 
@@ -4575,7 +4574,7 @@ void math_DEINTERLEAVE3_64(
       return;
    }
 
-   vassert(laneSzBlg2 >= 0 && laneSzBlg2 <= 2);
+   vassert(laneSzBlg2 <= 2);
    IROp doubler = Iop_INVALID, halver = Iop_INVALID;
    math_get_doubler_and_halver(&doubler, &halver, laneSzBlg2);
 
@@ -4611,7 +4610,7 @@ void math_DEINTERLEAVE4_64(
       return;
    }
 
-   vassert(laneSzBlg2 >= 0 && laneSzBlg2 <= 2);
+   vassert(laneSzBlg2 <= 2);
    IROp doubler = Iop_INVALID, halver = Iop_INVALID;
    math_get_doubler_and_halver(&doubler, &halver, laneSzBlg2);
 
@@ -8045,11 +8044,16 @@ static Bool AdvSIMDExpandImm ( /*OUT*/ULong* res,
       case 0:
          testimm8 = False; imm64 = Replicate32x2(imm8); break;
       case 1:
-         testimm8 = True; imm64 = Replicate32x2(imm8 << 8); break;
+         testimm8 = True; imm64 = Replicate32x2(imm8 << 8UL); break;
       case 2:
-         testimm8 = True; imm64 = Replicate32x2(imm8 << 16); break;
+         // Coverity is right but we want the overflow, Replicate32x2 expects
+         // (and asserts) that the top 32bits be zero so if we get rid of the
+         // overflow we would need to add a mask. So just let it overflow.
+         // coverity[OVERFLOW_BEFORE_WIDEN:FALSE]
+         testimm8 = True; imm64 = Replicate32x2(imm8 << 16UL); break;
       case 3:
-         testimm8 = True; imm64 = Replicate32x2(imm8 << 24); break;
+         // coverity[OVERFLOW_BEFORE_WIDEN:FALSE]
+         testimm8 = True; imm64 = Replicate32x2(imm8 << 24UL); break;
       case 4:
           testimm8 = False; imm64 = Replicate16x4(imm8); break;
       case 5:
@@ -8386,7 +8390,7 @@ static IRTemp math_FOLDV ( IRTemp src, IROp op )
 static IRTemp math_TBL_TBX ( IRTemp tab[4], UInt len, IRTemp src,
                              IRTemp oor_values )
 {
-   vassert(len >= 0 && len <= 3);
+   vassert(len <= 3);
 
    /* Generate some useful constants as concisely as possible. */
    IRTemp half15 = newTemp(Ity_I64);
@@ -8424,7 +8428,7 @@ static IRTemp math_TBL_TBX ( IRTemp tab[4], UInt len, IRTemp src,
 
    UInt tabent;
    for (tabent = 0; tabent <= len; tabent++) {
-      vassert(tabent >= 0 && tabent < 4);
+      vassert(tabent < 4);
       IRTemp bias = newTempV128();
       assign(bias,
              mkexpr(tabent == 0 ? allZero : allXX[tabent-1]));
@@ -9027,7 +9031,7 @@ void math_QSHL_IMM ( /*OUT*/IRTemp* res,
          /* Saturation has occurred if any of the shifted-out bits are
             different from the top bit of the original value. */
          UInt rshift = laneBits - 1 - shift;
-         vassert(rshift >= 0 && rshift < laneBits-1);
+         vassert(rshift < laneBits-1);
          /* qDiff1 is the shifted out bits, and the top bit of the original
             value, preceded by zeroes. */
          assign(*qDiff1, binop(mkVecSHRN(size), mkexpr(src), mkU8(rshift)));
@@ -9109,6 +9113,21 @@ IRTemp math_RHADD ( UInt size, Bool isU, IRTemp aa, IRTemp bb )
                 )
           )
    );
+   return res;
+}
+
+
+/* Generate IR to do {U,S}ADDLP */
+static
+IRTemp math_ADDLP ( UInt sizeNarrow, Bool isU, IRTemp src )
+{
+   IRTemp res = newTempV128();
+   assign(res,
+            binop(mkVecADD(sizeNarrow+1),
+                  mkexpr(math_WIDEN_EVEN_OR_ODD_LANES(
+                           isU, True/*fromOdd*/, sizeNarrow, mkexpr(src))),
+                  mkexpr(math_WIDEN_EVEN_OR_ODD_LANES(
+                           isU, False/*!fromOdd*/, sizeNarrow, mkexpr(src)))));
    return res;
 }
 
@@ -10339,7 +10358,7 @@ Bool dis_AdvSIMD_scalar_shift_by_imm(/*MB_OUT*/DisResult* dres, UInt insn)
    if (bitU == 0 && (immh & 8) == 8 && opcode == BITS5(0,1,0,1,0)) {
       /* -------- 0,1xxx,01010 SHL d_d_#imm -------- */
       UInt sh = immhb - 64;
-      vassert(sh >= 0 && sh < 64);
+      vassert(sh < 64);
       putQReg128(dd,
                  unop(Iop_ZeroHI64ofV128,
                       sh == 0 ? getQReg128(nn)
@@ -10351,7 +10370,7 @@ Bool dis_AdvSIMD_scalar_shift_by_imm(/*MB_OUT*/DisResult* dres, UInt insn)
    if (bitU == 1 && (immh & 8) == 8 && opcode == BITS5(0,1,0,1,0)) {
       /* -------- 1,1xxx,01010 SLI d_d_#imm -------- */
       UInt sh = immhb - 64;
-      vassert(sh >= 0 && sh < 64);
+      vassert(sh < 64);
       if (sh == 0) {
          putQReg128(dd, unop(Iop_ZeroHI64ofV128, getQReg128(nn)));
       } else {
@@ -10377,12 +10396,12 @@ Bool dis_AdvSIMD_scalar_shift_by_imm(/*MB_OUT*/DisResult* dres, UInt insn)
       UInt shift = 0;
       Bool ok    = getLaneInfo_IMMH_IMMB(&shift, &size, immh, immb);
       if (!ok) return False;
-      vassert(size >= 0 && size <= 3);
+      vassert(size <= 3);
       /* The shift encoding has opposite sign for the leftwards case.
          Adjust shift to compensate. */
       UInt lanebits = 8 << size;
       shift = lanebits - shift;
-      vassert(shift >= 0 && shift < lanebits);
+      vassert(shift < lanebits);
       const HChar* nm = NULL;
       /**/ if (bitU == 0 && opcode == BITS5(0,1,1,1,0)) nm = "sqshl";
       else if (bitU == 1 && opcode == BITS5(0,1,1,1,0)) nm = "uqshl";
@@ -10416,7 +10435,9 @@ Bool dis_AdvSIMD_scalar_shift_by_imm(/*MB_OUT*/DisResult* dres, UInt insn)
       UInt shift = 0;
       Bool ok    = getLaneInfo_IMMH_IMMB(&shift, &size, immh, immb);
       if (!ok || size == X11) return False;
-      vassert(size >= X00 && size <= X10);
+      // always true, size is unsigned int
+      //vassert(size >= X00);
+      vassert(size <= X10);
       vassert(shift >= 1 && shift <= (8 << size));
       const HChar* nm = "??";
       IROp op = Iop_INVALID;
@@ -10580,7 +10601,7 @@ Bool dis_AdvSIMD_scalar_three_different(/*MB_OUT*/DisResult* dres, UInt insn)
          case BITS4(1,0,1,1): ks = 2; break;
          default: vassert(0);
       }
-      vassert(ks >= 0 && ks <= 2);
+      vassert(ks <= 2);
       if (size == X00 || size == X11) return False;
       vassert(size <= 2);
       IRTemp vecN, vecM, vecD, res, sat1q, sat1n, sat2q, sat2n;
@@ -11529,7 +11550,7 @@ Bool dis_AdvSIMD_scalar_x_indexed_element(/*MB_OUT*/DisResult* dres, UInt insn)
          case BITS4(0,1,1,1): ks = 2; break;
          default: vassert(0);
       }
-      vassert(ks >= 0 && ks <= 2);
+      vassert(ks <= 2);
       UInt mm  = 32; // invalid
       UInt ix  = 16; // invalid
       switch (size) {
@@ -11687,7 +11708,7 @@ Bool dis_AdvSIMD_shift_by_immediate(/*MB_OUT*/DisResult* dres, UInt insn)
       Bool isAcc = opcode == BITS5(0,0,0,1,0);
       Bool ok    = getLaneInfo_IMMH_IMMB(&shift, &size, immh, immb);
       if (!ok || (bitQ == 0 && size == X11)) return False;
-      vassert(size >= 0 && size <= 3);
+      vassert(size <= 3);
       UInt lanebits = 8 << size;
       vassert(shift >= 1 && shift <= lanebits);
       IROp    op  = isU ? mkVecSHRN(size) : mkVecSARN(size);
@@ -11736,7 +11757,7 @@ Bool dis_AdvSIMD_shift_by_immediate(/*MB_OUT*/DisResult* dres, UInt insn)
       Bool isAcc = opcode == BITS5(0,0,1,1,0);
       Bool ok    = getLaneInfo_IMMH_IMMB(&shift, &size, immh, immb);
       if (!ok || (bitQ == 0 && size == X11)) return False;
-      vassert(size >= 0 && size <= 3);
+      vassert(size <= 3);
       UInt lanebits = 8 << size;
       vassert(shift >= 1 && shift <= lanebits);
       IROp    op   = isU ? mkVecRSHU(size) : mkVecRSHS(size);
@@ -11774,7 +11795,7 @@ Bool dis_AdvSIMD_shift_by_immediate(/*MB_OUT*/DisResult* dres, UInt insn)
       Bool isQ   = bitQ == 1;
       Bool ok    = getLaneInfo_IMMH_IMMB(&shift, &size, immh, immb);
       if (!ok || (bitQ == 0 && size == X11)) return False;
-      vassert(size >= 0 && size <= 3);
+      vassert(size <= 3);
       UInt lanebits = 8 << size;
       vassert(shift >= 1 && shift <= lanebits);
       IRExpr* src = getQReg128(nn);
@@ -11816,12 +11837,12 @@ Bool dis_AdvSIMD_shift_by_immediate(/*MB_OUT*/DisResult* dres, UInt insn)
       Bool isQ   = bitQ == 1;
       Bool ok    = getLaneInfo_IMMH_IMMB(&shift, &size, immh, immb);
       if (!ok || (bitQ == 0 && size == X11)) return False;
-      vassert(size >= 0 && size <= 3);
+      vassert(size <= 3);
       /* The shift encoding has opposite sign for the leftwards case.
          Adjust shift to compensate. */
       UInt lanebits = 8 << size;
       shift = lanebits - shift;
-      vassert(shift >= 0 && shift < lanebits);
+      vassert(shift < lanebits);
       IROp    op  = mkVecSHLN(size);
       IRExpr* src = getQReg128(nn);
       IRTemp  res = newTempV128();
@@ -12299,7 +12320,7 @@ Bool dis_AdvSIMD_three_different(/*MB_OUT*/DisResult* dres, UInt insn)
          case BITS4(1,0,1,0): ks = 2; break;
          default: vassert(0);
       }
-      vassert(ks >= 0 && ks <= 2);
+      vassert(ks <= 2);
       if (size == X11) return False;
       vassert(size <= 2);
       Bool   isU  = bitU == 1;
@@ -12336,7 +12357,7 @@ Bool dis_AdvSIMD_three_different(/*MB_OUT*/DisResult* dres, UInt insn)
          case BITS4(1,0,1,1): ks = 2; break;
          default: vassert(0);
       }
-      vassert(ks >= 0 && ks <= 2);
+      vassert(ks <= 2);
       if (size == X00 || size == X11) return False;
       vassert(size <= 2);
       IRTemp vecN, vecM, vecD, res, sat1q, sat1n, sat2q, sat2n;
@@ -13406,12 +13427,7 @@ Bool dis_AdvSIMD_two_reg_misc(/*MB_OUT*/DisResult* dres, UInt insn)
       IRTemp sum   = newTempV128();
       IRTemp res   = newTempV128();
       assign(src, getQReg128(nn));
-      assign(sum,
-             binop(mkVecADD(size+1),
-                   mkexpr(math_WIDEN_EVEN_OR_ODD_LANES(
-                             isU, True/*fromOdd*/, size, mkexpr(src))),
-                   mkexpr(math_WIDEN_EVEN_OR_ODD_LANES(
-                             isU, False/*!fromOdd*/, size, mkexpr(src)))));
+      sum = math_ADDLP(size, isU, src);
       assign(res, isACC ? binop(mkVecADD(size+1), mkexpr(sum), getQReg128(dd))
                         : mkexpr(sum));
       putQReg128(dd, math_MAYBE_ZERO_HI64(bitQ, res));
@@ -14253,7 +14269,7 @@ Bool dis_AdvSIMD_vector_x_indexed_elem(/*MB_OUT*/DisResult* dres, UInt insn)
          case BITS4(0,1,1,0): ks = 2; break;
          default: vassert(0);
       }
-      vassert(ks >= 0 && ks <= 2);
+      vassert(ks <= 2);
       Bool isU = bitU == 1;
       Bool is2 = bitQ == 1;
       UInt mm  = 32; // invalid
@@ -14305,7 +14321,7 @@ Bool dis_AdvSIMD_vector_x_indexed_elem(/*MB_OUT*/DisResult* dres, UInt insn)
          case BITS4(0,1,1,1): ks = 2; break;
          default: vassert(0);
       }
-      vassert(ks >= 0 && ks <= 2);
+      vassert(ks <= 2);
       Bool is2 = bitQ == 1;
       UInt mm  = 32; // invalid
       UInt ix  = 16; // invalid
@@ -15057,39 +15073,44 @@ Bool dis_AdvSIMD_fp_data_proc_1_source(/*MB_OUT*/DisResult* dres, UInt insn)
             001 +inf      (FRINTP)
             010 -inf      (FRINTM)
             011 zero      (FRINTZ)
-            000 tieeven   (FRINTN) -- !! FIXME KLUDGED !!
-            100 tieaway   (FRINTA) -- !! FIXME KLUDGED !!
+            000 tieeven   (FRINTN)
+            100 tieaway   (FRINTA)
             110 per FPCR + "exact = TRUE" (FRINTX)
             101 unallocated
       */
-      Bool    isD   = (ty & 1) == 1;
-      UInt    rm    = opcode & BITS6(0,0,0,1,1,1);
-      IRType  ity   = isD ? Ity_F64 : Ity_F32;
-      IRExpr* irrmE = NULL;
-      UChar   ch    = '?';
+      Bool    isD     = (ty & 1) == 1;
+      UInt    rm      = opcode & BITS6(0,0,0,1,1,1);
+      IRType  ity     = isD ? Ity_F64 : Ity_F32;
+      IRExpr* irrmE   = NULL;
+      UChar   ch      = '?';
+      IROp    op      = isD ? Iop_RoundF64toInt : Iop_RoundF32toInt;
+      Bool    isBinop = True;
       switch (rm) {
          case BITS3(0,1,1): ch = 'z'; irrmE = mkU32(Irrm_ZERO); break;
          case BITS3(0,1,0): ch = 'm'; irrmE = mkU32(Irrm_NegINF); break;
          case BITS3(0,0,1): ch = 'p'; irrmE = mkU32(Irrm_PosINF); break;
-         // The following is a kludge.  Should be: Irrm_NEAREST_TIE_AWAY_0
-         case BITS3(1,0,0): ch = 'a'; irrmE = mkU32(Irrm_NEAREST); break;
+         case BITS3(1,0,0): ch = 'a'; isBinop = False; op = isD ? Iop_RoundF64toIntA0 : Iop_RoundF32toIntA0; break;
          // I am unsure about the following, due to the "integral exact"
          // description in the manual.  What does it mean? (frintx, that is)
+         // PJF exact means that if the rounding can't be done without
+         // precision loss (dst numerically equal to src after the rounding)
+         // then an exception is raised / the IXC bit gets set in the FPSR
          case BITS3(1,1,0):
             ch = 'x'; irrmE = mkexpr(mk_get_IR_rounding_mode()); break;
          case BITS3(1,1,1):
             ch = 'i'; irrmE = mkexpr(mk_get_IR_rounding_mode()); break;
-         // The following is a kludge.  There's no Irrm_ value to represent
-         // this ("to nearest, with ties to even")
-         case BITS3(0,0,0): ch = 'n'; irrmE = mkU32(Irrm_NEAREST); break;
+         case BITS3(0,0,0): ch = 'n'; isBinop = False; op = isD ? Iop_RoundF64toIntE : Iop_RoundF32toIntE; break;
          default: break;
       }
-      if (irrmE) {
+      if (irrmE || !isBinop) {
          IRTemp src = newTemp(ity);
          IRTemp dst = newTemp(ity);
          assign(src, getQRegLO(nn, ity));
-         assign(dst, binop(isD ? Iop_RoundF64toInt : Iop_RoundF32toInt,
-                           irrmE, mkexpr(src)));
+         if (isBinop) {
+            assign(dst, binop(op, irrmE, mkexpr(src)));
+         } else {
+             assign(dst, unop(op, mkexpr(src)));
+         }
          putQReg128(dd, mkV128(0x0000));
          putQRegLO(dd, mkexpr(dst));
          DIP("frint%c %s, %s\n",
@@ -15693,6 +15714,91 @@ Bool dis_AdvSIMD_fp_to_from_int_conv(/*MB_OUT*/DisResult* dres, UInt insn)
 
 
 static
+Bool dis_AdvSIMD_dot_product(/*MB_OUT*/DisResult* dres, UInt insn)
+{
+   /* by element
+      31 30 29 28    23   21 20 15   11 10 9 4
+      0  Q  U  01111 size L  m  1110 H  0  n d
+      vector
+      31 30 29 28    23   21 20 15   11 10 9 4
+      0  Q  U  01110 size 0  m  1001 0  1  n d
+   */
+#  define INSN(_bMax,_bMin)  SLICE_UInt(insn, (_bMax), (_bMin))
+   if (INSN(31,31) != 0) {
+      return False;
+   }
+   UInt bitQ    = INSN(30,30);
+   UInt bitU    = INSN(29,29);
+   UInt opcode1 = INSN(28,24);
+   UInt size    = INSN(23,22);
+   UInt bitL    = INSN(21,21);
+   UInt mm      = INSN(20,16);
+   UInt opcode2 = INSN(15,12);
+   UInt bitH    = INSN(11,11);
+   UInt opcode3 = INSN(10,10);
+   UInt nn      = INSN(9,5);
+   UInt dd      = INSN(4,0);
+   UInt index   = (bitH << 1) + bitL;
+   vassert(index <= 3);
+
+   Bool byElement;
+   if (opcode1 == BITS5(0,1,1,1,1)
+       && opcode2 == BITS4(1,1,1,0)
+       && opcode3 == 0) {
+      byElement = True;
+   } else if (opcode1 == BITS5(0,1,1,1,0)
+       && opcode2 == BITS4(1,0,0,1)
+       && opcode3 == 1
+       && bitL == 0 && bitH == 0) {
+      byElement = False;
+   } else {
+      return False;
+   }
+
+   // '10' is the only valid size
+   if (size != X10) return False;
+
+   IRExpr* src1 = math_MAYBE_ZERO_HI64_fromE(bitQ, getQReg128(nn));
+   IRExpr* src2 = getQReg128(mm);
+   if (byElement) {
+      src2 = mkexpr(math_DUP_VEC_ELEM(src2, X10, index));
+   }
+
+   IROp mulOp = bitU ? Iop_Mull8Ux8 : Iop_Mull8Sx8;
+   IRTemp loProductSums = math_ADDLP(
+         X01, bitU, math_BINARY_WIDENING_V128(False, mulOp, src1, src2));
+   IRTemp hiProductSums = math_ADDLP(
+         X01, bitU, math_BINARY_WIDENING_V128(True, mulOp, src1, src2));
+
+   IRTemp res = newTempV128();
+   assign(res, binop(Iop_Add32x4,
+          mk_CatEvenLanes32x4(hiProductSums, loProductSums),
+          mk_CatOddLanes32x4(hiProductSums, loProductSums)));
+
+   // These instructions accumulate into the destination, but in non-q
+   // form the upper 64 bits get forced to 0
+   IRExpr* accVal = math_MAYBE_ZERO_HI64_fromE(bitQ, getQReg128(dd));
+   putQReg128(dd, binop(mkVecADD(size), mkexpr(res), accVal));
+
+   const HChar* nm = bitU ? "udot" : "sdot";
+   const HChar* destWidth = nameArr_Q_SZ(bitQ, size);
+   const HChar* srcWidth  = nameArr_Q_SZ(bitQ, X00);
+   if (byElement) {
+      DIP("%s v%u.%s, v%u.%s, v%u.4b[%u]\n", nm,
+         dd, destWidth,
+         nn, srcWidth, mm, index);
+   } else {
+      DIP("%s v%u.%s, v%u.%s, v%u.%s\n", nm,
+         dd, destWidth,
+         nn, srcWidth, mm, srcWidth);
+   }
+
+   return True;
+#  undef INSN
+}
+
+
+static
 Bool dis_ARM64_simd_and_fp(/*MB_OUT*/DisResult* dres, UInt insn,
                            const VexArchInfo* archinfo, Bool sigill_diag)
 {
@@ -15766,6 +15872,8 @@ Bool dis_ARM64_simd_and_fp(/*MB_OUT*/DisResult* dres, UInt insn,
    ok = dis_AdvSIMD_fp_to_from_fixedp_conv(dres, insn);
    if (UNLIKELY(ok)) return True;
    ok = dis_AdvSIMD_fp_to_from_int_conv(dres, insn);
+   if (UNLIKELY(ok)) return True;
+   ok = dis_AdvSIMD_dot_product(dres, insn);
    if (UNLIKELY(ok)) return True;
    return False;
 }

@@ -879,7 +879,9 @@ static int mutex_destroy_WRK(pthread_mutex_t *mutex)
 
    if (mutex != NULL) {
       static const pthread_mutex_t mutex_init = PTHREAD_MUTEX_INITIALIZER;
+      VALGRIND_HG_DISABLE_CHECKING(mutex, sizeof(*mutex));
       mutex_is_init = my_memcmp(mutex, &mutex_init, sizeof(*mutex)) == 0;
+      VALGRIND_HG_ENABLE_CHECKING(mutex, sizeof(*mutex));
    } else {
       mutex_is_init = 0;
    }
@@ -1110,7 +1112,7 @@ PTH_FUNC(int, pthreadZumutexZureltimedlock, // pthread_mutex_reltimedlock
 }
 #endif
 
-#if defined(VGP_linux)
+#if defined(VGO_linux)
 //-----------------------------------------------------------
 // glibc:   pthread_mutex_clocklock
 //
@@ -1785,7 +1787,9 @@ static int pthread_cond_destroy_WRK(pthread_cond_t* cond)
 
    if (cond != NULL) {
       const pthread_cond_t cond_init = PTHREAD_COND_INITIALIZER;
+      VALGRIND_HG_DISABLE_CHECKING(cond, sizeof(*cond));
       cond_is_init = my_memcmp(cond, &cond_init, sizeof(*cond)) == 0;
+      VALGRIND_HG_ENABLE_CHECKING(cond, sizeof(*cond));
    } else {
      cond_is_init = 0;
    }
@@ -2222,9 +2226,6 @@ static int pthread_spin_trylock_WRK(pthread_spinlock_t *lock)
               pthread_rwlock_unlock
               pthread_rwlock_tryrdlock
               pthread_rwlock_trywrlock
-
-   Unhandled: pthread_rwlock_timedrdlock
-              pthread_rwlock_timedwrlock
 */
 
 //-----------------------------------------------------------
@@ -2676,7 +2677,7 @@ static int pthread_rwlock_tryrdlock_WRK(pthread_rwlock_t* rwlock)
 
 
 //-----------------------------------------------------------
-// glibc:   Unhandled
+// glibc:   pthread_rwlock_timedrdlock
 // darwin:  Unhandled
 // Solaris: pthread_rwlock_timedrdlock
 // Solaris: pthread_rwlock_reltimedrdlock_np
@@ -2712,6 +2713,11 @@ static int pthread_rwlock_timedrdlock_WRK(pthread_rwlock_t *rwlock,
    return ret;
 }
 #if defined(VGO_linux)
+PTH_FUNC(int, pthreadZurwlockZutimedrdlock, // pthread_rwlock_timedrdlock
+              pthread_rwlock_t *rwlock,
+              const struct timespec *timeout) {
+   return pthread_rwlock_timedrdlock_WRK(rwlock, timeout);
+}
 #elif defined(VGO_darwin)
 #elif defined(VGO_freebsd)
 PTH_FUNC(int, pthreadZurwlockZutimedrdlock, // pthread_rwlock_timedrdlock
@@ -2779,8 +2785,7 @@ PTH_FUNC(int, pthreadZurwlockZuclockrdlock, // pthread_rwlock_clockrdlock
 
 
 //-----------------------------------------------------------
-// glibc:   Unhandled
-// darwin:  Unhandled
+// glibc:   pthread_rwlock_timedwrlock
 // Solaris: pthread_rwlock_timedwrlock
 // Solaris: pthread_rwlock_reltimedwrlock_np
 // FreeBSD: pthread_rwlock_timedwrlock
@@ -2815,6 +2820,11 @@ static int pthread_rwlock_timedwrlock_WRK(pthread_rwlock_t *rwlock,
    return ret;
 }
 #if defined(VGO_linux)
+PTH_FUNC(int, pthreadZurwlockZutimedwrlock, // pthread_rwlock_timedwrlock
+              pthread_rwlock_t *rwlock,
+              const struct timespec *timeout) {
+   return pthread_rwlock_timedwrlock_WRK(rwlock, timeout);
+}
 #elif defined(VGO_darwin)
 #elif defined(VGO_freebsd)
 PTH_FUNC(int, pthreadZurwlockZutimedwrlock, // pthread_rwlock_timedwrlock
@@ -3182,6 +3192,178 @@ static int sem_wait_WRK(sem_t* sem)
 #  error "Unsupported OS"
 #endif
 
+//-----------------------------------------------------------
+// glibc:   sem_trywait
+// glibc:   sem_trywait@GLIBC_2.0
+// glibc:   sem_trywait@@GLIBC_2.1
+// darwin:  sem_trywait
+// Solaris: sema_trywait (sem_teywait is built on top of sema_trywait)
+// FreeBSD: sem_trywait (libc)
+//
+/* trywait: decrement semaphore if non-zero otherwise return error */
+__attribute__((noinline))
+static int sem_trywait_WRK(sem_t* sem)
+{
+   OrigFn fn;
+   int    ret;
+   VALGRIND_GET_ORIG_FN(fn);
+
+   if (TRACE_SEM_FNS) {
+      fprintf(stderr, "<< sem_trywait(%p) ", sem);
+      fflush(stderr);
+   }
+
+   DO_CREQ_v_W(_VG_USERREQ__HG_POSIX_SEM_WAIT_PRE, sem_t*,sem);
+
+   CALL_FN_W_W(ret, fn, sem);
+
+   DO_CREQ_v_WW(_VG_USERREQ__HG_POSIX_SEM_WAIT_POST, sem_t*,sem,
+                long, (ret == 0) ? True : False);
+
+   if (ret != 0) {
+      DO_PthAPIerror( "sem_trywait", SEM_ERROR );
+   }
+
+   if (TRACE_SEM_FNS) {
+      fprintf(stderr, " sem_trywait -> %d >>\n", ret);
+      fflush(stderr);
+   }
+
+   return ret;
+}
+
+#if defined(VGO_linux)
+PTH_FUNC(int, semZutrywait, sem_t* sem) { /* sem_trywait */
+   return sem_trywait_WRK(sem);
+}
+PTH_FUNC(int, semZutrywaitZAZa, sem_t* sem) { /* sem_trywait@* */
+   return sem_trywait_WRK(sem);
+}
+#elif defined(VGO_darwin)
+PTH_FUNC(int, semZutrywait, sem_t* sem) { /* sem_trywait */
+   return sem_wait_WRK(sem);
+}
+#elif defined(VGO_freebsd)
+LIBC_FUNC(int, semZutrywait, sem_t* sem) { /* sem_trywait */
+   return sem_trywait_WRK(sem);
+}
+#elif defined(VGO_solaris)
+PTH_FUNC(int, semaZutrywait, sem_t *sem) { /* sema_trywait */
+   return sem_trywait_WRK(sem);
+}
+#else
+#  error "Unsupported OS"
+#endif
+
+//-----------------------------------------------------------
+// glibc:   sem_timedwait
+// glibc:   sem_timedwait@GLIBC_2.0
+// glibc:   sem_timedwait@@GLIBC_2.1
+// darwin:  does not exist
+// Solaris: sema_timedwait (sem_timedwait is built on top of sema_timedwait)
+// FreeBSD: sem_timedwait (libc)
+//
+#if !defined(VGO_darwin)
+/* timedwait: decrement semaphore if non-zero otherwise wait for specified
+   time then return an error */
+__attribute__((noinline))
+static int sem_timedwait_WRK(sem_t* sem, const struct timespec* abs_timeout)
+{
+   OrigFn fn;
+   int    ret;
+   VALGRIND_GET_ORIG_FN(fn);
+
+   if (TRACE_SEM_FNS) {
+      fprintf(stderr, "<< sem_timedwait(%p, %p) ", sem, abs_timeout);
+      fflush(stderr);
+   }
+
+   DO_CREQ_v_W(_VG_USERREQ__HG_POSIX_SEM_WAIT_PRE, sem_t*,sem);
+
+   CALL_FN_W_WW(ret, fn, sem, abs_timeout);
+
+   DO_CREQ_v_WW(_VG_USERREQ__HG_POSIX_SEM_WAIT_POST, sem_t*,sem,
+                long, (ret == 0) ? True : False);
+
+   if (ret != 0) {
+      DO_PthAPIerror( "sem_timedwait", SEM_ERROR );
+   }
+
+   if (TRACE_SEM_FNS) {
+      fprintf(stderr, " sem_timedwait -> %d >>\n", ret);
+      fflush(stderr);
+   }
+
+   return ret;
+}
+
+#if defined(VGO_linux)
+PTH_FUNC(int, semZutimedwait, sem_t* sem, const struct timespec* abs_timeout) { /* sem_timedwait */
+   return sem_timedwait_WRK(sem, abs_timeout);
+}
+PTH_FUNC(int, semZutimedwaitZAZa, sem_t* sem, const struct timespec* abs_timeout) { /* sem_timedwait@* */
+   return sem_timedwait_WRK(sem, abs_timeout);
+}
+#elif defined(VGO_freebsd)
+LIBC_FUNC(int, semZutimedwait, sem_t* sem, const struct timespec* abs_timeout) { /* sem_timedwait */
+   return sem_timedwait_WRK(sem, abs_timeout);
+}
+#elif defined(VGO_solaris)
+PTH_FUNC(int, semaZutimedwait, sem_t *sem, const struct timespec* abs_timeout) { /* sema_timedwait */
+   return sem_timedwait_WRK(sem, abs_timeout);
+}
+#else
+#  error "Unsupported OS"
+#endif
+#endif // not VGO_darwin
+
+//-----------------------------------------------------------
+// glibc:   does not exist
+// darwin:  does not exist
+// Solaris: does not exist
+// FreeBSD: sem_clockwait_np (libc)
+//
+/* clockwait_np: decrement semaphore if non-zero otherwise wait for specified
+   time then return an error with a flag to select the kind of clock and
+   a timespec for the remaining time */
+#if defined (VGO_freebsd)
+__attribute__((noinline))
+static int sem_clockwait_np_WRK(sem_t* sem, clockid_t clock_id, int flags,
+                                const struct timespec * rqtp, struct timespec * rmtp)
+{
+   OrigFn fn;
+   int    ret;
+   VALGRIND_GET_ORIG_FN(fn);
+
+   if (TRACE_SEM_FNS) {
+      fprintf(stderr, "<< sem_clockwait_np(%p, %d, %d, %p, %p) ", sem, clock_id, flags, rqtp, rmtp);
+      fflush(stderr);
+   }
+
+   DO_CREQ_v_W(_VG_USERREQ__HG_POSIX_SEM_WAIT_PRE, sem_t*,sem);
+
+   CALL_FN_W_5W(ret, fn, sem, clock_id, flags, rqtp, rmtp);
+
+   DO_CREQ_v_WW(_VG_USERREQ__HG_POSIX_SEM_WAIT_POST, sem_t*,sem,
+                long, (ret == 0) ? True : False);
+
+   if (ret != 0) {
+      DO_PthAPIerror( "sem_clockwait_np", SEM_ERROR );
+   }
+
+   if (TRACE_SEM_FNS) {
+      fprintf(stderr, " sem_clockwait_np -> %d >>\n", ret);
+      fflush(stderr);
+   }
+
+   return ret;
+}
+
+LIBC_FUNC(int, semZuclockwaitZunp, sem_t* sem, clockid_t clock_id, int flags,
+          const struct timespec * rqtp, struct timespec * rmtp) { /* sem_clockwait_np */
+   return sem_clockwait_np_WRK(sem, clock_id, flags, rqtp, rmtp);
+}
+#endif
 
 //-----------------------------------------------------------
 // glibc:   sem_post

@@ -13,10 +13,10 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2007-2022 University of Washington Computer Science & Engineering Department,
+   Copyright (C) 2007-2026 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
-   Copyright (C) 2000-2013 Julian Seward.  All rights reserved.
+   Copyright (C) 2000-2017 Julian Seward.  All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions
@@ -104,7 +104,8 @@ typedef
 
       /* This is just for memcheck's internal use - don't use it */
       _VG_USERREQ__MEMCHECK_RECORD_OVERLAP_ERROR 
-         = VG_USERREQ_TOOL_BASE('M','C') + 256
+         = VG_USERREQ_TOOL_BASE('M','C') + 256,
+      _VG_USERREQ__MEMCHECK_VERIFY_ALIGNMENT
    } Vg_MemCheckClientRequest;
 
 
@@ -134,7 +135,7 @@ typedef
 /* Similar to VALGRIND_MAKE_MEM_DEFINED except that addressability is
    not altered: bytes which are addressable are marked as defined,
    but those which are not addressable are left unchanged. */
-#define VALGRIND_MAKE_MEM_DEFINED_IF_ADDRESSABLE(_qzz_addr,_qzz_len) \
+#define VALGRIND_MAKE_MEM_DEFINED_IF_ADDRESSABLE(_qzz_addr,_qzz_len)     \
     VALGRIND_DO_CLIENT_REQUEST_EXPR(0 /* default return */,              \
                             VG_USERREQ__MAKE_MEM_DEFINED_IF_ADDRESSABLE, \
                             (_qzz_addr), (_qzz_len), 0, 0, 0)
@@ -143,9 +144,9 @@ typedef
    string which is included in any messages pertaining to addresses
    within the specified memory range.  Has no other effect on the
    properties of the memory range. */
-#define VALGRIND_CREATE_BLOCK(_qzz_addr,_qzz_len, _qzz_desc)	 \
+#define VALGRIND_CREATE_BLOCK(_qzz_addr,_qzz_len, _qzz_desc)	   \
     VALGRIND_DO_CLIENT_REQUEST_EXPR(0 /* default return */,        \
-                            VG_USERREQ__CREATE_BLOCK,            \
+                            VG_USERREQ__CREATE_BLOCK,              \
                             (_qzz_addr), (_qzz_len), (_qzz_desc),  \
                             0, 0)
 
@@ -163,7 +164,7 @@ typedef
    If suitable addressibility is not established, Valgrind prints an
    error message and returns the address of the first offending byte.
    Otherwise it returns zero. */
-#define VALGRIND_CHECK_MEM_IS_ADDRESSABLE(_qzz_addr,_qzz_len)    \
+#define VALGRIND_CHECK_MEM_IS_ADDRESSABLE(_qzz_addr,_qzz_len)      \
     VALGRIND_DO_CLIENT_REQUEST_EXPR(0,                             \
                             VG_USERREQ__CHECK_MEM_IS_ADDRESSABLE,  \
                             (_qzz_addr), (_qzz_len), 0, 0, 0)
@@ -206,6 +207,13 @@ typedef
 #define VALGRIND_DO_CHANGED_LEAK_CHECK                          \
     VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DO_LEAK_CHECK,  \
                                     0, 2, 0, 0, 0)
+
+/* Same as VALGRIND_DO_LEAK_CHECK but only showing new entries
+   i.e. loss records that were not there in the previous leak
+   search. */
+#define VALGRIND_DO_NEW_LEAK_CHECK                              \
+    VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DO_LEAK_CHECK,  \
+                                    0, 3, 0, 0, 0)
 
 /* Do a summary memory leak check (like --leak-check=summary) mid-execution. */
 #define VALGRIND_DO_QUICK_LEAK_CHECK				 \
@@ -266,9 +274,9 @@ typedef
    The metadata is not copied in cases 0, 2 or 3 so it should be
    impossible to segfault your system by using this call.
 */
-#define VALGRIND_GET_VBITS(zza,zzvbits,zznbytes)                 \
+#define VALGRIND_GET_VBITS(zza,zzvbits,zznbytes)                \
     (unsigned)VALGRIND_DO_CLIENT_REQUEST_EXPR(0,                \
-                            VG_USERREQ__GET_VBITS,               \
+                                    VG_USERREQ__GET_VBITS,      \
                                     (const char*)(zza),         \
                                     (char*)(zzvbits),           \
                                     (zznbytes), 0, 0)
@@ -282,9 +290,9 @@ typedef
    The metadata is not copied in cases 0, 2 or 3 so it should be
    impossible to segfault your system by using this call.
 */
-#define VALGRIND_SET_VBITS(zza,zzvbits,zznbytes)                 \
+#define VALGRIND_SET_VBITS(zza,zzvbits,zznbytes)                \
     (unsigned)VALGRIND_DO_CLIENT_REQUEST_EXPR(0,                \
-                            VG_USERREQ__SET_VBITS,               \
+                                    VG_USERREQ__SET_VBITS,      \
                                     (const char*)(zza),         \
                                     (const char*)(zzvbits),     \
                                     (zznbytes), 0, 0 )

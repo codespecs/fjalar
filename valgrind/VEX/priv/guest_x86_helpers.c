@@ -567,7 +567,6 @@ UInt x86g_calculate_eflags_all_WRK ( UInt cc_op,
    }
 }
 
-
 /* CALLED FROM GENERATED CODE: CLEAN HELPER */
 /* Calculate all the 6 flags from the supplied thunk parameters. */
 UInt x86g_calculate_eflags_all ( UInt cc_op,
@@ -789,7 +788,6 @@ LibVEX_GuestX86_put_eflag_c ( UInt new_carry_flag,
    vex_state->guest_CC_DEP2 = 0;
    vex_state->guest_CC_NDEP = 0;
 }
-
 
 /*---------------------------------------------------------------*/
 /*--- %eflags translation-time function specialisers.         ---*/
@@ -1180,9 +1178,24 @@ IRExpr* guest_x86_spechelper ( const HChar* function_name,
       /*---------------- SHRL ----------------*/
 
       if (isU32(cc_op, X86G_CC_OP_SHRL) && isU32(cond, X86CondZ)) {
-         /* SHRL, then Z --> test dep1 == 0 */
+         /* SHRL, then Z --> test dep1(result) == 0 */
          return unop(Iop_1Uto32,binop(Iop_CmpEQ32, cc_dep1, mkU32(0)));
       }
+      if (isU32(cc_op, X86G_CC_OP_SHRL) && isU32(cond, X86CondNZ)) {
+         /* SHRL, then NZ --> test dep1(result) != 0 */
+         return unop(Iop_1Uto32,binop(Iop_CmpNE32, cc_dep1, mkU32(0)));
+      }
+
+      /*---------------- SHLL ----------------*/
+
+      if (isU32(cc_op, X86G_CC_OP_SHLL) && isU32(cond, X86CondZ)) {
+         /* SHLL, then Z --> test dep1(result) == 0 */
+         return unop(Iop_1Uto32,binop(Iop_CmpEQ32, cc_dep1, mkU32(0)));
+      }
+      //if (isU32(cc_op, X86G_CC_OP_SHLL) && isU32(cond, X86CondNZ)) {
+      //   /* SHLL, then NZ --> test dep1(result) != 0 */
+      //   vassert(0); // No test case yet observed
+      //}
 
       /*---------------- COPY ----------------*/
       /* This can happen, as a result of x87 FP compares: "fcom ... ;
@@ -2761,10 +2774,13 @@ ULong x86g_use_seg_selector ( HWord ldt, HWord gdt,
    /* If this isn't true, we're in Big Trouble. */
    vassert(8 == sizeof(VexGuestX86SegDescr));
 
-   if (verboze)
+   if (verboze) {
+      // Coverity is right but this is unimportant
+      // coverity[DEADCODE:FALSE]
       vex_printf("x86h_use_seg_selector: "
                  "seg_selector = 0x%x, vaddr = 0x%x\n",
                  seg_selector, virtual_addr);
+   }
 
    /* Check for wildly invalid selector. */
    if (seg_selector & ~0xFFFF)
@@ -2782,17 +2798,13 @@ ULong x86g_use_seg_selector ( HWord ldt, HWord gdt,
 
    /* Convert the segment selector onto a table index */
    seg_selector >>= 3;
-   vassert(seg_selector >= 0 && seg_selector < 8192);
+   vassert(seg_selector < VEX_GUEST_X86_GDT_NENT);
 
    if (tiBit == 0) {
 
       /* GDT access. */
       /* Do we actually have a GDT to look at? */
       if (gdt == 0)
-         goto bad;
-
-      /* Check for access to non-existent entry. */
-      if (seg_selector >= VEX_GUEST_X86_GDT_NENT)
          goto bad;
 
       the_descrs = (VexGuestX86SegDescr*)gdt;
@@ -2902,9 +2914,10 @@ void LibVEX_GuestX86_initialise ( /*OUT*/VexGuestX86State* vex_state )
    vex_state->guest_SC_CLASS = 0;
    vex_state->guest_IP_AT_SYSCALL = 0;
 
+   vex_state->guest_SETC = 0;
+
    vex_state->padding1 = 0;
    vex_state->padding2 = 0;
-   vex_state->padding3 = 0;
 }
 
 

@@ -101,7 +101,8 @@ typedef
 
       /* This is just for memcheck's internal use - don't use it */
       _VG_USERREQ__MEMCHECK_RECORD_OVERLAP_ERROR 
-         = VG_USERREQ_TOOL_BASE('M','C') + 256
+         = VG_USERREQ_TOOL_BASE('M','C') + 256,
+      _VG_USERREQ__MEMCHECK_VERIFY_ALIGNMENT
    } Vg_MemCheckClientRequest;
 
 
@@ -203,6 +204,13 @@ typedef
 #define VALGRIND_DO_CHANGED_LEAK_CHECK                          \
     VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DO_LEAK_CHECK,  \
                                     0, 2, 0, 0, 0)
+
+/* Same as VALGRIND_DO_LEAK_CHECK but only showing new entries
+   i.e. loss records that were not there in the previous leak
+   search. */
+#define VALGRIND_DO_NEW_LEAK_CHECK                              \
+    VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DO_LEAK_CHECK,  \
+                                    0, 3, 0, 0, 0)
 
 /* Do a summary memory leak check (like --leak-check=summary) mid-execution. */
 #define VALGRIND_DO_QUICK_LEAK_CHECK                             \

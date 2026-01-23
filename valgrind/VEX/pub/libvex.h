@@ -101,6 +101,8 @@ typedef
 #define VEX_HWCAPS_AMD64_RDRAND (1<<13) /* RDRAND instructions */
 #define VEX_HWCAPS_AMD64_F16C   (1<<14) /* F16C instructions */
 #define VEX_HWCAPS_AMD64_RDSEED (1<<15) /* RDSEED instructions */
+#define VEX_HWCAPS_AMD64_FMA3   (1<<16) /* FMA3 instructions */
+#define VEX_HWCAPS_AMD64_FMA4   (1<<17) /* FMA4 instructions */
 
 /* ppc32: baseline capability is integer only */
 #define VEX_HWCAPS_PPC32_F     (1<<8)  /* basic (non-optional) FP */
@@ -154,7 +156,8 @@ typedef
 #define VEX_S390X_MODEL_Z14      14
 #define VEX_S390X_MODEL_Z14_ZR1  15
 #define VEX_S390X_MODEL_Z15      16
-#define VEX_S390X_MODEL_UNKNOWN  17     /* always last in list */
+#define VEX_S390X_MODEL_Z16      17
+#define VEX_S390X_MODEL_UNKNOWN  18     /* always last in list */
 #define VEX_S390X_MODEL_MASK     0x3F
 
 #define VEX_HWCAPS_S390X_LDISP (1<<6)   /* Long-displacement facility */
@@ -174,6 +177,7 @@ typedef
 #define VEX_HWCAPS_S390X_MI2   (1<<20)  /* miscellaneous-instruction-extensions facility 2 */
 #define VEX_HWCAPS_S390X_LSC2  (1<<21)  /* Conditional load/store facility2 */
 #define VEX_HWCAPS_S390X_VXE   (1<<22)  /* Vector-enhancements facility */
+#define VEX_HWCAPS_S390X_NNPA  (1<<23)  /* NNPA facility */
 
 /* Special value representing all available s390x hwcaps */
 #define VEX_HWCAPS_S390X_ALL   (VEX_HWCAPS_S390X_LDISP | \
@@ -192,7 +196,8 @@ typedef
                                 VEX_HWCAPS_S390X_MSA5  | \
                                 VEX_HWCAPS_S390X_MI2   | \
                                 VEX_HWCAPS_S390X_LSC2  | \
-                                VEX_HWCAPS_S390X_VXE)
+                                VEX_HWCAPS_S390X_VXE   | \
+                                VEX_HWCAPS_S390X_NNPA)
 
 #define VEX_HWCAPS_S390X(x)  ((x) & ~VEX_S390X_MODEL_MASK)
 #define VEX_S390X_MODEL(x)   ((x) &  VEX_S390X_MODEL_MASK)

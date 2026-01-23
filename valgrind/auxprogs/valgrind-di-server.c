@@ -98,7 +98,7 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <signal.h>
-#include <sys/poll.h>
+#include <poll.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -650,7 +650,7 @@ static UInt calc_gnu_debuglink_crc32(/*OUT*/Bool* ok, int fd, ULong size)
       ULong img_szB  = size;
       ULong curr_off = 0;
       while (1) {
-         assert(curr_off >= 0 && curr_off <= img_szB);
+         assert(curr_off <= img_szB);
          if (curr_off == img_szB) break;
          ULong avail = img_szB - curr_off;
          assert(avail > 0 && avail <= img_szB);

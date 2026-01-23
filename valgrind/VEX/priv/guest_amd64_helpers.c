@@ -768,7 +768,6 @@ ULong amd64g_calculate_rflags_all_WRK ( ULong cc_op,
    }
 }
 
-
 /* CALLED FROM GENERATED CODE: CLEAN HELPER */
 /* Calculate all the 6 flags from the supplied thunk parameters. */
 ULong amd64g_calculate_rflags_all ( ULong cc_op, 
@@ -993,7 +992,6 @@ LibVEX_GuestAMD64_put_rflag_c ( ULong new_carry_flag,
    vex_state->guest_CC_DEP2 = 0;
    vex_state->guest_CC_NDEP = 0;
 }
-
 
 /*---------------------------------------------------------------*/
 /*--- %rflags translation-time function specialisers.         ---*/
@@ -1656,6 +1654,19 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
                            mkU64(0)));
       }
 
+      // Verified
+      if (isU64(cc_op, AMD64G_CC_OP_LOGICQ) && isU64(cond, AMD64CondS)) {
+         /* long long and/or/xor, then S --> (ULong)result[63] */
+         return binop(Iop_Shr64, cc_dep1, mkU8(63));
+      }
+      // Verified
+      if (isU64(cc_op, AMD64G_CC_OP_LOGICQ) && isU64(cond, AMD64CondNS)) {
+         /* long long and/or/xor, then S --> (ULong) ~ result[63] */
+         return binop(Iop_Xor64,
+                      binop(Iop_Shr64, cc_dep1, mkU8(63)),
+                      mkU64(1));
+      }
+
       /*---------------- LOGICL ----------------*/
 
       if (isU64(cc_op, AMD64G_CC_OP_LOGICL) && isU64(cond, AMD64CondZ)) {
@@ -1904,10 +1915,12 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
                      binop(Iop_CmpNE64, cc_dep1, mkU64(0)));
       }
 
-      //if (isU64(cc_op, AMD64G_CC_OP_SHLQ) && isU64(cond, AMD64CondS)) {
-      //   /* SHLQ, then S --> (ULong)result[63] */
-      //   vassert(0);
-      //}
+      // Verified
+      if (isU64(cc_op, AMD64G_CC_OP_SHLQ) && isU64(cond, AMD64CondS)) {
+         /* SHLQ, then S --> (ULong)result[63] */
+         return binop(Iop_Shr64, cc_dep1, mkU8(63));
+      }
+      // No known test case
       //if (isU64(cc_op, AMD64G_CC_OP_SHLQ) && isU64(cond, AMD64CondNS)) {
       //   /* SHLQ, then NS --> (ULong) ~ result[63] */
       //   vassert(0);
@@ -1921,10 +1934,13 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
                      binop(Iop_CmpEQ32, unop(Iop_64to32, cc_dep1),
                            mkU32(0)));
       }
-      //if (isU64(cc_op, AMD64G_CC_OP_SHLL) && isU64(cond, AMD64CondNZ)) {
-      //   /* SHLL, then NZ --> test dep1 != 0 */
-      //   vassert(0);
-      //}
+      // Verified
+      if (isU64(cc_op, AMD64G_CC_OP_SHLL) && isU64(cond, AMD64CondNZ)) {
+         /* SHLL, then NZ --> test dep1 != 0 */
+         return unop(Iop_1Uto64,
+                     binop(Iop_CmpNE32, unop(Iop_64to32, cc_dep1),
+                           mkU32(0)));
+      }
 
       if (isU64(cc_op, AMD64G_CC_OP_SHLL) && isU64(cond, AMD64CondS)) {
          /* SHLL, then S --> (ULong)result[31] */
@@ -1932,6 +1948,7 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
                       binop(Iop_Shr64, cc_dep1, mkU8(31)),
                       mkU64(1));
       }
+      // No known test case
       //if (isU64(cc_op, AMD64G_CC_OP_SHLL) && isU64(cond, AMD64CondNS)) {
       //   /* SHLL, then NS --> (ULong) ~ result[31] */
       //   vassert(0);
@@ -3645,7 +3662,6 @@ ULong amd64g_calculate_RCR ( ULong arg,
          }
          break;
       case 4:
-         while (tempCOUNT >= 33) tempCOUNT -= 33;
          cf        = (rflags_in >> AMD64G_CC_SHIFT_C) & 1;
          of        = ((arg >> 31) ^ cf) & 1;
          while (tempCOUNT > 0) {
@@ -3713,7 +3729,6 @@ ULong amd64g_calculate_RCL ( ULong arg,
          of = ((arg >> 63) ^ cf) & 1;
          break;
       case 4:
-         while (tempCOUNT >= 33) tempCOUNT -= 33;
          cf = (rflags_in >> AMD64G_CC_SHIFT_C) & 1;
          while (tempCOUNT > 0) {
             tempcf = (arg >> 31) & 1;
@@ -4768,6 +4783,8 @@ void LibVEX_GuestAMD64_initialise ( /*OUT*/VexGuestAMD64State* vex_state )
 #  undef AVXZERO
 
    vex_state->guest_EMNOTE = EmNote_NONE;
+
+   vex_state->guest_SETC = 0;
 
    /* These should not ever be either read or written, but we
       initialise them anyway. */

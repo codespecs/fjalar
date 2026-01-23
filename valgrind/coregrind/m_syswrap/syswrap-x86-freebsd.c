@@ -79,7 +79,7 @@ void ML_(call_on_new_stack_0_1) ( Addr stack,
 //  8(%esp) == retaddr
 // 12(%esp) == f
 // 16(%esp) == arg1
-asm(
+__asm__(
    ".text\n"
    ".globl vgModuleLocal_call_on_new_stack_0_1\n"
    "vgModuleLocal_call_on_new_stack_0_1:\n"
@@ -317,15 +317,16 @@ out:
 /* Translate a struct modify_ldt_ldt_s to a VexGuestX86SegDescr */
 
 static
-void translate_to_hw_format ( /* IN  */ void* base,
-                                        /* OUT */ VexGuestX86SegDescr* out)
+void translate_to_hw_format( /* IN  */ void* base,
+                             /* OUT */ VexGuestX86SegDescr* out)
 {
    UInt entry_1, entry_2;
    UInt base_addr = (UInt) base;
    vg_assert(8 == sizeof(VexGuestX86SegDescr));
 
-   if (0)
+   if (0) {
       VG_(printf)("translate_to_hw_format: base %p\n", base );
+   }
 
    /* Allow LDTs to be cleared by the user. */
    if (base == 0) {
@@ -351,7 +352,6 @@ static VexGuestX86SegDescr* alloc_zeroed_x86_GDT ( void )
    return VG_(arena_calloc)(VG_AR_CORE, "di.syswrap-x86.azxG.1", nbytes, 1);
 }
 
-#if 0
 /* Create a zeroed-out LDT. */
 static VexGuestX86SegDescr* alloc_zeroed_x86_LDT ( void )
 {
@@ -373,8 +373,9 @@ static void copy_LDT_from_to ( VexGuestX86SegDescr* src,
    Int i;
    vg_assert(src);
    vg_assert(dst);
-   for (i = 0; i < VEX_GUEST_X86_LDT_NENT; i++)
+   for (i = 0; i < VEX_GUEST_X86_LDT_NENT; i++) {
       dst[i] = src[i];
+   }
 }
 
 /* Copy contents between two existing GDTs. */
@@ -384,8 +385,9 @@ static void copy_GDT_from_to ( VexGuestX86SegDescr* src,
    Int i;
    vg_assert(src);
    vg_assert(dst);
-   for (i = 0; i < VEX_GUEST_X86_GDT_NENT; i++)
+   for (i = 0; i < VEX_GUEST_X86_GDT_NENT; i++) {
       dst[i] = src[i];
+   }
 }
 
 /* Free this thread's DTs, if it has any. */
@@ -393,10 +395,11 @@ static void deallocate_LGDTs_for_thread ( VexGuestX86State* vex )
 {
    vg_assert(sizeof(HWord) == sizeof(void*));
 
-   if (0)
+   if (0) {
       VG_(printf)("deallocate_LGDTs_for_thread: "
-                  "ldt = 0x%x, gdt = 0x%x\n",
+                  "ldt = 0x%llx, gdt = 0x%llx\n",
                   vex->guest_LDT, vex->guest_GDT );
+   }
 
    if (vex->guest_LDT != (HWord)NULL) {
       free_LDT_or_GDT( (VexGuestX86SegDescr*)vex->guest_LDT );
@@ -408,7 +411,6 @@ static void deallocate_LGDTs_for_thread ( VexGuestX86State* vex )
       vex->guest_GDT = (HWord)NULL;
    }
 }
-#endif
 
 static SysRes sys_set_thread_area ( ThreadId tid, Int *idxptr, void *base)
 {
@@ -434,12 +436,14 @@ static SysRes sys_set_thread_area ( ThreadId tid, Int *idxptr, void *base)
          Wine). */
       for (idx = 1; idx < VEX_GUEST_X86_GDT_NENT; idx++) {
          if (gdt[idx].LdtEnt.Words.word1 == 0
-               && gdt[idx].LdtEnt.Words.word2 == 0)
+               && gdt[idx].LdtEnt.Words.word2 == 0) {
             break;
+         }
       }
 
-      if (idx == VEX_GUEST_X86_GDT_NENT)
+      if (idx == VEX_GUEST_X86_GDT_NENT) {
          return VG_(mk_SysRes_Error)( VKI_ESRCH );
+      }
    } else if (idx < 0 || idx == 0 || idx >= VEX_GUEST_X86_GDT_NENT) {
       /* Similarly, reject attempts to use GDT[0]. */
       return VG_(mk_SysRes_Error)( VKI_EINVAL );
@@ -475,12 +479,50 @@ static SysRes sys_get_thread_area ( ThreadId tid, Int idx, void ** basep )
    return VG_(mk_SysRes_Success)( 0 );
 }
 
+static
+void x86_setup_LDT_GDT ( /*OUT*/ ThreadArchState *child,
+                         /*IN*/  ThreadArchState *parent )
+{
+   /* We inherit our parent's LDT. */
+   if (parent->vex.guest_LDT == (HWord)NULL) {
+      /* We hope this is the common case. */
+      child->vex.guest_LDT = (HWord)NULL;
+   } else {
+      /* No luck .. we have to take a copy of the parent's. */
+      child->vex.guest_LDT = (HWord)alloc_zeroed_x86_LDT();
+      copy_LDT_from_to( (VexGuestX86SegDescr*)(HWord)parent->vex.guest_LDT,
+                        (VexGuestX86SegDescr*)(HWord)child->vex.guest_LDT );
+   }
+
+   /* Either we start with an empty GDT (the usual case) or inherit a
+      copy of our parents' one (Quadrics Elan3 driver -style clone
+      only). */
+   child->vex.guest_GDT = (HWord)NULL;
+
+   if (parent->vex.guest_GDT != (HWord)NULL) {
+      //child->vex.guest_GDT = (HWord)alloc_system_x86_GDT();
+      child->vex.guest_GDT = (HWord)alloc_zeroed_x86_GDT();
+      copy_GDT_from_to( (VexGuestX86SegDescr*)(HWord)parent->vex.guest_GDT,
+                        (VexGuestX86SegDescr*)(HWord)child->vex.guest_GDT );
+   }
+}
+
+
+
 /* ---------------------------------------------------------------------
    More thread stuff
    ------------------------------------------------------------------ */
 
 void VG_(cleanup_thread) ( ThreadArchState* arch )
 {
+   /*
+    * This is what x86 Linux does but it doesn't work off the bat for x86 FreeBSD
+    * My suspicion is that the rtld code uses the TCB stored in the GDT after the
+    * end of thr_exit.
+    * Alternatively the rtld use is after the start of the next thread and we haven't
+    * reallocated this memory
+    */
+   deallocate_LGDTs_for_thread( &arch->vex );
 }
 
 
@@ -668,7 +710,7 @@ PRE(sys_freebsd6_ftruncate)
 PRE(sys_clock_getcpuclockid2)
 {
    PRINT("sys_clock_getcpuclockid2( %lld, %" FMT_REGWORD "d, %#" FMT_REGWORD "x )",
-         MERGE64(ARG1,ARG2),SARG3,ARG4);
+         (vki_id_t)MERGE64(ARG1,ARG2),SARG3,ARG4);
    PRE_REG_READ4(int, "clock_getcpuclockid2",
                  vki_uint32_t, MERGE64_FIRST(offset),
                  vki_uint32_t, MERGE64_SECOND(offset),
@@ -698,9 +740,14 @@ PRE(sys_rfork)
       *flags |= SfYieldAfter;
    }
 #else
-   VG_(message)(Vg_UserMsg, "fork() not implemented");
-   VG_(unimplemented)("Valgrind does not support rfork() yet.");
-   SET_STATUS_Failure( VKI_ENOSYS );
+   VG_(message)(Vg_UserMsg, "rfork() not implemented\n");
+   if ((UInt)ARG1 == VKI_RFSPAWN) {
+      // posix_spawn uses RFSPAWN and it will fall back to vfork
+      // if it sees EINVAL
+      SET_STATUS_Failure(VKI_EINVAL);
+   } else {
+      SET_STATUS_Failure(VKI_ENOSYS);
+   }
 #endif
 }
 
@@ -714,13 +761,13 @@ PRE(sys_preadv)
    PRINT("sys_preadv ( %" FMT_REGWORD "d, %#" FMT_REGWORD "x, %"
          FMT_REGWORD "d, %llu )", SARG1, ARG2, SARG3, MERGE64(ARG4,ARG5));
    PRE_REG_READ5(ssize_t, "preadv",
-                 int, fd, const struct iovec *, iovr,
+                 int, fd, const struct iovec *, iov,
                  int, iovcnt, vki_uint32_t, MERGE64_FIRST(offset),
                  vki_uint32_t, MERGE64_SECOND(offset));
    if (!ML_(fd_allowed)(ARG1, "preadv", tid, False)) {
       SET_STATUS_Failure( VKI_EBADF );
    } else {
-      if ((Int)ARG3 >= 0)
+      if ((Int)ARG3 > 0)
          PRE_MEM_READ( "preadv(iov)", ARG2, ARG3 * sizeof(struct vki_iovec) );
 
       if (ML_(safe_to_deref)((struct vki_iovec *)ARG2, ARG3 * sizeof(struct vki_iovec))) {
@@ -912,7 +959,6 @@ PRE(sys_setcontext)
                  struct vki_ucontext *, ucp);
 
    PRE_MEM_READ( "setcontext(ucp)", ARG1, sizeof(struct vki_ucontext) );
-   PRE_MEM_WRITE( "setcontext(ucp)", ARG1, sizeof(struct vki_ucontext) );
 
    vg_assert(VG_(is_valid_tid)(tid));
    vg_assert(tid >= 1 && tid < VG_N_THREADS);
@@ -1048,6 +1094,8 @@ PRE(sys_thr_new)
    ctst->arch.vex.guest_EDX = 0;
    LibVEX_GuestX86_put_eflag_c(0, &ctst->arch.vex);
 
+   x86_setup_LDT_GDT(&ctst->arch, &ptst->arch);
+
    ctst->os_state.parent = tid;
 
    /* inherit signal mask */
@@ -1067,7 +1115,9 @@ PRE(sys_thr_new)
 
    if (debug)
       VG_(printf)("clone child has SETTLS: tls at %#lx\n", (Addr)tp.tls_base);
+
    sys_set_thread_area( ctid, &idx, tp.tls_base );
+
    ctst->arch.vex.guest_GS = (idx << 3) | 3;   /* GSEL(GUGS_SEL, SEL_UPL) */
    tp.tls_base = 0;  /* Don't have the kernel do it too */
 
@@ -1250,7 +1300,7 @@ POST(sys_cpuset_getid)
 PRE(sys_cpuset_getaffinity)
 {
    PRINT("sys_cpuset_getaffinity ( %" FMT_REGWORD "u, %" FMT_REGWORD "u, %lld, %" FMT_REGWORD "u, %#" FMT_REGWORD "x )",
-         ARG1, ARG2, MERGE64(ARG3, ARG4), ARG5, ARG6);
+         ARG1, ARG2, (vki_id_t)MERGE64(ARG3, ARG4), ARG5, ARG6);
    PRE_REG_READ6(int, "cpuset_getaffinity",
                  vki_cpulevel_t, level, vki_cpuwhich_t, which,
                  vki_uint32_t, MERGE64_FIRST(id),
@@ -1418,6 +1468,16 @@ POST(sys_procctl)
    default:
       break;
    }
+}
+
+// SYS_mknodat 559
+// int mknodat(int fd, const char *path, mode_t mode, dev_t dev);
+PRE(sys_mknodat)
+{
+   PRINT("sys_mknodat ( %" FMT_REGWORD "u, %#" FMT_REGWORD "x(%s), 0x%" FMT_REGWORD "x, 0x%" FMT_REGWORD "x )", ARG1,ARG2,(char*)ARG2,ARG3,ARG4 );
+   PRE_REG_READ5(long, "mknodat",
+                 int, fd, const char *, path, vki_mode_t, mode, vki_uint32_t, MERGE64_FIRST(dev), vki_uint32_t, MERGE64_SECOND(idev))
+   PRE_MEM_RASCIIZ( "mknodat(pathname)", ARG2 );
 }
 
 #if (FREEBSD_VERS >= FREEBSD_12)

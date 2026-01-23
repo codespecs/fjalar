@@ -147,7 +147,7 @@ static void* drd_malloc(ThreadId tid, SizeT n)
 }
 
 /** Wrapper for memalign(). */
-static void* drd_memalign(ThreadId tid, SizeT align, SizeT n)
+static void* drd_memalign(ThreadId tid, SizeT align, SizeT orig_alignT, SizeT n)
 {
    return new_block(tid, n, align, /*is_zeroed*/False);
 }
@@ -184,8 +184,12 @@ static void* drd_realloc(ThreadId tid, void* p_old, SizeT new_size)
 
    if (new_size == 0)
    {
-      drd_free(tid, p_old);
-      return NULL;
+      if (VG_(clo_realloc_zero_bytes_frees) == True)
+      {
+         drd_free(tid, p_old);
+         return NULL;
+      }
+      new_size = 1;
    }
 
    s_cmalloc_n_mallocs++;
@@ -254,7 +258,7 @@ static void* drd___builtin_new(ThreadId tid, SizeT n)
 }
 
 /** Wrapper for __builtin_new_aligned(). */
-static void* drd___builtin_new_aligned(ThreadId tid, SizeT n, SizeT align)
+static void* drd___builtin_new_aligned(ThreadId tid, SizeT n, SizeT align, SizeT orig_align)
 {
    return new_block(tid, n, align, /*is_zeroed*/False);
 }
@@ -278,7 +282,7 @@ static void* drd___builtin_vec_new(ThreadId tid, SizeT n)
 }
 
 /** Wrapper for __builtin_vec_new_aligned(). */
-static void* drd___builtin_vec_new_aligned(ThreadId tid, SizeT n, SizeT align)
+static void* drd___builtin_vec_new_aligned(ThreadId tid, SizeT n, SizeT align, SizeT orig_align)
 {
    return new_block(tid, n, align, /*is_zeroed*/False);
 }

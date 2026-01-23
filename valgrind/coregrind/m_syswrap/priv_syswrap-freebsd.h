@@ -90,7 +90,7 @@ DECL_TEMPLATE(freebsd, sys_ioctl) // 54
 DECL_TEMPLATE(freebsd, sys_reboot) // 55
 DECL_TEMPLATE(freebsd, sys_revoke) // 56
 // generic symlink 57
-// generic readlink 58
+DECL_TEMPLATE(freebsd, sys_readlink) // 58
 // generic execve 59
 // generic umask 60
 // generic chroot 61
@@ -371,7 +371,13 @@ DECL_TEMPLATE(freebsd, sys_sigreturn) // 417
 DECL_TEMPLATE(freebsd, sys_getcontext) // 421
 DECL_TEMPLATE(freebsd, sys_setcontext) // 422
 DECL_TEMPLATE(freebsd, sys_swapcontext) // 423
+
+#if (FREEBSD_VERS >= FREEBSD_13_1)
+DECL_TEMPLATE(freebsd, sys_freebsd13_swapoff) // 424
+#else
 DECL_TEMPLATE(freebsd, sys_swapoff) // 424
+#endif
+
 DECL_TEMPLATE(freebsd, sys___acl_get_link) // 425
 DECL_TEMPLATE(freebsd, sys___acl_set_link) // 426
 DECL_TEMPLATE(freebsd, sys___acl_delete_link) // 427
@@ -413,6 +419,8 @@ DECL_TEMPLATE(freebsd, sys_abort2) // 463
 DECL_TEMPLATE(freebsd, sys_thr_set_name) // 464
 DECL_TEMPLATE(freebsd, sys_aio_fsync) // 465
 DECL_TEMPLATE(freebsd, sys_rtprio_thread) // 466
+DECL_TEMPLATE(freebsd, sys_sctp_generic_sendmsg) // 472
+DECL_TEMPLATE(freebsd, sys_sctp_generic_recvmsg) // 474
 DECL_TEMPLATE(freebsd, sys_pread) // 475
 DECL_TEMPLATE(freebsd, sys_pwrite) // 476
 DECL_TEMPLATE(freebsd, sys_mmap) // 477
@@ -520,20 +528,20 @@ DECL_TEMPLATE(freebsd, sys_fhreadlink) // 567
 
 #if (FREEBSD_VERS >= FREEBSD_12_2)
 
-// unimpl __NR_funlinkat           568
-// unimpl __NR_copy_file_range     569
+DECL_TEMPLATE(freebsd, sys_funlinkat) // 568
+DECL_TEMPLATE(freebsd, sys_copy_file_range) // 569
 DECL_TEMPLATE(freebsd, sys___sysctlbyname) // 570
 
 #if (FREEBSD_VERS >= FREEBSD_13_0)
 // looks like close_range got backported
 // to 12.2 leaving these 4 marked as UNIMPL in 12.2
-// unimpl __NR_shm_open2           571
+DECL_TEMPLATE(freebsd, sys_shm_open2) // 571
 // unimpl __NR_shm_rename          572
-// unimpl __NR_sigfastblock        573
+DECL_TEMPLATE(freebsd, sys_sigfastblock) // 573
 DECL_TEMPLATE(freebsd, sys___realpathat) // 574
 #endif
 
-// unimpl __NR_close_range         575
+DECL_TEMPLATE(freebsd, sys_close_range)  // 575
 
 #endif
 
@@ -541,9 +549,31 @@ DECL_TEMPLATE(freebsd, sys___realpathat) // 574
 
 // unimpl __NR_rpctls_syscall      576
 DECL_TEMPLATE(freebsd, sys___specialfd) // 577
-// unimpl __NR_aio_writev          578
-// unimpl __NR_aio_readv           579
+DECL_TEMPLATE(freebsd, sys_aio_writev)  // 578
+DECL_TEMPLATE(freebsd, sys_aio_readv)   // 579
 
+#endif
+
+#if (FREEBSD_VERS >= FREEBSD_13_1)
+
+#if (FREEBSD_VERS >= FREEBSD_14)
+// there was a hole in the numbering
+DECL_TEMPLATE(freebsd, sys_fspacectl) // 580
+#endif
+// unimpl __NR_sched_getcpu        581
+DECL_TEMPLATE(freebsd, sys_swapoff) // 582
+#endif
+
+#if (FREEBSD_VERS >= FREEBSD_15) || (FREEBSD_VERS >= FREEBSD_13_3)
+DECL_TEMPLATE(freebsd, sys_kqueuex) // 583
+DECL_TEMPLATE(freebsd, sys_membarrier) // 584
+#endif
+
+#if (FREEBSD_VERS >= FREEBSD_15)
+DECL_TEMPLATE(freebsd, sys_timerfd_create) // 585
+DECL_TEMPLATE(freebsd, sys_timerfd_gettime) // 586
+DECL_TEMPLATE(freebsd, sys_timerfd_settime) // 587
+DECL_TEMPLATE(freebsd, sys_kcmp) // 588
 #endif
 
 DECL_TEMPLATE(freebsd, sys_fake_sigreturn)

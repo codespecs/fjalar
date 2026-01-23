@@ -10,7 +10,7 @@
   for C/C++ based upon the Valgrind binary instrumentation framework
   and the Valgrind MemCheck tool.
 
-  Copyright (C) 2007-2022 University of Washington Computer Science & Engineering Department,
+  Copyright (C) 2007-2026 University of Washington Computer Science & Engineering Department,
   Programming Languages and Software Engineering Group
 
   Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
@@ -1904,10 +1904,14 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
    // Iop_RoundF32x4_RN:               // only used by ppc
    // Iop_RoundF32x4_RP:               // only used by ppc
    // Iop_RoundF32x4_RZ:               // only used by ppc
+   // Iop_RoundF32toIntA0:
+   // Iop_RoundF32toIntE:
    // Iop_RoundF64toF64_NEAREST:       // unused
    // Iop_RoundF64toF64_NegINF:        // unused
    // Iop_RoundF64toF64_PosINF:        // unused
    // Iop_RoundF64toF64_ZERO:          // unused
+   // Iop_RoundF64toIntA0:
+   // Iop_RoundF64toIntE:
    // Iop_RSqrtEst32F0x4:              //
    // Iop_RSqrtEst32Fx2:               // only used by arm
    // Iop_RSqrtEst32Fx4:               //

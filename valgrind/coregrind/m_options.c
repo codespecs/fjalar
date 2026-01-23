@@ -93,7 +93,7 @@ Int    VG_(clo_error_exitcode) = 0;
 HChar *VG_(clo_error_markers)[2] = {NULL, NULL};
 Bool   VG_(clo_exit_on_first_error) = False;
 
-Bool   VG_(clo_show_error_list) = False;
+Int   VG_(clo_show_error_list) = 0;
 
 #if defined(VGPV_arm_linux_android) \
     || defined(VGPV_x86_linux_android) \
@@ -106,6 +106,7 @@ VgVgdb VG_(clo_vgdb)           = Vg_VgdbYes;
 #endif
 Int    VG_(clo_vgdb_poll)      = 5000; 
 Int    VG_(clo_vgdb_error)     = 999999999;
+Bool   VG_(clo_launched_with_multi)  = False;
 UInt   VG_(clo_vgdb_stop_at)   = 0;
 const HChar *VG_(clo_vgdb_prefix)    = NULL;
 const HChar *VG_(arg_vgdb_prefix)    = NULL;
@@ -150,6 +151,11 @@ Bool   VG_(clo_debug_dump_frames) = False;
 Bool   VG_(clo_trace_redir)    = False;
 enum FairSchedType
        VG_(clo_fair_sched)     = disable_fair_sched;
+/* VG_(clo_scheduling_quantum) defines the thread-scheduling timeslice,
+   in terms of the number of basic blocks we attempt to run each thread for.
+   Smaller values give finer interleaving but much increased scheduling
+   overheads. */
+Word   VG_(clo_scheduling_quantum) = 100000;
 Bool   VG_(clo_trace_sched)    = False;
 Bool   VG_(clo_profile_heap)   = False;
 UInt   VG_(clo_progress_interval) = 0; /* in seconds, 1 .. 3600,
@@ -162,6 +168,9 @@ VgXTMemory VG_(clo_xtree_memory) =  Vg_XTMemory_None;
 const HChar* VG_(clo_xtree_memory_file) = "xtmemory.kcg.%p";
 Bool VG_(clo_xtree_compress_strings) = True;
 
+#if defined(VGO_linux)
+Bool VG_(clo_enable_debuginfod) = True;
+#endif
 Int    VG_(clo_dump_error)     = 0;
 Int    VG_(clo_backtrace_size) = 12;
 Int    VG_(clo_merge_recursive_frames) = 0; // default value: no merge

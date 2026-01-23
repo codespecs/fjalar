@@ -139,12 +139,7 @@ CORE_ADDR get_pc (void)
 static
 void set_pc (CORE_ADDR newpc)
 {
-   Bool mod;
-   supply_register_by_name ("pswa", &newpc, &mod);
-   if (mod)
-      dlog(1, "set pc to %p\n", C2v (newpc));
-   else
-      dlog(1, "set pc not changed %p\n", C2v (newpc));
+   supply_register_by_name ("pswa", &newpc);
 }
 
 /* store registers in the guest state (gdbserver_to_valgrind)
@@ -287,8 +282,8 @@ static CORE_ADDR** target_get_dtv (ThreadState *tst)
 
 static struct valgrind_target_ops low_target = {
    -1, // Override at init time.
-   regs,
    17, //sp = r15, which is register offset 17 in regs
+   regs,
    transfer_register,
    get_pc,
    set_pc,

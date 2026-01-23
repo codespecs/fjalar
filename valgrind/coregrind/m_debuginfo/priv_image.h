@@ -59,6 +59,8 @@ typedef  ULong  DiOffT;
    if it fails, for whatever reason. */
 DiImage* ML_(img_from_local_file)(const HChar* fullpath);
 
+DiImage* ML_(img_from_fd)(Int fd, const HChar* fullpath);
+
 /* Create an image by connecting to a Valgrind debuginfo server
    (auxprogs/valgrind-di-server.c).  |filename| contains the object
    name to ask for; it must be a plain filename, not absolute, not a
@@ -68,6 +70,9 @@ DiImage* ML_(img_from_local_file)(const HChar* fullpath);
    the first case, port 1500 is assumed. */
 DiImage* ML_(img_from_di_server)(const HChar* filename,
                                  const HChar* serverAddr);
+
+/* Free memory allocated for image. */
+void ML_(img_free)(DiImage*);
 
 /* Destroy an existing image. */
 void ML_(img_done)(DiImage*);
@@ -109,6 +114,10 @@ Int ML_(img_strcmp)(DiImage* img, DiOffT off1, DiOffT off2);
 /* Do strcmp of a C string in the image vs a normal one.  Chars are
    cast to HChar before comparison. */
 Int ML_(img_strcmp_c)(DiImage* img, DiOffT off1, const HChar* str2);
+
+/* Do strncmp of a C string in the image vs a normal one.  Chars are
+   cast to HChar before comparison. */
+Int ML_(img_strcmp_n)(DiImage* img, DiOffT off1, const HChar* str2, Word n);
 
 /* Do strlen of a C string in the image. */
 SizeT ML_(img_strlen)(DiImage* img, DiOffT off);

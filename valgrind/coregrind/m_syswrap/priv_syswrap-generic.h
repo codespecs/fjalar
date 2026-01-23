@@ -59,7 +59,8 @@ extern
 Bool ML_(fd_allowed)(Int fd, const HChar *syscallname, ThreadId tid,
                      Bool isNewFD);
 
-extern void ML_(record_fd_close)               (Int fd);
+extern void ML_(record_fd_close)               (ThreadId tid, Int fd);
+extern void ML_(record_fd_close_range)         (ThreadId tid, Int fd);
 extern void ML_(record_fd_open_named)          (ThreadId tid, Int fd);
 extern void ML_(record_fd_open_nameless)       (ThreadId tid, Int fd);
 extern void ML_(record_fd_open_with_given_name)(ThreadId tid, Int fd,
@@ -86,6 +87,9 @@ ML_(notify_core_and_tool_of_munmap) ( Addr a, SizeT len );
 extern void 
 ML_(notify_core_and_tool_of_mprotect) ( Addr a, SizeT len, Int prot );
 
+extern void
+ML_(pre_mem_read_sockaddr) ( ThreadId tid, const HChar *description,
+                             struct vki_sockaddr *sa, UInt salen );
 extern void
 ML_(buf_and_len_pre_check) ( ThreadId tid, Addr buf_p, Addr buflen_p,
                              const HChar* buf_s, const HChar* buflen_s );
@@ -257,6 +261,7 @@ DECL_TEMPLATE(generic, sys_mincore);               // * L?
 DECL_TEMPLATE(generic, sys_getdents64);            // * (SVr4,SVID?)
 DECL_TEMPLATE(generic, sys_statfs64);              // * (?)
 DECL_TEMPLATE(generic, sys_fstatfs64);             // * (?)
+DECL_TEMPLATE(generic, sys_mlock2);                // * L
 
 
 /* ---------------------------------------------------------------------
