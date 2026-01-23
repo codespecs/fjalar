@@ -19,6 +19,11 @@ EXTRA_DIST = \
 	insn-pmovmskb.vgtest insn-pmovmskb.stdout.exp insn-pmovmskb.stderr.exp \
 		insn-pmovmskb.stderr.exp-clang \
 	more_x87_fp.stderr.exp more_x87_fp.stdout.exp more_x87_fp.vgtest \
+	pcmpgt.stderr.exp pcmpgt.vgtest \
+	rh2257546_128.vgtest \
+		rh2257546_128.stderr.exp rh2257546_128.stdout.exp \
+	rh2257546_256.vgtest \
+		rh2257546_256.stderr.exp rh2257546_256.stdout.exp \
 	sh-mem-vec128-plo-no.vgtest \
 		sh-mem-vec128-plo-no.stderr.exp \
 		sh-mem-vec128-plo-no.stdout.exp \
@@ -44,11 +49,14 @@ check_PROGRAMS = \
 	fxsave-amd64 \
 	insn-bsfl \
 	insn-pmovmskb \
+	pcmpgt \
+	rh2257546_128 \
 	sh-mem-vec128 \
 	sse_memory \
 	xor-undef-amd64
+
 if BUILD_AVX_TESTS
- check_PROGRAMS += sh-mem-vec256 xsave-avx
+ check_PROGRAMS += rh2257546_256 sh-mem-vec256 xsave-avx
 endif
 if HAVE_ASM_CONSTRAINT_P
  check_PROGRAMS += insn-pcmpistri
@@ -56,8 +64,14 @@ endif
 # clang 3.5.0 barfs about -mfancy-math-387
 if !COMPILER_IS_CLANG
  check_PROGRAMS += \
- 	more_x87_fp \
- 	shr_edx
+ 	more_x87_fp
+endif
+
+# initially this was a "not clang" test
+# but the problem is macOS, not clang
+if !VGCONF_OS_IS_DARWIN
+ check_PROGRAMS += \
+	shr_edx
 endif
 
 AM_CFLAGS    += @FLAG_M64@
@@ -69,4 +83,5 @@ insn_pcmpistri_CFLAGS	= $(AM_CFLAGS)
 more_x87_fp_CFLAGS	= $(AM_CFLAGS) -O -ffast-math -mfpmath=387 \
 				-mfancy-math-387
 more_x87_fp_LDADD	= -lm
-shr_edx_CFLAGS		= $(AM_CFLAGS) @FLAG_NO_PIE@
+pcmpgt_SOURCES = pcmpgt.cpp
+shr_edx_CFLAGS		= $(AM_CFLAGS) @FLAG_NO_PIE@ @FLAG_W_NO_UNINITIALIZED@

@@ -402,6 +402,7 @@ typedef enum {
    S390_VEC_PWSUM_QW,
 
    S390_VEC_INIT_FROM_GPRS,
+   S390_VEC_INIT_FROM_FPRS,
    S390_VEC_FLOAT_ADD,
    S390_VEC_FLOAT_SUB,
    S390_VEC_FLOAT_MUL,
@@ -942,6 +943,8 @@ extern UInt s390_host_hwcaps;
                       (s390_host_hwcaps & (VEX_HWCAPS_S390X_LSC2))
 #define s390_host_has_vxe \
                       (s390_host_hwcaps & (VEX_HWCAPS_S390X_VXE))
+#define s390_host_has_nnpa \
+                      (s390_host_hwcaps & (VEX_HWCAPS_S390X_NNPA))
 #endif /* ndef __VEX_HOST_S390_DEFS_H */
 
 /*---------------------------------------------------------------*/

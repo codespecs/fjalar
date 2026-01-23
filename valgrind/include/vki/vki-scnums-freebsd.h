@@ -29,8 +29,17 @@
 
 #include "config.h"
 
+// this is the syscall format used by e.g., libc functions like 'write'
+// this is the one used 99.999% of the time
+// the two others are only for experimental or testing use
+// (but we use them in the scalar tests).
 #define VG_FREEBSD_SYSCALL_STD 0
+// this is the syscall format used by 'syscall'
 #define VG_FREEBSD_SYSCALL0    1
+// this is the syscall format used by '__syscall'
+// it is the same as VG_FREEBSD_SYSCALL0 except that
+// it ensures that 64bit argument alignment is correct
+// that makes no difference for amd64, x86 not sure
 #define VG_FREEBSD_SYSCALL198  2
 
 // From sys/syscall.h
@@ -108,6 +117,8 @@
 #define __NR_vfork               66
 /* obs vread                     67 */
 /* obs vwrite                    68 */
+/* both of the following are obsolete
+ * and removed in FreeBSD  15 */
 #define __NR_sbrk                69
 #define __NR_sstk                70
 /* old mmap                      71 */
@@ -458,7 +469,11 @@
 #define __NR_getcontext          421
 #define __NR_setcontext          422
 #define __NR_swapcontext         423
+#if (FREEBSD_VERS >= FREEBSD_13_1)
+#define __NR_freebsd13_swapoff   424
+#else
 #define __NR_swapoff             424
+#endif
 #define __NR___acl_get_link      425
 #define __NR___acl_set_link      426
 #define __NR___acl_delete_link   427
@@ -632,10 +647,12 @@
 #define __NR_funlinkat           568
 #define __NR_copy_file_range     569
 #define __NR___sysctlbyname      570
+#if (FREEBSD_VERS >= FREEBSD_13_0)
 #define __NR_shm_open2           571
 #define __NR_shm_rename          572
 #define __NR_sigfastblock        573
 #define __NR___realpathat        574
+#endif
 #define __NR_close_range         575
 
 #endif
@@ -646,6 +663,31 @@
 #define __NR___specialfd         577
 #define __NR_aio_writev          578
 #define __NR_aio_readv           579
+
+#endif
+
+#if (FREEBSD_VERS >= FREEBSD_13_1)
+
+#if (FREEBSD_VERS >= FREEBSD_14)
+#define __NR_fspacectl           580
+#endif
+#define __NR_sched_getcpu        581
+#define __NR_swapoff             582
+
+#endif
+
+#if (FREEBSD_VERS >= FREEBSD_15) || (FREEBSD_VERS >= FREEBSD_13_3)
+
+#define __NR_kqueuex             583
+#define __NR_membarrier          584
+
+#endif
+
+#if (FREEBSD_VERS >= FREEBSD_15)
+#define __NR_timerfd_create      585
+#define __NR_timerfd_gettime     586
+#define __NR_timerfd_settime     587
+#define __NR_kcmp                588
 
 #endif
 

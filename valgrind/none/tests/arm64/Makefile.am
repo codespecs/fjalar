@@ -1,16 +1,20 @@
 
 include $(top_srcdir)/Makefile.tool-tests.am
 
-dist_noinst_SCRIPTS = filter_stderr
+dist_noinst_SCRIPTS = filter_stderr filter_nan
 
 EXTRA_DIST = \
+	bug484426.stdout.exp bug484426.stderr.exp bug484426.vgtest \
         crc32.stdout.exp crc32.stderr.exp crc32.vgtest \
         cvtf_imm.stdout.exp cvtf_imm.stderr.exp cvtf_imm.vgtest \
 	fp_and_simd.stdout.exp fp_and_simd.stderr.exp fp_and_simd.vgtest \
+	frinta_frintn.stderr.exp frinta_frintn.vgtest \
 	integer.stdout.exp integer.stderr.exp integer.vgtest \
-	memory.stdout.exp memory.stderr.exp memory.vgtest \
+	memory_test.stdout.exp memory_test.stderr.exp memory_test.vgtest \
+		memory_test.stdout.exp-clang \
 	atomics_v81.stdout.exp atomics_v81.stderr.exp atomics_v81.vgtest \
 	simd_v81.stdout.exp simd_v81.stderr.exp simd_v81.vgtest \
+	simd_dotprod.stdout.exp simd_dotprod.stderr.exp simd_dotprod.vgtest \
         fmadd_sub.stdout.exp fmadd_sub.stderr.exp fmadd_sub.vgtest \
 	fp_and_simd_v82.stdout.exp fp_and_simd_v82.stderr.exp \
 	fp_and_simd_v82.vgtest \
@@ -21,10 +25,11 @@ EXTRA_DIST = \
 
 check_PROGRAMS = \
 	allexec \
+	bug484426 \
         cvtf_imm \
 	fp_and_simd \
 	integer \
-	memory \
+	memory_test \
 	fmadd_sub \
 	ldxp_stxp
 
@@ -40,17 +45,31 @@ if BUILD_ARMV82_TESTS
   check_PROGRAMS += fp_and_simd_v82
 endif
 
+if HAVE_CXX17
+  check_PROGRAMS += frinta_frintn
+endif
+
+if BUILD_ARMV82_DOTPROD_TESTS
+  check_PROGRAMS += simd_dotprod
+endif
+
 AM_CFLAGS    += @FLAG_M64@
 AM_CXXFLAGS  += @FLAG_M64@
 AM_CCASFLAGS += @FLAG_M64@
 
 allexec_CFLAGS     = $(AM_CFLAGS) @FLAG_W_NO_NONNULL@
 
+bug484426_SOURCES  = bug484426.cpp
+bug484426_CXXFLAGS = ${AM_CXXFLAGS} -std=c++11
+
 crc32_CFLAGS       = $(AM_CFLAGS) -march=armv8-a+crc
 atomics_v81_CFLAGS = $(AM_CFLAGS) -march=armv8.1-a
 simd_v81_CFLAGS    = $(AM_CFLAGS) -march=armv8.1-a+crypto
+simd_dotprod_CFLAGS    = $(AM_CFLAGS) -march=armv8.2-a+dotprod
 fp_and_simd_CFLAGS = $(AM_CFLAGS) -march=armv8-a+crypto
 fp_and_simd_v82_CFLAGS = $(AM_CFLAGS) -march=armv8.2-a+fp16+crypto
+frinta_frintn_SOURCES  = frinta_frintn.cpp
+frinta_frintn_CXXFLAGS = ${AM_CXXFLAGS} -std=c++17
 integer_CFLAGS     = $(AM_CFLAGS) -g -O0 -DTEST_BFM=0
 
 fp_and_simd_LDADD  = -lm

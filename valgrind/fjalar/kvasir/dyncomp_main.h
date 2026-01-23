@@ -4,7 +4,7 @@
   and the Valgrind MemCheck tool (Copyright (C) 2000-2005 Julian
   Seward, jseward@acm.org)
 
-   Copyright (C) 2007-2022 University of Washington Computer Science & Engineering Department,
+   Copyright (C) 2007-2026 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
@@ -142,8 +142,14 @@ static __inline__ void set_tag ( Addr a, UInt tag )
       VG_(exit)(1);
     }
 
-    new_tag_array =
-      (UInt*)VG_(am_shadow_alloc)(SECONDARY_SIZE * sizeof(*new_tag_array));
+    SysRes sres = VG_(am_shadow_alloc)(SECONDARY_SIZE * sizeof(*new_tag_array));
+    if (sr_isError(sres)) {
+      printf("Out of memory allocating new_tag_array\n");
+      printf("Terminating program.\n");
+      VG_(exit)(1);
+    }
+
+    new_tag_array = (UInt*)(Addr)sr_Res(sres);
     VG_(memset)(new_tag_array, 0, (SECONDARY_SIZE * sizeof(*new_tag_array)));
     primary_tag_map[PM_IDX(a)] = new_tag_array;
     n_primary_tag_map_init_entries++;

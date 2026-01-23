@@ -1,4 +1,5 @@
 #! /bin/sh
+# @configure_input@
 
 # filter the output of gdb.
 
@@ -14,6 +15,21 @@ cat > $PATTERNFILE <<EOF
 
 #       general way to delete uninteresting and varying lines.
 /filter_gdb BEGIN drop/,/filter_gdb END drop/d
+
+#       delete messages produced by valgrind python code loading.
+/Loaded.*valgrind-monitor.py$/d
+/Type "help valgrind" for more info\.$/d
+#       and remove loading error messages when python scripts haven't
+#       been installed yet (running against vg-in-place)
+/warning: Missing auto-load script.*/d
+/of file .*vgpreload.*so.*/d
+/Use.*info auto-load python-scripts.*/d
+
+#       delete messages produced when GDB auto-load denies loading python code.
+#       Note that the first pattern is also present in filter_vgdb.in
+#       as this line is output on stderr.
+/warning: File .*valgrind-monitor.py.*declined.*/d
+/To enable execution of this file add/,/info "(gdb)Auto-loading safe path"/d
 
 #       initial tty control character sent by gdb 7.0
 s/^\[?1034hReading symbols/Reading symbols/
@@ -41,6 +57,12 @@ s/^\[?1034hReading symbols/Reading symbols/
 #       Anonymise pid numbers
 s/pid [0-9][0-9]*/pid ..../g
 
+#      Align the 'delete' prompt to the GDB 15 prompt
+s/Delete all breakpoints?/Delete all breakpoints, watchpoints, tracepoints, and catchpoints?/
+
+#      Align the 'remote failure reply' string to the GDB 15 behaviour.
+s/remote failure reply 'E\./remote failure reply '/
+
 #       filter 'remote target killed' messages (produced by gdb >= 8.2)
 /(Remote target) killed/d
 
@@ -49,6 +71,9 @@ s/Thread [0-9][0-9]*/Thread ..../g
 
 #       delete thread switches
 /\[Switching to Thread ....\]/d
+
+#       delete thread exiting
+/\[Thread .... exited\]/d
 
 #       ??? Probably we had a 'Switching ' message in front of
 #        a frame line ?
@@ -105,11 +130,11 @@ s/in kill ().*$/in syscall .../
 #       anonymise syscall on ppc64 (bugzilla #284305)
 s/in .*kill ().*$/in syscall .../
 
-
 s/in _dl_sysinfo_int80 ()/in syscall .../
 /^   from \/lib\/ld-linux.so.*$/d
 s/\(0x........\) in ?? () from \/lib.*$/\1 in syscall .../
 s/\(0x........\) in ?? ()$/\1 in syscall .../
+s/in __select64 (.*/in syscall .../
 
 #       4 expressions to cover glibc 2.27 way to do a select, such as
 #          * 1    Thread 5548 (tid 1 VgTs_WaitSys) 0x0000000004f6203f in __GI___select (
@@ -119,6 +144,7 @@ s/\(0x........\) in ?? ()$/\1 in syscall .../
 #              return SYSCALL_CANCEL....
 s/in __select .*/in syscall .../
 s/in __select$/in syscall .../
+s/in _select ()/in syscall .../
 /nfds=/d
 /exceptfds=/d
 /timeout=/d
@@ -131,10 +157,11 @@ s/in __select$/in syscall .../
 #             (on 32 bits, we have an int_80, on 64 bits, directly select)
 s/in \(.__\)\{0,1\}select () from \/.*$/in syscall .../
 
-/^   from \/lib\/libc.so.*$/d
-/^   from \/lib64\/libc.so.*$/d
-/^   from \/lib64\/.*\/libc.so.*$/d
-/^   from \/lib64\/.*\/libc-.*.so/d
+/^   from \/lib.*\/libc.so.*$/d
+/^   from \/lib64.*\/libc.so.*$/d
+/^   from \/lib64.*\/.*\/libc.so.*$/d
+/^   from \/lib64.*\/.*\/libc-.*.so/d
+s/ from \/lib\/libc\.so.*//
 
 #       and yet another (gdb 7.0 way) to get a system call
 s/in select ()$/in syscall .../
@@ -164,7 +191,7 @@ s/in \.__select () at \.\.\/sysdeps\/unix\/syscall-template\.S.*$/in syscall ...
 /^[ 	]*at \.\.\/sysdeps\/unix\/syscall-template\.S/d
 /^[ 	]*in \.\.\/sysdeps\/unix\/syscall-template\.S/d
 
-/^[1-9][0-9]*[ 	]*\.\.\/sysdeps\/unix\/syscall-template\.S/d
+/^\(warning: \)\?[1-9][0-9]*[ 	]*\.\.\/sysdeps\/unix\/syscall-template\.S/d
 /^[1-9][0-9]*[ 	]in *\.\.\/sysdeps\/unix\/syscall-template\.S/d
 /^[1-9][0-9]*[ 	]T_PSEUDO (SYSCALL_SYMBOL, SYSCALL_NAME, SYSCALL_NARGS)/d
 

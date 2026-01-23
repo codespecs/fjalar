@@ -543,53 +543,69 @@ This will take about 10-15 minutes.  A summary of the @command{regtest}
 results will be at the end of the log file.  We will use these results in
 @ref{Testing Valgrind}.
 
-Here is a copy of the last few lines from the latest run of these tests (07/11/2023)
-on a UW/CSE CentOS based system:
+Here is a copy of the last few lines from the latest run of these tests (01/21/2026)
+running Valgrind 3.23 on a UW/CSE Rocky Linux (9.7) based system:
 
 @example
-== 726 tests, 4 stderr failures, 0 stdout failures, 0 stderrB failures, 0 stdoutB failures, 0 post failures ==
-drd/tests/pth_mutex_signal               (stderr)
-drd/tests/shared_timed_mutex             (stderr)
-none/tests/libvex_test                   (stderr)
-none/tests/libvexmultiarch_test          (stderr)
+== 809 tests, 0 stderr failures, 0 stdout failures, 2 stderrB failures, 16 stdoutB failures, 0 post failures ==
+gdbserver_tests/hginfo                   (stdoutB)
+gdbserver_tests/hgtls                    (stdoutB)
+gdbserver_tests/mcblocklistsearch        (stderrB)
+gdbserver_tests/mcbreak                  (stdoutB)
+gdbserver_tests/mcclean_after_fork       (stdoutB)
+gdbserver_tests/mcinfcallWSRU            (stderrB)
+gdbserver_tests/mcleak                   (stdoutB)
+gdbserver_tests/mcmain_pic               (stdoutB)
+gdbserver_tests/mcsignopass              (stdoutB)
+gdbserver_tests/mcsigpass                (stdoutB)
+gdbserver_tests/mcvabits                 (stdoutB)
+gdbserver_tests/mcwatchpoints            (stdoutB)
+gdbserver_tests/mssnapshot               (stdoutB)
+gdbserver_tests/nlcontrolc               (stdoutB)
+gdbserver_tests/nlgone_abrt              (stdoutB)
+gdbserver_tests/nlgone_return            (stdoutB)
+gdbserver_tests/nlpasssigalrm            (stdoutB)
+gdbserver_tests/nlvgdbsigqueue           (stdoutB)
 
 ...checking makefile consistency
-massif/tests/Makefile.am:1: error: deep-D.post.exp-ppc64 is missing in EXTRA_DIST
 ...checking header files and include directives
-*** File fjalar/mc_main.c must not include ../coregrind/pub_core_aspacemgr.h
-make[1]: *** [regtest] Error 1
-make[1]: Leaving directory `/homes/gws/markro/invariants/fjalar/valgrind'
-make: *** [test] Error 2
+Unknown directory 'inst'. Please update check_headers_and_includes
+make: *** [Makefile:1440: regtest] Error 1
 @end example
 
+(Note that the failure of all the gdbserver tests indicates that the system does not
+have the proper glibc-debuginfo installed.)
 (Note the final include file failure - this is expected behavior.)
+(Note that the unknown directory failure is expected behavior.)
 
-Here is a another example from the latest run of these tests (07/11/2023)
-on a UW/CSE Rocky based system:
+Here is a another example from the latest run of these tests (01/21/2026)
+running Valgrind 3.23 on a Ubuntu Linux (25.10) based system:
 
 @example
-== 730 tests, 8 stderr failures, 0 stdout failures, 1 stderrB failure, 1 stdoutB failure, 0 post failures ==
-gdbserver_tests/hginfo                   (stderrB)
-gdbserver_tests/nlvgdbsigqueue           (stderr)
+== 895 tests, 9 stderr failures, 2 stdout failures, 1 stderrB failure, 2 stdoutB failures, 0 post failures ==
+gdbserver_tests/mcinfcallWSRU            (stderrB)
+gdbserver_tests/nlcontrolc               (stdoutB)
 gdbserver_tests/nlvgdbsigqueue           (stdoutB)
-memcheck/tests/overlap                   (stderr)
-helgrind/tests/tls_threads               (stderr)
-drd/tests/pth_barrier_thr_cr             (stderr)
-drd/tests/pth_mutex_signal               (stderr)
-drd/tests/shared_timed_mutex             (stderr)
-none/tests/libvex_test                   (stderr)
-none/tests/libvexmultiarch_test          (stderr)
+memcheck/tests/linux/sys-execveat        (stdout)
+memcheck/tests/linux/sys-execveat        (stderr)
+memcheck/tests/sendmsg                   (stderr)
+memcheck/tests/x86-linux/scalar          (stderr)
+helgrind/tests/tc22_exit_w_lock          (stderr)
+drd/tests/std_thread2                    (stderr)
+none/tests/fdleak_ipv4                   (stderr)
+none/tests/file_dclose                   (stderr)
+none/tests/scripts/bug231357             (stdout)
+none/tests/scripts/bug231357             (stderr)
+none/tests/socket_close                  (stderr)
 
 ...checking makefile consistency
 ...checking header files and include directives
-*** File fjalar/mc_main.c must not include ../coregrind/pub_core_aspacemgr.h
-make[1]: *** [Makefile:1419: regtest] Error 1
-make[1]: Leaving directory '/scratch/markro/clones/fjalar/valgrind'
-make: *** [Makefile:22: test] Error 2
+Unknown directory 'inst'. Please update check_headers_and_includes
+make: *** [Makefile:1445: regtest] Error 1
 @end example
 
 As you can see, the results vary depending on the host system.  The important thing to verify
-is that the results are the same before and after any Binutil changes.
+is that the results are the same before and after any Binutils changes.
 
 @node Updating Readelf from Binutils
 @chapter Updating Readelf from Binutils

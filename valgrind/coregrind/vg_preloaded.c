@@ -45,6 +45,27 @@
 #include "pub_core_debuginfo.h"  // Needed for pub_core_redir.h
 #include "pub_core_redir.h"      // For VG_NOTIFY_ON_LOAD
 
+#ifdef HAVE_HEADER_FEATURES_H
+#include <features.h>
+#endif
+
+#if !defined(VGO_darwin)
+/* Instruct GDB via a .debug_gdb_scripts section to load the valgrind and tool
+   front-end commands.  */
+/* Note: The "MS" section flags are to remove duplicates.  */
+#define DEFINE_GDB_PY_SCRIPT(script_name) \
+  asm("\
+.pushsection \".debug_gdb_scripts\", \"MS\",@progbits,1\n\
+.byte 1 /* Python */\n\
+.asciz \"" script_name "\"\n\
+.popsection \n\
+");
+
+#ifdef VG_GDBSCRIPTS_DIR
+DEFINE_GDB_PY_SCRIPT(VG_GDBSCRIPTS_DIR "/valgrind-monitor.py")
+#endif
+#endif
+
 #if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_freebsd)
 
 /* ---------------------------------------------------------------------
@@ -55,7 +76,7 @@
 void VG_NOTIFY_ON_LOAD(freeres)(Vg_FreeresToRun to_run);
 void VG_NOTIFY_ON_LOAD(freeres)(Vg_FreeresToRun to_run)
 {
-#  if !defined(__UCLIBC__) && !defined(MUSL_LIBC) \
+#  if !defined(__UCLIBC__) \
       && !defined(VGPV_arm_linux_android) \
       && !defined(VGPV_x86_linux_android) \
       && !defined(VGPV_mips32_linux_android) \
@@ -67,6 +88,14 @@ void VG_NOTIFY_ON_LOAD(freeres)(Vg_FreeresToRun to_run)
        (_ZN9__gnu_cxx9__freeresEv != NULL)) {
       _ZN9__gnu_cxx9__freeresEv();
    }
+
+#  endif
+
+#  if !defined(__UCLIBC__) && !defined(MUSL_LIBC) \
+      && !defined(VGPV_arm_linux_android) \
+      && !defined(VGPV_x86_linux_android) \
+      && !defined(VGPV_mips32_linux_android) \
+      && !defined(VGPV_arm64_linux_android)
 
    extern void __libc_freeres(void) __attribute__((weak));
    if (((to_run & VG_RUN__LIBC_FREERES) != 0) &&
@@ -209,7 +238,27 @@ void VG_REPLACE_FUNCTION_ZU(libSystemZdZaZddylib, arc4random_addrandom)(unsigned
 
 #elif defined(VGO_freebsd)
 
-// nothing specific currently
+#if (FREEBSD_VERS >= FREEBSD_14)
+
+void * VG_NOTIFY_ON_LOAD(ifunc_wrapper) (void);
+void * VG_NOTIFY_ON_LOAD(ifunc_wrapper) (void)
+{
+    OrigFn fn;
+    Addr result = 0;
+    Addr fnentry;
+
+    /* Call the original indirect function and get it's result */
+    VALGRIND_GET_ORIG_FN(fn);
+    CALL_FN_W_v(result, fn);
+
+    fnentry = result;
+
+    VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__ADD_IFUNC_TARGET,
+                                    fn.nraddr, fnentry, 0, 0, 0);
+    return (void*)result;
+}
+
+#endif
 
 #elif defined(VGO_solaris)
 

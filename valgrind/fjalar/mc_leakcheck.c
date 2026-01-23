@@ -2,7 +2,7 @@
    This file is part of Fjalar, a dynamic analysis framework for C/C++
    programs.
 
-   Copyright (C) 2007-2022 University of Washington Computer Science & Engineering Department,
+   Copyright (C) 2007-2026 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
    This program is free software; you can redistribute it and/or
@@ -19,7 +19,7 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2000-2013 Julian Seward
+   Copyright (C) 2000-2017 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -41,7 +41,7 @@
 #include "my_libc.h"
 
 #include "pub_tool_basics.h"
-#include "pub_tool_vki.h"  // needed by pub_tool_libcsignal.h
+#include "pub_tool_vki.h"
 #include "pub_tool_aspacehl.h"
 #include "pub_tool_aspacemgr.h"
 #include "pub_tool_execontext.h"
@@ -101,7 +101,6 @@
 // It's far from clear that this is the best possible categorisation;  it's
 // accreted over time without any central guiding principle.
 
-// (comment added 2009)  
 /*------------------------------------------------------------*/
 /*--- XXX: Thoughts for improvement.                       ---*/
 /*------------------------------------------------------------*/
@@ -347,15 +346,10 @@ Int find_chunk_for ( Addr       ptr,
 
 
 static MC_Chunk**
-find_active_chunks(Int* pn_chunks)
+get_sorted_array_of_active_chunks(Int* pn_chunks)
 {
-   // Our goal is to construct a set of chunks that includes every
-   // mempool chunk, and every malloc region that *doesn't* contain a
-   // mempool chunk.
-   MC_Mempool *mp;
-   MC_Chunk **mallocs, **chunks, *mc;
-   UInt n_mallocs, n_chunks, m, s;
-   Bool *malloc_chunk_holds_a_pool_chunk;
+   UInt n_mallocs;
+   MC_Chunk **mallocs;
 
    // First we collect all the malloc chunks into an array and sort it.
    // We do this because we want to query the chunks by interior
@@ -368,73 +362,98 @@ find_active_chunks(Int* pn_chunks)
    }
    VG_(ssort)(mallocs, n_mallocs, sizeof(VgHashNode*), compare_MC_Chunks);
 
-   // Then we build an array containing a Bool for each malloc chunk,
-   // indicating whether it contains any mempools.
-   malloc_chunk_holds_a_pool_chunk = VG_(calloc)( "mc.fas.1",
-                                                  n_mallocs, sizeof(Bool) );
-   n_chunks = n_mallocs;
+   // If there are no mempools (for most users, this is the case),
+   //    n_mallocs and mallocs is the final result
+   // otherwise we need to do special handling for mempools.
 
-   // Then we loop over the mempool tables. For each chunk in each
-   // pool, we set the entry in the Bool array corresponding to the
-   // malloc chunk containing the mempool chunk.
-   VG_(HT_ResetIter)(MC_(mempool_list));
-   while ( (mp = VG_(HT_Next)(MC_(mempool_list))) ) {
-      VG_(HT_ResetIter)(mp->chunks);
-      while ( (mc = VG_(HT_Next)(mp->chunks)) ) {
+   if (VG_(HT_count_nodes)(MC_(mempool_list)) > 0) {
+      // Our goal is to construct a set of chunks that includes every
+      // mempool chunk, and every malloc region that *doesn't* contain a
+      // mempool chunk.
+      MC_Mempool *mp;
+      MC_Chunk **chunks, *mc;
+      UInt n_chunks, m, s;
+      Bool *malloc_chunk_holds_a_pool_chunk;
 
-         // We'll need to record this chunk.
-         n_chunks++;
+      // We build an array containing a Bool for each malloc chunk,
+      // indicating whether it contains any mempools.
+      malloc_chunk_holds_a_pool_chunk = VG_(calloc)( "mc.fas.1",
+                                                     n_mallocs, sizeof(Bool) );
+      n_chunks = n_mallocs;
 
-         // Possibly invalidate the malloc holding the beginning of this chunk.
-         m = find_chunk_for(mc->data, mallocs, n_mallocs);
-         if (m != -1 && malloc_chunk_holds_a_pool_chunk[m] == False) {
-            tl_assert(n_chunks > 0);
-            n_chunks--;
-            malloc_chunk_holds_a_pool_chunk[m] = True;
-         }
+      // Then we loop over the mempool tables. For each chunk in each
+      // pool, we set the entry in the Bool array corresponding to the
+      // malloc chunk containing the mempool chunk.
+      VG_(HT_ResetIter)(MC_(mempool_list));
+      while ( (mp = VG_(HT_Next)(MC_(mempool_list))) ) {
+         VG_(HT_ResetIter)(mp->chunks);
+         while ( (mc = VG_(HT_Next)(mp->chunks)) ) {
 
-         // Possibly invalidate the malloc holding the end of this chunk.
-         if (mc->szB > 1) {
-            m = find_chunk_for(mc->data + (mc->szB - 1), mallocs, n_mallocs);
+            // We'll need to record this chunk.
+            n_chunks++;
+
+            // Possibly invalidate the malloc holding the beginning of this chunk.
+            m = find_chunk_for(mc->data, mallocs, n_mallocs);
             if (m != -1 && malloc_chunk_holds_a_pool_chunk[m] == False) {
                tl_assert(n_chunks > 0);
                n_chunks--;
                malloc_chunk_holds_a_pool_chunk[m] = True;
             }
+
+            // Possibly invalidate the malloc holding the end of this chunk.
+            if (mc->szB > 1) {
+               m = find_chunk_for(mc->data + (mc->szB - 1), mallocs, n_mallocs);
+               if (m != -1 && malloc_chunk_holds_a_pool_chunk[m] == False) {
+                  tl_assert(n_chunks > 0);
+                  n_chunks--;
+                  malloc_chunk_holds_a_pool_chunk[m] = True;
+               }
+            }
          }
       }
-   }
-   tl_assert(n_chunks > 0);
+      tl_assert(n_chunks > 0);
 
-   // Create final chunk array.
-   chunks = VG_(malloc)("mc.fas.2", sizeof(VgHashNode*) * (n_chunks));
-   s = 0;
+      // Create final chunk array.
+      chunks = VG_(malloc)("mc.fas.2", sizeof(VgHashNode*) * (n_chunks));
+      s = 0;
 
-   // Copy the mempool chunks and the non-marked malloc chunks into a
-   // combined array of chunks.
-   VG_(HT_ResetIter)(MC_(mempool_list));
-   while ( (mp = VG_(HT_Next)(MC_(mempool_list))) ) {
-      VG_(HT_ResetIter)(mp->chunks);
-      while ( (mc = VG_(HT_Next)(mp->chunks)) ) {
-         tl_assert(s < n_chunks);
-         chunks[s++] = mc;
+      // Copy the mempool chunks and the non-marked malloc chunks into a
+      // combined array of chunks.
+      VG_(HT_ResetIter)(MC_(mempool_list));
+      while ( (mp = VG_(HT_Next)(MC_(mempool_list))) ) {
+         VG_(HT_ResetIter)(mp->chunks);
+         while ( (mc = VG_(HT_Next)(mp->chunks)) ) {
+            tl_assert(s < n_chunks);
+            chunks[s++] = mc;
+         }
       }
-   }
-   for (m = 0; m < n_mallocs; ++m) {
-      if (!malloc_chunk_holds_a_pool_chunk[m]) {
-         tl_assert(s < n_chunks);
-         chunks[s++] = mallocs[m];
+      for (m = 0; m < n_mallocs; ++m) {
+         if (!malloc_chunk_holds_a_pool_chunk[m]) {
+            tl_assert(s < n_chunks);
+            chunks[s++] = mallocs[m];
+         }
       }
+      tl_assert(s == n_chunks);
+
+      // Free temporaries.
+      VG_(free)(mallocs);
+      VG_(free)(malloc_chunk_holds_a_pool_chunk);
+
+      *pn_chunks = n_chunks;
+
+      // Sort the array so blocks are in ascending order in memory.
+      VG_(ssort)(chunks, n_chunks, sizeof(VgHashNode*), compare_MC_Chunks);
+
+      // Sanity check -- make sure they're in order.
+      for (int i = 0; i < n_chunks-1; i++) {
+         tl_assert( chunks[i]->data <= chunks[i+1]->data);
+      }
+
+      return chunks;
+   } else {
+      *pn_chunks = n_mallocs;
+      return mallocs;
    }
-   tl_assert(s == n_chunks);
-
-   // Free temporaries.
-   VG_(free)(mallocs);
-   VG_(free)(malloc_chunk_holds_a_pool_chunk);
-
-   *pn_chunks = n_chunks;
-
-   return chunks;
 }
 
 /*------------------------------------------------------------*/
@@ -445,7 +464,7 @@ find_active_chunks(Int* pn_chunks)
 typedef 
    struct {
       UInt  state:2;    // Reachedness.
-      UInt  pending:1;  // Scan pending.  
+      UInt  pending:1;  // Scan pending.
       UInt  heuristic: (sizeof(UInt)*8)-3;
       // Heuristic with which this block was considered reachable.
       // LchNone if state != Reachable or no heuristic needed to
@@ -1118,7 +1137,10 @@ lc_scan_memory(Addr start, SizeT len, Bool is_prior_definite,
 #     else
       // On other platforms, just skip one Addr.
       lc_sig_skipped_szB += sizeof(Addr);
+      // PJF asserts are always on
+      // coverity[ASSERT_SIDE_EFFECT:FALSE]
       tl_assert(bad_scanned_addr >= VG_ROUNDUP(start, sizeof(Addr)));
+      // coverity[ASSERT_SIDE_EFFECT:FALSE]
       tl_assert(bad_scanned_addr < VG_ROUNDDN(start+len, sizeof(Addr)));
       ptr = bad_scanned_addr + sizeof(Addr); // Unaddressable, - skip it.
 #endif
@@ -1199,7 +1221,7 @@ static void lc_process_markstack(Int clique)
    Bool is_prior_definite;
 
    while (lc_pop(&top)) {
-      tl_assert(top >= 0 && top < lc_n_chunks);      
+      tl_assert(top >= 0 && top < lc_n_chunks);
 
       // See comment about 'is_prior_definite' at the top to understand this.
       is_prior_definite = ( Possible != lc_extras[top].state );
@@ -1290,25 +1312,29 @@ static void get_printing_rules(LeakCheckParams* lcp,
    Bool delta_considered;
 
    switch (lcp->deltamode) {
-   case LCD_Any: 
+   case LCD_Any:
       delta_considered = lr->num_blocks > 0;
       break;
    case LCD_Increased:
-      delta_considered 
+      delta_considered
          = lr->szB > lr->old_szB
          || lr->indirect_szB > lr->old_indirect_szB
          || lr->num_blocks > lr->old_num_blocks;
       break;
-   case LCD_Changed: 
+   case LCD_Changed:
       delta_considered = lr->szB != lr->old_szB
          || lr->indirect_szB != lr->old_indirect_szB
          || lr->num_blocks != lr->old_num_blocks;
+      break;
+   case LCD_New:
+      delta_considered
+         = lr->num_blocks > 0 && lr->old_num_blocks == 0;
       break;
    default:
       tl_assert(0);
    }
 
-   *print_record = lcp->mode == LC_Full && delta_considered 
+   *print_record = lcp->mode == LC_Full && delta_considered
       && RiS(lr->key.state,lcp->show_leak_kinds);
    // We don't count a leaks as errors with lcp->mode==LC_Summary.
    // Otherwise you can get high error counts with few or no error
@@ -1540,7 +1566,7 @@ static void print_results(ThreadId tid, LeakCheckParams* lcp)
       VG_(OSetGen_Create)(offsetof(LossRecord, key),
                           cmp_LossRecordKey_LossRecord,
                           VG_(malloc), "mc.pr.1",
-                          VG_(free)); 
+                          VG_(free));
 
    // If we have loss records from a previous search, reset values to have
    // proper printing of the deltas between previous search and this search.
@@ -2031,7 +2057,7 @@ void MC_(detect_memory_leaks) ( ThreadId tid, LeakCheckParams* lcp)
       VG_(free)(lc_chunks);
       lc_chunks = NULL;
    }
-   lc_chunks = find_active_chunks(&lc_n_chunks);
+   lc_chunks = get_sorted_array_of_active_chunks(&lc_n_chunks);
    lc_chunks_n_frees_marker = MC_(get_cmalloc_n_frees)();
    if (lc_n_chunks == 0) {
       tl_assert(lc_chunks == NULL);
@@ -2051,15 +2077,6 @@ void MC_(detect_memory_leaks) ( ThreadId tid, LeakCheckParams* lcp)
       return;
    }
 
-   // Sort the array so blocks are in ascending order in memory.
-   VG_(ssort)(lc_chunks, lc_n_chunks, sizeof(VgHashNode*), compare_MC_Chunks);
-
-   // Sanity check -- make sure they're in order.
-   for (i = 0; i < lc_n_chunks-1; i++) {
-      tl_assert( lc_chunks[i]->data <= lc_chunks[i+1]->data);
-   }
-
-   // (comment added 2009)  
    // Sanity check -- make sure they don't overlap.  One exception is that
    // we allow a MALLOCLIKE block to sit entirely within a malloc() block.
    // This is for bug 100628.  If this occurs, we ignore the malloc() block
@@ -2274,7 +2291,7 @@ void MC_(who_points_at) ( Addr address, SizeT szB)
       VG_(umsg) ("Searching for pointers pointing in %lu bytes from %#lx\n",
                  szB, address);
 
-   chunks = find_active_chunks(&n_chunks);
+   chunks = get_sorted_array_of_active_chunks(&n_chunks);
 
    // Scan memory root-set, searching for ptr pointing in address[szB]
    scan_memory_root_set(address, szB);
