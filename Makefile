@@ -16,7 +16,6 @@ help:
 
 build:
 	bash ./auto-everything.sh
-	cat config.log
 
 # Valgrind tests
 test:

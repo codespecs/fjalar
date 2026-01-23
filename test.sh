@@ -45,8 +45,7 @@ fi
 /tmp/git-scripts/git-clone-related codespecs daikon
 ln -s "$(pwd)" "${DAIKONDIR}/fjalar" || true
 
-make -i build
-cat valgrind/config.log
+make build
 
 make doc
 
