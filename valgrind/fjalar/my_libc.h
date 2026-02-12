@@ -33,13 +33,13 @@
 
 #define _(String) (String)
 
-#define PARAMS(args)		args
-#define VPARAMS(args)		args
-#define VA_START(VA_LIST, VAR)	va_start(VA_LIST, VAR)
+#define PARAMS(args) args
+#define VPARAMS(args) args
+#define VA_START(VA_LIST, VAR) va_start(VA_LIST, VAR)
 
-#define VA_OPEN(AP, VAR)		{ va_list AP; va_start(AP, VAR); { struct Qdmy
-#define VA_CLOSE(AP)			} va_end(AP); }
-#define VA_FIXEDARG(AP, TYPE, NAME)	struct Qdmy
+#define VA_OPEN(AP, VAR) { va_list AP; va_start(AP, VAR); { struct Qdmy
+#define VA_CLOSE(AP) } va_end(AP); }
+#define VA_FIXEDARG(AP, TYPE, NAME) struct Qdmy
 
 /* alloca.h */
 extern void *alloca (size_t __size);
@@ -73,17 +73,17 @@ VISIT;
 /* Search for an entry matching the given KEY in the tree pointed to
    by *ROOTP and insert a new element if not found.  */
 void *tsearch (const void *__key, void **__rootp,
-	       __compar_fn_t __compar);
+               __compar_fn_t __compar);
 
 /* Search for an entry matching the given KEY in the tree pointed to
    by *ROOTP.  If no matching entry is available return NULL.  */
 void *tfind (const void *__key, void *const *__rootp,
-	     __compar_fn_t __compar);
+             __compar_fn_t __compar);
 
 /* Remove the element matching KEY from the tree pointed to by *ROOTP.  */
 void *tdelete (const void *__restrict __key,
-	       void **__restrict __rootp,
-	       __compar_fn_t __compar);
+               void **__restrict __rootp,
+               __compar_fn_t __compar);
 
 /* Retrieve an pre-order traversal tree iterator for tree pointed to by *VROOT */
 struct tree_iter_t *titer(const void *__vroot);
@@ -141,9 +141,9 @@ typedef int wchar_t;
 
 /* The possibilities for the third argument to `fseek'.
    These values should not be changed.  */
-#define SEEK_SET	0	/* Seek from beginning of file.  */
-#define SEEK_CUR	1	/* Seek from current position.  */
-#define SEEK_END	2	/* Seek from end of file.  */
+#define SEEK_SET 0 /* Seek from beginning of file.  */
+#define SEEK_CUR 1 /* Seek from current position.  */
+#define SEEK_END 2 /* Seek from end of file.  */
 struct __stdio_file;
 typedef struct __stdio_file FILE;
 

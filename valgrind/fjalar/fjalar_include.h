@@ -608,8 +608,14 @@ typedef struct _FunctionEntry {
   Bool isExternal;
 
   enum dwarf_location_atom frame_base_atom;
-  // If frame_base_atom == DW_OP_list, then frame_base_offset is a pointer
-  // to a location list; otherwise, it is an offset from the register
+  // Encoding             Meaning
+  // DW_OP_call_frame_cfa frame base calculated from call frames found in .eh_frame section
+  // DW_OP_list           frame base calculated from location lists found in .debug_loc section
+  // DW_OP_fbreg          frame base = architectural frame pointer
+  // If frame_base_atom == DW_OP_list, then frame_base_offset is used to search the
+  // indicated location list; if frame_base_atom == DW_OP_call_frame_cfa, then the
+  // function entry address is used to search the debug frame list;
+  // otherwise, the frame_base_offset is an offset from the register
   // indicated by frame_base_atom.
   long frame_base_offset;
 
@@ -727,8 +733,8 @@ typedef struct {
   FunctionEntry* func;
 
   Addr FP;       // Frame pointer (%ebp, %rbp) as recorded or
-		 // calculated from the stack pointer at function
-		 // entrance
+                 // calculated from the stack pointer at function
+                 // entrance
 
   Addr lowestSP;  // The LOWEST value of the stack pointer (%esp,
                   // %rsp) that has ever been encountered while we are
@@ -857,7 +863,7 @@ TraversalResult performAction(VariableEntry* var,
                               DisambigOverride disambigOverride,
                               Bool isSequence,
                               Addr pValue,
-			      Addr pValueGuest,
+                              Addr pValueGuest,
                               Addr* pValueArray,
                               UInt numElts,
                               FunctionEntry* varFuncInfo,
@@ -898,20 +904,20 @@ Bool isEnter - 1 if this is a function entrance, 0 if exit
 */
 
 typedef TraversalResult (TraversalAction)(VariableEntry* var,
-					  const HChar* varName,
-					  VariableOrigin varOrigin,
-					  UInt numDereferences,
-					  UInt layersBeforeBase,
-					  Bool overrideIsInit,
-					  DisambigOverride disambigOverride,
-					  Bool isSequence,
-					  Addr pValue,
-					  Addr pValueGuest,
-					  Addr* pValueArray,
-					  Addr* pValueArrayGuest,
-					  UInt numElts,
-					  FunctionEntry* varFuncInfo,
-					  Bool isEnter);
+                                          const HChar* varName,
+                                          VariableOrigin varOrigin,
+                                          UInt numDereferences,
+                                          UInt layersBeforeBase,
+                                          Bool overrideIsInit,
+                                          DisambigOverride disambigOverride,
+                                          Bool isSequence,
+                                          Addr pValue,
+                                          Addr pValueGuest,
+                                          Addr* pValueArray,
+                                          Addr* pValueArrayGuest,
+                                          UInt numElts,
+                                          FunctionEntry* varFuncInfo,
+                                          Bool isEnter);
 
 // Visits an entire group of variables, depending on the value of varOrigin:
 // If varOrigin == GLOBAL_VAR, then visit all global variables
@@ -928,14 +934,14 @@ void visitVariableGroup(VariableOrigin varOrigin,
                         // Address of the base of the currently
                         // executing function's stack frame: (Only used for
                         // varOrigin == FUNCTION_FORMAL_PARAM). The guest
-			// version should be in the program's address space
-			// and the non-guest one can be a copy in our
-			// address space (it's what we'll dereference)
+                        // version should be in the program's address space
+                        // and the non-guest one can be a copy in our
+                        // address space (it's what we'll dereference)
                         Addr stackBaseAddr,
                         Addr stackBaseAddrGuest,
                         // This function performs an action for each
                         // variable visited:
-			TraversalAction *performAction);
+                        TraversalAction *performAction);
 
 // Grabs the appropriate return value of the function denoted by the
 // execution state 'e' from Valgrind simulated registers and visits
@@ -946,7 +952,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
 void visitReturnValue(FunctionExecutionState* e,
                       // This function performs an action for each
                       // variable visited:
-		      TraversalAction *performAction);
+                      TraversalAction *performAction);
 
 // Visits one variable (denoted by 'var') and all variables that are
 // derived from it by traversing inside of data structures and arrays.
@@ -954,10 +960,10 @@ void visitVariable(VariableEntry* var,
                    // Pointer to the location of the variable's
                    // current value in memory:
                    Addr pValue,
-		   // If pValue points to a copy of the guest
-		   // program's state, this is the pointer to the
-		   // original. If the value was in a register, this is 0.
-		   // Otherwise, same as pValue.
+                   // If pValue points to a copy of the guest
+                   // program's state, this is the pointer to the
+                   // original. If the value was in a register, this is 0.
+                   // Otherwise, same as pValue.
                    Addr pValueGuest,
                    // We only use overrideIsInit when we pass in
                    // things (e.g. some return values) that cannot be
@@ -975,7 +981,7 @@ void visitVariable(VariableEntry* var,
                    UInt numStructsDereferenced,
                    // This function performs an action for each
                    // variable visited:
-		   TraversalAction *performAction,
+                   TraversalAction *performAction,
                    VariableOrigin varOrigin,
                    FunctionEntry* varFuncInfo,
                    Bool isEnter);
@@ -986,7 +992,7 @@ void visitVariable(VariableEntry* var,
 // printing out names and performing other non-value-dependent
 // operations.
 void visitClassMembersNoValues(TypeEntry* class,
-			       TraversalAction *performAction);
+                               TraversalAction *performAction);
 
 // Misc. symbols that are useful for printing variable names during
 // the traversal process:

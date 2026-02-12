@@ -75,9 +75,11 @@
 void handle_possible_entry(MCEnv* mce, Addr64 addr, IRSB* sb_orig);
 void handle_possible_exit(MCEnv* mce, IRJumpKind jk);
 
-// The master location_list. This is fully explained in
-// typedata.c
+// The master location_list. This is explained in typedata.h
 extern struct genhashtable* loc_list_map;
+
+// The master debug_frame. This is explained in typedata.h
+extern debug_frame* debug_frame_HEAD;
 
 extern VG_REGPARM(1) void prime_function(FunctionEntry* f);
 extern VG_REGPARM(1) void enter_function(FunctionEntry* f);
@@ -154,22 +156,22 @@ This is called from hooks within mac_shared.h
 // (Remember that this code will be inserted in mc_main.c so it needs to have
 //  the proper extern variables declared.)
 #define CHECK_SP(currentSP)                                           \
-  ThreadId tid = VG_(get_running_tid)();                                \
-  FunctionExecutionState* curFunc = fnStackTop(tid);			\
-  if (curFunc &&							\
-      (currentSP < curFunc->lowestSP)) {				\
-    curFunc->lowestSP = currentSP;					\
+  ThreadId tid = VG_(get_running_tid)();                              \
+  FunctionExecutionState* curFunc = fnStackTop(tid);                  \
+  if (curFunc &&                                                      \
+      (currentSP < curFunc->lowestSP)) {                              \
+    curFunc->lowestSP = currentSP;                                    \
   }
 
 // Slower because we need to explicitly get the ESP
-#define CHECK_SP_SLOW()                                                \
-  ThreadId tid = VG_(get_running_tid)();                                \
-  FunctionExecutionState* curFunc = fnStackTop(tid);			\
-  if (curFunc) {							\
-    Addr currentSP = VG_(get_SP)(VG_(get_running_tid)());		\
-    if (currentSP < curFunc->lowestSP) {				\
-      curFunc->lowestSP = currentSP;					\
-    }									\
+#define CHECK_SP_SLOW()                                               \
+  ThreadId tid = VG_(get_running_tid)();                              \
+  FunctionExecutionState* curFunc = fnStackTop(tid);                  \
+  if (curFunc) {                                                      \
+    Addr currentSP = VG_(get_SP)(VG_(get_running_tid)());             \
+    if (currentSP < curFunc->lowestSP) {                              \
+      curFunc->lowestSP = currentSP;                                  \
+    }                                                                 \
   }
 
 
@@ -225,14 +227,14 @@ extern const HChar* dwarf_reg_string[9];
    do something sensible here and we use the following DWARF
    register numbers.  Note that these are all stack-top-relative
    numbers.
-	11 for %st(0) (gcc regno = 8)
-	12 for %st(1) (gcc regno = 9)
-	13 for %st(2) (gcc regno = 10)
-	14 for %st(3) (gcc regno = 11)
-	15 for %st(4) (gcc regno = 12)
-	16 for %st(5) (gcc regno = 13)
-	17 for %st(6) (gcc regno = 14)
-	18 for %st(7) (gcc regno = 15)
+        11 for %st(0) (gcc regno = 8)
+        12 for %st(1) (gcc regno = 9)
+        13 for %st(2) (gcc regno = 10)
+        14 for %st(3) (gcc regno = 11)
+        15 for %st(4) (gcc regno = 12)
+        16 for %st(5) (gcc regno = 13)
+        17 for %st(6) (gcc regno = 14)
+        18 for %st(7) (gcc regno = 15)
 */
 
 #endif

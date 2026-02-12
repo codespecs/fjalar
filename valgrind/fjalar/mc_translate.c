@@ -8550,15 +8550,15 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
    // Silence GCC warnings - rudd
    (void) closure; (void) vge;
 
-    if (verboze) {
-       ThreadId tid = VG_(get_running_tid)();
-       printf("\n");
-       printf("0x%lx ", VG_(get_IP)(tid));
-       printf("0x%lx ", VG_(get_SP)(tid));
-       printf("0x%lx ", VG_(get_FP)(tid));
-       printf("0x%lx ", VG_(get_xAX)(tid));
-       printf("\n");
-    }
+   if (verboze) {
+      ThreadId tid = VG_(get_running_tid)();
+      printf("\n");
+      printf("0x%lx ", VG_(get_IP)(tid));
+      printf("0x%lx ", VG_(get_SP)(tid));
+      printf("0x%lx ", VG_(get_FP)(tid));
+      printf("0x%lx ", VG_(get_xAX)(tid));
+      printf("\n");
+   }
 
    /* The update to libc-2.21 and ld-2.21 started causing spurious
       results with DynComp. Large sections of libc data were being
@@ -8748,7 +8748,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
    // Not if we allocate enough space for the shadow tag guest state
    // and adjust the offsets appropriately
    if (do_dyncomp) {
-     dce.mce = &mce;
+      dce.mce = &mce;
       dce.bb             = sb_out;
       dce.layout         = layout;
       dce.n_originalTmps = sb_out->tyenv->types_used;
@@ -8914,15 +8914,15 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
             break;
 
          case Ist_IMark:
-    if (verboze) {
-       ThreadId tid = VG_(get_running_tid)();
-       printf("\n");
-       printf("0x%lx ", VG_(get_IP)(tid));
-       printf("0x%lx ", VG_(get_SP)(tid));
-       printf("0x%lx ", VG_(get_FP)(tid));
-       printf("0x%lx ", VG_(get_xAX)(tid));
-       printf("\n");
-    }
+            if (verboze) {
+               ThreadId tid = VG_(get_running_tid)();
+               printf("\n");
+               printf("0x%lx ", VG_(get_IP)(tid));
+               printf("0x%lx ", VG_(get_SP)(tid));
+               printf("0x%lx ", VG_(get_FP)(tid));
+               printf("0x%lx ", VG_(get_xAX)(tid));
+               printf("\n");
+            }
 
             handle_possible_entry( &mce, st->Ist.IMark.addr, sb_in); // pgbovine
 #ifndef _NO_DYNCOMP
@@ -9014,11 +9014,11 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
          printf("\n");
       }
 
-       /* ... and finally copy the stmt itself to the output.  Except,
-          skip the copy of IRCASs; see comments on case Ist_CAS
-          above. */
-       if (st->tag != Ist_CAS)
-          stmt('C', &mce, st);
+      /* ... and finally copy the stmt itself to the output.  Except,
+         skip the copy of IRCASs; see comments on case Ist_CAS
+         above. */
+      if (st->tag != Ist_CAS)
+         stmt('C', &mce, st);
    }
 
    /* Now we need to complain if the jump target is undefined. */

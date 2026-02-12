@@ -179,7 +179,7 @@ extern void setNOBUF(FILE *stream);
 /*--- Entry and Exit Handling                              ---*/
 /*------------------------------------------------------------*/
 
-// (comment added 2005)
+// (comment added 2005)  
 // TODO: We cannot sub-class FunctionExecutionState unless we make
 // this into an array of pointers. Have one stack for
 // each thread. We'll be wasteful and just have the maximum number
@@ -196,11 +196,12 @@ int *fn_stack_first_free_index;
 
 typedef VG_REGPARM(1) void entry_func(FunctionEntry *);
 
-// This inserts an IR Statement responsible for calling func
-// code before the instruction at addr is executed. This is
+// This inserts an IR Statement responsible for calling a helper
+// function before the instruction at addr is executed. This is primarily
 // used for inserting the call to enter_function on function entry.
-// The result of looking up addr in
-// table will be passed to func as it's only argument. This function
+// It is also used for handling of 'function priming' (see
+// comment above prime_function). The result of looking up addr in
+// table will be passed to the helper as it's only argument. This function
 // does nothing if it is unable to successfully look up addr in the
 // provided table.
 static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
@@ -210,7 +211,7 @@ static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
   IRDirty  *di;
   FunctionEntry *entry = gengettable(table, (void *)(Addr)addr);
   // debug code
-  //FJALAR_DPRINTF("handle_possible_entry_func: addr: %p entry: %p\n", (void *)addr, entry);
+  FJALAR_DPRINTF("handle_possible_entry_func: addr: %p entry: %p\n", (void *)addr, entry);
 
   if(!entry) {
       return;
@@ -284,6 +285,23 @@ static Addr currentAddr = 0;
 // once at the first instruction of the function.
 static struct  genhashtable *funcs_handled = NULL;
 
+/* A disadvantage of putting the call to enter_function after the
+   prolog is that it occasionally ends up at a label that the compiler
+   jumps back to in the middle of executing a function, say if the
+   whole function is a single loop. If we were to do all the stuff in
+   enter_function() again in this case, things would get very
+   confused. Instead, we want to only do enter_function() once per
+   invocation of the function, where we define an invocation to be an
+   execution of the very first instruction. To accomplish that, we put
+   a call to the prime_function() hook there; when executed, it sets
+   the first_time flag. In enter_function(), we check the flag before
+   doing anything, and then clear it. */
+static Bool first_time = False;
+VG_REGPARM(1) void prime_function(FunctionEntry *f)
+{
+  first_time = True;
+  return;
+}
 
 static void find_entry_point(IRSB* bb_orig, FunctionEntry *f);
 
@@ -304,7 +322,9 @@ static void find_entry_point(IRSB* bb_orig, FunctionEntry *f);
 // function entrances. For further information on how Fjalar
 // determines the address for function entrances please see the
 // "HANDLING FUNCTION ENTRY" comment below. This is called from
-// mc_translate.c.
+// mc_translate.c.  Note that mc_translate calls handle_possible_entry
+// only the first time an IMARK is seen. This is why we need
+// the prime_function helper.
 void handle_possible_entry(MCEnv* mce, Addr64 addr, IRSB* bb_orig) {
   // REMEMBER TO ALWAYS UPDATE THIS regardless of whether this is
   // truly a function entry so that handle_possible_exit() can work
@@ -313,14 +333,20 @@ void handle_possible_entry(MCEnv* mce, Addr64 addr, IRSB* bb_orig) {
 
   FunctionEntry *entry = gengettable(FunctionTable, (void *)(Addr)addr);
   // debug code
-  //FJALAR_DPRINTF("handle_possible_entry: addr: %p entry: %p\n", (void *)addr, entry);
+  FJALAR_DPRINTF("handle_possible_entry: addr: %p entry: %p\n", (void *)addr, entry);
 
-  // If this is first instruction in a function, find the preferred entry point.
-  if(entry) {
+  // If this is the very first instruction in a function, find the
+  // preferred entry point. Also, add a call to the prime_function
+  // helper. Note that we must find the preferred entry point prior
+  // to inserting the helper call.
+  if (entry) {
     find_entry_point(bb_orig, entry);
+    handle_possible_entry_func(mce, addr, FunctionTable,
+			       "prime_function",
+			       &prime_function);
   }
 
-  // See if the current address is the preferred entry point.
+  // If addr is the preferred entry point, add a call to enter_function.
   handle_possible_entry_func(mce, addr, FunctionTable_by_endOfBb,
 			       "enter_function",
 			       &enter_function);
@@ -351,7 +377,7 @@ void handle_possible_entry(MCEnv* mce, Addr64 addr, IRSB* bb_orig) {
 // function entry for functions whose loop body is never executed.
 // It also causes problems relating to detecting entry to a function
 // multiple times, though this has already been mitigated - see comment
-// above prime_functoin
+// above prime_function.
 
 // This causes a problem as we can't enter at the first instruction due
 // to invalid debugging information, nor can we enter at the entryPC
@@ -478,24 +504,6 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
   }
 }
 
-/* A disadvantage of putting the call to enter_function after the
-   prolog is that it occasionally ends up at a label that the compiler
-   jumps back to in the middle of executing a function, say if the
-   whole function is a single loop. If we were to do all the stuff in
-   enter_function() again in this case, things would get very
-   confused. Instead, we want to only do enter_function() once per
-   invocation of the function, where we define an invocation to be an
-   execution of the very first instruction. To accomplish that, we put
-   a call to the prime_function() hook there; it initializes a global
-   to point to the current function. In enter_function(), we check
-   that pointer before doing anything, and then clear it. */
-static FunctionEntry* primed_function = 0;
-VG_REGPARM(1) void prime_function(FunctionEntry *f)
-{
-  primed_function = f;
-  return;
-}
-
 
 static UInt cur_nonce = 0;
 /*
@@ -510,6 +518,13 @@ void enter_function(FunctionEntry* f)
   FunctionExecutionState* newEntry;
   extern FunctionExecutionState* curFunctionExecutionStatePtr;
 
+  // Only do enter_function if this is the first time we have
+  // reached the prefered entry point after entering the function.
+  if (!first_time) {
+    return;
+  }
+  first_time = False;
+
   ThreadId tid = VG_(get_running_tid)();
   Addr stack_ptr= VG_(get_SP)(tid);
   Addr frame_ptr = 0; /* E.g., %ebp */
@@ -519,6 +534,7 @@ void enter_function(FunctionEntry* f)
                  (UInt)f->startPC, (UInt)f->entryPC,(void *)f->cuBase);
   FJALAR_DPRINTF("Value of edi: %lx, esi: %lx, edx: %lx, ecx: %lx\n",
       (UWord)VG_(get_xDI)(tid), (UWord)VG_(get_xSI)(tid), (UWord)VG_(get_xDX)(tid), (UWord)VG_(get_xCX)(tid));
+  FJALAR_DPRINTF("frame_base_atom: %x, frame_base_offset: %lx\n", f->frame_base_atom, (unsigned long int) f->frame_base_offset);
 
   // Determine the frame pointer for this function using DWARF
   // location information. This may take one of two forms: a
@@ -553,6 +569,9 @@ void enter_function(FunctionEntry* f)
       if (gencontains(loc_list_map, (void *)f->frame_base_offset)) {
         ll = gengettable(loc_list_map, (void *)f->frame_base_offset);
 
+        // TODO: I don't think this is true anymore. The addresses stored in the
+        // location_list are always offsets.
+
         // (comment added 2009)
         // HACK. g++ and GCC handle location lists differently. GCC puts lists offsets
         // relative to the compilation unit, g++ uses the actual address. I'm going to
@@ -567,7 +586,7 @@ void enter_function(FunctionEntry* f)
         }
 
         if(ll) {
-          FJALAR_DPRINTF("\tFound location list entry, finding location corresponding to dwarf #: %u with offset: %lld\n", ll->atom, ll->atom_offset);
+          FJALAR_DPRINTF("\tFound location list entry, finding location corresponding to dwarf #: %x with offset: %lx\n", ll->atom, (unsigned long int) ll->atom_offset);
 
           // (comment added 2013)
           // It turns out it might not be just the contents of a register.  Some
@@ -586,15 +605,28 @@ void enter_function(FunctionEntry* f)
           }
         }
       }
+    } else if (f->frame_base_atom == DW_OP_call_frame_cfa) {
+      // Search the debug_frame list for entryPC. A debug_frame contains information
+      // extracted from the CFA data in the .eh_frame section.
+      debug_frame *df = debug_frame_HEAD;
+      while (df) {
+        FJALAR_DPRINTF("\tExamining frame: %lx - %lx\n", df->begin, df->end);
+        if (f->entryPC >= df->begin && f->entryPC < df->end) {
+          FJALAR_DPRINTF("\tFound debug frame with reg %x and offset %lx\n", df->cfa_reg, df->cfa_offset);
+          frame_ptr = (*get_reg[df->cfa_reg])(tid) + df->cfa_offset;
+          break;
+        }
+        df = df->next;
+      }
     } else {
-      // simple location expression
+      FJALAR_DPRINTF("\tsimple location expression\n");
       frame_ptr = (*get_reg[f->frame_base_atom - DW_OP_reg0])(tid) + f->frame_base_offset;
     }
   }
 
   // If there is no frame pointer information or if we failed to find a frame_base using the locList data,
   // then we fall back to use EBP.
-  if(frame_ptr == 0) {
+  if (frame_ptr == 0) {
     if (f->entryPC != f->startPC) {
       /* Prolog has run, so just use the real %ebp */
       frame_ptr = VG_(get_FP)(VG_(get_running_tid)());
