@@ -1115,7 +1115,6 @@ free_all_abbrevs (void)
 	      attr = next_attr;
 	    }
 
-
 	  VG_(free) (abbrv);
 	  abbrv = next_abbrev;
 	}
@@ -3748,12 +3747,19 @@ read_and_display_attr_value (unsigned long           attribute,
 //	    printf (_(" (location list)"));
 //	}
       /* Fall through.  */
+
+    // I believe nothing needs to be done for the following items.
+    // The code that follows below DW_AT_RANK: is only applicable to
+    // 'base' attributes. In fact, if one of the following had a data4
+    // form it would cause the code to behave incorrectly.  These case
+    // labels should probably be removed. (markro 01/08/2026)
     case DW_AT_allocated:
     case DW_AT_associated:
     case DW_AT_data_location:
     case DW_AT_stride:
     case DW_AT_upper_bound:
     case DW_AT_lower_bound:
+    case DW_AT_count:
     case DW_AT_rank:
       if (block_start)
 	{
@@ -7194,8 +7200,8 @@ display_loc_list (struct dwarf_section *section,
 	}
 
       if (fjalar_debug_dump) {
-      printf ("    ");
-      print_dwarf_vma (off, 4);
+        printf ("    ");
+        print_dwarf_vma (off, 4);
       }
 
       SAFE_BYTE_GET_AND_INC (begin, start, pointer_size, section_end);
@@ -7213,7 +7219,7 @@ display_loc_list (struct dwarf_section *section,
 	      && ! reloc_at (section, off + pointer_size))
 	    {
               if (fjalar_debug_dump)
-	      printf (_("<End of list>\n"));
+	        printf (_("<End of list>\n"));
 	      break;
 	    }
 	}
@@ -7224,9 +7230,9 @@ display_loc_list (struct dwarf_section *section,
 	{
 	  base_address = end;
 	  if (fjalar_debug_dump) {
-	  print_dwarf_vma (begin, pointer_size);
-	  print_dwarf_vma (end, pointer_size);
-	  printf (_("(base address)\n"));
+	    print_dwarf_vma (begin, pointer_size);
+	    print_dwarf_vma (end, pointer_size);
+	    printf (_("(base address)\n"));
 	  }
 	  continue;
 	}
@@ -7262,8 +7268,8 @@ display_loc_list (struct dwarf_section *section,
 	}
 
       if (fjalar_debug_dump) {
-      print_dwarf_vma (begin + base_address, pointer_size);
-      print_dwarf_vma (end + base_address, pointer_size);
+        print_dwarf_vma (begin + base_address, pointer_size);
+        print_dwarf_vma (end + base_address, pointer_size);
       }
 
       // start of Fjalar code
@@ -7274,7 +7280,7 @@ display_loc_list (struct dwarf_section *section,
       // end of Fjalar code
 
       if (fjalar_debug_dump)
-      putchar ('(');
+        putchar ('(');
       need_frame_base = decode_location_expression (start,
 						    pointer_size,
 						    offset_size,
@@ -7283,7 +7289,7 @@ display_loc_list (struct dwarf_section *section,
 						    cu_offset, section,
                                                     PASS_2, OK_TO_HARVEST, 0, ll);
       if (fjalar_debug_dump)
-      putchar (')');
+        putchar (')');
 
       if (need_frame_base && !has_frame_base)
 	printf (_(" [without DW_AT_frame_base]"));
@@ -7294,7 +7300,7 @@ display_loc_list (struct dwarf_section *section,
 	fputs (_(" (start > end)"), stdout);
 
       if (fjalar_debug_dump)
-      putchar ('\n');
+        putchar ('\n');
 
       harvest_location_list_entry(ll, offset);
       start += length;
@@ -9886,6 +9892,10 @@ display_debug_frames (struct dwarf_section *section,
       unsigned int offset_size;
       bool all_nops;
       static Frame_Chunk fde_fc;
+      // start of Fjalar code
+      dwarf_vma orig_pc_begin;
+      debug_frame *df;
+      // end of Fjalar code
 
       saved_start = start;
 
@@ -9985,7 +9995,6 @@ display_debug_frames (struct dwarf_section *section,
 	}
       else
 	{
-          debug_frame *df;
 	  unsigned char *look_for;
 	  unsigned long segment_selector;
 	  dwarf_vma cie_off;
@@ -10128,6 +10137,7 @@ display_debug_frames (struct dwarf_section *section,
 
 	  fc->pc_begin = get_encoded_value (&start, fc->fde_encoding, section,
 					    block_end);
+          orig_pc_begin = fc->pc_begin;
 
 	  /* FIXME: It appears that sometimes the final pc_range value is
 	     encoded in less than encoded_ptr_size bytes.  See the x86_64
@@ -10174,17 +10184,7 @@ display_debug_frames (struct dwarf_section *section,
           }
 
           if (fjalar_debug_dump)
-	  printf (" pc=");
-
-          // start of Fjalar code
-
-          df = VG_(calloc)("dwarf.c: display_debug_frame", sizeof(debug_frame), 1);
-          df->begin = fc->pc_begin;
-          df->end = fc->pc_begin + fc->pc_range;
-          df->next = 0;
-          harvest_debug_frame_entry(df);
-
-          // end of Fjalar code
+	    printf (" pc=");
 
 	  if (fc->segment_size)
 	   if (fjalar_debug_dump)
@@ -10367,6 +10367,7 @@ display_debug_frames (struct dwarf_section *section,
 	  dwarf_signed_vma l;
 	  dwarf_vma ofs;
 	  dwarf_vma vma;
+          dwarf_vma save_pc_begin;
 	  const char *reg_prefix = "";
 
 	  op = *start++;
@@ -10383,7 +10384,8 @@ display_debug_frames (struct dwarf_section *section,
 	  switch (op)
 	    {
 	    case DW_CFA_advance_loc:
-	      if (do_debug_frames_interp)
+	      save_pc_begin = fc->pc_begin;
+              if (do_debug_frames_interp)
 		frame_display_row (fc, &need_col_headers, &max_regs);
 	      else
 	       if (fjalar_debug_dump)
@@ -10393,6 +10395,17 @@ display_debug_frames (struct dwarf_section *section,
 					fc->pc_begin + opa * fc->code_factor,
 					fc->ptr_size));
 	      fc->pc_begin += opa * fc->code_factor;
+
+              // start of Fjalar code
+              df = VG_(calloc)("dwarf.c: display_debug_frame", sizeof(debug_frame), 1);
+              df->begin = save_pc_begin;
+              df->end = fc->pc_begin;
+              df->cfa_reg = fc->cfa_reg;
+              df->cfa_offset = fc->cfa_offset;
+              df->next = 0;
+              harvest_debug_frame_entry(df);
+              // end of Fjalar code
+
 	      break;
 
 	    case DW_CFA_offset:
@@ -10447,6 +10460,7 @@ display_debug_frames (struct dwarf_section *section,
 	      break;
 
 	    case DW_CFA_advance_loc1:
+	      save_pc_begin = fc->pc_begin;
 	      SAFE_BYTE_GET_AND_INC (ofs, start, 1, block_end);
 	      if (do_debug_frames_interp)
 		frame_display_row (fc, &need_col_headers, &max_regs);
@@ -10458,9 +10472,21 @@ display_debug_frames (struct dwarf_section *section,
 					fc->pc_begin + ofs * fc->code_factor,
 					fc->ptr_size));
 	      fc->pc_begin += ofs * fc->code_factor;
+
+              // start of Fjalar code
+              df = VG_(calloc)("dwarf.c: display_debug_frame", sizeof(debug_frame), 1);
+              df->begin = save_pc_begin;
+              df->end = fc->pc_begin;
+              df->cfa_reg = fc->cfa_reg;
+              df->cfa_offset = fc->cfa_offset;
+              df->next = 0;
+              harvest_debug_frame_entry(df);
+              // end of Fjalar code
+
 	      break;
 
 	    case DW_CFA_advance_loc2:
+	      save_pc_begin = fc->pc_begin;
 	      SAFE_BYTE_GET_AND_INC (ofs, start, 2, block_end);
 	      if (do_debug_frames_interp)
 		frame_display_row (fc, &need_col_headers, &max_regs);
@@ -10472,9 +10498,21 @@ display_debug_frames (struct dwarf_section *section,
 					fc->pc_begin + ofs * fc->code_factor,
 					fc->ptr_size));
 	      fc->pc_begin += ofs * fc->code_factor;
+
+              // start of Fjalar code
+              df = VG_(calloc)("dwarf.c: display_debug_frame", sizeof(debug_frame), 1);
+              df->begin = save_pc_begin;
+              df->end = fc->pc_begin;
+              df->cfa_reg = fc->cfa_reg;
+              df->cfa_offset = fc->cfa_offset;
+              df->next = 0;
+              harvest_debug_frame_entry(df);
+              // end of Fjalar code
+
 	      break;
 
 	    case DW_CFA_advance_loc4:
+	      save_pc_begin = fc->pc_begin;
 	      SAFE_BYTE_GET_AND_INC (ofs, start, 4, block_end);
 	      if (do_debug_frames_interp)
 		frame_display_row (fc, &need_col_headers, &max_regs);
@@ -10486,6 +10524,17 @@ display_debug_frames (struct dwarf_section *section,
 					fc->pc_begin + ofs * fc->code_factor,
 					fc->ptr_size));
 	      fc->pc_begin += ofs * fc->code_factor;
+
+              // start of Fjalar code
+              df = VG_(calloc)("dwarf.c: display_debug_frame", sizeof(debug_frame), 1);
+              df->begin = save_pc_begin;
+              df->end = fc->pc_begin;
+              df->cfa_reg = fc->cfa_reg;
+              df->cfa_offset = fc->cfa_offset;
+              df->next = 0;
+              harvest_debug_frame_entry(df);
+              // end of Fjalar code
+
 	      break;
 
 	    case DW_CFA_offset_extended:
@@ -10863,6 +10912,19 @@ display_debug_frames (struct dwarf_section *section,
 	      start = block_end;
 	    }
 	}
+
+      // start of Fjalar code
+      if (fc->pc_begin != 0) {
+        //printf("begin: %lx, end: %lx, reg: %x, offset: %lx\n", fc->pc_begin, orig_pc_begin + fc->pc_range, fc->cfa_reg, fc->cfa_offset);
+        df = VG_(calloc)("dwarf.c: display_debug_frame", sizeof(debug_frame), 1);
+        df->begin = fc->pc_begin;
+        df->end = orig_pc_begin + fc->pc_range;
+        df->cfa_reg = fc->cfa_reg;
+        df->cfa_offset = fc->cfa_offset;
+        df->next = 0;
+        harvest_debug_frame_entry(df);
+      }
+      // end of Fjalar code
 
       /* Interpret the CFA - as long as it is not completely full of NOPs.  */
       if (do_debug_frames_interp && ! all_nops)
