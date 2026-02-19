@@ -87,7 +87,7 @@ Bool fjalar_tool_process_cmd_line_option(const HChar* arg);
 /* Like VG_BOOL_CLO, but of the form "--foo", "--no-foo" rather than
    "--foo=yes", "--foo=no". Note that qq_option should not have a
    leading "--". */
-#define VG_YESNO_CLO(qq_arg, qq_option, qq_var)	\
+#define VG_YESNO_CLO(qq_arg, qq_option, qq_var) \
   (VG_XACT_CLO(qq_arg, "--"qq_option, qq_var, True) || \
    VG_XACT_CLO(qq_arg, "--no-"qq_option, qq_var, False))
 

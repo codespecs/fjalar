@@ -113,13 +113,11 @@ Extracting type information from DWARF tag
 /*
 Requires:
 Modifies:
-Returns: 1 if tag = {DW_TAG_base_type, _const_type, _enumerator,
-                     _formal_parameter, _pointer_type, _reference_type,
-                     _array_type, _subprogram,
-                     _union_type, _enumeration_type, _member, _subroutine_type
-                     _structure_type, _volatile_type, _compile_unit,
-                     _array_type, _subrange_type, _typedef, _variable, _inheritance,
-                     _namespace},
+Returns: 1 if tag = {DW_TAG_array_type, _base_type, _class_type, _compile_unit,
+                     _const_type, _enumeration_type, _enumerator, _formal_parameter,
+                     _inheritance, _member, _namespace, _pointer_type, _reference_type,
+                     _structure_type, _subprogram, _subrange_type, _subroutine_type,
+                     _typedef, _union_type, _variable, _volatile_type},
                      0 otherwise
 Effects: Used to determine which entries to record into a dwarf_entry structure;
          All relevant entries should be included here
@@ -280,6 +278,7 @@ static char tag_is_namespace(unsigned long tag) {
 // DW_AT_byte_size: base_type, collection_type, member
 // DW_AT_comp_dir: compile_unit
 // DW_AT_const_value: enumerator
+// DW_AT_count: array_subrange_type
 // DW_AT_data_member_location: member, inheritance
 // DW_AT_declaration: function, variable, collection_type
 // DW_AT_decl_file: variable, member
@@ -373,6 +372,7 @@ char entry_is_listening_for_attribute(dwarf_entry* e, unsigned long attr)
     case DW_AT_high_pc:
       return tag_is_function(tag);
     case DW_AT_upper_bound:
+    case DW_AT_count:
       return tag_is_array_subrange_type(tag);
     case DW_AT_MIPS_linkage_name:
       return (tag_is_function(tag) ||
@@ -1121,9 +1121,12 @@ char harvest_ordinary_unsigned_value(dwarf_entry* e, unsigned long attr, unsigne
 
   // Multiplex since
   // DW_AT_byte_size, DW_AT_encoding, DW_AT_const_value,
-  // DW_AT_bit_size, DW_AT_bit_offset, DW_AT_external, DW_AT_upper_bound
+  // DW_AT_bit_size, DW_AT_bit_offset, DW_AT_external, DW_AT_upper_bound, DW_AT_count
   // DW_AT_declaration, DW_AT_artificial
   // return ordinary unsigned data
+  // In Dwarf 2 the DW_AT_data_member_location of a DW_TAG_member was always a DW_FORM_block
+  // which implied a location list, but in Dwarf 3 it may be a DW_FORM_data which is an
+  // ordinary unsigned value.
   switch(attr)
     {
     case DW_AT_byte_size:
@@ -1140,10 +1143,17 @@ char harvest_ordinary_unsigned_value(dwarf_entry* e, unsigned long attr, unsigne
       return harvest_external_flag_value(e, value);
     case DW_AT_upper_bound:
       return harvest_upper_bound_value(e, value);
+    // c, c++ and rust all have array lower bound fixed at 0.
+    // Hence, upper_bound = (number of elements) - 1.
+    // harvest_upper_bound_value will handle a count == 0.
+    case DW_AT_count:
+      return harvest_upper_bound_value(e, value - 1);
     case DW_AT_declaration:
       return harvest_declaration_value(e, value);
     case DW_AT_artificial:
       return harvest_artificial_value(e, value);
+    case DW_AT_data_member_location:
+      return harvest_data_member_location(e, value);
     default:
       return 0;
     }

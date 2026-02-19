@@ -82,6 +82,8 @@ typedef struct _debug_frame
 {
   unsigned long begin;
   unsigned long end;
+  unsigned int cfa_reg;
+  unsigned long cfa_offset;
   struct _debug_frame *next;
 } debug_frame;
 
@@ -263,12 +265,12 @@ typedef struct
      DW_AT_abstract_origin: <18069>
      DW_AT_low_pc      : 0x8048c16
      DW_AT_high_pc     : 0x8048c5d
-     DW_AT_frame_base  : 1 byte block: 55 	(DW_OP_reg5)
+     DW_AT_frame_base  : 1 byte block: 55 (DW_OP_reg5)
 
  <1><18069>: Abbrev Number: 132 (DW_TAG_subprogram)
      DW_AT_sibling     : <1809c>
      DW_AT_specification: <17e25>
-     DW_AT_inline      : 2	(declared as inline but ignored)
+     DW_AT_inline      : 2 (declared as inline but ignored)
 
  <2><17e25>: Abbrev Number: 56 (DW_TAG_subprogram)
      DW_AT_sibling     : <17e51>
@@ -289,10 +291,10 @@ typedef struct
 
 
   enum dwarf_location_atom frame_base_expression; /* Location of the framebase.
-						     Is likely to be a register expression
-						     or the location list */
+                                                     Is likely to be a register expression
+                                                     or the location list */
   long frame_base_offset; /* Offset from Frame_base_expression that correspods to the frame_base
-			   */
+                           */
 
 } function;
 

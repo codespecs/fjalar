@@ -29,7 +29,7 @@ const char *bfd_get_archive_filename (const bfd *);
 void bfd_nonfatal (const char *);
 
 void bfd_nonfatal_message (const char *, const bfd *, const asection *,
-			   const char *, ...);
+                           const char *, ...);
 
 void bfd_fatal (const char *) ATTRIBUTE_NORETURN;
 
@@ -74,7 +74,7 @@ extern void print_version (const char *);
 extern void set_times (const char *, const struct stat *);
 
 extern int smart_rename (const char *, const char *, int,
-			 struct stat *, bool);
+                         struct stat *, bool);
 
 
 /* In libiberty.  */

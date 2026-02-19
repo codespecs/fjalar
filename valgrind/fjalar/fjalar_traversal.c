@@ -1772,7 +1772,11 @@ void visitSingleVar(VisitArgs* args) {
           }
         }
         // Dynamic array:
-        else {
+        // Don't treat an function pointer argument as an dynamic array.
+        // Doesn't seem to change output, but keeps fjalar from probing all
+        // over memory trying to calculate array size. (markro 02/04/2026)
+        else if (!(D_FUNCTION == var->varType->decType)) {
+        // else {
           char derivedIsAllocated = 0;
           Addr pNewStartValue = (Addr) NULL;
 
