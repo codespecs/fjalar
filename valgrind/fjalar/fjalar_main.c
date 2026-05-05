@@ -1007,12 +1007,12 @@ static void outputAuxiliaryFilesAndExit(void) {
 // This is called before command-line options are processed
 void fjalar_pre_clo_init()
 {
-   fn_stack_first_free_index = VG_(malloc)("fjalar_main.c: fjalar_pre_clo_init1", VG_N_THREADS * sizeof fn_stack_first_free_index[0]);
-   FunctionExecutionStateStack = VG_(malloc)("fjalar_main.c: fjalar_pre_clo_init2", VG_N_THREADS * FN_STACK_SIZE * sizeof FunctionExecutionStateStack[0][0]);
+  fn_stack_first_free_index = VG_(malloc)("fjalar_main.c: fjalar_pre_clo_init1", VG_N_THREADS * sizeof fn_stack_first_free_index[0]);
+  FunctionExecutionStateStack = VG_(malloc)("fjalar_main.c: fjalar_pre_clo_init2", VG_N_THREADS * FN_STACK_SIZE * sizeof FunctionExecutionStateStack[0][0]);
 
   // Clear FunctionExecutionStateStack
-/*   VG_(memset)(FunctionExecutionStateStack, 0, */
-/* 	      FN_STACK_SIZE * sizeof(*FunctionExecutionStateStack)); */
+  VG_(memset)(fn_stack_first_free_index, 0, VG_N_THREADS * sizeof fn_stack_first_free_index[0]);
+  VG_(memset)(FunctionExecutionStateStack, 0, VG_N_THREADS * FN_STACK_SIZE * sizeof FunctionExecutionStateStack[0][0]);
 
   // (comment added 2005)
   // TODO: Do we need to clear all global variables before processing
