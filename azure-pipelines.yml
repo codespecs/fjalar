@@ -6,7 +6,7 @@ jobs:
   - job: ubuntu_stable
     pool:
       vmImage: 'ubuntu-latest'
-    container: mdernst/daikon-ubuntu-jdk8-plus:latest
+    container: mdernst/daikon-ubuntu-jdk11-plus:latest
     steps:
       - checkout: self
         fetchDepth: 25
@@ -26,7 +26,7 @@ jobs:
   - job: rocky
     pool:
       vmImage: 'ubuntu-latest'
-    container: mdernst/daikon-rockylinux-jdk8-plus:latest
+    container: mdernst/daikon-rockylinux-jdk11-plus:latest
     steps:
       - checkout: self
         fetchDepth: 25
