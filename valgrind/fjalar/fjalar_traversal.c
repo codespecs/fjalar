@@ -993,13 +993,13 @@ void visitVariableGroup(VariableOrigin varOrigin,
         // very indirect calculations (usually a pointer in one of the
         // architectural registers. ) Unfortunately, the calculation tended to produce incorrect
         // results for main if attempted at the 'ret' instruction. A hacky way to get around this
-        // is to just use the same location as your caculated at entry. This would fail if GCC
+        // is to just use the same location as your calculated at entry. This would fail if GCC
         // ever starts using location lists for more than just the frame base.
 
         if(!isEnter && VG_STREQ("main", funcPtr->name) &&
            (VG_STREQ("argc", var->name) ||
             VG_STREQ("argv", var->name))) {
-          FJALAR_DPRINTF("\t[visitVariableGroup] int main(argc/argv) DETECTED, using entry locations isntead of recalculating\n");
+          FJALAR_DPRINTF("\t[visitVariableGroup] int main(argc/argv) DETECTED, using entry locations instead of recalculating\n");
           basePtrValue = var->entryLoc;
           basePtrValueGuest = var->entryLocGuest;
         }
@@ -1277,6 +1277,7 @@ void visitReturnValue(FunctionExecutionState* e,
   // and xDX as the high 4 bytes
   // long long ints - create a long long int and pass its address
   /* XXX shouldn't do this for 64-bit long long on AMD64 */
+  // UNDONE: rust support for U128
   else if ((sizeof(UWord) == 4) && (cur_node->var->ptrLevels == 0) &&
            (cur_node->var->varType->decType == D_UNSIGNED_LONG_LONG_INT)) {
     unsigned long long int uLong = (e->xAX) | (((unsigned long long int)(e->xDX)) << 32);
@@ -1301,6 +1302,7 @@ void visitReturnValue(FunctionExecutionState* e,
                   funcPtr,
                   0);
   }
+  // UNDONE: rust support for I128
   else if ((sizeof(UWord) == 4) && (cur_node->var->ptrLevels == 0) &&
            (cur_node->var->varType->decType == D_LONG_LONG_INT)) {
     long long int signedLong = (e->xAX) | (((long long int)(e->xDX)) << 32);

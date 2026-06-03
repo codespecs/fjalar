@@ -44,7 +44,7 @@ void fjalar_tool_print_usage(void);
 // Returns True if a command-line option has been successfully
 // matched, False otherwise.  It's very important that you return
 // False if a command-line option doesn't match because otherwise
-// Fjalar will fail silently when a command-line option is mis-typed.
+// Fjalar will fail silently when a command-line option is mistyped.
 //
 // The format for a command-line option is as follows, as shown by an
 // example implementation of this function:
