@@ -255,7 +255,7 @@ int  fptostr (__fpmax_t x, int width, int preci, char mode, char* buf, int maxle
  *     ssize_t _fpmaxtostr(FILE * fp, __fpmax_t x, struct printf_info *info,
  *                         __fp_outfunc_t fp_outfunc);
  *
- * This is derived from the old _dtostr, whic I wrote for uClibc to provide
+ * This is derived from the old _dtostr, which I wrote for uClibc to provide
  * floating point support for the printf functions.  It handles +/- infinity,
  * nan, and signed 0 assuming you have ieee arithmetic.  It also now handles
  * digit grouping (for the uClibc supported locales) and hexadecimal float
@@ -266,7 +266,7 @@ int  fptostr (__fpmax_t x, int width, int preci, char mode, char* buf, int maxle
  *
  * At most DECIMAL_DIG significant digits are kept.  Any trailing digits
  * are treated as 0 as they are really just the results of rounding noise
- * anyway.  If you want to do better, use an arbitary precision arithmetic
+ * anyway.  If you want to do better, use an arbitrary precision arithmetic
  * package.  ;-)
  *
  * It should also be fairly portable, as no assumptions are made about the
@@ -289,7 +289,7 @@ int  fptostr (__fpmax_t x, int width, int preci, char mode, char* buf, int maxle
 #define zeroisnegative(x)    ((1./(x)) < 0)
 
 /*****************************************************************************/
-/* Don't change anything that follows peroid!!!  ;-)                         */
+/* Don't change anything that follows period!!!  ;-)                         */
 /*****************************************************************************/
 #ifdef __UCLIBC_HAS_HEXADECIMAL_FLOATS__
 #if FLT_RADIX != 2
@@ -608,7 +608,7 @@ int  fptostr (__fpmax_t x, int width, int preci, char mode, char* buf, int maxle
 	}
 
 	s = temp_buf;
-	*s++ = 0;					/* Terminator for rounding and 0-triming. */
+	*s++ = 0;					/* Terminator for rounding and 0-trimming. */
 	*s = '0';					/* Space to round. */
 
 	{
