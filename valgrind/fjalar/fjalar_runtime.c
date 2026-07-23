@@ -226,6 +226,7 @@ returnArrayVariableWithAddr(VarList* varList,
         potentialVarBaseAddr = e->lowSP + potentialVar->byteOffset;
       }
     }
+    // FJALAR_DPRINTF("potential var expression size: %u\n", potentialVar->location_expression_size);
     if (potentialVar->location_expression_size) {
       unsigned int i = 0;
       for(i = 0; i < potentialVar->location_expression_size; i++ ) {
@@ -483,7 +484,7 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
     if (e) {
       VarList* localArrayAndStructVars = &(e->func->localArrayAndStructVars);
       FJALAR_DPRINTF(" e->FP is %p\n", (void *)e->FP);
-      FJALAR_DPRINTF(" localArrayAndSTructVars: %p, numVars: %u\n", localArrayAndStructVars, localArrayAndStructVars->numVars);
+      FJALAR_DPRINTF(" localArrayAndStructVars: %p, numVars: %u\n", localArrayAndStructVars, localArrayAndStructVars->numVars);
 
       tl_assert(!localArrayAndStructVars || (Addr)localArrayAndStructVars > 0x100);
 
@@ -581,7 +582,8 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
                     targetVar->varType->typeName, targetVarBytesBetweenElts,
                     var->varType->typeName, varBytesBetweenElts);
 
-    if (targetVarBytesBetweenElts == varBytesBetweenElts) {
+    // For multiple dimension arrays the first n-1 dimensions are pointers, so we need to use targetVarSize
+    if ((targetVarBytesBetweenElts == varBytesBetweenElts) || (targetVar->staticArr->numDimensions > 1)) {
       return targetVarSize;
     } else {
       return (targetVarSize * targetVarBytesBetweenElts) / varBytesBetweenElts;
