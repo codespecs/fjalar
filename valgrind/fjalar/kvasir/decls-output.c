@@ -65,7 +65,7 @@ struct genhashtable* typeNameStrTable = NULL;
 struct genhashtable* funcNameTable = NULL;
 
 // We need one more table in addition to the above. The above is for
-// detecting if a collision has occured. However, since the dtrace
+// detecting if a collision has occurred. However, since the dtrace
 // pass happens independently of the decls pass, and we need to
 // ensure that the dtrace pass uses similar names, we will keep
 // a table containing all function startPCs(The memory location of
@@ -108,7 +108,8 @@ static const char* DaikonRepTypeString[] = {
   "double", //R_DOUBLE,
   "hashcode", //R_HASHCODE,
   "java.lang.String", //R_STRING
-  "boolean" //R_BOOL
+  "boolean", //R_BOOL
+  "ZST" //R_ZST Rust only
 };
 
 // Changes ' ' to '\_' to eliminate spaces in declared types
@@ -282,7 +283,7 @@ void outputDeclsFile(char faux_decls)
     return;
   }
 
-  // Only print out the delcaration header if not in append mode. The first run
+  // Only print out the declaration header if not in append mode. The first run
   // will print out the header, subsequent lines will only insert a newline.
   if(!kvasir_dtrace_append) {
     if (!faux_decls) {
@@ -295,7 +296,7 @@ void outputDeclsFile(char faux_decls)
   initDecls();
 
   if(kvasir_object_ppts) {
-    DPRINTF("Object PPTs enabled, attemtping to harvest inheritence heirarchy\n");
+    DPRINTF("Object PPTs enabled, attempting to harvest inheritance hierarchy\n");
     harvestAllFunctionObjects();
   }
 
@@ -330,7 +331,7 @@ void DC_outputDeclsAtEnd() {
   printDeclsHeader();
   initDecls();
   if(kvasir_object_ppts) {
-    DPRINTF("Object PPTs enabled, attemtping to harvest inheritence heirarchy\n");
+    DPRINTF("Object PPTs enabled, attempting to harvest inheritance hierarchy\n");
     harvestAllFunctionObjects();
   }
 
@@ -360,6 +361,8 @@ void DC_outputDeclsAtEnd() {
   cleanupDecls();
 }
 
+// Any changes in fjalar_include.h::DeclaredType may require
+// changes here as well.
 
 // Converts a Fjalar DeclaredType into a Daikon rep. type:
 DaikonRepType decTypeToDaikonRepType(DeclaredType decType,
@@ -379,7 +382,10 @@ DaikonRepType decTypeToDaikonRepType(DeclaredType decType,
   case D_LONG:
   case D_UNSIGNED_LONG_LONG_INT:
   case D_LONG_LONG_INT:
+  case D_U128:            // Rust only
+  case D_I128:            // Rust only
   case D_ENUMERATION:
+  case D_CHAR32:          // Unicode char
     return R_INT;
 
   case D_BOOL:            // C++ only
@@ -398,6 +404,9 @@ DaikonRepType decTypeToDaikonRepType(DeclaredType decType,
 
   case D_CHAR_AS_STRING: // when .disambig 'C' option is used with chars
     return R_STRING;
+
+  case D_ZST:            // Rust only
+    return R_ZST;
 
   default:
     tl_assert(0);
@@ -537,7 +546,7 @@ printDeclsEntryAction(VariableEntry* var,
     // Class B { int c; }
     // Class A : Public B ...
     // Fjalar will pass us the name A.B.c. While, this does provide us
-    // the advantage of overcoming diamond-inheritence probelms, it
+    // the advantage of overcoming diamond-inheritance problems, it
     // isn't the most intuitive way to represent the variable in the
     // output. This attempts to collapse any superclass variables at
     // the END of the string. isSuperMember refers to how many
@@ -653,7 +662,7 @@ printDeclsEntryAction(VariableEntry* var,
           // Directly above we looked to see if "<non empty partial variable name>.<classname>"
           // or "this-><classname>" was in the varsDeclaredTable (and failed).
           // Now we will strip off ".<classname." or "-><classname>" and try again.
-          // There could be a class heirarchy involved, so this is an iterative process.
+          // There could be a class hierarchy involved, so this is an iterative process.
           // I.e., for "this-><class1>.<class2>.<var>"
           // we want to strip off both <class2> and <class1>.
           //
@@ -681,7 +690,7 @@ printDeclsEntryAction(VariableEntry* var,
                   fputs("\n", decls_fp);
                   break;
                 }
-                // it was a class name, but no luck finding the preceeding string in the
+                // it was a class name, but no luck finding the preceding string in the
                 // varsDeclaredTable; maybe we need to remove another class name
                 i = i - 2;
                 j = j - 1;
@@ -774,6 +783,7 @@ printDeclsEntryAction(VariableEntry* var,
       }
       else {
         // Normal type (or unnamed struct/union/enum)
+        // UNDONE: not sure what to output for a ZST
         printDeclaredType(DeclaredTypeString[dType], decls_fp);
         // If we have a string, print it as char* because the dType of
         // string is "char" so we need to append a "*" to it
@@ -1287,13 +1297,13 @@ printDeclsEntryAction(VariableEntry* var,
 
       // If fjalar_trace_prog_pts_filename is OFF, then ALWAYS
       // print out all program point .decls
-      if (!fjalar_trace_prog_pts_filename ||
+      if (!cur_entry->doNotPrint && (!fjalar_trace_prog_pts_filename ||
           // If fjalar_trace_prog_pts_filename is on (we are reading in
           // a ppt list file), then DO NOT OUTPUT .decls entries for
           // program points that we are not interested in tracing.  This
           // decreases the clutter of the .decls file and speeds up
           // processing time
-          prog_pts_tree_entry_found(cur_entry)) {
+          prog_pts_tree_entry_found(cur_entry))) {
         printOneFunctionDecl(cur_entry, 1, faux_decls);
         printOneFunctionDecl(cur_entry, 0, faux_decls);
       }
@@ -1347,7 +1357,7 @@ printDeclsEntryAction(VariableEntry* var,
 
         // We need to print :::OBJECT points regardless for the new decls
         // format, due to the tendency for the ppt printer to print all
-        // possible Objects associated with av ariable. So if a variable
+        // possible Objects associated with a variable. So if a variable
         // subclasses a class B, which has no fields, we will still need
         // to have an OBJECT ppt for it.
 
@@ -1594,7 +1604,7 @@ printDeclsEntryAction(VariableEntry* var,
 
 
  // Gets the unique ID for a given type. Will generate an ID
- // and insert into table if non existant.
+ // and insert into table if non existent.
  // CALLER IS RESPONSIBLE FOR FREEING RETURNED STRING
  char* getParentId(char* typeName){
 

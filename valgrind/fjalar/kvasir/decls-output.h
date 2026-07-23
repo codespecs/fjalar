@@ -33,7 +33,8 @@ typedef enum {
   R_DOUBLE,
   R_HASHCODE,
   R_STRING,
-  R_BOOLEAN
+  R_BOOLEAN,
+  R_ZST        // Zero Sized Types are Rust only
 } DaikonRepType;
 
 const char* ENTER_PPT;
