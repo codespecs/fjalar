@@ -83,6 +83,7 @@ void repCheckAllEntries(void);
 
 FILE* xml_output_fp;
 void outputAllXMLDeclarations(void);
-
 char* getRawCppFunctionName(char* cppFnName);
+int entry_is_valid_function(dwarf_entry *entry);
+
 #endif
