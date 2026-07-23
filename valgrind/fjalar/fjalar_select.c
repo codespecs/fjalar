@@ -40,7 +40,7 @@ FILE* trace_prog_pts_input_fp = 0;
 FILE* trace_vars_input_fp = 0;
 
 const char COMMENT_CHAR = '#';
-const char* ENTRY_DELIMETER = "----SECTION----";
+const char* ENTRY_DELIMITER = "----SECTION----";
 const char* GLOBAL_STRING = "globals";
 
 // Temporary scratch buffer for reading lines in from files
@@ -113,7 +113,7 @@ void initializeProgramPointsTree()
         input_line[lineLen - 1] = '\0';
       }
 
-      newString = VG_(strdup)("fjalar_selec.c: initializePPT", input_line);
+      newString = VG_(strdup)("fjalar_select.c: initializePPT", input_line);
 
       // That is the Fjalar name of the function so grab it
       tsearch((void*)newString, (void**)&prog_pts_tree, compareStrings);
@@ -125,7 +125,7 @@ void initializeProgramPointsTree()
 
 
 // Iterate through each line of the file trace_vars_input_fp
-// and insert the line below ENTRY_DELIMETER into vars_tree as
+// and insert the line below ENTRY_DELIMITER into vars_tree as
 // a new FunctionTree.  Then iterate through all variables within that function
 // and add them to a tree of strings in FunctionTree.variable_tree
 // Close the file when you're done
@@ -186,7 +186,7 @@ void initializeVarsTree()
         input_line[lineLen - 1] = '\0';
       }
 
-      if (VG_STREQ(input_line, ENTRY_DELIMETER))
+      if (VG_STREQ(input_line, ENTRY_DELIMITER))
 	{
 	  nextLineIsFunction = 1;
 	}
@@ -195,8 +195,8 @@ void initializeVarsTree()
 	  // Create a new FunctionTree and insert it into vars_tree
 	  if (nextLineIsFunction)
 	    {
-	      currentFunctionTree = VG_(malloc)("fjalar_selec.c: initVT", sizeof(*currentFunctionTree));
-	      currentFunctionTree->function_fjalar_name = VG_(strdup)("fjalar_selec.c: initVT.2", input_line);
+	      currentFunctionTree = VG_(malloc)("fjalar_select.c: initVT", sizeof(*currentFunctionTree));
+	      currentFunctionTree->function_fjalar_name = VG_(strdup)("fjalar_select.c: initVT.2", input_line);
 	      currentFunctionTree->function_variables_tree = NULL; // Remember to initialize to null!
 
 	      tsearch((void*)currentFunctionTree, (void**)&vars_tree, compareFunctionTrees);
@@ -215,7 +215,7 @@ void initializeVarsTree()
 	  // the function_variables_tree of the current function_tree
 	  else
 	    {
-	      char* newString = VG_(strdup)("fjalar_selec.c: initVT.3", input_line);
+	      char* newString = VG_(strdup)("fjalar_select.c: initVT.3", input_line);
 	      tsearch((void*)newString, (void**)&(currentFunctionTree->function_variables_tree), compareStrings);
               //              printf("variable: %s\n", newString);
 	    }
@@ -345,7 +345,7 @@ void outputVariableNamesToFile() {
   g_open_fp = var_dump_fp;
 
   // Print out a section for all global variables:
-  fputs(ENTRY_DELIMETER, var_dump_fp);
+  fputs(ENTRY_DELIMITER, var_dump_fp);
   fputs("\n", var_dump_fp);
   fputs(GLOBAL_STRING, var_dump_fp);
   fputs("\n", var_dump_fp);
@@ -374,7 +374,7 @@ void outputVariableNamesToFile() {
         // a ppt list file), then DO NOT OUTPUT entries for program
         // points that we are not interested in.
         prog_pts_tree_entry_found(cur_entry)) {
-      fputs(ENTRY_DELIMETER, var_dump_fp);
+      fputs(ENTRY_DELIMITER, var_dump_fp);
       fputs("\n", var_dump_fp);
       fputs(cur_entry->fjalar_name, var_dump_fp);
       fputs("\n", var_dump_fp);

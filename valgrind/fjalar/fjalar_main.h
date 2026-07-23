@@ -21,12 +21,12 @@
 */
 
 // The following comment is to set up the main page of the
-// Doxygen generated html doucmentation files for Fjalar.
+// Doxygen generated html documentation files for Fjalar.
 
 /*! \mainpage Fjalar/Kvasir Documentation
  *
  *  Click on "Data Structures" or "Files" above to get started
- *  browsing the documention.
+ *  browsing the documentation.
  */
 
 #ifndef FJALAR_MAIN_H

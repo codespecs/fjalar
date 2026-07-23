@@ -28,8 +28,8 @@ variables.
 #include "fjalar_include.h"
 
 const char COMMENT_CHAR;
-const char* ENTRY_DELIMETER;
-const int ENTRY_DELIMETER_LEN;
+const char* ENTRY_DELIMITER;
+const int ENTRY_DELIMITER_LEN;
 const char* GLOBAL_STRING;
 const int GLOBAL_STRING_LEN;
 const char* MANGLED_TOKEN;

@@ -196,7 +196,7 @@ void generateDisambigFile() {
   FJALAR_DPRINTF("\n=> generateDisambigFile: Start Processing\n");
 
   // Write entries for global variables:
-  fputs(ENTRY_DELIMETER, disambig_fp);
+  fputs(ENTRY_DELIMITER, disambig_fp);
   fputs("\n", disambig_fp);
   fputs(GLOBAL_STRING, disambig_fp);
   fputs("\n", disambig_fp);
@@ -227,7 +227,7 @@ void generateDisambigFile() {
         // a ppt list file), then DO NOT OUTPUT entries for program
         // points that we are not interested in.
         prog_pts_tree_entry_found(cur_entry)) {
-      fputs(ENTRY_DELIMETER, disambig_fp);
+      fputs(ENTRY_DELIMITER, disambig_fp);
       fputs("\n", disambig_fp);
       fputs(FUNCTION_PREFIX, disambig_fp);
       fputs(cur_entry->fjalar_name, disambig_fp);
@@ -264,7 +264,7 @@ void generateDisambigFile() {
 
     tl_assert(cur_entry && cur_entry->typeName);
 
-    fputs(ENTRY_DELIMETER, disambig_fp);
+    fputs(ENTRY_DELIMITER, disambig_fp);
     fputs("\n", disambig_fp);
     fputs(USERTYPE_PREFIX, disambig_fp);
     fputs(cur_entry->typeName, disambig_fp);
@@ -383,7 +383,7 @@ static void processDisambigFile() {
       line1[lineLen - 1] = '\0';
     }
 
-    if VG_STREQ(line1, ENTRY_DELIMETER) {
+    if VG_STREQ(line1, ENTRY_DELIMITER) {
       if (entryName) {
         VG_(free)(entryName);
         entryName = 0;
@@ -491,7 +491,7 @@ static void processDisambigFile() {
 
         FJALAR_DPRINTF(" ENTRY: %s\n", (entryName ? entryName : "<no name>"));
       }
-      // A line that doesn't immediately follow ENTRY_DELIMETER
+      // A line that doesn't immediately follow ENTRY_DELIMITER
       // The idea here is to find the correct VariableEntry entry and
       // modify its "disambig" field
       else {

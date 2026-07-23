@@ -246,7 +246,7 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
 // comparisons are translated into clean C calls.  The correct
 // behavior is to merge the tags of all arguments but return a new tag
 // of 0 so that the tags do not propagate to the results.  Without
-// further testing on what other opeations are translated into IR as
+// further testing on what other operations are translated into IR as
 // clean C calls, I will simply return a tag of 0 for now.
 static
 IRAtom* handleCCall_DC ( DCEnv* dce,
@@ -2583,7 +2583,7 @@ static void do_shadow_CAS_single_DC ( DCEnv* dce, IRCAS* cas ) {
 
    /* 3. check definedness of address */
    /* 4. fetch old# from shadow memory; this also checks
-         addressibility of the address */
+         addressability of the address */
 
    voldLo
      = assignNew_DC(dce, elemTy,
@@ -2747,7 +2747,7 @@ static void do_shadow_CAS_double_DC ( DCEnv* dce, IRCAS* cas )
 
    /* 3. check definedness of address */
    /* 4. fetch old# from shadow memory; this also checks
-         addressibility of the address */
+         addressability of the address */
    if (cas->end == Iend_LE) {
       memOffsLo = 0;
       memOffsHi = elemSzB;

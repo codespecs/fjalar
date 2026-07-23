@@ -111,10 +111,11 @@
 #include <sys/stat.h>
 #include "bucomm.h"
 #include "elfcomm.h"
-#include "demanguse.h"
+// includes not needed by fjalar
+//#include "demanguse.h"
 //#include "dwarf.h"
-#include "ctf-api.h"
-#include "demangle.h"
+//#include "ctf-api.h"
+//#include "demangle.h"
 
 // includes needed by Fjalar (replaces "dwarf.h")
 #include "fjalar_main.h"
@@ -504,7 +505,7 @@ valid_dynamic_name (const Filedata *filedata, uint64_t offset)
 			    filedata->dynamic_strings_length, offset);
 }
 
-/* GET_DYNAMIC_NAME asssumes that VALID_DYNAMIC_NAME has
+/* GET_DYNAMIC_NAME assumes that VALID_DYNAMIC_NAME has
    already been called and verified that the string exists.  */
 static inline const char *
 get_dynamic_name (const Filedata *filedata, size_t offset)
@@ -731,7 +732,7 @@ print_vma (bfd_vma vma, print_mode mode)
 
 
 /* Display a symbol on stdout.  Handles the display of control characters and
-   multibye characters (assuming the host environment supports them).
+   multibyte characters (assuming the host environment supports them).
 
    Display at most abs(WIDTH) characters, truncating as necessary, unless do_wide is true.
 
@@ -2943,7 +2944,7 @@ get_machine_name (unsigned e_machine)
     case EM_MMA:		return "Fujitsu Multimedia Accelerator";
     case EM_PCP:		return "Siemens PCP";
     case EM_NCPU:		return "Sony nCPU embedded RISC processor";
-    case EM_NDR1:		return "Denso NDR1 microprocesspr";
+    case EM_NDR1:		return "Denso NDR1 microprocessor";
     case EM_STARCORE:		return "Motorola Star*Core processor";
     case EM_ME16:		return "Toyota ME16 processor";
       /* 60 */
@@ -3130,7 +3131,7 @@ get_machine_name (unsigned e_machine)
     case EM_KF32:		return "ChipON KungFu32";
 
       /* Large numbers...  */
-    case EM_MT:                 return "Morpho Techologies MT processor";
+    case EM_MT:                 return "Morpho Technologies MT processor";
     case EM_ALPHA:		return "Alpha";
     case EM_WEBASSEMBLY:	return "Web Assembly";
     case EM_DLX:		return "OpenDLX";
@@ -21943,7 +21944,7 @@ process_notes_at (Filedata *           filedata,
      specifies that notes should be aligned to 4 bytes in 32-bit
      objects and to 8 bytes in 64-bit objects.  As a Linux extension,
      we also support 4 byte alignment in 64-bit objects.  If section
-     alignment is less than 4, we treate alignment as 4 bytes.   */
+     alignment is less than 4, we treat alignment as 4 bytes.   */
   if (align < 4)
     align = 4;
   else if (align != 4 && align != 8)
