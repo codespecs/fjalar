@@ -167,9 +167,11 @@ unsigned long string_table_length;
 Elf_Internal_Ehdr elf_header;
 Elf_Internal_Shdr *section_headers;
 
-// Used to skip unneeded dwarf entries.
-int ignore_die_level;
-bool ignore_die_entries;
+// Used to skip unneeded dwarf entries.  While ignore_die_entries is true,
+// ignore_die_level holds the level of the DIE whose subtree is being
+// skipped; skipping ends when that subtree's terminating null entry is seen.
+static int ignore_die_level;
+static bool ignore_die_entries;
 
 // end Fjalar code
 
