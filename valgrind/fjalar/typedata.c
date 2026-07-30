@@ -1350,7 +1350,7 @@ char harvest_ordinary_unsigned_value(dwarf_entry* e, unsigned long attr, unsigne
   // In Dwarf 2 the DW_AT_data_member_location of a DW_TAG_member was always a DW_FORM_block
   // which implied a location list, but in Dwarf 3 it may be a DW_FORM_data which is an
   // ordinary unsigned value.
-  // In Dwarf 2 and 3 the DW_AT_high_pc of a DW_TAG_compile_unit was always a DW_FORM_addr,
+  // In Dwarf 2 and 3 the DW_AT_high_pc of a DW_TAG_subprogram was always a DW_FORM_addr,
   // but in Dwarf 4 it may be a DW_FORM_data which is an ordinary unsigned value.
   // This is an offset from the DW_AT_low_pc.
   switch(attr)
@@ -1893,16 +1893,21 @@ static void process_abstract_origin_items(void)
           VG_(memcpy)(aliased_formal_param->dwarf_stack, cur_param->dwarf_stack,
                       sizeof(dwarf_location)*cur_param->dwarf_stack_size);
 
-          cur_param->name = aliased_formal_param->name;
-          cur_param->type_ID = aliased_formal_param->type_ID;
-          //cur_param->type_ptr = aliased_formal_param->type_ptr;
+          if(!cur_param->name) {
+            cur_param->name = aliased_formal_param->name;
+          }
+          if(!cur_param->type_ID) {
+            cur_param->type_ID = aliased_formal_param->type_ID;
+            cur_param->type_ptr = aliased_formal_param->type_ptr;
+          }
         }
       }
     } else if(tag_is_variable(cur_entry->tag_name)) {
       variable* cur_var = (variable*) (cur_entry->entry_ptr);
 
-      // Look for all variables with a abstract_origin_ID field, find the targets,
-      // and copy over the location field(s) and stack size.
+      // Look for all variables with a abstract_origin_ID field, find the
+      // targets, and copy over the name and type.  As elsewhere in this pass,
+      // do not overwrite properties that are already present.
       if (cur_var->abstract_origin_ID) {
         unsigned long aliased_index = 0;
 
@@ -1914,9 +1919,13 @@ static void process_abstract_origin_items(void)
           tl_assert(tag_is_variable(aliased_entry->tag_name));
           aliased_variable = (variable*) (aliased_entry->entry_ptr);
 
-          cur_var->name = aliased_variable->name;
-          cur_var->type_ID = aliased_variable->type_ID;
-          cur_var->type_ptr = aliased_variable->type_ptr;
+          if(!cur_var->name) {
+            cur_var->name = aliased_variable->name;
+          }
+          if(!cur_var->type_ID) {
+            cur_var->type_ID = aliased_variable->type_ID;
+            cur_var->type_ptr = aliased_variable->type_ptr;
+          }
         }
       }
     }
@@ -2613,14 +2622,18 @@ static void link_array_entries_to_members(void)
     }
 }
 
-// Search template type params (if any) for one whose type matches a formal parameter's type
+// Search template type params (if any) for one whose type matches a formal
+// parameter's type, and copy that template parameter's name to the formal
+// parameter.
 //
-// Inputs: type to match, where to start search, dwarf level, ?
 // start_index: index into dwarf_entry_array of where to start search
 // target_type_id: type ID we are trying to find
 // param_entry: formal_parameter dwarf_entry of param we are trying to find name for
 //
-//
+// A template parameter is claimed by at most one formal parameter.  Without
+// that, a generic instantiated with the same type more than once (for example,
+// foo<T, U> where both T and U become i32) would give every one of its
+// unnamed formals the same name.
 static bool link_template_type_param_to_formal_param(unsigned long start_index, unsigned long target_type_id, dwarf_entry* param_entry)
 {
   unsigned long type_index = start_index;
@@ -2722,9 +2735,9 @@ static void link_template_type_params_to_formal_params(void)
             }
           } while (keep_looking);
           if (!found) {
-            // A Rust developer told me that if a formal parameter is not used it may
-            // not be given a name in the dwarf output.
-          // formal_param_ptr->name = (char *)"unused";
+            // A Rust developer told me that if a formal parameter is not used
+            // it might not be given a name in the dwarf output.  Leave the name
+            // null; extractOneFormalParameterVar generates a placeholder.
             param_index++;
           }
         } else {

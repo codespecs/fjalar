@@ -763,9 +763,6 @@ void repCheckAllEntries(void) {
     if (IS_AGGREGATE_TYPE(t)) {
       VarNode* n;
       unsigned int numMemberVars = 0;
-      // unsigned int prev_data_member_location = 0;
-      // unsigned int prev_data_member_size = 0;
-      // unsigned int prev_data_member_bit_size = 0;
 
       SimpleNode* memberFunctionNode;
       SimpleNode* superclassNode;
@@ -794,9 +791,9 @@ void repCheckAllEntries(void) {
           tl_assert(IS_MEMBER_VAR(curMember));
           tl_assert(0 == curMember->byteOffset);
 
-          // For a struct, check that data_member_location is greater
-          // than or equal to that of the previous member variable.
-          // Don't do this check for bitfields.
+          // This code used to assert that struct members appear at monotonically
+          // increasing offsets. That is not true for Rust, which reorders
+          // fields, and the DWARF specification never required it. (markro 4/9/26)
           if (D_STRUCT_CLASS == t->decType) {
             // We don't check bit-fields as the compiler may
             // allocate them to a previous location.
@@ -805,13 +802,6 @@ void repCheckAllEntries(void) {
                  curMember->memberVar->internalByteSize,
                  curMember->memberVar->internalBitOffset,
                  curMember->memberVar->internalBitSize);
-            // I have removed this assert as it is not true for Rust and was never required by the
-            // DWARF specification. (markro 4/9/26)
-            // if ((curMember->memberVar->internalBitSize == 0) && (prev_data_member_bit_size == 0))
-            //   tl_assert(curMember->memberVar->data_member_location >= prev_data_member_location + prev_data_member_size);
-            // prev_data_member_location = curMember->memberVar->data_member_location;
-            // prev_data_member_size = curMember->memberVar->internalByteSize;
-            // prev_data_member_bit_size = curMember->memberVar->internalBitSize;
           }
           // For a union, all offsets should be 0
           else if (D_UNION == t->decType) {
@@ -1003,6 +993,10 @@ int entry_is_valid_function(dwarf_entry *entry) {
     //      funcPtr->is_declaration, funcPtr->is_inline, ignore_function_with_name(funcPtr->name));
     // }
 
+    // An entry with is_inline set is an abstract instance root: it describes
+    // a function that the compiler inlined, not code that is called.  The
+    // concrete out-of-line instance, if the compiler emitted one, is a
+    // separate entry that has its own start_pc and no DW_AT_inline.
     if (funcPtr->name != 0 &&
         funcPtr->start_pc &&
         (!funcPtr->is_declaration) &&
@@ -2821,6 +2815,12 @@ extractOneVariable(VarList* varListPtr,
   // Work on the last variable in varListPtr
   varPtr = varListPtr->last->var;
 
+  // Attempt to demangle the name (nothing happens if it is not a mangled
+  // name).  We only have the variable's type entry here, not the variable's
+  // own entry, so the demangler is chosen from the type's compilation unit;
+  // that is the same compilation unit in all but exotic cases.  typePtr may
+  // be null (see the DW_TAG_const_type test below), which fjalar_demangle
+  // treats as "not Rust".
   demangled_name = fjalar_demangle(typePtr, variableName);
   if (demangled_name) {
     varPtr->name = demangled_name;
