@@ -295,9 +295,9 @@ const char* DeclaredTypeNames[] = {"D_NO_TYPE", // Create padding
 // Not allowing template class member names (?)
 // was causing failures.  I removed the check
 // for "_M_" and all seems to be okay.
-static char ignore_function_with_name(char* name) {
+static char ignore_function_with_name(char* name, Bool quiet) {
 
-  FJALAR_DPRINTF("  *ppt_name: %s\n", name);
+  FJALAR_DPRINTF_IF(!quiet, "  *ppt_name: %s\n", name);
 
   if (!name) {
     return 0;
@@ -316,7 +316,7 @@ static char ignore_function_with_name(char* name) {
       (0 == VG_(strncmp)(name, "min<size_t>", 11)) ||
       // g++-3.4 seems to show this:
       (0 == VG_(strncmp)(name, "__verify_grouping", 17))) {
-    // printf("ignoring function named: %s\n", name);
+    // FJALAR_DPRINTF_IF(!quiet, "ignoring function named: %s\n", name);
     return 1;
   }
   else {
@@ -352,7 +352,7 @@ static char ignore_variable_with_name(const char* name) {
       (0 == VG_(strncmp)(name, "_ZNSs4", 6)) ||
       // Found in C++ destructors
       (VG_STREQ(name, "__in_chrg"))) {
-    // printf("ignoring variable named: %s\n", name);
+    // FJALAR_DPRINTF("ignoring variable named: %s\n", name);
     return 1;
   }
   else {
@@ -983,14 +983,17 @@ static void repCheckOneVariable(VariableEntry* var) {
 }
 
 
-int entry_is_valid_function(dwarf_entry *entry) {
+// Returns 1 if entry describes a function that we want to trace.
+// If quiet is True, does not log why an entry was rejected; debug printing
+// uses that form so that it does not print about its own inspection.
+int entry_is_valid_function(dwarf_entry *entry, Bool quiet) {
   if (tag_is_function(entry->tag_name)) {
     function* funcPtr = (function*)(entry->entry_ptr);
 
     // if (funcPtr->name != 0) {
     //    printf("[entry_is_valid_function] start_pc: %p, is_decl: %d, is_inline: %d, ignore_name: %d\n",
     //      (void *)funcPtr->start_pc,
-    //      funcPtr->is_declaration, funcPtr->is_inline, ignore_function_with_name(funcPtr->name));
+    //      funcPtr->is_declaration, funcPtr->is_inline, ignore_function_with_name(funcPtr->name, quiet);
     // }
 
     // An entry with is_inline set is an abstract instance root: it describes
@@ -1001,11 +1004,11 @@ int entry_is_valid_function(dwarf_entry *entry) {
         funcPtr->start_pc &&
         (!funcPtr->is_declaration) &&
         (!funcPtr->is_inline) &&
-        (!ignore_function_with_name(funcPtr->name))) {
+        (!ignore_function_with_name(funcPtr->name, quiet))) {
       return 1;
     } else {
 
-      FJALAR_DPRINTF("Skipping invalid-looking or ignored function %s\n", funcPtr->name);
+      FJALAR_DPRINTF_IF(!quiet, "Skipping invalid-looking or ignored function %s\n", funcPtr->name);
 
       return 0;
     }
@@ -1663,7 +1666,7 @@ void initializeFunctionTable(void)
       // Ignore invalid functions and DUPLICATE function entries
       // with the same start_pc (only test if there is start_pc)
       // Also ignore compiler generated functions.
-      if (entry_is_valid_function(cur_entry) &&
+      if (entry_is_valid_function(cur_entry, False) &&
           ((((function*)cur_entry->entry_ptr)->start_pc) &&
            !gencontains(FunctionTable,
                         (void*)(((function*)cur_entry->entry_ptr)->start_pc))))

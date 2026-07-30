@@ -438,7 +438,7 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
 
     FunctionEntry* curFuncPtr = getFunctionEntryFromAddr(currentAddr);
 
-    // FJALAR_DPRINTF("[handle_possible_exit_entry] curFuncPtr: %p, currentAddr: %x\n", curFuncPtr, (UInt)currentAddr);
+    // FJALAR_DPRINTF("[handle_possible_exit] curFuncPtr: %p, currentAddr: %p\n", curFuncPtr, currentAddr);
 
     if (curFuncPtr &&
 	// Also, if fjalar_trace_prog_pts_filename is on (we are

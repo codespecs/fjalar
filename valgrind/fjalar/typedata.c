@@ -2075,7 +2075,6 @@ static void process_specification_items(void)
                 cur_var->name = demangled_name;
                 // Since we process both the variable and the aliased member,
                 // better copy revised name back to member var.  (markro)
-                // printf("spec name: %s, link name: %s\n", ((member*)(aliased_entry->entry_ptr))->name, demangled_name);
                 ((member*)(aliased_entry->entry_ptr))->name = demangled_name; 
             } else {
                 cur_var->name = ((member*)(aliased_entry->entry_ptr))->name;
@@ -2718,7 +2717,7 @@ static void link_template_type_params_to_formal_params(void)
               // we found the name
               // look for more formal parameters
               param_index++;
-              found = true;;
+              found = true;
             }
 
             if (!found && formal_type_ptr->tag_name == DW_TAG_pointer_type) {
@@ -2803,7 +2802,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
                function_ptr->is_inline,
                function_ptr->specification_ID,
                function_ptr->start_pc,
-               is_valid_function(e));
+               entry_is_valid_function(e, True));
         break;
       }
     case DW_TAG_formal_parameter:
@@ -3409,13 +3408,4 @@ char* fjalar_demangle(dwarf_entry* cur_entry, const char* mangled_name) {
   } else {
     return cplus_demangle_v3(mangled_name, DMGL_PARAMS | DMGL_ANSI);
   }
-}
-
-// Checks to see if function is one we care about.
-int is_valid_function(dwarf_entry *entry) {
-  Bool saved_fjalar_debug = fjalar_debug;
-  fjalar_debug = False;
-  int result = entry_is_valid_function(entry);
-  fjalar_debug = saved_fjalar_debug;
-  return result;
 }

@@ -44,6 +44,11 @@
 
 #define FJALAR_DPRINTF(...) do { if (fjalar_debug) \
       printf(__VA_ARGS__); } while (0)
+
+// Like FJALAR_DPRINTF, but prints only if COND also holds.  Used by code that
+// can be reached from debug printing itself, which must not print recursively.
+#define FJALAR_DPRINTF_IF(cond, ...) do { if (fjalar_debug && (cond)) \
+      printf(__VA_ARGS__); } while (0)
 #if 0
 #define SECTION_NAME(X) ((X) == NULL ? "<none>" : \
                          ((X)->sh_name >= string_table_length \
