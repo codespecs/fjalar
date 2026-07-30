@@ -1380,6 +1380,44 @@ static char interestedInVar(const HChar* fullFjalarName, char* trace_vars_tree) 
   return 1;
 }
 
+// Returns 1 if this variable has a value worth reporting to the tool, 0
+// otherwise.  Like interestedInVar, a 0 result suppresses only the callback
+// for this variable; traversal continues, so a struct that contains a
+// suppressed member still reports its other members.
+//
+// A zero-sized type (Rust calls these ZSTs) occupies no storage, so it has
+// exactly one possible value and conveys no information.  There is also
+// nothing to read: Rust gives a ZST a fabricated dangling address rather than
+// real storage, so reporting one yields "nonsensical" at best.
+//
+// Suppress ZSTs here, in the traversal, rather than in the tool, so that a
+// tool's declarations and its trace cannot disagree about which variables
+// exist: both passes walk variables through this same code, and
+// g_variableIndex advances identically whether or not we report.
+//
+// This tests for the two ways a type can be declared with no bytes rather
+// than for a zero byteSize alone, so that a type Fjalar merely failed to
+// size does not get silently dropped.  Note that an opaque C type (declared
+// but never defined) is not one of these: Fjalar resolves it to void*.
+static char varHasReportableValue(VariableEntry* var) {
+  TypeEntry* t = var->varType;
+
+  if (t == 0) {
+    return 1;
+  }
+  // A base type declared with no bytes: Rust's ().
+  if (D_ZST == t->decType) {
+    return 0;
+  }
+  // A struct/union/class declared with no bytes: Rust unit structs and
+  // PhantomData, and the GNU C zero-size struct extension.
+  if ((0 == t->byteSize) &&
+      ((D_STRUCT_CLASS == t->decType) || (D_UNION == t->decType))) {
+    return 0;
+  }
+  return 1;
+}
+
 
 // This visits a variable by delegating to visitSingleVar()
 // Pre: varOrigin != DERIVED_VAR, varOrigin != DERIVED_FLATTENED_ARRAY_VAR
@@ -1608,7 +1646,8 @@ void visitSingleVar(VisitArgs* args) {
     // interesting. Now we will not return, but simply not
     // pass uninteresting variables to the tool.
     
-    if (interestedInVar(fullFjalarName, trace_vars_tree)) {
+    if (varHasReportableValue(var) &&
+        interestedInVar(fullFjalarName, trace_vars_tree)) {
 
       // Perform the action action for this particular variable:
       tResult = (*performAction)(var,
@@ -2045,7 +2084,8 @@ void visitSequence(VisitArgs* args) {
                    fullFjalarName);
 
     // See: PARTIAL_STRUCT_TRAVERSAL
-    if (interestedInVar(fullFjalarName, trace_vars_tree)) {
+    if (varHasReportableValue(var) &&
+        interestedInVar(fullFjalarName, trace_vars_tree)) {
 
       // Perform the action action for this particular variable:
       tResult = (*performAction)(var,
