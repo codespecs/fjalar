@@ -26,7 +26,6 @@ tools.
 #include "my_libc.h"
 
 #include "fjalar_main.h"
-#include "fjalar_include.h"
 #include "fjalar_runtime.h"
 #include "fjalar_select.h"
 #include "generate_fjalar_entries.h"
