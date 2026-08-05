@@ -1405,15 +1405,29 @@ static char varHasReportableValue(VariableEntry* var) {
   if (t == 0) {
     return 1;
   }
+
   // A base type declared with no bytes: Rust's ().
   if (D_ZST == t->decType) {
     return 0;
   }
+
+  // UNDONE: This does not work as envisaged. There are many entities that
+  // have byteSize == 0 that we do not want to skip. Perhaps it is a bug
+  // that they have size 0 to begin with. Needs more investigation.
+  // Also, determineVariableByteSize(var) should be used instead of t->byteSize.
+
   // A struct/union/class declared with no bytes: Rust unit structs and
   // PhantomData, and the GNU C zero-size struct extension.
   if ((0 == t->byteSize) &&
       ((D_STRUCT_CLASS == t->decType) || (D_UNION == t->decType))) {
-    return 0;
+    // temporary debugging code
+    // printf("varHasReportableValue:\n  var: %s\n", var->name);
+    // printf("  type: %s\n", DeclaredTypeString[t->decType]);
+    // printf("  byteSize: %d\n", t->byteSize);
+    // printf("  prtLevels: %u\n", var->ptrLevels);
+    // printf("  referenceLevels: %u\n", var->referenceLevels);
+    // printf("  isConstant: %u\n", var->isConstant);
+    // return 0;
   }
   return 1;
 }
