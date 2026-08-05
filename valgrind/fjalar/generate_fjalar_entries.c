@@ -47,13 +47,13 @@ static void processFunctions(void);
 
 int determineFormalParametersStackByteSize(FunctionEntry* f);
 int determineFormalParametersLowerStackByteSize(FunctionEntry* f);
+int determineVariableByteSize(VariableEntry* var);
 
 static void extractFormalParameterVars(FunctionEntry* f, function* dwarfFunctionEntry);
 static void extractLocalArrayAndStructVariables(FunctionEntry* f, function* dwarfFunctionEntry);
 static void extractOneLocalArrayOrStructVariable(FunctionEntry* f, dwarf_entry* dwarfVariableEntry);
 static void extractReturnVar(FunctionEntry* f, function* dwarfFunctionEntry);
 
-static int determineVariableByteSize(VariableEntry* var);
 static void verifyStackParamWordAlignment(FunctionEntry* f, int replace);
 static char* getDeclaredFile(compile_unit* comp_unit, unsigned long offset);
 
@@ -2409,7 +2409,7 @@ static void verifyStackParamWordAlignment(FunctionEntry* f, int replace)
 }
 
 // Returns the byte size of the given VariableEntry
-static int determineVariableByteSize(VariableEntry* var)
+int determineVariableByteSize(VariableEntry* var)
 {
   int byteSize = 0;
 
