@@ -968,7 +968,7 @@ bool is_rust_compiler_generated_subprogram(const char* name) {
 // Extract the 'as TRAIT' portion from linkage name
 // <TYPE as TRAIT>::method → check TRAIT's crate.
 //
-// UNDONE: This will code will incorrectly classify user code implementing
+// UNDONE: This code will incorrectly classify user code implementing
 // a runtime trait. <your_crate::Foo as core::fmt::Display>::fmt will be
 // classified as runtime because the trait is core::fmt::Display.
 bool is_rust_runtime_trait(const char* name) {

@@ -38,7 +38,7 @@ Supporting data structures and enums
 **********************************************************************/
 
 // Any changes here will require changes in generate_fjalar_entries.c and may
-// require changes in kvasir/decls-ouput.c and/or kvasir/decls-output.h as well.
+// require changes in kvasir/decls-output.c and/or kvasir/decls-output.h as well.
 
 typedef enum _DeclaredType {
   D_NO_TYPE,

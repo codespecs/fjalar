@@ -352,7 +352,7 @@ typedef struct
 
 } formal_parameter;
 
-// The DWARF DW_TAG_templake_type_parameter is used to describe the type
+// The DWARF DW_TAG_template_type_parameter is used to describe the type
 // parameter (or parameters) used in a generic function or structure
 // definition. DWARF does not represent the generic template definition,
 // but does represent each instantiation.
