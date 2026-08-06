@@ -101,6 +101,9 @@ static const char* TYPE_FORMAT_STRINGS[] = {
 // declared in generate_fjalar_entries.h:
 extern const int DecTypeByteSizes[];
 
+// This array can be indexed using the DeclaredType enum.
+extern const char* DeclaredTypeString[];
+
 // If there are function names (e.g., C++ demangled names) that are
 // illegal for Daikon, we can patch them up here before writing them
 // to the .dtrace file:
@@ -710,42 +713,6 @@ static char printDtraceSequence(VariableEntry* var,
   return 1;
 }
 
-// This array can be indexed using the DeclaredType enum
-const char* DeclaredTypeStringX[] = {
-  "no_declared_type",       // D_NO_TYPE, // Create padding
-
-  "unsigned char",          // D_UNSIGNED_CHAR,
-  "char",                   // D_CHAR,
-  "unsigned short",         // D_UNSIGNED_SHORT,
-  "short",                  // D_SHORT,
-  "unsigned int",           // D_UNSIGNED_INT,
-  "int",                    // D_INT,
-  "unsigned long",          // D_UNSIGNED_LONG,
-  "long",                   // D_LONG,
-  "unsigned long long int", // D_UNSIGNED_LONG_LONG_INT,
-  "long long int",          // D_LONG_LONG_INT,
-
-  "u128",                   // D_U128,  // Rust
-  "i128",                   // D_I128,  // Rust
-
-  "float",                  // D_FLOAT,
-  "double",                 // D_DOUBLE,
-  "long double",            // D_LONG_DOUBLE,
-
-  // This should NOT be used unless you created an unnamed struct/union!
-  // Use TypeEntry::typeName instead
-  "enumeration",            // D_ENUMERATION
-  "struct",                 // D_STRUCT_CLASS
-  "union",                  // D_UNION
-
-  "function",               // D_FUNCTION
-  "void",                   // D_VOID
-  "char",                   // D_CHAR_AS_STRING
-  "char32_t",               // D_CHAR32  // should be just char for Rust
-  "bool",                   // D_BOOL
-  "<ZST>"                   // D_ZST // UNDONE: not sure what to output for a ZST
-};
-
 // Print a single numerical value to .dtrace pointed-to by pValue
 static
 char printDtraceSingleBaseValue(Addr pValue,
@@ -785,7 +752,7 @@ char printDtraceSingleBaseValue(Addr pValue,
       // This is where the actual printing of the variable is done. This
       // was a bit hard to figure out.
       // UNDONE: special case Rust 128 bit types
-      // printf("\tdecType is: %u, %s\n", decType, DeclaredTypeStringX[decType]);
+      // printf("\tdecType is: %u, %s\n", decType, DeclaredTypeString[decType]);
       TYPES_SWITCH(DTRACE_PRINT_ONE_VAR)
 
       if (kvasir_with_dyncomp) {
