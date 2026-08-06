@@ -91,7 +91,8 @@ static const char* TYPE_FORMAT_STRINGS[] = {
   "%d - ERROR - D_FUNCTION",       // D_FUNCTION // currently unused
   "%d - ERROR - D_VOID",           // D_VOID     // currently unused
   "%d - ERROR - D_CHAR_AS_STRING", // D_CHAR_AS_STRING
-  "U%04X",                         // D_CHAR32   // print as 4 hex digits
+  "%u",                            // D_CHAR32   // print the code point as an integer,
+                                   //            // to match its rep type of R_INT
   "%d" ,                           // D_BOOL
   "ZST",                           // D_ZST      // Zero Sized Types are Rust only
 };
