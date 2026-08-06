@@ -3400,10 +3400,13 @@ Addr getGlobalVarAddr(char* name) {
   return (Addr)gengettable(VariableSymbolTable, (void*)name);
 }
 
-// Attempt to demangle a C++ or Rust name
+// Attempt to demangle a C++ or Rust name.
+// cur_entry selects the demangler via its compilation unit's language; a null
+// cur_entry (or one with no compilation unit) is treated as "not Rust".
 // Returns null if demangle fails
 char* fjalar_demangle(dwarf_entry* cur_entry, const char* mangled_name) {
-  if (cur_entry->comp_unit->language == DW_LANG_Rust) {
+  if (cur_entry && cur_entry->comp_unit &&
+      (cur_entry->comp_unit->language == DW_LANG_Rust)) {
     return rust_demangle(mangled_name, DMGL_PARAMS | DMGL_ANSI);
   } else {
     return cplus_demangle_v3(mangled_name, DMGL_PARAMS | DMGL_ANSI);
