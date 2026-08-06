@@ -7333,6 +7333,9 @@ display_loc_list (struct dwarf_section *section,
       // the location list is for an item within an inlined function.
       if (base_address != 1) {
         harvest_location_list_entry(ll, offset);
+      } else {
+        // harvest_location_list_entry takes ownership of ll; free it otherwise.
+        VG_(free) (ll);
       }
       // end of Fjalar code
       start += length;
