@@ -1223,7 +1223,7 @@ static void createNamesForUnnamedDwarfEntries(void)
     cur_entry = &dwarf_entry_array[i];
     if (tag_is_collection_type(cur_entry->tag_name)) {
       if (cur_entry->compiler_generated) {
-        return;
+        continue;
       }
       collection_type* collectionPtr = (collection_type*)(cur_entry->entry_ptr);
       if (!collectionPtr->is_declaration &&
