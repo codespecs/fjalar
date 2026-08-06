@@ -37,8 +37,10 @@
 #include "pub_tool_libcprint.h"
 #include "pub_tool_mallocfree.h"
 
-// for name demangling
+// For name demangling.
 #include "../coregrind/m_demangle/demangle.h"
+// For VG_(arena_free), to release the demanglers' results.
+#include "../coregrind/pub_core_mallocfree.h"
 
 // Most of the following information is taken from "DWARF Debugging
 // Information Format Version 4". Published by the DWARF Debugging
@@ -1024,14 +1026,11 @@ char harvest_mangled_name(dwarf_entry* e, const char* str1)
     return 0;
 
   tag = e->tag_name;
-  char* demangled_name = fjalar_demangle(e, str1);
-  if (demangled_name) {
-    // printf("demangled name: %s\n", demangled_name);
-  }
 
   if (tag_is_function(tag))
     {
       if (e->comp_unit->language == DW_LANG_Rust) {
+        char* demangled_name = fjalar_demangle(e, str1);
         if (is_rust_compiler_generated_subprogram(str1)
             || (!fjalar_include_rust_runtime && is_rust_runtime_subprogram(str1))) {
           e->compiler_generated = true;
@@ -1040,6 +1039,7 @@ char harvest_mangled_name(dwarf_entry* e, const char* str1)
             || (!fjalar_include_rust_runtime && is_rust_runtime_subprogram(demangled_name)))) {
           e->compiler_generated = true;
         }
+        fjalar_demangle_free(demangled_name);
       }
       ((function*)e->entry_ptr)->mangled_name = VG_(strdup)("typedata.c: harv_mangled_name.1",str1);
       return 1;
@@ -1049,8 +1049,12 @@ char harvest_mangled_name(dwarf_entry* e, const char* str1)
       if (is_rust_compiler_generated_variable(str1)) {
         e->compiler_generated = true;
       }
-      if (demangled_name && is_rust_compiler_generated_variable(demangled_name)) {
-        e->compiler_generated = true;
+      if (e->comp_unit->language == DW_LANG_Rust) {
+        char* demangled_name = fjalar_demangle(e, str1);
+        if (demangled_name && is_rust_compiler_generated_variable(demangled_name)) {
+          e->compiler_generated = true;
+        }
+        fjalar_demangle_free(demangled_name);
       }
       ((variable*)e->entry_ptr)->mangled_name = VG_(strdup)("typedata.c: harv_mangled_name.2",str1);
       return 1;
@@ -3411,4 +3415,11 @@ char* fjalar_demangle(dwarf_entry* cur_entry, const char* mangled_name) {
   } else {
     return cplus_demangle_v3(mangled_name, DMGL_PARAMS | DMGL_ANSI);
   }
+}
+
+// Release a name returned by fjalar_demangle.  The demanglers allocate
+// from Valgrind's demangler arena, so the memory must be returned to that
+// arena; VG_(free) would return it to the wrong one.  Accepts null.
+void fjalar_demangle_free(char* demangled_name) {
+  VG_(arena_free)(VG_AR_DEMANGLE, demangled_name);
 }
