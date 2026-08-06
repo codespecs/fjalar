@@ -1390,7 +1390,13 @@ static char interestedInVar(const HChar* fullFjalarName, char* trace_vars_tree) 
 // nothing to read: Rust gives a ZST a fabricated dangling address rather than
 // real storage, so reporting one yields "nonsensical" at best.
 //
-// Suppress ZSTs here, in the traversal, rather than in the tool, so that a
+// A 128-bit integer (Rust's u128 and i128) has no C type wide enough to print
+// it with, so Fjalar cannot yet write its value.  Printing the low 64 bits
+// would emit a plausible-looking wrong number that Daikon would infer
+// invariants from, which is worse than omitting the variable, so suppress
+// these until 128-bit printing is implemented.
+//
+// Suppress these here, in the traversal, rather than in the tool, so that a
 // tool's declarations and its trace cannot disagree about which variables
 // exist: both passes walk variables through this same code, and
 // g_variableIndex advances identically whether or not we report.
@@ -1408,6 +1414,11 @@ static char varHasReportableValue(VariableEntry* var) {
 
   // A base type declared with no bytes: Rust's ().
   if (D_ZST == t->decType) {
+    return 0;
+  }
+
+  // A 128-bit integer, which Fjalar cannot yet print.
+  if ((D_U128 == t->decType) || (D_I128 == t->decType)) {
     return 0;
   }
 

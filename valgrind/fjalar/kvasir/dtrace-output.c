@@ -77,8 +77,8 @@ static const char* TYPE_FORMAT_STRINGS[] = {
   "%llu",                          // D_UNSIGNED_LONG_LONG_INT,
   "%lld",                          // D_LONG_LONG_INT,
 
-  "%llu",                          // D_U128,  // Rust, but C has no corresponding format
-  "%lld",                          // D_I128,  // Rust, but C has no corresponding format
+  "%d - ERROR - D_U128",           // D_U128,  // Rust; unused, no C type is this wide
+  "%d - ERROR - D_I128",           // D_I128,  // Rust; unused, no C type is this wide
 
   "%.9g",                          // D_FLOAT,
   "%.17g",                         // D_DOUBLE,
@@ -328,10 +328,11 @@ switch (decType) \
    OPERATION(long long int) \
    break; \
  case D_U128: \
-   OPERATION(unsigned long long int) \
-   break; \
  case D_I128: \
-   OPERATION(long long int) \
+   /* No C type is 128 bits wide. We have not yet implmented these.  */ \
+   /* varHasReportableValue() suppresses such variables, so a value of */ \
+   /* one of these types never reaches here.                           */ \
+   tl_assert(0 && "TYPES_SWITCH() - 128-bit type"); \
    break; \
  case D_FLOAT: \
    OPERATION(float) \
