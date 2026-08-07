@@ -4521,7 +4521,10 @@ process_debug_info (struct dwarf_section * section,
             // tag_is_relevant_entry ignores inlined subroutines, but we
             // need to ignore any children (formal_parameters and ?) as well.
 	    case DW_TAG_inlined_subroutine:
-	      if (entry->children) {
+	      need_base_address = 0;
+              // Do not reset the level if we are already within an ignored
+              // subtree; the outer subtree's level is the one that ends the skip.
+	      if (!ignore_die_entries && entry->children) {
                 ignore_die_level = level;
                 ignore_die_entries = true;
               }
