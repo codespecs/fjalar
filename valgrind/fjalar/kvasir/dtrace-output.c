@@ -97,7 +97,7 @@ static const char* TYPE_FORMAT_STRINGS[] = {
   "%u",                            // D_CHAR32   // print the code point as an integer,
                                    //            // to match its rep type of R_INT
   "%d" ,                           // D_BOOL
-  "ZST",                           // D_ZST      // Zero Sized Types are Rust only
+  "%d - ERROR - D_ZST",            // D_ZST      // Zero Sized Types are Rust only; never printed
 };
 
 // The indices to this array must match the DeclaredType enum
@@ -323,7 +323,6 @@ switch (decType) \
  case D_ENUMERATION: \
    OPERATION(int) \
    break; \
- case D_ZST: \
  case D_UNSIGNED_LONG: \
    OPERATION(unsigned long) \
    break; \
@@ -348,6 +347,12 @@ switch (decType) \
    break; \
  case D_DOUBLE: \
    OPERATION(double) \
+   break; \
+ case D_ZST: \
+   /* A ZST has no storage to read: its address is a fabricated dangling */ \
+   /* one.  The traversal never reports a ZST to a tool (see */ \
+   /* varHasReportableValue), so a ZST never reaches this switch. */ \
+   tl_assert(0 && "TYPES_SWITCH() - D_ZST"); \
    break; \
  default: \
    DTRACE_PRINTF( "TYPES_SWITCH() - unknown type"); \

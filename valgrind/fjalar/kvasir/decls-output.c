@@ -108,8 +108,7 @@ static const char* DaikonRepTypeString[] = {
   "double", //R_DOUBLE,
   "hashcode", //R_HASHCODE,
   "java.lang.String", //R_STRING
-  "boolean", //R_BOOL
-  "ZST" //R_ZST Rust only
+  "boolean" //R_BOOL
 };
 
 // Changes ' ' to '\_' to eliminate spaces in declared types
@@ -408,7 +407,11 @@ DaikonRepType decTypeToDaikonRepType(DeclaredType decType,
     return R_STRING;
 
   case D_ZST:            // Rust only
-    return R_ZST;
+    // Daikon has no rep type for a type with a single value.  The traversal
+    // never reports a ZST to a tool (see varHasReportableValue), so a ZST
+    // never reaches this function.
+    tl_assert(0 && "decTypeToDaikonRepType() - D_ZST");
+    return R_NO_TYPE;
 
   default:
     tl_assert(0);
@@ -785,7 +788,6 @@ printDeclsEntryAction(VariableEntry* var,
       }
       else {
         // Normal type (or unnamed struct/union/enum)
-        // UNDONE: not sure what to output for a ZST
         printDeclaredType(DeclaredTypeString[dType], decls_fp);
         // If we have a string, print it as char* because the dType of
         // string is "char" so we need to append a "*" to it
