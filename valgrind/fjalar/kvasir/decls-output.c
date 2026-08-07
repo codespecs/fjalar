@@ -385,6 +385,8 @@ DaikonRepType decTypeToDaikonRepType(DeclaredType decType,
   case D_U128:            // Rust only
   case D_I128:            // Rust only
   case D_ENUMERATION:
+  case D_CHAR8:           // Unicode char
+  case D_CHAR16:          // Unicode char
   case D_CHAR32:          // Unicode char
     return R_INT;
 

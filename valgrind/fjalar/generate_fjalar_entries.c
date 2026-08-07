@@ -120,7 +120,9 @@ const int DecTypeByteSizes[] = {
   sizeof(void*),                  // D_VOID // currently unused
 
   sizeof(char),                   // D_CHAR_AS_STRING
-  sizeof(int),                    // D_CHAR32, // we assume int == 32 bits
+  1,                              // D_CHAR8
+  2,                              // D_CHAR16
+  4,                              // D_CHAR32
   sizeof(char),                   // D_BOOL
   0                               // D_ZST // Zero Sized Type Rust only
 };
@@ -146,7 +148,9 @@ TypeEntry DoubleType = {D_DOUBLE, 0, sizeof(double), 0};
 TypeEntry LongDoubleType = {D_LONG_DOUBLE, 0, sizeof(long double), 0};
 TypeEntry FunctionType = {D_FUNCTION, 0, sizeof(void*), 0};
 TypeEntry VoidType = {D_VOID, 0, sizeof(void*), 0};
-TypeEntry Char32Type = {D_CHAR32, 0, sizeof(int), 0};  // we assume int == 32 bits
+TypeEntry Char8Type = {D_CHAR8, 0, 1, 0};
+TypeEntry Char16Type = {D_CHAR16, 0, 2, 0};
+TypeEntry Char32Type = {D_CHAR32, 0, 4, 0};
 TypeEntry BoolType = {D_BOOL, 0, sizeof(char), 0};
 TypeEntry ZSTType = {D_ZST, 0, 0, 0};
 
@@ -174,12 +178,15 @@ TypeEntry* BasicTypesArray[] = {
   &LongDoubleType,          //  D_LONG_DOUBLE,
 
   0,                        //  D_ENUMERATION,
+
   0,                        //  D_STRUCT_CLASS,
   0,                        //  D_UNION,
-
   &FunctionType,            //  D_FUNCTION,
   &VoidType,                //  D_VOID,
+
   0,                        //  D_CHAR_AS_STRING
+  &Char8Type,               //  D_CHAR8,
+  &Char16Type,              //  D_CHAR16,
   &Char32Type,              //  D_CHAR32,
   &BoolType,                //  D_BOOL
   &ZSTType                  //  D_ZST
@@ -210,12 +217,15 @@ const char* DeclaredTypeString[] = {
   // This should NOT be used unless you created an unnamed struct/union!
   // Use TypeEntry::typeName instead
   "enumeration",            // D_ENUMERATION
+
   "struct",                 // D_STRUCT_CLASS
   "union",                  // D_UNION
-
   "function",               // D_FUNCTION
   "void",                   // D_VOID
+
   "char",                   // D_CHAR_AS_STRING
+  "char8_t",                // D_CHAR8
+  "char16_t",               // D_CHAR16
   "char32_t",               // D_CHAR32  // should be just char for Rust
   "bool",                   // D_BOOL
   "<ZST>"                   // D_ZST // UNDONE: not sure what to output for a ZST
@@ -268,11 +278,8 @@ const char* DeclaredTypeNames[] = {"D_NO_TYPE", // Create padding
                              "D_LONG_LONG_INT",           // not used if 64 bit
                              "D_U128",                    // Rust
                              "D_I128",                    // Rust
-                             "D_UNSIGNED_FLOAT", // currently unused
                              "D_FLOAT",
-                             "D_UNSIGNED_DOUBLE", // currently unused
                              "D_DOUBLE",
-                             "D_UNSIGNED_LONG_DOUBLE", // currently unused
                              "D_LONG_DOUBLE",
                              "D_ENUMERATION",
                              "D_STRUCT_CLASS",
@@ -280,6 +287,8 @@ const char* DeclaredTypeNames[] = {"D_NO_TYPE", // Create padding
                              "D_FUNCTION",
                              "D_VOID",
                              "D_CHAR_AS_STRING",
+                             "D_CHAR8",             // Unicode char
+                             "D_CHAR16",            // Unicode char
                              "D_CHAR32",            // Unicode char
                              "D_BOOL",
                              "D_ZST"};
@@ -1925,8 +1934,18 @@ static void extractBaseType(VariableEntry* var, base_type* basePtr)
     }
     break;
 
+  // DW_ATE_UTF covers C/C++ char8_t, char16_t and char32_t, as well as
+  // the Rust char type (which is always 4 bytes).
   case DW_ATE_UTF:
-    var->varType = BasicTypesArray[D_CHAR32];
+    if (basePtr->byte_size == 1) {
+      var->varType = BasicTypesArray[D_CHAR8];
+    }
+    else if (basePtr->byte_size == 2) {
+      var->varType = BasicTypesArray[D_CHAR16];
+    }
+    else if (basePtr->byte_size == 4) {
+      var->varType = BasicTypesArray[D_CHAR32];
+    }
     break;
 
   case DW_ATE_boolean:
