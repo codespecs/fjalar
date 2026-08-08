@@ -162,6 +162,14 @@ unsigned int eh_addr_size;
 // Number of relevant entries to record in the dwarf_entry array
 unsigned long num_relevant_entries = 0;
 
+// The address that a linker writes into .debug_loc (and .debug_ranges) in
+// place of a relocation against a section it discarded, such as the copy of
+// an inlinable function that lost out to an identical copy in another
+// compilation unit.  The value 0 cannot serve as that marker, because a
+// pair of zero addresses terminates a location list; a linker uses 1
+// instead.
+#define TOMBSTONE_ADDRESS 1
+
 char *string_table;
 unsigned long string_table_length;
 Elf_Internal_Ehdr elf_header;
@@ -7196,6 +7204,11 @@ display_loc_list (struct dwarf_section *section,
   dwarf_vma end;
   unsigned short length;
   int need_frame_base;
+  // start of Fjalar code
+  // True when the location list's current base address is a tombstone; see
+  // the use of TOMBSTONE_ADDRESS below.
+  bool base_address_is_tombstone = false;
+  // end of Fjalar code
 
   if (debug_info_entry >= num_debug_info_entries)
     {
@@ -7258,6 +7271,9 @@ display_loc_list (struct dwarf_section *section,
           && !is_max_address (end, pointer_size))
 	{
 	  base_address = end;
+	  // start of Fjalar code
+	  base_address_is_tombstone = (end == TOMBSTONE_ADDRESS);
+	  // end of Fjalar code
 	  if (fjalar_debug_dump) {
 	    print_dwarf_vma (begin, pointer_size);
 	    print_dwarf_vma (end, pointer_size);
@@ -7332,13 +7348,13 @@ display_loc_list (struct dwarf_section *section,
         putchar ('\n');
 
       // start of Fjalar code
-      // Rust compiler sometimes generates a bogus base_address of 1 if
-      // the location list is for an item within an inlined function.
-      if (base_address != 1) {
-        harvest_location_list_entry(ll, offset);
-      } else {
+      // A tombstone base address means that this entry describes code that
+      // the linker discarded, so the entry's addresses are meaningless.
+      if (base_address_is_tombstone) {
         // harvest_location_list_entry takes ownership of ll; free it otherwise.
         VG_(free) (ll);
+      } else {
+        harvest_location_list_entry(ll, offset);
       }
       // end of Fjalar code
       start += length;
