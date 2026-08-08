@@ -881,6 +881,21 @@ char harvest_const_value(dwarf_entry* e, unsigned long value)
     return 0;
 }
 
+// Sets comp_unit_ptr->runtime_library, which is true if the compilation unit
+// is part of the Rust runtime library.  Both the language and the name of the
+// compilation unit are tested, because a C or C++ compilation unit may have
+// the same name as one of the Rust runtime library.
+// Call this after setting either the language or the filename, because DWARF
+// does not require DW_AT_language to precede DW_AT_name.
+static void set_runtime_library(compile_unit* comp_unit_ptr)
+{
+  comp_unit_ptr->runtime_library =
+    !fjalar_include_rust_runtime
+    && (comp_unit_ptr->language == DW_LANG_Rust)
+    && (comp_unit_ptr->filename != NULL)
+    && is_rust_runtime_library_compile_unit(comp_unit_ptr->filename);
+}
+
 // REMEMBER to use VG_(strdup) to make a COPY of the string
 // or else you will run into SERIOUS memory corruption
 // problems when readelf.c frees those strings from memory!!!
@@ -928,10 +943,9 @@ char harvest_name(dwarf_entry* e, const char* str1)
     }
   else if (tag_is_compile_unit(tag))
     {
-      if (!fjalar_include_rust_runtime && is_rust_runtime_library_compile_unit(str1)) {
-        ((compile_unit*)e->entry_ptr)->runtime_library = true;
-      }
-      ((compile_unit*)e->entry_ptr)->filename = VG_(strdup)("typedata.c: harv_name.6",str1);
+      compile_unit* comp_unit_ptr = (compile_unit*)e->entry_ptr;
+      comp_unit_ptr->filename = VG_(strdup)("typedata.c: harv_name.6",str1);
+      set_runtime_library(comp_unit_ptr);
       return 1;
     }
   else if (tag_is_typedef(tag))
@@ -1011,6 +1025,9 @@ bool is_rust_compiler_generated_variable(const char* name) {
          VG_(strstr)(name, "{constant#")    != NULL;
 }
 
+// Tests only the name of a compilation unit.  A caller must also test that
+// the compilation unit's language is DW_LANG_Rust, because a C or C++
+// compilation unit may have such a name too.
 bool is_rust_runtime_library_compile_unit(const char* name) {
   return VG_(strncmp)(name, "library/", 8)  == 0 ||
          VG_(strncmp)(name, "/rust/deps/", 11)  == 0;
@@ -1090,7 +1107,9 @@ char harvest_language_value(dwarf_entry* e, unsigned long value)
 
   if (tag_is_compile_unit(tag))
     {
-      ((compile_unit*)e->entry_ptr)->language = value;
+      compile_unit* comp_unit_ptr = (compile_unit*)e->entry_ptr;
+      comp_unit_ptr->language = value;
+      set_runtime_library(comp_unit_ptr);
       return 1;
     }
   else
