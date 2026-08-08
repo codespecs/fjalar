@@ -369,6 +369,9 @@ typedef struct
   char* name;
   unsigned long type_ID;
   dwarf_entry* type_ptr;
+  // True once a formal parameter has taken its name from this entry.  See
+  // link_template_type_param_to_formal_param.
+  bool claimed;
 } template_type_parameter;
 
 // array type - each one has an array_subrange_type entry denoting
