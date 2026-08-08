@@ -1,0 +1,74 @@
+#! /usr/bin/perl
+
+# check-options-documented
+#
+# Checks that every command-line option that Fjalar or Kvasir accepts is
+# also described in the usage message that "--help" prints.  Exits with
+# status 1, after listing the undocumented options, if any option is
+# missing from its usage message.
+#
+# Takes no arguments; run it from the top level of the Fjalar repository.
+
+use strict;
+use warnings;
+
+# Each element is [source file, option-parsing function, usage function].
+my @to_check =
+  (["valgrind/fjalar/fjalar_main.c",
+    "fjalar_process_cmd_line_option",
+    "fjalar_print_usage"],
+   ["valgrind/fjalar/kvasir/kvasir_main.c",
+    "fjalar_tool_process_cmd_line_option",
+    "fjalar_tool_print_usage"]);
+
+# Returns the text of the given function in the given file.
+sub function_body {
+  my ($file, $function) = @_;
+  open(my $fh, "<", $file) or die "Cannot read $file: $!";
+  my $body = "";
+  my $depth = 0;
+  my $started = 0;
+  while (my $line = <$fh>) {
+    if (!$started) {
+      next if $line !~ /\b\Q$function\E\s*\(/;
+      $started = 1;
+    }
+    $body .= $line;
+    $depth += ($line =~ tr/{//);
+    $depth -= ($line =~ tr/}//);
+    last if $depth == 0 && $body =~ /\{/;
+  }
+  close($fh);
+  if (!$started) {
+    die "Did not find $function in $file";
+  }
+  return $body;
+}
+
+my $status = 0;
+for my $check (@to_check) {
+  my ($file, $parser, $usage) = @$check;
+  my $parser_body = function_body($file, $parser);
+  my $usage_body = function_body($file, $usage);
+
+  # VG_YESNO_CLO's option name omits the leading dashes; the other
+  # VG_*_CLO macros include them.
+  my @options;
+  while ($parser_body =~ /VG_(\w+)_CLO\s*\(\s*arg\s*,\s*"([^"]+)"/g) {
+    my ($macro, $option) = ($1, $2);
+    $option = "--$option" if $macro eq "YESNO";
+    push(@options, $option);
+  }
+  if (scalar(@options) == 0) {
+    die "Did not find any options in $parser in $file";
+  }
+
+  for my $option (@options) {
+    if ($usage_body !~ /\Q$option\E/) {
+      print STDERR "$file: option $option is not documented in $usage\n";
+      $status = 1;
+    }
+  }
+}
+
+exit $status;
