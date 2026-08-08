@@ -1866,8 +1866,11 @@ static void process_abstract_origin_items(void)
               cur_func->return_type_ID = aliased_func_ptr->return_type_ID;
             if (!cur_func->accessibility)
               cur_func->accessibility = aliased_func_ptr->accessibility;
-            if (!cur_func->is_inline)
-              cur_func->is_inline = aliased_func_ptr->is_inline;
+            // Do not copy is_inline: the abstract instance root carries
+            // DW_AT_inline, but cur_func is a concrete instance with its own
+            // start_pc, which is code that is actually called and that we
+            // therefore want to instrument.  Copying is_inline here would make
+            // entry_is_valid_function reject it.
             if (!cur_entry->compiler_generated)
               cur_entry->compiler_generated = aliased_entry->compiler_generated;
           }
