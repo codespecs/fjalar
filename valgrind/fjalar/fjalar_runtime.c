@@ -552,6 +552,17 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
     Addr highestAddr;
 
     tl_assert(IS_STATIC_ARRAY_VAR(targetVar));
+
+    // A type that occupies no bytes, such as Rust's `()` or a C struct with
+    // no members, has no elements to count: an unbounded number of them fit
+    // in any extent of memory.  Report a single element, as
+    // probeAheadDiscoverHeapArraySize does for the same situation.  Without
+    // this test, the divisions below trap and the loop below never finishes.
+    if ((targetVarBytesBetweenElts == 0) || (varBytesBetweenElts == 0)) {
+      FJALAR_DPRINTF("Zero-sized type: targetVarBytesBetweenElts is %d, varBytesBetweenElts is %d\n",
+                     targetVarBytesBetweenElts, varBytesBetweenElts);
+      return 0;
+    }
     FJALAR_DPRINTF("varLocation: %p\n", (void *)varLocation);
 
     highestAddr = baseAddr + ((targetVar->staticArr->upperBounds[0]) * targetVarBytesBetweenElts);
