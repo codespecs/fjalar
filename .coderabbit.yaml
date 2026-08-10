@@ -20,6 +20,9 @@ reviews:
     - "!**/node_modules/**"
     - "!**/out/**"
   auto_review:
+    enabled: true
+    base_branches:
+      - ".*"
     auto_pause_after_reviewed_commits: 0
     ignore_title_keywords:
       - "wip"
