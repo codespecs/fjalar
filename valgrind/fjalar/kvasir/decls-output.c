@@ -408,8 +408,9 @@ DaikonRepType decTypeToDaikonRepType(DeclaredType decType,
 
   case D_ZST:            // Rust only
     // Daikon has no rep type for a type with a single value.  The traversal
-    // never reports a ZST to a tool (see varHasReportableValue), so a ZST
-    // never reaches this function.
+    // reports a ZST only through a pointer (see varHasReportableValue), and a
+    // pointer's rep type is hashcode without consulting this function, so a
+    // ZST never reaches here.
     tl_assert(0 && "decTypeToDaikonRepType() - D_ZST");
     return R_NO_TYPE;
 
@@ -482,7 +483,12 @@ printDeclsEntryAction(VariableEntry* var,
                       FunctionEntry* varFuncInfo,
                       Bool isEnter) {
   DeclaredType dType = var->varType->decType;
-  DaikonRepType rType = decTypeToDaikonRepType(dType, IS_STRING(var));
+  // Only meaningful when layersBeforeBase == 0; otherwise the rep type is
+  // hashcode, and decTypeToDaikonRepType has no answer for a dec type such as
+  // D_ZST that Daikon can only ever see through a pointer.
+  DaikonRepType rType = (layersBeforeBase == 0)
+    ? decTypeToDaikonRepType(dType, IS_STRING(var))
+    : R_NO_TYPE;
   UInt layers;
   int i;
   char alreadyPutDerefOnLine3;

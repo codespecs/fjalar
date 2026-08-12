@@ -337,9 +337,10 @@ switch (decType) \
    break; \
  case D_U128: \
  case D_I128: \
-   /* No C type is 128 bits wide. We have not yet implmented these.  */ \
-   /* varHasReportableValue() suppresses such variables, so a value of */ \
-   /* one of these types never reaches here.                           */ \
+   /* No C type is 128 bits wide. We have not yet implmented these.     */ \
+   /* varHasReportableValue() suppresses such variables once every      */ \
+   /* pointer layer has been dereferenced, and a pointer is printed as  */ \
+   /* a hashcode, so a value of one of these types never reaches here.  */ \
    tl_assert(0 && "TYPES_SWITCH() - 128-bit type"); \
    break; \
  case D_FLOAT: \
@@ -350,8 +351,9 @@ switch (decType) \
    break; \
  case D_ZST: \
    /* A ZST has no storage to read: its address is a fabricated dangling */ \
-   /* one.  The traversal never reports a ZST to a tool (see */ \
-   /* varHasReportableValue), so a ZST never reaches this switch. */ \
+   /* one.  The traversal reports a ZST only through a pointer (see */ \
+   /* varHasReportableValue), and a pointer is printed as a hashcode, so */ \
+   /* a ZST never reaches this switch. */ \
    tl_assert(0 && "TYPES_SWITCH() - D_ZST"); \
    break; \
  default: \

@@ -1396,6 +1396,11 @@ static char interestedInVar(const HChar* fullFjalarName, char* trace_vars_tree) 
 // invariants from, which is worse than omitting the variable, so suppress
 // these until 128-bit printing is implemented.
 //
+// Both of those reasons concern printing a value *of* the type, so they apply
+// only when every pointer layer has been dereferenced, which is what
+// layersBeforeBase == 0 means.  A `*const u128` or `*const ()` is printed as a
+// hashcode, which Fjalar handles like any other pointer, so report it.
+//
 // Suppress these here, in the traversal, rather than in the tool, so that a
 // tool's declarations and its trace cannot disagree about which variables
 // exist: both passes walk variables through this same code, and
@@ -1405,10 +1410,16 @@ static char interestedInVar(const HChar* fullFjalarName, char* trace_vars_tree) 
 // than for a zero byteSize alone, so that a type Fjalar merely failed to
 // size does not get silently dropped.  Note that an opaque C type (declared
 // but never defined) is not one of these: Fjalar resolves it to void*.
-static char varHasReportableValue(VariableEntry* var) {
+static char varHasReportableValue(VariableEntry* var, UInt layersBeforeBase) {
   TypeEntry* t = var->varType;
 
   if (t == 0) {
+    return 1;
+  }
+
+  // A pointer to any of the types below is printed as a hashcode, not as a
+  // value of the type, so none of the reasons for suppression apply.
+  if (layersBeforeBase > 0) {
     return 1;
   }
 
@@ -1671,7 +1682,7 @@ void visitSingleVar(VisitArgs* args) {
     // interesting. Now we will not return, but simply not
     // pass uninteresting variables to the tool.
     
-    if (varHasReportableValue(var) &&
+    if (varHasReportableValue(var, layersBeforeBase) &&
         interestedInVar(fullFjalarName, trace_vars_tree)) {
 
       // Perform the action action for this particular variable:
@@ -2109,7 +2120,7 @@ void visitSequence(VisitArgs* args) {
                    fullFjalarName);
 
     // See: PARTIAL_STRUCT_TRAVERSAL
-    if (varHasReportableValue(var) &&
+    if (varHasReportableValue(var, layersBeforeBase) &&
         interestedInVar(fullFjalarName, trace_vars_tree)) {
 
       // Perform the action action for this particular variable:

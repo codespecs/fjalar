@@ -228,8 +228,9 @@ const char* DeclaredTypeString[] = {
   "char16_t",               // D_CHAR16
   "char32_t",               // D_CHAR32  // should be just char for Rust
   "bool",                   // D_BOOL
-  // A ZST never appears in a tool's output (see varHasReportableValue), so
-  // this string is only ever seen in debugging output.
+  // A ZST value never appears in a tool's output (see varHasReportableValue),
+  // so this string is seen only as the declared type of a pointer to a ZST,
+  // and in debugging output.
   "<ZST>"                   // D_ZST
 };
 
