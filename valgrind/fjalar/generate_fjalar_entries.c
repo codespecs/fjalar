@@ -1988,7 +1988,6 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
   collection_type* collectionPtr = 0;
   UInt i = 0, member_func_index = 0, superclass_index = 0;
-  VarNode* memberNodePtr = 0;
 
   tl_assert((e->tag_name == DW_TAG_structure_type) ||
             (e->tag_name == DW_TAG_union_type) ||
@@ -2296,40 +2295,37 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
   // After we are doing constructing the struct TypeEntry entry,
   // we must initialize the struct byte size:
 
-  // To calculate the byte size of the struct, we look at the
+  // If the debugging information states the byte size (DW_AT_byte_size),
+  // use it.  This is the only way to determine the byte size of a struct
+  // that has no members but is not zero-sized, as in Rust.
+  if (collectionPtr->byte_size) {
+    t->byteSize = collectionPtr->byte_size;
+  }
+  // Otherwise, to calculate the byte size of the struct, we look at the
   // data_member_location of the last member and add its byte size
   // (if member is actually a struct type, then its byte size should already
   //  have been computed by the recursive version of this call to that struct)
-  if (t->aggType->memberVarList) {
-    memberNodePtr = t->aggType->memberVarList->last;
-    if (memberNodePtr) {
-      int structByteSize = 0;
-      VariableEntry* memberVarPtr = memberNodePtr->var;
-      structByteSize =
-        memberVarPtr->memberVar->data_member_location + determineVariableByteSize(memberVarPtr);
+  else if (t->aggType->memberVarList && t->aggType->memberVarList->last) {
+    VariableEntry* memberVarPtr = t->aggType->memberVarList->last->var;
+    int structByteSize =
+      memberVarPtr->memberVar->data_member_location + determineVariableByteSize(memberVarPtr);
 
-      // Round struct size up to the nearest word (dependent on architecture)
-      if(sizeof(UWord)==4) {
-        t->byteSize = ((structByteSize + 3) >> 2) << 2;
-      } else if (sizeof(UWord)==8){
-        t->byteSize = ((structByteSize + 7) >> 3) << 3;
-      } else {
-        // This portion of the check may be silly, but oh well.
-        FJALAR_DPRINTF("Unsupported word size: %lu\n", (unsigned long) sizeof(UWord));
-        tl_assert(0);
-      }
-
-      if(collectionPtr->byte_size) {
-        t->byteSize = collectionPtr->byte_size;
-
-      }
-
-      FJALAR_DPRINTF("collection name: %s, byteSize: %d\n", t->typeName, t->byteSize);
+    // Round struct size up to the nearest word (dependent on architecture)
+    if(sizeof(UWord)==4) {
+      t->byteSize = ((structByteSize + 3) >> 2) << 2;
+    } else if (sizeof(UWord)==8){
+      t->byteSize = ((structByteSize + 7) >> 3) << 3;
+    } else {
+      // This portion of the check may be silly, but oh well.
+      FJALAR_DPRINTF("Unsupported word size: %lu\n", (unsigned long) sizeof(UWord));
+      tl_assert(0);
     }
   }
   else {
     t->byteSize = 0;
   }
+
+  FJALAR_DPRINTF("collection name: %s, byteSize: %d\n", t->typeName, t->byteSize);
 
   FJALAR_DPRINTF("EXIT  extractStructUnionType(%p)\n", e);
 }
