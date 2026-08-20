@@ -26,7 +26,6 @@ tools.
 #include "my_libc.h"
 
 #include "fjalar_main.h"
-#include "fjalar_include.h"
 #include "fjalar_runtime.h"
 #include "fjalar_select.h"
 #include "generate_fjalar_entries.h"
@@ -226,6 +225,7 @@ returnArrayVariableWithAddr(VarList* varList,
         potentialVarBaseAddr = e->lowSP + potentialVar->byteOffset;
       }
     }
+    // FJALAR_DPRINTF("potential var expression size: %u\n", potentialVar->location_expression_size);
     if (potentialVar->location_expression_size) {
       unsigned int i = 0;
       for(i = 0; i < potentialVar->location_expression_size; i++ ) {
@@ -483,7 +483,7 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
     if (e) {
       VarList* localArrayAndStructVars = &(e->func->localArrayAndStructVars);
       FJALAR_DPRINTF(" e->FP is %p\n", (void *)e->FP);
-      FJALAR_DPRINTF(" localArrayAndSTructVars: %p, numVars: %u\n", localArrayAndStructVars, localArrayAndStructVars->numVars);
+      FJALAR_DPRINTF(" localArrayAndStructVars: %p, numVars: %u\n", localArrayAndStructVars, localArrayAndStructVars->numVars);
 
       tl_assert(!localArrayAndStructVars || (Addr)localArrayAndStructVars > 0x100);
 
@@ -552,6 +552,17 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
     Addr highestAddr;
 
     tl_assert(IS_STATIC_ARRAY_VAR(targetVar));
+
+    // A type that occupies no bytes, such as Rust's `()` or a C struct with
+    // no members, has no elements to count: an unbounded number of them fit
+    // in any extent of memory.  Report a single element, as
+    // probeAheadDiscoverHeapArraySize does for the same situation.  Without
+    // this test, the divisions below trap and the loop below never finishes.
+    if ((targetVarBytesBetweenElts == 0) || (varBytesBetweenElts == 0)) {
+      FJALAR_DPRINTF("Zero-sized type: targetVarBytesBetweenElts is %d, varBytesBetweenElts is %d\n",
+                     targetVarBytesBetweenElts, varBytesBetweenElts);
+      return 0;
+    }
     FJALAR_DPRINTF("varLocation: %p\n", (void *)varLocation);
 
     highestAddr = baseAddr + ((targetVar->staticArr->upperBounds[0]) * targetVarBytesBetweenElts);
@@ -581,7 +592,8 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
                     targetVar->varType->typeName, targetVarBytesBetweenElts,
                     var->varType->typeName, varBytesBetweenElts);
 
-    if (targetVarBytesBetweenElts == varBytesBetweenElts) {
+    // For multiple dimension arrays the first n-1 dimensions are pointers, so we need to use targetVarSize
+    if ((targetVarBytesBetweenElts == varBytesBetweenElts) || (targetVar->staticArr->numDimensions > 1)) {
       return targetVarSize;
     } else {
       return (targetVarSize * targetVarBytesBetweenElts) / varBytesBetweenElts;

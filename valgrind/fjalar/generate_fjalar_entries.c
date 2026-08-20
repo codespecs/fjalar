@@ -29,11 +29,10 @@
 #include "fjalar_select.h"
 #include "GenericHashtable.h"
 #include "../coregrind/m_demangle/demangle.h"
-extern char * cplus_demangle_v3 (const char *, int);
 
 #include "fjalar_tool.h"
 
-// Cast an intger to a void pointer in a architecture independent way. (markro)
+// Cast an integer to a void pointer in a architecture independent way. (markro)
 #define VoidPtr(arg)  (void*)(ptrdiff_t)(arg)
 
 static void initializeFunctionTable(void);
@@ -48,13 +47,13 @@ static void processFunctions(void);
 
 int determineFormalParametersStackByteSize(FunctionEntry* f);
 int determineFormalParametersLowerStackByteSize(FunctionEntry* f);
+int determineVariableByteSize(VariableEntry* var);
 
 static void extractFormalParameterVars(FunctionEntry* f, function* dwarfFunctionEntry);
 static void extractLocalArrayAndStructVariables(FunctionEntry* f, function* dwarfFunctionEntry);
 static void extractOneLocalArrayOrStructVariable(FunctionEntry* f, dwarf_entry* dwarfVariableEntry);
 static void extractReturnVar(FunctionEntry* f, function* dwarfFunctionEntry);
 
-static int determineVariableByteSize(VariableEntry* var);
 static void verifyStackParamWordAlignment(FunctionEntry* f, int replace);
 static char* getDeclaredFile(compile_unit* comp_unit, unsigned long offset);
 
@@ -89,7 +88,9 @@ static void XMLprintOneVariable(VariableEntry* var);
 
 FILE* xml_output_fp = 0;
 
-// The indices to this array must match the DeclaredType enum
+// The indices to this array, and several of the following arrays, must match
+// the DeclaredType enum in fjalar_include.h.
+
 const int DecTypeByteSizes[] = {
   sizeof(char),                   // D_NO_TYPE, // Create padding
 
@@ -104,6 +105,9 @@ const int DecTypeByteSizes[] = {
   sizeof(unsigned long long int), // D_UNSIGNED_LONG_LONG_INT,
   sizeof(long long int),          // D_LONG_LONG_INT,
 
+  16,                             // D_U128 - for Rust
+  16,                             // D_I128 - for Rust
+
   sizeof(float),                  // D_FLOAT,
   sizeof(double),                 // D_DOUBLE,
   sizeof(long double),            // D_LONG_DOUBLE,
@@ -116,7 +120,11 @@ const int DecTypeByteSizes[] = {
   sizeof(void*),                  // D_VOID // currently unused
 
   sizeof(char),                   // D_CHAR_AS_STRING
+  1,                              // D_CHAR8
+  2,                              // D_CHAR16
+  4,                              // D_CHAR32
   sizeof(char),                   // D_BOOL
+  0                               // D_ZST // Zero Sized Type Rust only
 };
 
 // Global singleton entries for basic types.  These do not need to be
@@ -131,12 +139,20 @@ TypeEntry UnsignedLongType = {D_UNSIGNED_LONG, 0, sizeof(unsigned long), 0};
 TypeEntry LongType = {D_LONG, 0, sizeof(long), 0};
 TypeEntry UnsignedLongLongIntType = {D_UNSIGNED_LONG_LONG_INT, 0, sizeof(unsigned long long int), 0};
 TypeEntry LongLongIntType = {D_LONG_LONG_INT, 0, sizeof(long long int), 0};
+
+TypeEntry UnsignedInt128Type = {D_U128, 0, 16, 0};  // Rust
+TypeEntry Int128Type = {D_I128, 0, 16, 0};          // Rust
+
 TypeEntry FloatType = {D_FLOAT, 0, sizeof(float), 0};
 TypeEntry DoubleType = {D_DOUBLE, 0, sizeof(double), 0};
 TypeEntry LongDoubleType = {D_LONG_DOUBLE, 0, sizeof(long double), 0};
 TypeEntry FunctionType = {D_FUNCTION, 0, sizeof(void*), 0};
 TypeEntry VoidType = {D_VOID, 0, sizeof(void*), 0};
+TypeEntry Char8Type = {D_CHAR8, 0, 1, 0};
+TypeEntry Char16Type = {D_CHAR16, 0, 2, 0};
+TypeEntry Char32Type = {D_CHAR32, 0, 4, 0};
 TypeEntry BoolType = {D_BOOL, 0, sizeof(char), 0};
+TypeEntry ZSTType = {D_ZST, 0, 0, 0};
 
 // Array indexed by DeclaredType where each entry is a pointer to one
 // of the above singleton entries:
@@ -154,21 +170,29 @@ TypeEntry* BasicTypesArray[] = {
   &UnsignedLongLongIntType, //  D_UNSIGNED_LONG_LONG_INT,
   &LongLongIntType,         //  D_LONG_LONG_INT,
 
+  &UnsignedInt128Type,      //  D_U128,  // Rust
+  &Int128Type,              //  D_I128,  // Rust
+
   &FloatType,               //  D_FLOAT,
   &DoubleType,              //  D_DOUBLE,
   &LongDoubleType,          //  D_LONG_DOUBLE,
 
   0,                        //  D_ENUMERATION,
+
   0,                        //  D_STRUCT_CLASS,
   0,                        //  D_UNION,
-
   &FunctionType,            //  D_FUNCTION,
   &VoidType,                //  D_VOID,
+
   0,                        //  D_CHAR_AS_STRING
-  &BoolType                 //  D_BOOL
+  &Char8Type,               //  D_CHAR8,
+  &Char16Type,              //  D_CHAR16,
+  &Char32Type,              //  D_CHAR32,
+  &BoolType,                //  D_BOOL
+  &ZSTType                  //  D_ZST
 };
 
-// This array can be indexed using the DelaredType enum
+// This array can be indexed using the DeclaredType enum
 const char* DeclaredTypeString[] = {
   "no_declared_type",       // D_NO_TYPE, // Create padding
 
@@ -183,6 +207,9 @@ const char* DeclaredTypeString[] = {
   "unsigned long long int", // D_UNSIGNED_LONG_LONG_INT,
   "long long int",          // D_LONG_LONG_INT,
 
+  "u128",                   // D_U128,  // Rust
+  "i128",                   // D_I128,  // Rust
+
   "float",                  // D_FLOAT,
   "double",                 // D_DOUBLE,
   "long double",            // D_LONG_DOUBLE,
@@ -190,13 +217,21 @@ const char* DeclaredTypeString[] = {
   // This should NOT be used unless you created an unnamed struct/union!
   // Use TypeEntry::typeName instead
   "enumeration",            // D_ENUMERATION
+
   "struct",                 // D_STRUCT_CLASS
   "union",                  // D_UNION
-
   "function",               // D_FUNCTION
   "void",                   // D_VOID
+
   "char",                   // D_CHAR_AS_STRING
+  "char8_t",                // D_CHAR8
+  "char16_t",               // D_CHAR16
+  "char32_t",               // D_CHAR32  // should be just char for Rust
   "bool",                   // D_BOOL
+  // A ZST value never appears in a tool's output (see varHasReportableValue),
+  // so this string is seen only as the declared type of a pointer to a ZST,
+  // and in debugging output.
+  "<ZST>"                   // D_ZST
 };
 
 // To figure out if a certain DeclaredType t is a basic type, simply
@@ -244,11 +279,10 @@ const char* DeclaredTypeNames[] = {"D_NO_TYPE", // Create padding
                              "D_LONG",                    // not used if 32 bit
                              "D_UNSIGNED_LONG_LONG_INT",  // not used if 64 bit
                              "D_LONG_LONG_INT",           // not used if 64 bit
-                             "D_UNSIGNED_FLOAT", // currently unused
+                             "D_U128",                    // Rust
+                             "D_I128",                    // Rust
                              "D_FLOAT",
-                             "D_UNSIGNED_DOUBLE", // currently unused
                              "D_DOUBLE",
-                             "D_UNSIGNED_LONG_DOUBLE", // currently unused
                              "D_LONG_DOUBLE",
                              "D_ENUMERATION",
                              "D_STRUCT_CLASS",
@@ -256,8 +290,15 @@ const char* DeclaredTypeNames[] = {"D_NO_TYPE", // Create padding
                              "D_FUNCTION",
                              "D_VOID",
                              "D_CHAR_AS_STRING",
-                             "D_BOOL"};
+                             "D_CHAR8",             // Unicode char
+                             "D_CHAR16",            // Unicode char
+                             "D_CHAR32",            // Unicode char
+                             "D_BOOL",
+                             "D_ZST"};
 
+// UNDONE: should we only check list if C/C++?
+// We check Rust names in typedata.c.
+//
 // This is a list of function names to avoid -
 // mostly as a result of weirdo C++ compiler stuff:
 // (This was all done by empirical observation)
@@ -266,9 +307,9 @@ const char* DeclaredTypeNames[] = {"D_NO_TYPE", // Create padding
 // Not allowing template class member names (?)
 // was causing failures.  I removed the check
 // for "_M_" and all seems to be okay.
-static char ignore_function_with_name(char* name) {
+static char ignore_function_with_name(char* name, Bool quiet) {
 
-  FJALAR_DPRINTF("  *ppt_name: %s\n", name);
+  FJALAR_DPRINTF_IF(!quiet, "  *ppt_name: %s\n", name);
 
   if (!name) {
     return 0;
@@ -287,6 +328,7 @@ static char ignore_function_with_name(char* name) {
       (0 == VG_(strncmp)(name, "min<size_t>", 11)) ||
       // g++-3.4 seems to show this:
       (0 == VG_(strncmp)(name, "__verify_grouping", 17))) {
+    // FJALAR_DPRINTF_IF(!quiet, "ignoring function named: %s\n", name);
     return 1;
   }
   else {
@@ -294,6 +336,9 @@ static char ignore_function_with_name(char* name) {
   }
 }
 
+// UNDONE: should we only check list if C/C++?
+// We check Rust names in typedata.c.
+//
 // Ignores some weirdo C++ variables such as vtable function pointers
 // and friends
 // g++-3.4 seems to create variable names prefixed with '__gnu_cxx'
@@ -309,7 +354,8 @@ static char ignore_variable_with_name(const char* name) {
   }
 
   if (VG_STREQ(name, "__ioinit") ||
-      (0 == VG_(strncmp)(name, "_vptr.", 6)) ||
+      (0 == VG_(strncmp)(name, "_vptr.", 6)) ||  // gcc
+      (0 == VG_(strncmp)(name, "_vptr$", 6)) ||  // clang
       (0 == VG_(strncmp)(name, "_ZTI", 4)) ||
       (0 == VG_(strncmp)(name, "_ZTS", 4)) ||
       // libstdc++ stuff (demangled is something like '__gnu_cxx::')
@@ -318,6 +364,7 @@ static char ignore_variable_with_name(const char* name) {
       (0 == VG_(strncmp)(name, "_ZNSs4", 6)) ||
       // Found in C++ destructors
       (VG_STREQ(name, "__in_chrg"))) {
+    // FJALAR_DPRINTF("ignoring variable named: %s\n", name);
     return 1;
   }
   else {
@@ -490,7 +537,7 @@ void deleteTailNode(VarList* varListPtr)
     }
 }
 
-// Clears the list and FREEs the var contents if
+// Clears the list and frees the var contents if
 // destroyVariableEntries is 1:
 void clearVarList(VarList* varListPtr, Bool destroyVariableEntries) {
   VarNode* node = varListPtr->first;
@@ -728,9 +775,6 @@ void repCheckAllEntries(void) {
     if (IS_AGGREGATE_TYPE(t)) {
       VarNode* n;
       unsigned int numMemberVars = 0;
-      unsigned int prev_data_member_location = 0;
-      unsigned int prev_data_member_size = 0;
-      unsigned int prev_data_member_bit_size = 0;
 
       SimpleNode* memberFunctionNode;
       SimpleNode* superclassNode;
@@ -759,9 +803,9 @@ void repCheckAllEntries(void) {
           tl_assert(IS_MEMBER_VAR(curMember));
           tl_assert(0 == curMember->byteOffset);
 
-          // For a struct, check that data_member_location is greater
-          // than or equal to that of the previous member variable.
-          // Don't do this check for bitfields.
+          // This code used to assert that struct members appear at monotonically
+          // increasing offsets. That is not true for Rust, which reorders
+          // fields, and the DWARF specification never required it. (markro 4/9/26)
           if (D_STRUCT_CLASS == t->decType) {
             // We don't check bit-fields as the compiler may
             // allocate them to a previous location.
@@ -770,11 +814,6 @@ void repCheckAllEntries(void) {
                  curMember->memberVar->internalByteSize,
                  curMember->memberVar->internalBitOffset,
                  curMember->memberVar->internalBitSize);
-            if ((curMember->memberVar->internalBitSize == 0) && (prev_data_member_bit_size == 0))
-              tl_assert(curMember->memberVar->data_member_location >= prev_data_member_location + prev_data_member_size);
-            prev_data_member_location = curMember->memberVar->data_member_location;
-            prev_data_member_size = curMember->memberVar->internalByteSize;
-            prev_data_member_bit_size = curMember->memberVar->internalBitSize;
           }
           // For a union, all offsets should be 0
           else if (D_UNION == t->decType) {
@@ -929,6 +968,7 @@ static void repCheckOneVariable(VariableEntry* var) {
     tl_assert(var->staticArr->upperBounds);
   }
 
+  // UNDONE: is this right for Rust?
   if (IS_STRING(var)) {
     tl_assert(D_CHAR == var->varType->decType);
     tl_assert(var->ptrLevels > 0);
@@ -955,17 +995,32 @@ static void repCheckOneVariable(VariableEntry* var) {
 }
 
 
-static int entry_is_valid_function(dwarf_entry *entry) {
+// Returns 1 if entry describes a function that we want to trace.
+// If quiet is True, does not log why an entry was rejected; debug printing
+// uses that form so that it does not print about its own inspection.
+int entry_is_valid_function(dwarf_entry *entry, Bool quiet) {
   if (tag_is_function(entry->tag_name)) {
     function* funcPtr = (function*)(entry->entry_ptr);
+
+    // if (funcPtr->name != 0) {
+    //    printf("[entry_is_valid_function] start_pc: %p, is_decl: %d, is_inline: %d, ignore_name: %d\n",
+    //      (void *)funcPtr->start_pc,
+    //      funcPtr->is_declaration, funcPtr->is_inline, ignore_function_with_name(funcPtr->name, quiet);
+    // }
+
+    // An entry with is_inline set is an abstract instance root: it describes
+    // a function that the compiler inlined, not code that is called.  The
+    // concrete out-of-line instance, if the compiler emitted one, is a
+    // separate entry that has its own start_pc and no DW_AT_inline.
     if (funcPtr->name != 0 &&
         funcPtr->start_pc &&
         (!funcPtr->is_declaration) &&
-        (!ignore_function_with_name(funcPtr->name))) {
+        (!funcPtr->is_inline) &&
+        (!ignore_function_with_name(funcPtr->name, quiet))) {
       return 1;
     } else {
 
-      FJALAR_DPRINTF("Skipping invalid-looking function %s\n", funcPtr->name);
+      FJALAR_DPRINTF_IF(!quiet, "Skipping invalid-looking or ignored function %s\n", funcPtr->name);
 
       return 0;
     }
@@ -1044,6 +1099,10 @@ static void initializeGlobalVarsList(void)
     cur_entry = &dwarf_entry_array[i];
     if (tag_is_variable(cur_entry->tag_name)) {
       variable* variable_ptr = (variable*)(cur_entry->entry_ptr);
+      if (cur_entry->compiler_generated) {
+        FJALAR_DPRINTF("Skipping compiler generated variable: %s\n", variable_ptr->name);
+        continue;
+      }
 
       FJALAR_DPRINTF("\t[initializeGlobalVarsList] lvl %d, ID %lx, %s 0x%x, spec_ID: 0x%lx, static: %u, dec: %d, const: %d global: %d\n",
                      cur_entry->level,
@@ -1063,7 +1122,7 @@ static void initializeGlobalVarsList(void)
 
       // ABOVE is no longer true.  GCC 4.7.x (perhaps earlier?) now
       // represents a static member variable with a DW_TAG_member at the
-      // declation and a DW_TAG_variable at the definition.  This entry
+      // declaration and a DW_TAG_variable at the definition.  This entry
       // has a DW_AT_specification that points back to the DW_TAG_member. 
       // We want to treat static members kind of like globals so we will
       // process them here.          (markro)
@@ -1175,6 +1234,9 @@ static void createNamesForUnnamedDwarfEntries(void)
   for (i = 0; i < dwarf_entry_array_size; i++) {
     cur_entry = &dwarf_entry_array[i];
     if (tag_is_collection_type(cur_entry->tag_name)) {
+      if (cur_entry->compiler_generated) {
+        continue;
+      }
       collection_type* collectionPtr = (collection_type*)(cur_entry->entry_ptr);
       if (!collectionPtr->is_declaration &&
           !collectionPtr->name) {
@@ -1204,7 +1266,7 @@ static int equivalentGlobalConstants(VariableEntry* varPtr1, VariableEntry* varP
 // BE RUN before running this function.
 // Iterates through globalVars and generates a fully-qualified name
 // for each global variable so that they are not ambiguous.
-// (Also demangles C++ names if necessary.)
+// (Also demangles C++ and Rust names if necessary.)
 static void updateAllGlobalVariableNames(void) {
   char* globalName = 0;
   const char *loc_part; /* Part of the name to specify where the variable came from
@@ -1346,7 +1408,7 @@ static char* PrependClass(const char* class, const char* func, int func_name_len
 
   /* We want to print static_fn in subdir/filename.c
      as "subdir/filename.c.static_fn() */
-  buf = VG_(malloc)("genereate_fjalar_entries.c: prependClass.1", VG_(strlen)(class) + 1 +
+  buf = VG_(malloc)("generate_fjalar_entries.c: prependClass.1", VG_(strlen)(class) + 1 +
                     func_name_len + 3); // 3 for possible trailing parens
   VG_(strcpy)(buf, class);
   for (p = buf; *p; p++) {
@@ -1433,7 +1495,7 @@ static void initFunctionFjalarNames(void) {
     // This will attempt to disambiguate duplicate function names
     // my prepending the filename to them. (It may also be reasonable
     // to just throw out the duplicate name, because it's very unlikely
-    // that a program would have 2 identically named non-static functinos
+    // that a program would have 2 identically named non-static functions
     // with different semantics, but let's just be safe)
 
     if(gencontains(FuncNameTable, buf)) {
@@ -1509,7 +1571,7 @@ static void initFunctionFjalarNames(void) {
     // trace_vars_tree has been initialized
     cur_entry->trace_vars_tree_already_initialized = 1;
 
-    // Now that we have fjalar_trace_vars, we can identiy the globals to
+    // Now that we have fjalar_trace_vars, we can identify the globals to
     // track for the function. We just walk the trace_vars_tree to extract
     // the globals. We union this list with the globalFunctionTree list
 
@@ -1615,14 +1677,14 @@ void initializeFunctionTable(void)
       cur_entry = &dwarf_entry_array[i];
       // Ignore invalid functions and DUPLICATE function entries
       // with the same start_pc (only test if there is start_pc)
-      if (entry_is_valid_function(cur_entry) &&
+      // Also ignore compiler generated functions.
+      if (entry_is_valid_function(cur_entry, False) &&
           ((((function*)cur_entry->entry_ptr)->start_pc) &&
            !gencontains(FunctionTable,
                         (void*)(((function*)cur_entry->entry_ptr)->start_pc))))
         {
           function* dwarfFunctionPtr = (function*)(cur_entry->entry_ptr);
-          // This is non-null only if we have successfully demangled a
-          // C++ name:
+          // This is non-null only if we have successfully demangled a name:
           char* demangled_name = 0;
 
           // Remember to use the tool's constructor,
@@ -1633,6 +1695,8 @@ void initializeFunctionTable(void)
 
           FJALAR_DPRINTF("Adding function %s\n", dwarfFunctionPtr->name);
 
+          cur_func_entry->doNotPrint = cur_entry->compiler_generated ||
+                                       cur_entry->comp_unit->runtime_library;
 
           cur_func_entry->name = dwarfFunctionPtr->name;
           cur_func_entry->mangled_name = dwarfFunctionPtr->mangled_name;
@@ -1686,11 +1750,11 @@ void initializeFunctionTable(void)
             }
           }
 
-          // If there is a C++ mangled name, then call Valgrind core
+          // If there is a mangled name, then call Valgrind core
           // to try to demangle the name (remember the demangled name
           // is malloc'ed):
           if (cur_func_entry->mangled_name) {
-            demangled_name = cplus_demangle_v3(cur_func_entry->mangled_name, DMGL_PARAMS | DMGL_ANSI);
+            demangled_name = fjalar_demangle(cur_entry, cur_func_entry->mangled_name);
             if (demangled_name) {
               FJALAR_DPRINTF("demangling: %s\n", demangled_name);
               // Set the demangled_name of the function to be the
@@ -1799,6 +1863,7 @@ static dwarf_entry* extractArrayType(VariableEntry* varPtr, array_type* arrayPtr
 static void extractBaseType(VariableEntry* var, base_type* basePtr)
 {
   FJALAR_DPRINTF("ENTER extractBaseType\n");
+  FJALAR_DPRINTF("  var: %p, basePtr: %p\n", var, basePtr);
 
   // Figure out what basic type it is
   switch(basePtr->encoding) {
@@ -1833,6 +1898,14 @@ static void extractBaseType(VariableEntry* var, base_type* basePtr)
     else if (basePtr->byte_size == sizeof(long long int)) {
       var->varType = BasicTypesArray[D_LONG_LONG_INT];
     }
+    // Rust native type i128
+    else if (basePtr->byte_size == 16) {
+      var->varType = BasicTypesArray[D_I128];
+    }
+    // Rust Zero Sized Type
+    else if (basePtr->byte_size == 0) {
+      var->varType = BasicTypesArray[D_ZST];
+    }
     break;
 
   case DW_ATE_unsigned:
@@ -1853,6 +1926,28 @@ static void extractBaseType(VariableEntry* var, base_type* basePtr)
     // not used on 64 bit as sizeof(unsigned long) == sizeof(unsigned long long)
     else if (basePtr->byte_size == sizeof(unsigned long long int)) {
       var->varType = BasicTypesArray[D_UNSIGNED_LONG_LONG_INT];
+    }
+    // Rust native type u128
+    else if (basePtr->byte_size == 16) {
+      var->varType = BasicTypesArray[D_U128];
+    }
+    // Rust Zero Sized Type
+    else if (basePtr->byte_size == 0) {
+      var->varType = BasicTypesArray[D_ZST];
+    }
+    break;
+
+  // DW_ATE_UTF covers C/C++ char8_t, char16_t and char32_t, as well as
+  // the Rust char type (which is always 4 bytes).
+  case DW_ATE_UTF:
+    if (basePtr->byte_size == 1) {
+      var->varType = BasicTypesArray[D_CHAR8];
+    }
+    else if (basePtr->byte_size == 2) {
+      var->varType = BasicTypesArray[D_CHAR16];
+    }
+    else if (basePtr->byte_size == 4) {
+      var->varType = BasicTypesArray[D_CHAR32];
     }
     break;
 
@@ -1893,7 +1988,6 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
   collection_type* collectionPtr = 0;
   UInt i = 0, member_func_index = 0, superclass_index = 0;
-  VarNode* memberNodePtr = 0;
 
   tl_assert((e->tag_name == DW_TAG_structure_type) ||
             (e->tag_name == DW_TAG_union_type) ||
@@ -1994,14 +2088,14 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
         TypeEntry* existing_entry = 0;
         // Note: We never ever free this! (whoops!)
-        Superclass* curSuper = VG_(calloc)("generate_fjalar_entries.c: extractSTructUnionType.3", 1, sizeof(*curSuper));
-        curSuper->className = VG_(strdup)("genereate_fjalar_entries.c: extractStructUnionType.3.1", dwarf_super->name);
+        Superclass* curSuper = VG_(calloc)("generate_fjalar_entries.c: extractStructUnionType.3", 1, sizeof(*curSuper));
+        curSuper->className = VG_(strdup)("generate_fjalar_entries.c: extractStructUnionType.3.1", dwarf_super->name);
 
         // Success!
         // If superclassList hasn't been allocated yet, calloc it:
         if (!t->aggType->superclassList) {
           t->aggType->superclassList =
-            (SimpleList*)VG_(calloc)("generate_fjalar_entries.c: extractSTructUnionType.4", 1, sizeof(*(t->aggType->superclassList)));
+            (SimpleList*)VG_(calloc)("generate_fjalar_entries.c: extractStructUnionType.4", 1, sizeof(*(t->aggType->superclassList)));
         }
 
         // Insert new superclass element:
@@ -2060,7 +2154,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
   if (collectionPtr->num_member_vars > 0) {
     t->aggType->memberVarList =
-      (VarList*)VG_(calloc)("generate_fjalar_entries.c: extractSTructUnionType.5", 1, sizeof(*(t->aggType->memberVarList)));
+      (VarList*)VG_(calloc)("generate_fjalar_entries.c: extractStructUnionType.5", 1, sizeof(*(t->aggType->memberVarList)));
 
     // Look up the dwarf_entry for the struct/union and iterate
     // through its member_vars array (of pointers to members)
@@ -2101,7 +2195,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
     VarNode* node = 0;
 
     t->aggType->staticMemberVarList =
-      (VarList*)VG_(calloc)("generate_fjalar_entries.c: extractSTructUnionType.6", 1, sizeof(*(t->aggType->staticMemberVarList)));
+      (VarList*)VG_(calloc)("generate_fjalar_entries.c: extractStructUnionType.6", 1, sizeof(*(t->aggType->staticMemberVarList)));
 
     for (ind = 0; ind < collectionPtr->num_static_member_vars; ind++) {
 
@@ -2191,7 +2285,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
       // Insert a new node into globalVars:
       insertNewNode(&globalVars);
       lastGlobalNode = globalVars.last;
-      // FREE the VG_(calloc)'ed VariableEntry since we don't want to
+      // Free the VG_(calloc)'ed VariableEntry since we don't want to
       // use it (we will replace it with curStaticVar):
       destroyVariableEntry(lastGlobalNode->var);
       lastGlobalNode->var = curStaticVar;
@@ -2201,40 +2295,37 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
   // After we are doing constructing the struct TypeEntry entry,
   // we must initialize the struct byte size:
 
-  // To calculate the byte size of the struct, we look at the
+  // If the debugging information states the byte size (DW_AT_byte_size),
+  // use it.  This is the only way to determine the byte size of a struct
+  // that has no members but is not zero-sized, as in Rust.
+  if (collectionPtr->byte_size) {
+    t->byteSize = collectionPtr->byte_size;
+  }
+  // Otherwise, to calculate the byte size of the struct, we look at the
   // data_member_location of the last member and add its byte size
   // (if member is actually a struct type, then its byte size should already
   //  have been computed by the recursive version of this call to that struct)
-  if (t->aggType->memberVarList) {
-    memberNodePtr = t->aggType->memberVarList->last;
-    if (memberNodePtr) {
-      int structByteSize = 0;
-      VariableEntry* memberVarPtr = memberNodePtr->var;
-      structByteSize =
-        memberVarPtr->memberVar->data_member_location + determineVariableByteSize(memberVarPtr);
+  else if (t->aggType->memberVarList && t->aggType->memberVarList->last) {
+    VariableEntry* memberVarPtr = t->aggType->memberVarList->last->var;
+    int structByteSize =
+      memberVarPtr->memberVar->data_member_location + determineVariableByteSize(memberVarPtr);
 
-      // Round struct size up to the nearest word (dependent on architecture)
-      if(sizeof(UWord)==4) {
-        t->byteSize = ((structByteSize + 3) >> 2) << 2;
-      } else if (sizeof(UWord)==8){
-        t->byteSize = ((structByteSize + 7) >> 3) << 3;
-      } else {
-        // This portion of the check may be silly, but oh well.
-        FJALAR_DPRINTF("Unsupported word size: %lu\n", (unsigned long) sizeof(UWord));
-        tl_assert(0);
-      }
-
-      if(collectionPtr->byte_size) {
-        t->byteSize = collectionPtr->byte_size;
-
-      }
-
-      FJALAR_DPRINTF("collection name: %s, byteSize: %d\n", t->typeName, t->byteSize);
+    // Round struct size up to the nearest word (dependent on architecture)
+    if(sizeof(UWord)==4) {
+      t->byteSize = ((structByteSize + 3) >> 2) << 2;
+    } else if (sizeof(UWord)==8){
+      t->byteSize = ((structByteSize + 7) >> 3) << 3;
+    } else {
+      // This portion of the check may be silly, but oh well.
+      FJALAR_DPRINTF("Unsupported word size: %lu\n", (unsigned long) sizeof(UWord));
+      tl_assert(0);
     }
   }
   else {
     t->byteSize = 0;
   }
+
+  FJALAR_DPRINTF("collection name: %s, byteSize: %d\n", t->typeName, t->byteSize);
 
   FJALAR_DPRINTF("EXIT  extractStructUnionType(%p)\n", e);
 }
@@ -2281,6 +2372,7 @@ static void extractLocalArrayAndStructVariables(FunctionEntry* f,
 // didn't provide a location (which can happen for instance if the parameter
 // is unused), or if replace == 1.
 // This code will need a major rewrite to support AMD64.
+// UNDONE AMD64!!!
 static void verifyStackParamWordAlignment(FunctionEntry* f, int replace)
 {
   VarNode* cur_node;
@@ -2312,8 +2404,14 @@ static void verifyStackParamWordAlignment(FunctionEntry* f, int replace)
     {
       int cur_byteSize = 0;
       if (cur_node->var->locationType == NO_LOCATION || replace) {
+        FJALAR_DPRINTF("MODIFY VAR LOCATION! was:\n");
+        FJALAR_DPRINTF(" decType is: %s, size is: %d\n", DeclaredTypeString[cur_node->var->varType->decType],
+                                                         cur_node->var->varType->byteSize);
+        FJALAR_DPRINTF(" location_type: %u, byteOffset: %x\n", cur_node->var->locationType, (unsigned int)cur_node->var->byteOffset);
         cur_node->var->locationType = FP_OFFSET_LOCATION;
         cur_node->var->byteOffset = offset;
+        FJALAR_DPRINTF("MODIFY VAR LOCATION! now:\n");
+        FJALAR_DPRINTF(" location_type: %u, byteOffset: %x\n", cur_node->var->locationType, (unsigned int)cur_node->var->byteOffset);
       }
       cur_byteSize = determineVariableByteSize(cur_node->var);
       // WORD ALIGNED!!!
@@ -2329,7 +2427,7 @@ static void verifyStackParamWordAlignment(FunctionEntry* f, int replace)
 }
 
 // Returns the byte size of the given VariableEntry
-static int determineVariableByteSize(VariableEntry* var)
+int determineVariableByteSize(VariableEntry* var)
 {
   int byteSize = 0;
 
@@ -2434,6 +2532,10 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
   }
 
   paramPtr = (formal_parameter*)(dwarfParamEntry->entry_ptr);
+  if (dwarfParamEntry->compiler_generated) {
+    FJALAR_DPRINTF("Skipping compiler generated parameter variable: %s\n", paramPtr->name);
+    return;
+  }
   typePtr = paramPtr->type_ptr;
 
   if (!paramPtr->name) {
@@ -2521,6 +2623,10 @@ static void extractOneLocalArrayOrStructVariable(FunctionEntry* f,
   }
 
   variablePtr = (variable*)(dwarfVariableEntry->entry_ptr);
+  if (dwarfVariableEntry->compiler_generated) {
+    FJALAR_DPRINTF("Skipping compiler generated variable: %s\n", variablePtr->name);
+    return;
+  }
   typePtr = variablePtr->type_ptr;
 
   if (!typePtr) {
@@ -2730,9 +2836,13 @@ extractOneVariable(VarList* varListPtr,
   // Work on the last variable in varListPtr
   varPtr = varListPtr->last->var;
 
-  // Attempt to demangle C++ names (nothing happens if it's not a
-  // mangled name)
-  demangled_name = cplus_demangle_v3(variableName, 3);
+  // Attempt to demangle the name (nothing happens if it is not a mangled
+  // name).  We only have the variable's type entry here, not the variable's
+  // own entry, so the demangler is chosen from the type's compilation unit;
+  // that is the same compilation unit in all but exotic cases.  typePtr may
+  // be null (see the DW_TAG_const_type test below), which fjalar_demangle
+  // treats as "not Rust".
+  demangled_name = fjalar_demangle(typePtr, variableName);
   if (demangled_name) {
     varPtr->name = demangled_name;
   }
@@ -2751,7 +2861,7 @@ extractOneVariable(VarList* varListPtr,
     varPtr->disambig = 'P';
   }
 
-  // Propogate information about constants
+  // Propagate information about constants
   if(typePtr && (typePtr->tag_name == DW_TAG_const_type)) {
     varPtr->isConstant = True;
   }
@@ -2977,6 +3087,7 @@ extractOneVariable(VarList* varListPtr,
   // into base type = int, ptrLevels = 2, isStaticArray = true
   // but it should be base type = hashcode, ptrLevels = 1, isStaticArray = true
 
+  // UNDONE: is this right for Rust?
   // Proposed solution: If IS_STATIC_ARRAY_VAR() and (ptrLevels > 1 and
   // varPtr->varType->decType != D_CHAR) or (ptrLevels > 2 and
   // varPtr->varType->decType == D_CHAR), then
@@ -3044,6 +3155,7 @@ static void processFunctions() {
         var->validLoc = 1;
       }
 
+      // UNDONE: is this right for Rust?
       if ((f->formalParameters.numVars > 1) &&
           (f->formalParameters.first->next->var) &&
           !(f->formalParameters.first->next->var->validLoc) &&

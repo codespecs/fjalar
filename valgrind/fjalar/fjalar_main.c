@@ -70,6 +70,7 @@ Bool fjalar_output_struct_vars = False;
 Bool fjalar_flatten_arrays = False;
 Bool fjalar_func_disambig_ptrs = False;
 Bool fjalar_disambig_ptrs = False;
+Bool fjalar_include_rust_runtime = False;
 int  fjalar_array_length_limit = -1;
 
 // adjustable via the --struct-depth=N option:
@@ -211,7 +212,7 @@ static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
   IRDirty  *di;
   FunctionEntry *entry = gengettable(table, (void *)(Addr)addr);
   // debug code
-  FJALAR_DPRINTF("handle_possible_entry_func: addr: %p entry: %p\n", (void *)addr, entry);
+  FJALAR_DPRINTF("handle_possible_entry_func: addr: %p, name: %s, func: %p, entry: %p\n", (void *)addr, func_name, func, entry);
 
   if(!entry) {
       return;
@@ -280,7 +281,7 @@ static Addr currentAddr = 0;
 
 // This hash table simply ensures do not calculate the entry point for
 // a function multiple times. Due to the way entry is handled, the
-// handle_possble_entry function is called once for every instruction
+// handle_possible_entry function is called once for every instruction
 // in the original program. We should only calculate the entry point
 // once at the first instruction of the function.
 static struct  genhashtable *funcs_handled = NULL;
@@ -362,7 +363,7 @@ void handle_possible_entry(MCEnv* mce, Addr64 addr, IRSB* bb_orig) {
 // consists only of a loop and the compiler decides to be off
 // about presenting line information. For Example:
 
-// (pseduo x86 assembly)
+// (pseudo x86 assembly)
 // jmp Test
 // Body:
 // add
@@ -436,6 +437,8 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
     IRDirty  *di;
 
     FunctionEntry* curFuncPtr = getFunctionEntryFromAddr(currentAddr);
+
+    // FJALAR_DPRINTF("[handle_possible_exit] curFuncPtr: %p, currentAddr: %p\n", curFuncPtr, currentAddr);
 
     if (curFuncPtr &&
 	// Also, if fjalar_trace_prog_pts_filename is on (we are
@@ -519,7 +522,7 @@ void enter_function(FunctionEntry* f)
   extern FunctionExecutionState* curFunctionExecutionStatePtr;
 
   // Only do enter_function if this is the first time we have
-  // reached the prefered entry point after entering the function.
+  // reached the preferred entry point after entering the function.
   if (!first_time) {
     return;
   }
@@ -591,7 +594,7 @@ void enter_function(FunctionEntry* f)
           // (comment added 2013)
           // It turns out it might not be just the contents of a register.  Some
           // 32bit x86 code does some tricky stack alignment and has to save a
-          // pointer to the orginal stack frame.  This means we get passed a
+          // pointer to the original stack frame.  This means we get passed a
           // DW_OP_deref instead of a DW_OP_breg.  The tricky bit is we don't
           // want to go back to that address because it probably won't be equal
           // to the local frame pointer due to the stack alignment.  So the HACK
@@ -896,7 +899,7 @@ void exit_function(FunctionEntry* f)
   // This is subtle but important - this must be done AFTER the tool
   // runs all of it's function exit code, as functions in fjalar_traversal
   // and fjalar_runtime may make use of the function stack. If we fail to
-  // pop the function, however, the stack will be left in an inconsistant
+  // pop the function, however, the stack will be left in an inconsistent
   // state and the "!top->func == f" check will fail causing no more
   // program points to be printed.
   fnStackPop(currentTID);
@@ -1112,9 +1115,15 @@ void fjalar_print_usage()
 "    --dump-ppt-file=<string> Outputs all program point names to a file\n"
 "    --dump-var-file=<string> Outputs all variable names to a file\n"
 "    --ignore-globals         Ignores all global variables [--no-ignore-globals]\n"
+"    --dump-globals           Outputs a GLOBALS program point containing every global\n"
+"                             variable [--no-dump-globals]\n"
 "    --ignore-static-vars     Ignores all static variables [--no-ignore-static-vars]\n"
 "    --ignore-constants       Ignores all constant variables [--no-ignore-constants]\n"
+"    --merge-constants        Merges global constants that have the same name and are\n"
+"                             declared in the same file [--no-merge-constants]\n"
 "    --all-static-vars        Output all static vars [--no-all-static-vars]\n"
+"    --include-rust-runtime   Traces program points in the Rust runtime library, which\n"
+"                             are ignored by default [--no-include-rust-runtime]\n"
 
 "\n  Pointer type disambiguation:\n"
 "    --disambig-file=<string> Reads in disambig file if exists; otherwise creates one\n"
@@ -1140,8 +1149,8 @@ void fjalar_print_usage()
 "    --with-gdb               Hang during init. so that GDB can attach to it\n"
 "    --fjalar-debug           Print internal Fjalar debug messages\n"
 "    --fjalar-debug-dump      Mimic /usr/bin/readelf --debug_dump\n"
-"    --fjalar-print-dwarf     Print internal dwarf entry table (reguires --fjalar-debug\n"
-"    --fjalar-print-ir        Print Intermediate Representation trees (reguires --fjalar-debug)\n"
+"    --fjalar-print-dwarf     Print internal dwarf entry table (requires --fjalar-debug\n"
+"    --fjalar-print-ir        Print Intermediate Representation trees (requires --fjalar-debug)\n"
    );
    // Make sure to execute this last!
    fjalar_tool_print_usage();
@@ -1171,6 +1180,7 @@ Bool fjalar_process_cmd_line_option(const HChar* arg)
   else if VG_YESNO_CLO(arg, "flatten-arrays", fjalar_flatten_arrays) {}
   else if VG_YESNO_CLO(arg, "func-disambig-ptrs", fjalar_func_disambig_ptrs) {}
   else if VG_YESNO_CLO(arg, "disambig-ptrs", fjalar_disambig_ptrs) {}
+  else if VG_YESNO_CLO(arg, "include-rust-runtime", fjalar_include_rust_runtime) {}
   else if VG_BINT_CLO(arg, "--array-length-limit", fjalar_array_length_limit,
 		      -1, 0x7fffffff) {}
 

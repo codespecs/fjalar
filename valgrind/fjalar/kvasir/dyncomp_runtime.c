@@ -46,15 +46,15 @@
 extern char* func_name;
 extern char* cur_var_name;
 
-#if 0  // debuging
+#if 0  // debugging
 static void dump_function_exit_var_map(DaikonFunctionEntry*);
 static void dump_all_function_exit_var_map(void);
 static uf_name val_uf_tag(UInt);
-#endif // debuging
+#endif // debugging
 static struct genhashtable* regenerate_var_uf_map(UInt, UInt*, struct genhashtable*, UInt*);
 static void reassign_tag(UInt*, UInt, UInt*);
 
-// Cast an intger to a void pointer in a architecture independent way. (markro)
+// Cast an integer to a void pointer in a architecture independent way. (markro)
 #define VoidPtr(arg)  (void*)(ptrdiff_t)(arg)
 
 
@@ -196,14 +196,14 @@ void destroy_ppt_structures(DaikonFunctionEntry* funcPtr, char isEnter) {
 
 // Variable comparability set map (var_uf_map) operations:
 
-#if 0  // debuging
+#if 0  // debugging
 static uf_name var_uf_map_find(struct genhashtable* var_uf_map, UInt tag) {
   if (!tag) {
     return NULL;
   }
   return (uf_object*)gengettable(var_uf_map, VoidPtr(tag));
 }
-#endif // debuging
+#endif // debugging
 
 static UInt var_uf_map_find_leader(struct genhashtable* var_uf_map, UInt tag) {
   if (!tag) {
@@ -286,7 +286,7 @@ static UInt var_uf_map_union(struct genhashtable* var_uf_map,
 for each variable indexed by v {
   // Update to account for any val_uf merges that have occurred for a
   // variable's previously observed values.  I.e., changes that have
-  // occured between the previous program point (for this function) and
+  // occurred between the previous program point (for this function) and
   // the current program point.
   tag leader = val_uf.find(var_tags[v]);
   if (leader != var_tags[v]) {
@@ -422,7 +422,7 @@ void DC_post_process_for_variable(DaikonFunctionEntry* funcPtr,
   // While I still feel there is something not quite right with how
   // we process the special function 'return' variable, the changes
   // I have tried do not look better.  I am leaving this part of
-  // the alogorithm unchanged for now.  markro 6/27/2016.
+  // the algorithm unchanged for now.  markro 6/27/2016.
   //
   // Merge the sets of all values that were observed before for this
   // variable at this program point with the new value that we just
@@ -728,13 +728,13 @@ void DC_extra_propagate_val_to_var_sets() {
     DYNCOMP_DPRINTF("Function: %s\n", cur_entry->name);
     // Remember to only propagate through the functions to be traced
     // if kvasir_trace_prog_pts_filename is on:
-    if (!fjalar_trace_prog_pts_filename ||
+    if (!cur_entry->doNotPrint && (!fjalar_trace_prog_pts_filename ||
         // If kvasir_trace_prog_pts_filename is on (we are reading in
         // a ppt list file), then DO NOT OUTPUT .decls entries for
         // program points that we are not interested in tracing.  This
         // decreases the clutter of the .decls file and speeds up
         // processing time
-        prog_pts_tree_entry_found(cur_entry)) {
+        prog_pts_tree_entry_found(cur_entry))) {
       DC_extra_propagate_one_function(cur_entry, 1);
       DC_extra_propagate_one_function(cur_entry, 0);
       //dump_all_function_exit_var_map();
@@ -841,7 +841,7 @@ int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
   offsetof(VexGuestX86State, guest_CMLEN)
 };
 
-#if 0  // debuging
+#if 0  // debugging
 
 static uf_name val_uf_tag(UInt tag) {
   if (IS_ZERO_TAG(tag) || IS_SECONDARY_UF_NULL(tag)) {
@@ -978,7 +978,7 @@ static void dump_all_function_exit_var_map() {
   deleteFuncIterator(funcIt);
 }
 
-#endif // debuging
+#endif // debugging
 
 // Pre: the ppt_entry/exit_var_tags array has been updated to reflect
 // the changes in the val tag numbers.

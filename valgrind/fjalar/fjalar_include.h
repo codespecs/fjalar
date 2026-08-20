@@ -37,6 +37,9 @@ data structures that tools can use.
 Supporting data structures and enums
 **********************************************************************/
 
+// Any changes here will require changes in generate_fjalar_entries.c and may
+// require changes in kvasir/decls-output.c and/or kvasir/decls-output.h as well.
+
 typedef enum _DeclaredType {
   D_NO_TYPE,
 
@@ -51,18 +54,26 @@ typedef enum _DeclaredType {
   D_UNSIGNED_LONG_LONG_INT,
   D_LONG_LONG_INT,
 
+  D_U128,  // Rust native type
+  D_I128,  // Rust native type
+
   D_FLOAT,
   D_DOUBLE,
   D_LONG_DOUBLE,
 
   D_ENUMERATION,
+
   D_STRUCT_CLASS,
   D_UNION,
-
   D_FUNCTION,
   D_VOID,
+
   D_CHAR_AS_STRING,   // when .disambig 'C' option is used with chars
-  D_BOOL              // C++ only
+  D_CHAR8,            // Unicode: char8_t for C and C++
+  D_CHAR16,           // Unicode: char16_t for C and C++
+  D_CHAR32,           // Unicode: char32_t for C and char for Rust
+  D_BOOL,             // C++ only
+  D_ZST               // Zero Sized Types are Rust only
 } DeclaredType;
 
 
@@ -337,6 +348,9 @@ typedef struct _VariableEntry {
   GlobalVarInfo* globalVar;
 
   // (If null, then this variable is not a static array)
+  // Confusing: the original author meant "statically sized array" as
+  // opposed to variable length arrays (VLAs) added in C99. This has
+  // nothing to do with statically allocated (global) arrays. (markro)
   StaticArrayInfo* staticArr;
 
   // varType refers to the type of the variable after all pointer
@@ -477,6 +491,7 @@ struct _StaticArrayInfo {
 #define IS_GLOBAL_VAR(v) ((v->globalVar) != 0)
 #define IS_STATIC_ARRAY_VAR(v) ((v->staticArr) != 0)
 #define IS_MEMBER_VAR(v) ((v->memberVar) != 0)
+// UNDONE: does this work for Rust?
 #define IS_STRING(v) (v->varType && (v->varType->decType == D_CHAR) && (v->ptrLevels > 0))
 
 
@@ -603,9 +618,10 @@ typedef struct _FunctionEntry {
   // The lowest valid stack address for this invocation of the function
   Addr lowestSP;
 
-
   // True if globally visible, False if file-static scope
   Bool isExternal;
+  // True if data should not be output because we are skipping Rust runtime.
+  Bool doNotPrint;
 
   enum dwarf_location_atom frame_base_atom;
   // Encoding             Meaning
@@ -1083,6 +1099,7 @@ Bool fjalar_output_struct_vars;            // --output-struct-vars
 Bool fjalar_flatten_arrays;                // --flatten-arrays
 Bool fjalar_func_disambig_ptrs;            // --func-disambig-ptrs
 Bool fjalar_disambig_ptrs;                 // --disambig-ptrs
+Bool fjalar_include_rust_runtime;          // --include-rust-runtime
 
 int  fjalar_array_length_limit;            // --array-length-limit
 

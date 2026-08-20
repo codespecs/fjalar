@@ -1380,6 +1380,80 @@ static char interestedInVar(const HChar* fullFjalarName, char* trace_vars_tree) 
   return 1;
 }
 
+// Returns 1 if this variable has a value worth reporting to the tool, 0
+// otherwise.  Like interestedInVar, a 0 result suppresses only the callback
+// for this variable; traversal continues, so a struct that contains a
+// suppressed member still reports its other members.
+//
+// A zero-sized type (Rust calls these ZSTs) occupies no storage, so it has
+// exactly one possible value and conveys no information.  There is also
+// nothing to read: Rust gives a ZST a fabricated dangling address rather than
+// real storage, so reporting one yields "nonsensical" at best.
+//
+// A 128-bit integer (Rust's u128 and i128) has no C type wide enough to print
+// it with, so Fjalar cannot yet write its value.  Printing the low 64 bits
+// would emit a plausible-looking wrong number that Daikon would infer
+// invariants from, which is worse than omitting the variable, so suppress
+// these until 128-bit printing is implemented.
+//
+// Both of those reasons concern printing a value *of* the type, so they apply
+// only when every pointer layer has been dereferenced, which is what
+// layersBeforeBase == 0 means.  A `*const u128` or `*const ()` is printed as a
+// hashcode, which Fjalar handles like any other pointer, so report it.
+//
+// Suppress these here, in the traversal, rather than in the tool, so that a
+// tool's declarations and its trace cannot disagree about which variables
+// exist: both passes walk variables through this same code, and
+// g_variableIndex advances identically whether or not we report.
+//
+// This tests for the two ways a type can be declared with no bytes rather
+// than for a zero byteSize alone, so that a type Fjalar merely failed to
+// size does not get silently dropped.  Note that an opaque C type (declared
+// but never defined) is not one of these: Fjalar resolves it to void*.
+static char varHasReportableValue(VariableEntry* var, UInt layersBeforeBase) {
+  TypeEntry* t = var->varType;
+
+  if (t == 0) {
+    return 1;
+  }
+
+  // A pointer to any of the types below is printed as a hashcode, not as a
+  // value of the type, so none of the reasons for suppression apply.
+  if (layersBeforeBase > 0) {
+    return 1;
+  }
+
+  // A base type declared with no bytes: Rust's ().
+  if (D_ZST == t->decType) {
+    return 0;
+  }
+
+  // A 128-bit integer, which Fjalar cannot yet print.
+  if ((D_U128 == t->decType) || (D_I128 == t->decType)) {
+    return 0;
+  }
+
+  // UNDONE: This does not work as envisaged. There are many entities that
+  // have byteSize == 0 that we do not want to skip. Perhaps it is a bug
+  // that they have size 0 to begin with. Needs more investigation.
+  // Also, determineVariableByteSize(var) should be used instead of t->byteSize.
+
+  // A struct/union/class declared with no bytes: Rust unit structs and
+  // PhantomData, and the GNU C zero-size struct extension.
+  if ((0 == t->byteSize) &&
+      ((D_STRUCT_CLASS == t->decType) || (D_UNION == t->decType))) {
+    // temporary debugging code
+    // printf("varHasReportableValue:\n  var: %s\n", var->name);
+    // printf("  type: %s\n", DeclaredTypeString[t->decType]);
+    // printf("  byteSize: %d\n", t->byteSize);
+    // printf("  prtLevels: %u\n", var->ptrLevels);
+    // printf("  referenceLevels: %u\n", var->referenceLevels);
+    // printf("  isConstant: %u\n", var->isConstant);
+    // return 0;
+  }
+  return 1;
+}
+
 
 // This visits a variable by delegating to visitSingleVar()
 // Pre: varOrigin != DERIVED_VAR, varOrigin != DERIVED_FLATTENED_ARRAY_VAR
@@ -1608,7 +1682,8 @@ void visitSingleVar(VisitArgs* args) {
     // interesting. Now we will not return, but simply not
     // pass uninteresting variables to the tool.
     
-    if (interestedInVar(fullFjalarName, trace_vars_tree)) {
+    if (varHasReportableValue(var, layersBeforeBase) &&
+        interestedInVar(fullFjalarName, trace_vars_tree)) {
 
       // Perform the action action for this particular variable:
       tResult = (*performAction)(var,
@@ -2045,7 +2120,8 @@ void visitSequence(VisitArgs* args) {
                    fullFjalarName);
 
     // See: PARTIAL_STRUCT_TRAVERSAL
-    if (interestedInVar(fullFjalarName, trace_vars_tree)) {
+    if (varHasReportableValue(var, layersBeforeBase) &&
+        interestedInVar(fullFjalarName, trace_vars_tree)) {
 
       // Perform the action action for this particular variable:
       tResult = (*performAction)(var,

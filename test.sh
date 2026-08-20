@@ -45,6 +45,8 @@ fi
 /tmp/git-scripts/git-clone-related codespecs daikon
 ln -s "$(pwd)" "${DAIKONDIR}/fjalar" || true
 
+make check-options
+
 make build
 
 make doc

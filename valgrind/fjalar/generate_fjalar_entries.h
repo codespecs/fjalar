@@ -82,7 +82,10 @@ void initializeAllFjalarData(void);
 void repCheckAllEntries(void);
 
 FILE* xml_output_fp;
-void outputAllXMLDeclarations(void);
+extern const char* DeclaredTypeString[];
 
+void outputAllXMLDeclarations(void);
 char* getRawCppFunctionName(char* cppFnName);
+int entry_is_valid_function(dwarf_entry *entry, Bool quiet);
+
 #endif

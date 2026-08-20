@@ -7,7 +7,9 @@ help:
 	@echo "Targets:"
 	@echo " build         -- build all of valgrind and fjalar (includes kvasir)"
 	@echo " test          -- build and run valgrind regression tests"
+	@echo " fjalar-test   -- run the Fjalar regression tests in this repository"
 	@echo " daikon-test   -- run Fjalar/Kvasir regression tests from Daikon"
+	@echo " check-options -- check that every command-line option is documented"
 	@echo " clean         -- remove basic generated files"
 	@echo " very-clean    -- remove (most) all generated files"
 	@echo " git-update    -- add/remove files as result of Valgrind merge"
@@ -17,9 +19,18 @@ help:
 build:
 	bash ./auto-everything.sh
 
+# Every command-line option must appear in the "--help" usage message.
+.PHONY: check-options
+check-options:
+	./check-options-documented
+
 # Valgrind tests
 test:
 	cd valgrind && $(MAKE) regtest
+
+# Fjalar tests that do not depend on Daikon
+fjalar-test:
+	valgrind/fjalar/tests/library-compilation-unit-test.sh
 
 # Kvasir tests
 daikon-test: ../daikon

@@ -42,9 +42,14 @@ typedef struct
   char* filename;
   char* comp_dir;
   XArray* file_name_table;
-  unsigned long stmt_list; // Loction of the compile unit's
+  unsigned long stmt_list; // Location of the compile unit's
                            // line information as an offset
                            // from the start of .debug_line
+  unsigned long language;  // dwarf_source_language enums:
+  // DW_LANG_C, DW_LANG_C89, DW_LANG_C99, DW_LANG_C11
+  // DW_LANG_C_plus_plus, DW_LANG_C_plus_plus_03, DW_LANG_C_plus_plus_11, DW_LANG_C_plus_plus_14
+  // DW_LANG_Rust
+  bool runtime_library;   // Rust statically links in runtime library
 } compile_unit;
 
 // Contains one entry that holds data for one of many possible types
@@ -54,6 +59,9 @@ typedef struct
   unsigned long ID; // Unique ID for each entry
   unsigned long tag_name; // DW_TAG_____ for the type of this entry
   int level; // The level of this entry (useful for nested structs and function local vars.)
+  bool compiler_generated;  // Compiler generated function, struct or variable;
+                            // do not include in decl or dtrace output files.
+                            // Also set for a rust runtime routine that should be ignored.
   unsigned long sibling_ID; // for DW_AT_sibling
   compile_unit* comp_unit; // The compilation unit this entry belongs.
                            // compile_unit entries belong to themselves
@@ -140,7 +148,7 @@ typedef struct
 
   // While the DWARF definition indicates that DW_AT_specification may
   // be used with collections, it appears that gcc does not do so. (markro)
-  unsigned long specification_ID; // Relevant for C++: See comment on Specification ID 
+  unsigned long specification_ID; // Relevant for C++: See comment on Specification ID
                                   // in the function str
 
   unsigned long byte_size;
@@ -196,7 +204,7 @@ typedef struct
 
   // The value of this variable (if it's constant)
   char is_const;
-  long const_value; 
+  long const_value;
 
   // The file this variable is declared in
   unsigned long decl_file;
@@ -237,7 +245,7 @@ typedef struct
 
   char is_external; /* Is it extern? If so, probably want to skip it */
   char is_member_func; /* 1 if it's a member function (within a class or struct) */
-  char is_declaration; // Relevant for C++: 1 if this function is an empty
+  char is_declaration; // Relevant for C++ and Rust: 1 if this function is an empty
   // declaration - all of the important info. about this function comes from
   // the matching entry whose specification_ID field is the ID of this entry
   // Do NOT add an entry with is_declaration == 1 to
@@ -288,13 +296,15 @@ typedef struct
   unsigned long start_pc; /* Location of the function in memory */
   unsigned long end_pc;   /* Location of the highest address of an
                              instruction in the function */
-
-
   enum dwarf_location_atom frame_base_expression; /* Location of the framebase.
                                                      Is likely to be a register expression
                                                      or the location list */
-  long frame_base_offset; /* Offset from Frame_base_expression that correspods to the frame_base
-                           */
+  long frame_base_offset; /* Offset from Frame_base_expression that corresponds to the frame_base */
+  // An entry with is_inline set describes an instance of a function
+  // that the compiler has inlined.  The concrete out-of-line instance,
+  // if the compiler emitted one, will be a separate entry that has its
+  // own start_pc and DW_AT_inline is not set.
+  char is_inline;  /* Has it been inlined? If so, probably want to skip it */
 
 } function;
 
@@ -309,9 +319,9 @@ typedef struct {
 } function_type;
 
 enum location_type {
-  LT_NONE = 0,
-  LT_FP_OFFSET,
-  LT_REGISTER
+  LT_NONE = 0,       // unused
+  LT_FP_OFFSET,      // frame pointer plus offset
+  LT_REGISTER        // unused
 };
 
 // function formal parameter
@@ -341,6 +351,28 @@ typedef struct
                                     // for the uses of this.
 
 } formal_parameter;
+
+// The DWARF DW_TAG_template_type_parameter is used to describe the type
+// parameter (or parameters) used in a generic function or structure
+// definition. DWARF does not represent the generic template definition,
+// but does represent each instantiation.
+//
+// Each such entry has a DW_AT_name attribute, whose value is a null-terminated string
+// containing the name of the formal type parameter as it appears in the source program.
+// The template type parameter entry also has a DW_AT_type attribute describing the actual
+// type by which the formal is replaced for this instantiation.
+//
+// Currently, we only process type parameters associated with generic functions.
+
+typedef struct
+{
+  char* name;
+  unsigned long type_ID;
+  dwarf_entry* type_ptr;
+  // True once a formal parameter has taken its name from this entry.  See
+  // link_template_type_param_to_formal_param.
+  bool claimed;
+} template_type_parameter;
 
 // array type - each one has an array_subrange_type entry denoting
 //              the size of each dimension in the array
@@ -394,11 +426,14 @@ typedef struct
   // Set this to 1 if you encounter a DW_AT_artificial attribute
   // for a DWARF variable entry as well as a DW_AT_declaration attribute
 
-  char isStaticMemberVar; // only for C++ static member variables 
+  char isStaticMemberVar; // only for C++ static member variables
 
   unsigned long specification_ID; // Relevant for C++:
   // DO NOT add an entry with specification_ID non-null to any variable
   // lists because it's an empty shell
+
+  unsigned long abstract_origin_ID; // See comment in the function struct definition
+                                    // for the uses of this.
 
   // We should try to grab this from the symbol table if one is not
   // provided because g++ 4.0 doesn't provide global variable
@@ -414,7 +449,7 @@ typedef struct
 
   // The value of this variable (if it's constant)
   char is_const;
-  long const_value; 
+  long const_value;
 
   // The file this variable is declared in
   unsigned long decl_file;
@@ -426,8 +461,6 @@ extern dwarf_entry* dwarf_entry_array;
 extern compile_unit** comp_unit_info;
 extern unsigned long dwarf_entry_array_size;
 extern location_list *debug_loc_list;
-extern Bool clang_producer;
-extern Bool other_producer;
 
 unsigned int hashString(const char* str);
 int equivalentStrings(char* str1, char* str2);
@@ -496,17 +529,31 @@ const char *get_TAG_name(unsigned long tag);
 bool process_elf_binary_data(const HChar* filename);
 
 // From typedata.c
-char tag_is_relevant_entry(unsigned long tag);
-char tag_is_modifier_type(unsigned long tag);
-char tag_is_collection_type(unsigned long tag);
+char tag_is_array_subrange_type(unsigned long tag);
+char tag_is_array_type(unsigned long tag);
 char tag_is_base_type(unsigned long tag);
-char tag_is_member(unsigned long tag);
-char tag_is_enumerator(unsigned long tag);
-char tag_is_function(unsigned long tag);
-char tag_is_formal_parameter(unsigned long tag);
+char tag_is_collection_type(unsigned long tag);
 char tag_is_compile_unit(unsigned long tag);
+char tag_is_enumerator(unsigned long tag);
+char tag_is_formal_parameter(unsigned long tag);
 char tag_is_function_type(unsigned long tag);
+char tag_is_function(unsigned long tag);
 char tag_is_inheritance(unsigned long tag);
+char tag_is_member(unsigned long tag);
+char tag_is_modifier_type(unsigned long tag);
+char tag_is_namespace(unsigned long tag);
+char tag_is_relevant_entry(unsigned long tag);
+char tag_is_template_type_param(unsigned long tag);
+char tag_is_typedef(unsigned long tag);
+char tag_is_variable(unsigned long tag);
+
+bool is_rust_runtime_trait(const char* name);
+bool is_rust_compiler_generated_subprogram(const char* name);
+bool is_rust_compiler_generated_type(const char* name);
+bool is_rust_compiler_generated_variable(const char* name);
+bool is_rust_runtime_library_compile_unit(const char* name);
+bool is_rust_runtime_subprogram(const char* name);
+
 char entry_is_listening_for_attribute(dwarf_entry* e, unsigned long attr);
 
 char harvest_type_value(dwarf_entry* e, unsigned long value);
@@ -515,6 +562,7 @@ char harvest_encoding_value(dwarf_entry* e, unsigned long value);
 char harvest_bit_size_value(dwarf_entry* e, unsigned long value);
 char harvest_bit_offset_value(dwarf_entry* e, unsigned long value);
 char harvest_const_value(dwarf_entry* e, unsigned long value);
+char harvest_language_value(dwarf_entry* e, unsigned long value);
 char harvest_name(dwarf_entry* e, const char* str);
 char harvest_mangled_name(dwarf_entry* e, const char* str);
 char harvest_comp_dir(dwarf_entry* e, const char* str);
@@ -524,6 +572,7 @@ char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom
 char harvest_data_member_location(dwarf_entry* e, unsigned long value);
 char harvest_string(dwarf_entry* e, unsigned long attr, const char* str);
 char harvest_external_flag_value(dwarf_entry *e, unsigned long value);
+char harvest_inline_flag_value(dwarf_entry *e, unsigned long value);
 char harvest_address_value(dwarf_entry* e, unsigned long attr, unsigned long value);
 char harvest_variable_addr_value(dwarf_entry* e, unsigned long value);
 char harvest_ordinary_unsigned_value(dwarf_entry* e, unsigned long attr, unsigned long value);
@@ -539,21 +588,13 @@ char harvest_debug_frame_entry(debug_frame* df);
 char harvest_frame_base(dwarf_entry* e, enum dwarf_location_atom a, long offset);
 char harvest_decl_file(dwarf_entry* e, unsigned long value);
 char harvest_stmt_list(dwarf_entry* e, unsigned long value);
-
 char harvest_file_name_table(unsigned long debug_line_offset, XArray* table);
 
-
 char binary_search_dwarf_entry_array(unsigned long target_ID, unsigned long* index_ptr);
-
-void init_specification_and_abstract_stuff(void);
-void process_abstract_origin_items(void);
-void process_specification_items(void);
-
 void link_array_type_to_members(dwarf_entry* e, unsigned long dist_to_end);
 void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end);
 void link_function_to_params_and_local_vars(dwarf_entry* e, unsigned long dist_to_end);
 void print_dwarf_entry(dwarf_entry* e, char simplified);
-
 void initialize_dwarf_entry_array(unsigned long num_entries);
 void initialize_compile_unit_array(unsigned long num_entries);
 void destroy_dwarf_entry_array(void);
@@ -564,15 +605,10 @@ void initialize_dwarf_entry_ptr(dwarf_entry* e);
 void finish_dwarf_entry_array_init(void);
 
 void add_comp_unit(compile_unit* unit);
-
-char tag_is_array_type(unsigned long tag);
-char tag_is_array_subrange_type(unsigned long tag);
-char tag_is_typedef(unsigned long tag);
-char tag_is_variable(unsigned long tag);
-
 char* findFilenameForEntry(dwarf_entry* e);
 unsigned long findFunctionStartPCForVariableEntry(dwarf_entry* e);
 namespace_type* findNamespaceForVariableEntry(dwarf_entry* e);
 dwarf_entry* find_struct_entry_with_name(char* name);
-
+char* fjalar_demangle(dwarf_entry* cur_entry, const char* mangled_name);
+void fjalar_demangle_free(char* demangled_name);
 #endif

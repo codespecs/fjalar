@@ -37,11 +37,71 @@
 #include "pub_tool_libcprint.h"
 #include "pub_tool_mallocfree.h"
 
-// for name demangling
+// For name demangling.
 #include "../coregrind/m_demangle/demangle.h"
-extern char * cplus_demangle_v3 (const char *, int);
+// For VG_(arena_free), to release the demanglers' results.
+#include "../coregrind/pub_core_mallocfree.h"
 
-
+// Most of the following information is taken from "DWARF Debugging
+// Information Format Version 4". Published by the DWARF Debugging
+// Information Format Committee and may be found at http://www.dwarfstd.org.
+//
+// DWARF uses a series of Debugging Information Entries (DIEs) to define a
+// low-level representation of a source program. Each debugging information
+// entry consists of an identifying tag and a series of attributes. An entry,
+// or group of entries together, provide a description of a corresponding
+// entity in the source program. The tag specifies the class to which an entry
+// belongs and the attributes define the specific characteristics of the entry.
+//
+// A variety of needs can be met by permitting a single debugging information
+// entry to “own” an arbitrary number of other debugging entries and by permitting
+// the same debugging information entry to be one of many owned by another
+// debugging information entry. This makes it possible, for example, to describe
+// the static block structure within a source file, to show the members of a
+// structure, union, or class, and to associate declarations with source files
+// or source files with shared objects.
+//
+// The ownership relation of debugging information entries is achieved naturally
+// because the debugging information is represented as a tree. The nodes of the
+// tree are the debugging information entries themselves. The child entries of
+// any node are exactly those debugging information entries owned by that node.
+//
+// While the ownership relation of the debugging information entries is
+// represented as a tree, other relations among the entries exist, for example,
+// a reference from an entry representing a variable to another entry
+// representing the type of that variable. If all such relations are taken into
+// account, the debugging entries form a graph, not a tree.
+//
+// The tree itself is represented by flattening it in prefix order. Each debugging
+// information entry is defined either to have child entries or not to have child
+// entries. If an entry is defined not to have children, the next physically
+// succeeding entry is a sibling. If an entry is defined to have children, the
+// next physically succeeding entry is its first child. Additional children are
+// represented as siblings of the first child. A chain of sibling entries is
+// terminated by a null entry.
+//
+// The following information is more directly relevant to the data structures
+// used by Fjalar to read and interpret DWARF information.
+//
+// The debugging information entries (DIEs) are contained in the .debug_info
+// section of an object file. The offset of a DIE into a .debug_info section
+// is used when one DIE wishes to reference information in another DIE.
+// We refer to this offset value as a DIE's ID and most of our data structures
+// contain some sort of an ID field.
+//
+// The primary data structure used by Fjalar is the dwarf_entry_array. As we
+// read in the DWARF data we copy the information we need into a series of
+// dwarf_entry structures contained in this array. The items in this array
+// are stored in the same order as the DIEs in the .debug_info section.
+// Other than this linear order, there is no relationship between the index
+// of an item in the dwarf_entry_array and the ID of its corresponding DIE.
+// We use the routine binary_search_dwarf_entry_array to locate a dwarf_entry
+// based on its ID.
+//
+// Each dwarf_entry contains common information such as its ID and tag_name
+// as well as an entry_ptr that is cast to a pointer to a specific dwarf structure
+// based on the value of tag_name, which specifies the "type" of this dwarf_entry.
+//
 // Global array of all dwarf entries, sorted (hopefully) by dwarf_entry.ID
 // so that binary search is possible
 // DO NOT MODIFY THIS POINTER MANUALLY!!!
@@ -76,12 +136,12 @@ debug_frame* debug_frame_HEAD = 0;
 debug_frame* debug_frame_TAIL = 0;
 
 // Base of the current compilation unit
-
 unsigned int comp_unit_base = 0;
 
 // Target program producer info
-Bool clang_producer = False;
-Bool other_producer = False;
+bool clang_c_producer = false;
+bool clang_rust_producer = false;
+bool gcc_c_producer = false;
 
 // The addresses and sizes of the sections (.data, .bss, .rodata, and .data.rel.ro)
 // that hold global variables (initialized in readelf.c):
@@ -111,16 +171,8 @@ Extracting type information from DWARF tag
 
 
 /*
-Requires:
-Modifies:
-Returns: 1 if tag = {DW_TAG_array_type, _base_type, _class_type, _compile_unit,
-                     _const_type, _enumeration_type, _enumerator, _formal_parameter,
-                     _inheritance, _member, _namespace, _pointer_type, _reference_type,
-                     _structure_type, _subprogram, _subrange_type, _subroutine_type,
-                     _typedef, _union_type, _variable, _volatile_type},
-                     0 otherwise
 Effects: Used to determine which entries to record into a dwarf_entry structure;
-         All relevant entries should be included here
+         All relevant entries should be included here.
 */
 char tag_is_relevant_entry(unsigned long tag)
 {
@@ -143,6 +195,7 @@ char tag_is_relevant_entry(unsigned long tag)
     case DW_TAG_subprogram:
     case DW_TAG_subrange_type:
     case DW_TAG_subroutine_type:
+    case DW_TAG_template_type_param:
     case DW_TAG_typedef:
     case DW_TAG_union_type:
     case DW_TAG_variable:
@@ -243,6 +296,10 @@ char tag_is_array_subrange_type(unsigned long tag) {
   return (tag == DW_TAG_subrange_type);
 }
 
+char tag_is_template_type_param(unsigned long tag) {
+  return (tag == DW_TAG_template_type_param);
+}
+
 char tag_is_typedef(unsigned long tag) {
   return (tag == DW_TAG_typedef);
 }
@@ -257,7 +314,7 @@ char tag_is_inheritance(unsigned long tag) {
   return (tag == DW_TAG_inheritance);
 }
 
-static char tag_is_namespace(unsigned long tag) {
+char tag_is_namespace(unsigned long tag) {
   return (tag == DW_TAG_namespace);
 }
 
@@ -270,32 +327,37 @@ static char tag_is_namespace(unsigned long tag) {
 
 // List of attributes and the types which listen for them:
 
-// DW_AT_abstract_origin: function, formal_parameter
+// DW_AT_abstract_origin: function, formal_parameter, variable
 // DW_AT_accessibility: function, inheritance, member, variable
 // DW_AT_artificial: variable
 // DW_AT_bit_offset: base_type, member
 // DW_AT_bit_size: base_type, member
 // DW_AT_byte_size: base_type, collection_type, member
 // DW_AT_comp_dir: compile_unit
-// DW_AT_const_value: enumerator
+// DW_AT_const_value: enumerator, member, variable
 // DW_AT_count: array_subrange_type
-// DW_AT_data_member_location: member, inheritance
-// DW_AT_declaration: function, variable, collection_type
-// DW_AT_decl_file: variable, member
+// DW_AT_data_member_location: inheritance, member
+// DW_AT_declaration: collection_type, function, variable
+// DW_AT_decl_file: member, variable
 // DW_AT_encoding: base_type
-// DW_AT_external: function, variable, member
+// DW_AT_external: function, member, variable
 // DW_AT_frame_base: compile_unit, function
 // DW_AT_high_pc: function
+// DW_AT_inline: function
+// DW_AT_language: compile_unit
+// DW_AT_linkage_name: function, variable (Dwarf 4)
 // DW_AT_location: formal_parameter, variable
 // DW_AT_low_pc: compile_unit, function
-// DW_AT_MIPS_linkage_name: function, variable
-// DW_AT_name: collection_type, member, enumerator, function, formal_parameter, compile_unit, typedef, namespace, variable
+// DW_AT_MIPS_linkage_name: function, variable (Dwarf 2,3)
+// DW_AT_name: collection_type, compile_unit, enumerator, formal_parameter, function, member, namespace, template_type_parameter, typedef, variable
 // DW_AT_producer: compile_unit
-// DW_AT_sibling: collection_type, function_type, enumerator, function, array_type
-// DW_AT_specification: function, variable, collection_type
+// DW_AT_sibling: array_type, collection_type, enumerator, function, function_type
+// DW_AT_specification: collection_type, function, variable
 // DW_AT_stmt_list: compile_unit
-// DW_AT_type: modifier_type, member, function, formal_parameter, function_type, array_type, typedef, variable, inheritance
+// DW_AT_type: array_type, formal_parameter, function, function_type, inheritance, member, modifier_type, template_type_parameter, typedef, variable
 // DW_AT_upper_bound: array_subrange_type
+
+// clang-format off
 
 // Returns: 1 if the entry has a type that is listening for the
 // given attribute (attr), 0 otherwise
@@ -309,101 +371,116 @@ char entry_is_listening_for_attribute(dwarf_entry* e, unsigned long attr)
   tag = e->tag_name;
   switch(attr)
     {
-    case DW_AT_sibling:
-      return (tag_is_collection_type(tag) ||
-              tag_is_function_type(tag) ||
-              tag_is_enumerator(tag) ||
-              tag_is_function(tag) ||
-              tag_is_array_type(tag));
-    case DW_AT_location:
-      return (tag_is_formal_parameter(tag) ||
-              tag_is_variable(tag));
-    case DW_AT_data_member_location:
-      return (tag_is_member(tag) ||
-              tag_is_inheritance(tag));
-    case DW_AT_name:
-      return (tag_is_collection_type(tag) ||
-              tag_is_member(tag) ||
-              tag_is_enumerator(tag) ||
-              tag_is_function(tag) ||
+    case DW_AT_abstract_origin:
+      return (tag_is_function(tag) ||
               tag_is_formal_parameter(tag) ||
-              tag_is_compile_unit(tag) ||
-              tag_is_typedef(tag) ||
-              tag_is_namespace(tag) ||
               tag_is_variable(tag));
-    case DW_AT_byte_size:
-      return (tag_is_base_type(tag) ||
-              tag_is_collection_type(tag) ||
-              tag_is_member(tag));
+    case DW_AT_accessibility:
+      return (tag_is_function(tag) ||
+              tag_is_inheritance(tag) ||
+              tag_is_member(tag) ||
+              tag_is_variable(tag));
+    case DW_AT_artificial:
+      return tag_is_variable(tag);
     case DW_AT_bit_offset:
       return (tag_is_base_type(tag) ||
               tag_is_member(tag));
     case DW_AT_bit_size:
       return (tag_is_base_type(tag) ||
               tag_is_member(tag));
-    case DW_AT_const_value:
-      return (tag_is_enumerator(tag) ||
-              tag_is_variable(tag) ||
+    case DW_AT_byte_size:
+      return (tag_is_base_type(tag) ||
+              tag_is_collection_type(tag) ||
               tag_is_member(tag));
-    case DW_AT_type:
-      return (tag_is_modifier_type(tag) ||
-              tag_is_member(tag) ||
-              tag_is_function(tag) ||
-              tag_is_formal_parameter(tag) ||
-              tag_is_function_type(tag) ||
-              tag_is_array_type(tag) ||
-              tag_is_typedef(tag) ||
-              tag_is_variable(tag) ||
-              tag_is_inheritance(tag));
-    case DW_AT_encoding:
-      return tag_is_base_type(tag);
     case DW_AT_comp_dir:
       return tag_is_compile_unit(tag);
-    case DW_AT_producer:
-      return tag_is_compile_unit(tag);
+    case DW_AT_const_value:
+      return (tag_is_enumerator(tag) ||
+              tag_is_member(tag) ||
+              tag_is_variable(tag));
+    case DW_AT_count:
+      return tag_is_array_subrange_type(tag);
+    case DW_AT_data_member_location:
+      return (tag_is_inheritance(tag) ||
+              tag_is_member(tag));
+    case DW_AT_declaration:
+      return (tag_is_collection_type(tag) ||
+              tag_is_function(tag) ||
+              tag_is_variable(tag));
+    case DW_AT_decl_file:
+      return (tag_is_member(tag) ||
+              tag_is_variable(tag));
+    case DW_AT_encoding:
+      return tag_is_base_type(tag);
     case DW_AT_external:
       return (tag_is_function(tag) ||
-              tag_is_variable(tag) ||
-              tag_is_member(tag));
+              tag_is_member(tag) ||
+              tag_is_variable(tag));
     case DW_AT_frame_base:
-    case DW_AT_low_pc:
       return (tag_is_compile_unit(tag) ||
               tag_is_function(tag));
     case DW_AT_high_pc:
       return tag_is_function(tag);
-    case DW_AT_upper_bound:
-    case DW_AT_count:
-      return tag_is_array_subrange_type(tag);
+    case DW_AT_inline:
+      return tag_is_function(tag);
+    case DW_AT_language:
+      return tag_is_compile_unit(tag);
+    case DW_AT_linkage_name:
+      return (tag_is_function(tag) ||
+              tag_is_variable(tag));
+    case DW_AT_location:
+      return (tag_is_formal_parameter(tag) ||
+              tag_is_variable(tag));
+    case DW_AT_low_pc:
+      return (tag_is_compile_unit(tag) ||
+              tag_is_function(tag));
     case DW_AT_MIPS_linkage_name:
       return (tag_is_function(tag) ||
               tag_is_variable(tag));
-    case DW_AT_specification:
-      return (tag_is_function(tag) ||
-              tag_is_variable(tag) ||
-              tag_is_collection_type(tag));
-    case DW_AT_declaration:
-      return (tag_is_function(tag) ||
-              tag_is_variable(tag) ||
-              tag_is_collection_type(tag));
-    case DW_AT_artificial:
-      return tag_is_variable(tag);
-    case DW_AT_accessibility:
-      return (tag_is_function(tag) ||
-              tag_is_inheritance(tag) ||
+    case DW_AT_name:
+      return (tag_is_collection_type(tag) ||
+              tag_is_compile_unit(tag) ||
+              tag_is_enumerator(tag) ||
+              tag_is_formal_parameter(tag) ||
+              tag_is_function(tag) ||
               tag_is_member(tag) ||
+              tag_is_namespace(tag) ||
+              tag_is_template_type_param(tag) ||
+              tag_is_typedef(tag) ||
               tag_is_variable(tag));
-    case DW_AT_abstract_origin:
-      return (tag_is_function(tag) ||
-              tag_is_formal_parameter(tag));;
+    case DW_AT_producer:
+      return tag_is_compile_unit(tag);
+    case DW_AT_sibling:
+      return (tag_is_array_type(tag) ||
+              tag_is_collection_type(tag) ||
+              tag_is_enumerator(tag) ||
+              tag_is_function(tag) ||
+              tag_is_function_type(tag));
+    case DW_AT_specification:
+      return (tag_is_collection_type(tag) ||
+              tag_is_function(tag) ||
+              tag_is_variable(tag));
     case DW_AT_stmt_list:
       return tag_is_compile_unit(tag);
-    case DW_AT_decl_file:
-      return (tag_is_variable(tag) ||
-              tag_is_member(tag));
+    case DW_AT_type:
+      return (tag_is_array_type(tag) ||
+              tag_is_formal_parameter(tag) ||
+              tag_is_function(tag) ||
+              tag_is_function_type(tag) ||
+              tag_is_inheritance(tag) ||
+              tag_is_member(tag) ||
+              tag_is_modifier_type(tag) ||
+              tag_is_template_type_param(tag) ||
+              tag_is_typedef(tag) ||
+              tag_is_variable(tag));
+    case DW_AT_upper_bound:
+      return tag_is_array_subrange_type(tag);
     default:
       return 0;
     }
 }
+
+// clang-format on
 
 /*--------
 Harvesters
@@ -454,6 +531,11 @@ char harvest_type_value(dwarf_entry* e, unsigned long value)
   else if (tag_is_typedef(tag))
     {
       ((typedef_type*)e->entry_ptr)->target_type_ID = value;
+      return 1;
+    }
+  else if (tag_is_template_type_param(tag))
+    {
+      ((template_type_parameter*)e->entry_ptr)->type_ID = value;
       return 1;
     }
   else if (tag_is_variable(tag))
@@ -679,6 +761,9 @@ char harvest_abstract_origin_value(dwarf_entry* e, unsigned long value) {
   } else if (tag_is_formal_parameter(tag)) {
     ((formal_parameter*)e->entry_ptr)->abstract_origin_ID = value;
     return 1;
+  } else if (tag_is_variable(tag)) {
+    ((variable*)e->entry_ptr)->abstract_origin_ID = value;
+    return 1;
   }
   else
     return 0;
@@ -796,7 +881,20 @@ char harvest_const_value(dwarf_entry* e, unsigned long value)
     return 0;
 }
 
-static dwarf_entry* test;
+// Sets comp_unit_ptr->runtime_library, which is true if the compilation unit
+// is part of the Rust runtime library.  Both the language and the name of the
+// compilation unit are tested, because a C or C++ compilation unit may have
+// the same name as one of the Rust runtime library.
+// Call this after setting either the language or the filename, because DWARF
+// does not require DW_AT_language to precede DW_AT_name.
+static void set_runtime_library(compile_unit* comp_unit_ptr)
+{
+  comp_unit_ptr->runtime_library =
+    !fjalar_include_rust_runtime
+    && (comp_unit_ptr->language == DW_LANG_Rust)
+    && (comp_unit_ptr->filename != NULL)
+    && is_rust_runtime_library_compile_unit(comp_unit_ptr->filename);
+}
 
 // REMEMBER to use VG_(strdup) to make a COPY of the string
 // or else you will run into SERIOUS memory corruption
@@ -816,6 +914,11 @@ char harvest_name(dwarf_entry* e, const char* str1)
     }
   else if (tag_is_collection_type(tag))
     {
+      if (tag == DW_TAG_structure_type) {
+        if (is_rust_compiler_generated_type(str1)) {
+          e->compiler_generated = true;
+        }
+      }
       ((collection_type*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.2", str1);
       return 1;
     }
@@ -826,12 +929,11 @@ char harvest_name(dwarf_entry* e, const char* str1)
     }
   else if (tag_is_function(tag))
     {
-      ((function*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.4",str1);
-
-      if(e->ID == 0x4ce) {
-        test = e;
+      // printf("normal name: %s\n", str1);
+      if (is_rust_compiler_generated_subprogram(str1)) {
+        e->compiler_generated = true;
       }
-
+      ((function*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.4",str1);
       return 1;
     }
   else if (tag_is_formal_parameter(tag))
@@ -841,7 +943,9 @@ char harvest_name(dwarf_entry* e, const char* str1)
     }
   else if (tag_is_compile_unit(tag))
     {
-      ((compile_unit*)e->entry_ptr)->filename = VG_(strdup)("typedata.c: harv_name.6",str1);
+      compile_unit* comp_unit_ptr = (compile_unit*)e->entry_ptr;
+      comp_unit_ptr->filename = VG_(strdup)("typedata.c: harv_name.6",str1);
+      set_runtime_library(comp_unit_ptr);
       return 1;
     }
   else if (tag_is_typedef(tag))
@@ -849,8 +953,16 @@ char harvest_name(dwarf_entry* e, const char* str1)
       ((typedef_type*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.7",str1);
       return 1;
     }
+  else if (tag_is_template_type_param(tag))
+    {
+      ((template_type_parameter*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.9",str1);
+      return 1;
+    }
   else if (tag_is_variable(tag))
     {
+      if (is_rust_compiler_generated_variable(str1)) {
+        e->compiler_generated = true;
+      }
       ((variable*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.8",str1);
       return 1;
     }
@@ -861,6 +973,64 @@ char harvest_name(dwarf_entry* e, const char* str1)
     }
   else
     return 0;
+}
+
+bool is_rust_compiler_generated_subprogram(const char* name) {
+  return VG_(strstr)(name, "{vtable.shim}") != NULL ||
+         VG_(strstr)(name, "{constant}")    != NULL ||
+         VG_(strstr)(name, "{constant#")    != NULL;
+}
+
+// Extract the 'as TRAIT' portion from linkage name
+// <TYPE as TRAIT>::method → check TRAIT's crate.
+//
+// UNDONE: This code will incorrectly classify user code implementing
+// a runtime trait. <your_crate::Foo as core::fmt::Display>::fmt will be
+// classified as runtime because the trait is core::fmt::Display.
+bool is_rust_runtime_trait(const char* name) {
+    const char *as_pos = VG_(strstr)(name, " as ");
+    if (!as_pos) return false;
+
+    const char *trait_start = as_pos + 4;  // skip " as "
+
+    return VG_(strncmp)(trait_start, "core::",  6) == 0 ||
+           VG_(strncmp)(trait_start, "std::",   5) == 0 ||
+           VG_(strncmp)(trait_start, "alloc::", 7) == 0;
+}
+
+bool is_rust_runtime_subprogram(const char* name) {
+    // Direct crate prefix
+    if (VG_(strncmp)(name, "core::",   6) == 0) return true;
+    if (VG_(strncmp)(name, "std::",    5) == 0) return true;
+    if (VG_(strncmp)(name, "alloc::",  7) == 0) return true;
+    if (VG_(strncmp)(name, "<core::",  7) == 0) return true;
+    if (VG_(strncmp)(name, "<std::",   6) == 0) return true;
+    if (VG_(strncmp)(name, "<alloc::", 8) == 0) return true;
+
+    // <TYPE as TRAIT> form — classify by trait
+    if (name[0] == '<') {
+        return is_rust_runtime_trait(name);
+    }
+
+    return false;
+}
+
+bool is_rust_compiler_generated_type(const char* name) {
+  return VG_(strstr)(name, "{vtable_type}") != NULL;  // and ignore members
+}
+
+bool is_rust_compiler_generated_variable(const char* name) {
+  return VG_(strstr)(name, "{vtable}")      != NULL ||
+         VG_(strstr)(name, "{promoted#")    != NULL ||
+         VG_(strstr)(name, "{constant#")    != NULL;
+}
+
+// Tests only the name of a compilation unit.  A caller must also test that
+// the compilation unit's language is DW_LANG_Rust, because a C or C++
+// compilation unit may have such a name too.
+bool is_rust_runtime_library_compile_unit(const char* name) {
+  return VG_(strncmp)(name, "library/", 8)  == 0 ||
+         VG_(strncmp)(name, "/rust/deps/", 11)  == 0;
 }
 
 // REMEMBER to use VG_(strdup) to make a COPY of the string
@@ -876,12 +1046,33 @@ char harvest_mangled_name(dwarf_entry* e, const char* str1)
 
   if (tag_is_function(tag))
     {
-
+      if (e->comp_unit->language == DW_LANG_Rust) {
+        char* demangled_name = fjalar_demangle(e, str1);
+        if (is_rust_compiler_generated_subprogram(str1)
+            || (!fjalar_include_rust_runtime && is_rust_runtime_subprogram(str1))) {
+          e->compiler_generated = true;
+        }
+        if (demangled_name && (is_rust_compiler_generated_subprogram(demangled_name)
+            || (!fjalar_include_rust_runtime && is_rust_runtime_subprogram(demangled_name)))) {
+          e->compiler_generated = true;
+        }
+        fjalar_demangle_free(demangled_name);
+      }
       ((function*)e->entry_ptr)->mangled_name = VG_(strdup)("typedata.c: harv_mangled_name.1",str1);
       return 1;
     }
   else if (tag_is_variable(tag))
     {
+      if (is_rust_compiler_generated_variable(str1)) {
+        e->compiler_generated = true;
+      }
+      if (e->comp_unit->language == DW_LANG_Rust) {
+        char* demangled_name = fjalar_demangle(e, str1);
+        if (demangled_name && is_rust_compiler_generated_variable(demangled_name)) {
+          e->compiler_generated = true;
+        }
+        fjalar_demangle_free(demangled_name);
+      }
       ((variable*)e->entry_ptr)->mangled_name = VG_(strdup)("typedata.c: harv_mangled_name.2",str1);
       return 1;
     }
@@ -906,6 +1097,25 @@ char harvest_comp_dir(dwarf_entry* e, const char* str1)
     return 0;
 }
 
+char harvest_language_value(dwarf_entry* e, unsigned long value)
+{
+  unsigned long tag;
+  if ((e == 0) || (e->entry_ptr == 0))
+    return 0;
+
+  tag = e->tag_name;
+
+  if (tag_is_compile_unit(tag))
+    {
+      compile_unit* comp_unit_ptr = (compile_unit*)e->entry_ptr;
+      comp_unit_ptr->language = value;
+      set_runtime_library(comp_unit_ptr);
+      return 1;
+    }
+  else
+    return 0;
+}
+
 char harvest_producer(dwarf_entry* e, const char* str1)
 {
   unsigned long tag;
@@ -920,13 +1130,23 @@ char harvest_producer(dwarf_entry* e, const char* str1)
       producer = VG_(strdup)("typedata.c: harv_producer", str1);
       FJALAR_DPRINTF("  Producer: %s\n", producer);
 
-      if (VG_(strncmp) (producer, "clang ", 6) == 0) {
-        clang_producer = True;
-      } else {
-        other_producer = True;
+      if (VG_(strncmp) (producer, "GNU ", 4) == 0) {
+        gcc_c_producer = true;
       }
-      if (clang_producer && other_producer) {
-        printf( "  Warning! Target program created with mixed clang and non-clang compilers.\n");
+
+      if (VG_(strncmp) (producer, "clang ", 6) == 0) {
+        if (VG_(strstr)(producer, "rustc ") != NULL) {
+          clang_rust_producer = true;
+        } else {
+          clang_c_producer = true;
+        }
+      }
+
+      if (clang_c_producer && gcc_c_producer) {
+        printf( "  Warning! Target program created with mixed clang and gcc compilers.\n");
+      }
+      if (clang_rust_producer && (clang_c_producer || gcc_c_producer)) {
+        printf( "  Warning! Target program created with mixed Rust and C compilers.\n");
       }
       return 1;
     }
@@ -1047,7 +1267,9 @@ char harvest_string(dwarf_entry* e, unsigned long attr, const char* str1)
     return harvest_comp_dir(e, str1);
   else if (attr == DW_AT_producer)
     return harvest_producer(e, str1);
-  else if (attr == DW_AT_MIPS_linkage_name)
+  else if (attr == DW_AT_MIPS_linkage_name) // Dwarf 2, 3
+    return harvest_mangled_name(e, str1);
+  else if (attr == DW_AT_linkage_name)      // Dwarf 4
     return harvest_mangled_name(e, str1);
   else
     return 0;
@@ -1079,6 +1301,26 @@ char harvest_external_flag_value(dwarf_entry *e, unsigned long value) {
     return 0;
 }
 
+char harvest_inline_flag_value(dwarf_entry *e, unsigned long value) {
+  unsigned long tag;
+  if ((e == 0) || (e->entry_ptr == 0))
+    return 0;
+
+  tag = e->tag_name;
+
+  if (tag_is_function(tag))
+    {
+      // Not declared inline but inlined by the compiler (or)
+      // Declared inline and inlined by the compiler
+      if (value ==  DW_INL_inlined || value == DW_INL_declared_inlined) {
+          ((function*)e->entry_ptr)->is_inline = value;
+      }
+      return 1;
+    }
+  else
+    return 0;
+}
+
 char harvest_address_value(dwarf_entry* e, unsigned long attr,
                            unsigned long value) {
   unsigned long tag;
@@ -1090,6 +1332,10 @@ char harvest_address_value(dwarf_entry* e, unsigned long attr,
   if (attr == DW_AT_low_pc) {
       if(tag_is_function(tag)) {
           ((function*)e->entry_ptr)->start_pc = value;
+          // Rust compiler anomaly: low_pc == 0 => inline
+          if (value == 0) {
+              ((function*)e->entry_ptr)->is_inline = 1;
+          }
           ((function*)e->entry_ptr)->comp_pc = comp_unit_base;
 #if 0
           FJALAR_DPRINTF("Harvest: start_pc: %lx  comp_pc: %lx  name: %s %s\n",
@@ -1122,11 +1368,14 @@ char harvest_ordinary_unsigned_value(dwarf_entry* e, unsigned long attr, unsigne
   // Multiplex since
   // DW_AT_byte_size, DW_AT_encoding, DW_AT_const_value,
   // DW_AT_bit_size, DW_AT_bit_offset, DW_AT_external, DW_AT_upper_bound, DW_AT_count
-  // DW_AT_declaration, DW_AT_artificial
+  // DW_AT_declaration, DW_AT_artificial, DW_AT_language, DW_AT_inline
   // return ordinary unsigned data
   // In Dwarf 2 the DW_AT_data_member_location of a DW_TAG_member was always a DW_FORM_block
   // which implied a location list, but in Dwarf 3 it may be a DW_FORM_data which is an
   // ordinary unsigned value.
+  // In Dwarf 2 and 3 the DW_AT_high_pc of a DW_TAG_subprogram was always a DW_FORM_addr,
+  // but in Dwarf 4 it may be a DW_FORM_data which is an ordinary unsigned value.
+  // This is an offset from the DW_AT_low_pc.
   switch(attr)
     {
     case DW_AT_byte_size:
@@ -1154,6 +1403,12 @@ char harvest_ordinary_unsigned_value(dwarf_entry* e, unsigned long attr, unsigne
       return harvest_artificial_value(e, value);
     case DW_AT_data_member_location:
       return harvest_data_member_location(e, value);
+    case DW_AT_high_pc:
+      return harvest_address_value(e, attr, ((function*)e->entry_ptr)->start_pc + value);
+    case DW_AT_language:
+      return harvest_language_value(e, value);
+    case DW_AT_inline:
+      return harvest_inline_flag_value(e, value);
     default:
       return 0;
     }
@@ -1172,11 +1427,11 @@ char binary_search_dwarf_entry_array(unsigned long target_ID, unsigned long* ind
   unsigned long upper = dwarf_entry_array_size - 1;
   unsigned long lower = 0;
 
-  //  FJALAR_DPRINTF("--target_ID: 0x%x, index_ptr: 0x%x, upper.ID: 0x%x, lower.ID: 0x%x\n",
-         //         target_ID,
-         //         index_ptr,
-         //         dwarf_entry_array[upper].ID,
-         //         dwarf_entry_array[lower].ID);
+    //FJALAR_DPRINTF("--target_ID: 0x%lx, index_ptr: 0x%p, upper.ID: 0x%lx, lower.ID: 0x%lx\n",
+    //              target_ID,
+    //              index_ptr,
+    //              dwarf_entry_array[upper].ID,
+    //              dwarf_entry_array[lower].ID);
 
   // First do boundary sanity check to save ourselves lots of useless work:
   if ((target_ID > dwarf_entry_array[upper].ID) ||
@@ -1188,7 +1443,7 @@ char binary_search_dwarf_entry_array(unsigned long target_ID, unsigned long* ind
       unsigned long mid = (upper + lower) / 2;
       unsigned long cur_ID = dwarf_entry_array[mid].ID;
 
-      //      FJALAR_DPRINTF("**lower: %d, mid: %d, upper: %d, target_ID: 0x%x, cur_ID: 0x%x\n",
+      //      FJALAR_DPRINTF("**lower: %lu, mid: %lu, upper: %lu, target_ID: 0x%lx, cur_ID: 0x%lx\n",
       //             lower,
       //             mid,
       //             upper,
@@ -1398,10 +1653,84 @@ static void link_entries_to_type_entries(void)
               formal_param_ptr->type_ptr=&dwarf_entry_array[target_index];
             }
         }
+      else if (tag_is_template_type_param(tag))
+        {
+          char success = 0;
+          unsigned long target_index = 0;
+          template_type_parameter* template_type_param_ptr = (template_type_parameter*)(cur_entry->entry_ptr);
+          unsigned long target_ID = template_type_param_ptr->type_ID;
+
+          // Use a binary search to try to find the index of the entry in the
+          // array with the corresponding target_ID
+          success = binary_search_dwarf_entry_array(target_ID, &target_index);
+          if (success)
+            {
+              template_type_param_ptr->type_ptr = &dwarf_entry_array[target_index];
+            }
+        }
     }
 }
 
-
+// Nomenclature: Various programming languages use the terms 'functions',
+// 'methods', 'procedures', 'subprograms', 'subroutines', and probably
+// others, to describe a reusable, named sequence of code designed to
+// perform a specific task. The DWARF standard primarily uses the term
+// subprogram. The languages this tool supports: C, C++ and Rust refer
+// to this as a function. (Rust calls a function within a trait a method,
+// but the declaration syntax is the same as for a function.) Our code and
+// documentation tends to use the terms subprogram and function interchangeably.
+//
+// The DWARF debugging information entries are contained in the .debug_info
+// and .debug_types sections of an object file. We tend to refer to this
+// collectively as the 'debug info'.
+//
+//
+// The Rust debug info for subprograms (functions) is similar to C++ but
+// there are some differences. The Rust runtime system contains many
+// very small functions which are almost always inlined. Thus, the
+// DW_TAG_inlined_subroutine record is more common in the Rust debug info
+// then the DW_TAG_subprogram record. The inlined subroutine record always
+// contains a DW_AT_abstract_origin. The inlined subroutine record must
+// also contain a DW_AT_low_pc, DW_AT_high_pc pair or a DW_AT_ranges to
+// describe the location of the inlined code. It usually also contains a
+// set of DW_AT_call_... arguments describing the source file location
+// of the inlined code. The DW_AT_abstract_origin will point to a
+// DW_TAG_subprogram record that will contain the function's name and
+// source file location. Since we currently ignore DW_TAG_inline_subroutine
+// records (and any children of same) there is currently no need to copy
+// any of the data in the subprogram record back to the inlined subroutine
+// record. (Though that often happens anyway due to the nature of the code
+// here in typedata.c.) The subprogram record could also contain a
+// DW_AT_specification item, in lieu of some of the entries, but I have
+// not observed that to date.
+//
+// A 'normal' DW_TAG_subprogram record will contain all the necessary
+// information: name, code location, source file location and return
+// type (if specified) to describe the function. There can be a couple of
+// different modifications to this layout. One is that the subprogram record may
+// be marked with a DW_AT_declaration entry which means it is a non-defining
+// declaration of the function. In this case, there must be another
+// DW_TAG_subprogram record that contains a DW_AT_specification item pointing
+// back to the first subroutine record. The first subprogram record will
+// have the routine's name and that must be copied into the second
+// subprogram record as it will contain the code location that we need
+// to monitor program execution.
+//
+// The other variation is that the DW_TAG_subprogram record might contain
+// the code location but all the other information (such as name and source
+// file location) will be in a separate subprogram record pointed to by a
+// DW_AT_abstract_origin entry in the first subprogram record. In this case
+// we must copy the information from second subprogram record into the
+// first subprogram record, the one containing the abstract origin entry.
+//
+// The general idea in both these cases is that the DW_TAG_subprogam record
+// containing the code's location is the 'master' and we need to copy any
+// 'missing' information to that record for subsequent use by the execution
+// monitor.
+//
+// (The following documentation for C and C++ was written some time ago.
+// I do not know just how accurate it currently is.)
+//
 // C++ code produces some fun debugging information!  The basic idea
 // is that we want to have the start_pc and end_pc fields of function
 // entries initialized to proper values.  There can be up to 2 levels
@@ -1474,9 +1803,6 @@ entry, but we really want to copy its name fields
      DW_AT_decl_line   : 14
      DW_AT_MIPS_linkage_name: _ZN5Stack4pushEPc
      DW_AT_declaration : 1
-*/
-
-/*
 
 There are a couple of cases to consider for variables as well.  If a variable
 declared in a namespace is defined outside the body of the namespace declaration,
@@ -1517,24 +1843,15 @@ the type property from the declaration to the definition.
     <1320>   DW_AT_const_value : -2147483648
 */
 
-// We use two passes to copy information to where it is needed.
-// First, we copy the interesting fields from the entry pointed
-// to by DW_AT_specification into the entry containing the
-// DW_AT_specification.  Note that we do not overwrite properties
-// that are already present.
-// Next, we do a similar pass that copies the interesting fields
-// from the entry pointed to by DW_AT_abstract_origin into the entry
-// containing the DW_AT_abstract_origin.  Again, note that we do not
-// overwrite properties that are already present.
-void init_specification_and_abstract_stuff(void) {
-  process_specification_items();
-  process_abstract_origin_items();
-}
-
-void process_abstract_origin_items(void) {
+static void process_abstract_origin_items(void)
+{
   unsigned long idx;
   dwarf_entry* cur_entry = 0;
 
+  // After processing the DW_AT_specification fields, we now make a second pass
+  // looking for all the DW_AT_abstract_origin fields and copy over the
+  // relevant data.
+  // UNDONE: need to do for variables too.
   for (idx = 0; idx < dwarf_entry_array_size; idx++) {
     cur_entry = &dwarf_entry_array[idx];
     if (tag_is_function(cur_entry->tag_name)) {
@@ -1568,6 +1885,13 @@ void process_abstract_origin_items(void) {
               cur_func->return_type_ID = aliased_func_ptr->return_type_ID;
             if (!cur_func->accessibility)
               cur_func->accessibility = aliased_func_ptr->accessibility;
+            // Do not copy is_inline: the abstract instance root carries
+            // DW_AT_inline, but cur_func is a concrete instance with its own
+            // start_pc, which is code that is actually called and that we
+            // therefore want to instrument.  Copying is_inline here would make
+            // entry_is_valid_function reject it.
+            if (!cur_entry->compiler_generated)
+              cur_entry->compiler_generated = aliased_entry->compiler_generated;
           }
         }
       }
@@ -1595,22 +1919,52 @@ void process_abstract_origin_items(void) {
           VG_(memcpy)(aliased_formal_param->dwarf_stack, cur_param->dwarf_stack,
                       sizeof(dwarf_location)*cur_param->dwarf_stack_size);
 
-          cur_param->name = aliased_formal_param->name;
-          cur_param->type_ID = aliased_formal_param->type_ID;
-          //cur_param->type_ptr = aliased_formal_param->type_ptr;
+          if(!cur_param->name) {
+            cur_param->name = aliased_formal_param->name;
+          }
+          if(!cur_param->type_ID) {
+            cur_param->type_ID = aliased_formal_param->type_ID;
+            cur_param->type_ptr = aliased_formal_param->type_ptr;
+          }
+        }
+      }
+    } else if(tag_is_variable(cur_entry->tag_name)) {
+      variable* cur_var = (variable*) (cur_entry->entry_ptr);
+
+      // Look for all variables with a abstract_origin_ID field, find the
+      // targets, and copy over the name and type.  As elsewhere in this pass,
+      // do not overwrite properties that are already present.
+      if (cur_var->abstract_origin_ID) {
+        unsigned long aliased_index = 0;
+
+        if (binary_search_dwarf_entry_array(cur_var->abstract_origin_ID,
+                                            &aliased_index)) {
+          dwarf_entry* aliased_entry = &dwarf_entry_array[aliased_index];
+          variable* aliased_variable = NULL;
+
+          tl_assert(tag_is_variable(aliased_entry->tag_name));
+          aliased_variable = (variable*) (aliased_entry->entry_ptr);
+
+          if(!cur_var->name) {
+            cur_var->name = aliased_variable->name;
+          }
+          if(!cur_var->type_ID) {
+            cur_var->type_ID = aliased_variable->type_ID;
+            cur_var->type_ptr = aliased_variable->type_ptr;
+          }
         }
       }
     }
   }
 }
 
-void process_specification_items(void) {
+static void process_specification_items(void)
+{
   unsigned long idx;
   dwarf_entry* cur_entry = 0;
 
-  // Now make a second pass looking for all functions with a
-  // specification_ID field, find their targets, and copy over the
-  // names:
+  // We make a pass over all the dwarf entries looking for any DW_AT_specification
+  // fields and copy over the relevant data.
   for (idx = 0; idx < dwarf_entry_array_size; idx++) {
     cur_entry = &dwarf_entry_array[idx];
     if (tag_is_function(cur_entry->tag_name)) {
@@ -1630,7 +1984,7 @@ void process_specification_items(void) {
           tl_assert(tag_is_function(aliased_entry->tag_name));
           aliased_func_ptr = (function*)(aliased_entry->entry_ptr);
 
-          FJALAR_DPRINTF("   Found %s\n", aliased_func_ptr->name);
+          FJALAR_DPRINTF("   Found %s at %lx\n", aliased_func_ptr->name, aliased_index);
 
           if (!cur_func->name)
             cur_func->name = aliased_func_ptr->name;
@@ -1640,6 +1994,8 @@ void process_specification_items(void) {
             cur_func->return_type_ID = aliased_func_ptr->return_type_ID;
           if (!cur_func->accessibility)
             cur_func->accessibility = aliased_func_ptr->accessibility;
+          if (!cur_entry->compiler_generated)
+            cur_entry->compiler_generated = aliased_entry->compiler_generated;
         }
       }
     } else if (tag_is_collection_type(cur_entry->tag_name)) {
@@ -1726,11 +2082,11 @@ void process_specification_items(void) {
             char* demangled_name = 0;
 
             if(cur_var->mangled_name) {
-                // If there is a C++ mangled name, then call Valgrind core to try to
+                // If there is a mangled name, then call Valgrind core to try to
                 // demangle the name (remember the demangled name is malloc'ed)
-                demangled_name = cplus_demangle_v3(cur_var->mangled_name, DMGL_PARAMS | DMGL_ANSI);
+                demangled_name = fjalar_demangle(cur_entry, cur_var->mangled_name);
 
-                // if we got a good demangled name, lets see if we can simplfy it a bit
+                // if we got a good demangled name, lets see if we can simplify it a bit
                 // by removing the "__gnu_cxx::" prefix that shows up alot.
                 if (demangled_name) {
                     int offset = 0;
@@ -1758,6 +2114,20 @@ void process_specification_items(void) {
       }
     }
   }
+}
+
+// We use two passes to copy information to where it is needed.
+// First, we copy the interesting fields from the entry pointed
+// to by DW_AT_specification into the entry containing the
+// DW_AT_specification.  Note that we do not overwrite properties
+// that are already present.
+// Next, we do a similar pass that copies the interesting fields
+// from the entry pointed to by DW_AT_abstract_origin into the entry
+// containing the DW_AT_abstract_origin.  Again, note that we do not
+// overwrite properties that are already present.
+static void init_specification_and_abstract_stuff(void) {
+  process_specification_items();
+  process_abstract_origin_items();
 }
 
 /*
@@ -1878,7 +2248,7 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
   // GCC 4.4.x+ denote static member variables via
   // DW_TAG_member + DW_AT_external
   // This has changed again. GCC 4.7.x (perhaps earlier?) now represents a 
-  // static member variable with a DW_TAG_member at the declation and a 
+  // static member variable with a DW_TAG_member at the declaration and a
   // DW_TAG_variable at the definition.  This entry has a DW_AT_specification
   // that points back to the DW_TAG_member.                        (markro)
   // DW_TAG_subprogram as member functions, and DW_TAG_inheritance as
@@ -2277,6 +2647,134 @@ static void link_array_entries_to_members(void)
     }
 }
 
+// Search template type params (if any) for one whose type matches a formal
+// parameter's type, and copy that template parameter's name to the formal
+// parameter.
+//
+// start_index: index into dwarf_entry_array of where to start search
+// target_type_id: type ID we are trying to find
+// param_entry: formal_parameter dwarf_entry of param we are trying to find name for
+//
+// A template parameter is claimed by at most one formal parameter: a matching
+// entry is marked, and already-marked entries are skipped.  Without that, a
+// generic instantiated with the same type more than once (for example,
+// foo<T, U> where both T and U become i32) would give every one of its
+// unnamed formals the same name.
+static bool link_template_type_param_to_formal_param(unsigned long start_index, unsigned long target_type_id, dwarf_entry* param_entry)
+{
+  unsigned long type_index = start_index;
+  int formal_param_level = param_entry->level;
+  formal_parameter* formal_param_ptr = (formal_parameter*)(param_entry->entry_ptr);
+
+  while (type_index < dwarf_entry_array_size) {
+    dwarf_entry* type_entry = &dwarf_entry_array[type_index];
+    if (type_entry->level < formal_param_level) {
+      // we have gone past any template type entries
+      return false;
+    }
+    if (tag_is_template_type_param(type_entry->tag_name) && type_entry->level == formal_param_level) {
+      template_type_parameter* template_type_param_ptr = (template_type_parameter*)(type_entry->entry_ptr);
+      // check type match
+      if (!template_type_param_ptr->claimed && (template_type_param_ptr->type_ID == target_type_id)) {
+        // copy name
+        template_type_param_ptr->claimed = true;
+        formal_param_ptr->name = VG_(strdup)("typedata.c: link_template_type_param_to_formal_param", template_type_param_ptr->name);
+        FJALAR_DPRINTF("  copy name: %s\n", formal_param_ptr->name);
+        return true;
+      }
+    }
+    // see if more type params
+    type_index++;
+  }
+  // should never get here
+  return false;
+}
+
+/*
+Requires: dwarf_entry_array is initialized
+Tries to match formal_parameter entries with no name to a matching
+template_type_parameter from which we extract the name.
+
+I believe the formal parameter entries (if any) follow immediately after
+the subprogram entry and the type parameter entries (if any) follow
+immediately after that.
+*/
+static void link_template_type_params_to_formal_params(void)
+{
+  unsigned long idx;
+  dwarf_entry* cur_entry;
+
+  // Linearly traverse the dwarf entry array and look for functions.
+  for (idx = 0; idx < dwarf_entry_array_size; idx++) {
+    cur_entry = &dwarf_entry_array[idx];
+
+    if (tag_is_function(cur_entry->tag_name)) {
+      // found a function, but is this a true definition?
+      function* function_ptr = (function*)(cur_entry->entry_ptr);
+      if (function_ptr->is_declaration) {
+        // non-defining or incomplete declaration
+        // skip this one and continue the search
+        continue;
+      }
+
+      // we have a function definition
+      // now search forward from this point for any formal parameters
+      int function_level = cur_entry->level;
+      unsigned long param_index = idx + 1;
+      while (param_index < dwarf_entry_array_size) {
+        dwarf_entry* param_entry = &dwarf_entry_array[param_index];
+        if (tag_is_formal_parameter(param_entry->tag_name) && param_entry->level == (function_level + 1)) {
+          // we have a formal parameter, does it already have a name?
+          formal_parameter* formal_param_ptr = (formal_parameter*)(param_entry->entry_ptr);
+          if(formal_param_ptr->name) {
+            // it has a name
+            // skip this one and look for more formal parameters
+            param_index++;
+            continue;
+          }
+
+          // no name, should be found in a corresponding template_type_param
+          // search forward from this point
+          // first get the type of the formal parameter
+          unsigned long target_type_id = formal_param_ptr->type_ID;
+          dwarf_entry* formal_type_ptr = formal_param_ptr->type_ptr;
+          bool found = false;
+          while (true) {
+            if (link_template_type_param_to_formal_param(param_index + 1, target_type_id, param_entry)) {
+              // we found the name
+              // look for more formal parameters
+              param_index++;
+              found = true;
+              break;
+            }
+
+            // Not found; if the formal parameter is a pointer, try again with
+            // the type it points to.  formal_type_ptr is null if the type did
+            // not resolve, which happens for a pointer with no type; that seems
+            // like a compiler error, but some older gcc versions generate one.
+            if ((formal_type_ptr == 0) || (formal_type_ptr->tag_name != DW_TAG_pointer_type)) {
+              break;
+            }
+            modifier_type* mod_ptr = (modifier_type*)(formal_type_ptr->entry_ptr);
+            target_type_id = mod_ptr->target_ID;
+            formal_type_ptr = mod_ptr->target_ptr;
+          }
+          if (!found) {
+            // A Rust developer told me that if a formal parameter is not used
+            // it might not be given a name in the dwarf output.  Leave the name
+            // null; extractOneFormalParameterVar generates a placeholder.
+            param_index++;
+          }
+        } else {
+          // we are past the last formal parameter
+          // quit searching for formals and go back to searching for function definitions
+          break;
+        }
+      }
+    }
+  }
+}
+
 // Fills up typedef_names_map with key/value pairs by picking off
 // the appropriate typedef_type entries in dwarf_entry_array.
 // (This only has to happen once.)
@@ -2315,29 +2813,42 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
       return;
     }
 
-  FJALAR_DPRINTF("ID:0x%lx, LVL:%d, SIB_ID:0x%lx, TAG:%s \n", e->ID, e->level, e->sibling_ID, get_TAG_name(e->tag_name));
+  FJALAR_DPRINTF("ID:0x%lx, LVL:%d, SIB_ID:0x%lx, TAG:%s, comp_gen: %d\n", e->ID, e->level, e->sibling_ID, get_TAG_name(e->tag_name), e->compiler_generated);
 
   switch(e->tag_name)
     {
     case DW_TAG_subprogram:
       {
         function* function_ptr = (function*)(e->entry_ptr);
-        FJALAR_DPRINTF("  Name: %s, Filename: %s, Ret. ID: 0x%lx, is_ext: %d, spec_ID: 0x%lx, low_pc: 0x%lx\n",
+        FJALAR_DPRINTF("  Name: %s, Filename: %s, Ret. ID: 0x%lx, is_ext: %d, is_inl: %d, spec_ID: 0x%lx, low_pc: 0x%lx, valid: %d\n",
                function_ptr->name,
-               function_ptr->filename,
+               (simplified ? 0 : function_ptr->filename),
                function_ptr->return_type_ID,
                function_ptr->is_external,
+               function_ptr->is_inline,
                function_ptr->specification_ID,
-               function_ptr->start_pc);
+               function_ptr->start_pc,
+               entry_is_valid_function(e, True));
         break;
       }
     case DW_TAG_formal_parameter:
       {
         formal_parameter* formal_param_ptr = (formal_parameter*)(e->entry_ptr);
-        FJALAR_DPRINTF("  Name: %s, Type ID: 0x%lx, Location: %ld\n",
+        FJALAR_DPRINTF("  Name: %s, Type ID: 0x%lx, num-ops: %u, atom: %x, loc_type: %u, offset: %ld\n",
                formal_param_ptr->name,
                formal_param_ptr->type_ID,
+               formal_param_ptr->dwarf_stack_size,
+               formal_param_ptr->loc_atom,
+               formal_param_ptr->location_type,
                formal_param_ptr->location);
+        break;
+      }
+    case DW_TAG_template_type_param:
+      {
+        template_type_parameter* template_type_param_ptr = (template_type_parameter*)(e->entry_ptr);
+        FJALAR_DPRINTF("  Name: %s, Type ID: 0x%lx\n",
+               template_type_param_ptr->name,
+               template_type_param_ptr->type_ID);
         break;
       }
     case DW_TAG_member:
@@ -2490,9 +3001,10 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
     case DW_TAG_compile_unit:
       {
         compile_unit* compile_ptr = (compile_unit*)(e->entry_ptr);
-        FJALAR_DPRINTF("  Filename: %s, Compile dir: %s\n",
+        FJALAR_DPRINTF("  Filename: %s, Compile dir: %s, Language: %lu\n",
                compile_ptr->filename,
-               compile_ptr->comp_dir);
+               compile_ptr->comp_dir,
+               compile_ptr->language);
         break;
       }
 
@@ -2576,7 +3088,6 @@ void destroy_dwarf_entry_array()
 
 // Print without machine/runtime-specific address information
 // in order to provide consistent results for diffs
-// (Doesn't appear to be used - markro)
 void simple_print_dwarf_entry_array()
 {
   print_dwarf_entry_array_helper(1);
@@ -2594,8 +3105,7 @@ void print_dwarf_entry_array_helper(char simplified)
   for (i = 0; i < dwarf_entry_array_size; i++)
     {
 
-      FJALAR_DPRINTF("array[%u] (0x%x): ", i,
-             (simplified ? i : ((UInt)(ptrdiff_t)dwarf_entry_array + (UInt)i)));
+      FJALAR_DPRINTF("array[%u]: ", i);
       print_dwarf_entry(&dwarf_entry_array[i], simplified);
     }
   FJALAR_DPRINTF("--- END DWARF ENTRY ARRAY\n");
@@ -2661,6 +3171,10 @@ void initialize_dwarf_entry_ptr(dwarf_entry* e)
         {
           e->entry_ptr = VG_(calloc)("typedata.c: initialize_dwarf_entry_ptr.12", 1, sizeof(typedef_type));
         }
+      else if (tag_is_template_type_param(e->tag_name))
+        {
+          e->entry_ptr = VG_(calloc)("typedata.c: initialize_dwarf_entry_ptr.16", 1, sizeof(template_type_parameter));
+        }
       else if (tag_is_variable(e->tag_name))
         {
           e->entry_ptr = VG_(calloc)("typedata.c: initialize_dwarf_entry_ptr.13", 1, sizeof(variable));
@@ -2693,11 +3207,19 @@ void finish_dwarf_entry_array_init(void)
   // typedef names optimization:
   initialize_typedef_names_map();
 
-
   link_array_entries_to_members();
   init_specification_and_abstract_stuff();
   initialize_function_filenames();
   link_entries_to_type_entries();
+  link_template_type_params_to_formal_params();
+  if (fjalar_debug) {
+    // Print contents of array for help debugging
+    if (fjalar_print_dwarf) {
+      print_dwarf_entry_array();
+    } else {
+      simple_print_dwarf_entry_array();
+    }
+  }
 }
 
 // Finds the first compile_unit entry to the LEFT of the given entry e
@@ -2902,4 +3424,24 @@ char* getFunctionName(Addr startAddr) {
 // (Accepts regular name for C and mangled name for C++)
 Addr getGlobalVarAddr(char* name) {
   return (Addr)gengettable(VariableSymbolTable, (void*)name);
+}
+
+// Attempt to demangle a C++ or Rust name.
+// cur_entry selects the demangler via its compilation unit's language; a null
+// cur_entry (or one with no compilation unit) is treated as "not Rust".
+// Returns null if demangle fails
+char* fjalar_demangle(dwarf_entry* cur_entry, const char* mangled_name) {
+  if (cur_entry && cur_entry->comp_unit &&
+      (cur_entry->comp_unit->language == DW_LANG_Rust)) {
+    return rust_demangle(mangled_name, DMGL_PARAMS | DMGL_ANSI);
+  } else {
+    return cplus_demangle_v3(mangled_name, DMGL_PARAMS | DMGL_ANSI);
+  }
+}
+
+// Release a name returned by fjalar_demangle.  The demanglers allocate
+// from Valgrind's demangler arena, so the memory must be returned to that
+// arena; VG_(free) would return it to the wrong one.  Accepts null.
+void fjalar_demangle_free(char* demangled_name) {
+  VG_(arena_free)(VG_AR_DEMANGLE, demangled_name);
 }

@@ -43,6 +43,8 @@
 
 #define DTRACE_PRINTF(...) do { if (!dyncomp_without_dtrace) \
        fprintf(dtrace_fp, __VA_ARGS__); } while (0)
+    // DEBUG: replace line above with line below to copy dtrace output to stdout.
+    // {fprintf(dtrace_fp, __VA_ARGS__); printf("DTRACE: ");printf(__VA_ARGS__);}} while (0)
 
 // Global variable storing the current variable name.
 // currently used for debugging comparability values
@@ -60,7 +62,7 @@ UWord nonce[300];
 
 
 // The indices to this array must match the DeclaredType enum
-// declared in generate_fjalar_entries.h:
+// declared in fjalar_include.h.
 static const char* TYPE_FORMAT_STRINGS[] = {
   "%d - ERROR - D_NO_TYPE",        // D_NO_TYPE, // Create padding
 
@@ -75,23 +77,35 @@ static const char* TYPE_FORMAT_STRINGS[] = {
   "%llu",                          // D_UNSIGNED_LONG_LONG_INT,
   "%lld",                          // D_LONG_LONG_INT,
 
+  "%d - ERROR - D_U128",           // D_U128,  // Rust; unused, no C type is this wide
+  "%d - ERROR - D_I128",           // D_I128,  // Rust; unused, no C type is this wide
+
   "%.9g",                          // D_FLOAT,
   "%.17g",                         // D_DOUBLE,
   "%.17g",                         // D_LONG_DOUBLE,
 
   "%d",                            // D_ENUMERATION,
+
   "%d - ERROR - D_STRUCT",         // D_STRUCT,  // currently unused
   "%d - ERROR - D_UNION",          // D_UNION,   // currently unused
-
   "%d - ERROR - D_FUNCTION",       // D_FUNCTION // currently unused
   "%d - ERROR - D_VOID",           // D_VOID     // currently unused
+
   "%d - ERROR - D_CHAR_AS_STRING", // D_CHAR_AS_STRING
+  // Print each Unicode code point as an integer, to match its rep type of R_INT.
+  "%u",                            // D_CHAR8
+  "%u",                            // D_CHAR16
+  "%u",                            // D_CHAR32
   "%d" ,                           // D_BOOL
+  "%d - ERROR - D_ZST",            // D_ZST      // Zero Sized Types are Rust only; never printed
 };
 
 // The indices to this array must match the DeclaredType enum
 // declared in generate_fjalar_entries.h:
 extern const int DecTypeByteSizes[];
+
+// This array can be indexed using the DeclaredType enum.
+extern const char* DeclaredTypeString[];
 
 // If there are function names (e.g., C++ demangled names) that are
 // illegal for Daikon, we can patch them up here before writing them
@@ -164,6 +178,9 @@ static void printOneDtraceString(char* str1)
       case '\\':
 	DTRACE_PRINTF( "\\\\");
 	break;
+//      case '\xff':  // special case EOF
+//	DTRACE_PRINTF( "\x04");  // change to EOT
+//	break;
       default:
 	DTRACE_PRINTF( "%c", *str1);
       }
@@ -279,23 +296,27 @@ static int checkStringReadable(char *str1) {
 // Macro for dispatching on different print statements depending on
 // the declared type of the variable (decType) - creates a switch
 // statement parameterized by the OPERATION macro:
+// UNDONE: Rust 128 bit types only print first 64 bits
 #define TYPES_SWITCH(OPERATION) \
 switch (decType) \
 { \
  case D_BOOL: \
  case D_UNSIGNED_CHAR: \
+ case D_CHAR8: \
    OPERATION(unsigned char) \
    break; \
  case D_CHAR: \
    OPERATION(char) \
    break; \
  case D_UNSIGNED_SHORT: \
+ case D_CHAR16: \
    OPERATION(unsigned short) \
    break; \
  case D_SHORT: \
    OPERATION(short) \
    break; \
  case D_UNSIGNED_INT: \
+ case D_CHAR32: \
    OPERATION(unsigned int) \
    break; \
  case D_INT: \
@@ -314,11 +335,26 @@ switch (decType) \
  case D_LONG_LONG_INT: \
    OPERATION(long long int) \
    break; \
+ case D_U128: \
+ case D_I128: \
+   /* No C type is 128 bits wide. We have not yet implmented these.     */ \
+   /* varHasReportableValue() suppresses such variables once every      */ \
+   /* pointer layer has been dereferenced, and a pointer is printed as  */ \
+   /* a hashcode, so a value of one of these types never reaches here.  */ \
+   tl_assert(0 && "TYPES_SWITCH() - 128-bit type"); \
+   break; \
  case D_FLOAT: \
    OPERATION(float) \
    break; \
  case D_DOUBLE: \
    OPERATION(double) \
+   break; \
+ case D_ZST: \
+   /* A ZST has no storage to read: its address is a fabricated dangling */ \
+   /* one.  The traversal reports a ZST only through a pointer (see */ \
+   /* varHasReportableValue), and a pointer is printed as a hashcode, so */ \
+   /* a ZST never reaches this switch. */ \
+   tl_assert(0 && "TYPES_SWITCH() - D_ZST"); \
    break; \
  default: \
    DTRACE_PRINTF( "TYPES_SWITCH() - unknown type"); \
@@ -689,7 +725,6 @@ static char printDtraceSequence(VariableEntry* var,
   return 1;
 }
 
-
 // Print a single numerical value to .dtrace pointed-to by pValue
 static
 char printDtraceSingleBaseValue(Addr pValue,
@@ -726,8 +761,10 @@ char printDtraceSingleBaseValue(Addr pValue,
       DTRACE_PRINTF( "\n%d\n", mapInitToModbit(1));
     }
     else {
-      // This is where the acutal printing of the variable is done. This
+      // This is where the actual printing of the variable is done. This
       // was a bit hard to figure out.
+      // UNDONE: special case Rust 128 bit types
+      // printf("\tdecType is: %u, %s\n", decType, DeclaredTypeString[decType]);
       TYPES_SWITCH(DTRACE_PRINT_ONE_VAR)
 
       if (kvasir_with_dyncomp) {
@@ -779,7 +816,7 @@ void printDtraceBaseValueSequence(DeclaredType decType,
   char firstInitEltFound = 0;
   Addr firstInitElt = 0;
 
-  DPRINTF("printDtraceBaseVAlueSequence(), pValueArray: %p\n", (void *)pValueArray);
+  DPRINTF("printDtraceBaseValueSequence(), pValueArray: %p\n", (void *)pValueArray);
 
   if (fjalar_array_length_limit != -1) {
     limit = min(limit, fjalar_array_length_limit);
@@ -819,13 +856,14 @@ void printDtraceBaseValueSequence(DeclaredType decType,
         printOneCharAsDtraceString(*((char*)pCurValue));
       }
       else {
-        if(i == 0) { // RUDD DEBUGGING: Print the first elmenet for debugging
+        if(i == 0) { // RUDD DEBUGGING: Print the first element for debugging
           DPRINTF("First element is: ");
+          // UNDONE: special case Rust 128 bit types
           TYPES_SWITCH(DEBUG_ONE_VAR_SEQUENCE)
           DPRINTF("\n");
         }
 
-
+        // UNDONE: special case Rust 128 bit types
         TYPES_SWITCH(DTRACE_PRINT_ONE_VAR_WITHIN_SEQUENCE)
 
         // Merge the tags of all bytes read for this element:
@@ -1154,6 +1192,11 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
   tl_assert(funcPtr);
 
   ((DaikonFunctionEntry*)funcPtr)->num_invocations++;  
+
+  if (funcPtr->doNotPrint) {
+    DPRINTF("skipping: %s\n", funcPtr->fjalar_name);
+    return;
+  }
 
   DPRINTF("* %s %s at FP=%p, lowestSP=%p, startPC=%p\n",
           (isEnter ? "ENTER" : "EXIT "),

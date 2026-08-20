@@ -70,6 +70,7 @@
 #include "bucomm.h"
 #include "elfcomm.h"
 #include "elf/common.h"
+// includes not needed by fjalar
 //#include "dwarf2.h"
 //#include "dwarf.h"
 //#include "gdb/gdb-index.h"
@@ -161,10 +162,24 @@ unsigned int eh_addr_size;
 // Number of relevant entries to record in the dwarf_entry array
 unsigned long num_relevant_entries = 0;
 
+// The address that a linker writes into .debug_loc (and .debug_ranges) in
+// place of a relocation against a section it discarded, such as the copy of
+// an inlinable function that lost out to an identical copy in another
+// compilation unit.  The value 0 cannot serve as that marker, because a
+// pair of zero addresses terminates a location list; a linker uses 1
+// instead.
+#define TOMBSTONE_ADDRESS 1
+
 char *string_table;
 unsigned long string_table_length;
 Elf_Internal_Ehdr elf_header;
 Elf_Internal_Shdr *section_headers;
+
+// Used to skip unneeded dwarf entries.  While ignore_die_entries is true,
+// ignore_die_level holds the level of the DIE whose subtree is being
+// skipped; skipping ends when that subtree's terminating null entry is seen.
+static int ignore_die_level;
+static bool ignore_die_entries;
 
 // end Fjalar code
 
@@ -408,7 +423,7 @@ get_encoded_value (unsigned char **pdata,
 
 /* Convert a dwarf vma value into a string.  Returns a pointer to a static
    buffer containing the converted VALUE.  The value is converted according
-   to the printf formating character FMTCH.  If NUM_BYTES is non-zero then
+   to the printf formatting character FMTCH.  If NUM_BYTES is non-zero then
    it specifies the maximum number of bytes to be displayed in the converted
    value and FMTCH is ignored - hex is always used.  */
 
@@ -1407,7 +1422,7 @@ display_block (unsigned char *data,
   return data;
 }
 
-// a little preprocesser trick for Fjalar to reduce source line differences
+// a little preprocessor trick for Fjalar to reduce source line differences
 #define printf(...) do {if(ok_to_print) printf(__VA_ARGS__);} while (0)
 
 static int
@@ -2724,7 +2739,8 @@ read_and_display_attr_value (unsigned long           attribute,
   unsigned char *orig_data = data;
 
   int ok_to_print = fjalar_debug_dump && pass2;
-  int ok_to_harvest = pass2 && entry_is_listening_for_attribute(entry, attribute);  // false if entry is null
+  int ok_to_harvest = !ignore_die_entries && pass2
+                      && entry_is_listening_for_attribute(entry, attribute);  // false if entry is null
 
   if (data > end || (data == end && form != DW_FORM_flag_present))
     {
@@ -2899,6 +2915,17 @@ read_and_display_attr_value (unsigned long           attribute,
       break;
 
     case DW_FORM_data4:
+      if (ok_to_harvest) {
+         if (dwarf_version > 3) {
+            harvest_ordinary_unsigned_value(entry, attribute, uvalue);
+         } else {
+            harvest_address_value(entry, attribute, uvalue);
+         }
+      }
+      if (!do_loc)
+	printf ("%c0x%s", delimiter, dwarf_vmatoa ("x", uvalue));
+      break;
+
     case DW_FORM_addr:
     case DW_FORM_sec_offset:
       if (ok_to_harvest)
@@ -3697,34 +3724,16 @@ read_and_display_attr_value (unsigned long           attribute,
       display_discr_list (form, uvalue, data, level, ok_to_print);
       break;
 
-    // DW_AT_location, DW_AT_data_member_location return data in this form:
-    case DW_AT_location:
-      have_frame_base = 1;
-	  /* Fall through.  */
-    case DW_AT_data_member_location:
-      if (block_start)
-	  {
-          printf ("(");
-	  decode_location_expression (block_start, pointer_size, offset_size, dwarf_version,
-                                      uvalue, cu_offset, section, pass2, ok_to_harvest, entry, 0);
-          printf (")");
-	  }
-      else if (form == DW_FORM_data4 || form == DW_FORM_data8)
-	  {
-          printf ("(");
-          printf ("location list");
-          printf (")");
-	  }
-      break;
-
     case DW_AT_frame_base:
 	have_frame_base = 1;
       /* Fall through.  */
-   case DW_AT_loclists_base:
-   case DW_AT_rnglists_base:
-   case DW_AT_str_offsets_base:
-   case DW_AT_string_length:
-   case DW_AT_return_addr:
+    case DW_AT_location:
+    case DW_AT_loclists_base:
+    case DW_AT_rnglists_base:
+    case DW_AT_str_offsets_base:
+    case DW_AT_string_length:
+    case DW_AT_return_addr:
+    case DW_AT_data_member_location:
     case DW_AT_vtable_elem_location:
     case DW_AT_segment:
     case DW_AT_static_link:
@@ -3737,15 +3746,15 @@ read_and_display_attr_value (unsigned long           attribute,
     case DW_AT_GNU_call_site_target:
     case DW_AT_call_target_clobbered:
     case DW_AT_GNU_call_site_target_clobbered:
-//      if ((dwarf_version < 4
-//	   && (form == DW_FORM_data4 || form == DW_FORM_data8))
-//	  || form == DW_FORM_sec_offset
-//	  || form == DW_FORM_loclistx)
-//	{
-//	  if (attribute != DW_AT_rnglists_base
-//	      && attribute != DW_AT_str_offsets_base)
-//	    printf (_(" (location list)"));
-//	}
+      if ((dwarf_version < 4
+	   && (form == DW_FORM_data4 || form == DW_FORM_data8))
+	  || form == DW_FORM_sec_offset
+	  || form == DW_FORM_loclistx)
+	{
+	  if (attribute != DW_AT_rnglists_base
+	      && attribute != DW_AT_str_offsets_base)
+	    printf (_(" (location list)"));
+	}
       /* Fall through.  */
 
     // I believe nothing needs to be done for the following items.
@@ -3761,12 +3770,13 @@ read_and_display_attr_value (unsigned long           attribute,
     case DW_AT_lower_bound:
     case DW_AT_count:
     case DW_AT_rank:
+    printf("block_start: %p\n", block_start);
       if (block_start)
 	{
 	  int need_frame_base;
           location_list* ll = VG_(calloc)("dwarf.c: read_and_display_attr_value", sizeof(location_list), 1);
 
-	  printf ("\t(");
+	  printf ("(");
 	  need_frame_base = decode_location_expression (block_start,
 							pointer_size,
 							offset_size,
@@ -3782,8 +3792,12 @@ read_and_display_attr_value (unsigned long           attribute,
 	  if (need_frame_base && !have_frame_base)
 	    printf (_(" [without DW_AT_frame_base]"));
 	}
-      else if (form == DW_FORM_data4 || form == DW_FORM_data8)
-	  {
+      else if ((dwarf_version < 4
+	   && (form == DW_FORM_data4 || form == DW_FORM_data8))
+	  || form == DW_FORM_sec_offset
+//	  || form == DW_FORM_loclistx  only in dwarf 5
+	                             )
+	{
           if (ok_to_harvest) {
               // frame base location list
               harvest_frame_base(entry, DW_OP_list, uvalue);
@@ -3791,7 +3805,7 @@ read_and_display_attr_value (unsigned long           attribute,
           printf ("(");
           printf ("location list");
           printf (")");
-	  }
+	}
       break;
 
     case DW_AT_stmt_list:
@@ -4379,6 +4393,10 @@ process_debug_info (struct dwarf_section * section,
       level = 0;
       last_level = level;
       saved_level = -1;
+      // start of Fjalar code
+      ignore_die_level = -1;
+      ignore_die_entries = false;
+      // end of Fjalar code
       while (tags < start)
 	{
 	  unsigned long abbrev_number;
@@ -4420,6 +4438,15 @@ process_debug_info (struct dwarf_section * section,
 			level, die_offset);
 
 	      --level;
+
+              // start of Fjalar code
+              // See if we are done processing the children of a DIE item we want to ignore.
+              if (level == ignore_die_level) {
+                  ignore_die_level = -1;
+                  ignore_die_entries = false;
+              }
+              // end of Fjalar code
+
 	      if (level < 0)
 		{
 		  static unsigned num_bogus_warns = 0;
@@ -4481,7 +4508,6 @@ process_debug_info (struct dwarf_section * section,
 
 	  if (!do_loc && do_printing)
 	    printf (" (%s)\n", get_TAG_name (entry->tag));
-
 	  switch (entry->tag)
 	    {
 	    default:
@@ -4498,6 +4524,20 @@ process_debug_info (struct dwarf_section * section,
 	      /* Assuming that there is no DW_AT_frame_base.  */
 	      have_frame_base = 0;
 	      break;
+
+            // start of Fjalar code
+            // tag_is_relevant_entry ignores inlined subroutines, but we
+            // need to ignore any children (formal_parameters and ?) as well.
+	    case DW_TAG_inlined_subroutine:
+	      need_base_address = 0;
+              // Do not reset the level if we are already within an ignored
+              // subtree; the outer subtree's level is the one that ends the skip.
+	      if (!ignore_die_entries && entry->children) {
+                ignore_die_level = level;
+                ignore_die_entries = true;
+              }
+	      break;
+            // end of Fjalar code
 	    }
 
           // start of Fjalar code
@@ -4505,8 +4545,7 @@ process_debug_info (struct dwarf_section * section,
           if (!do_loc && num_relevant_entries > 0) {
             temp_ID = (unsigned long) (orig_tags - section_begin);
             temp_tag_name = entry->tag;
-
-            if (tag_is_relevant_entry(entry->tag)) {
+            if (!ignore_die_entries && tag_is_relevant_entry(entry->tag)) {
               // This is where all the action takes place
               // store the info. as a dwarf_entry struct in dwarf_entry_array
 
@@ -4534,7 +4573,7 @@ process_debug_info (struct dwarf_section * section,
 
           // if first call; count number of dwarf entries needed
           if (do_loc) {
-            if (tag_is_relevant_entry(entry->tag)) {
+            if (!ignore_die_entries && tag_is_relevant_entry(entry->tag)) {
               num_relevant_entries++;
             }
           }
@@ -4571,8 +4610,9 @@ process_debug_info (struct dwarf_section * section,
 					    do_loc,  // Fjalar ignores do_printing flag
 					    section,
 					    this_set,
-                                            level,
-					    dwarf_entry_item, !do_loc);
+					    level,
+					    dwarf_entry_item,
+					    !do_loc);
 	    }
 
 	  /* If a locview attribute appears before a location one,
@@ -4631,9 +4671,6 @@ process_debug_info (struct dwarf_section * section,
     finish_dwarf_entry_array_init();
     // we only want to initialize once, so use counter as flag
     num_relevant_entries = 0;
-    // Print contents of array for help debugging
-    if (fjalar_print_dwarf)
-      print_dwarf_entry_array();
   }
 
   // end of Fjalar code
@@ -7167,6 +7204,11 @@ display_loc_list (struct dwarf_section *section,
   dwarf_vma end;
   unsigned short length;
   int need_frame_base;
+  // start of Fjalar code
+  // True when the location list's current base address is a tombstone; see
+  // the use of TOMBSTONE_ADDRESS below.
+  bool base_address_is_tombstone = false;
+  // end of Fjalar code
 
   if (debug_info_entry >= num_debug_info_entries)
     {
@@ -7229,6 +7271,9 @@ display_loc_list (struct dwarf_section *section,
           && !is_max_address (end, pointer_size))
 	{
 	  base_address = end;
+	  // start of Fjalar code
+	  base_address_is_tombstone = (end == TOMBSTONE_ADDRESS);
+	  // end of Fjalar code
 	  if (fjalar_debug_dump) {
 	    print_dwarf_vma (begin, pointer_size);
 	    print_dwarf_vma (end, pointer_size);
@@ -7275,8 +7320,8 @@ display_loc_list (struct dwarf_section *section,
       // start of Fjalar code
       location_list* ll = VG_(calloc)("dwarf.c: display_loc_list", sizeof(location_list), 1);
       ll->offset = offset;
-      ll->begin = begin;
-      ll->end = end;
+      ll->begin = begin + base_address;
+      ll->end = end + base_address;
       // end of Fjalar code
 
       if (fjalar_debug_dump)
@@ -7302,7 +7347,16 @@ display_loc_list (struct dwarf_section *section,
       if (fjalar_debug_dump)
         putchar ('\n');
 
-      harvest_location_list_entry(ll, offset);
+      // start of Fjalar code
+      // A tombstone base address means that this entry describes code that
+      // the linker discarded, so the entry's addresses are meaningless.
+      if (base_address_is_tombstone) {
+        // harvest_location_list_entry takes ownership of ll; free it otherwise.
+        VG_(free) (ll);
+      } else {
+        harvest_location_list_entry(ll, offset);
+      }
+      // end of Fjalar code
       start += length;
     }
 
@@ -7717,6 +7771,7 @@ loc_offsets_compar (const void *ap, const void *bp)
 // The body of this routine has been modified for Fjalar to be much simpler.
 // In particular, it assumes that the loc lists are in ascending order and
 // do not need to be sorted.  To date, we have not seen a contrary case.
+// Also we do not support Dwarf 5 debug_loclists.
 static int
 display_debug_loc (struct dwarf_section *section, void *file)
 {
@@ -7730,6 +7785,12 @@ display_debug_loc (struct dwarf_section *section, void *file)
 
   if (bytes == 0) {
       FJALAR_DPRINTF (_("\nThe %s section is empty.\n"), section->name);
+      return 0;
+  }
+
+  if (load_debug_info (file) == 0) {
+      warn (_("Unable to load/parse the .debug_info section, so cannot interpret the %s section.\n"),
+	    section->name);
       return 0;
   }
 
@@ -12767,7 +12828,7 @@ load_build_id_debug_file (const char * main_filename ATTRIBUTE_UNUSED, void * ma
       if (handle != NULL)
 	break;
     }
-  /* FIXME: TYhe BFD library also tries a global debugfile directory prefix.  */
+  /* FIXME: The BFD library also tries a global debugfile directory prefix.  */
   if (handle == NULL)
     {
       /* Failed to find a debug file associated with the build-id.
@@ -13306,7 +13367,7 @@ struct dwarf_section_display debug_displays[] =
   { { ".gnu_debuglink",	    "",			     "",	 NO_ABBREVS },	    display_debug_not_supported, NULL,		false },
   { { ".gnu_debugaltlink",  "",			     "",	 NO_ABBREVS },	    display_debug_not_supported, NULL,		false },
   { { ".debug_sup",	    "",			     "",	 NO_ABBREVS },	    display_debug_not_supported, NULL,		false },
-  /* Separate debug info files can containt their own .debug_str section,
+  /* Separate debug info files can contain their own .debug_str section,
      and this might be in *addition* to a .debug_str section already present
      in the main file.  Hence we need to have two entries for .debug_str.  */
   { { ".debug_str",	    ".zdebug_str",	     "",	 NO_ABBREVS },	    display_debug_str,	    &do_debug_str,	false },
