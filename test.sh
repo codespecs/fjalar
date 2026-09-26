@@ -9,10 +9,11 @@ set -e
 # # Output expanded lines of this script as they are executed.
 # set -o xtrace
 
-# Doing this causes Travis to mysteriously fail, so don't do this.
+# Don't do this: it causes Travis to mysteriously fail.
 # export SHELLOPTS
 
 # Get some system info for debugging.
+echo "start of system info"
 gcc --version
 make --version
 if command -v lsb_release &> /dev/null ; then
@@ -31,6 +32,7 @@ else
   JAVA_HOME="${JAVA_HOME:-$(dirname "$(dirname "$(readlink -f "$(which javac)")")")}"
 fi
 export JAVA_HOME
+echo "JAVA_HOME=$JAVA_HOME"
 
 # TODO: The tests ought to work even if $DAIKONDIR is not set.
 export DAIKONDIR="${DAIKONDIR:-$(pwd)/../daikon}"

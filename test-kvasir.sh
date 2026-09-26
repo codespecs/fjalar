@@ -3,9 +3,9 @@
 # Clone Daikon, then run Daikon's scripts/test-kvasir.sh using the Fjalar and
 # Kvasir in this repository (rather than a fresh clone of Fjalar).
 #
-# This complements ./test.sh.  Daikon's test-kvasir.sh runs the DynComp
-# regression tests, which ./test.sh does not.  It does not build the
-# documentation nor check that command-line options are documented.
+# This complements ./test.sh.  Daikon's test-kvasir.sh runs the
+# DynComp regression tests, whereas ./test.sh builds the documentation
+# and checks that command-line options are documented.
 
 # Fail the whole script if any command fails.
 set -e
