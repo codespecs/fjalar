@@ -58,12 +58,4 @@ make doc
 # make test
 
 ## Kvasir tests
-## Kvasir does not currently pass all its tests on Ubuntu 14.04 which is
-## used by Travis.  We get around this for now by comparing the list of
-## failures with an expected list.
-## If Travis moves to Ubuntu 16.04, or we can make it work using Docker,
-## we should be able to remove this step.
-#make MPARG=-j1 daikon-test 2>&1 | tee test.log
-#grep FAILED test.log > travis-fail
-#diff travis-fail travis-fail.goal
 make MPARG=-j1 daikon-test
