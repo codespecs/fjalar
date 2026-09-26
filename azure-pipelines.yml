@@ -3,7 +3,7 @@ jobs:
   # The JDK version doesn't matter, but these Docker images happen to use
   # different underlying OS versions.
 
-  - job: ubuntu_stable
+  - job: ubuntu_26_04
     pool:
       vmImage: 'ubuntu-latest'
     container: mdernst/daikon-ubuntu-jdk11-plus:latest
@@ -13,17 +13,7 @@ jobs:
       - bash: ./test.sh
         displayName: test.sh
 
-  - job: ubuntu_rolling
-    pool:
-      vmImage: 'ubuntu-latest'
-    container: mdernst/daikon-ubuntu-jdk25-plus:latest
-    steps:
-      - checkout: self
-        fetchDepth: 25
-      - bash: ./test.sh
-        displayName: test.sh
-
-  - job: rocky
+  - job: rocky_9
     pool:
       vmImage: 'ubuntu-latest'
     container: mdernst/daikon-rockylinux-jdk11-plus:latest

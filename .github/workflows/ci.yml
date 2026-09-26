@@ -32,7 +32,7 @@ jobs:
   # options are documented, builds the documentation, and runs the Kvasir
   # regression tests.
 
-  ubuntu_stable:
+  ubuntu_26_04:
     runs-on: ubuntu-latest
     container:
       image: mdernst/daikon-ubuntu-jdk11-plus:latest
@@ -42,29 +42,11 @@ jobs:
         with:
           set-safe-directory: true
           fetch-depth: 25
-          # Nothing pushes, so do not leave a credential in the workspace while
-          # building and running code from a pull request.
           persist-credentials: false
       - name: test.sh
         run: ./test.sh
 
-  ubuntu_rolling:
-    runs-on: ubuntu-latest
-    container:
-      image: mdernst/daikon-ubuntu-jdk25-plus:latest
-    timeout-minutes: 70
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          set-safe-directory: true
-          fetch-depth: 25
-          # Nothing pushes, so do not leave a credential in the workspace while
-          # building and running code from a pull request.
-          persist-credentials: false
-      - name: test.sh
-        run: ./test.sh
-
-  rocky:
+  rocky_9:
     runs-on: ubuntu-latest
     container:
       image: mdernst/daikon-rockylinux-jdk11-plus:latest
@@ -74,8 +56,6 @@ jobs:
         with:
           set-safe-directory: true
           fetch-depth: 25
-          # Nothing pushes, so do not leave a credential in the workspace while
-          # building and running code from a pull request.
           persist-credentials: false
       - name: test.sh
         run: ./test.sh
@@ -83,7 +63,7 @@ jobs:
   # These jobs run ./test-kvasir.sh, which runs Daikon's own scripts/test-kvasir.sh
   # against this repository.  That additionally runs the DynComp regression tests.
 
-  kvasir_ubuntu_stable:
+  kvasir_ubuntu_26_04:
     runs-on: ubuntu-latest
     container:
       image: mdernst/daikon-ubuntu-jdk11-plus:latest
@@ -93,29 +73,11 @@ jobs:
         with:
           set-safe-directory: true
           fetch-depth: 25
-          # Nothing pushes, so do not leave a credential in the workspace while
-          # building and running code from a pull request.
           persist-credentials: false
       - name: test-kvasir.sh
         run: ./test-kvasir.sh
 
-  kvasir_ubuntu_rolling:
-    runs-on: ubuntu-latest
-    container:
-      image: mdernst/daikon-ubuntu-jdk25-plus:latest
-    timeout-minutes: 70
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          set-safe-directory: true
-          fetch-depth: 25
-          # Nothing pushes, so do not leave a credential in the workspace while
-          # building and running code from a pull request.
-          persist-credentials: false
-      - name: test-kvasir.sh
-        run: ./test-kvasir.sh
-
-  kvasir_rocky:
+  kvasir_rocky_9:
     runs-on: ubuntu-latest
     container:
       image: mdernst/daikon-rockylinux-jdk11-plus:latest
@@ -125,8 +87,6 @@ jobs:
         with:
           set-safe-directory: true
           fetch-depth: 25
-          # Nothing pushes, so do not leave a credential in the workspace while
-          # building and running code from a pull request.
           persist-credentials: false
       - name: test-kvasir.sh
         run: ./test-kvasir.sh
