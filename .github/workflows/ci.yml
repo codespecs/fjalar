@@ -21,7 +21,10 @@ permissions:
 env:
   GIT_CONFIG_COUNT: "1"
   GIT_CONFIG_KEY_0: safe.directory
-  GIT_CONFIG_VALUE_0: ${{ github.workspace }}
+  # The container runs as root, but the workspace is owned by the runner's user,
+  # so git refuses to operate on it without this setting.  `github.workspace`
+  # would not work:  it is the path on the host, not the path in the container.
+  GIT_CONFIG_VALUE_0: "*"
 
 jobs:
 
