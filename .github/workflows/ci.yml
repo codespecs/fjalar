@@ -21,10 +21,9 @@ permissions:
 env:
   GIT_CONFIG_COUNT: "1"
   GIT_CONFIG_KEY_0: safe.directory
-  # The container runs as root, but the workspace is owned by the runner's user,
-  # so git refuses to operate on it without this setting.  `github.workspace`
-  # would not work:  it is the path on the host, not the path in the container.
-  GIT_CONFIG_VALUE_0: "*"
+  # This matches Daikon's CI.  `github.workspace` is the path on the host, not
+  # the path in the container, so this setting may have no effect.
+  GIT_CONFIG_VALUE_0: ${{ github.workspace }}
 
 jobs:
 
@@ -77,8 +76,25 @@ jobs:
           set-safe-directory: true
           fetch-depth: 25
           persist-credentials: false
+      # The DynComp results of some tests differ across runners; record which CPU
+      # this job ran on, and save the test outputs if the tests fail.
+      - name: CPU information
+        run: grep -m1 '^model name' /proc/cpuinfo; grep -m1 '^flags' /proc/cpuinfo
       - name: test-kvasir.sh
         run: ./test-kvasir.sh
+      - name: Collect Kvasir test outputs
+        if: ${{ failure() }}
+        run: |
+          mkdir -p kvasir-test-outputs
+          cd ../daikon/tests/kvasir-tests
+          find . \( -name '*.diff' -o -name '*.comp' -o -name '*.dyncomp.decls' \) -print0 \
+            | xargs -0 -r cp --parents -t "$GITHUB_WORKSPACE/kvasir-test-outputs"
+      - name: Upload Kvasir test outputs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: kvasir-test-outputs-kvasir_ubuntu_26_04
+          path: kvasir-test-outputs
 
   kvasir_rocky_9:
     runs-on: ubuntu-latest
@@ -91,5 +107,22 @@ jobs:
           set-safe-directory: true
           fetch-depth: 25
           persist-credentials: false
+      # The DynComp results of some tests differ across runners; record which CPU
+      # this job ran on, and save the test outputs if the tests fail.
+      - name: CPU information
+        run: grep -m1 '^model name' /proc/cpuinfo; grep -m1 '^flags' /proc/cpuinfo
       - name: test-kvasir.sh
         run: ./test-kvasir.sh
+      - name: Collect Kvasir test outputs
+        if: ${{ failure() }}
+        run: |
+          mkdir -p kvasir-test-outputs
+          cd ../daikon/tests/kvasir-tests
+          find . \( -name '*.diff' -o -name '*.comp' -o -name '*.dyncomp.decls' \) -print0 \
+            | xargs -0 -r cp --parents -t "$GITHUB_WORKSPACE/kvasir-test-outputs"
+      - name: Upload Kvasir test outputs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: kvasir-test-outputs-kvasir_rocky_9
+          path: kvasir-test-outputs
