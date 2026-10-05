@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Fail the whole script if any command fails
+# Fail the whole script if any command fails.
 set -e
 
 ## Useful for debugging and sometimes for interpreting the script.
@@ -9,10 +9,11 @@ set -e
 # # Output expanded lines of this script as they are executed.
 # set -o xtrace
 
-# Doing this causes Travis to mysteriously fail, so don't do this.
+# Don't do this: it causes Travis to mysteriously fail.
 # export SHELLOPTS
 
 # Get some system info for debugging.
+echo "start of system info"
 gcc --version
 make --version
 if command -v lsb_release &> /dev/null ; then
@@ -31,18 +32,15 @@ else
   JAVA_HOME="${JAVA_HOME:-$(dirname "$(dirname "$(readlink -f "$(which javac)")")")}"
 fi
 export JAVA_HOME
+echo "JAVA_HOME=$JAVA_HOME"
 
 # TODO: The tests ought to work even if $DAIKONDIR is not set.
 export DAIKONDIR="${DAIKONDIR:-$(pwd)/../daikon}"
 echo "DAIKONDIR=$DAIKONDIR"
 
 
-if [ -d "/tmp/git-scripts" ] ; then
-  (cd /tmp/git-scripts && git -C pull -q) > /dev/null 2>&1
-else
-  (cd /tmp && git clone --depth 1 -q https://github.com/plume-lib/git-scripts.git)
-fi
-/tmp/git-scripts/git-clone-related codespecs daikon
+GIT_SCRIPTS="$("$(dirname "$0")"/clone-git-scripts.sh)"
+"$GIT_SCRIPTS/git-clone-related" codespecs daikon
 ln -s "$(pwd)" "${DAIKONDIR}/fjalar" || true
 
 make check-options
@@ -60,12 +58,4 @@ make doc
 # make test
 
 ## Kvasir tests
-## Kvasir does not currently pass all its tests on Ubuntu 14.04 which is
-## used by Travis.  We get around this for now by comparing the list of
-## failures with an expected list.
-## If Travis moves to Ubuntu 16.04, or we can make it work using Docker,
-## we should be able to remove this step.
-#make MPARG=-j1 daikon-test 2>&1 | tee test.log
-#grep FAILED test.log > travis-fail
-#diff travis-fail travis-fail.goal
 make MPARG=-j1 daikon-test

@@ -1,0 +1,128 @@
+name: CI
+
+"on":
+  push:
+    branches:
+      - "**"
+  pull_request:
+    branches:
+      - "**"
+
+# Cancel in-progress jobs.
+# For a pull request, "github.ref" is "refs/pull/NUMBER/merge", which is unique
+# per pull request even when the pull request originates from a fork.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: safe.directory
+  # This matches Daikon's CI.  `github.workspace` is the path on the host, not
+  # the path in the container, so this setting may have no effect.
+  GIT_CONFIG_VALUE_0: ${{ github.workspace }}
+
+jobs:
+
+  # The JDK version doesn't matter, but these Docker images happen to use
+  # different underlying OS versions.
+
+  # These jobs run ./test.sh, which builds Fjalar, checks that command-line
+  # options are documented, builds the documentation, and runs the Kvasir
+  # regression tests.
+
+  ubuntu_26_04:
+    runs-on: ubuntu-latest
+    container:
+      image: mdernst/daikon-ubuntu-jdk11-plus:latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          set-safe-directory: true
+          fetch-depth: 25
+          persist-credentials: false
+      - name: test.sh
+        run: ./test.sh
+
+  rocky_9:
+    runs-on: ubuntu-latest
+    container:
+      image: mdernst/daikon-rockylinux-jdk11-plus:latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          set-safe-directory: true
+          fetch-depth: 25
+          persist-credentials: false
+      - name: test.sh
+        run: ./test.sh
+
+  # These jobs run ./test-kvasir.sh, which runs Daikon's own scripts/test-kvasir.sh
+  # against this repository.  That additionally runs the DynComp regression tests.
+
+  kvasir_ubuntu_26_04:
+    runs-on: ubuntu-latest
+    container:
+      image: mdernst/daikon-ubuntu-jdk11-plus:latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          set-safe-directory: true
+          fetch-depth: 25
+          persist-credentials: false
+      # The DynComp results of some tests differ across runners; record which CPU
+      # this job ran on, and save the test outputs if the tests fail.
+      - name: CPU information
+        run: grep -m1 '^model name' /proc/cpuinfo; grep -m1 '^flags' /proc/cpuinfo
+      - name: test-kvasir.sh
+        run: ./test-kvasir.sh
+      - name: Collect Kvasir test outputs
+        if: ${{ failure() }}
+        run: |
+          mkdir -p kvasir-test-outputs
+          cd ../daikon/tests/kvasir-tests
+          find . \( -name '*.diff' -o -name '*.comp' -o -name '*.dyncomp.decls' \) -print0 \
+            | xargs -0 -r cp --parents -t "$GITHUB_WORKSPACE/kvasir-test-outputs"
+      - name: Upload Kvasir test outputs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: kvasir-test-outputs-kvasir_ubuntu_26_04
+          path: kvasir-test-outputs
+
+  kvasir_rocky_9:
+    runs-on: ubuntu-latest
+    container:
+      image: mdernst/daikon-rockylinux-jdk11-plus:latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          set-safe-directory: true
+          fetch-depth: 25
+          persist-credentials: false
+      # The DynComp results of some tests differ across runners; record which CPU
+      # this job ran on, and save the test outputs if the tests fail.
+      - name: CPU information
+        run: grep -m1 '^model name' /proc/cpuinfo; grep -m1 '^flags' /proc/cpuinfo
+      - name: test-kvasir.sh
+        run: ./test-kvasir.sh
+      - name: Collect Kvasir test outputs
+        if: ${{ failure() }}
+        run: |
+          mkdir -p kvasir-test-outputs
+          cd ../daikon/tests/kvasir-tests
+          find . \( -name '*.diff' -o -name '*.comp' -o -name '*.dyncomp.decls' \) -print0 \
+            | xargs -0 -r cp --parents -t "$GITHUB_WORKSPACE/kvasir-test-outputs"
+      - name: Upload Kvasir test outputs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: kvasir-test-outputs-kvasir_rocky_9
+          path: kvasir-test-outputs
