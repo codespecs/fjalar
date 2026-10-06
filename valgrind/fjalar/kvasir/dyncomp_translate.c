@@ -385,9 +385,13 @@ IRAtom* expr2tags_Qop_DC ( DCEnv* dce,
          }
          break;
 
-      // Doesn't look like any interactions  (markro)
+      // Concatenation, like the binary Iop_V128HLtoV256, is an interaction.
       case Iop_64x4toV256:
-         break;
+         return mkIRExprCCall (Ity_Word,
+                               3 /*Int regparms*/,
+                               "MC_(helperc_MERGE_4_TAGS)",
+                               &MC_(helperc_MERGE_4_TAGS),
+                               mkIRExprVec_4( vatom1, vatom2, vatom3, vatom4 ));
 
 // Unimplemented
       case Iop_Rotx32:                      // only used by mips
@@ -395,6 +399,7 @@ IRAtom* expr2tags_Qop_DC ( DCEnv* dce,
 
       default:
          ppIROp(op);
+         VG_(printf)("\nUnhandled IROp: 0x%x\n", (UInt)op);
          VG_(tool_panic)("memcheck:expr2tags_Qop");
    }
 
@@ -548,6 +553,7 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
 
       default:
          ppIROp(op);
+         VG_(printf)("\nUnhandled IROp: 0x%x\n", (UInt)op);
          VG_(tool_panic)("memcheck:expr2tags_Triop");
    }
 
@@ -1564,6 +1570,7 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       // handle every possible IR binary op. type (right?)
    default:
       ppIROp(op);
+      VG_(printf)("\nUnhandled IROp: 0x%x\n", (UInt)op);
       VG_(tool_panic)("dyncomp:expr2tags_Binop_DC");
    }
 
