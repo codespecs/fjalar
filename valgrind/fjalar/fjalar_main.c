@@ -159,6 +159,26 @@ Addr (*get_reg[11])( ThreadId tid ) = {
 // For debugging purposes, a mapping between
 // DWARF location atoms and their string
 // representation
+#if defined(VGA_amd64)
+const HChar* dwarf_reg_string[16] = {
+  "xAX",
+  "xDX",
+  "xCX",
+  "xBX",
+  "xSI",
+  "xDI",
+  "xFP",
+  "xSP",
+  "R8",
+  "R9",
+  "R10",
+  "R11",
+  "R12",
+  "R13",
+  "R14",
+  "R15"
+};
+#else
 const HChar* dwarf_reg_string[9] = {
   "xAX",
   "xCX",
@@ -170,6 +190,7 @@ const HChar* dwarf_reg_string[9] = {
   "xDI",
   "xIP"
 };
+#endif
 
 // located in VEX/priv/main_util.c
 extern void vex_bzero(void* s, UInt n);
