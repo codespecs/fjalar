@@ -1009,7 +1009,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
           for(i = 0; i < var->location_expression_size; i++ ) {
             dwarf_location *dloc  = &(var->location_expression[i]);
             unsigned int  op = dloc->atom;
-            int reg_val;
+            Addr reg_val;
 
             if(op == DW_OP_addr) {
               // DWARF supplied address
@@ -1031,15 +1031,22 @@ void visitVariableGroup(VariableOrigin varOrigin,
             } else if((op >= DW_OP_reg0) && (op <= DW_OP_reg31)) {
               // Get value located in architectural register
               reg_val = (*get_reg[dloc->atom - DW_OP_reg0])(tid);
-              FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %x\n", dwarf_reg_string[dloc->atom - DW_OP_reg0],
-                             (unsigned int)reg_val);
+              FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %p\n", dwarf_reg_string[dloc->atom - DW_OP_reg0],
+                             (void *)reg_val);
               var_loc = (Addr)&reg_val;
 
             } else if((op >= DW_OP_breg0) && (op <= DW_OP_breg31)) {
               // Get value pointed to by architectural register
-              reg_val = (*get_reg[dloc->atom - DW_OP_breg0])(tid);
-              FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %x\n", dwarf_reg_string[dloc->atom - DW_OP_breg0],
-                             (unsigned int) reg_val);
+              if (dloc->atom - DW_OP_breg0 == DWARF_SP_REG) {
+                // Use the stack pointer at function entry (after the
+                // prologue).  At function exit, the epilogue has already
+                // popped the stack frame.
+                reg_val = funcPtr->guestStackStart + VG_STACK_REDZONE_SZB;
+              } else {
+                reg_val = (*get_reg[dloc->atom - DW_OP_breg0])(tid);
+              }
+              FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %p\n", dwarf_reg_string[dloc->atom - DW_OP_breg0],
+                             (void *)reg_val);
               var_loc = reg_val + dloc->atom_offset;
               FJALAR_DPRINTF("\tAdding %lld to the register value for %p\n", dloc->atom_offset, (void *)var_loc);
               tl_assert(var_loc);
