@@ -48,10 +48,10 @@ jobs:
       - name: test.sh
         run: ./test.sh
 
-  rocky_9:
+  rocky_10:
     runs-on: ubuntu-latest
     container:
-      image: mdernst/daikon-rockylinux-jdk11-plus:latest
+      image: mdernst/daikon-rockylinux-jdk25-plus:latest
     timeout-minutes: 70
     steps:
       - uses: actions/checkout@v7
@@ -96,10 +96,10 @@ jobs:
           name: kvasir-test-outputs-kvasir_ubuntu_26_04
           path: kvasir-test-outputs
 
-  kvasir_rocky_9:
+  kvasir_rocky_10:
     runs-on: ubuntu-latest
     container:
-      image: mdernst/daikon-rockylinux-jdk11-plus:latest
+      image: mdernst/daikon-rockylinux-jdk25-plus:latest
     timeout-minutes: 70
     steps:
       - uses: actions/checkout@v7
@@ -124,5 +124,5 @@ jobs:
         if: ${{ failure() }}
         uses: actions/upload-artifact@v7
         with:
-          name: kvasir-test-outputs-kvasir_rocky_9
+          name: kvasir-test-outputs-kvasir_rocky_10
           path: kvasir-test-outputs
