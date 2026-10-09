@@ -13,10 +13,10 @@ jobs:
       - bash: ./test.sh
         displayName: test.sh
 
-  - job: rocky_9
+  - job: rocky_10
     pool:
       vmImage: 'ubuntu-latest'
-    container: mdernst/daikon-rockylinux-jdk11-plus:latest
+    container: mdernst/daikon-rockylinux-jdk25-plus:latest
     steps:
       - checkout: self
         fetchDepth: 25
