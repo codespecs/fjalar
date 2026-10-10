@@ -1701,13 +1701,81 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 }
 
 static
-IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
+IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
 {
    IRAtom* vatom = expr2tags_DC( dce, atom );
    tl_assert(isOriginalAtom_DC(dce,atom));
 
-   // Do nothing with unary ops.  Just evaluate the
-   // sub-expression and return it:
+   switch (op) {
+
+   // ----------------------------------------------------------
+   // The result is a boolean, or a mask or count computed from
+   // the bits of the operand, rather than a value of the same kind
+   // as the operand.  As for binary comparisons (see
+   // expr2tags_Binop_DC), the result gets tag 0.
+   // ----------------------------------------------------------
+
+   case Iop_32to1:
+   case Iop_64to1:
+   case Iop_Clz32:
+   case Iop_Clz64:
+   case Iop_ClzNat32:                  // only used by ppc
+   case Iop_ClzNat64:                  // only used by ppc
+   case Iop_Clz16x4:                   // only used by arm
+   case Iop_Clz16x8:                   // only used by arm ppc arm64 mips s390
+   case Iop_Clz32x2:                   // only used by arm
+   case Iop_Clz32x4:                   // only used by arm ppc arm64 mips s390
+   case Iop_Clz64x2:                   // only used by ppc mips s390
+   case Iop_Clz8x16:                   // only used by arm ppc arm64 mips s390
+   case Iop_Clz8x8:                    // only used by arm
+   case Iop_CmpNEZ128x1:               // unused
+   case Iop_CmpNEZ16:                  // unused
+   case Iop_CmpNEZ16x16:               // unused
+   case Iop_CmpNEZ16x2:                // unused
+   case Iop_CmpNEZ16x4:                // only used by arm
+   case Iop_CmpNEZ16x8:                // only used by arm
+   case Iop_CmpNEZ32:                  // unused
+   case Iop_CmpNEZ32x2:                // only used by arm
+   case Iop_CmpNEZ32x4:                // only used by arm
+   case Iop_CmpNEZ32x8:                // unused
+   case Iop_CmpNEZ64:                  // unused
+   case Iop_CmpNEZ64x2:                // only used by arm
+   case Iop_CmpNEZ64x4:                // unused
+   case Iop_CmpNEZ8:                   // unused
+   case Iop_CmpNEZ8x16:                // only used by arm
+   case Iop_CmpNEZ8x32:                // unused
+   case Iop_CmpNEZ8x4:                 // unused
+   case Iop_CmpNEZ8x8:                 // only used by arm
+   case Iop_CmpwNEZ32:                 // unused
+   case Iop_CmpwNEZ64:                 // only used by arm
+   case Iop_Ctz16x8:
+   case Iop_Ctz8x16:
+   case Iop_Ctz32:
+   case Iop_CtzNat32:
+   case Iop_Ctz32x4:
+   case Iop_Ctz64:
+   case Iop_CtzNat64:
+   case Iop_Ctz64x2:
+   case Iop_GetMSBs8x16:
+   case Iop_GetMSBs8x8:
+   case Iop_PopCount32:                // only used by ppc
+   case Iop_PopCount64:                // only used by ppc
+      // Do not simply return IRExpr_Const(IRConst_UWord(0)):  see
+      // MC_(helperc_RETURN_0).
+      if (atom->tag == Iex_Const) {
+         return IRExpr_Const(IRConst_UWord(0));
+      }
+      return mkIRExprCCall (Ity_Word,
+                            1 /*Int regparms*/,
+                            "MC_(helperc_RETURN_0)",
+                            &MC_(helperc_RETURN_0),
+                            mkIRExprVec_1( vatom ));
+
+   // ----------------------------------------------------------
+   // Return the tag of the operand:
+   // ----------------------------------------------------------
+
+   default:
    // pgbovine: Actually, when you widen stuff, don't you want to
    //       create new tags for the new bytes and merge them?
    //       But you can't do that because you only have the word-sized
@@ -1997,7 +2065,8 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
    // Iop_Widen8Sto16x8:               // only used by arm
    // Iop_Widen8Uto16x8:               // only used by arm
 
-   return vatom;
+      return vatom;
+   }
 }
 
 /*
@@ -2401,7 +2470,7 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
                 );
 
       case Iex_Unop:
-         return expr2tags_Unop_DC( dce, e->Iex.Unop.arg );
+         return expr2tags_Unop_DC( dce, e->Iex.Unop.op, e->Iex.Unop.arg );
 
       case Iex_Load:
          return expr2tags_LDle_DC( dce, e->Iex.Load.ty,
