@@ -85,12 +85,12 @@ to update Fjalar when a new version of Binutils is released.
 To determine whether a newer version of Valgrind is available, compare file
 @url{https://raw.githubusercontent.com/codespecs/fjalar/master/valgrind/REVISION,
 @file{fjalar/valgrind/REVISION}} to URL
-@url{http://valgrind.org/downloads/current.html}.
+@url{https://valgrind.org/downloads/current.html}.
 
 To determine whether a newer version of Binutils is available, compare file
 @url{https://raw.githubusercontent.com/codespecs/fjalar/master/valgrind/REVISION,
 @file{fjalar/valgrind/REVISION}} to URL
-@url{http://ftp.gnu.org/gnu/binutils/?C=M;O=D}.
+@url{https://ftp.gnu.org/gnu/binutils/?C=M;O=D}.
 
 
 @node Getting Started
@@ -99,7 +99,16 @@ To determine whether a newer version of Binutils is available, compare file
 The instructions in this document assume you use bash as your shell.
 If you use a different shell, you will need to adjust the instructions
 accordingly.  Also, we assume @env{$INV} points to a parent directory that
-contains both the Daikon and Fjalar source trees.
+contains both the Daikon and Fjalar source trees, and that @env{$DAIKONDIR}
+points to the Daikon source tree within it:
+
+@example
+export DAIKONDIR=$INV/daikon
+@end example
+
+If you already had @env{$DAIKONDIR} set, make sure it is @file{$INV/daikon}.
+If it pointed elsewhere, some steps would build and test one copy of Daikon,
+and other steps would use a different copy.
 
 @menu
 * Obtain a copy of Daikon and Fjalar::
@@ -140,7 +149,7 @@ sudo apt -yqq install binutils-dev
 Update your enlistment to the latest versions:
 
 @example
-cd $INV/daikon
+cd $DAIKONDIR
 git pull
 cd $INV/fjalar
 git pull
@@ -149,7 +158,7 @@ git pull
 Ensure there are no local changes:
 
 @example
-cd $INV/daikon
+cd $DAIKONDIR
 git diff
 cd $INV/fjalar
 git diff
@@ -161,7 +170,7 @@ commit and push them, then start over from the beginning.
 Ensure there are no outgoing changes:
 
 @example
-cd $INV/daikon
+cd $DAIKONDIR
 git log --branches --not --remotes
 cd $INV/fjalar
 git log --branches --not --remotes
@@ -181,14 +190,14 @@ Re-compile Fjalar, then run Daikon's Kvasir tests. (The tests take about 20 minu
 make -C $DAIKONDIR compile test
 
 make -C $INV/fjalar build
-make -C $INV/daikon/tests/kvasir-tests clean-all regression-tests
+make -C $DAIKONDIR/tests/kvasir-tests clean-all regression-tests
 @end example
 
 The tests should pass. If any tests fail, fix them, then start over from
 the beginning.
-As of March 22, 2020, all tests pass on a standard UW/CSE machine running CentOS 7.7.1908.
-They also pass on Fedora 25, 28, 30 and Ubuntu 16.04, 17.10 and 18.04.
-(We use Azure pipelines and CircleCI workflows to run these configurations.)
+Continuous integration (GitHub Actions, configured in
+@file{.github/workflows/ci.yml}) runs these tests on Ubuntu and Rocky Linux;
+see that file for the exact operating system versions.
 
 At this point, the source trees are ready for the merge.
 However, the Fjalar repository contains
@@ -220,7 +229,7 @@ git ls-files --others --exclude-standard
 Execute the following Git command:
 
 @example
-git ls-remote --tags --refs http://sourceware.org/git/valgrind.git | grep -v svn | sort -k2V
+git ls-remote --tags --refs https://sourceware.org/git/valgrind.git | grep -v svn | sort -k2V
 @end example
 
 @noindent
@@ -264,7 +273,7 @@ Otherwise, run the following commands.
 
 @example
 cd $INV
-git clone -b $VOLDVER --depth 1 http://sourceware.org/git/valgrind.git valgrind-old
+git clone -b $VOLDVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-old
 @end example
 
 
@@ -276,11 +285,11 @@ latest Valgrind source tree.
 
 @example
 cd $INV
-git clone -b $VNEWVER --depth 1 http://sourceware.org/git/valgrind.git valgrind-new
+git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-new
 @end example
 
 @c For a  full repro of the current Valgrind source:
-@c git clone http://sourceware.org/git/valgrind.git valgrind-git
+@c git clone https://sourceware.org/git/valgrind.git valgrind-git
 
 @node Remove files that have been removed upstream
 @section Remove files that have been removed upstream
@@ -492,7 +501,7 @@ reflected. Most of the changes to the public VEX IR can be discovered
 by running the following command:
 
 @example
-cd $inv
+cd $INV
 diff -b valgrind-old/VEX/pub/libvex_ir.h valgrind-new/VEX/pub/libvex_ir.h
 @end example
 
@@ -507,7 +516,8 @@ corresponding to the expression type and some call to a DynComp tag
 function. Most often VEX IR changes will be syntactical in nature and
 will only involve changing the names of the instructions. If the log
 indicates that new VEX IR instructions have been added, they will need
-to be explicitly supported by DynComp. Please see Appendix C for
+to be explicitly supported by DynComp.
+@xref{Supporting new VEX IR Instruction}, for
 guidelines on supporting new VEX instructions.
 
 
@@ -517,7 +527,7 @@ guidelines on supporting new VEX instructions.
 Valgrind has a set of verification tests known as @command{regtest}.  We want
 to run these tests on a clean version of Valgrind to establish a
 baseline set of results for partial verification of the merge process.
-Since running these tests generate a lot of additional files, we wait
+Since running these tests generates a lot of additional files, we wait
 until after we have done the source merge update to run this test.
 This keeps the files used during the source merge update to a minimum.
 
@@ -578,7 +588,7 @@ have the proper glibc-debuginfo installed.)
 (Note the final include file failure - this is expected behavior.)
 (Note that the unknown directory failure is expected behavior.)
 
-Here is a another example from the latest run of these tests (01/21/2026)
+Here is another example from the latest run of these tests (01/21/2026)
 running Valgrind 3.23 on a Ubuntu Linux (25.10) based system:
 
 @example
@@ -605,7 +615,7 @@ make: *** [Makefile:1445: regtest] Error 1
 @end example
 
 As you can see, the results vary depending on the host system.  The important thing to verify
-is that the results are the same before and after any Binutils changes.
+is that the results are the same before and after the merge.
 
 @node Updating Readelf from Binutils
 @chapter Updating Readelf from Binutils
@@ -615,7 +625,7 @@ is that the results are the same before and after any Binutils changes.
 * Get Current Valgrind Regtest Baseline Results::
 * Creating the binutils patch and diff files::
 * Merging the binutils changes::
-* Hints to modifing dwarf.c and readelf.c::
+* Hints to modifying dwarf.c and readelf.c::
 @end menu
 
 
@@ -623,8 +633,8 @@ is that the results are the same before and after any Binutils changes.
 @section Overview
 
 The GNU Binutils are completely independent of Valgrind and have their
-own home page (@uref{http://www.gnu.org/software/binutils/})
-and release site (@uref{http://ftp.gnu.org/gnu/binutils/}).
+own home page (@uref{https://www.gnu.org/software/binutils/})
+and release site (@uref{https://ftp.gnu.org/gnu/binutils/}).
 While the majority of this document discusses how to update Valgrind,
 this chapter describes how to update the @command{readelf} code from Binutils.
 For ease of verification, it is recommended that you do not update Valgrind
@@ -679,7 +689,7 @@ to find the correct value.
 @c   git clone git://sourceware.org/git/binutils-gdb.git
 
 @example
-# Get new version number from @uref{http://ftp.gnu.org/gnu/binutils/?C=M;O=D}
+# Get new version number from @uref{https://ftp.gnu.org/gnu/binutils/?C=M;O=D}
 export BUNEWVER=2.34
 
 source $INV/fjalar/valgrind/REVISION
@@ -689,9 +699,9 @@ export BUOLD=binutils-$BUOLDVER
 export BUNEW=binutils-$BUNEWVER
 mkdir -p ~/tmp
 cd ~/tmp
-wget http://ftp.gnu.org/gnu/binutils/binutils-$BUOLDVER.tar.gz
+wget https://ftp.gnu.org/gnu/binutils/binutils-$BUOLDVER.tar.gz
 tar xzf binutils-$BUOLDVER.tar.gz
-wget http://ftp.gnu.org/gnu/binutils/binutils-$BUNEWVER.tar.gz
+wget https://ftp.gnu.org/gnu/binutils/binutils-$BUNEWVER.tar.gz
 tar xzf binutils-$BUNEWVER.tar.gz
 diff -ur $BUOLD/include $BUNEW/include > include.patch
 diff -u  $BUOLD/libiberty/dwarfnames.c \
@@ -718,7 +728,7 @@ diff -ub ~/tmp/$BUOLD/binutils/readelf.c readelf.c > readelf-binutils-vs-fjalar.
 Before applying any patches, run Daikon's Kvasir tests:
 
 @example
-  make -C $INV/daikon/tests/kvasir-tests clean-all regression-tests
+  make -C $DAIKONDIR/tests/kvasir-tests clean-all regression-tests
 @end example
 
 @noindent
@@ -756,7 +766,7 @@ It can be difficult to undo a patch operation, so you should first attempt
 a dry run.  It is recommended that you only do one of the patches at a
 time in order to make review of the output easier.
 (The @command{lines-notbetween} command is from
-@uref{http://mernst.github.io/plume-lib/, plume-lib}.)
+@uref{https://mernst.github.io/plume-lib/, plume-lib}.)
 
 @smallexample
 cd $INV/fjalar/valgrind/fjalar
@@ -817,7 +827,7 @@ merged or if the change is not relevant.
 As noted above, @file{dwarf.c} and @file{readelf.c} will probably
 have several conflicts.  As you edit the new files, you may wish to
 review the diffs in the previous versions as the new diffs should be similar.
-@xref{Hints to modifing dwarf.c and readelf.c} for more source details
+@xref{Hints to modifying dwarf.c and readelf.c} for more source details
 that may help you with the merge process.
 
 Again, a visual merge tool can make this process easier. Here is one
@@ -842,8 +852,8 @@ Then proceed to @ref{Compiling and Testing}.
 
 
 @need 2000
-@node Hints to modifing dwarf.c and readelf.c
-@section Hints to modifing dwarf.c and readelf.c
+@node Hints to modifying dwarf.c and readelf.c
+@section Hints to modifying dwarf.c and readelf.c
 
 Many sections of code in @file{dwarf.c} and @code{readelf.c}, some
 of them quite large, are not needed for Fjalar and have been
@@ -860,11 +870,11 @@ disabled with C preprocessor commands.  The general format is:
 @noindent
 Keeping the unused code instead of deleting it makes the
 @command{diff/patch} process go much smoother with fewer
-conflicts.  In is unnecessary (and inadvisable) to make any
+conflicts.  It is unnecessary (and inadvisable) to make any
 modifications to these disabled sections of code.
 
 One complication is that Valgrind is compiled with many more
-compiler warning options that Binutils.  Currently, this list is:
+compiler warning options than Binutils.  Currently, this list is:
 @example
 -Wcast-align
 -Wcast-qual
@@ -921,6 +931,7 @@ lead to a
 subtle problem; if the operands of the @code{printf} call have
 side effects, then they must be removed from the @code{printf}
 and the value assigned to a temp.
+
 @noindent
 For example:
 @example
@@ -953,8 +964,8 @@ FJALAR_DPRINTF(<print data>);
 @noindent
 This shortcut is used extensively in @file{readelf.c}.
 
-Within @file{dwarf.c} there is a large section of code from about
-line 1100 to line 2560 that uses the following:
+Within @file{dwarf.c} there is a large section of code
+(several thousand lines) that is delimited by the following:
 @example
 #define printf(...) do @{if(ok_to_print) printf(__VA_ARGS__);@} while (0)
 ...
@@ -1034,7 +1045,7 @@ of the Daikon tree.
 It can be run using the following commands (takes about 20 minutes):
 
 @example
-cd $INV/daikon/tests/kvasir-tests
+cd $DAIKONDIR/tests/kvasir-tests
 make clean-all
 make regression-tests
 @end example
@@ -1056,7 +1067,7 @@ with those in the new binaries and see if changes to
 @section Documenting Changes
 
 Any user-visible changes should be documented in
-@file{$INV/daikon/docs/CHANGES}.
+@file{$DAIKONDIR/doc/CHANGELOG.md}.
 Additionally, the first line in @file{fjalar/valgrind/REVISION} should be updated
 with the Valgrind version used for this merge.
 
@@ -1103,8 +1114,7 @@ cd $INV/fjalar
 # Double-check the diffs - standard practice before committing
 git diff -b | more
 # If looks OK, proceed with commit.
-git commit -a -m "Valgrind merge from revision $@{VALGRIND_REVISION@}\
-   to $@{VALGRIND_REVISION_NEW@}."
+git commit -a -m "Valgrind merge from $@{VOLDVER@} to $@{VNEWVER@}"
 @end example
 
 Note: We recommend saving the patch and diff files to further document
@@ -1156,15 +1166,15 @@ Add get and set functions for additional machine registers
 Add fjalar to the list of tools; add files to clean-local target
 @item $INV/fjalar/valgrind/none/tests/Makefile.am
 Add @nospellcheck{coregrind/libcoregrind-amd64-linux.a to libvex} tests
-@item fjalar/valgrind/tests/check_headers_and_includes
+@item $INV/fjalar/valgrind/tests/check_headers_and_includes
 Add fjalar to @nospellcheck{tool_dirs and inst to dirs_to_ignore}
 @item $INV/fjalar/valgrind/VEX/priv/guest_amd64_helpers.c
 Add additional general purpose registers to the guest state
 @item $INV/fjalar/valgrind/VEX/priv/guest_x86_helpers.c
 Add additional general purpose registers to the guest state
-@item fjalar/valgrind/VEX/priv/host_amd64_defs.c
+@item $INV/fjalar/valgrind/VEX/priv/host_amd64_defs.c
 Add function name to debug dump of call instruction
-@item $INV/fjalar/valgrind/VEX/priv/host-generic/reg_alloc2.c
+@item $INV/fjalar/valgrind/VEX/priv/host_generic_reg_alloc2.c
 Modify memory calculation using the shadow size
 @item $INV/fjalar/valgrind/VEX/pub/libvex.h
 Add additional general purpose registers to the guest state
@@ -1224,10 +1234,14 @@ to be supported by DynComp. In general DynComp's functionality parallels
 Memcheck's, so the best starting point for implementing support for a
 new instruction would be to mirror Memcheck's implementation. DynComp's
 layout is very similar to Memcheck's, so mirroring functionality should
-be fairly straightforward. It is, however, very unlikely that a new
-instruction type will be added as the VEX IR is a relatively mature
-instruction set and has been in use for almost 9 years at the time of
-this writing.
+be fairly straightforward.
+
+New VEX IR operations (@code{Iop_*} values) are added in many Valgrind
+releases.  @code{expr2tags_Binop_DC}, @code{expr2tags_Triop_DC}, and
+@code{expr2tags_Qop_DC} panic when they encounter an operation that they
+do not handle, and @code{expr2tags_Unop_DC} passes the operand's tag
+through unchanged.  So, every new operation must be considered, even if
+the regression tests do not exercise it.
 
 Another type of addition that will need to be supported are added
 "IR Expressions." Most VEX IR instructions are implemented as a set
@@ -1238,7 +1252,7 @@ t5 = Add32(t12,0x8:I32)
 t10 = CmpLE32S(t2,0x21:I32)
 @end example
 
-The above IR Instructions are of the type PUT and they store the
+The above IR Instructions are of the type WrTmp and they store the
 result of an IR Expression into a temporary. These instructions consist
 of the destination temporary, an IR Expression, which conceptually is
 the operation to be formed, and the arguments to that expression. Most
@@ -1255,20 +1269,20 @@ contains the following set of functions for processing IR Expressions.
 @item @strong{IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )}
 The main expression handling function. Contains a switch which is
 responsible for delegating expression handling to one of the other functions
-@item @strong{IRExpr* expr2tags_Qop_DC(...)}
+@item @strong{IRAtom* expr2tags_Qop_DC(...)}
 Responsible for the handling of expressions which take 4 arguments.
-@item @strong{IRExpr* expr2tags_Triop_DC(...)}
+@item @strong{IRAtom* expr2tags_Triop_DC(...)}
 Responsible for the handling of expressions which take 3 arguments.
-@item @strong{IRExpr* expr2tags_Binop_DC(...)}
+@item @strong{IRAtom* expr2tags_Binop_DC(...)}
 Responsible for the handling of expressions which take 2 arguments.
 @item @strong{IRExpr* expr2tags_Unop_DC(...)}
 Responsible for the handling of expressions which take 1 argument.
-@item @strong{IRExpr* expr2tags_Ldle_DC(...)}
-Responsible for the handling of load expressions
-@item @strong{IRExpr* expr2tags_CCall_DC(...)}
+@item @strong{IRAtom* expr2tags_LDle_DC(...)}
+Responsible for the handling of load expressions.
+@item @strong{IRAtom* handleCCall_DC(...)}
 Responsible for the handling of calls to pure functions.
-@item @strong{IRExpr* expr2tags_Mux0X_DC(...)}
-Responsible for the handling of multiplexing expressions
+@item @strong{IRAtom* expr2tags_ITE_DC(...)}
+Responsible for the handling of if-then-else expressions.
 @end table
 
 If a new IR Expression is added, it will need to be handled by one of
