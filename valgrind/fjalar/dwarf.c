@@ -3252,8 +3252,22 @@ read_and_display_attr_value (unsigned long           attribute,
 	      || form == DW_FORM_loclistx)
 	    {
 	      /* Process location list.  */
-	      //unsigned int lmax = debug_info_p->max_loc_offsets;  // Fjalar doesn't need
+	      unsigned int lmax = debug_info_p->max_loc_offsets;
 	      unsigned int num = debug_info_p->num_loc_offsets;
+
+	      // start of Fjalar code
+	      // Fjalar records only the location list offsets, which
+	      // display_debug_loc uses to find each location list.
+	      if (attribute != DW_AT_GNU_locviews
+		  && (lmax == 0 || num >= lmax))
+		{
+		  lmax += 1024;
+		  debug_info_p->loc_offsets = (dwarf_vma *)
+		    xcrealloc (debug_info_p->loc_offsets,
+			       lmax, sizeof (*debug_info_p->loc_offsets));
+		  debug_info_p->max_loc_offsets = lmax;
+		}
+	      // end of Fjalar code
 
 #if 0 // This code is not needed for Fjalar.
 	      if (lmax == 0 || num >= lmax)
@@ -3288,7 +3302,7 @@ read_and_display_attr_value (unsigned long           attribute,
 		    warn (_("More location offset attributes than DW_AT_GNU_locview attributes\n"));
 		  else
 		    {
-		      //debug_info_p->loc_offsets [num] = uvalue;  // Fjalar doesn't need
+		      debug_info_p->loc_offsets [num] = uvalue;
 		      debug_info_p->num_loc_offsets++;
 		    }
 		}
@@ -7768,20 +7782,29 @@ loc_offsets_compar (const void *ap, const void *bp)
 
 #endif // This code is not needed for Fjalar.
 
+// Comparison function for VG_(ssort) on location list offsets.
+static Int
+compare_loc_offsets (const void *a, const void *b)
+{
+  dwarf_vma va = *(const dwarf_vma *) a;
+  dwarf_vma vb = *(const dwarf_vma *) b;
+  return (va > vb) - (va < vb);
+}
+
 // The body of this routine has been modified for Fjalar to be much simpler.
-// In particular, it assumes that the loc lists are in ascending order and
-// do not need to be sorted.  To date, we have not seen a contrary case.
+// It reads each location list at an offset that a DW_AT_location (or similar)
+// attribute names, ignoring anything else in the section, such as the
+// location view pairs (DW_AT_GNU_locviews) that GCC emits for optimized code.
 // Also we do not support Dwarf 5 debug_loclists.
 static int
 display_debug_loc (struct dwarf_section *section, void *file)
 {
-  unsigned char *start = section->start, *vstart = NULL;
+  unsigned char *start, *vstart = NULL;
   unsigned long bytes;
-  unsigned char *section_begin = start;
+  unsigned char *section_begin = section->start;
   unsigned int i;
   unsigned int j;
   bytes = section->size;
-  unsigned char *section_end = start + bytes;
 
   if (bytes == 0) {
       FJALAR_DPRINTF (_("\nThe %s section is empty.\n"), section->name);
@@ -7799,12 +7822,23 @@ display_debug_loc (struct dwarf_section *section, void *file)
       printf (_("    Offset   Begin    End      Expression\n"));
   }
 
-  for (i = 0; start < section_end; i++) {
-      unsigned long offset;
+  for (i = 0; i < num_debug_info_entries; i++) {
       unsigned long base_address = debug_information [i].base_address;
+      dwarf_vma *loc_offsets = debug_information [i].loc_offsets;
+      unsigned int num_loc_offsets = debug_information [i].num_loc_offsets;
 
-      for (j = 0; j < debug_information[i].num_loc_offsets; j++) {
-          offset = start - section_begin;
+      if (num_loc_offsets == 0)
+        continue;
+
+      // Several attributes may name the same location list; read it once.
+      VG_(ssort) (loc_offsets, num_loc_offsets, sizeof (*loc_offsets),
+                  compare_loc_offsets);
+
+      for (j = 0; j < num_loc_offsets; j++) {
+          unsigned long offset = loc_offsets [j];
+
+          if (j > 0 && offset == loc_offsets [j - 1])
+            continue;
 
           if (offset >= bytes)
             {
@@ -7813,7 +7847,8 @@ display_debug_loc (struct dwarf_section *section, void *file)
               continue;
             }
 
-            display_loc_list (section, &start, i, offset, base_address, &vstart, 0);
+          start = section_begin + offset;
+          display_loc_list (section, &start, i, offset, base_address, &vstart, 0);
       }
   }
 
