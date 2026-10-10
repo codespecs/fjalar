@@ -1328,6 +1328,16 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_QShl16x8:                    // only used by arm
    case Iop_QShl32x4:                    // only used by arm
    case Iop_QShl64x2:                    // only used by arm
+   case Iop_QSal8x8:                     // only used by arm
+   case Iop_QSal16x4:                    // only used by arm
+   case Iop_QSal32x2:                    // only used by arm
+   case Iop_QSal64x1:                    // only used by arm
+   case Iop_QShl8x8:                     // only used by arm
+   case Iop_QShl16x4:                    // only used by arm
+   case Iop_QShl32x2:                    // only used by arm
+   case Iop_QShl64x1:                    // only used by arm
+   case Iop_Rol64x2:                     // only used by ppc s390
+   case Iop_SarV128:                     // only used by s390
 
       // From the looks of the spec., we want to return the tag
       // of the first argument
@@ -1545,18 +1555,8 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_QAdd32S:                     // only used by arm
    case Iop_QNarrowBin64Sto32Sx4:        // only used by ppc s390
    case Iop_QNarrowBin64Uto32Ux4:        // only used by ppc s390
-   case Iop_QSal16x4:                    // only used by arm
-   case Iop_QSal32x2:                    // only used by arm
-   case Iop_QSal64x1:                    // only used by arm
-   case Iop_QSal8x8:                     // only used by arm
-   case Iop_QShl16x4:                    // only used by arm
-   case Iop_QShl32x2:                    // only used by arm
-   case Iop_QShl64x1:                    // only used by arm
-   case Iop_QShl8x8:                     // only used by arm
    case Iop_QSub32S:                     // only used by arm
-   case Iop_Rol64x2:                     // only used by ppc s390
    case Iop_Sad8Ux4:                     // only used by arm
-   case Iop_SarV128:                     // only used by s390
    case Iop_SHA256:                      // only used by ppc
    case Iop_SHA512:                      // only used by ppc
    case Iop_RecipStep32Fx2:              // only used by arm arm64
