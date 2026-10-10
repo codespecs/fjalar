@@ -76,7 +76,7 @@ Bool dyncomp_units_mode = False;                // Tries to be consistent with u
 Bool dyncomp_dataflow_only_mode = False;        // Nothing is an interaction
 Bool dyncomp_dataflow_comparisons_mode = False; // Only comparisons are interactions
 
-// If true, warn about (rather than panic on) a VEX IR operation that
+// If true, warn about (rather than panic on) a VEX IR operator (IROp) that
 // DynComp does not handle.
 Bool dyncomp_warn_unhandled_ops = False;
 
@@ -692,10 +692,9 @@ void fjalar_tool_print_usage()
 "    --dyncomp-interactions=units        Only counts interactions that are consistent with units\n"
 "    --dyncomp-interactions=comparisons  Only counts comparison operations as interactions\n"
 "    --dyncomp-interactions=none         Tracks no interactions, just dataflow\n"
-"    --dyncomp-unhandled-ops=panic  Stop if DynComp encounters a VEX IR operation\n"
-"                                   that it does not handle (default)\n"
-"    --dyncomp-unhandled-ops=warn   Instead, print a warning once per such operation and\n"
-"                                   approximate it (comparability may be imprecise)\n"
+"    --dyncomp-unhandled-ops=panic       Stop at a VEX IR operator that DynComp does not handle (default)\n"
+"    --dyncomp-unhandled-ops=warn        Warn once per unhandled VEX IR operator and approximate it\n"
+"                                        (comparability may be imprecise)\n"
 "\n  Debugging:\n"
 "    --kvasir-debug           Print Kvasir-internal debug messages [--no-debug]\n"
 "    --dyncomp-debug          Print DynComp debug messages (--dyncomp must also be on)\n"

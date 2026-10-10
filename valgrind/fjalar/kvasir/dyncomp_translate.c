@@ -311,14 +311,55 @@ UInt numConsts = 0;
 // as one big switch statement for now in order to provide
 // flexibility for future edits
 
-/* Reports an IROp that DynComp does not handle.  By default, panics.
-   With --dyncomp-unhandled-ops=warn, prints a warning the first time
-   that each IROp is encountered and returns, so that the caller can
-   approximate the operation. */
+/* Returns true if ty is a floating-point or vector type. */
 static
-void report_unhandled_op_DC ( IROp op, const HChar* where )
+Bool isFloatOrVectorType_DC ( IRType ty )
+{
+   switch (ty) {
+      case Ity_F16: case Ity_F32: case Ity_F64: case Ity_F128:
+      case Ity_D32: case Ity_D64: case Ity_D128:
+      case Ity_V128: case Ity_V256:
+         return True;
+      default:
+         return False;
+   }
+}
+
+/* Handles an IROp that DynComp does not handle.  By default, panics.
+   With --dyncomp-unhandled-ops=warn, prints a warning the first time
+   that each IROp is encountered and returns the tag of an approximation
+   of the operation.
+
+   The approximation guesses each operand's role from its type, as given
+   by typeOfPrimop:
+    * A first operand of type I32 is a rounding mode if the result or
+      another operand is a floating-point or vector value.
+    * A later operand of type I8 is a shift amount or lane index if the
+      first operand is not also of type I8.
+   Rounding modes, shift amounts, and lane indices do not interact with
+   anything.  The other operands are "data operands".
+    * If the result has type I1 and there are 2 data operands, the
+      operation is a comparison:  the data operands' tags are merged, and
+      the result has no tag.
+    * Otherwise, the data operands' tags are merged and the result gets
+      the merged tag.  In units and comparisons modes, the operation is
+      instead treated as a non-interaction, because it might be (for
+      example) a multiplication.
+   With --dyncomp-interactions=none, the operation is a non-interaction.
+
+   atoms and vatoms hold the nargs operands and their tags. */
+static
+IRAtom* approximate_unhandled_op_DC ( IROp op, Int nargs,
+                                      IRAtom** atoms, IRAtom** vatoms,
+                                      const HChar* where )
 {
    static Bool warned[Iop_LAST - Iop_INVALID];
+   IRType       t_dst, t_arg[4];
+   Bool         isData[4];
+   IRAtom*      data[4];
+   Int          i, nDataTypes = 0, nData = 0;
+   Bool         isRoundingMode = False, isComparison, isInteraction;
+   const HChar* description;
 
    if (!dyncomp_warn_unhandled_ops) {
       ppIROp(op);
@@ -327,12 +368,98 @@ void report_unhandled_op_DC ( IROp op, const HChar* where )
    }
 
    tl_assert(op > Iop_INVALID && op < Iop_LAST);
+   tl_assert(nargs >= 2 && nargs <= 4);
+
+   typeOfPrimop(op, &t_dst, &t_arg[0], &t_arg[1], &t_arg[2], &t_arg[3]);
+
+   if (t_arg[0] == Ity_I32) {
+      isRoundingMode = isFloatOrVectorType_DC(t_dst);
+      for (i = 1; i < nargs; i++) {
+         isRoundingMode |= isFloatOrVectorType_DC(t_arg[i]);
+      }
+   }
+   for (i = 0; i < nargs; i++) {
+      if (i == 0) {
+         isData[i] = !isRoundingMode;
+      } else {
+         isData[i] = !(t_arg[i] == Ity_I8 && t_arg[0] != Ity_I8);
+      }
+      if (isData[i]) {
+         nDataTypes++;
+      }
+   }
+
+   isComparison = (t_dst == Ity_I1 && nDataTypes == 2);
+   isInteraction = (!dyncomp_dataflow_only_mode
+                    && (isComparison
+                        || !(dyncomp_units_mode
+                             || dyncomp_dataflow_comparisons_mode)));
+
    if (!warned[op - Iop_INVALID]) {
       warned[op - Iop_INVALID] = True;
+      if (!isInteraction) {
+         description = "treating it as a non-interaction";
+      } else if (isComparison) {
+         description = "treating it as a comparison of its operands";
+      } else {
+         description = "merging the tags of its operands";
+      }
       VG_(printf)("Warning: DynComp does not handle IROp ");
       ppIROp(op);
-      VG_(printf)(" (0x%x) in %s; its comparability may be imprecise.\n",
-                  (UInt)op, where);
+      VG_(printf)(" (0x%x) in %s; %s", (UInt)op, where, description);
+      if (nDataTypes < nargs) {
+         VG_(printf)(" (other than rounding modes, shift amounts, and"
+                     " lane indices)");
+      }
+      VG_(printf)(".  Its comparability may be imprecise.\n");
+   }
+
+   if (!isInteraction) {
+      return IRExpr_Const(IRConst_UWord(0));
+   }
+
+   // A constant has no tag, so it need not be merged.
+   for (i = 0; i < nargs; i++) {
+      if (isData[i] && atoms[i]->tag != Iex_Const) {
+         data[nData++] = vatoms[i];
+      }
+   }
+
+   if (isComparison) {
+      if (nData < 2) {
+         return IRExpr_Const(IRConst_UWord(0));
+      }
+      return mkIRExprCCall (Ity_Word,
+                            2 /*Int regparms*/,
+                            "MC_(helperc_MERGE_TAGS_RETURN_0)",
+                            &MC_(helperc_MERGE_TAGS_RETURN_0),
+                            mkIRExprVec_2( data[0], data[1] ));
+   }
+
+   switch (nData) {
+      case 0:
+         return IRExpr_Const(IRConst_UWord(0));
+      case 1:
+         return data[0];
+      case 2:
+         return mkIRExprCCall (Ity_Word,
+                               2 /*Int regparms*/,
+                               "MC_(helperc_MERGE_TAGS)",
+                               &MC_(helperc_MERGE_TAGS),
+                               mkIRExprVec_2( data[0], data[1] ));
+      case 3:
+         return mkIRExprCCall (Ity_Word,
+                               3 /*Int regparms*/,
+                               "MC_(helperc_MERGE_3_TAGS)",
+                               &MC_(helperc_MERGE_3_TAGS),
+                               mkIRExprVec_3( data[0], data[1], data[2] ));
+      default:
+         return mkIRExprCCall (Ity_Word,
+                               3 /*Int regparms*/,
+                               "MC_(helperc_MERGE_4_TAGS)",
+                               &MC_(helperc_MERGE_4_TAGS),
+                               mkIRExprVec_4( data[0], data[1], data[2],
+                                              data[3] ));
    }
 }
 
@@ -423,17 +550,13 @@ IRAtom* expr2tags_Qop_DC ( DCEnv* dce,
       case Iop_Rotx64:                      // only used by mips
 
       default:
-         report_unhandled_op_DC( op, "dyncomp:expr2tags_Qop_DC" );
-         // With --dyncomp-unhandled-ops=warn, approximate an unknown
-         // quaternary operation as an interaction among all operands.
-         return mkIRExprCCall (Ity_Word,
-                               3 /*Int regparms*/,
-                               "MC_(helperc_MERGE_4_TAGS)",
-                               &MC_(helperc_MERGE_4_TAGS),
-                               mkIRExprVec_4( vatom1, vatom2, vatom3, vatom4 ));
+         {
+            IRAtom* atoms[4]  = { atom1, atom2, atom3, atom4 };
+            IRAtom* vatoms[4] = { vatom1, vatom2, vatom3, vatom4 };
+            return approximate_unhandled_op_DC( op, 4, atoms, vatoms,
+                                                "dyncomp:expr2tags_Qop_DC" );
+         }
    }
-
-   VG_(tool_panic)("memcheck:expr2tags_Qop");
 }
 
 static
@@ -582,14 +705,12 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
       case Iop_2xMultU64Add128CarryOut:     // only used by ppc
 
       default:
-         report_unhandled_op_DC( op, "dyncomp:expr2tags_Triop_DC" );
-         // With --dyncomp-unhandled-ops=warn, approximate an unknown
-         // ternary operation as an interaction among all operands.
-         return mkIRExprCCall (Ity_Word,
-                               3 /*Int regparms*/,
-                               "MC_(helperc_MERGE_3_TAGS)",
-                               &MC_(helperc_MERGE_3_TAGS),
-                               mkIRExprVec_3( vatom1, vatom2, vatom3 ));
+         {
+            IRAtom* atoms[3]  = { atom1, atom2, atom3 };
+            IRAtom* vatoms[3] = { vatom1, vatom2, vatom3 };
+            return approximate_unhandled_op_DC( op, 3, atoms, vatoms,
+                                                "dyncomp:expr2tags_Triop_DC" );
+         }
    }
 
    return IRExpr_Const(IRConst_UWord(0));
@@ -1601,17 +1722,13 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_RSqrtStep32Fx4:              // only used by arm arm64
    case Iop_RSqrtStep64Fx2:              // only used by arm64
 
-      // Hopefully we will never get here if we've had had cases which
-      // handle every possible IR binary op. type (right?)
    default:
-      report_unhandled_op_DC( op, "dyncomp:expr2tags_Binop_DC" );
-      // With --dyncomp-unhandled-ops=warn, approximate an unknown
-      // binary operation as an interaction, like arithmetic.
-      if (!dyncomp_dataflow_comparisons_mode) {
-         helper = &MC_(helperc_MERGE_TAGS);
-         hname = "MC_(helperc_MERGE_TAGS)";
+      {
+         IRAtom* atoms[2]  = { atom1, atom2 };
+         IRAtom* vatoms[2] = { vatom1, vatom2 };
+         return approximate_unhandled_op_DC( op, 2, atoms, vatoms,
+                                             "dyncomp:expr2tags_Binop_DC" );
       }
-      break;
    }
 
    // In this mode, NOTHING is an interaction:
