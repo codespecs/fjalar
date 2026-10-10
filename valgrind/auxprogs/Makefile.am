@@ -184,7 +184,7 @@ $(GSL_BUILD_DIR)/gsl-build: $(GSL_SRC_DIR)/gsl-patched
 	mkdir -p $(GSL_BUILD_DIR)
 	(cd $(GSL_BUILD_DIR) && \
 	 $(GSL_SRC_DIR)/configure CC="${CC}" CXX="${CXX}" CFLAGS="$(GSL_CFLAGS)" && \
-	 ${MAKE} -j $(nproc) && \
+	 ${MAKE} -j $$(nproc) && \
 	 ${MAKE} check -k || true)
 	touch $@
 
