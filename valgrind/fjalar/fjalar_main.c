@@ -122,7 +122,7 @@ const HChar* executable_filename = 0;
 #if defined(VGA_amd64)
 // AMD64 Dwarf to Architecture mapping is (thankfully) specified
 // in the AMD64 ABI (http://x86-64.org/documentation/abi.pdf)
-Addr (*get_reg[16])( ThreadId tid ) = {
+Addr (*get_reg[FJALAR_NUM_DWARF_REGS])( ThreadId tid ) = {
   VG_(get_xAX),
   VG_(get_xDX),
   VG_(get_xCX),
@@ -140,8 +140,26 @@ Addr (*get_reg[16])( ThreadId tid ) = {
   VG_(get_R14),
   VG_(get_R15),
 };
+Int dwarf_reg_guest_offset[FJALAR_NUM_DWARF_REGS] = {
+  offsetof(VexGuestArchState, guest_RAX),
+  offsetof(VexGuestArchState, guest_RDX),
+  offsetof(VexGuestArchState, guest_RCX),
+  offsetof(VexGuestArchState, guest_RBX),
+  offsetof(VexGuestArchState, guest_RSI),
+  offsetof(VexGuestArchState, guest_RDI),
+  offsetof(VexGuestArchState, guest_RBP),
+  offsetof(VexGuestArchState, guest_RSP),
+  offsetof(VexGuestArchState, guest_R8),
+  offsetof(VexGuestArchState, guest_R9),
+  offsetof(VexGuestArchState, guest_R10),
+  offsetof(VexGuestArchState, guest_R11),
+  offsetof(VexGuestArchState, guest_R12),
+  offsetof(VexGuestArchState, guest_R13),
+  offsetof(VexGuestArchState, guest_R14),
+  offsetof(VexGuestArchState, guest_R15),
+};
 #else
-Addr (*get_reg[11])( ThreadId tid ) = {
+Addr (*get_reg[FJALAR_NUM_DWARF_REGS])( ThreadId tid ) = {
   VG_(get_xAX),
   VG_(get_xCX),
   VG_(get_xDX),
@@ -153,6 +171,19 @@ Addr (*get_reg[11])( ThreadId tid ) = {
   VG_(get_IP),
   NULL,
   NULL
+};
+Int dwarf_reg_guest_offset[FJALAR_NUM_DWARF_REGS] = {
+  offsetof(VexGuestArchState, guest_EAX),
+  offsetof(VexGuestArchState, guest_ECX),
+  offsetof(VexGuestArchState, guest_EDX),
+  offsetof(VexGuestArchState, guest_EBX),
+  offsetof(VexGuestArchState, guest_ESP),
+  offsetof(VexGuestArchState, guest_EBP),
+  offsetof(VexGuestArchState, guest_ESI),
+  offsetof(VexGuestArchState, guest_EDI),
+  offsetof(VexGuestArchState, guest_EIP),
+  -1,
+  -1
 };
 #endif
 
@@ -258,7 +289,11 @@ static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
     FJALAR_DPRINTF("Found a valid entry point at %x for\n", (UInt)addr);
 
     // We need all general purpose registers.
+#if defined(VGA_amd64)
+    di->nFxState = 10;
+#else
     di->nFxState = 9;
+#endif
     vex_bzero(&di->fxState, sizeof(di->fxState));
 
     di->fxState[0].fx     = Ifx_Read;
@@ -290,6 +325,12 @@ static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
     di->fxState[8].fx     = Ifx_Read;
     di->fxState[8].offset = mce->layout->offset_xDI;
     di->fxState[8].size   = mce->layout->sizeof_xDI;
+#if defined(VGA_amd64)
+    // R8 through R15, which are contiguous in the guest state
+    di->fxState[9].fx     = Ifx_Read;
+    di->fxState[9].offset = offsetof(VexGuestArchState, guest_R8);
+    di->fxState[9].size   = 8 * sizeof(ULong);
+#endif
 
     stmt('V',  mce, IRStmt_Dirty(di) );
   }
@@ -541,6 +582,7 @@ void enter_function(FunctionEntry* f)
 {
   FunctionExecutionState* newEntry;
   extern FunctionExecutionState* curFunctionExecutionStatePtr;
+  int i;
 
   // Only do enter_function if this is the first time we have
   // reached the preferred entry point after entering the function.
@@ -678,6 +720,25 @@ void enter_function(FunctionEntry* f)
   newEntry->FPU = 0;
   newEntry->invocation_nonce = cur_nonce++;
   newEntry->func->nonce = newEntry->invocation_nonce;
+
+  // Save the registers, with their A and V bits, so that formal
+  // parameters located in registers have their entrance values at
+  // both entrance and exit.
+  for (i = 0; i < FJALAR_NUM_DWARF_REGS; i++) {
+    Addr regAddr = (Addr)&newEntry->entryRegs[i];
+    UWord vbits = V_BITS64_UNDEFINED;
+    UInt b;
+    if (get_reg[i]) {
+      newEntry->entryRegs[i] = (*get_reg[i])(tid);
+      VG_(get_shadow_regs_area)(tid, (UChar*)&vbits, 1/*shadowNo*/,
+                                dwarf_reg_guest_offset[i], sizeof(Addr));
+    } else {
+      newEntry->entryRegs[i] = 0;
+    }
+    for (b = 0; b < sizeof(Addr); b++) {
+      set_abit_and_vbyte(regAddr + b, VGM_BIT_VALID, (vbits >> (b * 8)) & 0xff);
+    }
+  }
 
   // FJALAR VIRTUAL STACK
   // Fjalar maintains a virtual stack for invocation a function. This

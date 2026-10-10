@@ -740,6 +740,18 @@ These data structures and functions provide mechanisms for runtime
 traversals within data structures and arrays
 **********************************************************************/
 
+// The number of DWARF register numbers that Fjalar can read (the
+// size of the get_reg array in fjalar_main.c).
+#if defined(VGA_amd64)
+#define FJALAR_NUM_DWARF_REGS 16
+#else
+#define FJALAR_NUM_DWARF_REGS 11
+#endif
+
+// Mapping between DWARF register numbers and the offset of the
+// register in the guest state, or -1 if there is no such register
+extern Int dwarf_reg_guest_offset[FJALAR_NUM_DWARF_REGS];
+
 // Entries for tracking the runtime state of functions at entrances
 // and exits (used mainly by FunctionExecutionStateStack in
 // fjalar_main.c).  This class CANNOT BE SUBCLASSED because it is
@@ -790,6 +802,14 @@ typedef struct {
   char* virtualStack;
   int virtualStackByteSize; // Number of 1-byte entries in virtualStack
   int virtualStackFPOffset; // Where in the stack the frame pointer was
+
+  // The values of the registers at function entrance, indexed by
+  // DWARF register number.  A formal parameter whose location is a
+  // register (DW_OP_reg*) is read from here, at both entrance and
+  // exit, for the same reason as virtualStack.  At function entrance,
+  // Fjalar copies the registers' A and V bits to entryRegs, and
+  // DynComp copies their tags.
+  Addr entryRegs[FJALAR_NUM_DWARF_REGS];
 
 
   Addr lowSP;

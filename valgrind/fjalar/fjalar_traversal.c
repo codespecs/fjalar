@@ -30,6 +30,10 @@
 
 #include "pub_tool_threadstate.h"
 
+// The state of the function invocation whose entrance or exit is
+// being processed (defined in fjalar_runtime.c)
+extern FunctionExecutionState* curFunctionExecutionStatePtr;
+
 // This increments every time a call to visitSingleVar() or
 // visitSequence() is made.  It is up to the caller to reset this
 // properly!
@@ -1029,11 +1033,21 @@ void visitVariableGroup(VariableOrigin varOrigin,
               var_loc += dloc->atom_offset;
 
             } else if((op >= DW_OP_reg0) && (op <= DW_OP_reg31)) {
-              // Get value located in architectural register
-              reg_val = (*get_reg[dloc->atom - DW_OP_reg0])(tid);
-              FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %p\n", dwarf_reg_string[dloc->atom - DW_OP_reg0],
-                             (void *)reg_val);
-              var_loc = (Addr)&reg_val;
+              // Get the value that the architectural register held at
+              // function entrance, which is saved (with its A and V
+              // bits and tags) in the FunctionExecutionState.
+              unsigned int regNum = op - DW_OP_reg0;
+              FJALAR_DPRINTF("\tObtaining entrance value of register: [%%%s]\n", dwarf_reg_string[regNum]);
+              if (regNum < FJALAR_NUM_DWARF_REGS && get_reg[regNum] &&
+                  curFunctionExecutionStatePtr &&
+                  curFunctionExecutionStatePtr->func == funcPtr) {
+                var_loc = (Addr)&curFunctionExecutionStatePtr->entryRegs[regNum];
+              } else {
+                // A register that Fjalar cannot read, such as a
+                // floating-point register:  the value is nonsensical.
+                var_loc = 0;
+                break;
+              }
 
             } else if((op >= DW_OP_breg0) && (op <= DW_OP_breg31)) {
               // Get value pointed to by architectural register

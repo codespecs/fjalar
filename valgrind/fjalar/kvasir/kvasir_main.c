@@ -805,6 +805,26 @@ void fjalar_tool_handle_function_entrance(FunctionExecutionState* f_state) {
     kvasir_late_init();
     kvasir_late_init_done = True;
   }
+
+  if (kvasir_with_dyncomp) {
+    ThreadId currentTID = VG_(get_running_tid)();
+
+    // For DynComp, set the tags of the saved register values
+    int i;
+    UInt b;
+
+    for (i = 0; i < FJALAR_NUM_DWARF_REGS; i++) {
+      UInt regTag = 0;
+      if (dwarf_reg_guest_offset[i] >= 0) {
+        regTag = *(VG_(get_tag_ptr_for_guest_offset)(currentTID,
+                                                    dwarf_reg_guest_offset[i]));
+      }
+      for (b = 0; b < sizeof(Addr); b++) {
+        set_tag((Addr)(&(f_state->entryRegs[i])) + (Addr)b, regTag);
+      }
+    }
+  }
+
   printDtraceForFunction(f_state, 1);
 }
 

@@ -2573,8 +2573,9 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     varPtr->location_expression_size = paramPtr->dwarf_stack_size;
   }
 
+  varPtr->validLoc = paramPtr->valid_loc;
+
   if (paramPtr->location_type == LT_FP_OFFSET) {
-    varPtr->validLoc = paramPtr->valid_loc;
     varPtr->locationType = FP_OFFSET_LOCATION;
     varPtr->byteOffset = paramPtr->location;
     //    varPtr->atom = paramPtr->loc_atom;

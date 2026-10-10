@@ -1,0 +1,16 @@
+..add():::ENTER a 1
+..add():::ENTER b 3
+..add():::EXIT0 a 1
+..add():::EXIT0 b 3
+..add():::EXIT0 return 4
+..scale():::ENTER x 1
+..scale():::ENTER factor 7
+..scale():::EXIT0 x 1
+..scale():::EXIT0 factor 7
+..scale():::EXIT0 return 14
+..scale():::EXIT0 x comparability 1
+..scale():::EXIT0 factor comparability 2
+..scale():::EXIT0 return comparability 2
+..add():::EXIT0 a comparability 1
+..add():::EXIT0 b comparability 1
+..add():::EXIT0 return comparability 1
