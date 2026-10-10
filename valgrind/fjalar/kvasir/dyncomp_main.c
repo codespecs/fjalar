@@ -582,18 +582,6 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
   }
 }
 
-// Ignore the tag and return a value of 0.  A unary operation whose
-// result should have tag 0 passes the tag of its operand to this,
-// rather than discarding that tag.  Otherwise, VEX would remove the
-// computation of that tag as dead code, and with it any merges that
-// the computation performs (such as the merge for a comparison whose
-// result the unary operation converts).
-VG_REGPARM(1)
-UInt MC_(helperc_RETURN_0) ( UInt tag ) {
-  (void)tag;
-  return 0;
-}
-
 /*------------------------------------------------------------------*/
 /*--- Linked-lists of tags for garbage collection                ---*/
 /*------------------------------------------------------------------*/
