@@ -1338,6 +1338,9 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_ShrV128:                     // only used by mips ppc s390 arm64
    case Iop_ShlV128:                     // only used by mips ppc s390 arm64
    case Iop_SarV128:                     // only used by s390
+
+      // Not shifts.  BCDAdd and BCDSub are arithmetic and arguably
+      // should merge the tags of their arguments.
    case Iop_I128StoBCD128:               // only used by ppc
    case Iop_BCDAdd:                      // only used by ppc
    case Iop_BCDSub:                      // only used by ppc
@@ -1362,6 +1365,22 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_QShlNsatSS16x8:              // only used by arm arm64
    case Iop_QShlNsatSS32x4:              // only used by arm arm64
    case Iop_QShlNsatSS64x2:              // only used by arm arm64
+
+      // In the following VECTOR x VECTOR shifts, each lane of the
+      // second argument is a signed shift amount:  positive shifts
+      // left and negative shifts right.  The shift amounts are often
+      // computed from program data (for example, by negating a count
+      // vector), but they still play the role of y in z = x << y, so
+      // their tag is dropped as for the other shifts.
+
+      // Each Qand* op returns a V256 whose lower V128 is the shifted
+      // result and whose upper V128 holds the saturation (QC) flags.
+      // DynComp keeps one tag per value, so both halves get the tag
+      // of the first argument.  On arm64, the QC half is ORed into
+      // guest_QCFLAG, which therefore becomes comparable with the
+      // data of every saturating op.  The other arm64 saturating ops
+      // (such as QAdd*) update guest_QCFLAG via XorV128 and OrV128
+      // and have the same imprecision.
    case Iop_QandUQsh8x16:                // only used by arm64
    case Iop_QandUQsh16x8:                // only used by arm64
    case Iop_QandUQsh32x4:                // only used by arm64
@@ -2036,8 +2055,10 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
 
 /*
  * The following opcodes are not implemented.  They are not used by
- * our supported guests, amd64 and x86, and their semantics are less
- * obvious than those of the shifts and other ops handled above.
+ * our supported guests, amd64 and x86, and the right tag behavior
+ * for them is not obvious.
+ *
+ * Binary ops; cases belong in expr2tags_Binop_DC:
  *
    case Iop_QAddExtSUsatUU16x8:          // only used by arm64
    case Iop_QAddExtSUsatUU32x4:          // only used by arm64
@@ -2047,19 +2068,13 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
    case Iop_QAddExtUSsatSS32x4:          // only used by arm64
    case Iop_QAddExtUSsatSS64x2:          // only used by arm64
    case Iop_QAddExtUSsatSS8x16:          // only used by arm64
-
-   case Iop_F64toF16x2_DEP:
-   case Iop_RecipEst64Fx2:              // only used by arm64
    case Iop_RecpExpF32:                 // only used by arm64
    case Iop_RecpExpF64:                 // only used by arm64
-
-   case Iop_VDup16x4:                    // only used by arm
-   case Iop_VDup16x8:                    // only used by arm
-   case Iop_VDup32x2:                    // only used by arm
-   case Iop_VDup32x4:                    // only used by arm
-   case Iop_VDup8x8:                     // only used by arm
-   case Iop_VDup8x16:                    // only used by arm
-
+ *
+ * Unary ops; cases belong in expr2tags_Unop_DC:
+ *
+   case Iop_F64toF16x2_DEP:
+   case Iop_RecipEst64Fx2:              // only used by arm64
    case Iop_ZeroHI112ofV128:             // only used by arm64
    case Iop_ZeroHI120ofV128:             // only used by arm64
    case Iop_ZeroHI64ofV128:              // only used by arm64
