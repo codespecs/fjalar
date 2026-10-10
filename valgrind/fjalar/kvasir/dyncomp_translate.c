@@ -311,6 +311,31 @@ UInt numConsts = 0;
 // as one big switch statement for now in order to provide
 // flexibility for future edits
 
+/* Reports an IROp that DynComp does not handle.  By default, panics.
+   With --dyncomp-unhandled-ops=warn, prints a warning the first time
+   that each IROp is encountered and returns, so that the caller can
+   approximate the operation. */
+static
+void report_unhandled_op_DC ( IROp op, const HChar* where )
+{
+   static Bool warned[Iop_LAST - Iop_INVALID];
+
+   if (!dyncomp_warn_unhandled_ops) {
+      ppIROp(op);
+      VG_(printf)("\nUnhandled IROp: 0x%x\n", (UInt)op);
+      VG_(tool_panic)(where);
+   }
+
+   tl_assert(op > Iop_INVALID && op < Iop_LAST);
+   if (!warned[op - Iop_INVALID]) {
+      warned[op - Iop_INVALID] = True;
+      VG_(printf)("Warning: DynComp does not handle IROp ");
+      ppIROp(op);
+      VG_(printf)(" (0x%x) in %s; its comparability may be imprecise.\n",
+                  (UInt)op, where);
+   }
+}
+
 static
 IRAtom* expr2tags_Qop_DC ( DCEnv* dce,
                            IROp op,
@@ -398,9 +423,14 @@ IRAtom* expr2tags_Qop_DC ( DCEnv* dce,
       case Iop_Rotx64:                      // only used by mips
 
       default:
-         ppIROp(op);
-         VG_(printf)("\nUnhandled IROp: 0x%x\n", (UInt)op);
-         VG_(tool_panic)("memcheck:expr2tags_Qop");
+         report_unhandled_op_DC( op, "dyncomp:expr2tags_Qop_DC" );
+         // With --dyncomp-unhandled-ops=warn, approximate an unknown
+         // quaternary operation as an interaction among all operands.
+         return mkIRExprCCall (Ity_Word,
+                               3 /*Int regparms*/,
+                               "MC_(helperc_MERGE_4_TAGS)",
+                               &MC_(helperc_MERGE_4_TAGS),
+                               mkIRExprVec_4( vatom1, vatom2, vatom3, vatom4 ));
    }
 
    VG_(tool_panic)("memcheck:expr2tags_Qop");
@@ -552,9 +582,14 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
       case Iop_2xMultU64Add128CarryOut:     // only used by ppc
 
       default:
-         ppIROp(op);
-         VG_(printf)("\nUnhandled IROp: 0x%x\n", (UInt)op);
-         VG_(tool_panic)("memcheck:expr2tags_Triop");
+         report_unhandled_op_DC( op, "dyncomp:expr2tags_Triop_DC" );
+         // With --dyncomp-unhandled-ops=warn, approximate an unknown
+         // ternary operation as an interaction among all operands.
+         return mkIRExprCCall (Ity_Word,
+                               3 /*Int regparms*/,
+                               "MC_(helperc_MERGE_3_TAGS)",
+                               &MC_(helperc_MERGE_3_TAGS),
+                               mkIRExprVec_3( vatom1, vatom2, vatom3 ));
    }
 
    return IRExpr_Const(IRConst_UWord(0));
@@ -1569,9 +1604,14 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       // Hopefully we will never get here if we've had had cases which
       // handle every possible IR binary op. type (right?)
    default:
-      ppIROp(op);
-      VG_(printf)("\nUnhandled IROp: 0x%x\n", (UInt)op);
-      VG_(tool_panic)("dyncomp:expr2tags_Binop_DC");
+      report_unhandled_op_DC( op, "dyncomp:expr2tags_Binop_DC" );
+      // With --dyncomp-unhandled-ops=warn, approximate an unknown
+      // binary operation as an interaction, like arithmetic.
+      if (!dyncomp_dataflow_comparisons_mode) {
+         helper = &MC_(helperc_MERGE_TAGS);
+         hname = "MC_(helperc_MERGE_TAGS)";
+      }
+      break;
    }
 
    // In this mode, NOTHING is an interaction:
@@ -1661,13 +1701,80 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 }
 
 static
-IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
+IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
 {
    IRAtom* vatom = expr2tags_DC( dce, atom );
    tl_assert(isOriginalAtom_DC(dce,atom));
 
-   // Do nothing with unary ops.  Just evaluate the
-   // sub-expression and return it:
+   switch (op) {
+
+   // ----------------------------------------------------------
+   // The result is a boolean, or a mask or count computed from
+   // the bits of the operand, rather than a value of the same kind
+   // as the operand.  As for binary comparisons (see
+   // expr2tags_Binop_DC), the result gets tag 0.
+   // ----------------------------------------------------------
+
+   case Iop_32to1:
+   case Iop_64to1:
+   case Iop_Clz32:
+   case Iop_Clz64:
+   case Iop_ClzNat32:                  // only used by ppc
+   case Iop_ClzNat64:                  // only used by ppc
+   case Iop_Clz16x4:                   // only used by arm
+   case Iop_Clz16x8:                   // only used by arm ppc arm64 mips s390
+   case Iop_Clz32x2:                   // only used by arm
+   case Iop_Clz32x4:                   // only used by arm ppc arm64 mips s390
+   case Iop_Clz64x2:                   // only used by ppc mips s390
+   case Iop_Clz8x16:                   // only used by arm ppc arm64 mips s390
+   case Iop_Clz8x8:                    // only used by arm
+   case Iop_CmpNEZ128x1:               // unused
+   case Iop_CmpNEZ16:                  // unused
+   case Iop_CmpNEZ16x16:               // unused
+   case Iop_CmpNEZ16x2:                // unused
+   case Iop_CmpNEZ16x4:                // only used by arm
+   case Iop_CmpNEZ16x8:                // only used by arm
+   case Iop_CmpNEZ32:                  // unused
+   case Iop_CmpNEZ32x2:                // only used by arm
+   case Iop_CmpNEZ32x4:                // only used by arm
+   case Iop_CmpNEZ32x8:                // unused
+   case Iop_CmpNEZ64:                  // unused
+   case Iop_CmpNEZ64x2:                // only used by arm
+   case Iop_CmpNEZ64x4:                // unused
+   case Iop_CmpNEZ8:                   // unused
+   case Iop_CmpNEZ8x16:                // only used by arm
+   case Iop_CmpNEZ8x32:                // unused
+   case Iop_CmpNEZ8x4:                 // unused
+   case Iop_CmpNEZ8x8:                 // only used by arm
+   case Iop_CmpwNEZ32:                 // unused
+   case Iop_CmpwNEZ64:                 // only used by arm
+   case Iop_Ctz16x8:
+   case Iop_Ctz8x16:
+   case Iop_Ctz32:
+   case Iop_CtzNat32:
+   case Iop_Ctz32x4:
+   case Iop_Ctz64:
+   case Iop_CtzNat64:
+   case Iop_Ctz64x2:
+   case Iop_GetMSBs8x16:
+   case Iop_GetMSBs8x8:
+   case Iop_PopCount32:                // only used by ppc
+   case Iop_PopCount64:                // only used by ppc
+      // Do not simply return IRExpr_Const(IRConst_UWord(0)):  see
+      // MC_(helperc_RETURN_0).
+      if (atom->tag == Iex_Const) {
+         return IRExpr_Const(IRConst_UWord(0));
+      }
+      return mkIRExprCCall (Ity_Word,
+                            1 /*Int regparms*/,
+                            "MC_(helperc_RETURN_0)",
+                            &MC_(helperc_RETURN_0),
+                            mkIRExprVec_1( vatom ));
+
+   // ----------------------------------------------------------
+   // Return the tag of the operand:
+   // ----------------------------------------------------------
+
    // pgbovine: Actually, when you widen stuff, don't you want to
    //       create new tags for the new bytes and merge them?
    //       But you can't do that because you only have the word-sized
@@ -1675,289 +1782,255 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
    //       ... I guess we don't care since during binary ops.,
    //       we only consider the tag of the first bytes of each
    //       operand anyways.
-   //
-   // For documentation purposes, here is a list of all the unary ops.
-   // Iop_128HIto64
-   // Iop_128to64
-   // Iop_16HIto8
-   // Iop_16Sto32
-   // Iop_16Sto64
-   // Iop_16to8
-   // Iop_16Uto32
-   // Iop_16Uto64
-   // Iop_1Sto8:                       // only used by ppc
-   // Iop_1Sto16:                      // unused
-   // Iop_1Sto32:                      // only used by mips ppc
-   // Iop_1Sto64:                      // only used by mips ppc
-   // Iop_1Uto32
-   // Iop_1Uto64
-   // Iop_1Uto8
-   // Iop_32HIto16
-   // Iop_32Sto64
-   // Iop_32to1
-   // Iop_32to16
-   // Iop_32to8
-   // Iop_32Uto64
-   // Iop_32UtoV128
-   // Iop_64HIto32
-   // Iop_64to1
-   // Iop_64to16
-   // Iop_64to32
-   // Iop_64to8
-   // Iop_64UtoV128
-   // Iop_1Sto16
-   // Iop_8Sto16
-   // Iop_8Sto32
-   // Iop_8Sto64
-   // Iop_8Uto16
-   // Iop_8Uto32
-   // Iop_8Uto64
-   // Iop_Abs16Fx8:
-   // Iop_Neg16Fx8:
-   // Iop_Abs16x4:                     // only used by arm
-   // Iop_Abs16x8:                     // only used by arm arm64
-   // Iop_Abs32Fx2:                    // only used by arm
-   // Iop_Abs32Fx4:                    // only used by arm arm64
-   // Iop_Abs32x2:                     // only used by arm
-   // Iop_Abs32x4:                     // only used by arm arm64
-   // Iop_Abs64Fx2:                    // only used by arm64
-   // Iop_Abs64x2:                     // only used by arm64
-   // Iop_Abs8x16:                     // only used by arm arm64
-   // Iop_Abs8x8:                      // only used by arm
-   // Iop_AbsF128:                     // only used by s390
-   // Iop_AbsF32:                      // only used by arm mips ppc s390 arm64
-   // Iop_AbsF64:
-   // Iop_AbsF16:
-   // Iop_BCDtoDPB:                    // only used by ppc
-   // Iop_BCD128toI128S:               // only used by ppc
-   // Iop_CipherSV128:                 // only used by ppc
-   // Iop_Cls16x4:                     // only used by arm
-   // Iop_Cls16x8:                     // only used by arm arm64
-   // Iop_Cls32x2:                     // only used by arm
-   // Iop_Cls32x4:                     // only used by arm arm64
-   // Iop_Cls8x16:                     // only used by arm arm64
-   // Iop_Cls8x8:                      // only used by arm
-   // Iop_Clz32
-   // Iop_Clz64
-   // Iop_ClzNat32                     // only used by ppc
-   // Iop_ClzNat64                     // only used by ppc
-   // Iop_Clz16x4:                     // only used by arm
-   // Iop_Clz16x8:                     // only used by arm ppc arm64 mips s390
-   // Iop_Clz32x2:                     // only used by arm
-   // Iop_Clz32x4:                     // only used by arm ppc arm64 mips s390
-   // Iop_Clz64x2:                     // only used by ppc mips s390
-   // Iop_Clz8x16:                     // only used by arm ppc arm64 mips s390
-   // Iop_Clz8x8:                      // only used by arm
-   // Iop_CmpNEZ128x1:                 // unused
-   // Iop_CmpNEZ16:                    // unused
-   // Iop_CmpNEZ16x16:                 // unused
-   // Iop_CmpNEZ16x2:                  // unused
-   // Iop_CmpNEZ16x4:                  // only used by arm
-   // Iop_CmpNEZ16x8:                  // only used by arm
-   // Iop_CmpNEZ32:                    // unused
-   // Iop_CmpNEZ32x2:                  // only used by arm
-   // Iop_CmpNEZ32x4:                  // only used by arm
-   // Iop_CmpNEZ32x8:                  // unused
-   // Iop_CmpNEZ64:                    // unused
-   // Iop_CmpNEZ64x2:                  // only used by arm
-   // Iop_CmpNEZ64x4:                  // unused
-   // Iop_CmpNEZ8:                     // unused
-   // Iop_CmpNEZ8x16:                  // only used by arm
-   // Iop_CmpNEZ8x32:                  // unused
-   // Iop_CmpNEZ8x4:                   // unused
-   // Iop_CmpNEZ8x8:                   // only used by arm
-   // Iop_CmpwNEZ32:                   // unused
-   // Iop_CmpwNEZ64:                   // only used by arm
-   // Iop_Cnt8x16:                     // only used by arm arm64
-   // Iop_Cnt8x8:                      // only used by arm
-   // Iop_Ctz16x8:
-   // Iop_Ctz8x16:
-   // Iop_Ctz32:
-   // Iop_CtzNat32:
-   // Iop_Ctz32x4:
-   // Iop_Ctz64:
-   // Iop_CtzNat64:
-   // Iop_Ctz64x2:
-   // Iop_D128HItoD64:                 // only used by ppc s390
-   // Iop_D128LOtoD64:                 // only used by ppc s390
-   // Iop_D32toD64:                    // only used by ppc s390
-   // Iop_D64toD128:                   // only used by ppc s390
-   // Iop_DPBtoBCD:                    // only used by ppc
-   // Iop_Dup16x4:                     // only used by arm
-   // Iop_Dup16x8:                     // only used by arm ppc
-   // Iop_Dup32x2:                     // only used by arm
-   // Iop_Dup32x4:                     // only used by arm ppc
-   // Iop_Dup8x16:                     // only used by arm ppc
-   // Iop_Dup8x8:                      // only used by arm
-   // Iop_ExtractExpD128:              // only used by ppc s390
-   // Iop_ExtractExpD64:               // only used by ppc s390
-   // Iop_ExtractSigD128:              // only used by s390
-   // Iop_ExtractSigD64:               // only used by s390
-   // Iop_F128HItoF64:                 // only used by s390
-   // Iop_F128LOtoF64:                 // only used by s390
-   // Iop_F16toF32:                    // only used by arm64
-   // Iop_F16toF32x4:
-   // Iop_F16toF32x8:
-   // Iop_F16toF64:                    // only used by arm64
-   // Iop_F16toF64x2:                  // only used by ppc
-   // Iop_F32toF16x4_DEP:              // only used by arm mips ppc
-   // Iop_F32toF64:
-   // Iop_F32toF128:                   // only used by s390
-   // Iop_F32toI32Sx2_RZ:              // only used by arm mips
-   // Iop_F32toI32Sx4_RZ:              // only used by arm mips
-   // Iop_F32toI32Ux2_RZ:              // only used by arm mips
-   // Iop_F32toI32Ux4_RZ:              // only used by arm mips
-   // Iop_F64toF128:                   // only used by s390
-   // Iop_GetMSBs8x16
-   // Iop_GetMSBs8x8
-   // Iop_I32StoD128:                  // only used by s390
-   // Iop_I32StoD64:                   // only used by s390
-   // Iop_I32StoF128:                  // only used by s390
-   // Iop_I32StoF64
-   // Iop_I32StoF32x4_DEP:
-   // Iop_I32StoF32x2_DEP:
-   // Iop_I32UtoD128:                  // only used by s390
-   // Iop_I32UtoD64:                   // only used by s390
-   // Iop_I32UtoF128:                  // only used by s390
-   // Iop_I32UtoF64:                   // only used by arm s390 arm64
-   // Iop_I32UtoF32x4_DEP:
-   // Iop_I32UtoF32x2_DEP:
-   // Iop_I64StoD128:                  // only used by ppc s390
-   // Iop_I64StoF128:                  // only used by s390
-   // Iop_I64UtoD128:                  // only used by s390
-   // Iop_I64UtoF128:                  // only used by s390
-   // Iop_Left16:                      // unused
-   // Iop_Left32:                      // unused
-   // Iop_Left64:                      // unused
-   // Iop_Left8:                       // unused
-   // Iop_Log2_32Fx4:                  // used only by mips
-   // Iop_Exp2_32Fx4:                  // ??????
-   // Iop_Log2_64Fx2:                  // used only by mips
-   // Iop_MulHi8Sx16:                  // used only by s390
-   // Iop_MulHi8Ux16:                  // used only by s390
-   // Iop_MulI128by10:
-   // Iop_MulI128by10Carry:
-   // Iop_NarrowUn16to8x8:             // only used by arm arm64
-   // Iop_NarrowUn32to16x4:            // only used by arm arm64
-   // Iop_NarrowUn64to32x2:            // only used by arm arm64
-   // Iop_Neg32Fx2:                    // only used by arm
-   // Iop_Neg32Fx4:                    // only used by arm arm64
-   // Iop_Neg64Fx2:                    // only used by arm64
-   // Iop_NegF128:                     // only used by s390
-   // Iop_NegF16:
-   // Iop_NegF32:
-   // Iop_NegF64:
-   // Iop_Not1:                        // only used by arm mips ppc s390
-   // Iop_Not8:
-   // Iop_Not16:                       // only used by mips
-   // Iop_Not32:
-   // Iop_Not64:
-   // Iop_NotV128:
-   // Iop_NotV256:
-   // Iop_PopCount32:                  // only used by ppc
-   // Iop_PopCount64:                  // only used by ppc
-   // Iop_PwAddL16Sx4:                 // only used by arm
-   // Iop_PwAddL16Sx8:                 // only used by arm
-   // Iop_PwAddL16Ux4:                 // only used by arm
-   // Iop_PwAddL16Ux8:                 // only used by arm s390
-   // Iop_PwAddL32Sx2:                 // only used by arm
-   // Iop_PwAddL32Sx4:                 // only used by arm
-   // Iop_PwAddL32Ux2:                 // only used by arm s390
-   // Iop_PwAddL32Ux4:                 // only used by arm s390
-   // Iop_PwAddL64Ux2:                 // only used by s390
-   // Iop_PwAddL8Sx16:                 // only used by arm
-   // Iop_PwAddL8Sx8:                  // only used by arm
-   // Iop_PwAddL8Ux8:                  // only used by arm
-   // Iop_PwAddL8Ux16:                 // only used by arm s390
-   // Iop_PwBitMtxXpose64x2:           // only used by ppc
-   // Iop_QF32toI32Sx4_RZ:             // only used by ppc
-   // Iop_QF32toI32Ux4_RZ:             // only used by ppc
-   // Iop_QNarrowUn16Sto8Sx8:          // only used by arm arm64
-   // Iop_QNarrowUn16Sto8Ux8:          // only used by arm arm64
-   // Iop_QNarrowUn16Uto8Ux8:          // only used by arm arm64
-   // Iop_QNarrowUn32Sto16Sx4:         // only used by arm arm64
-   // Iop_QNarrowUn32Sto16Ux4:         // only used by arm arm64
-   // Iop_QNarrowUn32Uto16Ux4:         // only used by arm arm64
-   // Iop_QNarrowUn64Sto32Sx2:         // only used by arm arm64
-   // Iop_QNarrowUn64Sto32Ux2:         // only used by arm arm64
-   // Iop_QNarrowUn64Uto32Ux2:         // only used by arm arm64
-   // Iop_RecipEst32F0x4:              //
-   // Iop_RecipEst32Fx2:               // only used by arm
-   // Iop_RecipEst32Fx4:               //
-   // Iop_RecipEst32Fx8:               //
-   // Iop_RecipEst32Ux2:               // only used by arm
-   // Iop_RecipEst32Ux4:               // only used by arm arm64
-   // Iop_ReinterpF64asI64
-   // Iop_ReinterpI32asF32
-   // Iop_ReinterpI64asF64
-   // Iop_ReinterpD64asI64:            // only used by ppc s390
-   // Iop_ReinterpF32asI32:            // only used by arm mips ppc arm64
-   // Iop_ReinterpI64asD64:            // only used by ppc
-   // Iop_Reverse16sIn32_x2:           // only used by arm
-   // Iop_Reverse16sIn32_x4:           // only used by arm arm64
-   // Iop_Reverse16sIn64_x1:           // only used by arm
-   // Iop_Reverse16sIn64_x2:           // only used by arm arm64
-   // Iop_Reverse1sIn8_x16:            // only used by arm64
-   // Iop_Reverse32sIn64_x1:           // only used by arm
-   // Iop_Reverse32sIn64_x2:           // only used by arm arm64
-   // Iop_Reverse8sIn16_x4:            // only used by arm
-   // Iop_Reverse8sIn16_x8:            // only used by arm arm64 mips
-   // Iop_Reverse8sIn32_x1:            // only used by ppc
-   // Iop_Reverse8sIn32_x2:            // only used by arm
-   // Iop_Reverse8sIn32_x4:            // only used by arm arm64 mips
-   // Iop_Reverse8sIn64_x1:            // only used by arm ppc
-   // Iop_Reverse8sIn64_x2:            // only used by arm arm64 mips
-   // Iop_RoundF32x4_RM:               // only used by ppc
-   // Iop_RoundF32x4_RN:               // only used by ppc
-   // Iop_RoundF32x4_RP:               // only used by ppc
-   // Iop_RoundF32x4_RZ:               // only used by ppc
-   // Iop_RoundF32toIntA0:
-   // Iop_RoundF32toIntE:
-   // Iop_RoundF64toF64_NEAREST:       // unused
-   // Iop_RoundF64toF64_NegINF:        // unused
-   // Iop_RoundF64toF64_PosINF:        // unused
-   // Iop_RoundF64toF64_ZERO:          // unused
-   // Iop_RoundF64toIntA0:
-   // Iop_RoundF64toIntE:
-   // Iop_RSqrtEst32F0x4:              //
-   // Iop_RSqrtEst32Fx2:               // only used by arm
-   // Iop_RSqrtEst32Fx4:               //
-   // Iop_RSqrtEst32Fx8:               //
-   // Iop_RSqrtEst32Ux2:               // only used by arm
-   // Iop_RSqrtEst32Ux4:               // only used by arm arm64
-   // Iop_RSqrtEst5GoodF64:            // only used by ppc
-   // Iop_RSqrtEst64Fx2:               // only used by arm64
-   // Iop_Sqrt32F0x4
-   // Iop_Sqrt32Fx8
-   // Iop_Sqrt64F0x2
-   // Iop_Sqrt64Fx4
-   // Iop_TruncF64asF32:               // only used by ppc
-   // Iop_TruncF128toI64S:
-   // Iop_TruncF128toI32S:
-   // Iop_TruncF128toI64U:
-   // Iop_TruncF128toI32U:
-   // Iop_TruncF128toI128S:
-   // Iop_TruncF128toI128U:
-   // Iop_ReinterpV128asI128:
-   // Iop_ReinterpI128asF128:
-   // Iop_ReinterpF128asI128:
-   // Iop_V128HIto64
-   // Iop_V128to32
-   // Iop_V128to64
-   // Iop_V256to64_0
-   // Iop_V256to64_1
-   // Iop_V256to64_2
-   // Iop_V256to64_3
-   // Iop_V256toV128_0
-   // Iop_V256toV128_1
-   // Iop_Widen16Sto32x4:              // only used by arm
-   // Iop_Widen16Uto32x4:              // only used by arm
-   // Iop_Widen32Sto64x2:              // only used by arm
-   // Iop_Widen32Uto64x2:              // only used by arm
-   // Iop_Widen8Sto16x8:               // only used by arm
-   // Iop_Widen8Uto16x8:               // only used by arm
 
-   return vatom;
+   case Iop_128HIto64:
+   case Iop_128to64:
+   case Iop_16HIto8:
+   case Iop_16Sto32:
+   case Iop_16Sto64:
+   case Iop_16to8:
+   case Iop_16Uto32:
+   case Iop_16Uto64:
+   case Iop_1Sto8:                     // only used by ppc
+   case Iop_1Sto16:                    // unused
+   case Iop_1Sto32:                    // only used by mips ppc
+   case Iop_1Sto64:                    // only used by mips ppc
+   case Iop_1Uto32:
+   case Iop_1Uto64:
+   case Iop_1Uto8:
+   case Iop_32HIto16:
+   case Iop_32Sto64:
+   case Iop_32to16:
+   case Iop_32to8:
+   case Iop_32Uto64:
+   case Iop_32UtoV128:
+   case Iop_64HIto32:
+   case Iop_64to16:
+   case Iop_64to32:
+   case Iop_64to8:
+   case Iop_64UtoV128:
+   case Iop_8Sto16:
+   case Iop_8Sto32:
+   case Iop_8Sto64:
+   case Iop_8Uto16:
+   case Iop_8Uto32:
+   case Iop_8Uto64:
+   case Iop_Abs16Fx8:
+   case Iop_Neg16Fx8:
+   case Iop_Abs16x4:                   // only used by arm
+   case Iop_Abs16x8:                   // only used by arm arm64
+   case Iop_Abs32Fx2:                  // only used by arm
+   case Iop_Abs32Fx4:                  // only used by arm arm64
+   case Iop_Abs32x2:                   // only used by arm
+   case Iop_Abs32x4:                   // only used by arm arm64
+   case Iop_Abs64Fx2:                  // only used by arm64
+   case Iop_Abs64x2:                   // only used by arm64
+   case Iop_Abs8x16:                   // only used by arm arm64
+   case Iop_Abs8x8:                    // only used by arm
+   case Iop_AbsF128:                   // only used by s390
+   case Iop_AbsF32:                    // only used by arm mips ppc s390 arm64
+   case Iop_AbsF64:
+   case Iop_AbsF16:
+   case Iop_BCDtoDPB:                  // only used by ppc
+   case Iop_BCD128toI128S:             // only used by ppc
+   case Iop_CipherSV128:               // only used by ppc
+   case Iop_Cls16x4:                   // only used by arm
+   case Iop_Cls16x8:                   // only used by arm arm64
+   case Iop_Cls32x2:                   // only used by arm
+   case Iop_Cls32x4:                   // only used by arm arm64
+   case Iop_Cls8x16:                   // only used by arm arm64
+   case Iop_Cls8x8:                    // only used by arm
+   case Iop_Cnt8x16:                   // only used by arm arm64
+   case Iop_Cnt8x8:                    // only used by arm
+   case Iop_D128HItoD64:               // only used by ppc s390
+   case Iop_D128LOtoD64:               // only used by ppc s390
+   case Iop_D32toD64:                  // only used by ppc s390
+   case Iop_D64toD128:                 // only used by ppc s390
+   case Iop_DPBtoBCD:                  // only used by ppc
+   case Iop_Dup16x4:                   // only used by arm
+   case Iop_Dup16x8:                   // only used by arm ppc
+   case Iop_Dup32x2:                   // only used by arm
+   case Iop_Dup32x4:                   // only used by arm ppc
+   case Iop_Dup8x16:                   // only used by arm ppc
+   case Iop_Dup8x8:                    // only used by arm
+   case Iop_ExtractExpD128:            // only used by ppc s390
+   case Iop_ExtractExpD64:             // only used by ppc s390
+   case Iop_ExtractSigD128:            // only used by s390
+   case Iop_ExtractSigD64:             // only used by s390
+   case Iop_F128HItoF64:               // only used by s390
+   case Iop_F128LOtoF64:               // only used by s390
+   case Iop_F16toF32:                  // only used by arm64
+   case Iop_F16toF32x4:
+   case Iop_F16toF32x8:
+   case Iop_F16toF64:                  // only used by arm64
+   case Iop_F16toF64x2:                // only used by ppc
+   case Iop_F32toF16x4_DEP:            // only used by arm mips ppc
+   case Iop_F32toF64:
+   case Iop_F32toF128:                 // only used by s390
+   case Iop_F32toI32Sx2_RZ:            // only used by arm mips
+   case Iop_F32toI32Sx4_RZ:            // only used by arm mips
+   case Iop_F32toI32Ux2_RZ:            // only used by arm mips
+   case Iop_F32toI32Ux4_RZ:            // only used by arm mips
+   case Iop_F64toF128:                 // only used by s390
+   case Iop_I32StoD128:                // only used by s390
+   case Iop_I32StoD64:                 // only used by s390
+   case Iop_I32StoF128:                // only used by s390
+   case Iop_I32StoF64:
+   case Iop_I32StoF32x4_DEP:
+   case Iop_I32StoF32x2_DEP:
+   case Iop_I32UtoD128:                // only used by s390
+   case Iop_I32UtoD64:                 // only used by s390
+   case Iop_I32UtoF128:                // only used by s390
+   case Iop_I32UtoF64:                 // only used by arm s390 arm64
+   case Iop_I32UtoF32x4_DEP:
+   case Iop_I32UtoF32x2_DEP:
+   case Iop_I64StoD128:                // only used by ppc s390
+   case Iop_I64StoF128:                // only used by s390
+   case Iop_I64UtoD128:                // only used by s390
+   case Iop_I64UtoF128:                // only used by s390
+   case Iop_Left16:                    // unused
+   case Iop_Left32:                    // unused
+   case Iop_Left64:                    // unused
+   case Iop_Left8:                     // unused
+   case Iop_Log2_32Fx4:                // used only by mips
+   case Iop_Exp2_32Fx4:                // ??????
+   case Iop_Log2_64Fx2:                // used only by mips
+   case Iop_MulI128by10:
+   case Iop_MulI128by10Carry:
+   case Iop_NarrowUn16to8x8:           // only used by arm arm64
+   case Iop_NarrowUn32to16x4:          // only used by arm arm64
+   case Iop_NarrowUn64to32x2:          // only used by arm arm64
+   case Iop_Neg32Fx2:                  // only used by arm
+   case Iop_Neg32Fx4:                  // only used by arm arm64
+   case Iop_Neg64Fx2:                  // only used by arm64
+   case Iop_NegF128:                   // only used by s390
+   case Iop_NegF16:
+   case Iop_NegF32:
+   case Iop_NegF64:
+   case Iop_Not1:                      // only used by arm mips ppc s390
+   case Iop_Not8:
+   case Iop_Not16:                     // only used by mips
+   case Iop_Not32:
+   case Iop_Not64:
+   case Iop_NotV128:
+   case Iop_NotV256:
+   case Iop_PwAddL16Sx4:               // only used by arm
+   case Iop_PwAddL16Sx8:               // only used by arm
+   case Iop_PwAddL16Ux4:               // only used by arm
+   case Iop_PwAddL16Ux8:               // only used by arm s390
+   case Iop_PwAddL32Sx2:               // only used by arm
+   case Iop_PwAddL32Sx4:               // only used by arm
+   case Iop_PwAddL32Ux2:               // only used by arm s390
+   case Iop_PwAddL32Ux4:               // only used by arm s390
+   case Iop_PwAddL64Ux2:               // only used by s390
+   case Iop_PwAddL8Sx16:               // only used by arm
+   case Iop_PwAddL8Sx8:                // only used by arm
+   case Iop_PwAddL8Ux8:                // only used by arm
+   case Iop_PwAddL8Ux16:               // only used by arm s390
+   case Iop_PwBitMtxXpose64x2:         // only used by ppc
+   case Iop_QF32toI32Sx4_RZ:           // only used by ppc
+   case Iop_QF32toI32Ux4_RZ:           // only used by ppc
+   case Iop_QNarrowUn16Sto8Sx8:        // only used by arm arm64
+   case Iop_QNarrowUn16Sto8Ux8:        // only used by arm arm64
+   case Iop_QNarrowUn16Uto8Ux8:        // only used by arm arm64
+   case Iop_QNarrowUn32Sto16Sx4:       // only used by arm arm64
+   case Iop_QNarrowUn32Sto16Ux4:       // only used by arm arm64
+   case Iop_QNarrowUn32Uto16Ux4:       // only used by arm arm64
+   case Iop_QNarrowUn64Sto32Sx2:       // only used by arm arm64
+   case Iop_QNarrowUn64Sto32Ux2:       // only used by arm arm64
+   case Iop_QNarrowUn64Uto32Ux2:       // only used by arm arm64
+   case Iop_RecipEst32F0x4:            //
+   case Iop_RecipEst32Fx2:             // only used by arm
+   case Iop_RecipEst32Fx4:             //
+   case Iop_RecipEst32Fx8:             //
+   case Iop_RecipEst32Ux2:             // only used by arm
+   case Iop_RecipEst32Ux4:             // only used by arm arm64
+   case Iop_ReinterpF64asI64:
+   case Iop_ReinterpI32asF32:
+   case Iop_ReinterpI64asF64:
+   case Iop_ReinterpD64asI64:          // only used by ppc s390
+   case Iop_ReinterpF32asI32:          // only used by arm mips ppc arm64
+   case Iop_ReinterpI64asD64:          // only used by ppc
+   case Iop_Reverse16sIn32_x2:         // only used by arm
+   case Iop_Reverse16sIn32_x4:         // only used by arm arm64
+   case Iop_Reverse16sIn64_x1:         // only used by arm
+   case Iop_Reverse16sIn64_x2:         // only used by arm arm64
+   case Iop_Reverse1sIn8_x16:          // only used by arm64
+   case Iop_Reverse32sIn64_x1:         // only used by arm
+   case Iop_Reverse32sIn64_x2:         // only used by arm arm64
+   case Iop_Reverse8sIn16_x4:          // only used by arm
+   case Iop_Reverse8sIn16_x8:          // only used by arm arm64 mips
+   case Iop_Reverse8sIn32_x1:          // only used by ppc
+   case Iop_Reverse8sIn32_x2:          // only used by arm
+   case Iop_Reverse8sIn32_x4:          // only used by arm arm64 mips
+   case Iop_Reverse8sIn64_x1:          // only used by arm ppc
+   case Iop_Reverse8sIn64_x2:          // only used by arm arm64 mips
+   case Iop_RoundF32x4_RM:             // only used by ppc
+   case Iop_RoundF32x4_RN:             // only used by ppc
+   case Iop_RoundF32x4_RP:             // only used by ppc
+   case Iop_RoundF32x4_RZ:             // only used by ppc
+   case Iop_RoundF32toIntA0:
+   case Iop_RoundF32toIntE:
+   case Iop_RoundF64toF64_NEAREST:     // unused
+   case Iop_RoundF64toF64_NegINF:      // unused
+   case Iop_RoundF64toF64_PosINF:      // unused
+   case Iop_RoundF64toF64_ZERO:        // unused
+   case Iop_RoundF64toIntA0:
+   case Iop_RoundF64toIntE:
+   case Iop_RSqrtEst32F0x4:            //
+   case Iop_RSqrtEst32Fx2:             // only used by arm
+   case Iop_RSqrtEst32Fx4:             //
+   case Iop_RSqrtEst32Fx8:             //
+   case Iop_RSqrtEst32Ux2:             // only used by arm
+   case Iop_RSqrtEst32Ux4:             // only used by arm arm64
+   case Iop_RSqrtEst5GoodF64:          // only used by ppc
+   case Iop_RSqrtEst64Fx2:             // only used by arm64
+   case Iop_Sqrt32F0x4:
+   case Iop_Sqrt32Fx8:
+   case Iop_Sqrt64F0x2:
+   case Iop_Sqrt64Fx4:
+   case Iop_TruncF64asF32:             // only used by ppc
+   case Iop_TruncF128toI64S:
+   case Iop_TruncF128toI32S:
+   case Iop_TruncF128toI64U:
+   case Iop_TruncF128toI32U:
+   case Iop_TruncF128toI128S:
+   case Iop_TruncF128toI128U:
+   case Iop_ReinterpV128asI128:
+   case Iop_ReinterpI128asF128:
+   case Iop_ReinterpF128asI128:
+   case Iop_V128HIto64:
+   case Iop_V128to32:
+   case Iop_V128to64:
+   case Iop_V256to64_0:
+   case Iop_V256to64_1:
+   case Iop_V256to64_2:
+   case Iop_V256to64_3:
+   case Iop_V256toV128_0:
+   case Iop_V256toV128_1:
+   case Iop_Widen16Sto32x4:            // only used by arm
+   case Iop_Widen16Uto32x4:            // only used by arm
+   case Iop_Widen32Sto64x2:            // only used by arm
+   case Iop_Widen32Uto64x2:            // only used by arm
+   case Iop_Widen8Sto16x8:             // only used by arm
+   case Iop_Widen8Uto16x8:             // only used by arm
+      return vatom;
+
+// Unimplemented
+   case Iop_F64toF16x2_DEP:            // only used by ppc
+   case Iop_RecipEst64Fx2:             // only used by arm64 mips
+   case Iop_ReinterpI128asV128:        // only used by ppc
+   case Iop_ZeroHI112ofV128:           // only used by arm64
+   case Iop_ZeroHI120ofV128:           // only used by arm64
+   case Iop_ZeroHI64ofV128:            // only used by arm64
+   case Iop_ZeroHI96ofV128:            // only used by arm64
+
+   default:
+      report_unhandled_op_DC( op, "dyncomp:expr2tags_Unop_DC" );
+      // With --dyncomp-unhandled-ops=warn, approximate an unknown
+      // unary operation by returning the tag of its operand.
+      return vatom;
+   }
 }
 
 /*
@@ -2041,8 +2114,6 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
    case Iop_Rsh8Sx16:                    // only used by arm64
    case Iop_Rsh8Ux16:                    // only used by arm64
 
-   case Iop_F64toF16x2_DEP:
-   case Iop_RecipEst64Fx2:              // only used by arm64
    case Iop_RecpExpF32:                 // only used by arm64
    case Iop_RecpExpF64:                 // only used by arm64
 
@@ -2062,11 +2133,6 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
    case Iop_VDup8x8:                     // only used by arm
    case Iop_VDup8x16:                    // only used by arm
 
-   case Iop_ZeroHI112ofV128:             // only used by arm64
-   case Iop_ZeroHI120ofV128:             // only used by arm64
-   case Iop_ZeroHI64ofV128:              // only used by arm64
-   case Iop_ZeroHI96ofV128:              // only used by arm64
-   case Iop_ReinterpI128asV128:
  */
 
 /* Worker function; do not call directly. */
@@ -2361,7 +2427,7 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
                 );
 
       case Iex_Unop:
-         return expr2tags_Unop_DC( dce, e->Iex.Unop.arg );
+         return expr2tags_Unop_DC( dce, e->Iex.Unop.op, e->Iex.Unop.arg );
 
       case Iex_Load:
          return expr2tags_LDle_DC( dce, e->Iex.Load.ty,
