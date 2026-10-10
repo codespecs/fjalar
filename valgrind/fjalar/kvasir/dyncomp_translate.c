@@ -1760,7 +1760,16 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
    case Iop_GetMSBs8x8:
    case Iop_PopCount32:                // only used by ppc
    case Iop_PopCount64:                // only used by ppc
-      return IRExpr_Const(IRConst_UWord(0));
+      // Do not simply return IRExpr_Const(IRConst_UWord(0)):  see
+      // MC_(helperc_RETURN_0).
+      if (atom->tag == Iex_Const) {
+         return IRExpr_Const(IRConst_UWord(0));
+      }
+      return mkIRExprCCall (Ity_Word,
+                            1 /*Int regparms*/,
+                            "MC_(helperc_RETURN_0)",
+                            &MC_(helperc_RETURN_0),
+                            mkIRExprVec_1( vatom ));
 
    // ----------------------------------------------------------
    // Return the tag of the operand:
