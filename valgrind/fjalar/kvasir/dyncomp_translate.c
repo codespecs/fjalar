@@ -311,6 +311,31 @@ UInt numConsts = 0;
 // as one big switch statement for now in order to provide
 // flexibility for future edits
 
+/* Reports an IROp that DynComp does not handle.  By default, panics.
+   With --dyncomp-unhandled-ops=warn, prints a warning the first time
+   that each IROp is encountered and returns, so that the caller can
+   approximate the operation. */
+static
+void report_unhandled_op_DC ( IROp op, const HChar* where )
+{
+   static Bool warned[Iop_LAST - Iop_INVALID];
+
+   if (!dyncomp_warn_unhandled_ops) {
+      ppIROp(op);
+      VG_(printf)("\nUnhandled IROp: 0x%x\n", (UInt)op);
+      VG_(tool_panic)(where);
+   }
+
+   tl_assert(op > Iop_INVALID && op < Iop_LAST);
+   if (!warned[op - Iop_INVALID]) {
+      warned[op - Iop_INVALID] = True;
+      VG_(printf)("Warning: DynComp does not handle IROp ");
+      ppIROp(op);
+      VG_(printf)(" (0x%x) in %s; its comparability may be imprecise.\n",
+                  (UInt)op, where);
+   }
+}
+
 static
 IRAtom* expr2tags_Qop_DC ( DCEnv* dce,
                            IROp op,
@@ -398,9 +423,14 @@ IRAtom* expr2tags_Qop_DC ( DCEnv* dce,
       case Iop_Rotx64:                      // only used by mips
 
       default:
-         ppIROp(op);
-         VG_(printf)("\nUnhandled IROp: 0x%x\n", (UInt)op);
-         VG_(tool_panic)("memcheck:expr2tags_Qop");
+         report_unhandled_op_DC( op, "dyncomp:expr2tags_Qop_DC" );
+         // With --dyncomp-unhandled-ops=warn, approximate an unknown
+         // quaternary operation as an interaction among all operands.
+         return mkIRExprCCall (Ity_Word,
+                               3 /*Int regparms*/,
+                               "MC_(helperc_MERGE_4_TAGS)",
+                               &MC_(helperc_MERGE_4_TAGS),
+                               mkIRExprVec_4( vatom1, vatom2, vatom3, vatom4 ));
    }
 
    VG_(tool_panic)("memcheck:expr2tags_Qop");
@@ -552,9 +582,14 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
       case Iop_2xMultU64Add128CarryOut:     // only used by ppc
 
       default:
-         ppIROp(op);
-         VG_(printf)("\nUnhandled IROp: 0x%x\n", (UInt)op);
-         VG_(tool_panic)("memcheck:expr2tags_Triop");
+         report_unhandled_op_DC( op, "dyncomp:expr2tags_Triop_DC" );
+         // With --dyncomp-unhandled-ops=warn, approximate an unknown
+         // ternary operation as an interaction among all operands.
+         return mkIRExprCCall (Ity_Word,
+                               3 /*Int regparms*/,
+                               "MC_(helperc_MERGE_3_TAGS)",
+                               &MC_(helperc_MERGE_3_TAGS),
+                               mkIRExprVec_3( vatom1, vatom2, vatom3 ));
    }
 
    return IRExpr_Const(IRConst_UWord(0));
@@ -1569,9 +1604,14 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       // Hopefully we will never get here if we've had had cases which
       // handle every possible IR binary op. type (right?)
    default:
-      ppIROp(op);
-      VG_(printf)("\nUnhandled IROp: 0x%x\n", (UInt)op);
-      VG_(tool_panic)("dyncomp:expr2tags_Binop_DC");
+      report_unhandled_op_DC( op, "dyncomp:expr2tags_Binop_DC" );
+      // With --dyncomp-unhandled-ops=warn, approximate an unknown
+      // binary operation as an interaction, like arithmetic.
+      if (!dyncomp_dataflow_comparisons_mode) {
+         helper = &MC_(helperc_MERGE_TAGS);
+         hname = "MC_(helperc_MERGE_TAGS)";
+      }
+      break;
    }
 
    // In this mode, NOTHING is an interaction:
