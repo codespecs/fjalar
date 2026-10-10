@@ -99,7 +99,16 @@ To determine whether a newer version of Binutils is available, compare file
 The instructions in this document assume you use bash as your shell.
 If you use a different shell, you will need to adjust the instructions
 accordingly.  Also, we assume @env{$INV} points to a parent directory that
-contains both the Daikon and Fjalar source trees.
+contains both the Daikon and Fjalar source trees, and that @env{$DAIKONDIR}
+points to the Daikon source tree within it:
+
+@example
+export DAIKONDIR=$INV/daikon
+@end example
+
+If you already had @env{$DAIKONDIR} set, make sure it is @file{$INV/daikon}.
+If it pointed elsewhere, some steps would build and test one copy of Daikon,
+and other steps would use a different copy.
 
 @menu
 * Obtain a copy of Daikon and Fjalar::
@@ -140,7 +149,7 @@ sudo apt -yqq install binutils-dev
 Update your enlistment to the latest versions:
 
 @example
-cd $INV/daikon
+cd $DAIKONDIR
 git pull
 cd $INV/fjalar
 git pull
@@ -149,7 +158,7 @@ git pull
 Ensure there are no local changes:
 
 @example
-cd $INV/daikon
+cd $DAIKONDIR
 git diff
 cd $INV/fjalar
 git diff
@@ -161,7 +170,7 @@ commit and push them, then start over from the beginning.
 Ensure there are no outgoing changes:
 
 @example
-cd $INV/daikon
+cd $DAIKONDIR
 git log --branches --not --remotes
 cd $INV/fjalar
 git log --branches --not --remotes
@@ -178,10 +187,10 @@ Re-compile Fjalar, then run Daikon's Kvasir tests. (The tests take about 20 minu
 
 @example
 # Optional, to verify Daikon
-make -C $INV/daikon compile test
+make -C $DAIKONDIR compile test
 
 make -C $INV/fjalar build
-make -C $INV/daikon/tests/kvasir-tests clean-all regression-tests
+make -C $DAIKONDIR/tests/kvasir-tests clean-all regression-tests
 @end example
 
 The tests should pass. If any tests fail, fix them, then start over from
@@ -719,7 +728,7 @@ diff -ub ~/tmp/$BUOLD/binutils/readelf.c readelf.c > readelf-binutils-vs-fjalar.
 Before applying any patches, run Daikon's Kvasir tests:
 
 @example
-  make -C $INV/daikon/tests/kvasir-tests clean-all regression-tests
+  make -C $DAIKONDIR/tests/kvasir-tests clean-all regression-tests
 @end example
 
 @noindent
@@ -1036,7 +1045,7 @@ of the Daikon tree.
 It can be run using the following commands (takes about 20 minutes):
 
 @example
-cd $INV/daikon/tests/kvasir-tests
+cd $DAIKONDIR/tests/kvasir-tests
 make clean-all
 make regression-tests
 @end example
@@ -1058,7 +1067,7 @@ with those in the new binaries and see if changes to
 @section Documenting Changes
 
 Any user-visible changes should be documented in
-@file{$INV/daikon/doc/CHANGELOG.md}.
+@file{$DAIKONDIR/doc/CHANGELOG.md}.
 Additionally, the first line in @file{fjalar/valgrind/REVISION} should be updated
 with the Valgrind version used for this merge.
 
