@@ -1809,6 +1809,8 @@ decode_location_expression (unsigned char * data,
 	  break;
 	case DW_OP_piece:
 	  READ_ULEB (uvalue, data, end);
+	  if (ok_to_harvest)
+	    harvest_formal_param_location_piece(entry);
 	  printf ("DW_OP_piece: %s", dwarf_vmatoa ("u", uvalue));
 	  break;
 	case DW_OP_deref_size:

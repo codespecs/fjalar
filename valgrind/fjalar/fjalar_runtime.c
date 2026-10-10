@@ -190,8 +190,6 @@ returnArrayVariableWithAddr(VarList* varList,
                             FunctionExecutionState* e,
                             Addr* baseAddr) {
   VarNode* cur_node = 0;
-  ThreadId tid = VG_(get_running_tid)();
-  Addr var_loc = 0;
 
   FJALAR_DPRINTF("[returnArrayVariableWithAddr] varList: %p, Addr: %p, %s\n", varList, (void *)a, (isGlobal)?"Global":"NonGlobal");
   if (!isGlobal) {
@@ -210,6 +208,11 @@ returnArrayVariableWithAddr(VarList* varList,
     FJALAR_DPRINTF("Examining potential var: %s, offset: 0x%x, locType: 0x%x\n",
                     potentialVar->name, (unsigned int) potentialVar->byteOffset, potentialVar->locationType);
 
+    // A formal parameter located in a register is not in memory, so
+    // it cannot contain a.
+    if (potentialVar->locationType == REGISTER_LOCATION)
+      continue;
+
     if (isGlobal) {
       tl_assert(IS_GLOBAL_VAR(potentialVar));
       potentialVarBaseAddr = potentialVar->globalVar->globalLocation;
@@ -225,65 +228,7 @@ returnArrayVariableWithAddr(VarList* varList,
         potentialVarBaseAddr = e->lowSP + potentialVar->byteOffset;
       }
     }
-    // FJALAR_DPRINTF("potential var expression size: %u\n", potentialVar->location_expression_size);
-    if (potentialVar->location_expression_size) {
-      unsigned int i = 0;
-      for(i = 0; i < potentialVar->location_expression_size; i++ ) {
-        dwarf_location *dloc  = &(potentialVar->location_expression[i]);
-        unsigned int  op = dloc->atom;
-        Addr reg_val;
-
-        if(op == DW_OP_addr) {
-          // DWARF supplied address
-          var_loc = dloc->atom_offset;
-
-        } else if(op == DW_OP_deref) {
-          // Dereference result of last DWARF operation
-          tl_assert(var_loc);
-          var_loc = *(Addr *)var_loc;
-
-        } else if((op >= DW_OP_const1u) && (op <= DW_OP_consts)) {
-          // DWARF supplied constant
-          var_loc = dloc->atom_offset;
-
-        } else if((op >= DW_OP_plus) && (op <= DW_OP_plus_uconst)) {
-          // Add DWARF supplied constant to value to result of last DWARF operation
-          var_loc += dloc->atom_offset;
-
-        } else if((op >= DW_OP_reg0) && (op <= DW_OP_reg31)) {
-          // Get value located in architectural register
-          reg_val = (*get_reg[dloc->atom - DW_OP_reg0])(tid);
-          FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %p\n", dwarf_reg_string[dloc->atom - DW_OP_reg0], (void *)reg_val);
-          var_loc = (Addr)&reg_val;
-
-        } else if((op >= DW_OP_breg0) && (op <= DW_OP_breg31)) {
-          // Get value pointed to by architectural register
-          if (dloc->atom - DW_OP_breg0 == DWARF_SP_REG) {
-            // Use the stack pointer at function entry (after the prologue).
-            reg_val = e->lowSP;
-          } else {
-            reg_val = (*get_reg[dloc->atom - DW_OP_breg0])(tid);
-          }
-          FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %p\n", dwarf_reg_string[dloc->atom - DW_OP_breg0], (void *)reg_val);
-          var_loc = reg_val + dloc->atom_offset;
-          FJALAR_DPRINTF("\tAdding %lld to the register value for %p\n", dloc->atom_offset, (void *)var_loc);
-          tl_assert(var_loc);
-
-        } else if(op == DW_OP_fbreg) {
-          // Get value located at an offset from the FRAME_BASE.
-          FJALAR_DPRINTF("atom offset: %lld vs. byteOffset: %d\n", dloc->atom_offset, potentialVar->byteOffset);
-          var_loc = e->FP + dloc->atom_offset;
-
-        } else {
-          // There's a fair number of DWARF operations still unsupported. There is a full list
-          // in fjalar_debug.h
-          FJALAR_DPRINTF("\tUnsupported DWARF stack OP: %s\n", location_expression_to_string(op));
-          tl_assert(0);
-        }
-        FJALAR_DPRINTF("\tApplying DWARF Stack Operation %s - %p\n",location_expression_to_string(op), (void *)var_loc);
-      }
-    }
-    FJALAR_DPRINTF("addr: %p, potential var_loc: %p, staticArr: %p, ptrLevels: %u, varType: %u\n",
+    FJALAR_DPRINTF("addr: %p, potential base addr: %p, staticArr: %p, ptrLevels: %u, varType: %u\n",
                    (void*)a, (void*)potentialVarBaseAddr, potentialVar->staticArr, potentialVar->ptrLevels,
                    (potentialVar->varType ? potentialVar->varType->decType : 0));
 

@@ -1234,6 +1234,20 @@ char harvest_formal_param_location_offset(dwarf_entry* e, long value)
     return 0;
 }
 
+char harvest_formal_param_location_piece(dwarf_entry* e)
+{
+  if ((e == 0) || (e->entry_ptr == 0))
+    return 0;
+
+  if (tag_is_formal_parameter(e->tag_name))
+    {
+      ((formal_parameter*)e->entry_ptr)->location_has_piece = 1;
+      return 1;
+    }
+  else
+    return 0;
+}
+
 char harvest_data_member_location(dwarf_entry* e, unsigned long value)
 {
   unsigned long tag;
@@ -1914,6 +1928,7 @@ static void process_abstract_origin_items(void)
           aliased_formal_param->location_type = cur_param->location_type;
           aliased_formal_param->loc_atom = cur_param->loc_atom;
           aliased_formal_param->valid_loc = cur_param->valid_loc;
+          aliased_formal_param->location_has_piece = cur_param->location_has_piece;
           aliased_formal_param->dwarf_stack_size = cur_param->dwarf_stack_size;
 
           VG_(memcpy)(aliased_formal_param->dwarf_stack, cur_param->dwarf_stack,

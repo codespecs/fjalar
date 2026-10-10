@@ -95,8 +95,8 @@ Bool doing_debug_print = False;
 // The filename of the target executable:
 const HChar* executable_filename = 0;
 
-// Mapping between Dwarf Register numbers and
-// valgrind function to return the value
+// Mapping between DWARF register numbers and the guest-state offset
+// and name of the register.
 // Below comment is ripped from GCC 4.3.1
 
 /* Define the register numbers to be used in Dwarf debugging information.
@@ -119,109 +119,71 @@ const HChar* executable_filename = 0;
 
 */
 
+typedef struct {
+  Int guestOffset;    // -1 if Fjalar cannot read the register
+  const HChar* name;  // for debugging output
+} DwarfRegInfo;
+
 #if defined(VGA_amd64)
 // AMD64 Dwarf to Architecture mapping is (thankfully) specified
 // in the AMD64 ABI (http://x86-64.org/documentation/abi.pdf)
-Addr (*get_reg[FJALAR_NUM_DWARF_REGS])( ThreadId tid ) = {
-  VG_(get_xAX),
-  VG_(get_xDX),
-  VG_(get_xCX),
-  VG_(get_xBX),
-  VG_(get_xSI),
-  VG_(get_xDI),
-  VG_(get_FP),
-  VG_(get_SP),
-  VG_(get_R8),
-  VG_(get_R9),
-  VG_(get_R10),
-  VG_(get_R11),
-  VG_(get_R12),
-  VG_(get_R13),
-  VG_(get_R14),
-  VG_(get_R15),
-};
-Int dwarf_reg_guest_offset[FJALAR_NUM_DWARF_REGS] = {
-  offsetof(VexGuestArchState, guest_RAX),
-  offsetof(VexGuestArchState, guest_RDX),
-  offsetof(VexGuestArchState, guest_RCX),
-  offsetof(VexGuestArchState, guest_RBX),
-  offsetof(VexGuestArchState, guest_RSI),
-  offsetof(VexGuestArchState, guest_RDI),
-  offsetof(VexGuestArchState, guest_RBP),
-  offsetof(VexGuestArchState, guest_RSP),
-  offsetof(VexGuestArchState, guest_R8),
-  offsetof(VexGuestArchState, guest_R9),
-  offsetof(VexGuestArchState, guest_R10),
-  offsetof(VexGuestArchState, guest_R11),
-  offsetof(VexGuestArchState, guest_R12),
-  offsetof(VexGuestArchState, guest_R13),
-  offsetof(VexGuestArchState, guest_R14),
-  offsetof(VexGuestArchState, guest_R15),
+static const DwarfRegInfo dwarf_regs[FJALAR_NUM_DWARF_REGS] = {
+  { offsetof(VexGuestArchState, guest_RAX), "xAX" },
+  { offsetof(VexGuestArchState, guest_RDX), "xDX" },
+  { offsetof(VexGuestArchState, guest_RCX), "xCX" },
+  { offsetof(VexGuestArchState, guest_RBX), "xBX" },
+  { offsetof(VexGuestArchState, guest_RSI), "xSI" },
+  { offsetof(VexGuestArchState, guest_RDI), "xDI" },
+  { offsetof(VexGuestArchState, guest_RBP), "xFP" },
+  { offsetof(VexGuestArchState, guest_RSP), "xSP" },
+  { offsetof(VexGuestArchState, guest_R8),  "R8" },
+  { offsetof(VexGuestArchState, guest_R9),  "R9" },
+  { offsetof(VexGuestArchState, guest_R10), "R10" },
+  { offsetof(VexGuestArchState, guest_R11), "R11" },
+  { offsetof(VexGuestArchState, guest_R12), "R12" },
+  { offsetof(VexGuestArchState, guest_R13), "R13" },
+  { offsetof(VexGuestArchState, guest_R14), "R14" },
+  { offsetof(VexGuestArchState, guest_R15), "R15" },
 };
 #else
-Addr (*get_reg[FJALAR_NUM_DWARF_REGS])( ThreadId tid ) = {
-  VG_(get_xAX),
-  VG_(get_xCX),
-  VG_(get_xDX),
-  VG_(get_xBX),
-  VG_(get_SP),
-  VG_(get_FP),
-  VG_(get_xSI),
-  VG_(get_xDI),
-  VG_(get_IP),
-  NULL,
-  NULL
-};
-Int dwarf_reg_guest_offset[FJALAR_NUM_DWARF_REGS] = {
-  offsetof(VexGuestArchState, guest_EAX),
-  offsetof(VexGuestArchState, guest_ECX),
-  offsetof(VexGuestArchState, guest_EDX),
-  offsetof(VexGuestArchState, guest_EBX),
-  offsetof(VexGuestArchState, guest_ESP),
-  offsetof(VexGuestArchState, guest_EBP),
-  offsetof(VexGuestArchState, guest_ESI),
-  offsetof(VexGuestArchState, guest_EDI),
-  offsetof(VexGuestArchState, guest_EIP),
-  -1,
-  -1
+static const DwarfRegInfo dwarf_regs[FJALAR_NUM_DWARF_REGS] = {
+  { offsetof(VexGuestArchState, guest_EAX), "xAX" },
+  { offsetof(VexGuestArchState, guest_ECX), "xCX" },
+  { offsetof(VexGuestArchState, guest_EDX), "xDX" },
+  { offsetof(VexGuestArchState, guest_EBX), "xBX" },
+  { offsetof(VexGuestArchState, guest_ESP), "xSP" },
+  { offsetof(VexGuestArchState, guest_EBP), "xFP" },
+  { offsetof(VexGuestArchState, guest_ESI), "xSI" },
+  { offsetof(VexGuestArchState, guest_EDI), "xDI" },
+  { offsetof(VexGuestArchState, guest_EIP), "xIP" },
+  { -1, "eflags" },
+  { -1, "trapno" },
 };
 #endif
 
-// For debugging purposes, a mapping between
-// DWARF location atoms and their string
-// representation
-#if defined(VGA_amd64)
-const HChar* dwarf_reg_string[16] = {
-  "xAX",
-  "xDX",
-  "xCX",
-  "xBX",
-  "xSI",
-  "xDI",
-  "xFP",
-  "xSP",
-  "R8",
-  "R9",
-  "R10",
-  "R11",
-  "R12",
-  "R13",
-  "R14",
-  "R15"
-};
-#else
-const HChar* dwarf_reg_string[9] = {
-  "xAX",
-  "xCX",
-  "xDX",
-  "xBX",
-  "xSP",
-  "xFP",
-  "xSI",
-  "xDI",
-  "xIP"
-};
-#endif
+Bool dwarf_reg_is_readable(UInt regNum)
+{
+  return regNum < FJALAR_NUM_DWARF_REGS && dwarf_regs[regNum].guestOffset >= 0;
+}
+
+Int dwarf_reg_guest_offset(UInt regNum)
+{
+  tl_assert(dwarf_reg_is_readable(regNum));
+  return dwarf_regs[regNum].guestOffset;
+}
+
+Addr read_dwarf_reg(ThreadId tid, UInt regNum)
+{
+  Addr value;
+  VG_(get_shadow_regs_area)(tid, (UChar*)&value, 0/*shadowNo*/,
+                            dwarf_reg_guest_offset(regNum), sizeof(Addr));
+  return value;
+}
+
+const HChar* dwarf_reg_name(UInt regNum)
+{
+  return regNum < FJALAR_NUM_DWARF_REGS ? dwarf_regs[regNum].name : "unknown";
+}
 
 // located in VEX/priv/main_util.c
 extern void vex_bzero(void* s, UInt n);
@@ -666,8 +628,8 @@ void enter_function(FunctionEntry* f)
               ll->atom = DW_OP_breg5;
               ll->atom_offset = 8;
           }
-          if(get_reg[ll->atom - DW_OP_breg0]) {
-            frame_ptr = (*get_reg[ll->atom - DW_OP_breg0])(tid) + ll->atom_offset;
+          if(dwarf_reg_is_readable(ll->atom - DW_OP_breg0)) {
+            frame_ptr = read_dwarf_reg(tid, ll->atom - DW_OP_breg0) + ll->atom_offset;
           }
         }
       }
@@ -679,14 +641,18 @@ void enter_function(FunctionEntry* f)
         FJALAR_DPRINTF("\tExamining frame: %lx - %lx\n", df->begin, df->end);
         if (f->entryPC >= df->begin && f->entryPC < df->end) {
           FJALAR_DPRINTF("\tFound debug frame with reg %x and offset %lx\n", df->cfa_reg, df->cfa_offset);
-          frame_ptr = (*get_reg[df->cfa_reg])(tid) + df->cfa_offset;
+          if (dwarf_reg_is_readable(df->cfa_reg)) {
+            frame_ptr = read_dwarf_reg(tid, df->cfa_reg) + df->cfa_offset;
+          }
           break;
         }
         df = df->next;
       }
     } else {
       FJALAR_DPRINTF("\tsimple location expression\n");
-      frame_ptr = (*get_reg[f->frame_base_atom - DW_OP_reg0])(tid) + f->frame_base_offset;
+      if (dwarf_reg_is_readable(f->frame_base_atom - DW_OP_reg0)) {
+        frame_ptr = read_dwarf_reg(tid, f->frame_base_atom - DW_OP_reg0) + f->frame_base_offset;
+      }
     }
   }
 
@@ -721,20 +687,19 @@ void enter_function(FunctionEntry* f)
   newEntry->invocation_nonce = cur_nonce++;
   newEntry->func->nonce = newEntry->invocation_nonce;
 
-  // Save the registers, with their A and V bits, so that formal
-  // parameters located in registers have their entrance values at
-  // both entrance and exit.
+  // Save the registers that hold formal parameters, with their A and
+  // V bits, so that those formal parameters have their entrance values
+  // at both entrance and exit.
   for (i = 0; i < FJALAR_NUM_DWARF_REGS; i++) {
     Addr regAddr = (Addr)&newEntry->entryRegs[i];
-    UWord vbits = V_BITS64_UNDEFINED;
+    UWord vbits;
     UInt b;
-    if (get_reg[i]) {
-      newEntry->entryRegs[i] = (*get_reg[i])(tid);
-      VG_(get_shadow_regs_area)(tid, (UChar*)&vbits, 1/*shadowNo*/,
-                                dwarf_reg_guest_offset[i], sizeof(Addr));
-    } else {
-      newEntry->entryRegs[i] = 0;
+    if (!(f->paramRegMask & (1U << i))) {
+      continue;
     }
+    newEntry->entryRegs[i] = read_dwarf_reg(tid, i);
+    VG_(get_shadow_regs_area)(tid, (UChar*)&vbits, 1/*shadowNo*/,
+                              dwarf_reg_guest_offset(i), sizeof(Addr));
     for (b = 0; b < sizeof(Addr); b++) {
       set_abit_and_vbyte(regAddr + b, VGM_BIT_VALID, (vbits >> (b * 8)) & 0xff);
     }

@@ -814,11 +814,12 @@ void fjalar_tool_handle_function_entrance(FunctionExecutionState* f_state) {
     UInt b;
 
     for (i = 0; i < FJALAR_NUM_DWARF_REGS; i++) {
-      UInt regTag = 0;
-      if (dwarf_reg_guest_offset[i] >= 0) {
-        regTag = *(VG_(get_tag_ptr_for_guest_offset)(currentTID,
-                                                    dwarf_reg_guest_offset[i]));
+      UInt regTag;
+      if (!(f_state->func->paramRegMask & (1U << i))) {
+        continue;
       }
+      regTag = *(VG_(get_tag_ptr_for_guest_offset)(currentTID,
+                                                  dwarf_reg_guest_offset(i)));
       for (b = 0; b < sizeof(Addr); b++) {
         set_tag((Addr)(&(f_state->entryRegs[i])) + (Addr)b, regTag);
       }

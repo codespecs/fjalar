@@ -690,6 +690,10 @@ typedef struct _FunctionEntry {
 
   UInt nonce;
 
+  // A bit mask of the DWARF register numbers of the registers that
+  // hold formal parameters (see FunctionExecutionState.entryRegs).
+  UInt paramRegMask;
+
 } FunctionEntry;
 
 
@@ -740,17 +744,30 @@ These data structures and functions provide mechanisms for runtime
 traversals within data structures and arrays
 **********************************************************************/
 
-// The number of DWARF register numbers that Fjalar can read (the
-// size of the get_reg array in fjalar_main.c).
+// One more than the largest DWARF register number that Fjalar can
+// read.  It must be at most 32, because FunctionEntry.paramRegMask is
+// a bit mask indexed by DWARF register number.
 #if defined(VGA_amd64)
 #define FJALAR_NUM_DWARF_REGS 16
 #else
 #define FJALAR_NUM_DWARF_REGS 11
 #endif
 
-// Mapping between DWARF register numbers and the offset of the
-// register in the guest state, or -1 if there is no such register
-extern Int dwarf_reg_guest_offset[FJALAR_NUM_DWARF_REGS];
+// Returns true if Fjalar can read the register with the given DWARF
+// register number.
+Bool dwarf_reg_is_readable(UInt regNum);
+
+// Returns the guest-state offset of the register with the given DWARF
+// register number, which must be readable.
+Int dwarf_reg_guest_offset(UInt regNum);
+
+// Returns the current value of the register with the given DWARF
+// register number, which must be readable.
+Addr read_dwarf_reg(ThreadId tid, UInt regNum);
+
+// Returns the name of the register with the given DWARF register
+// number, for debugging output.
+const HChar* dwarf_reg_name(UInt regNum);
 
 // Entries for tracking the runtime state of functions at entrances
 // and exits (used mainly by FunctionExecutionStateStack in
@@ -807,8 +824,9 @@ typedef struct {
   // DWARF register number.  A formal parameter whose location is a
   // register (DW_OP_reg*) is read from here, at both entrance and
   // exit, for the same reason as virtualStack.  At function entrance,
-  // Fjalar copies the registers' A and V bits to entryRegs, and
-  // DynComp copies their tags.
+  // Fjalar copies the registers in func->paramRegMask, with their A
+  // and V bits, to entryRegs, and DynComp copies their tags.  The
+  // other elements are not set.
   Addr entryRegs[FJALAR_NUM_DWARF_REGS];
 
 

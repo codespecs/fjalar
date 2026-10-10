@@ -1037,29 +1037,39 @@ void visitVariableGroup(VariableOrigin varOrigin,
               // function entrance, which is saved (with its A and V
               // bits and tags) in the FunctionExecutionState.
               unsigned int regNum = op - DW_OP_reg0;
-              FJALAR_DPRINTF("\tObtaining entrance value of register: [%%%s]\n", dwarf_reg_string[regNum]);
-              if (regNum < FJALAR_NUM_DWARF_REGS && get_reg[regNum] &&
-                  curFunctionExecutionStatePtr &&
-                  curFunctionExecutionStatePtr->func == funcPtr) {
-                var_loc = (Addr)&curFunctionExecutionStatePtr->entryRegs[regNum];
-              } else {
-                // A register that Fjalar cannot read, such as a
-                // floating-point register:  the value is nonsensical.
+              FJALAR_DPRINTF("\tObtaining entrance value of register: [%%%s]\n", dwarf_reg_name(regNum));
+              if (!(funcPtr->paramRegMask & (1U << regNum))) {
+                // extractOneFormalParameterVar() did not record the
+                // register in paramRegMask, so it was not saved, but
+                // some heuristic marked the location valid anyway.
+                FJALAR_DPRINTF("\tRegister %s was not saved at entrance; value is nonsensical\n",
+                               dwarf_reg_name(regNum));
                 var_loc = 0;
                 break;
               }
+              // Every caller that supplies stackBaseAddr is processing
+              // the entrance or exit of the current invocation.
+              tl_assert(curFunctionExecutionStatePtr &&
+                        curFunctionExecutionStatePtr->func == funcPtr);
+              var_loc = (Addr)&curFunctionExecutionStatePtr->entryRegs[regNum];
 
             } else if((op >= DW_OP_breg0) && (op <= DW_OP_breg31)) {
               // Get value pointed to by architectural register
-              if (dloc->atom - DW_OP_breg0 == DWARF_SP_REG) {
+              unsigned int regNum = op - DW_OP_breg0;
+              if (regNum == DWARF_SP_REG) {
                 // Use the stack pointer at function entry (after the
                 // prologue).  At function exit, the epilogue has already
                 // popped the stack frame.
                 reg_val = funcPtr->guestStackStart + VG_STACK_REDZONE_SZB;
+              } else if (dwarf_reg_is_readable(regNum)) {
+                reg_val = read_dwarf_reg(tid, regNum);
               } else {
-                reg_val = (*get_reg[dloc->atom - DW_OP_breg0])(tid);
+                FJALAR_DPRINTF("\tCannot read register %s; value is nonsensical\n",
+                               dwarf_reg_name(regNum));
+                var_loc = 0;
+                break;
               }
-              FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %p\n", dwarf_reg_string[dloc->atom - DW_OP_breg0],
+              FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %p\n", dwarf_reg_name(regNum),
                              (void *)reg_val);
               var_loc = reg_val + dloc->atom_offset;
               FJALAR_DPRINTF("\tAdding %lld to the register value for %p\n", dloc->atom_offset, (void *)var_loc);

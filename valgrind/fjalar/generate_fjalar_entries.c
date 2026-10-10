@@ -2403,7 +2403,8 @@ static void verifyStackParamWordAlignment(FunctionEntry* f, int replace)
        cur_node = cur_node->next)
     {
       int cur_byteSize = 0;
-      if (cur_node->var->locationType == NO_LOCATION || replace) {
+      if (cur_node->var->locationType == NO_LOCATION ||
+          (replace && cur_node->var->locationType != REGISTER_LOCATION)) {
         FJALAR_DPRINTF("MODIFY VAR LOCATION! was:\n");
         FJALAR_DPRINTF(" decType is: %s, size is: %d\n", DeclaredTypeString[cur_node->var->varType->decType],
                                                          cur_node->var->varType->byteSize);
@@ -2516,6 +2517,32 @@ int determineFormalParametersLowerStackByteSize(FunctionEntry* f)
 }
 
 
+// Returns true if the formal parameter's location is a register
+// whose entrance value Fjalar can save and from which Fjalar can read
+// the whole value.  The location must be a single DW_OP_reg operation:
+// Fjalar does not support any other operation (such as DW_OP_lit*)
+// that is not a memory location, nor a value split into pieces.
+static Bool isSupportedRegisterLocation(formal_parameter* paramPtr,
+                                        VariableEntry* varPtr)
+{
+  enum dwarf_location_atom atom;
+  int byteSize;
+
+  if (paramPtr->dwarf_stack_size != 1 || paramPtr->location_has_piece) {
+    return False;
+  }
+  atom = paramPtr->dwarf_stack[0].atom;
+  if (atom < DW_OP_reg0 || atom > DW_OP_reg31 ||
+      !dwarf_reg_is_readable(atom - DW_OP_reg0)) {
+    return False;
+  }
+  // A C++ reference is passed as a pointer.
+  byteSize = (varPtr->referenceLevels > 0
+              ? (int)sizeof(Addr)
+              : determineVariableByteSize(varPtr));
+  return 0 < byteSize && byteSize <= (int)sizeof(Addr);
+}
+
 // dwarfParamEntry->tag_name == DW_TAG_formal_parameter
 static void extractOneFormalParameterVar(FunctionEntry* f,
                                          dwarf_entry* dwarfParamEntry)
@@ -2573,14 +2600,19 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     varPtr->location_expression_size = paramPtr->dwarf_stack_size;
   }
 
-  varPtr->validLoc = paramPtr->valid_loc;
-
   if (paramPtr->location_type == LT_FP_OFFSET) {
+    varPtr->validLoc = paramPtr->valid_loc;
     varPtr->locationType = FP_OFFSET_LOCATION;
     varPtr->byteOffset = paramPtr->location;
     //    varPtr->atom = paramPtr->loc_atom;
 
     FJALAR_DPRINTF(" location_type: %u, byteOffset: %x\n", varPtr->locationType, (unsigned int)varPtr->byteOffset);
+  } else if (isSupportedRegisterLocation(paramPtr, varPtr)) {
+    UInt regNum = paramPtr->dwarf_stack[0].atom - DW_OP_reg0;
+    varPtr->validLoc = 1;
+    varPtr->locationType = REGISTER_LOCATION;
+    f->paramRegMask |= 1U << regNum;
+    FJALAR_DPRINTF(" location is register %s\n", dwarf_reg_name(regNum));
   }
 
   FJALAR_DPRINTF("EXIT  extractOneFormalParameterVar\n");
