@@ -1,0 +1,12 @@
+..movemask():::EXIT0 a 1
+..movemask():::EXIT0 b 1
+..movemask():::EXIT0 return 2
+..ctz():::EXIT0 x 1
+..ctz():::EXIT0 return 2
+..ctz_of_sum():::EXIT0 a 1
+..ctz_of_sum():::EXIT0 b 1
+..ctz_of_sum():::EXIT0 return 2
+..shift_by_lt():::EXIT0 a 1
+..shift_by_lt():::EXIT0 b 1
+..shift_by_lt():::EXIT0 x 2
+..shift_by_lt():::EXIT0 return 2
