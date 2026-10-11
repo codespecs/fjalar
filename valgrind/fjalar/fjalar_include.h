@@ -688,10 +688,6 @@ typedef struct _FunctionEntry {
   // used in calculating the address of variables from  DWARF location expressions
   Addr FP;
 
-  // The value of the frame pointer register (%ebp, %rbp) for this
-  // invocation of the function, after the prologue has executed.
-  Addr entryFPReg;
-
   UInt nonce;
 
 } FunctionEntry;
@@ -825,10 +821,6 @@ typedef struct {
 
 
   Addr lowSP;
-
-  // The value of the frame pointer register (%ebp, %rbp) after the
-  // prologue has executed.
-  Addr entryFPReg;
 } FunctionExecutionState;
 
 

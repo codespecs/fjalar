@@ -96,7 +96,7 @@ Bool doing_debug_print = False;
 const HChar* executable_filename = 0;
 
 // Mapping between DWARF register numbers and the guest-state offset
-// of the register, or -1 if Fjalar cannot read the register.
+// of the register.
 // Below comment is ripped from GCC 4.3.1
 
 /* Define the register numbers to be used in Dwarf debugging information.
@@ -701,8 +701,6 @@ void enter_function(FunctionEntry* f)
   newEntry->func->FP = frame_ptr;
   newEntry->func->lowestSP = stack_ptr;
   newEntry->FP = frame_ptr;
-  newEntry->func->entryFPReg = VG_(get_FP)(tid);
-  newEntry->entryFPReg = newEntry->func->entryFPReg;
   newEntry->lowSP = stack_ptr;
   newEntry->lowestSP = stack_ptr;
   newEntry->xAX = 0;
@@ -805,7 +803,6 @@ void exit_function(FunctionEntry* f)
   top->func->guestStackEnd = top->func->guestStackStart + top->virtualStackByteSize;
   top->func->lowestVirtSP = (Addr)top->virtualStack;
   top->func->FP  = top->FP;
-  top->func->entryFPReg = top->entryFPReg;
   top->func->lowestSP  = top->func->guestStackStart;
 
   FJALAR_DPRINTF("\tState of Guest Stack [%p - %p] \n", (void *)top->lowestSP, (void *)(top->lowestSP + top->virtualStackByteSize));

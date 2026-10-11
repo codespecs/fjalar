@@ -1041,11 +1041,6 @@ void visitVariableGroup(VariableOrigin varOrigin,
                 // prologue).  At function exit, the epilogue has already
                 // popped the stack frame.
                 reg_val = funcPtr->guestStackStart + VG_STACK_REDZONE_SZB;
-              } else if (isBreg && regNum == DWARF_FP_REG) {
-                // Use the frame pointer register at function entry (after
-                // the prologue).  At function exit, the epilogue has
-                // already restored the caller's frame pointer.
-                reg_val = funcPtr->entryFPReg;
               } else if (dwarf_reg_is_readable(regNum)) {
                 reg_val = read_dwarf_reg(tid, regNum);
               } else {
