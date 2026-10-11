@@ -1036,19 +1036,17 @@ void visitVariableGroup(VariableOrigin varOrigin,
               // function entrance, which is saved (with its A and V
               // bits and tags) in the FunctionExecutionState.
               unsigned int regNum = op - DW_OP_reg0;
-              Int regIndex = param_reg_index(funcPtr, regNum);
               FJALAR_DPRINTF("\tObtaining entrance value of register: [%%%s]\n", dwarf_reg_name(regNum));
-              if (regIndex < 0) {
-                // extractOneFormalParameterVar() did not record the
-                // register in paramRegs, so it was not saved, but
-                // some heuristic marked the location valid anyway.
+              if (!entryRegs || !dwarf_reg_is_readable(regNum)) {
+                // extractOneFormalParameterVar() did not accept the
+                // register location, so the register was not saved,
+                // but some heuristic marked the location valid anyway.
                 FJALAR_DPRINTF("\tRegister %s was not saved at entrance; value is nonsensical\n",
                                dwarf_reg_name(regNum));
                 var_loc = 0;
                 break;
               }
-              tl_assert(entryRegs);
-              var_loc = (Addr)&entryRegs[regIndex];
+              var_loc = (Addr)&entryRegs[regNum];
 
             } else if((op >= DW_OP_breg0) && (op <= DW_OP_breg31)) {
               // Get value pointed to by architectural register

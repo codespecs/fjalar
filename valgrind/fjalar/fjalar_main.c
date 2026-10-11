@@ -191,32 +191,22 @@ static Bool frame_base_reg_num(UInt atom, UInt* regNum)
   return False;
 }
 
-Int param_reg_index(FunctionEntry* f, UInt regNum)
-{
-  UInt k;
-  for (k = 0; k < f->numParamRegs; k++) {
-    if (f->paramRegs[k] == regNum) {
-      return k;
-    }
-  }
-  return -1;
-}
-
-// Saves the registers that hold formal parameters of f_state->func,
-// with their A and V bits and DynComp tags, in f_state->entryRegs, so
-// that those formal parameters have their entrance values at both
-// entrance and exit.
+// Saves the readable registers, with their A and V bits and DynComp
+// tags, in f_state->entryRegs, so that formal parameters located in
+// registers have their entrance values at both entrance and exit.
 static void save_param_regs(FunctionExecutionState* f_state, ThreadId tid)
 {
-  FunctionEntry* f = f_state->func;
-  UInt i;
-  for (i = 0; i < f->numParamRegs; i++) {
-    UInt regNum = f->paramRegs[i];
-    Int guestOffset = dwarf_reg_guest_offset(regNum);
-    Addr regAddr = (Addr)&f_state->entryRegs[i];
+  UInt regNum;
+  for (regNum = 0; regNum < FJALAR_NUM_DWARF_REGS; regNum++) {
+    Int guestOffset;
+    Addr regAddr = (Addr)&f_state->entryRegs[regNum];
     UWord vbits;
     UInt b;
-    f_state->entryRegs[i] = read_dwarf_reg(tid, regNum);
+    if (!dwarf_reg_is_readable(regNum)) {
+      continue;
+    }
+    guestOffset = dwarf_reg_guest_offset(regNum);
+    f_state->entryRegs[regNum] = read_dwarf_reg(tid, regNum);
     VG_(get_shadow_regs_area)(tid, (UChar*)&vbits, 1/*shadowNo*/,
                               guestOffset, sizeof(Addr));
     for (b = 0; b < sizeof(Addr); b++) {
@@ -776,12 +766,15 @@ void enter_function(FunctionEntry* f)
   if (size != 0) {
     // entryRegs follows the virtual stack in the same allocation.
     Int entryRegsOffset = VG_ROUNDUP(size, sizeof(Addr));
+    Int entryRegsSize = (f->hasRegisterParams
+                         ? FJALAR_NUM_DWARF_REGS * sizeof(Addr)
+                         : 0);
     newEntry->virtualStack = VG_(calloc)("fjalar_main.c: enter_func",
-                                         entryRegsOffset + f->numParamRegs * sizeof(Addr),
+                                         entryRegsOffset + entryRegsSize,
                                          sizeof(char));
-    newEntry->entryRegs = (f->numParamRegs == 0
-                           ? NULL
-                           : (Addr*)(newEntry->virtualStack + entryRegsOffset));
+    newEntry->entryRegs = (f->hasRegisterParams
+                           ? (Addr*)(newEntry->virtualStack + entryRegsOffset)
+                           : NULL);
     newEntry->virtualStackByteSize = size;
     newEntry->virtualStackFPOffset = local_stack;
 
@@ -806,7 +799,9 @@ void enter_function(FunctionEntry* f)
     newEntry->func->guestStackEnd = newEntry->func->guestStackStart + size;
     newEntry->func->lowestVirtSP = (Addr)newEntry->virtualStack;
 
-    save_param_regs(newEntry, tid);
+    if (f->hasRegisterParams) {
+      save_param_regs(newEntry, tid);
+    }
   }
   else {
     printf("Obtained a stack size of 0 for Function: %s. Aborting\n", f->fjalar_name);
@@ -983,7 +978,7 @@ void exit_function(FunctionEntry* f)
        make it inaccessible again before allowing Valgrind's malloc to
        use it, lest assertions fail later. */
     Addr allocEnd = (top->entryRegs
-                     ? (Addr)(top->entryRegs + top->func->numParamRegs)
+                     ? (Addr)(top->entryRegs + FJALAR_NUM_DWARF_REGS)
                      : (Addr)top->virtualStack + top->virtualStackByteSize);
     mc_make_noaccess((Addr)top->virtualStack, allocEnd - (Addr)top->virtualStack);
     VG_(free)(top->virtualStack);

@@ -558,13 +558,6 @@ VarList globalVars;
 
 /******** FunctionEntry ********/
 
-// The maximum number of distinct registers that hold a function's
-// formal parameters and that Fjalar saves at function entrance.
-// This is more than the 6 integer argument registers of the amd64
-// ABI.  Fjalar omits a formal parameter whose register would exceed
-// it.
-#define FJALAR_MAX_PARAM_REGS 8
-
 // Contains information about a particular function -
 // Should be IMMUTABLE after initialization
 typedef struct _FunctionEntry {
@@ -697,11 +690,10 @@ typedef struct _FunctionEntry {
 
   UInt nonce;
 
-  // The DWARF register numbers of the registers that hold formal
-  // parameters.  At function entrance, Fjalar saves register
-  // paramRegs[k] in FunctionExecutionState.entryRegs[k].
-  UChar paramRegs[FJALAR_MAX_PARAM_REGS];
-  UInt numParamRegs;
+  // True if some formal parameter's location is a register.  If so,
+  // Fjalar saves the registers at function entrance in
+  // FunctionExecutionState.entryRegs.
+  Bool hasRegisterParams;
 
 } FunctionEntry;
 
@@ -760,11 +752,6 @@ traversals within data structures and arrays
 #else
 #define FJALAR_NUM_DWARF_REGS 11
 #endif
-
-// Returns the index of the given DWARF register number in
-// f->paramRegs (and thus in FunctionExecutionState.entryRegs), or -1
-// if it is not there.
-Int param_reg_index(FunctionEntry* f, UInt regNum);
 
 // Returns true if Fjalar can read the register with the given DWARF
 // register number.
@@ -833,14 +820,15 @@ typedef struct {
   int virtualStackByteSize; // Number of 1-byte entries in virtualStack
   int virtualStackFPOffset; // Where in the stack the frame pointer was
 
-  // The values at function entrance of the registers in
-  // func->paramRegs:  entryRegs[k] holds register func->paramRegs[k].
-  // A formal parameter whose location is a register (DW_OP_reg*) is
-  // read from here, at both entrance and exit, for the same reason as
-  // virtualStack.  At function entrance, Fjalar copies the registers,
-  // with their A and V bits and DynComp tags, to entryRegs.  entryRegs
-  // has func->numParamRegs elements and lies in the same allocation as
-  // virtualStack, just after it; it is null if func->numParamRegs is 0.
+  // The values at function entrance of the registers, indexed by
+  // DWARF register number:  entryRegs[N] holds register N, if
+  // dwarf_reg_is_readable(N).  A formal parameter whose location is a
+  // register (DW_OP_reg*) is read from here, at both entrance and
+  // exit, for the same reason as virtualStack.  At function entrance,
+  // Fjalar copies the readable registers, with their A and V bits and
+  // DynComp tags, to entryRegs.  entryRegs has FJALAR_NUM_DWARF_REGS
+  // elements and lies in the same allocation as virtualStack, just
+  // after it; it is null if func->hasRegisterParams is false.
   Addr* entryRegs;
 
 
@@ -1007,9 +995,9 @@ void visitVariableGroup(VariableOrigin varOrigin,
                         // address space (it's what we'll dereference)
                         Addr stackBaseAddr,
                         Addr stackBaseAddrGuest,
-                        // The values at function entrance of the
-                        // registers that hold formal parameters, which
-                        // is FunctionExecutionState.entryRegs (only
+                        // The values of the registers at function
+                        // entrance, which is
+                        // FunctionExecutionState.entryRegs (only
                         // used for varOrigin == FUNCTION_FORMAL_PARAM
                         // and if stackBaseAddr is non-zero)
                         Addr* entryRegs,

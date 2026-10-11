@@ -2615,15 +2615,7 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     FJALAR_DPRINTF(" location_type: %u, byteOffset: %x\n", varPtr->locationType, (unsigned int)varPtr->byteOffset);
   } else if (isSupportedRegisterLocation(paramPtr, varPtr)) {
     UInt regNum = paramPtr->dwarf_stack[0].atom - DW_OP_reg0;
-    if (param_reg_index(f, regNum) < 0) {
-      if (f->numParamRegs == FJALAR_MAX_PARAM_REGS) {
-        FJALAR_DPRINTF(" location is register %s, but too many registers hold formal parameters\n",
-                       dwarf_reg_name(regNum));
-        FJALAR_DPRINTF("EXIT  extractOneFormalParameterVar\n");
-        return;
-      }
-      f->paramRegs[f->numParamRegs++] = regNum;
-    }
+    f->hasRegisterParams = True;
     varPtr->validLoc = 1;
     varPtr->locationType = REGISTER_LOCATION;
     FJALAR_DPRINTF(" location is register %s\n", dwarf_reg_name(regNum));
