@@ -347,6 +347,7 @@ void DC_outputDeclsAtEnd() {
                        0,
                        0,
                        0,
+                       0,
                        &printDeclsEntryAction);
     fputs("\n", decls_fp);
     genfreehashtable(varsDeclaredTable);
@@ -1242,6 +1243,7 @@ printDeclsEntryAction(VariableEntry* var,
                        isEnter,
                        0,
                        0,
+                       0,
                        (faux_decls ?
                         &nullAction : &printDeclsEntryAction));
 
@@ -1251,6 +1253,7 @@ printDeclsEntryAction(VariableEntry* var,
                        isEnter,
                        0,
                        0,
+                       0,
                        (faux_decls ?
                         &nullAction : &printDeclsEntryAction));
 
@@ -1258,6 +1261,7 @@ printDeclsEntryAction(VariableEntry* var,
     if (!isEnter) {
       visitVariableGroup(FUNCTION_RETURN_VAR,
                          funcPtr,
+                         0,
                          0,
                          0,
                          0,
@@ -1511,6 +1515,7 @@ printDeclsEntryAction(VariableEntry* var,
     // print global tag values
     fputs("ppt GLOBALS\n", decls_fp);
     visitVariableGroup(GLOBAL_VAR,
+                       0,
                        0,
                        0,
                        0,
@@ -1803,11 +1808,13 @@ static void harvestOneFunctionObject(FunctionEntry* func, struct genhashtable* o
                      False,
                      0,
                      0,
+                     0,
                      &harvestObject);
 
   visitVariableGroup(FUNCTION_FORMAL_PARAM,
                      func,
                      True,
+                     0,
                      0,
                      0,
                      &harvestObject);

@@ -690,6 +690,11 @@ typedef struct _FunctionEntry {
 
   UInt nonce;
 
+  // True if some formal parameter's location is a register.  If so,
+  // Fjalar saves the registers at function entrance in
+  // FunctionExecutionState.entryRegs.
+  Bool hasRegisterParams;
+
 } FunctionEntry;
 
 
@@ -739,6 +744,30 @@ void deleteFuncIterator(FuncIterator* funcIt);
 These data structures and functions provide mechanisms for runtime
 traversals within data structures and arrays
 **********************************************************************/
+
+// One more than the largest DWARF register number that Fjalar can
+// read.
+#if defined(VGA_amd64)
+#define FJALAR_NUM_DWARF_REGS 16
+#else
+#define FJALAR_NUM_DWARF_REGS 11
+#endif
+
+// Returns true if Fjalar can read the register with the given DWARF
+// register number.
+Bool dwarf_reg_is_readable(UInt regNum);
+
+// Returns the guest-state offset of the register with the given DWARF
+// register number, which must be readable.
+Int dwarf_reg_guest_offset(UInt regNum);
+
+// Returns the current value of the register with the given DWARF
+// register number, which must be readable.
+Addr read_dwarf_reg(ThreadId tid, UInt regNum);
+
+// Returns the name of the register with the given DWARF register
+// number, for debugging output (defined in dwarf.c).
+const HChar* dwarf_reg_name(UInt regNum);
 
 // Entries for tracking the runtime state of functions at entrances
 // and exits (used mainly by FunctionExecutionStateStack in
@@ -790,6 +819,17 @@ typedef struct {
   char* virtualStack;
   int virtualStackByteSize; // Number of 1-byte entries in virtualStack
   int virtualStackFPOffset; // Where in the stack the frame pointer was
+
+  // The values at function entrance of the registers, indexed by
+  // DWARF register number:  entryRegs[N] holds register N, if
+  // dwarf_reg_is_readable(N).  A formal parameter whose location is a
+  // register (DW_OP_reg*) is read from here, at both entrance and
+  // exit, for the same reason as virtualStack.  At function entrance,
+  // Fjalar copies the readable registers, with their A and V bits and
+  // DynComp tags, to entryRegs.  entryRegs has FJALAR_NUM_DWARF_REGS
+  // elements and lies in the same allocation as virtualStack, just
+  // after it; it is null if func->hasRegisterParams is false.
+  Addr* entryRegs;
 
 
   Addr lowSP;
@@ -955,6 +995,12 @@ void visitVariableGroup(VariableOrigin varOrigin,
                         // address space (it's what we'll dereference)
                         Addr stackBaseAddr,
                         Addr stackBaseAddrGuest,
+                        // The values of the registers at function
+                        // entrance, which is
+                        // FunctionExecutionState.entryRegs (only
+                        // used for varOrigin == FUNCTION_FORMAL_PARAM
+                        // and if stackBaseAddr is non-zero)
+                        Addr* entryRegs,
                         // This function performs an action for each
                         // variable visited:
                         TraversalAction *performAction);

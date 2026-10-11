@@ -185,26 +185,17 @@ This is called from hooks within mac_shared.h
 char* fjalar_program_stdout_filename;
 char* fjalar_program_stderr_filename;
 
-// Mapping between Dwarf Register numbers and
-// valgrind function to return the value
-
 #if defined(VGA_amd64)
-// AMD64 Dwarf to Architecture mapping is (thankfully) specified
-// in the AMD64 ABI (http://x86-64.org/documentation/abi.pdf)
-extern Addr (*get_reg[16])( ThreadId tid );
 // The DWARF register number of the stack pointer
 #define DWARF_SP_REG 7
+// The DWARF register number of the frame pointer
+#define DWARF_FP_REG 6
 #else
-extern Addr (*get_reg[11])( ThreadId tid );
 // The DWARF register number of the stack pointer
 #define DWARF_SP_REG 4
+// The DWARF register number of the frame pointer
+#define DWARF_FP_REG 5
 #endif
-
-// For debugging purposes, a mapping between
-// DWARF location atoms and their string
-// representation
-
-extern const HChar* dwarf_reg_string[];
 
 
 /*

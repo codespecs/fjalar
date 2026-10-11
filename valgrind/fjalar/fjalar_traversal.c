@@ -864,6 +864,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
                         Bool isEnter,           // 1 for function entrance, 0 for exit
                         Addr stackBaseAddr,     // should only be used for FUNCTION_FORMAL_PARAM
                         Addr stackBaseAddrGuest,// should only be used for FUNCTION_FORMAL_PARAM
+                        Addr* entryRegs,        // should only be used for FUNCTION_FORMAL_PARAM
                         // This function performs an action for each
                         // variable visited:
                         TraversalAction *performAction) {
@@ -929,17 +930,19 @@ void visitVariableGroup(VariableOrigin varOrigin,
       continue;
     }
 
+    // Omit a formal parameter whose location Fjalar cannot read.  This
+    // test does not depend on stackBaseAddr, so that the .decls file
+    // (which is written without a stack) declares exactly the
+    // variables that the .dtrace file contains.  return is an
+    // exception, as we figure it out ourself.
+    if ((varOrigin == FUNCTION_FORMAL_PARAM) &&
+        !var->validLoc && !VG_STREQ("return", var->name)) {
+      FJALAR_DPRINTF("\t[visitVariableGroup] invalid loc, punting\n");
+      continue;
+    }
+
     if ((varOrigin == FUNCTION_FORMAL_PARAM) && stackBaseAddr) {
       ThreadId tid = VG_(get_running_tid)();
-
-      // (comment added 2009)  
-      // HACKISH. needed to work around bad location information in
-      // the DWARF tables, while still providing tools with the variables
-      // if they care. return is an exception as we figure it out ourself.
-      if(!var->validLoc && !VG_STREQ("return", var->name)) {
-        FJALAR_DPRINTF("\t[visitVariableGroup] invalid loc, punting\n");
-        continue;
-      }
 
       FJALAR_DPRINTF("\t[visitVariableGroup] baseAddr: %p, baseAddrGuest: %p var->byteOffset: %x(%d)\n", (void *)stackBaseAddr, (void *)stackBaseAddrGuest, (unsigned int)var->byteOffset, var->byteOffset);
       FJALAR_DPRINTF("\t[visitVariableGroup] State of Guest Stack [%p - %p] \n", (void *)funcPtr->guestStackStart, (void *)funcPtr->guestStackEnd);
@@ -1029,23 +1032,39 @@ void visitVariableGroup(VariableOrigin varOrigin,
               var_loc += dloc->atom_offset;
 
             } else if((op >= DW_OP_reg0) && (op <= DW_OP_reg31)) {
-              // Get value located in architectural register
-              reg_val = (*get_reg[dloc->atom - DW_OP_reg0])(tid);
-              FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %p\n", dwarf_reg_string[dloc->atom - DW_OP_reg0],
-                             (void *)reg_val);
-              var_loc = (Addr)&reg_val;
+              // Get the value that the architectural register held at
+              // function entrance, which is saved (with its A and V
+              // bits and tags) in the FunctionExecutionState.
+              unsigned int regNum = op - DW_OP_reg0;
+              FJALAR_DPRINTF("\tObtaining entrance value of register: [%%%s]\n", dwarf_reg_name(regNum));
+              if (!entryRegs || !dwarf_reg_is_readable(regNum)) {
+                // extractOneFormalParameterVar() did not accept the
+                // register location, so the register was not saved,
+                // but some heuristic marked the location valid anyway.
+                FJALAR_DPRINTF("\tRegister %s was not saved at entrance; value is nonsensical\n",
+                               dwarf_reg_name(regNum));
+                var_loc = 0;
+                break;
+              }
+              var_loc = (Addr)&entryRegs[regNum];
 
             } else if((op >= DW_OP_breg0) && (op <= DW_OP_breg31)) {
               // Get value pointed to by architectural register
-              if (dloc->atom - DW_OP_breg0 == DWARF_SP_REG) {
+              unsigned int regNum = op - DW_OP_breg0;
+              if (regNum == DWARF_SP_REG) {
                 // Use the stack pointer at function entry (after the
                 // prologue).  At function exit, the epilogue has already
                 // popped the stack frame.
                 reg_val = funcPtr->guestStackStart + VG_STACK_REDZONE_SZB;
+              } else if (dwarf_reg_is_readable(regNum)) {
+                reg_val = read_dwarf_reg(tid, regNum);
               } else {
-                reg_val = (*get_reg[dloc->atom - DW_OP_breg0])(tid);
+                FJALAR_DPRINTF("\tCannot read register %s; value is nonsensical\n",
+                               dwarf_reg_name(regNum));
+                var_loc = 0;
+                break;
               }
-              FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %p\n", dwarf_reg_string[dloc->atom - DW_OP_breg0],
+              FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %p\n", dwarf_reg_name(regNum),
                              (void *)reg_val);
               var_loc = reg_val + dloc->atom_offset;
               FJALAR_DPRINTF("\tAdding %lld to the register value for %p\n", dloc->atom_offset, (void *)var_loc);

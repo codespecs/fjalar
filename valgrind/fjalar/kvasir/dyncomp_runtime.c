@@ -694,6 +694,7 @@ static void DC_extra_propagate_one_function(FunctionEntry* funcPtr,
                      isEnter,
                      0,
 		     0,
+                     0,
                      &dyncompExtraPropAction);
 
   // Propagate through formal params.
@@ -702,6 +703,7 @@ static void DC_extra_propagate_one_function(FunctionEntry* funcPtr,
                      isEnter,
                      0,
 		     0,
+                     0,
                      &dyncompExtraPropAction);
 
   // If EXIT, propagate through return value
@@ -711,6 +713,7 @@ static void DC_extra_propagate_one_function(FunctionEntry* funcPtr,
                      0,
                      0,
 		     0,
+                     0,
                      &dyncompExtraPropAction);
   }
 }
