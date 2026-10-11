@@ -175,20 +175,15 @@ Addr read_dwarf_reg(ThreadId tid, UInt regNum)
   return value;
 }
 
-// If atom is DW_OP_regN or DW_OP_bregN, sets *regNum to N and returns
-// True.  Otherwise, returns False.  A frame base of DW_OP_regN has
-// offset 0, and one of DW_OP_bregN has the atom's offset.
-static Bool frame_base_reg_num(UInt atom, UInt* regNum)
+int dwarf_atom_reg_num(UInt atom)
 {
-  if (atom >= DW_OP_breg0 && atom <= DW_OP_breg31) {
-    *regNum = atom - DW_OP_breg0;
-    return True;
-  }
   if (atom >= DW_OP_reg0 && atom <= DW_OP_reg31) {
-    *regNum = atom - DW_OP_reg0;
-    return True;
+    return atom - DW_OP_reg0;
+  } else if (atom >= DW_OP_breg0 && atom <= DW_OP_breg31) {
+    return atom - DW_OP_breg0;
+  } else {
+    return -1;
   }
-  return False;
 }
 
 // Saves the registers in f_state->func->entryRegsMask, with their A
@@ -578,7 +573,7 @@ void enter_function(FunctionEntry* f)
   Addr stack_ptr= VG_(get_SP)(tid);
   Addr frame_ptr = 0; /* E.g., %ebp */
   int local_stack, size;
-  UInt regNum;
+  int regNum;
 
   FJALAR_DPRINTF("[enter_function] startPC is: %x, entryPC is: %x, cu_base: %p\n",
                  (UInt)f->startPC, (UInt)f->entryPC,(void *)f->cuBase);
@@ -652,7 +647,8 @@ void enter_function(FunctionEntry* f)
               ll->atom = DW_OP_breg0 + DWARF_FP_REG;
               ll->atom_offset = 2 * sizeof(Addr);
           }
-          if (frame_base_reg_num(ll->atom, &regNum) && dwarf_reg_is_readable(regNum)) {
+          regNum = dwarf_atom_reg_num(ll->atom);
+          if (regNum >= 0 && dwarf_reg_is_readable(regNum)) {
             frame_ptr = read_dwarf_reg(tid, regNum) + ll->atom_offset;
           } else {
             FJALAR_DPRINTF("\tCannot compute frame base from location list entry with atom %s\n",
@@ -677,7 +673,8 @@ void enter_function(FunctionEntry* f)
       }
     } else {
       FJALAR_DPRINTF("\tsimple location expression\n");
-      if (frame_base_reg_num(f->frame_base_atom, &regNum) && dwarf_reg_is_readable(regNum)) {
+      regNum = dwarf_atom_reg_num(f->frame_base_atom);
+      if (regNum >= 0 && dwarf_reg_is_readable(regNum)) {
         frame_ptr = read_dwarf_reg(tid, regNum) + f->frame_base_offset;
       } else {
         FJALAR_DPRINTF("\tCannot compute frame base from atom %s\n",

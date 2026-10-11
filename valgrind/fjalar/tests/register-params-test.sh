@@ -72,7 +72,9 @@ fi
 # "<ppt> <variable> <value>", followed by one line per non-global variable
 # declared at each program point other than main's:  "<ppt> <variable>
 # comparability <comparability>".  The latter shows that Fjalar omits a formal
-# parameter whose location it cannot read from the .decls file too.
+# parameter whose location it cannot read from the .decls file too.  The order
+# of program points in the .decls file depends on function addresses, so the
+# latter lines are stably sorted by program point.
 actual="${output_dir}/register-params.actual"
 awk '/^\.\.[a-z]*\(\):::/ { ppt = $0; getline; getline
                             if (ppt ~ /^\.\.main\(/ || seen[ppt]++) ppt = ""
@@ -87,7 +89,7 @@ awk '/^ppt / { ppt = $2 }
      var ~ /^::/ { next }
      /^    comparability / { if (ppt !~ /^\.\.main\(/)
                                print ppt, var, "comparability", $2 }' \
-    "${decls}" >> "${actual}"
+    "${decls}" | LC_ALL=C sort -s -k1,1 >> "${actual}"
 
 if ! diff -u "${test_dir}/register-params.goal" "${actual}" >&2; then
   echo "$0: FAILED: output differs from register-params.goal" >&2

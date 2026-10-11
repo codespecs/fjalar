@@ -9,14 +9,14 @@
 ..scale():::EXIT0 factor 7
 ..scale():::EXIT0 return 14
 ..identity():::EXIT0 return 1.5
+..add():::ENTER a comparability 2
+..add():::ENTER b comparability 2
+..add():::EXIT0 a comparability 2
+..add():::EXIT0 b comparability 2
+..add():::EXIT0 return comparability 2
 ..identity():::EXIT0 return comparability 2
 ..scale():::ENTER x comparability 2
 ..scale():::ENTER factor comparability 3
 ..scale():::EXIT0 x comparability 2
 ..scale():::EXIT0 factor comparability 3
 ..scale():::EXIT0 return comparability 3
-..add():::ENTER a comparability 2
-..add():::ENTER b comparability 2
-..add():::EXIT0 a comparability 2
-..add():::EXIT0 b comparability 2
-..add():::EXIT0 return comparability 2

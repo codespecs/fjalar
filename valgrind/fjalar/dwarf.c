@@ -1455,13 +1455,16 @@ decode_location_expression (unsigned char * data,
   unsigned char *end = data + length;
   int need_frame_base = 0;
   int ok_to_print = fjalar_debug_dump && pass2;
+  /* True if harvesting a formal parameter's location.  */
+  int is_param
+    = ok_to_harvest && entry && tag_is_formal_parameter (entry->tag_name);
 
   while (data < end)
     {
       /* The size of a formal parameter's dwarf_stack before this op, or
 	 -1 if not harvesting a formal parameter's location.  */
       int param_stack_size_before
-	= (ok_to_harvest ? formal_param_location_stack_size (entry) : -1);
+	= (is_param ? formal_param_location_stack_size (entry) : -1);
 
       op = *data++;
 
@@ -1476,11 +1479,8 @@ decode_location_expression (unsigned char * data,
 	  printf ("DW_OP_addr: %s", dwarf_vmatoa ("x", uvalue));
 	  break;
 	case DW_OP_deref:
-	  if (ok_to_harvest) {
-	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
-	       harvest_formal_param_location_atom(entry, op, 0);
-	    }
-	  }
+	  if (ok_to_harvest)
+	    harvest_formal_param_location_atom (entry, op, 0);
 	  printf ("DW_OP_deref");
 	  break;
 	case DW_OP_const1u:
@@ -1676,9 +1676,7 @@ decode_location_expression (unsigned char * data,
 	case DW_OP_lit30:
 	case DW_OP_lit31:
 	  if (ok_to_harvest)
-	    if (entry && (tag_is_formal_parameter(entry->tag_name))) {
-	          harvest_formal_param_location_atom(entry, op, 0);
-	    }
+	    harvest_formal_param_location_atom (entry, op, 0);
 	  printf ("DW_OP_lit%u", op - DW_OP_lit0);
 	  break;
 
@@ -1715,9 +1713,7 @@ decode_location_expression (unsigned char * data,
 	case DW_OP_reg30:
 	case DW_OP_reg31:
 	  if (ok_to_harvest)
-	    if (entry && (tag_is_formal_parameter(entry->tag_name))) {
-	          harvest_formal_param_location_atom(entry, op, 0);
-	    }
+	    harvest_formal_param_location_atom (entry, op, 0);
 	  printf ("DW_OP_reg%u (%s)", op - DW_OP_reg0,
 		  regname (op - DW_OP_reg0, 1));
 	  break;

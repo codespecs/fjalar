@@ -760,6 +760,10 @@ traversals within data structures and arrays
 #define FJALAR_NUM_DWARF_REGS 11
 #endif
 
+// Returns N if the DWARF location operation atom is DW_OP_regN or
+// DW_OP_bregN, or -1 otherwise.
+int dwarf_atom_reg_num(UInt atom);
+
 // Returns true if Fjalar can read the register with the given DWARF
 // register number.
 Bool dwarf_reg_is_readable(UInt regNum);

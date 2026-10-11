@@ -2552,7 +2552,7 @@ static Bool isSupportedRegisterLocation(formal_parameter* paramPtr,
   }
   atom = paramPtr->dwarf_stack[0].atom;
   if (atom < DW_OP_reg0 || atom > DW_OP_reg31 ||
-      !dwarf_reg_is_readable(atom - DW_OP_reg0)) {
+      !dwarf_reg_is_readable(dwarf_atom_reg_num(atom))) {
     return False;
   }
   // A C++ reference is passed as a pointer.
@@ -2562,26 +2562,13 @@ static Bool isSupportedRegisterLocation(formal_parameter* paramPtr,
   return 0 < byteSize && byteSize <= (int)sizeof(Addr);
 }
 
-// Returns the DWARF register number that the location operation ATOM
-// uses, or -1 if ATOM uses no register.
-static int locationAtomRegNum(UInt atom)
-{
-  if (atom >= DW_OP_reg0 && atom <= DW_OP_reg31) {
-    return atom - DW_OP_reg0;
-  } else if (atom >= DW_OP_breg0 && atom <= DW_OP_breg31) {
-    return atom - DW_OP_breg0;
-  } else {
-    return -1;
-  }
-}
-
 // Returns true if Fjalar can read every register that the formal
 // parameter's location uses.
 static Bool locationRegsAreReadable(formal_parameter* paramPtr)
 {
   unsigned int i;
   for (i = 0; i < paramPtr->dwarf_stack_size; i++) {
-    int regNum = locationAtomRegNum(paramPtr->dwarf_stack[i].atom);
+    int regNum = dwarf_atom_reg_num(paramPtr->dwarf_stack[i].atom);
     if (regNum >= 0 && !dwarf_reg_is_readable(regNum)) {
       return False;
     }
@@ -2596,7 +2583,7 @@ static void recordEntryRegs(FunctionEntry* f, formal_parameter* paramPtr)
 {
   unsigned int i;
   for (i = 0; i < paramPtr->dwarf_stack_size; i++) {
-    int regNum = locationAtomRegNum(paramPtr->dwarf_stack[i].atom);
+    int regNum = dwarf_atom_reg_num(paramPtr->dwarf_stack[i].atom);
     if (regNum >= 0) {
       tl_assert(dwarf_reg_is_readable(regNum));
       f->entryRegsMask |= 1U << regNum;
@@ -2675,7 +2662,7 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
 
     FJALAR_DPRINTF(" location_type: %u, byteOffset: %x\n", varPtr->locationType, (unsigned int)varPtr->byteOffset);
   } else if (isSupportedRegisterLocation(paramPtr, varPtr)) {
-    UInt regNum = paramPtr->dwarf_stack[0].atom - DW_OP_reg0;
+    UInt regNum = dwarf_atom_reg_num(paramPtr->dwarf_stack[0].atom);
     varPtr->validLoc = 1;
     varPtr->locationType = REGISTER_LOCATION;
     recordEntryRegs(f, paramPtr);
