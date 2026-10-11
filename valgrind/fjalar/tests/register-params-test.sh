@@ -29,14 +29,17 @@ gcc -gdwarf-4 -gno-variable-location-views -no-pie -O1 \
 
 # register-params.goal assumes that the location of every formal parameter is
 # a register throughout its function.  Another compiler version might instead
-# use a location list, DW_OP_entry_value, or a constant, for which Fjalar omits
-# the formal parameter.
+# use a location list, DW_OP_entry_value, or a constant, or might omit the
+# location, for which Fjalar omits the formal parameter.  A line that starts
+# with "<depth><offset>:" begins a new debugging information entry.
 if readelf --debug-dump=info "${output_dir}/register-params" \
-    | awk '/DW_TAG_formal_parameter/ { inparam = 1; next }
-           /DW_TAG_/ { inparam = 0 }
+    | awk 'function end_param() { if (inparam && !hasloc) bad = 1; inparam = 0 }
+           /^ *<[0-9]+><[0-9a-f]+>:/ { end_param() }
+           /DW_TAG_formal_parameter/ { inparam = 1; hasloc = 0; next }
+           inparam && /DW_AT_location/ { hasloc = 1 }
            inparam && /DW_AT_location/ && !/: [0-9]+ byte block: .*\(DW_OP_reg/ { bad = 1 }
            inparam && /DW_AT_const_value/ { bad = 1 }
-           END { exit !bad }'; then
+           END { end_param(); exit !bad }'; then
   readelf --debug-dump=info "${output_dir}/register-params" \
     | grep -A8 DW_TAG_formal_parameter >&2
   # In continuous integration (GitHub Actions sets CI, and Azure Pipelines

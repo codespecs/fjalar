@@ -30,10 +30,6 @@
 
 #include "pub_tool_threadstate.h"
 
-// The state of the function invocation whose entrance or exit is
-// being processed (defined in fjalar_runtime.c)
-extern FunctionExecutionState* curFunctionExecutionStatePtr;
-
 // This increments every time a call to visitSingleVar() or
 // visitSequence() is made.  It is up to the caller to reset this
 // properly!
@@ -868,6 +864,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
                         Bool isEnter,           // 1 for function entrance, 0 for exit
                         Addr stackBaseAddr,     // should only be used for FUNCTION_FORMAL_PARAM
                         Addr stackBaseAddrGuest,// should only be used for FUNCTION_FORMAL_PARAM
+                        Addr* entryRegs,        // should only be used for FUNCTION_FORMAL_PARAM
                         // This function performs an action for each
                         // variable visited:
                         TraversalAction *performAction) {
@@ -1050,11 +1047,8 @@ void visitVariableGroup(VariableOrigin varOrigin,
                 var_loc = 0;
                 break;
               }
-              // Every caller that supplies stackBaseAddr is processing
-              // the entrance or exit of the current invocation.
-              tl_assert(curFunctionExecutionStatePtr &&
-                        curFunctionExecutionStatePtr->func == funcPtr);
-              var_loc = (Addr)&curFunctionExecutionStatePtr->entryRegs[regIndex];
+              tl_assert(entryRegs);
+              var_loc = (Addr)&entryRegs[regIndex];
 
             } else if((op >= DW_OP_breg0) && (op <= DW_OP_breg31)) {
               // Get value pointed to by architectural register

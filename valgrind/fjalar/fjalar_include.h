@@ -562,7 +562,7 @@ VarList globalVars;
 // formal parameters and that Fjalar saves at function entrance.
 // This is more than the 6 integer argument registers of the amd64
 // ABI.  Fjalar omits a formal parameter whose register would exceed
-// it.  Every FunctionExecutionState has room for this many registers.
+// it.
 #define FJALAR_MAX_PARAM_REGS 8
 
 // Contains information about a particular function -
@@ -838,9 +838,10 @@ typedef struct {
   // A formal parameter whose location is a register (DW_OP_reg*) is
   // read from here, at both entrance and exit, for the same reason as
   // virtualStack.  At function entrance, Fjalar copies the registers,
-  // with their A and V bits, to entryRegs, and DynComp copies their
-  // tags.  The other elements are not set.
-  Addr entryRegs[FJALAR_MAX_PARAM_REGS];
+  // with their A and V bits and DynComp tags, to entryRegs.  entryRegs
+  // has func->numParamRegs elements and lies in the same allocation as
+  // virtualStack, just after it; it is null if func->numParamRegs is 0.
+  Addr* entryRegs;
 
 
   Addr lowSP;
@@ -1006,6 +1007,12 @@ void visitVariableGroup(VariableOrigin varOrigin,
                         // address space (it's what we'll dereference)
                         Addr stackBaseAddr,
                         Addr stackBaseAddrGuest,
+                        // The values at function entrance of the
+                        // registers that hold formal parameters, which
+                        // is FunctionExecutionState.entryRegs (only
+                        // used for varOrigin == FUNCTION_FORMAL_PARAM
+                        // and if stackBaseAddr is non-zero)
+                        Addr* entryRegs,
                         // This function performs an action for each
                         // variable visited:
                         TraversalAction *performAction);

@@ -188,9 +188,13 @@ char* fjalar_program_stderr_filename;
 #if defined(VGA_amd64)
 // The DWARF register number of the stack pointer
 #define DWARF_SP_REG 7
+// The DWARF register number of the frame pointer
+#define DWARF_FP_REG 6
 #else
 // The DWARF register number of the stack pointer
 #define DWARF_SP_REG 4
+// The DWARF register number of the frame pointer
+#define DWARF_FP_REG 5
 #endif
 
 

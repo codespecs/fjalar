@@ -1447,6 +1447,11 @@ decode_location_expression (unsigned char * data,
 
   while (data < end)
     {
+      /* The size of a formal parameter's dwarf_stack before this op, or
+	 -1 if not harvesting a formal parameter's location.  */
+      int param_stack_size_before
+	= (ok_to_harvest ? formal_param_location_stack_size (entry) : -1);
+
       op = *data++;
 
       if(ll) {ll->atom = op;}
@@ -1809,8 +1814,6 @@ decode_location_expression (unsigned char * data,
 	  break;
 	case DW_OP_piece:
 	  READ_ULEB (uvalue, data, end);
-	  if (ok_to_harvest)
-	    harvest_formal_param_location_piece(entry);
 	  printf ("DW_OP_piece: %s", dwarf_vmatoa ("u", uvalue));
 	  break;
 	case DW_OP_deref_size:
@@ -1869,8 +1872,6 @@ decode_location_expression (unsigned char * data,
 	  printf ("DW_OP_call_frame_cfa");
 	  break;
 	case DW_OP_bit_piece:
-	  if (ok_to_harvest)
-	    harvest_formal_param_location_piece(entry);
 	  printf ("DW_OP_bit_piece: ");
 	  READ_ULEB (uvalue, data, end);
 	  printf (_("size: %s "), dwarf_vmatoa ("u", uvalue));
@@ -2078,9 +2079,18 @@ decode_location_expression (unsigned char * data,
 	    printf (_("(User defined location op 0x%x)"), op);
 	  else
 	    printf (_("(Unknown location op 0x%x)"), op);
+	  if (param_stack_size_before >= 0)
+	    harvest_formal_param_location_unsupported (entry);
 	  /* No way to tell where the next op is, so just bail.  */
 	  return need_frame_base;
 	}
+
+      /* An op that is not in a formal parameter's dwarf_stack, such as
+	 DW_OP_piece or DW_OP_stack_value, makes the location one that
+	 Fjalar does not support.  */
+      if (param_stack_size_before >= 0
+	  && formal_param_location_stack_size (entry) == param_stack_size_before)
+	harvest_formal_param_location_unsupported (entry);
 
       /* Separate the ops.  */
       if (data < end)

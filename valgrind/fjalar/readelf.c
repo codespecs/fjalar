@@ -22611,6 +22611,9 @@ fjalar_process_file (const char * file_name)
       return FALSE;
     }
 
+  // Register names in debugging output, such as dwarf_reg_name().
+  init_dwarf_regnames_by_elf_machine_code (filedata->file_header.e_machine);
+
   // FJALAR_DPRINTF("before process_section_headers()\n");
 
   if (! process_section_headers (filedata))

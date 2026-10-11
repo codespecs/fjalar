@@ -206,6 +206,7 @@ void generateDisambigFile() {
                      0,
                      0,
                      0,
+                     0,
                      &printDisambigAction);
 
   FJALAR_DPRINTF("=> generateDisambigFile: Finished Globals\n\n");
@@ -239,10 +240,12 @@ void generateDisambigFile() {
                          0,
                          0,
                          0,
+                         0,
                          &printDisambigAction);
 
       visitVariableGroup(FUNCTION_RETURN_VAR,
                          cur_entry,
+                         0,
                          0,
                          0,
                          0,

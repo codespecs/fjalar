@@ -2524,14 +2524,14 @@ int determineFormalParametersLowerStackByteSize(FunctionEntry* f)
 // whose entrance value Fjalar can save and from which Fjalar can read
 // the whole value.  The location must be a single DW_OP_reg operation:
 // Fjalar does not support any other operation (such as DW_OP_lit*)
-// that is not a memory location, nor a value split into pieces.
+// that is not a memory location.
 static Bool isSupportedRegisterLocation(formal_parameter* paramPtr,
                                         VariableEntry* varPtr)
 {
   enum dwarf_location_atom atom;
   int byteSize;
 
-  if (paramPtr->dwarf_stack_size != 1 || paramPtr->location_has_piece) {
+  if (paramPtr->dwarf_stack_size != 1) {
     return False;
   }
   atom = paramPtr->dwarf_stack[0].atom;
@@ -2603,7 +2603,10 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     varPtr->location_expression_size = paramPtr->dwarf_stack_size;
   }
 
-  if (paramPtr->location_type == LT_FP_OFFSET) {
+  if (paramPtr->location_has_unsupported_op) {
+    // varPtr->validLoc remains 0, so Fjalar omits the formal parameter.
+    FJALAR_DPRINTF(" location contains an unsupported operation\n");
+  } else if (paramPtr->location_type == LT_FP_OFFSET) {
     varPtr->validLoc = paramPtr->valid_loc;
     varPtr->locationType = FP_OFFSET_LOCATION;
     varPtr->byteOffset = paramPtr->location;
