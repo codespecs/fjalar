@@ -402,6 +402,11 @@ typedef struct _VariableEntry {
   // location information will have validLoc = False
   Bool validLoc;
 
+  // True if the DWARF information gives a location that Fjalar cannot
+  // read (see location_has_unsupported_op in typedata.h).  Then
+  // validLoc is False and location_expression is empty.
+  Bool locationUnsupported;
+
   // In some situations (The primary one being dealing with the
   // formal parameters to main - see the MAIN STACK LAYOUT comment
   // in fjalar_traversal.c for more information) the location of
@@ -410,6 +415,11 @@ typedef struct _VariableEntry {
   // cases.
   Addr entryLoc;
   Addr entryLocGuest;
+
+  // If the location is a register (DW_OP_reg*), which has no address,
+  // visitVariableGroup copies the register's value here and reads the
+  // variable from this field.
+  Addr regValue; // mutable
 
   // g++ will not emit a memory location for (all?) constant primitives
   // even on O0, so we will have to make a special case for constants

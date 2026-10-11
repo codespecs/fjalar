@@ -852,6 +852,25 @@ void visitClassMemberVariables(VisitArgs* args) {
   FJALAR_DPRINTF("Exit  visitClassMemberVariables\n");
 }
 
+// Returns true if get_reg can read DWARF register regno.
+static int dwarf_reg_is_readable(unsigned int regno) {
+  return ((regno < sizeof(get_reg) / sizeof(get_reg[0]))
+          && (get_reg[regno] != NULL));
+}
+
+int location_op_is_supported(unsigned int op) {
+  if ((op >= DW_OP_reg0) && (op <= DW_OP_reg31)) {
+    return dwarf_reg_is_readable(op - DW_OP_reg0);
+  }
+  if ((op >= DW_OP_breg0) && (op <= DW_OP_breg31)) {
+    return dwarf_reg_is_readable(op - DW_OP_breg0);
+  }
+  return ((op == DW_OP_deref)
+          || ((op >= DW_OP_const1u) && (op <= DW_OP_consts))
+          || (op == DW_OP_plus_uconst)
+          || (op == DW_OP_fbreg));
+}
+
 // Visits an entire group of variables, depending on the value of varOrigin:
 // If varOrigin == GLOBAL_VAR, then visit all global variables
 // If varOrigin == FUNCTION_FORMAL_PARAM, then visit all formal parameters
@@ -1008,16 +1027,13 @@ void visitVariableGroup(VariableOrigin varOrigin,
         else {
 
           // Dwarf Locations are implemented as a sequence of operations to be performed.
+          // Every op satisfies location_op_is_supported.
           for(i = 0; i < var->location_expression_size; i++ ) {
             dwarf_location *dloc  = &(var->location_expression[i]);
             unsigned int  op = dloc->atom;
             Addr reg_val;
 
-            if(op == DW_OP_addr) {
-              // DWARF supplied address
-              var_loc = dloc->atom_offset;
-
-            } else if(op == DW_OP_deref) {
+            if(op == DW_OP_deref) {
               // Dereference result of last DWARF operation
               tl_assert(var_loc);
               var_loc = *(Addr *)var_loc;
@@ -1031,11 +1047,12 @@ void visitVariableGroup(VariableOrigin varOrigin,
               var_loc += dloc->atom_offset;
 
             } else if((op >= DW_OP_reg0) && (op <= DW_OP_reg31)) {
-              // Get value located in architectural register
-              reg_val = (*get_reg[dloc->atom - DW_OP_reg0])(tid);
+              // Get value located in architectural register.  The value
+              // must outlive this loop, so store it in var.
+              var->regValue = (*get_reg[dloc->atom - DW_OP_reg0])(tid);
               FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %p\n", dwarf_reg_string[dloc->atom - DW_OP_reg0],
-                             (void *)reg_val);
-              var_loc = (Addr)&reg_val;
+                             (void *)var->regValue);
+              var_loc = (Addr)&var->regValue;
 
             } else if((op >= DW_OP_breg0) && (op <= DW_OP_breg31)) {
               // Get value pointed to by architectural register
@@ -1059,8 +1076,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
               var_loc = stackBaseAddrGuest + dloc->atom_offset;
 
             } else {
-              // There's a fair number of DWARF operations still unsupported. There is a full list
-              // in fjalar_debug.h
+              // location_op_is_supported must agree with this evaluator.
               FJALAR_DPRINTF("\tUnsupported DWARF stack OP: %s\n", location_expression_to_string(op));
               tl_assert(0);
             }

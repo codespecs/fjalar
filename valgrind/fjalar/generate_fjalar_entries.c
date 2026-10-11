@@ -2562,27 +2562,30 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
                               0,0,0,0,0,0,0,1,
                               0);
 
-  if (paramPtr->dwarf_stack_size > 0) {
-    unsigned int i;
-    FJALAR_DPRINTF("\tCopying over DWARF Location stack\n");
-    for(i = 0; i < paramPtr->dwarf_stack_size; i++) {
-      varPtr->location_expression[i].atom = paramPtr->dwarf_stack[i].atom;
-      varPtr->location_expression[i].atom_offset = paramPtr->dwarf_stack[i].atom_offset;
-      FJALAR_DPRINTF("\tCopying over  %s (%lld)\n", location_expression_to_string(varPtr->location_expression[i].atom), varPtr->location_expression[i].atom_offset);
-    }
-    varPtr->location_expression_size = paramPtr->dwarf_stack_size;
-  }
-
   if (paramPtr->location_has_unsupported_op) {
     // varPtr->validLoc remains 0, so Fjalar omits the formal parameter.
     FJALAR_DPRINTF(" location contains an unsupported operation\n");
-  } else if (paramPtr->location_type == LT_FP_OFFSET) {
-    varPtr->validLoc = paramPtr->valid_loc;
-    varPtr->locationType = FP_OFFSET_LOCATION;
-    varPtr->byteOffset = paramPtr->location;
-    //    varPtr->atom = paramPtr->loc_atom;
+    varPtr->locationUnsupported = 1;
+  } else {
+    if (paramPtr->dwarf_stack_size > 0) {
+      unsigned int i;
+      FJALAR_DPRINTF("\tCopying over DWARF Location stack\n");
+      for(i = 0; i < paramPtr->dwarf_stack_size; i++) {
+        varPtr->location_expression[i].atom = paramPtr->dwarf_stack[i].atom;
+        varPtr->location_expression[i].atom_offset = paramPtr->dwarf_stack[i].atom_offset;
+        FJALAR_DPRINTF("\tCopying over  %s (%lld)\n", location_expression_to_string(varPtr->location_expression[i].atom), varPtr->location_expression[i].atom_offset);
+      }
+      varPtr->location_expression_size = paramPtr->dwarf_stack_size;
+    }
 
-    FJALAR_DPRINTF(" location_type: %u, byteOffset: %x\n", varPtr->locationType, (unsigned int)varPtr->byteOffset);
+    if (paramPtr->location_type == LT_FP_OFFSET) {
+      varPtr->validLoc = paramPtr->valid_loc;
+      varPtr->locationType = FP_OFFSET_LOCATION;
+      varPtr->byteOffset = paramPtr->location;
+      //    varPtr->atom = paramPtr->loc_atom;
+
+      FJALAR_DPRINTF(" location_type: %u, byteOffset: %x\n", varPtr->locationType, (unsigned int)varPtr->byteOffset);
+    }
   }
 
   FJALAR_DPRINTF("EXIT  extractOneFormalParameterVar\n");
@@ -3151,6 +3154,7 @@ static void processFunctions() {
       if ((f->formalParameters.numVars > 0) &&
           (f->formalParameters.first->var) &&
           !(f->formalParameters.first->var->validLoc) &&
+          !(f->formalParameters.first->var->locationUnsupported) &&
           (f->formalParameters.first->var->varType->decType == D_INT)){
         VariableEntry* var = f->formalParameters.first->var;
         printf("Found invalid argc, varByteOffset is: %d\n", var->byteOffset);
@@ -3162,6 +3166,7 @@ static void processFunctions() {
       if ((f->formalParameters.numVars > 1) &&
           (f->formalParameters.first->next->var) &&
           !(f->formalParameters.first->next->var->validLoc) &&
+          !(f->formalParameters.first->next->var->locationUnsupported) &&
           (f->formalParameters.first->next->var->varType->decType == D_CHAR)) {
         VariableEntry* var = f->formalParameters.first->next->var;
         printf("Found invalid argv, varByteOffset is: %d\n", var->byteOffset);
@@ -3213,7 +3218,9 @@ static void initConstructorsAndDestructors(void) {
 
       // (comment added 2009)  
       // RUDD - Dirty dirty hack. Force the location of this to be valid
-      f->formalParameters.first->var->validLoc = 1;
+      if (!f->formalParameters.first->var->locationUnsupported) {
+        f->formalParameters.first->var->validLoc = 1;
+      }
 
 
       // Use the regular (not mangled or demangled) name for matching
