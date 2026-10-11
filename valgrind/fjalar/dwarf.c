@@ -1869,6 +1869,8 @@ decode_location_expression (unsigned char * data,
 	  printf ("DW_OP_call_frame_cfa");
 	  break;
 	case DW_OP_bit_piece:
+	  if (ok_to_harvest)
+	    harvest_formal_param_location_piece(entry);
 	  printf ("DW_OP_bit_piece: ");
 	  READ_ULEB (uvalue, data, end);
 	  printf (_("size: %s "), dwarf_vmatoa ("u", uvalue));
@@ -9654,6 +9656,14 @@ regname (unsigned int regno, int name_only_p)
   else
     snprintf (reg, sizeof (reg), "r%u", regno);
   return reg;
+}
+
+/* Returns the name of DWARF register REGNO, for Fjalar's debugging
+   output.  */
+const char *
+dwarf_reg_name (unsigned int regno)
+{
+  return regname (regno, 1);
 }
 
 static void

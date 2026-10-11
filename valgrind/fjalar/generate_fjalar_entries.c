@@ -2403,8 +2403,11 @@ static void verifyStackParamWordAlignment(FunctionEntry* f, int replace)
        cur_node = cur_node->next)
     {
       int cur_byteSize = 0;
-      if (cur_node->var->locationType == NO_LOCATION ||
-          (replace && cur_node->var->locationType != REGISTER_LOCATION)) {
+      // A parameter in a register occupies no stack slot.
+      if (cur_node->var->locationType == REGISTER_LOCATION) {
+        continue;
+      }
+      if (cur_node->var->locationType == NO_LOCATION || replace) {
         FJALAR_DPRINTF("MODIFY VAR LOCATION! was:\n");
         FJALAR_DPRINTF(" decType is: %s, size is: %d\n", DeclaredTypeString[cur_node->var->varType->decType],
                                                          cur_node->var->varType->byteSize);
@@ -2609,9 +2612,17 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     FJALAR_DPRINTF(" location_type: %u, byteOffset: %x\n", varPtr->locationType, (unsigned int)varPtr->byteOffset);
   } else if (isSupportedRegisterLocation(paramPtr, varPtr)) {
     UInt regNum = paramPtr->dwarf_stack[0].atom - DW_OP_reg0;
+    if (param_reg_index(f, regNum) < 0) {
+      if (f->numParamRegs == FJALAR_MAX_PARAM_REGS) {
+        FJALAR_DPRINTF(" location is register %s, but too many registers hold formal parameters\n",
+                       dwarf_reg_name(regNum));
+        FJALAR_DPRINTF("EXIT  extractOneFormalParameterVar\n");
+        return;
+      }
+      f->paramRegs[f->numParamRegs++] = regNum;
+    }
     varPtr->validLoc = 1;
     varPtr->locationType = REGISTER_LOCATION;
-    f->paramRegMask |= 1U << regNum;
     FJALAR_DPRINTF(" location is register %s\n", dwarf_reg_name(regNum));
   }
 

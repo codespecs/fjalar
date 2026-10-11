@@ -96,7 +96,7 @@ Bool doing_debug_print = False;
 const HChar* executable_filename = 0;
 
 // Mapping between DWARF register numbers and the guest-state offset
-// and name of the register.
+// of the register, or -1 if Fjalar cannot read the register.
 // Below comment is ripped from GCC 4.3.1
 
 /* Define the register numbers to be used in Dwarf debugging information.
@@ -119,57 +119,52 @@ const HChar* executable_filename = 0;
 
 */
 
-typedef struct {
-  Int guestOffset;    // -1 if Fjalar cannot read the register
-  const HChar* name;  // for debugging output
-} DwarfRegInfo;
-
 #if defined(VGA_amd64)
 // AMD64 Dwarf to Architecture mapping is (thankfully) specified
 // in the AMD64 ABI (http://x86-64.org/documentation/abi.pdf)
-static const DwarfRegInfo dwarf_regs[FJALAR_NUM_DWARF_REGS] = {
-  { offsetof(VexGuestArchState, guest_RAX), "xAX" },
-  { offsetof(VexGuestArchState, guest_RDX), "xDX" },
-  { offsetof(VexGuestArchState, guest_RCX), "xCX" },
-  { offsetof(VexGuestArchState, guest_RBX), "xBX" },
-  { offsetof(VexGuestArchState, guest_RSI), "xSI" },
-  { offsetof(VexGuestArchState, guest_RDI), "xDI" },
-  { offsetof(VexGuestArchState, guest_RBP), "xFP" },
-  { offsetof(VexGuestArchState, guest_RSP), "xSP" },
-  { offsetof(VexGuestArchState, guest_R8),  "R8" },
-  { offsetof(VexGuestArchState, guest_R9),  "R9" },
-  { offsetof(VexGuestArchState, guest_R10), "R10" },
-  { offsetof(VexGuestArchState, guest_R11), "R11" },
-  { offsetof(VexGuestArchState, guest_R12), "R12" },
-  { offsetof(VexGuestArchState, guest_R13), "R13" },
-  { offsetof(VexGuestArchState, guest_R14), "R14" },
-  { offsetof(VexGuestArchState, guest_R15), "R15" },
+static const Int dwarf_reg_guest_offsets[FJALAR_NUM_DWARF_REGS] = {
+  offsetof(VexGuestArchState, guest_RAX),
+  offsetof(VexGuestArchState, guest_RDX),
+  offsetof(VexGuestArchState, guest_RCX),
+  offsetof(VexGuestArchState, guest_RBX),
+  offsetof(VexGuestArchState, guest_RSI),
+  offsetof(VexGuestArchState, guest_RDI),
+  offsetof(VexGuestArchState, guest_RBP),
+  offsetof(VexGuestArchState, guest_RSP),
+  offsetof(VexGuestArchState, guest_R8),
+  offsetof(VexGuestArchState, guest_R9),
+  offsetof(VexGuestArchState, guest_R10),
+  offsetof(VexGuestArchState, guest_R11),
+  offsetof(VexGuestArchState, guest_R12),
+  offsetof(VexGuestArchState, guest_R13),
+  offsetof(VexGuestArchState, guest_R14),
+  offsetof(VexGuestArchState, guest_R15),
 };
 #else
-static const DwarfRegInfo dwarf_regs[FJALAR_NUM_DWARF_REGS] = {
-  { offsetof(VexGuestArchState, guest_EAX), "xAX" },
-  { offsetof(VexGuestArchState, guest_ECX), "xCX" },
-  { offsetof(VexGuestArchState, guest_EDX), "xDX" },
-  { offsetof(VexGuestArchState, guest_EBX), "xBX" },
-  { offsetof(VexGuestArchState, guest_ESP), "xSP" },
-  { offsetof(VexGuestArchState, guest_EBP), "xFP" },
-  { offsetof(VexGuestArchState, guest_ESI), "xSI" },
-  { offsetof(VexGuestArchState, guest_EDI), "xDI" },
-  { offsetof(VexGuestArchState, guest_EIP), "xIP" },
-  { -1, "eflags" },
-  { -1, "trapno" },
+static const Int dwarf_reg_guest_offsets[FJALAR_NUM_DWARF_REGS] = {
+  offsetof(VexGuestArchState, guest_EAX),
+  offsetof(VexGuestArchState, guest_ECX),
+  offsetof(VexGuestArchState, guest_EDX),
+  offsetof(VexGuestArchState, guest_EBX),
+  offsetof(VexGuestArchState, guest_ESP),
+  offsetof(VexGuestArchState, guest_EBP),
+  offsetof(VexGuestArchState, guest_ESI),
+  offsetof(VexGuestArchState, guest_EDI),
+  offsetof(VexGuestArchState, guest_EIP),
+  -1,  // eflags
+  -1,  // trapno
 };
 #endif
 
 Bool dwarf_reg_is_readable(UInt regNum)
 {
-  return regNum < FJALAR_NUM_DWARF_REGS && dwarf_regs[regNum].guestOffset >= 0;
+  return regNum < FJALAR_NUM_DWARF_REGS && dwarf_reg_guest_offsets[regNum] >= 0;
 }
 
 Int dwarf_reg_guest_offset(UInt regNum)
 {
   tl_assert(dwarf_reg_is_readable(regNum));
-  return dwarf_regs[regNum].guestOffset;
+  return dwarf_reg_guest_offsets[regNum];
 }
 
 Addr read_dwarf_reg(ThreadId tid, UInt regNum)
@@ -180,9 +175,15 @@ Addr read_dwarf_reg(ThreadId tid, UInt regNum)
   return value;
 }
 
-const HChar* dwarf_reg_name(UInt regNum)
+Int param_reg_index(FunctionEntry* f, UInt regNum)
 {
-  return regNum < FJALAR_NUM_DWARF_REGS ? dwarf_regs[regNum].name : "unknown";
+  UInt k;
+  for (k = 0; k < f->numParamRegs; k++) {
+    if (f->paramRegs[k] == regNum) {
+      return k;
+    }
+  }
+  return -1;
 }
 
 // located in VEX/priv/main_util.c
@@ -544,7 +545,7 @@ void enter_function(FunctionEntry* f)
 {
   FunctionExecutionState* newEntry;
   extern FunctionExecutionState* curFunctionExecutionStatePtr;
-  int i;
+  UInt i;
 
   // Only do enter_function if this is the first time we have
   // reached the preferred entry point after entering the function.
@@ -649,9 +650,14 @@ void enter_function(FunctionEntry* f)
         df = df->next;
       }
     } else {
+      // The frame base is DW_OP_regN (whose offset is 0) or DW_OP_bregN
+      // plus an offset.
+      UInt regNum = ((f->frame_base_atom >= DW_OP_breg0 && f->frame_base_atom <= DW_OP_breg31)
+                     ? f->frame_base_atom - DW_OP_breg0
+                     : f->frame_base_atom - DW_OP_reg0);
       FJALAR_DPRINTF("\tsimple location expression\n");
-      if (dwarf_reg_is_readable(f->frame_base_atom - DW_OP_reg0)) {
-        frame_ptr = read_dwarf_reg(tid, f->frame_base_atom - DW_OP_reg0) + f->frame_base_offset;
+      if (dwarf_reg_is_readable(regNum)) {
+        frame_ptr = read_dwarf_reg(tid, regNum) + f->frame_base_offset;
       }
     }
   }
@@ -690,16 +696,14 @@ void enter_function(FunctionEntry* f)
   // Save the registers that hold formal parameters, with their A and
   // V bits, so that those formal parameters have their entrance values
   // at both entrance and exit.
-  for (i = 0; i < FJALAR_NUM_DWARF_REGS; i++) {
+  for (i = 0; i < f->numParamRegs; i++) {
+    UInt regNum = f->paramRegs[i];
     Addr regAddr = (Addr)&newEntry->entryRegs[i];
     UWord vbits;
     UInt b;
-    if (!(f->paramRegMask & (1U << i))) {
-      continue;
-    }
-    newEntry->entryRegs[i] = read_dwarf_reg(tid, i);
+    newEntry->entryRegs[i] = read_dwarf_reg(tid, regNum);
     VG_(get_shadow_regs_area)(tid, (UChar*)&vbits, 1/*shadowNo*/,
-                              dwarf_reg_guest_offset(i), sizeof(Addr));
+                              dwarf_reg_guest_offset(regNum), sizeof(Addr));
     for (b = 0; b < sizeof(Addr); b++) {
       set_abit_and_vbyte(regAddr + b, VGM_BIT_VALID, (vbits >> (b * 8)) & 0xff);
     }

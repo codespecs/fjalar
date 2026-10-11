@@ -558,6 +558,13 @@ VarList globalVars;
 
 /******** FunctionEntry ********/
 
+// The maximum number of distinct registers that hold a function's
+// formal parameters and that Fjalar saves at function entrance.
+// This is more than the 6 integer argument registers of the amd64
+// ABI.  Fjalar omits a formal parameter whose register would exceed
+// it.  Every FunctionExecutionState has room for this many registers.
+#define FJALAR_MAX_PARAM_REGS 8
+
 // Contains information about a particular function -
 // Should be IMMUTABLE after initialization
 typedef struct _FunctionEntry {
@@ -690,9 +697,11 @@ typedef struct _FunctionEntry {
 
   UInt nonce;
 
-  // A bit mask of the DWARF register numbers of the registers that
-  // hold formal parameters (see FunctionExecutionState.entryRegs).
-  UInt paramRegMask;
+  // The DWARF register numbers of the registers that hold formal
+  // parameters.  At function entrance, Fjalar saves register
+  // paramRegs[k] in FunctionExecutionState.entryRegs[k].
+  UChar paramRegs[FJALAR_MAX_PARAM_REGS];
+  UInt numParamRegs;
 
 } FunctionEntry;
 
@@ -745,13 +754,17 @@ traversals within data structures and arrays
 **********************************************************************/
 
 // One more than the largest DWARF register number that Fjalar can
-// read.  It must be at most 32, because FunctionEntry.paramRegMask is
-// a bit mask indexed by DWARF register number.
+// read.
 #if defined(VGA_amd64)
 #define FJALAR_NUM_DWARF_REGS 16
 #else
 #define FJALAR_NUM_DWARF_REGS 11
 #endif
+
+// Returns the index of the given DWARF register number in
+// f->paramRegs (and thus in FunctionExecutionState.entryRegs), or -1
+// if it is not there.
+Int param_reg_index(FunctionEntry* f, UInt regNum);
 
 // Returns true if Fjalar can read the register with the given DWARF
 // register number.
@@ -766,7 +779,7 @@ Int dwarf_reg_guest_offset(UInt regNum);
 Addr read_dwarf_reg(ThreadId tid, UInt regNum);
 
 // Returns the name of the register with the given DWARF register
-// number, for debugging output.
+// number, for debugging output (defined in dwarf.c).
 const HChar* dwarf_reg_name(UInt regNum);
 
 // Entries for tracking the runtime state of functions at entrances
@@ -820,14 +833,14 @@ typedef struct {
   int virtualStackByteSize; // Number of 1-byte entries in virtualStack
   int virtualStackFPOffset; // Where in the stack the frame pointer was
 
-  // The values of the registers at function entrance, indexed by
-  // DWARF register number.  A formal parameter whose location is a
-  // register (DW_OP_reg*) is read from here, at both entrance and
-  // exit, for the same reason as virtualStack.  At function entrance,
-  // Fjalar copies the registers in func->paramRegMask, with their A
-  // and V bits, to entryRegs, and DynComp copies their tags.  The
-  // other elements are not set.
-  Addr entryRegs[FJALAR_NUM_DWARF_REGS];
+  // The values at function entrance of the registers in
+  // func->paramRegs:  entryRegs[k] holds register func->paramRegs[k].
+  // A formal parameter whose location is a register (DW_OP_reg*) is
+  // read from here, at both entrance and exit, for the same reason as
+  // virtualStack.  At function entrance, Fjalar copies the registers,
+  // with their A and V bits, to entryRegs, and DynComp copies their
+  // tags.  The other elements are not set.
+  Addr entryRegs[FJALAR_MAX_PARAM_REGS];
 
 
   Addr lowSP;

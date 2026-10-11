@@ -933,17 +933,19 @@ void visitVariableGroup(VariableOrigin varOrigin,
       continue;
     }
 
+    // Omit a formal parameter whose location Fjalar cannot read.  This
+    // test does not depend on stackBaseAddr, so that the .decls file
+    // (which is written without a stack) declares exactly the
+    // variables that the .dtrace file contains.  return is an
+    // exception, as we figure it out ourself.
+    if ((varOrigin == FUNCTION_FORMAL_PARAM) &&
+        !var->validLoc && !VG_STREQ("return", var->name)) {
+      FJALAR_DPRINTF("\t[visitVariableGroup] invalid loc, punting\n");
+      continue;
+    }
+
     if ((varOrigin == FUNCTION_FORMAL_PARAM) && stackBaseAddr) {
       ThreadId tid = VG_(get_running_tid)();
-
-      // (comment added 2009)  
-      // HACKISH. needed to work around bad location information in
-      // the DWARF tables, while still providing tools with the variables
-      // if they care. return is an exception as we figure it out ourself.
-      if(!var->validLoc && !VG_STREQ("return", var->name)) {
-        FJALAR_DPRINTF("\t[visitVariableGroup] invalid loc, punting\n");
-        continue;
-      }
 
       FJALAR_DPRINTF("\t[visitVariableGroup] baseAddr: %p, baseAddrGuest: %p var->byteOffset: %x(%d)\n", (void *)stackBaseAddr, (void *)stackBaseAddrGuest, (unsigned int)var->byteOffset, var->byteOffset);
       FJALAR_DPRINTF("\t[visitVariableGroup] State of Guest Stack [%p - %p] \n", (void *)funcPtr->guestStackStart, (void *)funcPtr->guestStackEnd);
@@ -1037,10 +1039,11 @@ void visitVariableGroup(VariableOrigin varOrigin,
               // function entrance, which is saved (with its A and V
               // bits and tags) in the FunctionExecutionState.
               unsigned int regNum = op - DW_OP_reg0;
+              Int regIndex = param_reg_index(funcPtr, regNum);
               FJALAR_DPRINTF("\tObtaining entrance value of register: [%%%s]\n", dwarf_reg_name(regNum));
-              if (!(funcPtr->paramRegMask & (1U << regNum))) {
+              if (regIndex < 0) {
                 // extractOneFormalParameterVar() did not record the
-                // register in paramRegMask, so it was not saved, but
+                // register in paramRegs, so it was not saved, but
                 // some heuristic marked the location valid anyway.
                 FJALAR_DPRINTF("\tRegister %s was not saved at entrance; value is nonsensical\n",
                                dwarf_reg_name(regNum));
@@ -1051,7 +1054,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
               // the entrance or exit of the current invocation.
               tl_assert(curFunctionExecutionStatePtr &&
                         curFunctionExecutionStatePtr->func == funcPtr);
-              var_loc = (Addr)&curFunctionExecutionStatePtr->entryRegs[regNum];
+              var_loc = (Addr)&curFunctionExecutionStatePtr->entryRegs[regIndex];
 
             } else if((op >= DW_OP_breg0) && (op <= DW_OP_breg31)) {
               // Get value pointed to by architectural register

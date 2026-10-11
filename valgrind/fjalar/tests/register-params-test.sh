@@ -37,9 +37,16 @@ if readelf --debug-dump=info "${output_dir}/register-params" \
            inparam && /DW_AT_location/ && !/: [0-9]+ byte block: .*\(DW_OP_reg/ { bad = 1 }
            inparam && /DW_AT_const_value/ { bad = 1 }
            END { exit !bad }'; then
-  echo "$0: SKIPPED: gcc did not put every formal parameter in a register" >&2
   readelf --debug-dump=info "${output_dir}/register-params" \
     | grep -A8 DW_TAG_formal_parameter >&2
+  # In continuous integration (GitHub Actions sets CI, and Azure Pipelines
+  # sets TF_BUILD), fail rather than skip, so that a compiler change that
+  # makes this test vacuous does not go unnoticed.
+  if [ -n "${CI:-}" ] || [ -n "${TF_BUILD:-}" ]; then
+    echo "$0: FAILED: gcc did not put every formal parameter in a register" >&2
+    exit 1
+  fi
+  echo "$0: SKIPPED: gcc did not put every formal parameter in a register" >&2
   exit 0
 fi
 

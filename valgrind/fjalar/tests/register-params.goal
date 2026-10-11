@@ -9,11 +9,7 @@
 ..scale():::EXIT0 factor 7
 ..scale():::EXIT0 return 14
 ..identity():::EXIT0 return 1.5
-..identity():::EXIT0 d comparability 2
-..identity():::EXIT0 return comparability 3
-..split():::EXIT0 p comparability 2
-..split():::EXIT0 p.first comparability 3
-..split():::EXIT0 p.second comparability 4
+..identity():::EXIT0 return comparability 2
 ..scale():::EXIT0 x comparability 2
 ..scale():::EXIT0 factor comparability 3
 ..scale():::EXIT0 return comparability 3

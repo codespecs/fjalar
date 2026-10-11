@@ -347,8 +347,8 @@ typedef struct
                  //       way to get the parameter location
   unsigned int valid_loc;
 
-  // True if the location expression contains DW_OP_piece, which
-  // dwarf_stack does not record.
+  // True if the location expression contains DW_OP_piece or
+  // DW_OP_bit_piece, which dwarf_stack does not record.
   char location_has_piece;
 
   unsigned long abstract_origin_ID; // See comment in the function struct definition
