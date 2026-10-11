@@ -3136,12 +3136,13 @@ read_and_display_attr_value (unsigned long           attribute,
 		}
 	      else
 		{
-		  /* We want to compute:
-		       index = fetch_indexed_value (uvalue, loclists, debug_info_p->loclists_base);
-		       index += debug_info_p->loclists_base;
-		      Fortunately we already have that sum cached in the
-		      loc_offsets array.  */
-		  index = debug_info_p->loc_offsets [uvalue];
+		  // start of Fjalar code
+		  // Fjalar's loc_offsets array is in attribute order, not
+		  // index order, so compute the offset rather than looking
+		  // it up in loc_offsets.
+		  index = fetch_indexed_value (uvalue, loclists, debug_info_p->loclists_base);
+		  index += debug_info_p->loclists_base;
+		  // end of Fjalar code
 		}
 	    }
 	  else if (form == DW_FORM_rnglistx)
@@ -3246,51 +3247,66 @@ read_and_display_attr_value (unsigned long           attribute,
 	case DW_AT_GNU_call_site_target:
 	case DW_AT_call_target_clobbered:
 	case DW_AT_GNU_call_site_target_clobbered:
-	  if ((dwarf_version < 4
-	       && (form == DW_FORM_data4 || form == DW_FORM_data8))
-	      || form == DW_FORM_sec_offset
-	      || form == DW_FORM_loclistx)
+	  if (((dwarf_version < 4
+		&& (form == DW_FORM_data4 || form == DW_FORM_data8))
+	       || form == DW_FORM_sec_offset
+	       || form == DW_FORM_loclistx)
+	      // start of Fjalar code
+	      // Before DWARF 4, DW_FORM_data4 and DW_FORM_data8 may be either a
+	      // location list offset or a constant.  A member's offset does not
+	      // vary with the program counter, so treat it as a constant.
+	      && !(attribute == DW_AT_data_member_location
+		   && form != DW_FORM_sec_offset
+		   && form != DW_FORM_loclistx)
+	      // end of Fjalar code
+	      )
 	    {
 	      /* Process location list.  */
-	      //unsigned int lmax = debug_info_p->max_loc_offsets;  // Fjalar doesn't need
+	      unsigned int lmax = debug_info_p->max_loc_offsets;
 	      unsigned int num = debug_info_p->num_loc_offsets;
 
-#if 0 // This code is not needed for Fjalar.
 	      if (lmax == 0 || num >= lmax)
 		{
 		  lmax += 1024;
 		  debug_info_p->loc_offsets = (dwarf_vma *)
 		    xcrealloc (debug_info_p->loc_offsets,
 			       lmax, sizeof (*debug_info_p->loc_offsets));
+#if 0 // This code is not needed for Fjalar.
 		  debug_info_p->loc_views = (dwarf_vma *)
 		    xcrealloc (debug_info_p->loc_views,
 			       lmax, sizeof (*debug_info_p->loc_views));
 		  debug_info_p->have_frame_base = (int *)
 		    xcrealloc (debug_info_p->have_frame_base,
 			       lmax, sizeof (*debug_info_p->have_frame_base));
+#endif // This code is not needed for Fjalar.
 		  debug_info_p->max_loc_offsets = lmax;
 		}
 	      if (form == DW_FORM_loclistx)
-		uvalue = fetch_indexed_value (num, loclists, debug_info_p->loclists_base);
+		// Fjalar passes uvalue, the index that the attribute names,
+		// rather than num, the number of location list attributes seen.
+		uvalue = fetch_indexed_value (uvalue, loclists, debug_info_p->loclists_base);
 	      else if (this_set != NULL)
 		uvalue += this_set->section_offsets [DW_SECT_LOC];
 
+#if 0 // This code is not needed for Fjalar.
 	      debug_info_p->have_frame_base [num] = have_frame_base;
 #endif // This code is not needed for Fjalar.
 	      if (attribute != DW_AT_GNU_locviews)
 		{
 		  uvalue += debug_info_p->loclists_base;
 
-		  /* Corrupt DWARF info can produce more offsets than views.
-		     See PR 23062 for an example.  */
+		  // start of Fjalar code
+		  // A DIE may have several location list attributes but
+		  // a DW_AT_GNU_locviews attribute for only some of them,
+		  // such as DW_AT_frame_base and DW_AT_static_link.  Fjalar does
+		  // not use location views, so it records every location list
+		  // offset and pads the views to match.
 		  if (debug_info_p->num_loc_offsets
 		      > debug_info_p->num_loc_views)
-		    warn (_("More location offset attributes than DW_AT_GNU_locview attributes\n"));
-		  else
-		    {
-		      //debug_info_p->loc_offsets [num] = uvalue;  // Fjalar doesn't need
-		      debug_info_p->num_loc_offsets++;
-		    }
+		    debug_info_p->num_loc_views++;
+		  debug_info_p->loc_offsets [num] = uvalue;
+		  debug_info_p->num_loc_offsets++;
+		  // end of Fjalar code
 		}
 	      else
 		{
@@ -7768,20 +7784,31 @@ loc_offsets_compar (const void *ap, const void *bp)
 
 #endif // This code is not needed for Fjalar.
 
+// Comparison function for VG_(ssort) on location list offsets.
+static Int
+compare_loc_offsets (const void *a, const void *b)
+{
+  dwarf_vma va = *(const dwarf_vma *) a;
+  dwarf_vma vb = *(const dwarf_vma *) b;
+  return (va > vb) - (va < vb);
+}
+
 // The body of this routine has been modified for Fjalar to be much simpler.
-// In particular, it assumes that the loc lists are in ascending order and
-// do not need to be sorted.  To date, we have not seen a contrary case.
-// Also we do not support Dwarf 5 debug_loclists.
+// It reads each location list at an offset that a DW_AT_location (or similar)
+// attribute names, ignoring anything else in the section, such as the
+// location view pairs (DW_AT_GNU_locviews) that GCC emits for optimized code.
+// Also we do not support Dwarf 5 debug_loclists:  this routine reads only
+// the .debug_loc section, and only for compilation units before DWARF 5.
 static int
 display_debug_loc (struct dwarf_section *section, void *file)
 {
-  unsigned char *start = section->start, *vstart = NULL;
+  unsigned char *start, *vstart = NULL;
   unsigned long bytes;
-  unsigned char *section_begin = start;
+  unsigned char *section_begin = section->start;
   unsigned int i;
   unsigned int j;
   bytes = section->size;
-  unsigned char *section_end = start + bytes;
+  bool is_loclists = VG_(strstr) (section->name, "debug_loclists") != NULL;
 
   if (bytes == 0) {
       FJALAR_DPRINTF (_("\nThe %s section is empty.\n"), section->name);
@@ -7794,17 +7821,39 @@ display_debug_loc (struct dwarf_section *section, void *file)
       return 0;
   }
 
+  if (is_loclists) {
+      FJALAR_DPRINTF (_("\nFjalar does not read the %s section.\n"), section->name);
+      return 1;
+  }
+
   if (fjalar_debug_dump) {
       printf (_("Contents of the .debug_loc section:\n\n"));
       printf (_("    Offset   Begin    End      Expression\n"));
   }
 
-  for (i = 0; start < section_end; i++) {
-      unsigned long offset;
+  for (i = 0; i < num_debug_info_entries; i++) {
       unsigned long base_address = debug_information [i].base_address;
+      unsigned int num_loc_offsets = debug_information [i].num_loc_offsets;
+      dwarf_vma *loc_offsets;
 
-      for (j = 0; j < debug_information[i].num_loc_offsets; j++) {
-          offset = start - section_begin;
+      // A DWARF 5 compilation unit's location lists are in .debug_loclists.
+      if (num_loc_offsets == 0 || debug_information [i].dwarf_version >= 5)
+        continue;
+
+      // Several attributes may name the same location list; read it once.
+      // Sort a copy, because debug_information [i].loc_offsets is in
+      // attribute order.
+      loc_offsets = (dwarf_vma *) xcmalloc (num_loc_offsets, sizeof (*loc_offsets));
+      VG_(memcpy) (loc_offsets, debug_information [i].loc_offsets,
+                   num_loc_offsets * sizeof (*loc_offsets));
+      VG_(ssort) (loc_offsets, num_loc_offsets, sizeof (*loc_offsets),
+                  compare_loc_offsets);
+
+      for (j = 0; j < num_loc_offsets; j++) {
+          unsigned long offset = loc_offsets [j];
+
+          if (j > 0 && offset == loc_offsets [j - 1])
+            continue;
 
           if (offset >= bytes)
             {
@@ -7813,8 +7862,11 @@ display_debug_loc (struct dwarf_section *section, void *file)
               continue;
             }
 
-            display_loc_list (section, &start, i, offset, base_address, &vstart, 0);
+          start = section_begin + offset;
+          display_loc_list (section, &start, i, offset, base_address, &vstart, 0);
       }
+
+      VG_(free) (loc_offsets);
   }
 
   if (fjalar_debug_dump)
