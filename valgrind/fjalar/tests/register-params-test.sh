@@ -69,9 +69,10 @@ fi
 
 # One line per non-global variable at the first occurrence of each program
 # point other than main's (that is, in the first call to each function):
-# "<ppt> <variable> <value>", followed by one line per non-global variable at
-# each exit program point other than main's:  "<ppt> <variable> comparability
-# <comparability>".
+# "<ppt> <variable> <value>", followed by one line per non-global variable
+# declared at each program point other than main's:  "<ppt> <variable>
+# comparability <comparability>".  The latter shows that Fjalar omits a formal
+# parameter whose location it cannot read from the .decls file too.
 actual="${output_dir}/register-params.actual"
 awk '/^\.\.[a-z]*\(\):::/ { ppt = $0; getline; getline
                             if (ppt ~ /^\.\.main\(/ || seen[ppt]++) ppt = ""
@@ -84,7 +85,7 @@ awk '/^\.\.[a-z]*\(\):::/ { ppt = $0; getline; getline
 awk '/^ppt / { ppt = $2 }
      /^  variable / { var = $2 }
      var ~ /^::/ { next }
-     /^    comparability / { if (ppt ~ /:::EXIT/ && ppt !~ /^\.\.main\(/)
+     /^    comparability / { if (ppt !~ /^\.\.main\(/)
                                print ppt, var, "comparability", $2 }' \
     "${decls}" >> "${actual}"
 

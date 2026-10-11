@@ -1,2 +1,0 @@
-decls ..identity():::EXIT0 return
-dtrace ..identity():::EXIT0 return
