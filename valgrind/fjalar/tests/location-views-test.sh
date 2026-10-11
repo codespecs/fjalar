@@ -20,6 +20,13 @@ if [ ! -x "${valgrind}" ]; then
   exit 2
 fi
 
+for tool in gcc readelf timeout; do
+  if ! command -v "${tool}" > /dev/null; then
+    echo "$0: missing prerequisite: ${tool}" >&2
+    exit 2
+  fi
+done
+
 output_dir="$(mktemp -d)"
 trap 'rm -rf "${output_dir}"' EXIT
 
