@@ -2360,6 +2360,21 @@ static void extractLocalArrayAndStructVariables(FunctionEntry* f,
           dwarfFunctionEntry->name);
 }
 
+// Returns true if the DWARF location of var places its value (or, for
+// a location made of DW_OP_piece operations, its first piece) in a
+// register.  This holds for every var whose locationType is
+// REGISTER_LOCATION, and also for some whose location Fjalar does not
+// support, such as an XMM register or a struct split across registers.
+static Bool isInRegister(VariableEntry* var)
+{
+  UInt atom;
+  if (var->location_expression_size == 0) {
+    return False;
+  }
+  atom = var->location_expression[0].atom;
+  return atom >= DW_OP_reg0 && atom <= DW_OP_reg31;
+}
+
 // MUST BE RUN AFTER the return value for a function has been initialized!!!
 // Otherwise it cannot tell whether the function returns a struct type!!!
 //
@@ -2403,8 +2418,9 @@ static void verifyStackParamWordAlignment(FunctionEntry* f, int replace)
        cur_node = cur_node->next)
     {
       int cur_byteSize = 0;
-      // A parameter in a register occupies no stack slot.
-      if (cur_node->var->locationType == REGISTER_LOCATION) {
+      // A parameter in a register occupies no stack slot, even if
+      // Fjalar cannot read the register.
+      if (isInRegister(cur_node->var)) {
         continue;
       }
       if (cur_node->var->locationType == NO_LOCATION || replace) {
@@ -2546,6 +2562,28 @@ static Bool isSupportedRegisterLocation(formal_parameter* paramPtr,
   return 0 < byteSize && byteSize <= (int)sizeof(Addr);
 }
 
+// Adds to f->entryRegsMask each readable register that the formal
+// parameter's location uses, so that Fjalar saves the register at
+// function entrance.
+static void recordEntryRegs(FunctionEntry* f, formal_parameter* paramPtr)
+{
+  unsigned int i;
+  for (i = 0; i < paramPtr->dwarf_stack_size; i++) {
+    UInt atom = paramPtr->dwarf_stack[i].atom;
+    UInt regNum;
+    if (atom >= DW_OP_reg0 && atom <= DW_OP_reg31) {
+      regNum = atom - DW_OP_reg0;
+    } else if (atom >= DW_OP_breg0 && atom <= DW_OP_breg31) {
+      regNum = atom - DW_OP_breg0;
+    } else {
+      continue;
+    }
+    if (dwarf_reg_is_readable(regNum)) {
+      f->entryRegsMask |= 1U << regNum;
+    }
+  }
+}
+
 // dwarfParamEntry->tag_name == DW_TAG_formal_parameter
 static void extractOneFormalParameterVar(FunctionEntry* f,
                                          dwarf_entry* dwarfParamEntry)
@@ -2603,31 +2641,23 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     varPtr->location_expression_size = paramPtr->dwarf_stack_size;
   }
 
-  {
-    unsigned int i;
-    for (i = 0; i < paramPtr->dwarf_stack_size; i++) {
-      UInt atom = paramPtr->dwarf_stack[i].atom;
-      if ((atom >= DW_OP_reg0 && atom <= DW_OP_reg31) ||
-          (atom >= DW_OP_breg0 && atom <= DW_OP_breg31)) {
-        f->savesEntryRegs = True;
-      }
-    }
-  }
-
   if (paramPtr->location_has_unsupported_op) {
     // varPtr->validLoc remains 0, so Fjalar omits the formal parameter.
+    varPtr->hasUnsupportedLocation = True;
     FJALAR_DPRINTF(" location contains an unsupported operation\n");
   } else if (paramPtr->location_type == LT_FP_OFFSET) {
     varPtr->validLoc = paramPtr->valid_loc;
     varPtr->locationType = FP_OFFSET_LOCATION;
     varPtr->byteOffset = paramPtr->location;
     //    varPtr->atom = paramPtr->loc_atom;
+    recordEntryRegs(f, paramPtr);
 
     FJALAR_DPRINTF(" location_type: %u, byteOffset: %x\n", varPtr->locationType, (unsigned int)varPtr->byteOffset);
   } else if (isSupportedRegisterLocation(paramPtr, varPtr)) {
     UInt regNum = paramPtr->dwarf_stack[0].atom - DW_OP_reg0;
     varPtr->validLoc = 1;
     varPtr->locationType = REGISTER_LOCATION;
+    recordEntryRegs(f, paramPtr);
     FJALAR_DPRINTF(" location is register %s\n", dwarf_reg_name(regNum));
   }
 
@@ -3197,6 +3227,7 @@ static void processFunctions() {
       if ((f->formalParameters.numVars > 0) &&
           (f->formalParameters.first->var) &&
           !(f->formalParameters.first->var->validLoc) &&
+          !(f->formalParameters.first->var->hasUnsupportedLocation) &&
           (f->formalParameters.first->var->varType->decType == D_INT)){
         VariableEntry* var = f->formalParameters.first->var;
         printf("Found invalid argc, varByteOffset is: %d\n", var->byteOffset);
@@ -3208,6 +3239,7 @@ static void processFunctions() {
       if ((f->formalParameters.numVars > 1) &&
           (f->formalParameters.first->next->var) &&
           !(f->formalParameters.first->next->var->validLoc) &&
+          !(f->formalParameters.first->next->var->hasUnsupportedLocation) &&
           (f->formalParameters.first->next->var->varType->decType == D_CHAR)) {
         VariableEntry* var = f->formalParameters.first->next->var;
         printf("Found invalid argv, varByteOffset is: %d\n", var->byteOffset);
@@ -3259,7 +3291,10 @@ static void initConstructorsAndDestructors(void) {
 
       // (comment added 2009)  
       // RUDD - Dirty dirty hack. Force the location of this to be valid
-      f->formalParameters.first->var->validLoc = 1;
+      // (unless Fjalar cannot evaluate the location that DWARF gives).
+      if (!f->formalParameters.first->var->hasUnsupportedLocation) {
+        f->formalParameters.first->var->validLoc = 1;
+      }
 
 
       // Use the regular (not mangled or demangled) name for matching

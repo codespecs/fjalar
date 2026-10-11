@@ -1201,9 +1201,15 @@ char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom
   if (tag_is_formal_parameter(tag))
     {
       formal_parameter *paramPtr = ((formal_parameter*)e->entry_ptr);
-      paramPtr->loc_atom = atom;
 
-      tl_assert(paramPtr->dwarf_stack_size < MAX_DWARF_OPS);
+      // Fjalar cannot evaluate a location expression with more
+      // operations than dwarf_stack holds.
+      if (paramPtr->dwarf_stack_size >= MAX_DWARF_OPS) {
+        paramPtr->location_has_unsupported_op = 1;
+        return 1;
+      }
+
+      paramPtr->loc_atom = atom;
       paramPtr->dwarf_stack[paramPtr->dwarf_stack_size].atom = atom;
       paramPtr->dwarf_stack[paramPtr->dwarf_stack_size].atom_offset = value;
       paramPtr->dwarf_stack_size++;

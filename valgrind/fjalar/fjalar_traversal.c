@@ -1035,7 +1035,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
               // bits and tags) in the FunctionExecutionState.
               unsigned int regNum = op - DW_OP_reg0;
               FJALAR_DPRINTF("\tObtaining entrance value of register: [%%%s]\n", dwarf_reg_name(regNum));
-              if (!entryRegs || !dwarf_reg_is_readable(regNum)) {
+              if (!entryRegs || !(funcPtr->entryRegsMask & (1U << regNum))) {
                 // extractOneFormalParameterVar() did not accept the
                 // register location, so the register was not saved,
                 // but some heuristic marked the location valid anyway.
@@ -1053,7 +1053,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
               // overwritten the register and the epilogue has already
               // restored or popped it.
               unsigned int regNum = op - DW_OP_breg0;
-              if (!entryRegs || !dwarf_reg_is_readable(regNum)) {
+              if (!entryRegs || !(funcPtr->entryRegsMask & (1U << regNum))) {
                 FJALAR_DPRINTF("\tRegister %s was not saved at entrance; value is nonsensical\n",
                                dwarf_reg_name(regNum));
                 var_loc = 0;

@@ -402,6 +402,11 @@ typedef struct _VariableEntry {
   // location information will have validLoc = False
   Bool validLoc;
 
+  // True if the DWARF information gives this formal parameter a
+  // location that Fjalar cannot evaluate.  Such a variable has
+  // validLoc = False, and no heuristic may make it valid.
+  Bool hasUnsupportedLocation;
+
   // In some situations (The primary one being dealing with the
   // formal parameters to main - see the MAIN STACK LAYOUT comment
   // in fjalar_traversal.c for more information) the location of
@@ -690,10 +695,12 @@ typedef struct _FunctionEntry {
 
   UInt nonce;
 
-  // True if some formal parameter's location expression uses a
-  // register (DW_OP_reg* or DW_OP_breg*).  If so, Fjalar saves the
-  // registers at function entrance in FunctionExecutionState.entryRegs.
-  Bool savesEntryRegs;
+  // Bit N is set if the location expression of some formal parameter
+  // whose location Fjalar can evaluate uses DWARF register N (via
+  // DW_OP_regN or DW_OP_bregN) and that register is readable.  Fjalar
+  // saves those registers at function entrance in
+  // FunctionExecutionState.entryRegs.
+  UInt entryRegsMask;
 
 } FunctionEntry;
 
@@ -824,17 +831,17 @@ typedef struct {
   int virtualStackFPOffset; // Where in the stack the frame pointer was
 
   // The values at function entrance of the registers, indexed by
-  // DWARF register number:  entryRegs[N] holds register N, if
-  // dwarf_reg_is_readable(N).  A formal parameter whose location is a
+  // DWARF register number:  entryRegs[N] holds register N, if bit N
+  // of func->entryRegsMask is set.  A formal parameter whose location is a
   // register (DW_OP_reg*) is read from here, and the address of one
   // whose location is relative to a register (DW_OP_breg*) is computed
   // from here, at both entrance and exit, for the same reason as
   // virtualStack:  the function body and epilogue may change the
   // registers.  At function entrance,
-  // Fjalar copies the readable registers, with their A and V bits and
+  // Fjalar copies those registers, with their A and V bits and
   // DynComp tags, to entryRegs.  entryRegs has FJALAR_NUM_DWARF_REGS
   // elements and lies in the same allocation as virtualStack, just
-  // after it; it is null if func->savesEntryRegs is false.
+  // after it; it is null if func->entryRegsMask is 0.
   Addr* entryRegs;
 
 
