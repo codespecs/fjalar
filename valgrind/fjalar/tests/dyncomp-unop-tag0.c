@@ -43,9 +43,13 @@ int movemask(long a, long b) {
 
 int main(void) {
   int r = 0;
+  // j is computed independently of i, so ctz_of_sum's a and b become
+  // comparable only through the addition within ctz_of_sum.
+  unsigned int j = 7;
   for (int i = 1; i < 5; i++) {
+    j = j * 3 + 1;
     r += shift_by_lt(i, 3, 5);
-    r += ctz_of_sum(i, 2 * i);
+    r += ctz_of_sum(i, j);
     r += ctz(i * 4);
     r += movemask(i, -i);
   }
