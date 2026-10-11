@@ -688,6 +688,10 @@ typedef struct _FunctionEntry {
   // used in calculating the address of variables from  DWARF location expressions
   Addr FP;
 
+  // The value of the frame pointer register (%ebp, %rbp) for this
+  // invocation of the function, after the prologue has executed.
+  Addr entryFPReg;
+
   UInt nonce;
 
 } FunctionEntry;
@@ -740,21 +744,25 @@ These data structures and functions provide mechanisms for runtime
 traversals within data structures and arrays
 **********************************************************************/
 
-// One more than the largest DWARF register number that Fjalar can
-// read.
 #if defined(VGA_amd64)
-#define FJALAR_NUM_DWARF_REGS 16
+// The DWARF register number of the stack pointer
+#define DWARF_SP_REG 7
+// The DWARF register number of the frame pointer
+#define DWARF_FP_REG 6
 #else
-#define FJALAR_NUM_DWARF_REGS 11
+// The DWARF register number of the stack pointer
+#define DWARF_SP_REG 4
+// The DWARF register number of the frame pointer
+#define DWARF_FP_REG 5
 #endif
+
+// If atom is DW_OP_regN or DW_OP_bregN, sets *regNum to N and returns
+// True.  Otherwise, returns False.
+Bool dwarf_op_reg_num(UInt atom, UInt* regNum);
 
 // Returns true if Fjalar can read the register with the given DWARF
 // register number.
 Bool dwarf_reg_is_readable(UInt regNum);
-
-// Returns the guest-state offset of the register with the given DWARF
-// register number, which must be readable.
-Int dwarf_reg_guest_offset(UInt regNum);
 
 // Returns the current value of the register with the given DWARF
 // register number, which must be readable.
@@ -817,6 +825,10 @@ typedef struct {
 
 
   Addr lowSP;
+
+  // The value of the frame pointer register (%ebp, %rbp) after the
+  // prologue has executed.
+  Addr entryFPReg;
 } FunctionExecutionState;
 
 

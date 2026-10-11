@@ -120,6 +120,9 @@ const HChar* executable_filename = 0;
 */
 
 #if defined(VGA_amd64)
+// One more than the largest DWARF register number that Fjalar can
+// read.
+#define FJALAR_NUM_DWARF_REGS 16
 // AMD64 Dwarf to Architecture mapping is (thankfully) specified
 // in the AMD64 ABI (http://x86-64.org/documentation/abi.pdf)
 static const Int dwarf_reg_guest_offsets[FJALAR_NUM_DWARF_REGS] = {
@@ -141,6 +144,7 @@ static const Int dwarf_reg_guest_offsets[FJALAR_NUM_DWARF_REGS] = {
   offsetof(VexGuestArchState, guest_R15),
 };
 #else
+#define FJALAR_NUM_DWARF_REGS 9
 static const Int dwarf_reg_guest_offsets[FJALAR_NUM_DWARF_REGS] = {
   offsetof(VexGuestArchState, guest_EAX),
   offsetof(VexGuestArchState, guest_ECX),
@@ -151,34 +155,24 @@ static const Int dwarf_reg_guest_offsets[FJALAR_NUM_DWARF_REGS] = {
   offsetof(VexGuestArchState, guest_ESI),
   offsetof(VexGuestArchState, guest_EDI),
   offsetof(VexGuestArchState, guest_EIP),
-  -1,  // eflags
-  -1,  // trapno
 };
 #endif
 
 Bool dwarf_reg_is_readable(UInt regNum)
 {
-  return regNum < FJALAR_NUM_DWARF_REGS && dwarf_reg_guest_offsets[regNum] >= 0;
-}
-
-Int dwarf_reg_guest_offset(UInt regNum)
-{
-  tl_assert(dwarf_reg_is_readable(regNum));
-  return dwarf_reg_guest_offsets[regNum];
+  return regNum < FJALAR_NUM_DWARF_REGS;
 }
 
 Addr read_dwarf_reg(ThreadId tid, UInt regNum)
 {
   Addr value;
+  tl_assert(dwarf_reg_is_readable(regNum));
   VG_(get_shadow_regs_area)(tid, (UChar*)&value, 0/*shadowNo*/,
-                            dwarf_reg_guest_offset(regNum), sizeof(Addr));
+                            dwarf_reg_guest_offsets[regNum], sizeof(Addr));
   return value;
 }
 
-// If atom is DW_OP_regN or DW_OP_bregN, sets *regNum to N and returns
-// True.  Otherwise, returns False.  A frame base of DW_OP_regN has
-// offset 0, and one of DW_OP_bregN has the atom's offset.
-static Bool frame_base_reg_num(UInt atom, UInt* regNum)
+Bool dwarf_op_reg_num(UInt atom, UInt* regNum)
 {
   if (atom >= DW_OP_breg0 && atom <= DW_OP_breg31) {
     *regNum = atom - DW_OP_breg0;
@@ -492,7 +486,11 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
       // For function exit, we are interested in observing  all general purpose
       // integer registers,  FTOP, and FPREG[], so make sure that they are
       // updated by setting the proper annotations.
+#if defined(VGA_amd64)
+      di->nFxState = 12;
+#else
       di->nFxState = 11;
+#endif
       vex_bzero(&di->fxState, sizeof(di->fxState));
 
       di->fxState[0].fx     = Ifx_Read;
@@ -531,6 +529,12 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
       di->fxState[10].fx     = Ifx_Read;
       di->fxState[10].offset = offsetof(VexGuestArchState, guest_FPREG);
       di->fxState[10].size   = 8 * sizeof(ULong);
+#if defined(VGA_amd64)
+      // R8 through R15, which are contiguous in the guest state
+      di->fxState[11].fx     = Ifx_Read;
+      di->fxState[11].offset = offsetof(VexGuestArchState, guest_R8);
+      di->fxState[11].size   = 8 * sizeof(ULong);
+#endif
 
       stmt('V',  mce, IRStmt_Dirty(di) );
     }
@@ -636,7 +640,8 @@ void enter_function(FunctionEntry* f)
               ll->atom = DW_OP_breg0 + DWARF_FP_REG;
               ll->atom_offset = 2 * sizeof(Addr);
           }
-          if (frame_base_reg_num(ll->atom, &regNum) && dwarf_reg_is_readable(regNum)) {
+          // For DW_OP_regN, the offset is 0.
+          if (dwarf_op_reg_num(ll->atom, &regNum) && dwarf_reg_is_readable(regNum)) {
             frame_ptr = read_dwarf_reg(tid, regNum) + ll->atom_offset;
           } else {
             FJALAR_DPRINTF("\tCannot compute frame base from location list entry with atom %s\n",
@@ -654,6 +659,9 @@ void enter_function(FunctionEntry* f)
           FJALAR_DPRINTF("\tFound debug frame with reg %x and offset %lx\n", df->cfa_reg, df->cfa_offset);
           if (dwarf_reg_is_readable(df->cfa_reg)) {
             frame_ptr = read_dwarf_reg(tid, df->cfa_reg) + df->cfa_offset;
+          } else {
+            FJALAR_DPRINTF("\tCannot compute frame base from CFA register %s\n",
+                           dwarf_reg_name(df->cfa_reg));
           }
           break;
         }
@@ -661,7 +669,7 @@ void enter_function(FunctionEntry* f)
       }
     } else {
       FJALAR_DPRINTF("\tsimple location expression\n");
-      if (frame_base_reg_num(f->frame_base_atom, &regNum) && dwarf_reg_is_readable(regNum)) {
+      if (dwarf_op_reg_num(f->frame_base_atom, &regNum) && dwarf_reg_is_readable(regNum)) {
         frame_ptr = read_dwarf_reg(tid, regNum) + f->frame_base_offset;
       } else {
         FJALAR_DPRINTF("\tCannot compute frame base from atom %s\n",
@@ -693,6 +701,8 @@ void enter_function(FunctionEntry* f)
   newEntry->func->FP = frame_ptr;
   newEntry->func->lowestSP = stack_ptr;
   newEntry->FP = frame_ptr;
+  newEntry->func->entryFPReg = VG_(get_FP)(tid);
+  newEntry->entryFPReg = newEntry->func->entryFPReg;
   newEntry->lowSP = stack_ptr;
   newEntry->lowestSP = stack_ptr;
   newEntry->xAX = 0;
@@ -795,6 +805,7 @@ void exit_function(FunctionEntry* f)
   top->func->guestStackEnd = top->func->guestStackStart + top->virtualStackByteSize;
   top->func->lowestVirtSP = (Addr)top->virtualStack;
   top->func->FP  = top->FP;
+  top->func->entryFPReg = top->entryFPReg;
   top->func->lowestSP  = top->func->guestStackStart;
 
   FJALAR_DPRINTF("\tState of Guest Stack [%p - %p] \n", (void *)top->lowestSP, (void *)(top->lowestSP + top->virtualStackByteSize));

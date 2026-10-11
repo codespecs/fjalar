@@ -916,6 +916,10 @@ void visitVariableGroup(VariableOrigin varOrigin,
     VariableEntry* var = nextVar(varIt);
     Addr basePtrValue = (Addr) NULL;
     Addr basePtrValueGuest = (Addr) NULL;
+    // For a variable that is located in a register, the register's
+    // value.  basePtrValue points here, so this must outlive the call
+    // to visitVariable.
+    Addr reg_val;
     
     if (!var->name) {
       printf( "  Warning! Weird null variable name!\n");
@@ -1009,7 +1013,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
           for(i = 0; i < var->location_expression_size; i++ ) {
             dwarf_location *dloc  = &(var->location_expression[i]);
             unsigned int  op = dloc->atom;
-            Addr reg_val;
+            UInt regNum;
 
             if(op == DW_OP_addr) {
               // DWARF supplied address
@@ -1028,28 +1032,20 @@ void visitVariableGroup(VariableOrigin varOrigin,
               // Add DWARF supplied constant to value to result of last DWARF operation
               var_loc += dloc->atom_offset;
 
-            } else if((op >= DW_OP_reg0) && (op <= DW_OP_reg31)) {
-              // Get value located in architectural register
-              unsigned int regNum = op - DW_OP_reg0;
-              if (!dwarf_reg_is_readable(regNum)) {
-                FJALAR_DPRINTF("\tCannot read register %s; value is nonsensical\n",
-                               dwarf_reg_name(regNum));
-                var_loc = 0;
-                break;
-              }
-              reg_val = read_dwarf_reg(tid, regNum);
-              FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %p\n", dwarf_reg_name(regNum),
-                             (void *)reg_val);
-              var_loc = (Addr)&reg_val;
-
-            } else if((op >= DW_OP_breg0) && (op <= DW_OP_breg31)) {
-              // Get value pointed to by architectural register
-              unsigned int regNum = op - DW_OP_breg0;
-              if (regNum == DWARF_SP_REG) {
+            } else if(dwarf_op_reg_num(op, &regNum)) {
+              // DW_OP_regN: the value is in register N.
+              // DW_OP_bregN: the value is at an offset from register N's value.
+              Bool isBreg = (op >= DW_OP_breg0) && (op <= DW_OP_breg31);
+              if (isBreg && regNum == DWARF_SP_REG) {
                 // Use the stack pointer at function entry (after the
                 // prologue).  At function exit, the epilogue has already
                 // popped the stack frame.
                 reg_val = funcPtr->guestStackStart + VG_STACK_REDZONE_SZB;
+              } else if (isBreg && regNum == DWARF_FP_REG) {
+                // Use the frame pointer register at function entry (after
+                // the prologue).  At function exit, the epilogue has
+                // already restored the caller's frame pointer.
+                reg_val = funcPtr->entryFPReg;
               } else if (dwarf_reg_is_readable(regNum)) {
                 reg_val = read_dwarf_reg(tid, regNum);
               } else {
@@ -1060,9 +1056,13 @@ void visitVariableGroup(VariableOrigin varOrigin,
               }
               FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %p\n", dwarf_reg_name(regNum),
                              (void *)reg_val);
-              var_loc = reg_val + dloc->atom_offset;
-              FJALAR_DPRINTF("\tAdding %lld to the register value for %p\n", dloc->atom_offset, (void *)var_loc);
-              tl_assert(var_loc);
+              if (isBreg) {
+                var_loc = reg_val + dloc->atom_offset;
+                FJALAR_DPRINTF("\tAdding %lld to the register value for %p\n", dloc->atom_offset, (void *)var_loc);
+                tl_assert(var_loc);
+              } else {
+                var_loc = (Addr)&reg_val;
+              }
 
             } else if(op == DW_OP_fbreg) {
               // Get value located at an offset from the FRAME_BASE.
