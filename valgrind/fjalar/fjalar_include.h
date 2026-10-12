@@ -416,11 +416,6 @@ typedef struct _VariableEntry {
   Addr entryLoc;
   Addr entryLocGuest;
 
-  // If the location is a register (DW_OP_reg*), which has no address,
-  // visitVariableGroup copies the register's value here and reads the
-  // variable from this field.
-  Addr regValue; // mutable
-
   // g++ will not emit a memory location for (all?) constant primitives
   // even on O0, so we will have to make a special case for constants
   // without valid memory locations. It is always preferable to use the 

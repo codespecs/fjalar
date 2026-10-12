@@ -348,8 +348,9 @@ typedef struct
   unsigned int valid_loc;
 
   // True if the location expression contains an operation that does
-  // not satisfy location_op_is_supported, such as DW_OP_piece or
-  // DW_OP_stack_value, or contains more than MAX_DWARF_OPS operations.
+  // not satisfy location_op_is_supported, such as DW_OP_reg*,
+  // DW_OP_piece, or DW_OP_stack_value, or contains more than
+  // MAX_DWARF_OPS operations.
   // Fjalar cannot read such a location.
   char location_has_unsupported_op;
 

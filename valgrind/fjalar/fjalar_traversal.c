@@ -858,10 +858,10 @@ static int dwarf_reg_is_readable(unsigned int regno) {
           && (get_reg[regno] != NULL));
 }
 
+// A register location (DW_OP_reg*) is not supported:  visitVariableGroup
+// reads a variable from guest memory, and a register has no address, no
+// A and V bits, and no DynComp tags.
 int location_op_is_supported(unsigned int op) {
-  if ((op >= DW_OP_reg0) && (op <= DW_OP_reg31)) {
-    return dwarf_reg_is_readable(op - DW_OP_reg0);
-  }
   if ((op >= DW_OP_breg0) && (op <= DW_OP_breg31)) {
     return dwarf_reg_is_readable(op - DW_OP_breg0);
   }
@@ -1045,14 +1045,6 @@ void visitVariableGroup(VariableOrigin varOrigin,
             } else if(op == DW_OP_plus_uconst) {
               // Add DWARF supplied constant to value to result of last DWARF operation
               var_loc += dloc->atom_offset;
-
-            } else if((op >= DW_OP_reg0) && (op <= DW_OP_reg31)) {
-              // Get value located in architectural register.  The value
-              // must outlive this loop, so store it in var.
-              var->regValue = (*get_reg[dloc->atom - DW_OP_reg0])(tid);
-              FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %p\n", dwarf_reg_string[dloc->atom - DW_OP_reg0],
-                             (void *)var->regValue);
-              var_loc = (Addr)&var->regValue;
 
             } else if((op >= DW_OP_breg0) && (op <= DW_OP_breg31)) {
               // Get value pointed to by architectural register
