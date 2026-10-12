@@ -223,7 +223,7 @@ returnArrayVariableWithAddr(VarList* varList,
         potentialVarBaseAddr = e->lowSP + potentialVar->byteOffset;
       }
     }
-    FJALAR_DPRINTF("addr: %p, potential var_loc: %p, staticArr: %p, ptrLevels: %u, varType: %u\n",
+    FJALAR_DPRINTF("addr: %p, potentialVarBaseAddr: %p, staticArr: %p, ptrLevels: %u, varType: %u\n",
                    (void*)a, (void*)potentialVarBaseAddr, potentialVar->staticArr, potentialVar->ptrLevels,
                    (potentialVar->varType ? potentialVar->varType->decType : 0));
 
