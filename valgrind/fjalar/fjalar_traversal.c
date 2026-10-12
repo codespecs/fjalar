@@ -1010,7 +1010,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
           for(i = 0; i < var->location_expression_size; i++ ) {
             dwarf_location *dloc  = &(var->location_expression[i]);
             unsigned int  op = dloc->atom;
-            Addr reg_val;
+            UInt regNum;
 
             if(op == DW_OP_addr) {
               // DWARF supplied address
@@ -1029,12 +1029,16 @@ void visitVariableGroup(VariableOrigin varOrigin,
               // Add DWARF supplied constant to value to result of last DWARF operation
               var_loc += dloc->atom_offset;
 
-            } else if((op >= DW_OP_reg0) && (op <= DW_OP_reg31)) {
-              // Get the value that the architectural register held at
-              // function entrance, which is saved (with its A and V
-              // bits and tags) in the FunctionExecutionState.
-              unsigned int regNum = op - DW_OP_reg0;
-              FJALAR_DPRINTF("\tObtaining entrance value of register: [%%%s]\n", dwarf_reg_name(regNum));
+            } else if(dwarf_op_reg_num(op, &regNum)) {
+              // DW_OP_regN: the value is in register N.
+              // DW_OP_bregN: the value is at an offset from register N's value.
+              // Either way, use the value that the register held at
+              // function entrance (after the prologue), which is saved
+              // (with its A and V bits and tags) in the
+              // FunctionExecutionState.  At function exit, the body may
+              // have overwritten the register and the epilogue has
+              // already restored or popped it.
+              Bool isBreg = (op >= DW_OP_breg0) && (op <= DW_OP_breg31);
               if (!entryRegs || !dwarf_reg_is_readable(regNum)) {
                 // extractOneFormalParameterVar() did not accept the
                 // register location, so the register was not saved,
@@ -1044,27 +1048,17 @@ void visitVariableGroup(VariableOrigin varOrigin,
                 var_loc = 0;
                 break;
               }
-              var_loc = (Addr)&entryRegs[regNum];
-
-            } else if((op >= DW_OP_breg0) && (op <= DW_OP_breg31)) {
-              // Add an offset to the value that the architectural
-              // register held at function entrance (after the
-              // prologue).  At function exit, the body may have
-              // overwritten the register and the epilogue has already
-              // restored or popped it.
-              unsigned int regNum = op - DW_OP_breg0;
-              if (!entryRegs || !dwarf_reg_is_readable(regNum)) {
-                FJALAR_DPRINTF("\tRegister %s was not saved at entrance; value is nonsensical\n",
-                               dwarf_reg_name(regNum));
-                var_loc = 0;
-                break;
+              if (isBreg) {
+                Addr reg_val = entryRegs[regNum];
+                FJALAR_DPRINTF("\tObtaining entrance register value: [%%%s]: %p\n", dwarf_reg_name(regNum),
+                               (void *)reg_val);
+                var_loc = reg_val + dloc->atom_offset;
+                FJALAR_DPRINTF("\tAdding %lld to the register value for %p\n", dloc->atom_offset, (void *)var_loc);
+                tl_assert(var_loc);
+              } else {
+                FJALAR_DPRINTF("\tObtaining entrance value of register: [%%%s]\n", dwarf_reg_name(regNum));
+                var_loc = (Addr)&entryRegs[regNum];
               }
-              reg_val = entryRegs[regNum];
-              FJALAR_DPRINTF("\tObtaining entrance register value: [%%%s]: %p\n", dwarf_reg_name(regNum),
-                             (void *)reg_val);
-              var_loc = reg_val + dloc->atom_offset;
-              FJALAR_DPRINTF("\tAdding %lld to the register value for %p\n", dloc->atom_offset, (void *)var_loc);
-              tl_assert(var_loc);
 
             } else if(op == DW_OP_fbreg) {
               // Get value located at an offset from the FRAME_BASE.
