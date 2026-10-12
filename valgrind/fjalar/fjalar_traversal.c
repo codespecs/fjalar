@@ -1039,7 +1039,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
               // have overwritten the register and the epilogue has
               // already restored or popped it.
               Bool isBreg = (op >= DW_OP_breg0) && (op <= DW_OP_breg31);
-              if (!entryRegs || !dwarf_reg_is_readable(regNum)) {
+              if (!entryRegs || !(funcPtr->entryRegsMask & (1U << regNum))) {
                 // extractOneFormalParameterVar() did not accept the
                 // register location, so the register was not saved,
                 // but some heuristic marked the location valid anyway.

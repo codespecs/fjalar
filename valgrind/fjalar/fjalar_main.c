@@ -192,15 +192,15 @@ Bool dwarf_op_reg_num(UInt atom, UInt* regNum)
   return False;
 }
 
-// Saves the readable registers, with their A and V bits and DynComp
-// tags, in f_state->entryRegs, so that formal parameters whose
-// locations use registers have their entrance values at both entrance
-// and exit.
+// Saves the registers in f_state->func->entryRegsMask, with their A
+// and V bits and DynComp tags, in f_state->entryRegs, so that formal
+// parameters whose locations use registers have their entrance values
+// at both entrance and exit.
 static void save_param_regs(FunctionExecutionState* f_state, ThreadId tid)
 {
   UInt regNum;
   for (regNum = 0; regNum < FJALAR_NUM_DWARF_REGS; regNum++) {
-    if (dwarf_reg_is_readable(regNum)) {
+    if (f_state->func->entryRegsMask & (1U << regNum)) {
       f_state->entryRegs[regNum] = read_dwarf_reg(tid, regNum);
       mc_copy_guest_reg_state(tid, dwarf_reg_guest_offset(regNum),
                               (Addr)&f_state->entryRegs[regNum]);
@@ -767,14 +767,14 @@ void enter_function(FunctionEntry* f)
   if (size != 0) {
     // entryRegs follows the virtual stack in the same allocation.
     Int entryRegsOffset = VG_ROUNDUP(size, sizeof(Addr));
-    Int entryRegsSize = (f->savesEntryRegs
+    Int entryRegsSize = (f->entryRegsMask != 0
                          ? FJALAR_NUM_DWARF_REGS * sizeof(Addr)
                          : 0);
     newEntry->allocByteSize = entryRegsOffset + entryRegsSize;
     newEntry->virtualStack = VG_(calloc)("fjalar_main.c: enter_func",
                                          newEntry->allocByteSize,
                                          sizeof(char));
-    newEntry->entryRegs = (f->savesEntryRegs
+    newEntry->entryRegs = (f->entryRegsMask != 0
                            ? (Addr*)(newEntry->virtualStack + entryRegsOffset)
                            : NULL);
     newEntry->virtualStackByteSize = size;
@@ -801,7 +801,7 @@ void enter_function(FunctionEntry* f)
     newEntry->func->guestStackEnd = newEntry->func->guestStackStart + size;
     newEntry->func->lowestVirtSP = (Addr)newEntry->virtualStack;
 
-    if (f->savesEntryRegs) {
+    if (f->entryRegsMask != 0) {
       save_param_regs(newEntry, tid);
     }
   }

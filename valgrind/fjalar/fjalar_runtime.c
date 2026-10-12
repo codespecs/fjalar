@@ -208,11 +208,6 @@ returnArrayVariableWithAddr(VarList* varList,
     FJALAR_DPRINTF("Examining potential var: %s, offset: 0x%x, locType: 0x%x\n",
                     potentialVar->name, (unsigned int) potentialVar->byteOffset, potentialVar->locationType);
 
-    // A formal parameter located in a register is not in memory, so
-    // it cannot contain a.
-    if (potentialVar->locationType == REGISTER_LOCATION)
-      continue;
-
     if (isGlobal) {
       tl_assert(IS_GLOBAL_VAR(potentialVar));
       potentialVarBaseAddr = potentialVar->globalVar->globalLocation;
