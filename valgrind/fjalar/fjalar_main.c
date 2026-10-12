@@ -172,6 +172,11 @@ Addr read_dwarf_reg(ThreadId tid, UInt regNum)
   return value;
 }
 
+// If atom is DW_OP_regN (the value is in register N) or DW_OP_bregN
+// (the value is at an offset from the address in register N), sets
+// *regNum to N and returns True.  Otherwise, returns False and leaves
+// *regNum unchanged.  N might not be readable by Fjalar; see
+// dwarf_reg_is_readable.
 Bool dwarf_op_reg_num(UInt atom, UInt* regNum)
 {
   if (atom >= DW_OP_breg0 && atom <= DW_OP_breg31) {
