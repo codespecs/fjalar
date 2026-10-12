@@ -2562,7 +2562,11 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
                               0,0,0,0,0,0,0,1,
                               0);
 
-  if (paramPtr->location_has_unsupported_op) {
+  if (paramPtr->location_has_unsupported_op
+      || ((paramPtr->location_piece_size != 0)
+          && (paramPtr->location_piece_size
+              != (varPtr->ptrLevels > 0 ? sizeof(void*)
+                  : (unsigned long)varPtr->varType->byteSize)))) {
     // varPtr->validLoc remains 0, so Fjalar omits the formal parameter.
     FJALAR_DPRINTF(" location contains an unsupported operation\n");
     varPtr->locationUnsupported = 1;

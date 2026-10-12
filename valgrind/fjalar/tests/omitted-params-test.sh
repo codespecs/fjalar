@@ -40,7 +40,34 @@ awk '/DW_AT_name/ && /"x\\0"/ && !done { state = 1 }
      }
      { print }
      END { if (!done) { print "did not find x" > "/dev/stderr"; exit 1 } }' \
-    "${output_dir}/omitted-params.s" > "${output_dir}/omitted-params-patched.s"
+    "${output_dir}/omitted-params.s" > "${output_dir}/omitted-params-x.s"
+
+# Renames formal parameter $1, which has 3 characters, to $2, which has 1
+# character, and appends "DW_OP_piece $3" to its location, which is
+# "DW_OP_fbreg N" where N needs 1 byte.  The size of the debugging information
+# is unchanged.
+append_piece() {
+  awk -v name="$1" -v newname="$2" -v size="$3" '
+     /DW_AT_name/ && index($0, "\"" name "\\0\"") && !done {
+       sub(name, newname); state = 1; print; next }
+     state == 1 && /# DW_AT_location/ {
+       if ($2 != "0x2") {
+         print "unexpected location for " name ": " $0 > "/dev/stderr"; exit 1
+       }
+       print "\t.uleb128 0x4\t# DW_AT_location"; state = 2; next
+     }
+     state == 2 && /# DW_OP_fbreg/ { state = 3; print; next }
+     state == 3 {
+       print
+       print "\t.byte\t0x93\t# DW_OP_piece"
+       print "\t.uleb128 " size
+       state = 0; done = 1; next
+     }
+     { print }
+     END { if (!done) { print "did not find " name > "/dev/stderr"; exit 1 } }'
+}
+append_piece w__ w 8 < "${output_dir}/omitted-params-x.s" \
+    | append_piece p__ p 4 > "${output_dir}/omitted-params-patched.s"
 gcc -gdwarf-4 -no-pie \
     -o "${output_dir}/omitted-params" "${output_dir}/omitted-params-patched.s"
 
@@ -59,14 +86,16 @@ if [ "${status}" -ne 0 ]; then
 fi
 
 # One line per non-global variable declared at each program point other than
-# main's:  "decls <ppt> <variable>", followed by one line per non-global
-# variable at the first occurrence of each program point other than main's:
-# "dtrace <ppt> <variable>".
+# main's:  "decls <ppt> <variable>", and one line per non-global variable at
+# the first occurrence of each program point other than main's:
+# "dtrace <ppt> <variable>".  The lines are sorted, because the order of
+# program points in the .decls file depends on Fjalar's hash table.
 actual="${output_dir}/omitted-params.actual"
+{
 awk '/^ppt / { ppt = $2 }
      /^  variable / { if ($2 !~ /^::/ && ppt !~ /^\.\.main\(/)
                         print "decls", ppt, $2 }' \
-    "${decls}" > "${actual}"
+    "${decls}"
 awk '/^\.\.[A-Za-z0-9_]*\(\):::/ { ppt = $0; getline; getline
                                      if (ppt ~ /^\.\.main\(/ || seen[ppt]++) ppt = ""
                                      next }
@@ -74,7 +103,8 @@ awk '/^\.\.[A-Za-z0-9_]*\(\):::/ { ppt = $0; getline; getline
      /^$/ { ppt = ""; next }
      { var = $0; getline; getline
        if (var !~ /^::/) print "dtrace", ppt, var }' \
-    "${dtrace}" >> "${actual}"
+    "${dtrace}"
+} | LC_ALL=C sort > "${actual}"
 
 if ! diff -u "${test_dir}/omitted-params.goal" "${actual}" >&2; then
   echo "$0: FAILED: output differs from omitted-params.goal" >&2

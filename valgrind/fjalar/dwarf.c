@@ -1452,10 +1452,11 @@ decode_location_expression (unsigned char * data,
       if(ll) {ll->atom = op;}
 
       /* An op that Fjalar's evaluator cannot apply, such as DW_OP_reg*,
-	 DW_OP_piece, DW_OP_stack_value, or DW_OP_plus (the evaluator has
-	 no operand stack), makes a formal parameter's location
-	 unreadable.  */
-      if (ok_to_harvest && op != DW_OP_nop && !location_op_is_supported (op))
+	 DW_OP_stack_value, or DW_OP_plus (the evaluator has no operand
+	 stack), makes a formal parameter's location unreadable.
+	 DW_OP_piece is handled below.  */
+      if (ok_to_harvest && op != DW_OP_nop && op != DW_OP_piece
+	  && !location_op_is_supported (op))
 	harvest_formal_param_location_unsupported (entry);
 
       switch (op)
@@ -1832,6 +1833,17 @@ decode_location_expression (unsigned char * data,
 	  break;
 	case DW_OP_piece:
 	  READ_ULEB (uvalue, data, end);
+	  /* Fjalar can read a location that consists of one piece, if that
+	     piece is the whole parameter; extractOneFormalParameterVar
+	     checks the size.  A piece that is not the last op means that
+	     the parameter is split.  */
+	  if (ok_to_harvest)
+	    {
+	      if (data == end)
+		harvest_formal_param_location_piece (entry, uvalue);
+	      else
+		harvest_formal_param_location_unsupported (entry);
+	    }
 	  printf ("DW_OP_piece: %s", dwarf_vmatoa ("u", uvalue));
 	  break;
 	case DW_OP_deref_size:

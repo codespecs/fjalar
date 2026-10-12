@@ -49,10 +49,25 @@ __attribute__((noinline, optimize("O0"))) void kept(long y) {
   sink = y;
 }
 
+// Unoptimized, w__ and p__ are in the stack frame (DW_OP_fbreg).
+// omitted-params-test.sh renames them to w and p, and it appends
+// "DW_OP_piece 8" to w's location and "DW_OP_piece 4" to p's location.
+// Fjalar supports a location that is one piece covering the whole parameter,
+// so w is not omitted, but p is omitted.
+__attribute__((noinline, optimize("O0"))) void whole_piece(long w__) {
+  sink = w__;
+}
+
+__attribute__((noinline, optimize("O0"))) void part_piece(long p__) {
+  sink = p__;
+}
+
 int main(void) {
   struct pair p = {5, 2};
   split(p);
   stack_value(7);
   kept(3);
+  whole_piece(4);
+  part_piece(5);
   return (int)identity(1.5) == 12345;
 }

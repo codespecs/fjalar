@@ -155,7 +155,8 @@ Addr (*get_reg[11])( ThreadId tid ) = {
   NULL
 };
 #endif
-// Entries 0 through NUM_READABLE_DWARF_REGS - 1 of get_reg are non-NULL.
+// Entries 0 through NUM_READABLE_DWARF_REGS - 1 of get_reg are non-NULL;
+// fjalar_pre_clo_init checks that.
 STATIC_ASSERT(NUM_READABLE_DWARF_REGS <= sizeof(get_reg) / sizeof(get_reg[0]));
 
 // For debugging purposes, a mapping between
@@ -1033,6 +1034,11 @@ static void outputAuxiliaryFilesAndExit(void) {
 // This is called before command-line options are processed
 void fjalar_pre_clo_init()
 {
+  unsigned int regno;
+  for (regno = 0; regno < NUM_READABLE_DWARF_REGS; regno++) {
+    tl_assert(get_reg[regno] != NULL);
+  }
+
   fn_stack_first_free_index = VG_(malloc)("fjalar_main.c: fjalar_pre_clo_init1", VG_N_THREADS * sizeof fn_stack_first_free_index[0]);
   FunctionExecutionStateStack = VG_(malloc)("fjalar_main.c: fjalar_pre_clo_init2", VG_N_THREADS * FN_STACK_SIZE * sizeof FunctionExecutionStateStack[0][0]);
 
