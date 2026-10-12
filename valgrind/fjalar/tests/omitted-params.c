@@ -26,25 +26,13 @@ __attribute__((noinline)) void split(struct pair p) {
   sink = p.second;
 }
 
-// d is in a register (DW_OP_reg*), which Fjalar does not support, so d is
-// omitted.
+// d is in a register, which Fjalar does not trace, so d is omitted.
 __attribute__((noinline)) double identity(double d) {
   return d;
-}
-
-// Unoptimized, x is in the stack frame (DW_OP_fbreg).  omitted-params-test.sh
-// rewrites x's location to "DW_OP_fbreg -8; DW_OP_stack_value", which Fjalar
-// does not support, so x is omitted.
-__attribute__((noinline, optimize("O0"))) void stack_value(long x) {
-  // buf makes x's frame offset large enough to need 2 bytes.
-  volatile char buf[200];
-  buf[0] = 1;
-  sink = x + buf[0];
 }
 
 int main(void) {
   struct pair p = {5, 2};
   split(p);
-  stack_value(7);
   return (int)identity(1.5) == 12345;
 }

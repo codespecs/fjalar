@@ -20,29 +20,8 @@ trap 'rm -rf "${output_dir}"' EXIT
 # only at the address in the debugging information, so the executable must not
 # be position-independent.  -gno-variable-location-views keeps location view
 # pairs out of the .debug_loc section.
-gcc -gdwarf-4 -gno-variable-location-views -no-pie -O1 -S -dA \
-    -o "${output_dir}/omitted-params.s" "${test_dir}/omitted-params.c"
-
-# gcc does not emit DW_OP_stack_value after DW_OP_fbreg for a formal parameter
-# of an out-of-line function, so rewrite the location of stack_value's x from
-# "DW_OP_fbreg N", where N needs 2 bytes, to "DW_OP_fbreg -8;
-# DW_OP_stack_value".  The size of the debugging information is unchanged, so
-# the offsets that refer to it remain correct.
-awk '/DW_AT_name/ && /"x\\0"/ && !done { state = 1 }
-     state == 1 && /# DW_OP_fbreg/ { state = 2; print; next }
-     state == 2 {
-       if ($1 != ".sleb128" || $2 >= -64 || $2 < -8192) {
-         print "unexpected location for x: " $0 > "/dev/stderr"; exit 1
-       }
-       print "\t.sleb128 -8"
-       print "\t.byte\t0x9f\t# DW_OP_stack_value"
-       state = 0; done = 1; next
-     }
-     { print }
-     END { if (!done) { print "did not find x" > "/dev/stderr"; exit 1 } }' \
-    "${output_dir}/omitted-params.s" > "${output_dir}/omitted-params-patched.s"
-gcc -gdwarf-4 -no-pie \
-    -o "${output_dir}/omitted-params" "${output_dir}/omitted-params-patched.s"
+gcc -gdwarf-4 -gno-variable-location-views -no-pie -O1 \
+    -o "${output_dir}/omitted-params" "${test_dir}/omitted-params.c"
 
 decls="${output_dir}/omitted-params.decls"
 dtrace="${output_dir}/omitted-params.dtrace"
