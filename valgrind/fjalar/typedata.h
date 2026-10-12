@@ -349,7 +349,8 @@ typedef struct
 
   // True if the location expression contains an operation that does
   // not satisfy location_op_is_supported, such as DW_OP_reg*,
-  // DW_OP_stack_value, or a DW_OP_piece that is not the last operation,
+  // DW_OP_stack_value, or a DW_OP_piece that is not the last operation or
+  // that has size 0,
   // or contains more than MAX_DWARF_OPS operations, or is a location list.
   // Fjalar cannot read such a location.
   char location_has_unsupported_op;

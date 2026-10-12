@@ -1836,10 +1836,10 @@ decode_location_expression (unsigned char * data,
 	  /* Fjalar can read a location that consists of one piece, if that
 	     piece is the whole parameter; extractOneFormalParameterVar
 	     checks the size.  A piece that is not the last op means that
-	     the parameter is split.  */
+	     the parameter is split.  A piece of size 0 covers no bytes.  */
 	  if (ok_to_harvest)
 	    {
-	      if (data == end)
+	      if (data == end && uvalue != 0)
 		harvest_formal_param_location_piece (entry, uvalue);
 	      else
 		harvest_formal_param_location_unsupported (entry);
