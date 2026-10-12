@@ -402,6 +402,11 @@ typedef struct _VariableEntry {
   // location information will have validLoc = False
   Bool validLoc;
 
+  // True if the DWARF information gives a location that Fjalar cannot
+  // read (see location_has_unsupported_op in typedata.h).  Then
+  // validLoc is False and location_expression is empty.
+  Bool locationUnsupported;
+
   // In some situations (The primary one being dealing with the
   // formal parameters to main - see the MAIN STACK LAYOUT comment
   // in fjalar_traversal.c for more information) the location of
