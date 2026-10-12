@@ -13,7 +13,8 @@
 
 // A C program that, when compiled with optimization, has formal parameters
 // whose locations Fjalar cannot read.  Fjalar omits them from both the .decls
-// and .dtrace files.  See omitted-params-test.sh.
+// and .dtrace files.  It also has a formal parameter that Fjalar can read, to
+// check that Fjalar does not omit every parameter.  See omitted-params-test.sh.
 
 struct pair { long first; long second; };
 
@@ -42,9 +43,16 @@ __attribute__((noinline, optimize("O0"))) void stack_value(long x) {
   sink = x + buf[0];
 }
 
+// Unoptimized, y is in the stack frame (DW_OP_fbreg), which Fjalar supports,
+// so y is not omitted.
+__attribute__((noinline, optimize("O0"))) void kept(long y) {
+  sink = y;
+}
+
 int main(void) {
   struct pair p = {5, 2};
   split(p);
   stack_value(7);
+  kept(3);
   return (int)identity(1.5) == 12345;
 }

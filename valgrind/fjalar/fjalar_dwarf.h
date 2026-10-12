@@ -41,6 +41,14 @@ typedef struct _dwarf_location {
 // A conversion between DWARF location atoms and a string representation
 const char* location_expression_to_string(enum dwarf_location_atom op);
 
+// The number of DWARF registers, starting at 0, that get_reg (in
+// fjalar_main.c) can read.
+#if defined(VGA_amd64)
+#define NUM_READABLE_DWARF_REGS 16
+#else
+#define NUM_READABLE_DWARF_REGS 9
+#endif
+
 // Returns true if visitVariableGroup can evaluate op in the location
 // expression of a formal parameter.  decode_location_expression
 // records every such op in the formal parameter's dwarf_stack.

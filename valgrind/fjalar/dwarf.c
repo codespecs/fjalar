@@ -3824,6 +3824,10 @@ read_and_display_attr_value (unsigned long           attribute,
           if (ok_to_harvest) {
               // frame base location list
               harvest_frame_base(entry, DW_OP_list, uvalue);
+              // Fjalar does not evaluate a location list for a formal
+              // parameter, so it cannot read the parameter.
+              if (attribute == DW_AT_location)
+                harvest_formal_param_location_unsupported(entry);
           }
           printf ("(");
           printf ("location list");

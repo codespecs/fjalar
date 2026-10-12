@@ -336,3 +336,21 @@ location_expression_to_string(enum dwarf_location_atom op) {
     return(0);    // to stop compiler warning
   }
 }
+
+// Register locations (DW_OP_reg*) are not supported, so Fjalar omits a
+// formal parameter whose value is in a register.  visitVariableGroup and
+// everything downstream of it treat a variable as an address in guest
+// memory:  they read the value from that address and look up its A and V
+// bits and its DynComp tags in shadow memory.  A register has no such
+// address.  Supporting registers would require reading the guest register
+// and its shadow state (VG_(get_shadow_regs_area)) and tracking DynComp tags
+// for registers.
+int location_op_is_supported(unsigned int op) {
+  if ((op >= DW_OP_breg0) && (op <= DW_OP_breg31)) {
+    return (op - DW_OP_breg0) < NUM_READABLE_DWARF_REGS;
+  }
+  return ((op == DW_OP_deref)
+          || ((op >= DW_OP_const1u) && (op <= DW_OP_consts))
+          || (op == DW_OP_plus_uconst)
+          || (op == DW_OP_fbreg));
+}

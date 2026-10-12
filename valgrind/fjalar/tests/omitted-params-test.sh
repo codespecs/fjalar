@@ -67,9 +67,9 @@ awk '/^ppt / { ppt = $2 }
      /^  variable / { if ($2 !~ /^::/ && ppt !~ /^\.\.main\(/)
                         print "decls", ppt, $2 }' \
     "${decls}" > "${actual}"
-awk '/^\.\.[a-z]*\(\):::/ { ppt = $0; getline; getline
-                            if (ppt ~ /^\.\.main\(/ || seen[ppt]++) ppt = ""
-                            next }
+awk '/^\.\.[A-Za-z0-9_]*\(\):::/ { ppt = $0; getline; getline
+                                     if (ppt ~ /^\.\.main\(/ || seen[ppt]++) ppt = ""
+                                     next }
      ppt == "" { next }
      /^$/ { ppt = ""; next }
      { var = $0; getline; getline

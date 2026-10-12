@@ -155,6 +155,8 @@ Addr (*get_reg[11])( ThreadId tid ) = {
   NULL
 };
 #endif
+// Entries 0 through NUM_READABLE_DWARF_REGS - 1 of get_reg are non-NULL.
+STATIC_ASSERT(NUM_READABLE_DWARF_REGS <= sizeof(get_reg) / sizeof(get_reg[0]));
 
 // For debugging purposes, a mapping between
 // DWARF location atoms and their string

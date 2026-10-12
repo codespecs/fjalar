@@ -1,2 +1,6 @@
+decls ..kept():::ENTER y
+decls ..kept():::EXIT0 y
 decls ..identity():::EXIT0 return
+dtrace ..kept():::ENTER y
+dtrace ..kept():::EXIT0 y
 dtrace ..identity():::EXIT0 return
