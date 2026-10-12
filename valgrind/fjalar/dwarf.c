@@ -2712,6 +2712,24 @@ display_discr_list (unsigned long          form,
     printf (")(unsigned)");
 }
 
+// start of Fjalar code
+// Returns true if the value of an attribute with the given form is a
+// location list offset or index.
+static bool
+is_location_list_form (unsigned long attribute, unsigned long form,
+		       int dwarf_version)
+{
+  if (form == DW_FORM_sec_offset || form == DW_FORM_loclistx)
+    return true;
+  // Before DWARF 4, DW_FORM_data4 and DW_FORM_data8 may be either a
+  // location list offset or a constant.  A member's offset does not
+  // vary with the program counter, so treat it as a constant.
+  return (dwarf_version < 4
+	  && (form == DW_FORM_data4 || form == DW_FORM_data8)
+	  && attribute != DW_AT_data_member_location);
+}
+// end of Fjalar code
+
 static unsigned char *
 read_and_display_attr_value (unsigned long           attribute,
 			     unsigned long           form,
@@ -3247,19 +3265,12 @@ read_and_display_attr_value (unsigned long           attribute,
 	case DW_AT_GNU_call_site_target:
 	case DW_AT_call_target_clobbered:
 	case DW_AT_GNU_call_site_target_clobbered:
-	  if (((dwarf_version < 4
-		&& (form == DW_FORM_data4 || form == DW_FORM_data8))
-	       || form == DW_FORM_sec_offset
-	       || form == DW_FORM_loclistx)
-	      // start of Fjalar code
-	      // Before DWARF 4, DW_FORM_data4 and DW_FORM_data8 may be either a
-	      // location list offset or a constant.  A member's offset does not
-	      // vary with the program counter, so treat it as a constant.
-	      && !(attribute == DW_AT_data_member_location
-		   && form != DW_FORM_sec_offset
-		   && form != DW_FORM_loclistx)
-	      // end of Fjalar code
-	      )
+	  // start of Fjalar code
+	  // Fjalar reads location lists only for compilation units before
+	  // DWARF 5 (see display_debug_loc), so it records no others.
+	  if (dwarf_version < 5
+	      && is_location_list_form (attribute, form, dwarf_version))
+	  // end of Fjalar code
 	    {
 	      /* Process location list.  */
 	      unsigned int lmax = debug_info_p->max_loc_offsets;
@@ -3281,11 +3292,7 @@ read_and_display_attr_value (unsigned long           attribute,
 #endif // This code is not needed for Fjalar.
 		  debug_info_p->max_loc_offsets = lmax;
 		}
-	      if (form == DW_FORM_loclistx)
-		// Fjalar passes uvalue, the index that the attribute names,
-		// rather than num, the number of location list attributes seen.
-		uvalue = fetch_indexed_value (uvalue, loclists, debug_info_p->loclists_base);
-	      else if (this_set != NULL)
+	      if (this_set != NULL)
 		uvalue += this_set->section_offsets [DW_SECT_LOC];
 
 #if 0 // This code is not needed for Fjalar.
@@ -3310,9 +3317,12 @@ read_and_display_attr_value (unsigned long           attribute,
 		}
 	      else
 		{
-		  tl_assert (debug_info_p->num_loc_views <= num);
-		  num = debug_info_p->num_loc_views;
-		  if (num > debug_info_p->num_loc_offsets)
+		  // start of Fjalar code
+		  // A DW_AT_GNU_locviews attribute may precede its location
+		  // list attribute, so there may be one more view than offsets.
+		  if (debug_info_p->num_loc_views
+		      > debug_info_p->num_loc_offsets)
+		  // end of Fjalar code
 		    warn (_("More DW_AT_GNU_locview attributes than location offset attributes\n"));
 		  else
 		    {
@@ -3762,10 +3772,7 @@ read_and_display_attr_value (unsigned long           attribute,
     case DW_AT_GNU_call_site_target:
     case DW_AT_call_target_clobbered:
     case DW_AT_GNU_call_site_target_clobbered:
-      if ((dwarf_version < 4
-	   && (form == DW_FORM_data4 || form == DW_FORM_data8))
-	  || form == DW_FORM_sec_offset
-	  || form == DW_FORM_loclistx)
+      if (is_location_list_form (attribute, form, dwarf_version))  // Fjalar
 	{
 	  if (attribute != DW_AT_rnglists_base
 	      && attribute != DW_AT_str_offsets_base)
@@ -3808,11 +3815,8 @@ read_and_display_attr_value (unsigned long           attribute,
 	  if (need_frame_base && !have_frame_base)
 	    printf (_(" [without DW_AT_frame_base]"));
 	}
-      else if ((dwarf_version < 4
-	   && (form == DW_FORM_data4 || form == DW_FORM_data8))
-	  || form == DW_FORM_sec_offset
-//	  || form == DW_FORM_loclistx  only in dwarf 5
-	                             )
+      else if (form != DW_FORM_loclistx  // only in dwarf 5
+	       && is_location_list_form (attribute, form, dwarf_version))  // Fjalar
 	{
           if (ok_to_harvest) {
               // frame base location list
@@ -13173,7 +13177,9 @@ free_debug_memory (void)
 	  if (debug_information [i].max_loc_offsets)
 	    {
 	      VG_(free) (debug_information [i].loc_offsets);
+#if 0 // This code is not needed for Fjalar.
 	      VG_(free) (debug_information [i].have_frame_base);
+#endif // This code is not needed for Fjalar.
 	    }
 	  if (debug_information [i].max_range_lists)
 	    VG_(free) (debug_information [i].range_lists);

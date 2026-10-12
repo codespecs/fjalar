@@ -7,8 +7,8 @@
 # section as a sequence of location lists, it misreads the location view
 # pairs as location list entries and loops forever.
 #
-# The test checks that Fjalar terminates without warnings and that it reads
-# the same location list entries as readelf does.
+# The test checks that Fjalar terminates without location list warnings and
+# that it reads the same location list entries as readelf does.
 
 set -e
 
@@ -35,7 +35,8 @@ trap 'rm -rf "${output_dir}"' EXIT
 # list.  The input is the output of "readelf --debug-dump=loc" or of
 # "valgrind --tool=fjalar --fjalar-debug-dump".  readelf prints an entry that
 # has views on two lines, and it prints the location view pairs, which are
-# not entries.
+# not entries.  The output is sorted but keeps duplicates, so that the test
+# detects a location list that Fjalar reads more than once.
 loc_list_entries() {
   awk '
     /^Contents of the .debug_loc section:/ { in_loc = 1; next }
@@ -45,7 +46,7 @@ loc_list_entries() {
     $2 == "<End" { print $1, "end"; next }
     / views at / { offset = $1; have_views = 1; next }
     $1 ~ /^[0-9a-f]+$/ && $2 ~ /^[0-9a-f]+$/ && $3 ~ /^[0-9a-f]+$/ { print $1, $2, $3 }
-  ' "$1" | sort -u
+  ' "$1" | sort
 }
 
 for opt in -O1 -O2; do
@@ -83,9 +84,12 @@ for opt in -O1 -O2; do
     exit 1
   fi
 
-  if grep -q 'Warning:' "${out}"; then
-    echo "$0: FAILED (${opt}): Fjalar issued a warning" >&2
-    grep 'Warning:' "${out}" >&2
+  # Warnings about other parts of the debugging information, such as that of
+  # the C runtime, do not indicate a problem with location lists.
+  loc_warnings='Warning:.*(location|loc list|loclist|locview|debug_loc)'
+  if grep -qiE "${loc_warnings}" "${out}"; then
+    echo "$0: FAILED (${opt}): Fjalar issued a location list warning" >&2
+    grep -iE "${loc_warnings}" "${out}" >&2
     exit 1
   fi
 
