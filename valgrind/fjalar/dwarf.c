@@ -1451,7 +1451,7 @@ decode_location_expression (unsigned char * data,
 
       if(ll) {ll->atom = op;}
 
-      /* An op that Fjalar's evaluator cannot apply, such as DW_OP_reg*,
+      /* An op that Fjalar's evaluator cannot apply, such as an unreadable register,
 	 DW_OP_stack_value, or DW_OP_plus (the evaluator has no operand
 	 stack), makes a formal parameter's location unreadable.
 	 DW_OP_piece is handled below.  */
@@ -9691,6 +9691,14 @@ regname (unsigned int regno, int name_only_p)
   else
     snprintf (reg, sizeof (reg), "r%u", regno);
   return reg;
+}
+
+/* Returns the name of DWARF register REGNO, for Fjalar's debugging
+   output.  */
+const char *
+dwarf_reg_name (unsigned int regno)
+{
+  return regname (regno, 1);
 }
 
 static void

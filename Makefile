@@ -31,7 +31,7 @@ test:
 # Fjalar tests that do not depend on Daikon
 fjalar-test:
 	valgrind/fjalar/tests/library-compilation-unit-test.sh
-	valgrind/fjalar/tests/omitted-params-test.sh
+	valgrind/fjalar/tests/register-params-test.sh
 
 # Kvasir tests
 daikon-test: ../daikon
