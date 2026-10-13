@@ -362,6 +362,8 @@ Bool isFloatOrVectorType_DC ( IRType ty )
       instead treated as a non-interaction, because it might be (for
       example) a multiplication.
    With --dyncomp-interactions=none, the operation is a non-interaction.
+   A unary operation instead returns the tag of its operand, as most
+   unary operations (widening, narrowing, negation, conversion, ...) do.
 
    atoms and vatoms hold the nargs operands and their tags. */
 static
@@ -384,7 +386,19 @@ IRAtom* approximate_unhandled_op_DC ( IROp op, Int nargs,
    }
 
    tl_assert(op > Iop_INVALID && op < Iop_LAST);
-   tl_assert(nargs >= 2 && nargs <= 4);
+   tl_assert(nargs >= 1 && nargs <= 4);
+
+   if (nargs == 1) {
+      if (!warned[op - Iop_INVALID]) {
+         warned[op - Iop_INVALID] = True;
+         VG_(printf)("Warning: DynComp does not handle IROp ");
+         ppIROp(op);
+         VG_(printf)(" (0x%x) in %s; returning the tag of its operand."
+                     "  Its comparability may be imprecise.\n",
+                     (UInt)op, where);
+      }
+      return vatoms[0];
+   }
 
    typeOfPrimop(op, &t_dst, &t_arg[0], &t_arg[1], &t_arg[2], &t_arg[3]);
 
@@ -2167,10 +2181,8 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
    case Iop_ZeroHI96ofV128:            // only used by arm64
 
    default:
-      report_unhandled_op_DC( op, "dyncomp:expr2tags_Unop_DC" );
-      // With --dyncomp-unhandled-ops=warn, approximate an unknown
-      // unary operation by returning the tag of its operand.
-      return vatom;
+      return approximate_unhandled_op_DC( op, 1, &atom, &vatom,
+                                          "dyncomp:expr2tags_Unop_DC" );
    }
 }
 
