@@ -62,6 +62,69 @@ jobs:
       - name: test.sh
         run: ./test.sh
 
+  # These jobs run Valgrind's own regression tests ("make test") and compare the
+  # failures with regtest-expected/<os>.txt; see check-regtest.sh.
+
+  regtest_ubuntu_26_04:
+    runs-on: ubuntu-latest
+    container:
+      image: mdernst/daikon-ubuntu-jdk11-plus:latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          set-safe-directory: true
+          fetch-depth: 25
+          persist-credentials: false
+      # Which tests fail depends on the CPU and on whether gdb is installed.
+      - name: System information
+        run: |
+          grep -m1 '^model name' /proc/cpuinfo; grep -m1 '^flags' /proc/cpuinfo
+          gdb --version || echo "gdb is not installed"
+      - name: Build
+        run: make build
+      # TODO: Remove --report-only once regtest-expected/<os>.txt is committed.
+      - name: check-regtest.sh
+        run: ./check-regtest.sh --report-only
+      - name: Upload regtest results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: regtest-results-regtest_ubuntu_26_04
+          path: |
+            regtest-observed-*.txt
+            regtest-*.log
+
+  regtest_rocky_10:
+    runs-on: ubuntu-latest
+    container:
+      image: mdernst/daikon-rockylinux-jdk25-plus:latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          set-safe-directory: true
+          fetch-depth: 25
+          persist-credentials: false
+      # Which tests fail depends on the CPU and on whether gdb is installed.
+      - name: System information
+        run: |
+          grep -m1 '^model name' /proc/cpuinfo; grep -m1 '^flags' /proc/cpuinfo
+          gdb --version || echo "gdb is not installed"
+      - name: Build
+        run: make build
+      # TODO: Remove --report-only once regtest-expected/<os>.txt is committed.
+      - name: check-regtest.sh
+        run: ./check-regtest.sh --report-only
+      - name: Upload regtest results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: regtest-results-regtest_rocky_10
+          path: |
+            regtest-observed-*.txt
+            regtest-*.log
+
   # These jobs run ./test-kvasir.sh, which runs Daikon's own scripts/test-kvasir.sh
   # against this repository.  That additionally runs the DynComp regression tests.
 
