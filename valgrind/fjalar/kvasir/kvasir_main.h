@@ -168,6 +168,7 @@ Bool dyncomp_delayed_trace;
 Bool dyncomp_units_mode;
 Bool dyncomp_dataflow_only_mode;
 Bool dyncomp_dataflow_comparisons_mode;
+Bool dyncomp_warn_unhandled_ops;
 
 // Define MAX_DEBUG_INFO to turn on all sorts of
 // debugging printouts.  WARNING: you will get
