@@ -731,7 +731,7 @@ The patch files probably include files that Fjalar does not use.
 Running @command{patch}
 will produce a warning message including the line ``can't find file to
 patch''.  It is safe to ignore these messages.
-The @command{lines-notbetween} command used below will prevent these
+The @command{awk} filter used below will prevent these
 messages from appearing.  These unused files will also produce a message
 of the form ``<number> out of <number> hunks ignored''.  These may also
 be ignored.  A patch failure is indicated by the message ``Hunk #<number>
@@ -755,17 +755,15 @@ cp -pf readelf.c readelf.c.orig
 It can be difficult to undo a patch operation, so you should first attempt
 a dry run.  It is recommended that you only do one of the patches at a
 time in order to make review of the output easier.
-(The @command{lines-notbetween} command is from
-@uref{http://mernst.github.io/plume-lib/, plume-lib}.)
 
 @smallexample
 cd $INV/fjalar/valgrind/fjalar
 patch -p1 -lu -f < ~/tmp/include.patch --dry-run \
- | lines-notbetween --inclusive "can't find file to patch" "No file to patch.  Skipping patch."
+ | awk '/can.t find file to patch/ @{skip=1@} !skip && !/hunks? ignored/ @{print@} /Skipping patch\./ @{skip=0@}'
 
 cd $INV/fjalar/valgrind/fjalar
 patch -p2 -lu -f -F3 < ~/tmp/binutils.patch --dry-run \
- | lines-notbetween --inclusive "can't find file to patch" "No file to patch.  Skipping patch."
+ | awk '/can.t find file to patch/ @{skip=1@} !skip && !/hunks? ignored/ @{print@} /Skipping patch\./ @{skip=0@}'
 @end smallexample
 
 There may be a few "failed hunks" (conflicts) --- this is all right, we
@@ -1056,7 +1054,7 @@ with those in the new binaries and see if changes to
 @section Documenting Changes
 
 Any user-visible changes should be documented in
-@file{$INV/daikon/docs/CHANGES}.
+@file{$INV/daikon/doc/CHANGELOG.md}.
 Additionally, the first line in @file{fjalar/valgrind/REVISION} should be updated
 with the Valgrind version used for this merge.
 
@@ -1164,7 +1162,7 @@ Add additional general purpose registers to the guest state
 Add additional general purpose registers to the guest state
 @item fjalar/valgrind/VEX/priv/host_amd64_defs.c
 Add function name to debug dump of call instruction
-@item $INV/fjalar/valgrind/VEX/priv/host-generic/reg_alloc2.c
+@item $INV/fjalar/valgrind/VEX/priv/host_generic_reg_alloc2.c
 Modify memory calculation using the shadow size
 @item $INV/fjalar/valgrind/VEX/pub/libvex.h
 Add additional general purpose registers to the guest state
