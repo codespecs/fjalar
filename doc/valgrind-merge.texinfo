@@ -741,7 +741,7 @@ The patch files probably include files that Fjalar does not use.
 Running @command{patch}
 will produce a warning message including the line ``can't find file to
 patch''.  It is safe to ignore these messages.
-The @command{lines-notbetween} command used below will prevent these
+The @command{awk} filter used below will prevent these
 messages from appearing.  These unused files will also produce a message
 of the form ``<number> out of <number> hunks ignored''.  These may also
 be ignored.  A patch failure is indicated by the message ``Hunk #<number>
@@ -771,11 +771,11 @@ time in order to make review of the output easier.
 @smallexample
 cd $INV/fjalar/valgrind/fjalar
 patch -p1 -lu -f < ~/tmp/include.patch --dry-run \
- | lines-notbetween --inclusive "can't find file to patch" "No file to patch.  Skipping patch."
+ | awk '/can.t find file to patch/ @{skip=1@} !skip && !/hunks? ignored/ @{print@} /Skipping patch\./ @{skip=0@}'
 
 cd $INV/fjalar/valgrind/fjalar
 patch -p2 -lu -f -F3 < ~/tmp/binutils.patch --dry-run \
- | lines-notbetween --inclusive "can't find file to patch" "No file to patch.  Skipping patch."
+ | awk '/can.t find file to patch/ @{skip=1@} !skip && !/hunks? ignored/ @{print@} /Skipping patch\./ @{skip=0@}'
 @end smallexample
 
 There may be a few "failed hunks" (conflicts) --- this is all right, we
