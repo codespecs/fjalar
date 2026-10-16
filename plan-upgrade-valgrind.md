@@ -14,6 +14,11 @@ Do the Binutils/readelf upgrade (`plan-upgrade-readelf.md`) first, and finish
 it completely (merged, CI green) before starting this one.  That plan's
 "Ordering" section gives the reasons and the exception.
 
+The preparation in `plan-pre-upgrade.md` must also be done; this plan
+assumes items 1 (regtest in CI), 2 (`make git-update` handles memcheck),
+3 (`generate-patch-files.sh` checks its inputs), 4 (DynComp scan), and
+7 (stale upstream files removed).
+
 ## Current state
 
 - `valgrind/REVISION`: Valgrind 3.23.0 (released 2024-04-26).
@@ -38,9 +43,10 @@ it completely (merged, CI green) before starting this one.  That plan's
 1. **Preparation** (separate branch, e.g. `valgrind-3.27.1`; do not combine with
    the Binutils/readelf upgrade, which should already be merged).
    - `git pull` both `fjalar` and `daikon`; ensure no local or outgoing changes.
-   - Record baselines on current sources:
-     `make test 2>&1 | tee test-before.log` and
-     `./test-kvasir.sh 2>&1 | tee kvasir-before.log`.
+   - Record baselines on current sources: `./check-regtest.sh` (must
+     report no unexpected failures; if this machine's OS has no
+     `regtest-expected/<os>.txt`, create a local, uncommitted one with
+     `--update`) and `./test-kvasir.sh 2>&1 | tee kvasir-before.log`.
      Use `./test-kvasir.sh`, which points `$DAIKONDIR/fjalar` at this tree.
      Running `$INV/daikon/tests/kvasir-tests` or `make daikon-test` directly
      builds whatever `$INV/daikon/fjalar` points to; if you do that, first
@@ -57,6 +63,14 @@ it completely (merged, CI green) before starting this one.  That plan's
    ```
    Remove from `fjalar/valgrind` the files listed by
    `diff -qrb -x.git valgrind-old valgrind-new | grep "Only in valgrind-old"`.
+   That handles `fjalar/valgrind/memcheck/`, but not Fjalar's own copy of
+   memcheck in `valgrind/fjalar/`.  Also run
+   `diff -qr valgrind-old/memcheck valgrind-new/memcheck | grep "Only in valgrind-old"`
+   and decide, for each file listed, whether to remove its counterpart in
+   `fjalar/valgrind/fjalar/`.  (`make git-update` in step 10 prints the
+   `git rm` commands for both kinds of removal.)  Past merges skipped this
+   step, leaving 32 stale files (`plan-pre-upgrade.md` item 7); step 10
+   checks that this merge leaves none.
 
 3. **Baseline.**  Never build in `valgrind-old` or `valgrind-new` themselves:
    `generate-patch-files.sh` diffs them with `--unidirectional-new-file`, so
@@ -67,15 +81,21 @@ it completely (merged, CI green) before starting this one.  That plan's
    cp -a valgrind-new valgrind-new-build && cd valgrind-new-build
    ./autogen.sh && ./configure --prefix=$(pwd)/inst
    make all install && make regtest > test.log 2>&1
+   $INV/fjalar/check-regtest.sh --log test.log --expected $INV/regtest-upstream-3.27.1.txt --update
    ```
-   Save the summary at the end of `test.log` for comparison.  (Alternatively,
-   as the doc does, run this in `valgrind-new` only after steps 4-7.)
+   `regtest-upstream-3.27.1.txt` is the list of tests that fail in upstream
+   3.27.1 on this machine; step 9 uses it.  (The `inst` "Unknown directory"
+   error in upstream's post-test checks shows up as
+   `post_regtest_checks (post)`; Fjalar's tree does not have it.)
 
 4. **Create the diffs.** Run `$INV/fjalar/generate-patch-files.sh`, producing
    `coregrind.patch`, `memcheck.patch`, `coregrind-Fjalar.diff`,
-   `memcheck-Fjalar.diff`.  Sanity check: no build products in the patch, i.e.
-   `grep -E '^diff .*(\.o|/config\.h|/inst/.*)$' $INV/coregrind.patch`
-   prints nothing.
+   `memcheck-Fjalar.diff`.  The script refuses to run if either upstream
+   tree contains build products (including `autogen.sh`/`configure` outputs
+   such as `Makefile.in`, `Makefile`, `configure`, `aclocal.m4`,
+   `autom4te.cache`, `.deps`), i.e. if
+   `git -C $INV/valgrind-old status --porcelain --ignored` or the same for
+   `valgrind-new` prints anything.
 
 5. **Coregrind merge.**
    - `cd fjalar/valgrind; patch -p1 -lu --dry-run < $INV/coregrind.patch`,
@@ -107,8 +127,16 @@ it completely (merged, CI green) before starting this one.  That plan's
    - In `mc_translate.c`'s `MC_(instrument)`, check that every case has
      matching DynComp code and that new cases get a DynComp counterpart.
    - Check `mc_main.c` still has Fjalar's options/version info.
-   - New memcheck source files: decide whether Fjalar needs them; if so,
-     add to `valgrind/fjalar/Makefile.am`.
+   - New memcheck source files: `patch` creates them in
+     `valgrind/fjalar/`; decide whether Fjalar needs them.  If so, add them
+     to `valgrind/fjalar/Makefile.am` (`make git-update` in step 10 prints
+     the `git add`); if not, delete them and drop their `git add` line from
+     `git.script`.
+   - `diff valgrind-old/memcheck/Makefile.am valgrind-new/memcheck/Makefile.am`
+     and carry relevant changes (source lists, per-file flags, new
+     conditionals) into `valgrind/fjalar/Makefile.am`.  `memcheck.patch`
+     does include these changes, but Fjalar's `Makefile.am` differs a lot
+     from memcheck's, so hunks may be rejected or land in the wrong place.
 
 7. **DynComp / Fjalar / Kvasir updates.**
    - `diff -b valgrind-old/VEX/pub/libvex_ir.h valgrind-new/VEX/pub/libvex_ir.h`
@@ -132,28 +160,46 @@ it completely (merged, CI green) before starting this one.  That plan's
    compilers in the CI containers.
 
 9. **Test.**
-   - `make test 2>&1 | tee test-after.log` — compare with the step-3
-     baseline; they should be similar.
+   - `./check-regtest.sh`.  The expected failures will change, because
+     3.27.1 adds, removes, and fixes tests.  For each unexpected failure:
+     if it is also in step 3's `regtest-upstream-3.27.1.txt`, it is an
+     upstream failure, so add it to the expected list; otherwise it was
+     probably caused by the merge, so fix it.  Remove expected failures
+     that now pass.  `./check-regtest.sh --log regtest-<os>.log --update`
+     rewrites the list; review its diff, which goes in the PR.
    - `make fjalar-test`.
    - `./test-kvasir.sh 2>&1 | tee kvasir-after.log` — compare with
      `kvasir-before.log` from step 1.  Address-related diffs
      (`<STACK_ADDR>` etc.) may require updating `clean-output.pl`.
    - Push the branch and confirm GitHub Actions CI passes (Ubuntu and
-     Rocky Linux 10 build and Kvasir jobs).
+     Rocky Linux 10: build, regtest, and Kvasir jobs).  The CI containers
+     differ from your machine, so the regtest jobs will probably fail
+     until their lists are updated too: take `regtest-observed-<os>.txt`
+     from each job's `regtest-results-*` artifact, apply the same
+     upstream-or-merge-bug test as above, and commit the updated
+     `regtest-expected/<os>.txt`.
 
 10. **Finish.**
     - Update first line of `valgrind/REVISION`
       (`# Valgrind version 3.27.1, released ...`).
-    - Add names of new Valgrind test drivers to `.gitignore`
-      ("Ignore generated test drivers" section).
-    - `make git-update > git.script`, review, run.
+    - Add names of new Valgrind test drivers to `.gitignore`, in the
+      per-tool sections (`# /memcheck/` etc.; there is no "Ignore generated
+      test drivers" section, despite the doc).  After a build and
+      `./check-regtest.sh`, list the ones still missing with
+      `git status --porcelain --untracked-files=all | sed -n 's/^?? //p' | while read -r f; do [ -x "$f" ] && file -b "$f" | grep -q ELF && echo "$f"; done`.
+    - Check that Fjalar tracks no file that upstream deleted: this prints
+      nothing (except possibly Fjalar's own `REVISION`):
+      `comm -23 <(git ls-files valgrind | sed 's|^valgrind/||' | grep -v '^fjalar/' | sort) <(git -C $INV/valgrind-new ls-files | sort)`.
+    - `make git-update > git.script`, review, run.  Check its memcheck
+      lines (`git add`/`git rm` of `valgrind/fjalar/...`) against the
+      decisions made in steps 2 and 6.
     - Document user-visible changes in `$INV/daikon/doc/CHANGELOG.md`.
-    - Update `doc/valgrind-merge.texinfo`: regtest baseline output, dates/OS
-      versions, building the baseline in a copy (step 3), and any new
-      pitfalls.
+    - Update `doc/valgrind-merge.texinfo`: dates/OS versions and any new
+      pitfalls.  (The regtest baseline output pasted into the doc is
+      superseded by `regtest-expected/*.txt`.)
     - Commit as one PR; save the patch/diff files and `valgrind-new` (it
-      becomes `valgrind-old` for the next merge; delete
-      `valgrind-new-build`).
+      becomes `valgrind-old` for the next merge, so it must stay unbuilt;
+      delete `valgrind-new-build`).
 
 ## Risks
 
@@ -161,10 +207,13 @@ it completely (merged, CI green) before starting this one.  That plan's
   Fjalar's extra shadow state in subtle ways (crashes or wrong comparability),
   not compile errors.
 - **New IROps** used by modern compilers (AVX/AVX2 and others on amd64) can
-  make DynComp panic at run time; the Kvasir tests may not exercise them, so
-  also run Kvasir/DynComp on a few programs compiled with `-O2 -march=native`.
+  make DynComp panic at run time.  Re-run the vectorized programs from
+  `plan-pre-upgrade.md` item 4 (which all work on 3.23 by then); a panic
+  there after the merge is due to the upgrade.
 - **Build-system changes** (`Makefile.all.am`, `Makefile.tool.am`,
   `configure.ac`) can silently drop Fjalar from the build or change flags.
+  Likewise, changes to `memcheck/Makefile.am` must be carried into
+  `valgrind/fjalar/Makefile.am` by hand (step 6).
 - **New warning flags** will hit `readelf.c`/`dwarf.c`, which were just
   merged in the readelf upgrade; expect a second round of warning fixes
   there.
