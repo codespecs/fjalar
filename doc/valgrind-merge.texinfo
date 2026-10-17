@@ -1167,10 +1167,7 @@ Add fjalar to the list of tools; add files to clean-local target
 @item $INV/fjalar/valgrind/none/tests/Makefile.am
 Add @nospellcheck{coregrind/libcoregrind-amd64-linux.a to libvex} tests
 @item $INV/fjalar/valgrind/tests/check_headers_and_includes
-Add fjalar to @nospellcheck{tool_dirs and inst to dirs_to_ignore};
-add @nospellcheck{tool_core_include_allowed}, which allows
-@file{fjalar/mc_main.c} and @file{fjalar/typedata.c} to include the
-@file{pub_core_*.h} headers they need
+Add fjalar to @nospellcheck{tool_dirs and inst to dirs_to_ignore}
 @item $INV/fjalar/valgrind/VEX/priv/guest_amd64_helpers.c
 Add additional general purpose registers to the guest state
 @item $INV/fjalar/valgrind/VEX/priv/guest_x86_helpers.c
