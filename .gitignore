@@ -734,6 +734,9 @@ valgrind/fjalar/rundoxy
 # Ignore shell scripts for compiling fjalar
 valgrind/fjalar/*.sh
 
+# Stamp file for the fjalar_core_decls.h consistency check
+valgrind/fjalar/fjalar_core_decls.stamp
+
 # Documentation
 valgrind-merge.aux
 valgrind-merge.cp

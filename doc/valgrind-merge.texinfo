@@ -651,6 +651,11 @@ changes in Valgrind API/functionality. For the most part Valgrind
 maintains a relatively stable interface to its tools. Any tool-visible
 changes should be noted in the change logs.
 
+If the build fails in the rule for
+@file{fjalar_core_decls.stamp}, then a core declaration has changed.
+Update the copy in @file{valgrind/fjalar/fjalar_core_decls.h} to match
+the core header that it names.
+
 A somewhat more problematic area are changes in the VEX IR. DynComp
 makes heavy use of the VEX IR, so any changes in it need to be
 reflected. Most of the changes to the public VEX IR can be discovered
