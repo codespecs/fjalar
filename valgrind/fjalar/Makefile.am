@@ -99,7 +99,8 @@ fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CPPFLAGS     = \
 fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CFLAGS       =   $(LTO_CFLAGS) \
 	$(AM_CFLAGS_@VGCONF_PLATFORM_PRI_CAPS@: -O2=-O0) $(EXTRA_CFLAGS)
 fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_DEPENDENCIES = \
-	$(TOOL_DEPENDENCIES_@VGCONF_PLATFORM_PRI_CAPS@)
+	$(TOOL_DEPENDENCIES_@VGCONF_PLATFORM_PRI_CAPS@) \
+	fjalar_core_decls.stamp
 fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LDADD        = \
 	$(TOOL_LDADD_@VGCONF_PLATFORM_PRI_CAPS@)
 fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LDFLAGS      = \
@@ -119,7 +120,8 @@ fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CPPFLAGS     = \
 fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CFLAGS       = $(LTO_CFLAGS) \
 	$(AM_CFLAGS_@VGCONF_PLATFORM_SEC_CAPS@: -O2=-O0) $(EXTRA_CFLAGS)
 fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_DEPENDENCIES = \
-	$(TOOL_DEPENDENCIES_@VGCONF_PLATFORM_SEC_CAPS@)
+	$(TOOL_DEPENDENCIES_@VGCONF_PLATFORM_SEC_CAPS@) \
+	fjalar_core_decls.stamp
 fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LDADD        = \
 	$(TOOL_LDADD_@VGCONF_PLATFORM_SEC_CAPS@)
 fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LDFLAGS      = \
@@ -187,8 +189,8 @@ endif
 # that the build fails if a Valgrind merge makes the copies wrong.  The
 # test program is piped to the compiler rather than stored in a .c file,
 # because tests/check_headers_and_includes forbids tool .c files from
-# including pub_core headers.
-BUILT_SOURCES = fjalar_core_decls.stamp
+# including pub_core headers.  Each fjalar program depends on the stamp,
+# so the check runs whenever a program is built.
 CLEANFILES = fjalar_core_decls.stamp
 
 fjalar_core_decls.stamp: $(srcdir)/fjalar_core_decls.h \
