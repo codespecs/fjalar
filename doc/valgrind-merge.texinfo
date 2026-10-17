@@ -193,6 +193,13 @@ make -C $INV/fjalar build
 make -C $DAIKONDIR/tests/kvasir-tests clean-all regression-tests
 @end example
 
+The Kvasir tests build and test the Fjalar in @file{$DAIKONDIR/fjalar}.
+If that is not @file{$INV/fjalar} (or a symbolic link to it), they test
+a different copy of Fjalar than the one you are merging; check with
+@code{readlink -f $DAIKONDIR/fjalar}.  Alternatively,
+@command{$INV/fjalar/test-kvasir.sh} runs Daikon's Kvasir and DynComp
+tests against @file{$INV/fjalar}; see the comments at its top.
+
 The tests should pass. If any tests fail, fix them, then start over from
 the beginning.
 Continuous integration (GitHub Actions, configured in
@@ -305,8 +312,31 @@ diff -qrb -x.git valgrind-old valgrind-new |grep "Only in valgrind-old"
 
 Remove these files.
 
+Fjalar's copy of memcheck is in @file{$INV/fjalar/valgrind/fjalar/}, not
+in @file{$INV/fjalar/valgrind/memcheck/}.  So also list the memcheck files
+that upstream removed:
+
+@example
+cd $INV
+diff -qr -x.git -xdocs -xtests valgrind-old/memcheck valgrind-new/memcheck |grep "Only in valgrind-old"
+@end example
+
+@noindent
+and remove their counterparts in @file{$INV/fjalar/valgrind/fjalar/},
+after checking them for Fjalar changes.
+
 This step could be done later, but we do it now to reduce the size
 of the patch and diff files.
+
+Past merges sometimes skipped this step.  After the merge, check that
+Fjalar tracks no upstream file that upstream no longer has.  This command
+should print nothing except @file{REVISION}, which is Fjalar's own:
+
+@example
+cd $INV/fjalar
+comm -23 <(git ls-files valgrind | sed 's|^valgrind/||' | grep -v '^fjalar/' | sort) \
+         <(git -C $INV/valgrind-new ls-files | sort)
+@end example
 
 
 @node Creating the diffs
@@ -538,15 +568,25 @@ some failures. Rather, it is important to capture the results
 as they should be similar after the source merge. They may not be
 identical due to Valgrind improvements or the addition of new test cases.
 
-To run the @command{regtest} verification tests,
-return to the root of your @file{valgrind-new} directory.  Then run
-the following commands:
+To run the @command{regtest} verification tests, build a copy of
+@file{valgrind-new}.  Do not build in @file{valgrind-new} itself:
+@command{generate-patch-files.sh} diffs that directory, so any build
+products there would end up in @file{coregrind.patch} and then be added
+to Fjalar by @samp{make git-update}.  Also, @file{valgrind-new} becomes
+@file{valgrind-old} for the next merge, so it must stay a pristine clone.
 
 @example
+cd $INV
+cp -a valgrind-new valgrind-new-build
+cd valgrind-new-build
+./autogen.sh
 ./configure --prefix=`pwd`/inst
 make all install
 make regtest > test.log 2>&1
 @end example
+
+@noindent
+Delete @file{valgrind-new-build} when the merge is done.
 
 @noindent
 This will take about 10-15 minutes.  A summary of the @command{regtest}
@@ -732,6 +772,10 @@ Before applying any patches, run Daikon's Kvasir tests:
 @end example
 
 @noindent
+(Make sure that @file{$DAIKONDIR/fjalar} is the Fjalar you are updating;
+@pxref{Verify current sources pass the regression tests}.)
+
+@noindent
 @xref{Verify current sources pass the regression tests} for the expected
 results of running these tests (but don't follow any of the other
 instructions in that section).
@@ -814,7 +858,16 @@ patch -p2 -lu -f -F3 --merge=diff3 < ~/tmp/binutils.patch
 @end example
 
 @noindent
-puts conflicts inline in the file; @command{git status} will list them.
+puts conflicts inline in the file, as conflict markers, and does not
+create @file{.rej} files.  @command{git status} lists the changed files,
+and this command finds the conflicts:
+
+@example
+grep -n '^<<<<<<<' *.c *.h include/*.h include/elf/*.h libiberty/*.c
+@end example
+
+@noindent
+Before compiling, make sure that no conflict markers remain.
 
 @end itemize
 
@@ -835,8 +888,9 @@ method for doing so.  As noted above, you will need to have made copies
 of @file{dwarf.c} and @file{readelf.c} prior to applying the patch. We
 will do a 3-way merge with the new Binutils file on the left, the original
 fjalar version on the right and our new fjalar version in the center.
-Look at @file{dwarf.c.rej} and note the line numbers of the failed
-patches.
+Look at @file{dwarf.c.rej} (or, if you used @option{--merge=diff3}, the
+conflict markers in @file{dwarf.c}) and note the line numbers of the
+failed patches.
 
 @example
 meld $BUNEW/binutils/dwarf.c dwarf.c dwarf.c.orig
@@ -845,6 +899,33 @@ meld $BUNEW/binutils/dwarf.c dwarf.c dwarf.c.orig
 Using the line numbers noted above, locate the problem areas and modify
 the target (center) version of dwarf.c as needed to correct the merge
 issues.  Repeat this process for @file{readelf.c}.
+
+The new Binutils code may need things that Fjalar does not have:
+
+@itemize
+@item
+New header files: new @code{#include}s in @file{readelf.c},
+@file{dwarf.c}, or @file{elfcomm.c}.  New files under @file{include/} are
+not in @file{include.patch}, because @command{diff -ur} lists them only as
+``Only in ...''; copy the ones that are needed into
+@file{$INV/fjalar/valgrind/fjalar/include/}.
+@item
+Code for features that Fjalar does not use, such as SFrame
+(@samp{readelf --sframe}, added in Binutils 2.40, which needs
+@file{libsframe}).  Disable such code with
+@code{#if 0 // This code is not needed for Fjalar.}, as was done for CTF,
+rather than adding the libraries it needs.
+@item
+Support for zstd-compressed debug sections (Binutils 2.40 and later):
+make sure that it compiles away when @code{HAVE_ZSTD} is not defined.
+@item
+Newer @file{bfd.h} definitions: @file{dwarf.c}, @file{readelf.c}, and
+@file{elfcomm.c} include the @emph{system} @file{bfd.h} (from the
+@file{binutils-dev} or @file{binutils-devel} package), which may be older
+than the Binutils being merged.  Check that every bfd macro and function
+the new code uses exists in the oldest @file{bfd.h} that continuous
+integration uses, and add local definitions for any that do not.
+@end itemize
 
 After you have completed the source merge,
 update the ``@code{export BINUTILS_VERSION=}'' line in @file{fjalar/valgrind/REVISION}.
@@ -1051,6 +1132,10 @@ make regression-tests
 @end example
 
 @noindent
+(Make sure that @file{$DAIKONDIR/fjalar} is the Fjalar you merged into;
+@pxref{Verify current sources pass the regression tests}.)
+
+@noindent
 @xref{Verify current sources pass the regression tests} for the expected
 results of running these tests.
 
@@ -1071,9 +1156,16 @@ Any user-visible changes should be documented in
 Additionally, the first line in @file{fjalar/valgrind/REVISION} should be updated
 with the Valgrind version used for this merge.
 
-If new Valgrind tests were added, their names should be added to
-the @file{.gitignore} file in the "Ignore generated test drivers"
-section.
+If new Valgrind tests were added, the names of their compiled test
+programs should be added to @file{.gitignore}, in the per-tool sections
+(such as @samp{# /memcheck/}).  After building and running the tests, this
+command lists the test programs that are not yet ignored:
+
+@example
+cd $INV/fjalar
+git status --porcelain --untracked-files=all | sed -n 's/^?? //p' \
+  | while read -r f; do [ -x "$f" ] && file -b "$f" | grep -q ELF && echo "$f"; done
+@end example
 
 
 @node Committing
