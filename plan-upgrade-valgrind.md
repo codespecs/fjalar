@@ -59,11 +59,14 @@ it completely (merged, CI green) before starting this one.  That plan's
    `diff -qrb -x.git valgrind-old valgrind-new | grep "Only in valgrind-old"`.
 
 3. **Baseline.**  Never build in `valgrind-old` or `valgrind-new` themselves:
-   `generate-patch-files.sh` diffs them with `--unidirectional-new-file`, so
-   any build products (`*.o`, `Makefile`, `config.h`, test binaries, `inst/`)
-   would end up in `coregrind.patch` and then be `git add`ed by
-   `make git-update`.  Build a copy instead:
+   `generate-patch-files.sh` refuses to run if either contains changes or
+   untracked files, such as build products (`*.o`, `Makefile`, `config.h`,
+   test binaries, `inst/`).  Otherwise they would end up in
+   `coregrind.patch` and then be `git add`ed by `make git-update`.  The
+   error message gives the `git reset`/`git clean` command that makes a tree
+   pristine again.  Build a copy instead:
    ```sh
+   rm -rf valgrind-new-build
    cp -a valgrind-new valgrind-new-build && cd valgrind-new-build
    ./autogen.sh && ./configure --prefix=$(pwd)/inst
    make all install && make regtest > test.log 2>&1
@@ -73,9 +76,8 @@ it completely (merged, CI green) before starting this one.  That plan's
 
 4. **Create the diffs.** Run `$INV/fjalar/generate-patch-files.sh`, producing
    `coregrind.patch`, `memcheck.patch`, `coregrind-Fjalar.diff`,
-   `memcheck-Fjalar.diff`.  Sanity check: no build products in the patch, i.e.
-   `grep -E '^diff .*(\.o|/config\.h|/inst/.*)$' $INV/coregrind.patch`
-   prints nothing.
+   `memcheck-Fjalar.diff`.  The script checks that `valgrind-old` and
+   `valgrind-new` are pristine clones at `$VOLDVER` and `$VNEWVER`.
 
 5. **Coregrind merge.**
    - `cd fjalar/valgrind; patch -p1 -lu --dry-run < $INV/coregrind.patch`,
@@ -152,8 +154,9 @@ it completely (merged, CI green) before starting this one.  That plan's
       versions, building the baseline in a copy (step 3), and any new
       pitfalls.
     - Commit as one PR; save the patch/diff files and `valgrind-new` (it
-      becomes `valgrind-old` for the next merge; delete
-      `valgrind-new-build`).
+      becomes `valgrind-old` for the next merge, after
+      `git -C valgrind-old reset --hard && git -C valgrind-old clean -fdx`;
+      delete `valgrind-new-build`).
 
 ## Risks
 
