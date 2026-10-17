@@ -107,12 +107,26 @@ static void setHelperAnns_DC ( DCEnv* dce, IRDirty* di ) {
    di->fxState[1].repeatLen = 0;
 }
 
+// Call a tag-merging helper, such as MC_(helperc_MERGE_TAGS), and
+// return the resulting tag.  Merging has a side effect:  it updates
+// the union-find structure that records comparability.  Therefore, the
+// call must be dirty rather than clean.  VEX removes a clean call as
+// dead code whenever the operations that use its result discard the
+// result's tag (for example, a comparison with a constant, or a shift
+// whose shift amount is the result), and then the merge would be lost.
+static IRAtom* mergeTags_DC ( DCEnv* dce, Int regparms,
+                              const HChar* hname, void* helper,
+                              IRExpr** args ) {
+   IRTemp datatag = newTemp(dce->mce, Ity_Word, DC);
+   IRDirty* di = unsafeIRDirty_1_N(datatag, regparms, hname, helper, args);
+   setHelperAnns_DC( dce, di );
+   stmt_DC('V', dce, IRStmt_Dirty(di));
+   return mkexpr(datatag);
+}
+
 // Merge the tags vatom1 and vatom2, for an operation whose result
-// gets tag 0 (such as a comparison).  The merge is a dirty call
-// rather than a clean one.  VEX would remove a clean call as dead
-// code whenever the operations that use the result discard its tag
-// (for example, a shift discards the tag of its shift amount), and
-// the merge would be lost.
+// gets tag 0 (such as a comparison).  See mergeTags_DC for why the
+// call is dirty.
 static void mergeTagsReturn0_DC ( DCEnv* dce,
                                   IRAtom* vatom1, IRAtom* vatom2 ) {
    IRDirty* di = unsafeIRDirty_0_N(2,
@@ -370,30 +384,30 @@ IRAtom* expr2tags_Qop_DC ( DCEnv* dce,
          // If we are running in units mode, then we should merge the
          // tags of the 3rd and 4th operands:
          if (dyncomp_units_mode) {
-            return mkIRExprCCall (Ity_Word,
-                                  2 /*Int regparms*/,
-                                  "MC_(helperc_MERGE_TAGS)",
-                                  &MC_(helperc_MERGE_TAGS),
-                                  mkIRExprVec_2( vatom3, vatom4 ));
+            return mergeTags_DC (dce,
+                                 2 /*Int regparms*/,
+                                 "MC_(helperc_MERGE_TAGS)",
+                                 &MC_(helperc_MERGE_TAGS),
+                                 mkIRExprVec_2( vatom3, vatom4 ));
          }
          // Ok, if we are running in the default mode, then we should
          // merge the tags of the 2nd, 3rd, and 4th operands:
          else {
-            return mkIRExprCCall (Ity_Word,
-                                  3 /*Int regparms*/,
-                                  "MC_(helperc_MERGE_3_TAGS)",
-                                  &MC_(helperc_MERGE_3_TAGS),
-                                  mkIRExprVec_3( vatom2, vatom3, vatom4 ));
+            return mergeTags_DC (dce,
+                                 3 /*Int regparms*/,
+                                 "MC_(helperc_MERGE_3_TAGS)",
+                                 &MC_(helperc_MERGE_3_TAGS),
+                                 mkIRExprVec_3( vatom2, vatom3, vatom4 ));
          }
          break;
 
       // Concatenation, like the binary Iop_V128HLtoV256, is an interaction.
       case Iop_64x4toV256:
-         return mkIRExprCCall (Ity_Word,
-                               3 /*Int regparms*/,
-                               "MC_(helperc_MERGE_4_TAGS)",
-                               &MC_(helperc_MERGE_4_TAGS),
-                               mkIRExprVec_4( vatom1, vatom2, vatom3, vatom4 ));
+         return mergeTags_DC (dce,
+                              3 /*Int regparms*/,
+                              "MC_(helperc_MERGE_4_TAGS)",
+                              &MC_(helperc_MERGE_4_TAGS),
+                              mkIRExprVec_4( vatom1, vatom2, vatom3, vatom4 ));
 
 // Unimplemented
       case Iop_Rotx32:                      // only used by mips
@@ -474,16 +488,16 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
       case Iop_Sub64Fx2:
       case Iop_Sub64Fx4:
 
-         return mkIRExprCCall (Ity_Word,
-                               2 /*Int regparms*/,
-                               "MC_(helperc_MERGE_TAGS)",
-                               &MC_(helperc_MERGE_TAGS),
-                               // VERY IMPORTANT!!!  We want to merge the
-                               // tags of the 2nd and 3rd operands!!!
-                               // Because the first one is a rounding
-                               // mode (I think)
-                               /* I32(rm) x F64 x F64 -> F64 */
-                               mkIRExprVec_2( vatom2, vatom3 ));
+         return mergeTags_DC (dce,
+                              2 /*Int regparms*/,
+                              "MC_(helperc_MERGE_TAGS)",
+                              &MC_(helperc_MERGE_TAGS),
+                              // VERY IMPORTANT!!!  We want to merge the
+                              // tags of the 2nd and 3rd operands!!!
+                              // Because the first one is a rounding
+                              // mode (I think)
+                              /* I32(rm) x F64 x F64 -> F64 */
+                              mkIRExprVec_2( vatom2, vatom3 ));
 
       case Iop_MulF32:                      // only used by arm mips s390 arm64
       case Iop_DivF32:                      // only used by arm mips s390 arm64
@@ -507,16 +521,16 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
       case Iop_Mul64Fx4:
 
          if (!dyncomp_units_mode) {
-            return mkIRExprCCall (Ity_Word,
-                                  2 /*Int regparms*/,
-                                  "MC_(helperc_MERGE_TAGS)",
-                                  &MC_(helperc_MERGE_TAGS),
-                                  // VERY IMPORTANT!!!  We want to merge the
-                                  // tags of the 2nd and 3rd operands!!!
-                                  // Because the first one is a rounding
-                                  // mode (I think)
-                                  /* I32(rm) x F64 x F64 -> F64 */
-                                  mkIRExprVec_2( vatom2, vatom3 ));
+            return mergeTags_DC (dce,
+                                 2 /*Int regparms*/,
+                                 "MC_(helperc_MERGE_TAGS)",
+                                 &MC_(helperc_MERGE_TAGS),
+                                 // VERY IMPORTANT!!!  We want to merge the
+                                 // tags of the 2nd and 3rd operands!!!
+                                 // Because the first one is a rounding
+                                 // mode (I think)
+                                 /* I32(rm) x F64 x F64 -> F64 */
+                                 mkIRExprVec_2( vatom2, vatom3 ));
          }
          // Else fall through ...
          break;
@@ -1583,72 +1597,35 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    }
 
    if (helper) {
-      // Heuristic:
-
-      // At least as observed in one trial, the dirty call
-      // version had MANY more calls of MC_(helperc_MERGE_TAGS)
-      // than the clean version, many of which were nonsensical
-      // merges of tag 0 with a valid tag but nonetheless with
-      // some valid merges as well.
-      // However, in 'z = x + y' of SuperSimpleTest,
-      // that interaction was correctly captured by the clean call.
-
-      // The standard way to make a dirty helper call (I think):
-      // Tags are always word-sized
-      //      datatag = newIRTemp(dce->bb->tyenv, Ity_Word);
-      //      di = unsafeIRDirty_1_N(datatag,
-      //                             2,
-      //                             hname,
-      //                             helper,
-      //                             mkIRExprVec_2( vatom1, vatom2 ));
-
-      //      setHelperAnns_DC( dce, di );
-      //      stmt( dce->bb, IRStmt_Dirty(di) );
-      //      return mkexpr(datatag);
-
-      // If either argument is a constant and helper is equal to
-      // &MC_(helperc_MERGE_TAGS), then return the tag of the other
-      // argument.  For &MC_(helperc_MERGE_TAGS_RETURN_0), simply
-      // return 0:
+      // If either argument is a constant, there is nothing to merge.
+      // For &MC_(helperc_MERGE_TAGS_RETURN_0), return 0.  For
+      // &MC_(helperc_MERGE_TAGS), return the tag of the other argument.
 
       // (comment added 2006)
       // TODO: This doesn't happen THAT often, so there must be a
       // better way to tell whether we can make this optimization
       // without simply checking whether the atoms are consts
 
-      if (atom1->tag == Iex_Const) {
-         if (helper == &MC_(helperc_MERGE_TAGS)) {
-            return vatom2;
-         }
-         else if (helper == &MC_(helperc_MERGE_TAGS_RETURN_0)) {
-            return IRExpr_Const(IRConst_UWord(0));
-         }
-      }
-      else if (atom2->tag == Iex_Const) {
-         if (helper == &MC_(helperc_MERGE_TAGS)) {
-            return vatom1;
-         }
-         else if (helper == &MC_(helperc_MERGE_TAGS_RETURN_0)) {
-            return IRExpr_Const(IRConst_UWord(0));
-         }
-      }
-
       if (helper == &MC_(helperc_MERGE_TAGS_RETURN_0)) {
-         mergeTagsReturn0_DC(dce, vatom1, vatom2);
+         if (atom1->tag != Iex_Const && atom2->tag != Iex_Const) {
+            mergeTagsReturn0_DC(dce, vatom1, vatom2);
+         }
          return IRExpr_Const(IRConst_UWord(0));
       }
 
-      // Let's try a clean call.  It seems to be correct
-      // because of the fact that merging the same 2 things more than
-      // once (in close proximity) doesn't hurt
-      // DO NOT use clean call unless it has NO side effects and
-      // is (nearly) purely functional like an IRExpr
-      // (from the point-of-view of IR, at least)
-      return mkIRExprCCall (Ity_Word,
-                            2 /*Int regparms*/,
-                            hname,
-                            helper,
-                            mkIRExprVec_2( vatom1, vatom2 ));
+      tl_assert(helper == &MC_(helperc_MERGE_TAGS));
+      if (atom1->tag == Iex_Const) {
+         return vatom2;
+      }
+      if (atom2->tag == Iex_Const) {
+         return vatom1;
+      }
+
+      return mergeTags_DC (dce,
+                           2 /*Int regparms*/,
+                           hname,
+                           helper,
+                           mkIRExprVec_2( vatom1, vatom2 ));
 
    }
    // Hmmm, is this the desired behavior for a non-interaction?
@@ -2172,18 +2149,6 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
          // Merge the tags of the results of the
          // lower and upper 64-bit loads:
 
-         // Dirty call version:
-         //         datatag = newIRTemp(dce->bb->tyenv, Ity_Word);
-         //         di = unsafeIRDirty_1_N(datatag,
-         //                                2,
-         //                                "MC_(helperc_MERGE_TAGS)",
-         //                                &MC_(helperc_MERGE_TAGS),
-         //                                mkIRExprVec_2( v64lo, v64hi ));
-
-         //         setHelperAnns_DC( dce, di );
-         //         stmt( dce->bb, IRStmt_Dirty(di) );
-         //         return mkexpr(datatag);
-
          // (comment added 2005)
          // pgbovine TODO: Is this merge tags really necessary or too
          // premature?  We should aim to do all of the merging on the
@@ -2192,13 +2157,11 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
          // on the memory level
 
          // On second thought, let's just go ahead and do it for now:
-
-         // Clean call version:
-         return mkIRExprCCall (Ity_Word,
-                               2 /*Int regparms*/,
-                               "MC_(helperc_MERGE_TAGS)",
-                               &MC_(helperc_MERGE_TAGS),
-                               mkIRExprVec_2( v64lo, v64hi ));
+         return mergeTags_DC (dce,
+                              2 /*Int regparms*/,
+                              "MC_(helperc_MERGE_TAGS)",
+                              &MC_(helperc_MERGE_TAGS),
+                              mkIRExprVec_2( v64lo, v64hi ));
 
 
       default:
