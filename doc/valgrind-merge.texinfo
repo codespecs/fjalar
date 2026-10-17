@@ -295,15 +295,18 @@ git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git valgrind
 @section Remove files that have been removed upstream
 
 The following command lists
-files that have been removed by the Valgrind developers since the last
-merge:
+files that Fjalar tracks but that the target Valgrind release does not have.
+This includes files removed by the Valgrind developers since the last merge,
+and also any files that earlier merges failed to remove.
 
 @example
-cd $INV
-diff -qrb -x.git valgrind-old valgrind-new |grep "Only in valgrind-old"
+cd $INV/fjalar
+comm -23 <(git ls-files valgrind | sed 's|^valgrind/||' | grep -v '^fjalar/' | sort) \
+         <(git -C ../valgrind-new ls-files | sort)
 @end example
 
-Remove these files.
+Remove these files with @command{git rm}, except for @file{valgrind/REVISION},
+which is Fjalar's own.
 
 This step could be done later, but we do it now to reduce the size
 of the patch and diff files.
