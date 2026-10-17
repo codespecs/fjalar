@@ -336,7 +336,10 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
    if (numMergedArgs >= 2) {
       merged = expr2tags_DC(dce, mergedArgs[0]);
       // Each intermediate merge is a clean call, because its result is
-      // used by the next merge.
+      // used by the next merge.  A clean call is safe although
+      // MC_(helperc_MERGE_TAGS) has side effects:  VEX cannot remove
+      // it, and if VEX combines two identical merges, the second would
+      // have had no effect.  A dirty call would be slower.
       for (i = 1; i < numMergedArgs - 1; i++) {
          merged = assignNew_DC(dce, Ity_Word,
                                mkMergeTags_DC(2 /*Int regparms*/,

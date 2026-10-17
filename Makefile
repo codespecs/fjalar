@@ -33,6 +33,7 @@ fjalar-test:
 	valgrind/fjalar/tests/library-compilation-unit-test.sh
 	valgrind/fjalar/tests/dyncomp-condition-code-test.sh
 	valgrind/fjalar/tests/dyncomp-interactions-none-test.sh
+	valgrind/fjalar/tests/zero-sized-pointee-test.sh
 
 # Kvasir tests
 daikon-test: ../daikon
