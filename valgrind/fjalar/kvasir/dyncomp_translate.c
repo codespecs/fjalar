@@ -117,6 +117,24 @@ static void setMergeHelperAnns_DC ( DCEnv* dce, IRDirty* di ) {
    }
 }
 
+// Assign e, which has type ty, to a new shadow temporary, and return
+// the temporary.  (assignNew_DC always makes a word-sized temporary.)
+static IRAtom* assignNewTy_DC ( DCEnv* dce, IRType ty, IRExpr* e ) {
+   IRTemp t = newTemp(dce->mce, ty, DC);
+   assign_DC('V', dce, t, e);
+   return mkexpr(t);
+}
+
+// Return an Ity_I1 atom that is true iff the tag vatom is nonzero.
+// The merge helpers take tags as UInt, so test only the low 32 bits.
+static IRAtom* tagIsNonZero_DC ( DCEnv* dce, IRAtom* vatom ) {
+   IRAtom* tag32 = vatom;
+#if VEX_HOST_WORDSIZE == 8
+   tag32 = assignNewTy_DC(dce, Ity_I32, unop(Iop_64to32, vatom));
+#endif
+   return assignNewTy_DC(dce, Ity_I1, unop(Iop_CmpNEZ32, tag32));
+}
+
 // Call a tag-merging helper, such as MC_(helperc_MERGE_TAGS), and
 // return the resulting tag.  Merging has a side effect:  it updates
 // the union-find structure that records comparability.  Therefore, the
@@ -124,25 +142,56 @@ static void setMergeHelperAnns_DC ( DCEnv* dce, IRDirty* di ) {
 // dead code whenever the operations that use its result discard the
 // result's tag (for example, a comparison with a constant, or a shift
 // whose shift amount is the result), and then the merge would be lost.
-static IRAtom* mergeTags_DC ( DCEnv* dce, Int regparms,
+// If guard is non-NULL, the call is made only when guard is true, and
+// otherwise the result is meaningless.
+static IRAtom* mergeTags_DC ( DCEnv* dce, IRAtom* guard, Int regparms,
                               const HChar* hname, void* helper,
                               IRExpr** args ) {
    IRTemp datatag = newTemp(dce->mce, Ity_Word, DC);
    IRDirty* di = unsafeIRDirty_1_N(datatag, regparms, hname, helper, args);
+   if (guard) {
+      di->guard = guard;
+   }
    setMergeHelperAnns_DC( dce, di );
    stmt_DC('V', dce, IRStmt_Dirty(di));
    return mkexpr(datatag);
 }
 
+// Merge the tags vatom1 and vatom2, and return the resulting tag.
+// If either tag is 0, MC_(helperc_MERGE_TAGS) merges nothing and
+// returns the other tag, so skip the call and select the other tag.
+static IRAtom* merge2Tags_DC ( DCEnv* dce,
+                               IRAtom* vatom1, IRAtom* vatom2 ) {
+   IRAtom* nonZero1 = tagIsNonZero_DC(dce, vatom1);
+   IRAtom* nonZero2 = tagIsNonZero_DC(dce, vatom2);
+   IRAtom* bothNonZero
+      = assignNewTy_DC(dce, Ity_I1, binop(Iop_And1, nonZero1, nonZero2));
+   IRAtom* merged = mergeTags_DC (dce, bothNonZero,
+                                  2 /*Int regparms*/,
+                                  "MC_(helperc_MERGE_TAGS)",
+                                  &MC_(helperc_MERGE_TAGS),
+                                  mkIRExprVec_2( vatom1, vatom2 ));
+   IRAtom* nonZeroTag
+      = assignNew_DC(dce, Ity_Word, IRExpr_ITE(nonZero1, vatom1, vatom2));
+   return assignNew_DC(dce, Ity_Word,
+                       IRExpr_ITE(bothNonZero, merged, nonZeroTag));
+}
+
 // Merge the tags vatom1 and vatom2, for an operation whose result
 // gets tag 0 (such as a comparison).  See mergeTags_DC for why the
-// call is dirty.
+// call is dirty.  If either tag is 0, there is nothing to merge, so
+// the call is skipped.
 static void mergeTagsReturn0_DC ( DCEnv* dce,
                                   IRAtom* vatom1, IRAtom* vatom2 ) {
+   IRAtom* bothNonZero
+      = assignNewTy_DC(dce, Ity_I1,
+                       binop(Iop_And1, tagIsNonZero_DC(dce, vatom1),
+                                       tagIsNonZero_DC(dce, vatom2)));
    IRDirty* di = unsafeIRDirty_0_N(2,
                                    "MC_(helperc_MERGE_TAGS_RETURN_0)",
                                    &MC_(helperc_MERGE_TAGS_RETURN_0),
                                    mkIRExprVec_2( vatom1, vatom2 ));
+   di->guard = bothNonZero;
    setMergeHelperAnns_DC( dce, di );
    stmt_DC('V', dce, IRStmt_Dirty(di));
 }
@@ -166,20 +215,16 @@ static IRAtom* mergeNonConstTags_DC ( DCEnv* dce, Int n,
       case 1:
          return nonConst[0];
       case 2:
-         return mergeTags_DC (dce,
-                              2 /*Int regparms*/,
-                              "MC_(helperc_MERGE_TAGS)",
-                              &MC_(helperc_MERGE_TAGS),
-                              mkIRExprVec_2( nonConst[0], nonConst[1] ));
+         return merge2Tags_DC (dce, nonConst[0], nonConst[1]);
       case 3:
-         return mergeTags_DC (dce,
+         return mergeTags_DC (dce, NULL,
                               3 /*Int regparms*/,
                               "MC_(helperc_MERGE_3_TAGS)",
                               &MC_(helperc_MERGE_3_TAGS),
                               mkIRExprVec_3( nonConst[0], nonConst[1],
                                              nonConst[2] ));
       default:
-         return mergeTags_DC (dce,
+         return mergeTags_DC (dce, NULL,
                               3 /*Int regparms*/,
                               "MC_(helperc_MERGE_4_TAGS)",
                               &MC_(helperc_MERGE_4_TAGS),
@@ -334,11 +379,12 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
                          IRAtom** exprvec, IRCallee* cee )
 {
   if (exprvec && exprvec[0]) {
-      IRAtom* first = expr2tags_DC(dce, exprvec[0]);
+      // The tag of the first non-constant, non-excluded argument
+      IRAtom* first = NULL;
       Int i;
       IRAtom* cur;
 
-      for (i = 1; exprvec[i]; i++) {
+      for (i = 0; exprvec[i]; i++) {
          tl_assert(i < 32);
          tl_assert(isOriginalAtom_DC(dce, exprvec[i]));
          /* Only take notice of this arg if the callee's mc-exclusion
@@ -347,10 +393,16 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
             /* the arg is to be excluded from definedness checking.  Do
                nothing. (I guess we do nothing also just like mkLazyN) */
             if (0) printf("excluding %s(%d)\n", cee->name, i);
+         } else if (exprvec[i]->tag == Iex_Const) {
+            // As in mergeNonConstTags_DC, a constant has nothing to merge.
          } else {
             /* merge the tags of first and current arguments */
             cur = expr2tags_DC(dce, exprvec[i]);
-            mergeTagsReturn0_DC(dce, first, cur);
+            if (first == NULL) {
+               first = cur;
+            } else {
+               mergeTagsReturn0_DC(dce, first, cur);
+            }
          }
       }
       // Return the tag of the first argument, if there is one
@@ -625,8 +677,7 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    IRAtom* vatom1 = expr2tags_DC( dce, atom1 );
    IRAtom* vatom2 = expr2tags_DC( dce, atom2 );
 
-   void*        helper = 0;
-   const HChar* hname = 0;
+   void* helper = 0;
 
    if (dyncomp_profile_tags) {
       if ((atom1->tag == Iex_Const) ||
@@ -675,7 +726,6 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 
       if (!dyncomp_dataflow_comparisons_mode) {
          helper = &MC_(helperc_MERGE_TAGS);
-         hname = "MC_(helperc_MERGE_TAGS)";
       }
       break;
 
@@ -745,7 +795,6 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 
       if (!dyncomp_dataflow_comparisons_mode && !dyncomp_units_mode) {
          helper = &MC_(helperc_MERGE_TAGS);
-         hname = "MC_(helperc_MERGE_TAGS)";
       }
       break;
 
@@ -831,7 +880,6 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 
       if (!dyncomp_dataflow_comparisons_mode) {
          helper = &MC_(helperc_MERGE_TAGS);
-         hname = "MC_(helperc_MERGE_TAGS)";
       }
       break;
 
@@ -863,7 +911,6 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 
       if (!dyncomp_dataflow_comparisons_mode && !dyncomp_units_mode) {
          helper = &MC_(helperc_MERGE_TAGS);
-         hname = "MC_(helperc_MERGE_TAGS)";
       }
       break;
 
@@ -901,7 +948,6 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 
       if (!dyncomp_dataflow_comparisons_mode) {
          helper = &MC_(helperc_MERGE_TAGS);
-         hname = "MC_(helperc_MERGE_TAGS)";
       }
       break;
 
@@ -914,7 +960,6 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 
       if (!dyncomp_dataflow_comparisons_mode && !dyncomp_units_mode) {
          helper = &MC_(helperc_MERGE_TAGS);
-         hname = "MC_(helperc_MERGE_TAGS)";
       }
       break;
 
@@ -1003,7 +1048,6 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 
       if (!dyncomp_dataflow_comparisons_mode) {
          helper = &MC_(helperc_MERGE_TAGS);
-         hname = "MC_(helperc_MERGE_TAGS)";
       }
       break;
 
@@ -1036,7 +1080,6 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 
       if (!dyncomp_dataflow_comparisons_mode && !dyncomp_units_mode) {
          helper = &MC_(helperc_MERGE_TAGS);
-         hname = "MC_(helperc_MERGE_TAGS)";
       }
       break;
 
@@ -1122,7 +1165,6 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 
       if (!dyncomp_dataflow_comparisons_mode) {
          helper = &MC_(helperc_MERGE_TAGS);
-         hname = "MC_(helperc_MERGE_TAGS)";
       }
       break;
 
@@ -1262,7 +1304,6 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_CmpGT64Sx4:
 
       helper = &MC_(helperc_MERGE_TAGS_RETURN_0);
-      hname = "MC_(helperc_MERGE_TAGS_RETURN_0)";
       break;
 
       /* ------------------ 128-bit SIMD Integer. ------------------ */
@@ -1634,18 +1675,13 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    // In this mode, NOTHING is an interaction:
    if (dyncomp_dataflow_only_mode) {
       helper = 0;
-      hname = 0;
    }
 
    if (helper) {
       // If either argument is a constant, there is nothing to merge.
+      // Skipping it avoids a merge call that VEX cannot remove.
       // For &MC_(helperc_MERGE_TAGS_RETURN_0), return 0.  For
       // &MC_(helperc_MERGE_TAGS), return the tag of the other argument.
-
-      // (comment added 2006)
-      // TODO: This doesn't happen THAT often, so there must be a
-      // better way to tell whether we can make this optimization
-      // without simply checking whether the atoms are consts
 
       if (helper == &MC_(helperc_MERGE_TAGS_RETURN_0)) {
          if (atom1->tag != Iex_Const && atom2->tag != Iex_Const) {
@@ -1655,19 +1691,9 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       }
 
       tl_assert(helper == &MC_(helperc_MERGE_TAGS));
-      if (atom1->tag == Iex_Const) {
-         return vatom2;
-      }
-      if (atom2->tag == Iex_Const) {
-         return vatom1;
-      }
-
-      return mergeTags_DC (dce,
-                           2 /*Int regparms*/,
-                           hname,
-                           helper,
-                           mkIRExprVec_2( vatom1, vatom2 ));
-
+      return mergeNonConstTags_DC (dce, 2,
+                                   (IRAtom*[]){ atom1, atom2 },
+                                   (IRAtom*[]){ vatom1, vatom2 });
    }
    // Hmmm, is this the desired behavior for a non-interaction?
    // I think so ...
@@ -2200,11 +2226,7 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
          // on the memory level
 
          // On second thought, let's just go ahead and do it for now:
-         return mergeTags_DC (dce,
-                              2 /*Int regparms*/,
-                              "MC_(helperc_MERGE_TAGS)",
-                              &MC_(helperc_MERGE_TAGS),
-                              mkIRExprVec_2( v64lo, v64hi ));
+         return merge2Tags_DC (dce, v64lo, v64hi);
 
 
       default:
