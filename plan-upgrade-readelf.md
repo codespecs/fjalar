@@ -117,10 +117,9 @@ small.
      (This lists only Valgrind core's own debuginfod support.)  `ldd` and
      `nm -u` would show nothing, because Valgrind tools are linked
      statically with `-nodefaultlibs` (`valgrind/Makefile.tool.am`).
-   - `./test-kvasir.sh 2>&1 | tee kvasir-before.log`
-     (Kvasir baseline; record any pre-existing failures).
-   - Run the Kvasir tests via `./test-kvasir.sh`, which temporarily points
-     `$DAIKONDIR/fjalar` at this tree (it restores the old link on exit, and
+   - Run the Kvasir tests with `./test-kvasir.sh 2>&1 | tee kvasir-before.log`
+     (Kvasir baseline; record any pre-existing failures).  `./test-kvasir.sh`
+     temporarily points `$DAIKONDIR/fjalar` at this tree (it restores the old link on exit, and
      refuses to run if `$DAIKONDIR/fjalar` is a directory rather than a
      symbolic link; then set `DAIKONDIR` to another, possibly nonexistent,
      directory).  Do not use `make daikon-test`: it ignores `$DAIKONDIR` and

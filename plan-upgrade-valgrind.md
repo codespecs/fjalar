@@ -101,9 +101,9 @@ Memcheck and DynComp depend tightly on Valgrind core:
      log, to compare warnings after the merge); `./check-regtest.sh`, which
      needs the build (must report no unexpected failures; if this machine's
      OS has no `regtest-expected/<os>.txt`, create a local, uncommitted one
-     with `--update`); `make fjalar-test`; and
-     `./test-kvasir.sh 2>&1 | tee kvasir-before.log`.
-   - Run the Kvasir tests with `./test-kvasir.sh`, which temporarily points
+     with `--update`); and `make fjalar-test`.
+   - Run the Kvasir tests with `./test-kvasir.sh 2>&1 | tee kvasir-before.log`
+     (step 9 compares with this log).  `./test-kvasir.sh` temporarily points
      `$DAIKONDIR/fjalar` at this tree (it restores the old link on exit, and
      refuses to run if `$DAIKONDIR/fjalar` is a directory rather than a
      symbolic link; then set `DAIKONDIR` to another, possibly nonexistent,
@@ -112,8 +112,10 @@ Memcheck and DynComp depend tightly on Valgrind core:
      clone.  Running `$INV/daikon/tests/kvasir-tests` directly has the same
      problem; if you do that, first check `readlink -f $INV/daikon/fjalar`.
    - `make very-clean`; review/delete untracked files
-     (`git ls-files --others --exclude-standard`).  For the 3-way merge
-     ("Alternative" below), also delete ignored files: then
+     (`git ls-files --others --exclude-standard`), except
+     `regtest-expected/<os>.txt` if you created it above:  step 9 compares
+     against it.  For the 3-way merge ("Alternative" below), also delete
+     ignored files: then
      `git status --porcelain --ignored valgrind` must print nothing.
 
 2. **Get the trees.**

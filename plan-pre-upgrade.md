@@ -7,7 +7,7 @@ Both upgrade plans assume these are done.
 
 Below, `$INV/fjalar` means the Fjalar tree being changed.
 
-PRs:
+PRs (#105, which adds this plan, contains #96's commits and lands after it):
 - Open, independent of each other:
   - #96: Valgrind regtest in CI, report-only (item 1).
   - #97: allow Fjalar's two `pub_core` includes in the post-regtest header
@@ -17,8 +17,8 @@ PRs:
   - #101: merge-doc updates (item 5, except what depends on #96).
   - #102: backport three upstream fixes so Valgrind's test programs build
     with GCC 15 (C23).  Without it, `make regtest` fails to build on
-    Ubuntu 26.04, so #96's `regtest_ubuntu_26_04` job runs no tests; land
-    it before #96.
+    Ubuntu 26.04, so #96's `regtest_ubuntu_26_04` job runs no tests.
+    #96 contains #102's commits; land #102 first.
 - Open, depending on #98, #99, and #101:
   - #103: create the patch files with `git diff` and apply them with
     `git apply`, which replaces `make git-update` (item 2).
@@ -66,15 +66,17 @@ What (done):
   tests did not run; it warns about expected failures that passed.  A `?`
   prefix marks a test that may or may not fail.  `--update` regenerates the
   list (keeping comments and `?` lines); `--log FILE` parses an existing log;
-  `--report-only` never fails.  It also reports each error from the
-  post-test checks (makefile consistency, headers) as its own entry,
+  `--report-only` fails only if the tests did not run.  It also runs the
+  post-test checks (makefile consistency, headers) by themselves, with
+  their own log, and reports each of their errors as its own entry,
   `post_regtest_checks: MESSAGE`, so a new error is not hidden by an old one.
 - `make check-regtest` runs it.
 - CI jobs `regtest_ubuntu_26_04` and `regtest_rocky_10` build Fjalar and run
-  `./check-regtest.sh --report-only`, uploading `regtest-observed-*.txt` and
-  the log as an artifact.
+  `./check-regtest.sh --report-only`, uploading `regtest-observed-*.txt`, the
+  logs, and the failing tests' `.out` and `.diff` files as an artifact.
 - `test.sh`'s commented-out `make test` now points to the script.
-- `.gitignore`: ignores the script's output, and 45 test binaries (tests
+- `.gitignore`: ignores the script's output, the failing tests' `.out`
+  and `.diff` files, and 45 test binaries (tests
   added in the 3.23 merge) that were missing from it; removes a corrupted
   line (`valgrind/cachegrind/tests/clreqvalgrind/tests/filter_discards`,
   two entries joined by a missing newline; both are listed separately).
