@@ -234,12 +234,15 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
 
 // Handling of clean helper function calls in the target program's
 // translated IR: Treat all arguments (exprvec) as 'interacting' with
-// one another and merge all of their respective tags, but return a tag
-// of 0 as the result of the helper call.  This is because helpers
+// one another and merge all of their respective tags.  Helpers
 // probably implement weird x86 instructions which are too difficult to
-// handle purely in IR so these n-ary operations are probably
+// handle purely in IR, so these n-ary operations are probably
 // interactions.  E.g. if the args are (a, b, c, d, e), then you should
-// merge tag(a), tag(b), tag(c), tag(d), and tag(e).
+// merge tag(a), tag(b), tag(c), tag(d), and tag(e).  Comparisons such as
+// '>' and '>=' are often translated into clean calls.
+//
+// The result of the helper call has a tag of 0, so that the merged
+// tags do not propagate to the result.
 //
 // Arguments that the callee's mc-exclusion mask (mcx_mask) excludes
 // do not take part in any merge.  For example, the arguments of
@@ -259,12 +262,6 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
 // work:  if the fixed argument's tag were WEAK_FRESH_TAG, no merge
 // would have any effect.
 
-// By some informal observation, it seems like '>' and '>='
-// comparisons are translated into clean C calls.  The correct
-// behavior is to merge the tags of all arguments but return a new tag
-// of 0 so that the tags do not propagate to the results.  Without
-// further testing on what other operations are translated into IR as
-// clean C calls, I will simply return a tag of 0 for now.
 static
 IRAtom* handleCCall_DC ( DCEnv* dce,
                          IRAtom** exprvec, IRCallee* cee )

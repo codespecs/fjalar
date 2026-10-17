@@ -40,28 +40,30 @@ fjalar_args=(--tool=fjalar --vex-guest-chase=no
 # The trace contains the IR of each superblock, after the optimization that
 # precedes instrumentation.  If VEX specialized the helper call into a
 # comparison operation, then the test would not exercise DynComp's handling
-# of helper calls.  The trace is large, so it is filtered rather than saved,
-# and the comparability is computed by a separate run without tracing.
-if ! "${valgrind}" "${fjalar_args[@]}" --decls-only \
-                   --decls-file="${output_dir}/trace.decls" \
-                   --trace-flags=01000000 --trace-notbelow=0 \
-                   "${output_dir}/dyncomp-condition-code" 2>&1 \
-     | awk '/^==== SB / { inLess = ($0 ~ / less(\+[0-9]+)? /) }
-            inLess && /g_calculate_condition\[/ { found = 1 }
-            END { exit !found }'; then
-  echo "$0: FAILED: the IR of less() does not call a calculate_condition helper" >&2
+# of helper calls.  The trace is large, so it is filtered rather than saved;
+# the filter saves only the last 100 lines of output, for diagnosing a crash.
+# Tracing does not affect comparability.
+decls="${output_dir}/dyncomp-condition-code.decls"
+set +e
+"${valgrind}" "${fjalar_args[@]}" --decls-only --decls-file="${decls}" \
+              --trace-flags=01000000 --trace-notbelow=0 \
+              "${output_dir}/dyncomp-condition-code" 2>&1 \
+  | awk -v tail="${output_dir}/dyncomp-condition-code.tail" \
+        '{ last[NR % 100] = $0 }
+         /^==== SB / { inLess = ($0 ~ / less(\+[0-9]+)? /) }
+         inLess && /g_calculate_condition\[/ { found = 1 }
+         END { for (i = NR - 99; i <= NR; i++) if (i > 0) print last[i % 100] > tail
+               exit !found }'
+statuses=("${PIPESTATUS[@]}")
+set -e
+
+if [ "${statuses[0]}" -ne 0 ]; then
+  echo "$0: FAILED: Fjalar exited with status ${statuses[0]}" >&2
+  cat "${output_dir}/dyncomp-condition-code.tail" >&2
   exit 1
 fi
-
-decls="${output_dir}/dyncomp-condition-code.decls"
-status=0
-"${valgrind}" "${fjalar_args[@]}" --decls-only --decls-file="${decls}" \
-              "${output_dir}/dyncomp-condition-code" \
-              > "${output_dir}/dyncomp-condition-code.out" 2>&1 || status=$?
-
-if [ "${status}" -ne 0 ]; then
-  echo "$0: FAILED: Fjalar exited with status ${status}" >&2
-  tail -n 100 "${output_dir}/dyncomp-condition-code.out" >&2
+if [ "${statuses[1]}" -ne 0 ]; then
+  echo "$0: FAILED: the IR of less() does not call a calculate_condition helper" >&2
   exit 1
 fi
 
