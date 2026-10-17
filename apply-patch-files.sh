@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # This script applies a patch file that generate-patch-files.sh created to
-# $INV/fjalar, stages the result, and lists the conflicts.
+# $INV/fjalar with a 3-way merge, stages the result, and lists the conflicts.
 # Usage: apply-patch-files.sh [--check] coregrind|memcheck [GIT-APPLY-OPTION...]
 # With --check, it does a dry run and does not change any file.
-# Each GIT-APPLY-OPTION, such as -C0, is passed to "git apply" after the
-# default options, so it overrides them.
+# Each GIT-APPLY-OPTION, such as --exclude=PATH, is passed to "git apply"
+# after the default options, so it overrides them.
 # The output of "git apply" is also written to $INV/coregrind-apply.log or
 # $INV/memcheck-apply.log.  The script exits with status 1 if there were
 # conflicts or other problems.
@@ -47,69 +47,81 @@ if [ ! -f "$patch" ]; then
 fi
 cd "$INV/fjalar"
 
-# Option -C1 requires only one line of context around each change to match,
-# like the default fuzz factor of "patch".  Option --whitespace=nowarn
-# overrides any apply.whitespace setting, which could otherwise strip
-# whitespace from lines that upstream added.
-apply=(git apply --whitespace=nowarn -C1 "$strip" --directory="$directory")
-
-if [ -n "$check" ]; then
-  "${apply[@]}" --check "$@" "$patch"
-  exit
-fi
-
-# The files that the patch may create.  A file that already exists is
-# omitted, because "git apply" refuses to overwrite it.
-if ! summary=$(git -c core.quotePath=false apply --summary "$strip" --directory="$directory" "$patch"); then
-  echo "$0: git apply --summary failed on $patch." >&2
+# A clean work tree and index keep the merge separate from other changes,
+# so "git reset --hard" can undo it.
+if [ -z "$check" ] && [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+  echo "$0: $INV/fjalar has uncommitted changes; commit them first." >&2
   exit 1
 fi
-creatable=()
-while IFS= read -r line; do
-  if [[ $line =~ ^\ create\ mode\ [0-7]+\ (.*)$ ]] && [ ! -e "${BASH_REMATCH[1]}" ]; then
-    creatable+=("${BASH_REMATCH[1]}")
-  fi
-done <<< "$summary"
 
+# The "index" lines of the patch name blobs of valgrind-old, which
+# --3way needs as the merge base.
+export GIT_ALTERNATE_OBJECT_DIRECTORIES=$INV/valgrind-old/.git/objects
+# The messages of "git apply" are parsed below, so they must be in English.
+export LC_ALL=C
+
+# Option --3way implies --index, so "git apply" stages the files that it
+# changes, creates, or removes, even ones that match .gitignore.  A file that
+# it cannot merge, such as a binary file, is left with the Fjalar version.
+# Option --whitespace=nowarn overrides any apply.whitespace setting, which
+# could otherwise strip whitespace from lines that upstream added.
+# Option --no-ignore-whitespace overrides any apply.ignoreWhitespace setting.
+apply=(git apply --3way --whitespace=nowarn --no-ignore-whitespace "$strip" --directory="$directory")
+
+# "git apply" applies no patch at all if it refuses the patch to any file.
+# Examples are a removal of a file that Fjalar has changed and a change to a
+# file that does not exist.  A dry run finds those files, so that the
+# actual run can exclude them.
 status=0
-"${apply[@]}" --reject "$@" "$patch" 2>&1 | tee "$log" || status=$?
-
-# The files that the patch created.  "git apply" does not create a file
-# that the GIT-APPLY-OPTIONs exclude, nor any file if it gives up entirely.
-created=()
-for file in "${creatable[@]}"; do
-  if [ -e "$file" ]; then
-    created+=("$file")
+"${apply[@]}" --check "$@" "$patch" > "$log" 2>&1 || status=$?
+refused=()
+while IFS= read -r line; do
+  if [[ $line =~ ^error:\ (.+):\ [^:]+$ ]] && [[ $line != "error: patch failed: "* ]]; then
+    refused+=("${BASH_REMATCH[1]}")
   fi
-done
-
-# "git add -u" stages the changed and removed files.  The created files are
-# staged with "git add -f", because some of them, such as Makefile or *.log
-# files, match patterns in .gitignore.
-git add -u "$directory"
-if [ ${#created[@]} -gt 0 ]; then
-  git add -f -- "${created[@]}"
+done < "$log"
+if [ "$status" -ne 0 ] && [ ${#refused[@]} -eq 0 ]; then
+  cat "$log"
+  echo "$0: git apply failed; see $log." >&2
+  exit 1
 fi
 
-if [ "$status" -eq 0 ]; then
+if [ -n "$check" ]; then
+  cat "$log"
+else
+  exclude=()
+  for file in "${refused[@]}"; do
+    # Option --exclude takes a glob pattern.
+    exclude+=("--exclude=$(printf '%s' "$file" | sed 's/[][*?\\]/\\&/g')")
+  done
+  status=0
+  "${apply[@]}" "${exclude[@]}" "$@" "$patch" 2>&1 | tee "$log" || status=$?
+  if [ "$status" -ne 0 ] && [ -z "$(git ls-files -u)" ]; then
+    echo "$0: git apply failed; see $log." >&2
+    exit 1
+  fi
+fi
+
+if [ -n "$check" ]; then
+  conflicts=$(sed -n "s/^Applied patch to '\(.*\)' with conflicts\.\$/\1/p" "$log")
+else
+  conflicts=$(git diff --name-only --diff-filter=U)
+fi
+if [ -z "$conflicts" ] && [ ${#refused[@]} -eq 0 ]; then
   exit 0
 fi
-
-# A hunk that does not apply is put in a .rej file.  A patch that
-# "git apply" refuses entirely leaves no .rej file.
-rejects=$(find "$directory" -name '*.rej')
-refused=$(grep '^error: ' "$log" | grep -v -e 'while searching for' -e 'patch failed' || true)
 echo
-echo "$0: git apply exited with status $status.  Resolve these conflicts."
-if [ -n "$rejects" ]; then
-  echo "Rejected hunks:"
-  echo "$rejects"
+if [ -n "$check" ]; then
+  echo "$0: the dry run found these conflicts."
+else
+  echo "$0: Resolve these conflicts."
 fi
-if [ -n "$refused" ]; then
-  echo "Patches that were not applied:"
-  echo "$refused"
+if [ -n "$conflicts" ]; then
+  echo "Files with conflicts:"
+  echo "$conflicts"
 fi
-if [ -z "$rejects" ] && [ -z "$refused" ]; then
-  echo "No .rej file or refused patch was found; see $log."
+if [ ${#refused[@]} -gt 0 ]; then
+  echo "Files whose patches were not applied:"
+  printf '%s\n' "${refused[@]}"
 fi
 exit 1

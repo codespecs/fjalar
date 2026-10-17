@@ -117,7 +117,7 @@ and other steps would use a different copy.
 * Get Valgrind version tags::
 * Obtain a copy of the base Valgrind source tree::
 * Obtain a copy of the target Valgrind source tree::
-* Remove files that earlier merges left behind::
+* Correct the files of earlier merges::
 @end menu
 
 
@@ -319,14 +319,17 @@ git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git valgrind
 @c For a  full repro of the current Valgrind source:
 @c git clone https://sourceware.org/git/valgrind.git valgrind-git
 
-@node Remove files that earlier merges left behind
-@section Remove files that earlier merges left behind
+@node Correct the files of earlier merges
+@section Correct the files of earlier merges
 
-The patch files remove the files that the Valgrind developers removed
-between the base and the target Valgrind releases.  They do not remove
-files that Fjalar tracks but that the base Valgrind release does not have
-either, which earlier merges failed to remove.  The following command
-lists those files:
+The patch files add and remove the files that the Valgrind developers
+added and removed between the base and the target Valgrind releases.
+They do not correct the files that earlier merges failed to add or
+remove.
+
+The following command lists the files that Fjalar tracks but that the
+base Valgrind release does not have, which earlier merges failed to
+remove:
 
 @example
 cd $INV/fjalar
@@ -344,9 +347,56 @@ Setting @env{LC_ALL} makes @command{sort} and @command{comm} agree on the
 sort order; in other locales, @command{comm} can list files that
 Valgrind still has.
 
-After the merge, the same command with @file{valgrind-new} in place of
-@file{valgrind-old} lists the files that Fjalar tracks but the target
-Valgrind release does not have (@pxref{Coregrind Conflicts}).
+The following command lists the Memcheck files that Fjalar's copy of
+Memcheck, in @file{valgrind/fjalar}, has but that the base Valgrind
+release does not have:
+
+@example
+cd $INV/fjalar
+(export LC_ALL=C
+ comm -23 <(git ls-files valgrind/fjalar | sed 's|^valgrind/fjalar/||' \
+              | grep -E '^(mc_|memcheck)' | sort) \
+          <(git -C $INV/valgrind-old ls-files memcheck \
+              | sed 's|^memcheck/||' | sort) \
+   | sed 's|^|valgrind/fjalar/|')
+@end example
+
+@noindent
+Fjalar created some of them, such as @file{mc_translate.h}; keep those.
+Remove the others with @command{git rm}.
+
+The following command lists the files that the base Valgrind release
+has but that Fjalar does not track, which earlier merges failed to add.
+For example, @command{patch} did not create empty files, and
+@command{git add} did not add files that match @file{.gitignore}, such
+as @file{Makefile} or @file{*.log} files.
+
+@example
+cd $INV/fjalar
+(export LC_ALL=C
+ comm -13 <(git ls-files valgrind | sed 's|^valgrind/||' | sort) \
+          <(git -C $INV/valgrind-old ls-files | sort))
+@end example
+
+@noindent
+Review the list, because Fjalar may omit some Valgrind files on purpose.
+Write the files that Fjalar should have to a file @file{$INV/missing},
+one per line, and add them:
+
+@example
+cd $INV/valgrind-old
+xargs -r -d '\n' cp -P --parents -t $INV/fjalar/valgrind < $INV/missing
+cd $INV/fjalar
+sed 's|^|valgrind/|' $INV/missing | xargs -r -d '\n' git add -f --
+@end example
+
+Commit these corrections before you apply the patch files, because
+@file{apply-patch-files.sh} requires that Fjalar has no uncommitted
+changes.
+
+After the merge, the same commands with @file{valgrind-new} in place of
+@file{valgrind-old} list the files that Fjalar tracks but the target
+Valgrind release does not have, and vice versa (@pxref{Coregrind Conflicts}).
 
 @node Creating the diffs
 @chapter Creating the diffs
@@ -393,31 +443,30 @@ verification later.
 Now we can merge the changes from the created diffs. The Coregrind patch
 should apply with very little conflicts.
 
-Script @file{apply-patch-files.sh} runs @command{git apply} with the
-options described below.
-It can be difficult to undo a patch operation, so you should first attempt
-a dry run, which changes no file.
+Script @file{apply-patch-files.sh} runs @command{git apply --3way}.
+A 3-way merge compares the Fjalar version of each file, the base Valgrind
+version, and the target Valgrind version.  It applies a change even if
+Fjalar has changed the lines around it, and it leaves conflict markers in
+a file where both Valgrind and Fjalar changed the same lines.  The base
+Valgrind versions are found in @file{$INV/valgrind-old}.
+The script requires that @file{$INV/fjalar} has no uncommitted changes,
+so that @command{git reset --hard} can undo the merge.
+
+First, do a dry run, which changes no file:
 
 @example
 $INV/fjalar/apply-patch-files.sh --check coregrind
 @end example
 
-There may be a few failed hunks (conflicts), reported as ``patch
-failed'' --- this is all right, we
+There may be a few conflicts --- this is all right, we
 will explain how to deal with these shortly.  If there are massive
 numbers of conflicts or some other indication of failure,
 there might have been a problem in the previous diffing step.
 
-Option @option{-C1} requires only one line of context around each change
-to match, like the default fuzz factor of @command{patch}.
-Unlike @command{patch -l}, @command{git apply} does not tolerate changes
-in the amount of whitespace within a context line.  (Its
-@option{--ignore-whitespace} option does, but then it rejects context
-lines to which trailing whitespace has been added.)
-Option @option{--whitespace=nowarn} overrides any @code{apply.whitespace}
-setting in your Git configuration, which could otherwise strip
-whitespace from lines that upstream added.  Some of those lines, such
-as in regression test goal files, need their whitespace.
+The script passes option @option{--whitespace=nowarn}, which overrides any
+@code{apply.whitespace} setting in your Git configuration.  That setting
+could otherwise strip whitespace from lines that upstream added.  Some of
+those lines, such as in regression test goal files, need their whitespace.
 
 When you are satisfied with the results of the dry run,
 continue with the actual merge:
@@ -427,47 +476,48 @@ $INV/fjalar/apply-patch-files.sh coregrind
 @end example
 
 The script writes the output of @command{git apply} to
-@file{$INV/coregrind-apply.log}, and stages the results of the merge.
-It stages the files that the patch created with @command{git add -f},
-because some of them, such as @file{Makefile} or @file{*.log} files,
-match patterns in @file{.gitignore}.
+@file{$INV/coregrind-apply.log}, and stages the results of the merge,
+including files that match patterns in @file{.gitignore}, such as
+@file{Makefile} or @file{*.log} files.
 If there were conflicts, the script lists them and exits with a
 nonzero status.
 
 @node Coregrind Conflicts
 @section Coregrind Conflicts
 
-Handle any conflicts, which @file{apply-patch-files.sh} listed.
-A hunk that does not apply is put in a @file{.rej} file.  List those
-files with this command:
+Handle the conflicts that @file{apply-patch-files.sh} listed.
+
+Files with conflicts contain conflict markers, and @command{git status}
+lists them as unmerged.  For a binary file, the Fjalar version is left
+in place.  For every conflict you will need to examine both the changed
+code as well as our original code and determine if it needs to be hand
+merged or if the change is not relevant.  It may help to refer to
+@code{coregrind-Fjalar.diff} during this process.  Mark each file as
+resolved with @command{git add}, or use @command{git mergetool}.  When you
+are done, this command produces no output:
 
 @example
 cd $INV/fjalar
-find valgrind -name '*.rej'
+git diff --name-only --diff-filter=U
 @end example
 
-A patch to a file that @command{git apply} refuses entirely leaves no
-@file{.rej} file.  Examples are a new file that already exists, a
-change to a file that does not exist, and a change to a binary file
-that Fjalar has modified.  The script lists the corresponding
-@samp{error:} lines of @file{$INV/coregrind-apply.log}.
-
-For every change in the file you will need to examine both the changed
-code as well as our original code and determine if it needs to be hand
-merged or if the change is not relevant. It may help to refer to
-@code{coregrind-Fjalar.diff} during this process. Remove the @code{.rej}
-files as you go, so that finally the @code{find}
-command produces no output.
-
-A file that was removed upstream but that has Fjalar changes is not
-removed; @command{git apply} reports ``removal patch leaves file
-contents'' for it.  Decide whether to remove it with @command{git rm}.
+@command{git apply} refuses the patch to some files entirely, and then it
+applies no patch at all.  So the script first does a dry run and then
+excludes those files from the merge, and lists them as files whose patches
+were not applied.  Examples are a removal of a file that Fjalar has
+changed and a change to a file that Fjalar does not have.  Their patches
+are in @file{$INV/coregrind.patch}; apply each one by hand.  For a file
+that was removed upstream but that has Fjalar changes, decide whether to
+remove it with @command{git rm}.
 
 Then check that Fjalar tracks no other file that the target Valgrind
-release does not have:  run the command in @ref{Remove files that earlier
-merges left behind}, with @file{valgrind-new} in place of
-@file{valgrind-old}.  It should print only the files that you decided to
-keep.
+release does not have, and that it has every file that the target
+Valgrind release has: run the commands in @ref{Correct the files of
+earlier merges}, with @file{valgrind-new} in place of @file{valgrind-old}.
+They should print only the files that you decided to keep or to omit.
+
+Commit the results, because @file{apply-patch-files.sh} requires that
+Fjalar has no uncommitted changes before the Memcheck merge.
 
 
 @node Memcheck Merge
@@ -480,18 +530,10 @@ derived from Valgrind/Memcheck.
 $INV/fjalar/apply-patch-files.sh --check memcheck
 @end example
 
-There may be a few failed hunks (conflicts) - this is all right, we
+There may be a few conflicts - this is all right, we
 will explain how to deal with these shortly.  If there are massive
 numbers of conflicts or some other indication of failure,
 there might have been a problem in the previous diffing step.
-
-You may wish to experiment with the context option, which you can pass
-after @samp{memcheck}, as in
-@samp{apply-patch-files.sh --check memcheck -C0}.  I find
-that @option{-C0}, which is like @command{patch -F3}, often increases the
-success rate (reduces the number of conflicts), but this can be
-dangerous as it ignores more of the context in the patch file, which
-increases the odds of a faulty patch.
 
 When you are satisfied with the results of the dry run, continue with
 the actual merge, which writes @file{$INV/memcheck-apply.log}:
@@ -512,7 +554,7 @@ git diff --cached --name-only --diff-filter=A valgrind/fjalar
 @node Memcheck Conflicts
 @section Memcheck Conflicts
 
-Handle any conflicts, which @file{apply-patch-files.sh} listed, as
+Handle the conflicts that @file{apply-patch-files.sh} listed, as
 with Coregrind.
 
 For every change in the file you will need to examine both the changed
@@ -1268,8 +1310,9 @@ to the repository.
 
 @example
 cd $INV/fjalar
-# Double-check the diffs - standard practice before committing
-git diff -b HEAD | more
+# Double-check the diffs, including those of the commits made during the
+# merge - standard practice before committing
+git diff -b origin/master | more
 # If looks OK, proceed with commit.
 git commit -a -m "Valgrind merge from $@{VOLDVER@} to $@{VNEWVER@}"
 @end example
