@@ -89,8 +89,10 @@ fi
 #   == 809 tests, 0 stderr failures, 0 stdout failures, 2 stderrB failures, 16 stdoutB failures, 0 post failures ==
 # It is followed by one line per failure, then a blank line.
 SUMMARY_RE='^== [0-9]+ tests?, .* post failures? ==$'
-if ! grep -Eq "$SUMMARY_RE" "$LOG"; then
-  echo "$0: no regtest summary line in $LOG; the tests did not run." >&2
+# A summary that reports 0 tests means that no test ran.
+NONZERO_SUMMARY_RE='^== [1-9][0-9]* tests?, .* post failures? ==$'
+if ! grep -Eq "$NONZERO_SUMMARY_RE" "$LOG"; then
+  echo "$0: no regtest summary line with a nonzero test count in $LOG; the tests did not run." >&2
   echo "Last lines of $LOG:" >&2
   tail -n 40 "$LOG" >&2
   exit 1
@@ -120,7 +122,8 @@ observed_failures > "$OBSERVED"
 
 # Lines of the expected-failures file, without comments, blank lines, or "?".
 expected_required() {
-  grep -Ev '^[[:space:]]*(#|\?|$)' "$1" | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//' | sort -u
+  { grep -Ev '^[[:space:]]*(#|\?|$)' "$1" || true; } \
+    | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//' | sort -u
 }
 expected_optional() {
   { grep -E '^[[:space:]]*\?' "$1" || true; } \

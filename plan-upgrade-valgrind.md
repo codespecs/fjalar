@@ -175,7 +175,8 @@ assumes items 1 (regtest in CI), 2 (`make git-update` handles memcheck),
    derived code is the usual source).  Test with both a current gcc and the
    compilers in the CI containers.
 
-9. **Test.**
+9. **Test.**  Run these from `$INV/fjalar` (`cd $INV/fjalar`; step 6 left
+   the shell in `valgrind/fjalar`).
    - `./check-regtest.sh`.  The expected failures will change, because
      3.27.1 adds, removes, and fixes tests.  For each unexpected failure:
      if it is also in step 3's `regtest-upstream-3.27.1.txt`, it is an
@@ -193,7 +194,11 @@ assumes items 1 (regtest in CI), 2 (`make git-update` handles memcheck),
      until their lists are updated too: take `regtest-observed-<os>.txt`
      from each job's `regtest-results-*` artifact, apply the same
      upstream-or-merge-bug test as above, and commit the updated
-     `regtest-expected/<os>.txt`.
+     `regtest-expected/<os>.txt`.  Step 3's upstream list comes from your
+     machine; a failure that appears only in CI may be an upstream failure
+     specific to that container or CPU.  To check, build upstream 3.27.1 in
+     that container (e.g., `docker run` the CI image, clone
+     `VALGRIND_3_27_1`, and run `make regtest` as in step 3) and compare.
 
 10. **Finish.**
     - Update first line of `valgrind/REVISION`

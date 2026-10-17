@@ -182,13 +182,14 @@ Kvasir tests after each step.
      the `.pre-merge` copies once the merge is complete.
 
 7. **Build and fix warnings/errors.**  `make -C $INV/fjalar build`, then
-   iterate with `make -C valgrind/fjalar`.  Fix "implicit declaration" and
+   iterate with `make -C $INV/fjalar/valgrind/fjalar`.  Fix "implicit declaration" and
    "undefined reference" errors (missed `VG_()` wrappers).  Reduce new
    warnings from Valgrind's stricter flags where practical.
    Also build against the system `bfd.h` on both Rocky Linux and Ubuntu
    (see step 4; the #63 workaround may need to change).
 
-8. **Test.**
+8. **Test.**  Run these from `$INV/fjalar` (`cd $INV/fjalar`; step 5 left
+   the shell in `valgrind/fjalar`).
    - `./check-regtest.sh` — must report no unexpected failures, with no
      change to `regtest-expected/*.txt`.  This upgrade doesn't touch
      Valgrind, so any new failure is a bug in the merge (or an OS/compiler
