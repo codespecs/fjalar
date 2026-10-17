@@ -45,7 +45,12 @@ Understanding Memcheck's error checking machinery is important for
 making non-trivial changes to Fjalar as Fjalar essentially piggybacks
 on top of Memcheck. Fjalar instrumentation is inserted after
 Memcheck's and Fjalar makes use of Memcheck's A/V-bits to provide
-information on C/C++ in a safe way. 
+information on C/C++ in a safe way.
+
+Supported Platform
+------------------
+Fjalar supports only Linux on x86-64 (amd64-linux).  Code and tests may
+assume that platform; for example, tests may contain x86-64 inline assembly.
 
 Known Issues
 ------------
