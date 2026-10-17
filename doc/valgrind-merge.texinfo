@@ -198,7 +198,9 @@ If that is not @file{$INV/fjalar} (or a symbolic link to it), they test
 a different copy of Fjalar than the one you are merging; check with
 @code{readlink -f $DAIKONDIR/fjalar}.  Alternatively,
 @command{$INV/fjalar/test-kvasir.sh} runs Daikon's Kvasir and DynComp
-tests against @file{$INV/fjalar}; see the comments at its top.
+tests against @file{$INV/fjalar}.  Run it with @env{DAIKONDIR} set to a
+directory that does not exist, into which it clones Daikon; it refuses to
+run if @file{$DAIKONDIR/fjalar} is a directory rather than a symbolic link.
 
 The tests should pass. If any tests fail, fix them, then start over from
 the beginning.
@@ -312,30 +314,36 @@ diff -qrb -x.git valgrind-old valgrind-new |grep "Only in valgrind-old"
 
 Remove these files.
 
-Fjalar's copy of memcheck is in @file{$INV/fjalar/valgrind/fjalar/}, not
-in @file{$INV/fjalar/valgrind/memcheck/}.  So also list the memcheck files
-that upstream removed:
-
-@example
-cd $INV
-diff -qr -x.git -xdocs -xtests valgrind-old/memcheck valgrind-new/memcheck |grep "Only in valgrind-old"
-@end example
-
-@noindent
-and remove their counterparts in @file{$INV/fjalar/valgrind/fjalar/},
-after checking them for Fjalar changes.
+Fjalar has two copies of memcheck: an unmodified one in
+@file{$INV/fjalar/valgrind/memcheck/}, and a modified one (the
+@file{mc_*} files and @file{memcheck.h}) in
+@file{$INV/fjalar/valgrind/fjalar/}.  For each file that the command
+lists as ``Only in valgrind-old/memcheck'' (not in its @file{docs/} or
+@file{tests/} subdirectories), also remove its counterpart in
+@file{$INV/fjalar/valgrind/fjalar/}, after checking it for Fjalar changes.
 
 This step could be done later, but we do it now to reduce the size
 of the patch and diff files.
 
-Past merges sometimes skipped this step.  After the merge, check that
-Fjalar tracks no upstream file that upstream no longer has.  This command
+After the merge, verify that Fjalar tracks no upstream file that upstream no longer has.  This command
 should print nothing except @file{REVISION}, which is Fjalar's own:
 
 @example
 cd $INV/fjalar
-comm -23 <(git ls-files valgrind | sed 's|^valgrind/||' | grep -v '^fjalar/' | sort) \
-         <(git -C $INV/valgrind-new ls-files | sort)
+LC_ALL=C comm -23 \
+  <(git ls-files valgrind | sed 's|^valgrind/||' | grep -v '^fjalar/' | LC_ALL=C sort) \
+  <(git -C $INV/valgrind-new ls-files | LC_ALL=C sort)
+@end example
+
+@noindent
+This command checks Fjalar's modified copy of memcheck, and should print
+nothing except @file{mc_translate.h}, which is Fjalar's own:
+
+@example
+cd $INV/fjalar/valgrind/fjalar
+for f in mc_*.[ch] memcheck.h; do
+  [ -e $INV/valgrind-new/memcheck/$f ] || echo $f
+done
 @end example
 
 
@@ -569,14 +577,15 @@ as they should be similar after the source merge. They may not be
 identical due to Valgrind improvements or the addition of new test cases.
 
 To run the @command{regtest} verification tests, build a copy of
-@file{valgrind-new}.  Do not build in @file{valgrind-new} itself:
-@command{generate-patch-files.sh} diffs that directory, so any build
-products there would end up in @file{coregrind.patch} and then be added
-to Fjalar by @samp{make git-update}.  Also, @file{valgrind-new} becomes
-@file{valgrind-old} for the next merge, so it must stay a pristine clone.
+@file{valgrind-new}.  Do not build in @file{valgrind-new} itself, which
+must stay a pristine clone: it becomes @file{valgrind-old} for the next
+merge, and @command{generate-patch-files.sh} diffs it, so if that script
+is re-run, any build products there would end up in @file{coregrind.patch}
+and then be added to Fjalar by @samp{make git-update}.
 
 @example
 cd $INV
+rm -rf valgrind-new-build
 cp -a valgrind-new valgrind-new-build
 cd valgrind-new-build
 ./autogen.sh
@@ -863,7 +872,7 @@ create @file{.rej} files.  @command{git status} lists the changed files,
 and this command finds the conflicts:
 
 @example
-grep -n '^<<<<<<<' *.c *.h include/*.h include/elf/*.h libiberty/*.c
+grep -rn '^<<<<<<<' .
 @end example
 
 @noindent
@@ -905,10 +914,14 @@ The new Binutils code may need things that Fjalar does not have:
 @itemize
 @item
 New header files: new @code{#include}s in @file{readelf.c},
-@file{dwarf.c}, or @file{elfcomm.c}.  New files under @file{include/} are
-not in @file{include.patch}, because @command{diff -ur} lists them only as
-``Only in ...''; copy the ones that are needed into
-@file{$INV/fjalar/valgrind/fjalar/include/}.
+@file{dwarf.c}, or @file{elfcomm.c}.  New files are not in
+@file{include.patch} or @file{binutils.patch}, because @command{diff}
+lists them only as ``Only in ...''.  Copy the ones that are needed,
+preserving their location: a new file in @file{$BUNEW/include/elf/} goes
+in @file{$INV/fjalar/valgrind/fjalar/include/elf/}, one in
+@file{$BUNEW/include/} goes in @file{$INV/fjalar/valgrind/fjalar/include/},
+and one in @file{$BUNEW/binutils/} (like @file{bucomm.h}) goes in
+@file{$INV/fjalar/valgrind/fjalar/}.
 @item
 Code for features that Fjalar does not use, such as SFrame
 (@samp{readelf --sframe}, added in Binutils 2.40, which needs
@@ -919,8 +932,8 @@ rather than adding the libraries it needs.
 Support for zstd-compressed debug sections (Binutils 2.40 and later):
 make sure that it compiles away when @code{HAVE_ZSTD} is not defined.
 @item
-Newer @file{bfd.h} definitions: @file{dwarf.c}, @file{readelf.c}, and
-@file{elfcomm.c} include the @emph{system} @file{bfd.h} (from the
+Newer @file{bfd.h} definitions: @file{dwarf.c} and @file{readelf.c}
+include the @emph{system} @file{bfd.h} (from the
 @file{binutils-dev} or @file{binutils-devel} package), which may be older
 than the Binutils being merged.  Check that every bfd macro and function
 the new code uses exists in the oldest @file{bfd.h} that continuous
