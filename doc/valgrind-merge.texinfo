@@ -302,7 +302,8 @@ $INV/fjalar/generate-patch-files.sh
 This creates patch files showing what the Valgrind maintainers have
 changed since
 the last time Valgrind code was merged into Fjalar.
-File @file{$INV/memcheck.patch} is for Memcheck, and
+File @file{$INV/memcheck.patch} is for Memcheck (except for removed
+files), and
 file @file{$INV/coregrind.patch} is for everything else (which
 we'll call "Coregrind").
 The patch files are produced by @command{git diff --binary}, so they
@@ -340,7 +341,7 @@ a dry run.
 
 @example
 cd $INV/fjalar
-git apply --check --reject -C1 -p2 --directory=valgrind $INV/coregrind.patch
+git apply --check --whitespace=nowarn -C1 -p2 --directory=valgrind $INV/coregrind.patch
 @end example
 
 There may be a few failed hunks (conflicts), reported as ``patch
@@ -355,25 +356,46 @@ Unlike @command{patch -l}, @command{git apply} does not tolerate changes
 in the amount of whitespace within a context line.  (Its
 @option{--ignore-whitespace} option does, but then it rejects context
 lines to which trailing whitespace has been added.)
+Option @option{--whitespace=nowarn} overrides any @code{apply.whitespace}
+setting in your Git configuration, which could otherwise strip
+whitespace from lines that upstream added.  Some of those lines, such
+as in regression test goal files, need their whitespace.
 
 When you are satisfied with the results of the dry run,
 continue with the actual merge, and stage its results before building
-creates any other files:
+creates any other files.
+Because @command{git add -A} stages every untracked file, first check
+that the following command prints nothing; if it does, delete those
+files as described in @ref{Verify current sources pass the regression tests}.
 
 @example
 cd $INV/fjalar
-git apply --reject -C1 -p2 --directory=valgrind $INV/coregrind.patch
+git ls-files --others --exclude-standard valgrind
+@end example
+
+@example
+cd $INV/fjalar
+git apply --reject --whitespace=nowarn -C1 -p2 --directory=valgrind $INV/coregrind.patch 2>&1 | tee $INV/coregrind-apply.log
 git add -A valgrind ':(exclude)*.rej'
 @end example
 
 @node Coregrind Conflicts
 @section Coregrind Conflicts
 
-Handle any conflicts. They are listed in the @command{git apply} output, or
-run this command:
+Handle any conflicts.  A hunk that does not apply is put in a
+@file{.rej} file.  List those files with this command:
 
 @example
 find -name '*.rej'
+@end example
+
+A patch to a file that @command{git apply} refuses entirely leaves no
+@file{.rej} file.  Examples are a new file that already exists, a
+change to a file that does not exist, and a change to a binary file
+that Fjalar has modified.  List those with this command:
+
+@example
+grep '^error: ' $INV/coregrind-apply.log | grep -v -e 'while searching for' -e 'patch failed'
 @end example
 
 For every change in the file you will need to examine both the changed
@@ -396,7 +418,7 @@ derived from Valgrind/Memcheck.
 
 @example
 cd $INV/fjalar
-git apply --check --reject -C1 -p3 --directory=valgrind/fjalar $INV/memcheck.patch
+git apply --check --whitespace=nowarn -C1 -p3 --directory=valgrind/fjalar $INV/memcheck.patch
 @end example
 
 There may be a few failed hunks (conflicts) - this is all right, we
@@ -410,13 +432,14 @@ success rate (reduces the number of conflicts), but this can be
 dangerous as it ignores more of the context in the patch file, which
 increases the odds of a faulty patch.
 
-When you are satisfied with the results of the dry run,
-continue with the actual merge:
+When you are satisfied with the results of the dry run, check again
+that @code{git ls-files --others --exclude-standard valgrind} prints
+nothing, then continue with the actual merge:
 
 @example
 cd $INV/fjalar
-git apply --reject -C1 -p3 --directory=valgrind/fjalar $INV/memcheck.patch
-git add -A valgrind ':(exclude)*.rej'
+git apply --reject --whitespace=nowarn -C1 -p3 --directory=valgrind/fjalar $INV/memcheck.patch 2>&1 | tee $INV/memcheck-apply.log
+git add -A valgrind/fjalar ':(exclude)*.rej'
 @end example
 
 Fjalar may not need every new Memcheck file.  Review the files that the
@@ -430,19 +453,26 @@ git diff --cached --name-only --diff-filter=A valgrind/fjalar
 @node Memcheck Conflicts
 @section Memcheck Conflicts
 
-Handle any conflicts. They are listed in the patch output, or run this
-command:
+Handle any conflicts.  As with Coregrind, list them with these commands:
 
 @example
 find -name '*.rej'
+grep '^error: ' $INV/memcheck-apply.log | grep -v -e 'while searching for' -e 'patch failed'
 @end example
 
 For every change in the file you will need to examine both the changed
 code as well as our original code and determine if it needs to be hand
 merged or if the change is not relevant.
 
-As with Coregrind, a file that was removed upstream but that has Fjalar
-changes is not removed.
+File @file{memcheck.patch} does not remove any files, because many
+Memcheck files do not exist in @file{valgrind/fjalar}.  List the files
+that upstream removed, and decide whether to remove each one from
+@file{valgrind/fjalar} with @command{git rm}:
+
+@example
+cd $INV
+git diff --no-index --name-status --no-renames --diff-filter=D valgrind-old/memcheck valgrind-new/memcheck
+@end example
 
 Our changes to Memcheck are much more substantial than our changes to
 Coregrind.
