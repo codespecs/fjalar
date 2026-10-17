@@ -69,9 +69,7 @@
 #include "kvasir/kvasir_main.h"
 #include "kvasir/dyncomp_main.h"
 #include "fjalar_main.h"
-// Declared in coregrind/pub_core_aspacemgr.h, which tool files must not
-// include (see tests/check_headers_and_includes).
-extern Bool VG_(am_is_valid_for_valgrind)(Addr start, SizeT len, UInt prot);
+#include "fjalar_core_decls.h"  // for VG_(am_is_valid_for_valgrind)
 
 #include "mc_include.h"
 #include "memcheck.h"   /* for client requests */

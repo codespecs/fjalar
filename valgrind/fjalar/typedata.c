@@ -39,12 +39,8 @@
 
 // For name demangling.
 #include "../coregrind/m_demangle/demangle.h"
-// For releasing the demanglers' results.  These are declared in
-// coregrind/pub_core_mallocfree.h, which tool files must not include (see
-// tests/check_headers_and_includes).  VG_AR_DEMANGLE must match the value
-// there.
-extern void VG_(arena_free)(Int arena, void* ptr);
-#define VG_AR_DEMANGLE 3
+// For VG_(arena_free), to release the demanglers' results.
+#include "fjalar_core_decls.h"
 
 // Most of the following information is taken from "DWARF Debugging
 // Information Format Version 4". Published by the DWARF Debugging
