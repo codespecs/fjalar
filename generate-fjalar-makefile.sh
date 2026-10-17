@@ -8,13 +8,18 @@
 # Usage: generate-fjalar-makefile.sh [OUTPUT]
 # OUTPUT defaults to valgrind/fjalar/Makefile.am.  The script prints each
 # line of the generated file that may need a change to the renaming, and
-# then it exits with status 2.
+# then it exits with status 2.  It exits with status 1 if it fails.
 
 set -e
 set -o pipefail
+# A failing command, such as sed, may itself exit with status 2.
+trap 'exit 1' ERR
 
 top=$(dirname "$0")
 output=${1:-$top/valgrind/fjalar/Makefile.am}
+# Write to a temporary file, so that a failure leaves OUTPUT unchanged.
+tmp=$output.tmp
+trap 'rm -f "$tmp"' EXIT
 
 # Fjalar's version is generated instead of patched, because almost every
 # line of it renames Memcheck to Fjalar, so most upstream changes would
@@ -32,7 +37,8 @@ output=${1:-$top/valgrind/fjalar/Makefile.am}
       "$top/valgrind/memcheck/Makefile.am"
   echo
   echo 'include $(srcdir)/fjalar.am'
-} > "$output"
+} > "$tmp"
+mv "$tmp" "$output"
 
 # An upstream change that the renaming does not handle needs a change to
 # this script.  Conflict markers mean that the Coregrind merge left

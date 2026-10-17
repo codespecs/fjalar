@@ -148,7 +148,9 @@ fi
 
 # memcheck.patch omits memcheck/Makefile.am.  Instead, generate Fjalar's
 # version from Memcheck's, which the Coregrind merge updated.  A dry run
-# writes it to $INV/fjalar-Makefile.am instead.
+# writes it to $INV/fjalar-Makefile.am instead.  If the generator fails or
+# finds problems, the file is not staged, so that it is not marked as
+# resolved; the summary below still lists the conflicts and refused files.
 if [ "$name" = memcheck ]; then
   if [ -n "$check" ]; then
     makefile=$INV/fjalar-Makefile.am
@@ -158,11 +160,14 @@ if [ "$name" = memcheck ]; then
   status=0
   makefile_problems=$("$INV/fjalar/generate-fjalar-makefile.sh" "$makefile") || status=$?
   if [ "$status" -ne 0 ] && [ "$status" -ne 2 ]; then
-    echo "$0: generate-fjalar-makefile.sh failed." >&2
-    exit 1
+    makefile_problems="generate-fjalar-makefile.sh failed; fix the problem and rerun it."
   fi
   if [ -z "$check" ]; then
-    git add valgrind/fjalar/Makefile.am
+    if [ -z "$makefile_problems" ]; then
+      git add valgrind/fjalar/Makefile.am
+    else
+      makefile_problems="$makefile_problems"$'\n'"valgrind/fjalar/Makefile.am is not staged."
+    fi
   fi
 fi
 

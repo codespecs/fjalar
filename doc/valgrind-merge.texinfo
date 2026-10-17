@@ -372,6 +372,24 @@ cd $INV/fjalar
 Fjalar created some of them, such as @file{mc_translate.h}; keep those.
 Remove the others with @command{git rm}.
 
+Fjalar builds every Memcheck source file, so its copy of Memcheck must
+have every one.  The following command lists the Memcheck files that the
+base Valgrind release has but that @file{valgrind/fjalar} lacks:
+
+@example
+cd $INV/fjalar
+(export LC_ALL=C
+ comm -13 <(git ls-files valgrind/fjalar | sed 's|^valgrind/fjalar/||' \
+              | grep -E '^(mc_|memcheck)' | sort) \
+          <(git -C $INV/valgrind-old ls-files memcheck \
+              | sed 's|^memcheck/||' | grep -E '^(mc_|memcheck)' | sort) \
+   | sed 's|^|valgrind/fjalar/|')
+@end example
+
+@noindent
+Copy each of them from @file{$INV/valgrind-old/memcheck} and add it with
+@command{git add}.
+
 The following command lists the files that the base Valgrind release
 has but that Fjalar does not track, which earlier merges failed to add.
 Examples are empty files and files that match @file{.gitignore}, such
@@ -567,7 +585,9 @@ instead, so you can review it before the actual merge.
 The scripts list any line of the generated file that still mentions
 Memcheck or docs, or that is a conflict marker.  Such a line may mean that
 the renaming in @file{generate-fjalar-makefile.sh} needs to handle a new
-upstream construct.  After changing @file{generate-fjalar-makefile.sh} or
+upstream construct.  In that case, or if
+@file{generate-fjalar-makefile.sh} fails, @file{apply-patch-files.sh}
+does not stage @file{valgrind/fjalar/Makefile.am}.  After changing @file{generate-fjalar-makefile.sh} or
 @file{fjalar.am}, regenerate the file and stage it:
 
 @example
