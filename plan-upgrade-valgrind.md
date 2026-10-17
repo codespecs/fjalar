@@ -55,6 +55,10 @@ it completely (merged, CI green) before starting this one.  That plan's
    git clone -b $VOLDVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-old
    git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-new
    ```
+   Remove from `fjalar/valgrind` the files that earlier merges left behind,
+   using the command in section "Remove files that earlier merges left
+   behind" of `doc/valgrind-merge.texinfo`.  (`git apply` removes the files
+   that upstream removed since `$VOLDVER`.)
 
 3. **Baseline.**  Never build in `valgrind-old` or `valgrind-new` themselves:
    `generate-patch-files.sh` diffs them with `git diff --no-index --binary`,
@@ -157,6 +161,9 @@ it completely (merged, CI green) before starting this one.  That plan's
       (`# Valgrind version 3.27.1, released ...`).
     - Add names of new Valgrind test drivers to `.gitignore`
       ("Ignore generated test drivers" section).
+    - Check that Fjalar tracks no file that upstream does not have:  the
+      command of step 2, with `valgrind-new` in place of `valgrind-old`,
+      prints only files that you decided to keep (step 5).
     - Document user-visible changes in `$INV/daikon/doc/CHANGELOG.md`.
     - Update `doc/valgrind-merge.texinfo`: regtest baseline output, dates/OS
       versions, building the baseline in a copy (step 3), and any new

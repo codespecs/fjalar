@@ -117,6 +117,7 @@ and other steps would use a different copy.
 * Get Valgrind version tags::
 * Obtain a copy of the base Valgrind source tree::
 * Obtain a copy of the target Valgrind source tree::
+* Remove files that earlier merges left behind::
 @end menu
 
 
@@ -290,6 +291,35 @@ git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git valgrind
 @c For a  full repro of the current Valgrind source:
 @c git clone https://sourceware.org/git/valgrind.git valgrind-git
 
+@node Remove files that earlier merges left behind
+@section Remove files that earlier merges left behind
+
+The patch files remove the files that the Valgrind developers removed
+between the base and the target Valgrind releases.  They do not remove
+files that Fjalar tracks but that the base Valgrind release does not have
+either, which earlier merges failed to remove.  The following command
+lists those files:
+
+@example
+cd $INV/fjalar
+(export LC_ALL=C
+ comm -23 <(git ls-files valgrind | sed 's|^valgrind/||' \
+              | grep -v -e '^fjalar/' -e '^REVISION$' | sort) \
+          <(git -C $INV/valgrind-old ls-files | sort) \
+   | sed 's|^|valgrind/|')
+@end example
+
+@noindent
+Review the list, then remove the files by running the same command
+with @code{| xargs -r git rm} appended.
+Setting @env{LC_ALL} makes @command{sort} and @command{comm} agree on the
+sort order; in other locales, @command{comm} can list files that
+Valgrind still has.
+
+After the merge, the same command with @file{valgrind-new} in place of
+@file{valgrind-old} lists the files that Fjalar tracks but the target
+Valgrind release does not have (@pxref{Coregrind Conflicts}).
+
 @node Creating the diffs
 @chapter Creating the diffs
 
@@ -408,6 +438,12 @@ command produces no output.
 A file that was removed upstream but that has Fjalar changes is not
 removed; @command{git apply} reports ``removal patch leaves file
 contents'' for it.  Decide whether to remove it with @command{git rm}.
+
+Then check that Fjalar tracks no other file that the target Valgrind
+release does not have:  run the command in @ref{Remove files that earlier
+merges left behind}, with @file{valgrind-new} in place of
+@file{valgrind-old}.  It should print only the files that you decided to
+keep.
 
 
 @node Memcheck Merge
