@@ -93,9 +93,13 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: regtest-results-regtest_ubuntu_26_04
+          # The *.out and *.diff* files are the outputs and diffs of the
+          # failing tests; vg_regtest deletes them for passing tests.
           path: |
             regtest-observed-*.txt
             regtest-*.log
+            valgrind/**/*.out
+            valgrind/**/*.diff*
 
   regtest_rocky_10:
     runs-on: ubuntu-latest
@@ -125,9 +129,13 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: regtest-results-regtest_rocky_10
+          # The *.out and *.diff* files are the outputs and diffs of the
+          # failing tests; vg_regtest deletes them for passing tests.
           path: |
             regtest-observed-*.txt
             regtest-*.log
+            valgrind/**/*.out
+            valgrind/**/*.diff*
 
   # These jobs run ./test-kvasir.sh, which runs Daikon's own scripts/test-kvasir.sh
   # against this repository.  That additionally runs the DynComp regression tests.

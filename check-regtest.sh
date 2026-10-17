@@ -8,8 +8,9 @@
 # the operating system, on whether gdb and glibc debuginfo are installed, and
 # sometimes on the CPU.  So this script does not require every test to pass.
 # It fails if:
-#  * a test fails that is not listed in the expected-failures file, or
-#  * the tests did not run (no summary line in the output).
+#  * a test fails that is not listed in the expected-failures file,
+#  * the tests did not run (no summary line in the output), or
+#  * the expected-failures file does not exist (unless --update is given).
 # A test that is listed as an expected failure but passes produces a warning,
 # not a failure; remove it from the expected-failures file.
 #
@@ -22,8 +23,11 @@
 #                    regtest-observed-<os>.txt (in this directory).
 #   --update         Rewrite the expected-failures file to match this run:
 #                    remove entries that did not fail and append new failures.
-#                    Comment lines, blank lines, and "?" lines are kept in
-#                    place.  Review the diff!
+#                    Blank lines and "?" lines are kept in place.  Comment
+#                    lines are kept in place, except that comment lines
+#                    directly above a group of entries (lines with no blank
+#                    line between them) are removed if every entry in the
+#                    group is removed.  Review the diff!
 #   --report-only    Report differences, and report tests that did not run,
 #                    but exit with status 0 regardless.
 #
@@ -121,12 +125,19 @@ fi
 # It is followed by one line per failure, then a blank line.
 SUMMARY_RE='^== [0-9]+ tests?, .* post failures? ==$'
 
+# Collapse each run of whitespace to one space, and remove leading and
+# trailing whitespace.  Observed and expected entries are compared in this
+# form, so that differences in whitespace do not matter.
+normalize() {
+  sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//'
+}
+
 # Print the observed failures, one per line, normalized to "name (kind)".
 observed_failures() {
   awk -v summary_re="$SUMMARY_RE" '
     $0 ~ summary_re { in_summary = 1; next }
     in_summary && /^[ \t]*$/ { in_summary = 0; next }
-    in_summary { $1 = $1; failures[n++] = $0; next }
+    in_summary { failures[n++] = $0; next }
     # Track the directory and name of the test that is running, such as
     #   -- Running  tests in massif/tests ------------------------------
     #   big-alloc:       valgrind --stacks=no ./big-alloc
@@ -145,12 +156,12 @@ observed_failures() {
       in_post_checks = 0; next
     }
     in_post_checks && !/^[ \t]*$/ {
-      $1 = $1; post_errors[m++] = "post_regtest_checks: " $0
+      post_errors[m++] = "post_regtest_checks: " $0
     }
     END {
       for (i = 0; i < n; i++) print failures[i]
       for (i = 0; i < m; i++) print post_errors[i]
-    }' "$LOG" | sort -u
+    }' "$LOG" | normalize | sort -u
 }
 observed_failures > "$OBSERVED"
 
@@ -165,15 +176,21 @@ if ! grep -Eq "$NONZERO_SUMMARY_RE" "$LOG"; then
 fi
 grep -E "$SUMMARY_RE" "$LOG" | tail -n 1
 
-# Lines of the expected-failures file, without comments, blank lines, or "?".
-expected_required() {
-  { grep -Ev '^[[:space:]]*(#|\?|$)' "$1" || true; } \
-    | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//' | sort -u
-}
-expected_optional() {
-  { grep -E '^[[:space:]]*\?' "$1" || true; } \
-    | sed -E 's/^[[:space:]]*\?[[:space:]]*//; s/[[:space:]]+/ /g; s/ $//' | sort -u
-}
+# The entries of the expected-failures file: REQUIRED (without comments,
+# blank lines, or "?" lines), OPTIONAL (the "?" lines, without the "?"),
+# and ALLOWED (both).
+if [ -f "$EXPECTED" ]; then
+  REQUIRED="$({ grep -Ev '^[[:space:]]*(#|\?|$)' "$EXPECTED" || true; } | normalize | sort -u)"
+  OPTIONAL="$({ grep -E '^[[:space:]]*\?' "$EXPECTED" || true; } \
+    | sed -E 's/^[[:space:]]*\?//' | normalize | sort -u)"
+else
+  REQUIRED=
+  OPTIONAL=
+fi
+ALLOWED="$(printf '%s\n%s\n' "$REQUIRED" "$OPTIONAL" | grep -v '^$' | sort -u || true)"
+
+UNEXPECTED="$(comm -23 "$OBSERVED" <(echo "$ALLOWED") | grep -v '^$' || true)"
+NEWLY_PASSING="$(comm -13 "$OBSERVED" <(echo "$REQUIRED") | grep -v '^$' || true)"
 
 if [ "$UPDATE" = true ]; then
   mkdir -p "$(dirname "$EXPECTED")"
@@ -181,23 +198,52 @@ if [ "$UPDATE" = true ]; then
   trap 'rm -f "$TMP"' EXIT
   if [ -f "$EXPECTED" ]; then
     # Keep comments, blank lines, "?" lines, and the required entries that
-    # failed, each in its place, so that a comment stays next to the entry
-    # that it explains.  The test is not "NR == FNR", which would be true for
-    # every line of $EXPECTED if $OBSERVED were empty.
-    awk 'FILENAME == ARGV[1] { observed[$0] = 1; next }
-         /^[[:space:]]*(#|\?|$)/ { print; next }
-         { line = $0; $1 = $1; if ($0 in observed) print line }' \
-      "$OBSERVED" "$EXPECTED" > "$TMP"
-    LISTED="$(printf '%s\n%s\n' "$(expected_required "$EXPECTED")" "$(expected_optional "$EXPECTED")")"
+    # failed, each in its place, so that a comment stays next to the entries
+    # that it explains.  A group is the comment lines directly above some
+    # entries plus those entries ("?" lines count as kept entries).  The
+    # group's comment lines are printed when its first kept entry is, and are
+    # dropped if it has none.  Consecutive blank lines are collapsed, because
+    # dropping a group can leave two blank lines next to each other.
+    # The awk input is each line of $EXPECTED, normalized, then a tab (which
+    # a normalized line does not contain), then the line itself.
+    # The test is not "NR == FNR", which would be true for every line of
+    # $EXPECTED if $OBSERVED were empty.
+    paste <(normalize < "$EXPECTED") "$EXPECTED" \
+      | awk -F '\t' 'function flush() { printf "%s", held; held = "" }
+         function out(s) { flush(); print s; last_blank = (s ~ /^[[:space:]]*$/) }
+         FILENAME == ARGV[1] { observed[$0] = 1; next }
+         { entry = $1; line = substr($0, length($1) + 2) }
+         entry ~ /^#/ { if (in_group) { held = ""; in_group = 0 }
+                        held = held line "\n"; next }
+         entry == "" { if (in_group) held = ""; in_group = 0
+                       if (held != "" || !last_blank) out(line); next }
+         entry ~ /^\?/ { in_group = 1; out(line); next }
+         { in_group = 1; if (entry in observed) out(line) }
+         END { if (!in_group) flush() }' \
+      "$OBSERVED" - > "$TMP"
   else
     {
-      echo "# Expected failures of Valgrind's regression tests (\"make test\") on $OS."
-      echo "# See check-regtest.sh for the format.  Regenerate with: ./check-regtest.sh --update"
+      echo "# Expected failures of Valgrind's regression tests (\"make regtest\") on $OS."
+      echo "# See check-regtest.sh for the format.  Regenerate with:"
+      if [ "$EXPECTED" = "$FJALARDIR/regtest-expected/$OS.txt" ]; then
+        echo "#   ./check-regtest.sh --update"
+      else
+        echo "#   check-regtest.sh --log <output of \"make regtest\"> --expected <this file> --update"
+      fi
+      # Separate the header from the entries, so that removing every entry
+      # does not remove the header too.
+      echo
     } > "$TMP"
-    LISTED=
   fi
-  # Append the observed failures that are not already listed.
-  comm -23 "$OBSERVED" <(echo "$LISTED" | grep -v '^$' | sort -u || true) >> "$TMP"
+  # Append the observed failures that are not already listed.  Separate them
+  # from a comment at the end of the file, so that the comment does not
+  # appear to explain them.
+  if [ -n "$UNEXPECTED" ]; then
+    if [ -n "$(tail -n 1 "$TMP" | tr -d '[:space:]')" ]; then
+      echo >> "$TMP"
+    fi
+    echo "$UNEXPECTED" >> "$TMP"
+  fi
   # Overwrite rather than move, so that the file keeps its permissions
   # (or, if new, gets the default ones rather than mktemp's 0600).
   cat "$TMP" > "$EXPECTED"
@@ -214,13 +260,6 @@ if [ ! -f "$EXPECTED" ]; then
   [ "$REPORT_ONLY" = true ] && exit 0
   exit 1
 fi
-
-REQUIRED="$(expected_required "$EXPECTED")"
-OPTIONAL="$(expected_optional "$EXPECTED")"
-ALLOWED="$(printf '%s\n%s\n' "$REQUIRED" "$OPTIONAL" | grep -v '^$' | sort -u || true)"
-
-UNEXPECTED="$(comm -23 "$OBSERVED" <(echo "$ALLOWED") | grep -v '^$' || true)"
-NEWLY_PASSING="$(comm -13 "$OBSERVED" <(echo "$REQUIRED") | grep -v '^$' || true)"
 
 # Print each line of the argument, indented.
 indent() {
