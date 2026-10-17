@@ -99,7 +99,8 @@ fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CPPFLAGS     = \
 fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CFLAGS       =   $(LTO_CFLAGS) \
 	$(AM_CFLAGS_@VGCONF_PLATFORM_PRI_CAPS@: -O2=-O0) $(EXTRA_CFLAGS)
 fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_DEPENDENCIES = \
-	$(TOOL_DEPENDENCIES_@VGCONF_PLATFORM_PRI_CAPS@)
+	$(TOOL_DEPENDENCIES_@VGCONF_PLATFORM_PRI_CAPS@) \
+	fjalar_core_decls.stamp
 fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LDADD        = \
 	$(TOOL_LDADD_@VGCONF_PLATFORM_PRI_CAPS@)
 fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LDFLAGS      = \
@@ -119,7 +120,8 @@ fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CPPFLAGS     = \
 fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CFLAGS       = $(LTO_CFLAGS) \
 	$(AM_CFLAGS_@VGCONF_PLATFORM_SEC_CAPS@: -O2=-O0) $(EXTRA_CFLAGS)
 fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_DEPENDENCIES = \
-	$(TOOL_DEPENDENCIES_@VGCONF_PLATFORM_SEC_CAPS@)
+	$(TOOL_DEPENDENCIES_@VGCONF_PLATFORM_SEC_CAPS@) \
+	fjalar_core_decls.stamp
 fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LDADD        = \
 	$(TOOL_LDADD_@VGCONF_PLATFORM_SEC_CAPS@)
 fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LDFLAGS      = \
@@ -177,3 +179,31 @@ vgpreload_fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_LDFLAGS      = \
 	$(LIBREPLACEMALLOC_LDFLAGS_@VGCONF_PLATFORM_SEC_CAPS@)
 endif
 
+
+#----------------------------------------------------------------------------
+# Consistency check for fjalar_core_decls.h
+#----------------------------------------------------------------------------
+
+# fjalar_core_decls.h copies declarations from coregrind headers, which
+# tool files must not include.  Compile it together with those headers, so
+# that the build fails if a Valgrind merge makes the copies wrong.  The
+# test program is piped to the compiler rather than stored in a .c file,
+# because tests/check_headers_and_includes forbids tool .c files from
+# including pub_core headers.  Each fjalar program depends on the stamp,
+# so the check runs whenever a program is built.
+CLEANFILES = fjalar_core_decls.stamp
+
+fjalar_core_decls.stamp: $(srcdir)/fjalar_core_decls.h \
+		$(top_srcdir)/coregrind/pub_core_aspacemgr.h \
+		$(top_srcdir)/coregrind/pub_core_mallocfree.h
+	{ echo '#include "fjalar_core_decls.h"'; \
+	  echo 'enum { fjalar_ar_demangle = VG_AR_DEMANGLE };'; \
+	  echo '#undef VG_AR_DEMANGLE'; \
+	  echo '#include "pub_core_aspacemgr.h"'; \
+	  echo '#include "pub_core_mallocfree.h"'; \
+	  echo '_Static_assert(fjalar_ar_demangle == VG_AR_DEMANGLE,'; \
+	  echo '  "VG_AR_DEMANGLE in fjalar_core_decls.h is wrong");'; \
+	} | $(CC) $(fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CPPFLAGS) \
+	    $(fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CFLAGS) \
+	    -I$(srcdir) -I$(top_srcdir)/coregrind -fsyntax-only -x c -
+	touch $@
