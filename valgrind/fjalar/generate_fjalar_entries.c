@@ -2634,10 +2634,7 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     varPtr->location_expression_size = paramPtr->dwarf_stack_size;
   }
 
-  if (paramPtr->location_has_unsupported_op) {
-    // varPtr->validLoc remains 0, so Fjalar omits the formal parameter.
-    FJALAR_DPRINTF(" location contains an unsupported operation\n");
-  } else if (paramPtr->location_type == LT_FP_OFFSET) {
+  if (paramPtr->location_type == LT_FP_OFFSET) {
     varPtr->validLoc = paramPtr->valid_loc;
     varPtr->locationType = FP_OFFSET_LOCATION;
     varPtr->byteOffset = paramPtr->location;

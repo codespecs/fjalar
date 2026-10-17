@@ -1447,11 +1447,6 @@ decode_location_expression (unsigned char * data,
 
   while (data < end)
     {
-      /* The size of a formal parameter's dwarf_stack before this op, or
-	 -1 if not harvesting a formal parameter's location.  */
-      int param_stack_size_before
-	= (ok_to_harvest ? formal_param_location_stack_size (entry) : -1);
-
       op = *data++;
 
       if(ll) {ll->atom = op;}
@@ -1474,20 +1469,10 @@ decode_location_expression (unsigned char * data,
 	  break;
 	case DW_OP_const1u:
 	  SAFE_BYTE_GET_AND_INC (uvalue, data, 1, end);
-	  if (ok_to_harvest)
-	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
-	      harvest_formal_param_location_atom(entry, op, uvalue);
-	      harvest_formal_param_location_offset(entry, uvalue);
-	    }
 	  printf ("DW_OP_const1u: %lu", (unsigned long) uvalue);
 	  break;
 	case DW_OP_const1s:
 	  SAFE_SIGNED_BYTE_GET_AND_INC (svalue, data, 1, end);
-	  if (ok_to_harvest)
-	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
-	      harvest_formal_param_location_atom(entry, op, svalue);
-	      harvest_formal_param_location_offset(entry, svalue);
-	    }
 	  printf ("DW_OP_const1s: %ld", (long) svalue);
 	  break;
 	case DW_OP_const2u:
@@ -1527,22 +1512,16 @@ decode_location_expression (unsigned char * data,
 	  printf ("DW_OP_const4s: %ld", (long) svalue);
 	  break;
 	case DW_OP_const8u:
-	  SAFE_BYTE_GET_AND_INC (uvalue, data, 8, end);
-	  if (ok_to_harvest)
-	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
-	      harvest_formal_param_location_atom(entry, op, uvalue);
-	      harvest_formal_param_location_offset(entry, uvalue);
-	    }
-	  printf ("DW_OP_const8u: %s", dwarf_vmatoa ("u", uvalue));
+	  SAFE_BYTE_GET_AND_INC (uvalue, data, 4, end);
+	  printf ("DW_OP_const8u: %lu ", (unsigned long) uvalue);
+	  SAFE_BYTE_GET_AND_INC (uvalue, data, 4, end);
+	  printf ("%lu", (unsigned long) uvalue);
 	  break;
 	case DW_OP_const8s:
-	  SAFE_SIGNED_BYTE_GET_AND_INC (svalue, data, 8, end);
-	  if (ok_to_harvest)
-	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
-	      harvest_formal_param_location_atom(entry, op, svalue);
-	      harvest_formal_param_location_offset(entry, svalue);
-	    }
-	  printf ("DW_OP_const8s: %s", dwarf_vmatoa ("d", svalue));
+	  SAFE_SIGNED_BYTE_GET_AND_INC (svalue, data, 4, end);
+	  printf ("DW_OP_const8s: %ld ", (long) svalue);
+	  SAFE_SIGNED_BYTE_GET_AND_INC (svalue, data, 4, end);
+	  printf ("%ld", (long) svalue);
 	  break;
 	case DW_OP_constu:
 	  READ_ULEB (uvalue, data, end);
@@ -2095,19 +2074,9 @@ decode_location_expression (unsigned char * data,
 	    printf (_("(User defined location op 0x%x)"), op);
 	  else
 	    printf (_("(Unknown location op 0x%x)"), op);
-	  if (param_stack_size_before >= 0)
-	    harvest_formal_param_location_unsupported (entry);
 	  /* No way to tell where the next op is, so just bail.  */
 	  return need_frame_base;
 	}
-
-      /* An op that is not in a formal parameter's dwarf_stack, such as
-	 DW_OP_piece, DW_OP_stack_value, or DW_OP_plus (which Fjalar's
-	 evaluator, having no operand stack, cannot apply), makes the
-	 location one that Fjalar does not support.  */
-      if (param_stack_size_before >= 0 && op != DW_OP_nop
-	  && formal_param_location_stack_size (entry) == param_stack_size_before)
-	harvest_formal_param_location_unsupported (entry);
 
       /* Separate the ops.  */
       if (data < end)

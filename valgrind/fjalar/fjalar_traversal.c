@@ -1025,7 +1025,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
               // DWARF supplied constant
               var_loc = dloc->atom_offset;
 
-            } else if(op == DW_OP_plus_uconst) {
+            } else if((op >= DW_OP_plus) && (op <= DW_OP_plus_uconst)) {
               // Add DWARF supplied constant to value to result of last DWARF operation
               var_loc += dloc->atom_offset;
 

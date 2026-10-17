@@ -754,14 +754,6 @@ traversals within data structures and arrays
 #define DWARF_FP_REG 5
 #endif
 
-// One more than the largest DWARF register number that Fjalar can
-// read.
-#if defined(VGA_amd64)
-#define FJALAR_NUM_DWARF_REGS 16
-#else
-#define FJALAR_NUM_DWARF_REGS 9
-#endif
-
 // If atom is DW_OP_regN or DW_OP_bregN, sets *regNum to N and returns
 // True.  Otherwise, returns False.
 Bool dwarf_op_reg_num(UInt atom, UInt* regNum);
