@@ -4,10 +4,10 @@
 # version of upstream Valgrind into Fjalar and Kvasir.
 # The patch files are produced by "git diff --binary", so that "git apply" can
 # add, remove, and change binary, empty, and executable files.
-# Options --no-renames and --no-ext-diff make the output independent of the
-# user's Git configuration; a copy or rename patch would transfer Fjalar's
-# changes from the source file to the destination file.  Limiting
-# "git diff --no-index" with a pathspec requires Git 2.51 or later.
+# Options --no-renames, --no-ext-diff, --no-color, and -U3 make the output
+# independent of the user's Git configuration; a copy or rename patch would
+# transfer Fjalar's changes from the source file to the destination file.
+# Limiting "git diff --no-index" with a pathspec requires Git 2.51 or later.
 # memcheck.patch omits removed files, because many Memcheck files do not
 # exist in valgrind/fjalar.
 
@@ -123,8 +123,8 @@ run_diff() {
   fi
 }
 
-run_diff coregrind.patch git diff --no-index --binary --no-renames --no-ext-diff --default-prefix valgrind-old valgrind-new ':(exclude,glob)**/.git'
-run_diff memcheck.patch git diff --no-index --binary --no-renames --no-ext-diff --diff-filter=d --default-prefix valgrind-old/memcheck valgrind-new/memcheck ':(exclude,glob)**/.git' ':(exclude,glob)**/docs' ':(exclude,glob)**/tests'
+run_diff coregrind.patch git diff --no-index --binary --no-renames --no-ext-diff --no-color -U3 --default-prefix valgrind-old valgrind-new ':(exclude,glob)**/.git'
+run_diff memcheck.patch git diff --no-index --binary --no-renames --no-ext-diff --no-color -U3 --diff-filter=d --default-prefix valgrind-old/memcheck valgrind-new/memcheck ':(exclude,glob)**/.git' ':(exclude,glob)**/docs' ':(exclude,glob)**/tests'
 
 # fjalar/valgrind is usually built in place.  To keep build products out of
 # the Fjalar diffs, diff a copy of the files that git does not ignore.  The

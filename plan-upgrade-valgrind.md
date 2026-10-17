@@ -81,16 +81,12 @@ it completely (merged, CI green) before starting this one.  That plan's
    `valgrind-new` are pristine clones at `$VOLDVER` and `$VNEWVER`.
 
 5. **Coregrind merge.**
-   - Check that `git ls-files --others --exclude-standard valgrind` prints
-     nothing, because `git add -A` stages every untracked file.  Repeat
-     this check before step 6.
-   - `cd fjalar; git apply --check --whitespace=nowarn -C1 -p2 --directory=valgrind $INV/coregrind.patch`,
-     then for real (without `--check`, and with
-     `2>&1 | tee $INV/coregrind-apply.log`), then
-     `git add -A valgrind ':(exclude)*.rej'`.
+   - `$INV/fjalar/apply-patch-files.sh --check coregrind`, then for real
+     (without `--check`).  The script stages the results, including
+     created files that match `.gitignore`, writes
+     `$INV/coregrind-apply.log`, and lists the conflicts.
    - Resolve `*.rej`, and the whole-file failures (which leave no `.rej`)
-     listed by
-     `grep '^error: ' $INV/coregrind-apply.log | grep -v -e 'while searching for' -e 'patch failed'`,
+     that the script listed,
      using `coregrind-Fjalar.diff` and the "Valgrind
      modifications" appendix as a checklist.  In particular, verify each
      Fjalar change still exists after the merge:
@@ -108,15 +104,13 @@ it completely (merged, CI green) before starting this one.  That plan's
      size/alignment checks, since Fjalar enlarges the shadow area.
 
 6. **Memcheck merge** into `valgrind/fjalar/`.
-   - `cd fjalar; git apply --check --whitespace=nowarn -C1 -p3 --directory=valgrind/fjalar $INV/memcheck.patch`,
-     then for real (without `--check`, and with
-     `2>&1 | tee $INV/memcheck-apply.log`; try `-C0` only if needed, and
-     review its results), then
-     `git add -A valgrind/fjalar ':(exclude)*.rej'`.
-   - Resolve `*.rej`, and the whole-file failures in
-     `$INV/memcheck-apply.log` (as for Coregrind).  `memcheck.patch` omits
+   - `$INV/fjalar/apply-patch-files.sh --check memcheck`, then for real
+     (without `--check`; try passing `-C0` after `memcheck` only if needed,
+     and review its results).
+   - Resolve `*.rej`, and the whole-file failures that the script listed
+     (as for Coregrind).  `memcheck.patch` omits
      removed files; list them with
-     `git diff --no-index --name-status --no-renames --diff-filter=D valgrind-old/memcheck valgrind-new/memcheck`
+     `git diff --no-index --name-status --no-renames --diff-filter=D valgrind-old/memcheck valgrind-new/memcheck ':(exclude,glob)**/docs' ':(exclude,glob)**/tests'`
      and `git rm` any that Fjalar does not need.  Remember part of `mc_translate.c` lives in
      `fjalar/mc_translate.h`.  Preserve the #73 edits to `mc_translate.c`
      and `memcheck.h`.
