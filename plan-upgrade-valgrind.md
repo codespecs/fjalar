@@ -112,8 +112,7 @@ it completely (merged, CI green) before starting this one.  That plan's
 
 6. **Memcheck merge** into `valgrind/fjalar/`.
    - `$INV/fjalar/apply-patch-files.sh --check memcheck`, then for real
-     (without `--check`; try passing `-C0` after `memcheck` only if needed,
-     and review its results).
+     (without `--check`).
    - Resolve the conflicts that the script listed (as for Coregrind), including files that upstream removed but
      Fjalar modified; `git rm` any that Fjalar does not need.  Remember part of `mc_translate.c` lives in
      `fjalar/mc_translate.h`.  Preserve the #73 edits to `mc_translate.c`

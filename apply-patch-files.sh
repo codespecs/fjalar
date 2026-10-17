@@ -8,6 +8,10 @@
 # overwrite the log file.
 # Each GIT-APPLY-OPTION, such as --exclude=PATH, is passed to "git apply"
 # after the default options, so it overrides them.
+# Options that reduce the context, such as -C0, do not reduce the conflicts:
+# "git apply --3way" applies each patch by a 3-way merge, which ignores
+# them.  They take effect only when "git apply" falls back to direct
+# application, where they risk applying a patch at the wrong place.
 # The output of "git apply" is also written to $INV/coregrind-apply.log or
 # $INV/memcheck-apply.log.  The script exits with status 1 if there were
 # conflicts or other problems.
@@ -83,18 +87,21 @@ export LC_ALL=C
 # so the file is listed with the conflicts.
 apply=(git -c rerere.autoupdate=false apply --3way --whitespace=nowarn --no-ignore-whitespace "$strip" --directory="$directory")
 
-# A patch to a file that changes only its mode has no "index" line, so
-# "git apply --3way" reports an error, falls back to direct application, and
-# succeeds.  The base blobs of all other patches were copied above, so this
-# sed command removes only messages about successful mode changes.
-quiet_mode_changes='/^error: repository lacks the necessary blob to perform 3-way merge\.$/{N;/\nFalling back to direct application\.\.\.$/d}'
+# "git apply --3way" falls back to direct application for a patch that
+# creates or removes a file, and for a patch that changes only the mode of a
+# file, because that patch has no "index" line.  For the latter, it also
+# reports an error.  The base blobs of all other patches were copied above,
+# so this sed command removes only messages about those fallbacks, which
+# name no file.  If direct application fails, "git apply" reports that
+# separately.
+quiet_fallbacks='/^error: repository lacks the necessary blob to perform 3-way merge\.$/d; /^Falling back to direct application\.\.\.$/d'
 
 # "git apply" applies no patch at all if it refuses the patch to any file.
 # Examples are a removal of a file that Fjalar has changed and a change to a
 # file that does not exist.  A dry run finds those files, so that the
 # actual run can exclude them.
 status=0
-"${apply[@]}" --check "$@" "$patch" 2>&1 | sed "$quiet_mode_changes" > "$log" || status=$?
+"${apply[@]}" --check "$@" "$patch" 2>&1 | sed "$quiet_fallbacks" > "$log" || status=$?
 # For each refused file, "refused" holds its name and "reasons" holds the
 # message that gives the name and the reason.
 refused=()
@@ -121,13 +128,13 @@ else
     exclude+=("--exclude=$(printf '%s' "$file" | sed 's/[][*?\\]/\\&/g')")
   done
   status=0
-  "${apply[@]}" "${exclude[@]}" "$@" "$patch" 2>&1 | sed "$quiet_mode_changes" | tee "$log" \
+  "${apply[@]}" "${exclude[@]}" "$@" "$patch" 2>&1 | sed "$quiet_fallbacks" | tee "$log" \
     || status=$?
-  if [ "$status" -ne 0 ] && [ -z "$(git ls-files -u)" ]; then
+  conflicts=$(git diff --name-only --diff-filter=U)
+  if [ "$status" -ne 0 ] && [ -z "$conflicts" ]; then
     echo "$0: git apply failed; see $log." >&2
     exit 1
   fi
-  conflicts=$(git diff --name-only --diff-filter=U)
   if [ "$name" = memcheck ]; then
     # memcheck.patch omits memcheck/Makefile.am, because almost every line of
     # Fjalar's version renames Memcheck to Fjalar, so most upstream changes
