@@ -7,30 +7,36 @@ Both upgrade plans assume these are done.
 
 Below, `$INV/fjalar` means the Fjalar tree being changed.
 
-Suggested PRs, in order:
-1. Valgrind regtest in CI, report-only (item 1): PR #96, which also adds
-   these plans.
-2. Remove files that upstream deleted (item 7).  Do this before
-   bootstrapping item 1's expected-failure lists, because it changes which
-   tests fail.
-3. Commit the expected-failure lists and make the regtest jobs enforce
-   them (item 1, "Remaining").
-4. `make git-update` and `generate-patch-files.sh` fixes (items 2 and 3).
-5. DynComp scan for unhandled IROps (item 4); one PR per bug found.
-6. Merge-doc updates (item 5), possibly together with PR 4.
+PRs:
+- Open, independent of each other:
+  - #96: Valgrind regtest in CI, report-only (item 1); also adds these plans.
+  - #97: allow Fjalar's two `pub_core` includes in the post-regtest header
+    check (part of item 1).
+  - #98: remove files that upstream deleted (item 7).
+  - #99: `generate-patch-files.sh` checks its inputs (item 3).
+  - #100: fix `make git-update` (item 2).
+  - #101: merge-doc updates (item 5, except what depends on #96).
+- Not started:
+  - After #96, #97, and #98 merge: commit the expected-failure lists and
+    make the regtest jobs enforce them (item 1, "Remaining").  #97 and #98
+    change which checks fail, so do this after them.
+  - After #96 merges: describe `check-regtest.sh` in the merge doc
+    (item 5).
+  - DynComp scan for unhandled IROps (item 4); one PR per bug found.
 
 Item 6 is a quick investigation with no code change; do it any time before
 step 4 of the readelf plan.
 
 ## 1. Run Valgrind's regression tests in CI, against expected failures
 
-Status: script and CI jobs written, in PR #96.  Tested end to end on a
+Status: script and CI jobs in PR #96.  Tested end to end on a
 Rocky Linux 10 host (not the CI container): 813 tests; failures were 14
 `gdbserver_tests` (no glibc debuginfo), `cachegrind/tests/ann1` and `diff`,
 `memcheck/tests/memalign2` (the last three are stale tests; see item 7),
 `memcheck/tests/origin6-fp`, `none/tests/libvex_test`,
-`none/tests/libvexmultiarch_test`, and 29 post-test-check errors (mostly
-item 7; also two Fjalar include-rule violations).  Expected-failure lists
+`none/tests/libvexmultiarch_test`, and 29 post-test-check errors (27
+from item 7, fixed by #98; 2 Fjalar include-rule violations, allowed by
+#97).  Expected-failure lists
 not yet bootstrapped.
 
 Why: both upgrade plans currently check Valgrind's regression tests by
@@ -59,7 +65,7 @@ What (done):
   two entries joined by a missing newline; both are listed separately).
 
 Remaining:
-1. After #96 and item 7 are merged, push a branch and let the regtest jobs
+1. After #96, #97, and #98 are merged, push a branch and let the regtest jobs
    run.  Download the
    `regtest-results-*` artifacts and copy each `regtest-observed-<os>.txt`
    to `regtest-expected/<os>.txt` (or run
@@ -79,6 +85,11 @@ Remaining:
 Done when: CI enforces the lists on both distros and is green.
 
 ## 2. Fix the memcheck part of `make git-update`
+
+Status: PR #100.  It also fixes two bugs found while testing: added files
+were found by the date `1969-12-31`, which `diff` prints for the epoch only
+west of UTC (in UTC, no added files were found), and removed directories
+needed `git rm -r`.
 
 Why: the coregrind part of `git-update` (`Makefile`) prints `git add` /
 `git rm` commands, but the memcheck part:
@@ -104,6 +115,8 @@ removed (find such a pair with
 check the commands `make git-update` prints.
 
 ## 3. Make `generate-patch-files.sh` check its inputs
+
+Status: PR #99.
 
 Why: any build product in `valgrind-old` or `valgrind-new` silently ends up
 in `coregrind.patch` and is then `git add`ed by `make git-update`.  Also,
@@ -144,6 +157,9 @@ What:
   (the Kvasir CI jobs log the CPU flags).
 
 ## 5. Update `doc/valgrind-merge.texinfo` with what is already known
+
+Status: PR #101, except describing `check-regtest.sh`, which waits for
+#96; #100 updates the `make git-update` section.
 
 Why: so that neither upgrade plan has to say "the doc says X, but do Y".
 
@@ -188,6 +204,8 @@ What: in each Docker image, run `rpm -q binutils-devel` (Rocky Linux) or
 (step 4).  Optionally, also print it in the CI "System information" step.
 
 ## 7. Remove upstream files that upstream deleted but Fjalar still tracks
+
+Status: PR #98.  The two include-rule errors are allowed by PR #97.
 
 Why: past merges skipped the doc's "Remove files that have been removed
 upstream" step.  Comparing `git ls-files valgrind` (excluding
