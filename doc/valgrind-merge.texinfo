@@ -267,7 +267,12 @@ If you performed the last merge and saved the
 cd $INV
 rm -rf valgrind-old
 mv valgrind-new valgrind-old
+git -C valgrind-old clean -fdx
 @end example
+
+@noindent
+The @command{git clean} command removes any build products, which would
+otherwise end up in the patch files.
 
 Otherwise, run the following commands.
 
@@ -538,11 +543,18 @@ some failures. Rather, it is important to capture the results
 as they should be similar after the source merge. They may not be
 identical due to Valgrind improvements or the addition of new test cases.
 
-To run the @command{regtest} verification tests,
-return to the root of your @file{valgrind-new} directory.  Then run
-the following commands:
+Never build in @file{valgrind-old} or @file{valgrind-new} themselves.
+@file{generate-patch-files.sh} diffs those directories, so any build
+products in them would end up in @file{coregrind.patch}.  This includes
+the next merge, when @file{valgrind-new} becomes @file{valgrind-old}.
+Instead, build a copy.  To run the @command{regtest} verification tests,
+run the following commands:
 
 @example
+cd $INV
+cp -a valgrind-new valgrind-new-build
+cd valgrind-new-build
+./autogen.sh
 ./configure --prefix=`pwd`/inst
 make all install
 make regtest > test.log 2>&1

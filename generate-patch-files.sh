@@ -21,30 +21,47 @@ done
 # and then be added to Fjalar by "make git-update".  So both trees must be
 # pristine clones.  Build the upstream baseline in a copy instead.
 for dir in "$INV/valgrind-old" "$INV/valgrind-new"; do
-  if [ -n "$(git -C "$dir" status --porcelain --ignored)" ]; then
+  # Without this check, "git status" would report on an enclosing
+  # repository, or would fail and produce no output.
+  toplevel=$(git -C "$dir" rev-parse --show-toplevel 2> /dev/null) || toplevel=
+  if [ "$toplevel" != "$(cd "$dir" && pwd -P)" ]; then
+    echo "$0: $dir is not the top level of a git clone." >&2
+    exit 1
+  fi
+  status=$(git -C "$dir" status --porcelain --ignored)
+  if [ -n "$status" ]; then
     echo "$0: $dir has changes or files that are not in its git" >&2
-    echo "repository, such as build products.  It must be a pristine clone:" >&2
-    git -C "$dir" status --porcelain --ignored | head -n 20 >&2
+    echo "$0: repository, such as build products.  It must be a pristine clone:" >&2
+    echo "$status" | head -n 20 >&2
+    echo "$0: To remove untracked files and build products, run:" >&2
+    echo "$0:   git -C \"$dir\" clean -fdx" >&2
     exit 1
   fi
 done
 
 cd "$INV"
 
-# diff exits with status 1 if the files differ, which is expected, and with
-# status 2 if there was trouble.
+# Remove all the output files first, so that a failure does not leave
+# stale ones from an earlier run.
+rm -f coregrind.patch memcheck.patch coregrind-Fjalar.diff memcheck-Fjalar.diff
+
+# Usage: run_diff OUTFILE DIFF-ARGS...
+# Creates OUTFILE only if diff succeeds, so a failure does not leave a
+# partial file.  diff exits with status 1 if the files differ, which is
+# expected, and with status 2 if there was trouble.
 run_diff() {
-  diff "$@" || [ $? -eq 1 ]
+  local out=$1
+  shift
+  if diff "$@" > "$out.tmp" || [ $? -eq 1 ]; then
+    mv "$out.tmp" "$out"
+  else
+    rm -f "$out.tmp"
+    echo "$0: diff failed, so $out was not created." >&2
+    exit 1
+  fi
 }
 
-rm -f coregrind.patch
-run_diff -ur --unidirectional-new-file -x.git valgrind-old valgrind-new > coregrind.patch
-
-rm -f  memcheck.patch
-run_diff -ur --unidirectional-new-file -x.git -xdocs -xtests valgrind-old/memcheck valgrind-new/memcheck > memcheck.patch
-
-rm -f coregrind-Fjalar.diff
-run_diff -ur -xinst -x.git -xfjalar -xMakefile.in -xfjalar/html valgrind-old fjalar/valgrind > coregrind-Fjalar.diff
-
-rm -f memcheck-Fjalar.diff
-run_diff -ur -xinst -x.git -xMakefile.in -xhtml -xdocs -xtests valgrind-old/memcheck fjalar/valgrind/fjalar > memcheck-Fjalar.diff
+run_diff coregrind.patch -ur --unidirectional-new-file -x.git valgrind-old valgrind-new
+run_diff memcheck.patch -ur --unidirectional-new-file -x.git -xdocs -xtests valgrind-old/memcheck valgrind-new/memcheck
+run_diff coregrind-Fjalar.diff -ur -xinst -x.git -xfjalar -xMakefile.in valgrind-old fjalar/valgrind
+run_diff memcheck-Fjalar.diff -ur -xinst -x.git -xMakefile.in -xhtml -xdocs -xtests valgrind-old/memcheck fjalar/valgrind/fjalar
