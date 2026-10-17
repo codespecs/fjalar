@@ -267,12 +267,13 @@ If you performed the last merge and saved the
 cd $INV
 rm -rf valgrind-old
 mv valgrind-new valgrind-old
-git -C valgrind-old clean -fdx
+git -C valgrind-old reset --hard && git -C valgrind-old clean -fdx
 @end example
 
 @noindent
-The @command{git clean} command removes any build products, which would
-otherwise end up in the patch files.
+The @command{git reset} command discards any changes to files in the
+repository, and the @command{git clean} command removes any build products.
+Either would otherwise end up in the patch files.
 
 Otherwise, run the following commands.
 

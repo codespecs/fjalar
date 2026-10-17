@@ -3,8 +3,13 @@
 # This script creates patch files that are used when merging a newer
 # version of upstream Valgrind into Fjalar and Kvasir.
 
-# Fail the whole script if any command fails.
+# Fail the whole script if any command fails, including within a pipeline.
 set -e
+set -o pipefail
+
+# Make "cd" with a relative directory resolve it against the current
+# directory, as "git -C" does.
+unset CDPATH
 
 if [ -z "$INV" ]; then
   echo "$0: INV is not set; see doc/valgrind-merge.texinfo." >&2
@@ -37,7 +42,11 @@ for dir in "$INV/valgrind-old" "$INV/valgrind-new"; do
   if [ -n "$status" ]; then
     echo "$0: $dir has changes or files that are not in its git" >&2
     echo "$0: repository, such as build products.  It must be a pristine clone:" >&2
-    echo "$status" | head -n 20 >&2
+    head -n 20 <<< "$status" >&2
+    count=$(wc -l <<< "$status")
+    if [ "$count" -gt 20 ]; then
+      echo "$0: ... and $((count - 20)) more." >&2
+    fi
     echo "$0: To discard changes and remove untracked files and build products, run:" >&2
     echo "$0:   git -C \"$dir\" reset --hard && git -C \"$dir\" clean -fdx" >&2
     exit 1
@@ -45,11 +54,14 @@ for dir in "$INV/valgrind-old" "$INV/valgrind-new"; do
 done
 
 cd "$INV"
+inv=$(pwd -P)
 
-# The temporary file that run_diff is writing, if any.  It is removed if
-# the script exits early, including when it is interrupted.
+# The temporary file that run_diff is writing, if any, and the copy of
+# fjalar/valgrind.  They are removed when the script exits, including when
+# it exits early or is interrupted.
 tmp=
-trap 'rm -f "$tmp"' EXIT
+fjalar_copy=
+trap 'rm -f "$tmp"; [ -z "$fjalar_copy" ] || rm -rf "$fjalar_copy"' EXIT
 
 # Usage: run_diff OUTFILE DIFF-ARGS...
 # Creates OUTFILE only if diff succeeds, so a failure does not leave a
@@ -76,5 +88,18 @@ run_diff() {
 
 run_diff coregrind.patch -ur --unidirectional-new-file -x.git valgrind-old valgrind-new
 run_diff memcheck.patch -ur --unidirectional-new-file -x.git -xdocs -xtests valgrind-old/memcheck valgrind-new/memcheck
-run_diff coregrind-Fjalar.diff -ur -xinst -x.git -xfjalar -xMakefile.in valgrind-old fjalar/valgrind
-run_diff memcheck-Fjalar.diff -ur -xinst -x.git -xMakefile.in -xhtml -xdocs -xtests valgrind-old/memcheck fjalar/valgrind/fjalar
+
+# fjalar/valgrind is usually built in place.  To keep build products out of
+# the Fjalar diffs, diff a copy of the files that git does not ignore.  The
+# copy is in a directory that mirrors $INV, so the diffs show the same
+# paths as if they had been run in $INV.
+fjalar_copy=$(mktemp -d)
+ln -s "$inv/valgrind-old" "$fjalar_copy/valgrind-old"
+mkdir "$fjalar_copy/fjalar"
+# --ignore-failed-read skips, without a warning, tracked files that have been deleted.
+git -C fjalar ls-files -z --cached --others --exclude-standard -- valgrind \
+  | tar -C fjalar --null --files-from=- --ignore-failed-read --warning=no-failed-read -cf - \
+  | tar -C "$fjalar_copy/fjalar" -xf -
+cd "$fjalar_copy"
+run_diff "$inv/coregrind-Fjalar.diff" -ur -x.git -xfjalar valgrind-old fjalar/valgrind
+run_diff "$inv/memcheck-Fjalar.diff" -ur -x.git -xhtml -xdocs -xtests valgrind-old/memcheck fjalar/valgrind/fjalar

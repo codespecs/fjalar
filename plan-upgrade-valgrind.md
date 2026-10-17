@@ -151,8 +151,9 @@ it completely (merged, CI green) before starting this one.  That plan's
     - Update `doc/valgrind-merge.texinfo`: regtest baseline output, dates/OS
       versions, and any new pitfalls.
     - Commit as one PR; save the patch/diff files and `valgrind-new` (it
-      becomes `valgrind-old` for the next merge; delete
-      `valgrind-new-build`).
+      becomes `valgrind-old` for the next merge, after
+      `git -C valgrind-old reset --hard && git -C valgrind-old clean -fdx`;
+      delete `valgrind-new-build`).
 
 ## Risks
 
