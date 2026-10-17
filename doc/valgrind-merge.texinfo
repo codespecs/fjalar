@@ -315,37 +315,16 @@ git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git valgrind
 @node Remove files that have been removed upstream
 @section Remove files that have been removed upstream
 
-The following command lists the files, outside @file{valgrind/fjalar/},
-that Fjalar tracks but the target Valgrind does not have.  These include
-files that the Valgrind developers removed since the last merge and any
-that earlier merges left behind.  Remove every file it prints except
-@file{REVISION}, which is Fjalar's own.  Use @command{rm}, not
-@command{git rm}: the @file{git.script} generated in @ref{Committing}
-runs @command{git rm} on many of these files, and fails if they are
-already removed from the index.  @samp{git commit -a} records the
-removal of the others.
+The following command lists
+files that have been removed by the Valgrind developers since the last
+merge:
 
 @example
-cd $INV/fjalar
-LC_ALL=C comm -23 \
-  <(git ls-files valgrind | sed 's|^valgrind/||' | grep -v '^fjalar/' | LC_ALL=C sort) \
-  <(git -C $INV/valgrind-new ls-files | LC_ALL=C sort)
+cd $INV
+diff -qrb -x.git valgrind-old valgrind-new |grep "Only in valgrind-old"
 @end example
 
-Fjalar has two copies of memcheck: an unmodified one in
-@file{$INV/fjalar/valgrind/memcheck/}, and a modified one (the
-@file{mc_*} files and @file{memcheck.h}) in
-@file{$INV/fjalar/valgrind/fjalar/}.  The following command lists the
-files in the modified copy that have no counterpart in the target
-Valgrind's memcheck.  Except for @file{mc_translate.h}, which is
-Fjalar's own, check each one for Fjalar changes, then remove it:
-
-@example
-cd $INV/fjalar/valgrind/fjalar
-for f in mc_*.[ch] memcheck.h; do
-  [ -e $INV/valgrind-new/memcheck/$f ] || echo $f
-done
-@end example
+Remove these files.
 
 This step could be done later, but we do it now to reduce the size
 of the patch and diff files.
@@ -569,9 +548,9 @@ guidelines on supporting new VEX instructions.
 Valgrind has a set of verification tests known as @command{regtest}.  We want
 to run these tests on a clean version of Valgrind to establish a
 baseline set of results for partial verification of the merge process.
-Since running these tests generates a lot of additional files, we wait
-until after we have done the source merge update to run this test.
-This keeps the files used during the source merge update to a minimum.
+Because the tests run in a copy of @file{valgrind-new} (see
+below), you can run them at any time after you have obtained
+@file{valgrind-new}, for example while you merge the sources.
 
 You will need to make sure @command{gdb} is installed on your machine
 to run these tests. Also, they are very sensitive
@@ -585,7 +564,7 @@ To run the @command{regtest} verification tests, build a copy of
 must stay a pristine clone: it becomes @file{valgrind-old} for the next
 merge, and @command{generate-patch-files.sh} diffs it, so if that script
 is re-run, any build products there would end up in @file{coregrind.patch}
-and then be added to Fjalar by @samp{make git-update}.
+and then be added to Fjalar.
 
 @example
 cd $INV
