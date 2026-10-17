@@ -82,7 +82,11 @@ if [ -z "$LOG" ]; then
   echo "Running Valgrind regression tests; output is in $LOG"
   # "make regtest" exits with non-zero status whenever any test fails, which
   # is the usual case, so ignore its status and examine its output instead.
-  make test > "$LOG" 2>&1 || true
+  # "make regtest" first runs "make check", which also validates Valgrind's XML
+  # manual with xmllint if xmllint is installed.  That needs the DocBook DTD,
+  # from a package or the network, and is not a test of Valgrind's behavior.
+  # Naming a nonexistent xmllint makes docs/Makefile skip the validation.
+  make test XMLLINT=xmllint-skipped-by-check-regtest > "$LOG" 2>&1 || true
 fi
 
 # The summary line has this form:
