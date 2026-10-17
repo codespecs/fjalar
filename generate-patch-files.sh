@@ -136,9 +136,15 @@ run_diff memcheck.patch "${gitdiff[@]}" valgrind-old/memcheck valgrind-new/memch
 fjalar_copy=$(mktemp -d)
 ln -s "$inv/valgrind-old" "$fjalar_copy/valgrind-old"
 mkdir "$fjalar_copy/fjalar"
-# --ignore-failed-read skips, without a warning, tracked files that have been deleted.
+# Omit tracked files that have been deleted from the work tree.  Any other
+# failure to read a file stops the script, rather than producing an
+# incomplete diff.
 git -C fjalar ls-files -z --cached --others --exclude-standard -- valgrind \
-  | tar -C fjalar --null --files-from=- --ignore-failed-read --warning=no-failed-read -cf - \
+  | (cd fjalar \
+     && while IFS= read -r -d '' f; do
+          if [ -e "$f" ] || [ -L "$f" ]; then printf '%s\0' "$f"; fi
+        done) \
+  | tar -C fjalar --null --files-from=- -cf - \
   | tar -C "$fjalar_copy/fjalar" -xf -
 cd "$fjalar_copy"
 run_diff "$inv/coregrind-Fjalar.diff" diff -ur -x.git -xfjalar valgrind-old fjalar/valgrind
