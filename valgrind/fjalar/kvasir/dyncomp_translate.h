@@ -35,7 +35,7 @@ void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
                         IRAtom* atom, IRAtom* vatom );
 void do_shadow_PUTI_DC ( DCEnv* dce, IRPutI *puti );
 void do_shadow_STle_DC ( DCEnv* dce, IRAtom* addr, IRAtom* data );
-// IRAtom* do_shadow_cond_exit_DC (DCEnv* dce, IRExpr* guard);
+IRAtom* do_shadow_cond_exit_DC (DCEnv* dce, IRExpr* guard);
 
 void do_shadow_CAS_DC ( DCEnv* dce, IRCAS* cas );
 

@@ -47,9 +47,6 @@ make check-options
 
 make build
 
-## Fjalar tests that do not depend on Daikon
-make fjalar-test
-
 make doc
 
 ## Valgrind tests
