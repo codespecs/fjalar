@@ -50,12 +50,11 @@ make build
 make doc
 
 ## Valgrind tests
-## Valgrind doesn't pass its own tests ("make test").  So we should have a
-## version of the target that determines the current operating system,
-## compares the observed failures to the expected failures (those suffered
-## by "make test" on a fresh Valgrind installation on that OS), and the
-## overall target only fails if the set of failing tests is different.
-# make test
+## Valgrind doesn't pass its own tests ("make test").  ./check-regtest.sh runs
+## them and fails only if the set of failing tests differs from the expected
+## failures for this operating system.  CI runs it in separate jobs, because it
+## takes about 15 minutes.
+# ./check-regtest.sh
 
 ## Kvasir tests
 make MPARG=-j1 daikon-test
