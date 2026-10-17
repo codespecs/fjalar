@@ -84,9 +84,11 @@ Remaining:
    prefix.
 3. Remove `--report-only` from both CI jobs (the TODO comments in
    `.github/workflows/ci.yml`) and commit the lists.
-4. Optional: install `gdb` and glibc debuginfo in the Daikon Docker images
-   (in the Daikon repository), which makes most `gdbserver_tests` pass, then
-   regenerate the lists.  This makes the regtest a more sensitive check.
+4. Install `gdb` and glibc debuginfo in the Daikon `-plus` Docker images,
+   which Fjalar's CI uses: codespecs/daikon#916.  After it merges, rebuild
+   and push the images (`scripts/Dockerfile-README.md` in Daikon), then
+   regenerate the lists.  This makes most `gdbserver_tests` meaningful.
+   Ideally do this before step 1, so the lists are generated only once.
 5. Update `doc/valgrind-merge.texinfo` ("Get New Valgrind Regtest Baseline
    Results", "Testing Valgrind") to describe `check-regtest.sh`; see item 5.
 
