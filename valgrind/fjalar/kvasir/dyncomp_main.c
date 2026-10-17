@@ -60,6 +60,7 @@
 #include "pub_tool_libcbase.h"
 #include "pub_tool_libcprint.h"
 #include "mc_include.h"
+#include "../../VEX/priv/guest_amd64_defs.h"  // AMD64G_CC_OP_*
 #include "memcheck.h"
 
 // Special reserved tags
@@ -193,22 +194,28 @@ void val_uf_make_set_for_tag(UInt tag) {
   uf_make_set(GET_UF_OBJECT_PTR(tag), tag);
 }
 
+// Returns a description of the current instruction address, for
+// trace output.  It is expensive, so call it only when tracing; for
+// example, as an argument to DYNCOMP_TPRINTF, which evaluates its
+// arguments only when tracing.
+const HChar* current_IP_description(void) {
+  Addr eip = VG_(get_IP)(VG_(get_running_tid)());
+  // Describe this (probably live) address with current epoch
+  return VG_(describe_IP)(VG_(current_DiEpoch)(), eip, NULL);
+}
+
 // Merge the sets of tag1 and tag2 and return the leader
 UInt val_uf_tag_union(UInt tag1, UInt tag2) {
   if (!IS_ZERO_TAG(tag1) && !IS_SECONDARY_UF_NULL(tag1) &&
       !IS_ZERO_TAG(tag2) && !IS_SECONDARY_UF_NULL(tag2)) {
-    Addr eip = VG_(get_IP)(VG_(get_running_tid)());
-    const HChar *eip_info;
     uf_object* tag1_obj, *tag2_obj;
     uf_object* leader;
     tag1_obj = GET_UF_OBJECT_PTR(tag1);
     tag2_obj = GET_UF_OBJECT_PTR(tag2);
     leader = uf_union(tag1_obj, tag2_obj);
-    // Describe this (probably live) address with current epoch
-    eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), eip, NULL);
 
     DYNCOMP_TPRINTF("[DynComp-v1] Merging %u with %u to get %u at %s\n",
-                    tag1, tag2, leader->tag, eip_info);
+                    tag1, tag2, leader->tag, current_IP_description());
 
     return leader->tag;
   }
@@ -436,10 +443,33 @@ UInt MC_(helperc_CREATE_TAG)(Addr static_id) {
 }
 
 
+// Returns the tag of the value in [a, a + len).  Loading a value whose bytes
+// have different tags is an interaction that merges those tags, except in
+// the modes in which only comparisons, or nothing, are interactions.  In
+// those modes, the result is the leader of the first non-zero tag in the
+// range, or 0.  That is the result of val_uf_union_tags_in_range when the
+// range contains only one non-zero tag; for example, both return 0 for a
+// range whose tags are all WEAK_FRESH_TAG.
+static UInt load_tag_in_range(Addr a, SizeT len) {
+  Addr curAddr;
+  UInt curTag;
+
+  if (!(dyncomp_dataflow_only_mode || dyncomp_dataflow_comparisons_mode)) {
+    return val_uf_union_tags_in_range(a, len);
+  }
+  for (curAddr = a; curAddr < (a + len); curAddr++) {
+    curTag = get_tag(curAddr);
+    if (curTag) {
+      return val_uf_find_leader(curTag);
+    }
+  }
+  return 0;
+}
+
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_8) ( Addr a ) {
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_8: %p\n", (void *)a);
-  return val_uf_union_tags_in_range(a, 8);
+  return load_tag_in_range(a, 8);
 }
 
 VG_REGPARM(1)
@@ -450,19 +480,19 @@ UInt MC_(helperc_LOAD_TAG_4) ( Addr a ) {
     return grab_fresh_tag();
   }
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_4: %p\n", (void *)a);
-  return val_uf_union_tags_in_range(a, 4);
+  return load_tag_in_range(a, 4);
 }
 
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_2) ( Addr a ) {
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_2: %p\n", (void *)a);
-  return val_uf_union_tags_in_range(a, 2);
+  return load_tag_in_range(a, 2);
 }
 
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_1: %p => %u\n", (void *)a, get_tag(a));
-  return val_uf_union_tags_in_range(a, 1);
+  return load_tag_in_range(a, 1);
 }
 
 // Make this const so gcc can eliminate dead code to improve
@@ -499,11 +529,6 @@ UInt tag2_is_new ( UInt tag1, UInt tag2 ) {
 // of the merged set
 VG_REGPARM(2)
 UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
-  Addr eip = VG_(get_IP)(VG_(get_running_tid)());
-  const HChar *eip_info;
-  // Describe this (probably live) address with current epoch
-  eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), eip, NULL);
-
   if (dyncomp_profile_tags) {
     mergeTagsCount++;
   }
@@ -521,12 +546,12 @@ UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
   //  but that's correctly handled)
   else if (WEAK_FRESH_TAG == tag1) {
     DYNCOMP_TPRINTF("[DynComp-m1] Merging %u with %u to get %u at %s\n",
-                    tag1, tag2, tag2, eip_info);
+                    tag1, tag2, tag2, current_IP_description());
     return tag2;
   }
   else if (WEAK_FRESH_TAG == tag2) {
     DYNCOMP_TPRINTF("[DynComp-m2] Merging %u with %u to get %u at %s\n",
-                    tag1, tag2, tag1, eip_info);
+                    tag1, tag2, tag1, current_IP_description());
     return tag1;
   }
   else {
@@ -580,6 +605,24 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
     val_uf_tag_union(tag1, tag2);
     return 0;
   }
+}
+
+// Returns True if cc_op, the CC_OP field of the flags thunk, says that the
+// flags are the result of a subtraction (a cmp or sub instruction), which
+// is how amd64 compares values.
+Bool cc_op_is_sub(ULong cc_op) {
+  return AMD64G_CC_OP_SUBB <= cc_op && cc_op <= AMD64G_CC_OP_SUBQ;
+}
+
+// Like MC_(helperc_MERGE_TAGS_RETURN_0), but merges tag1 and tag2 only if
+// cc_op_is_sub(cc_op).  tag1 and tag2 are the tags of the thunk's CC_DEP1
+// and CC_DEP2 fields, which for a subtraction are its operands.
+VG_REGPARM(3)
+UInt MC_(helperc_MERGE_TAGS_RETURN_0_IF_SUB) ( UWord cc_op, UInt tag1, UInt tag2 ) {
+  if (cc_op_is_sub(cc_op)) {
+    return MC_(helperc_MERGE_TAGS_RETURN_0)(tag1, tag2);
+  }
+  return 0;
 }
 
 /*------------------------------------------------------------------*/
