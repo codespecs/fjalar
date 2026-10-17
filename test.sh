@@ -47,6 +47,8 @@ make check-options
 
 make build
 
+make fjalar-test
+
 make doc
 
 ## Valgrind tests
