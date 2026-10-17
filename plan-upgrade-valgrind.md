@@ -29,6 +29,10 @@ assumes items 1 (regtest in CI), 2 (`make git-update` handles memcheck),
 - Fjalar-local changes made since the 3.23 merge, by where they matter:
   - Memcheck-derived files, so they can conflict in step 6:
     `1ca71b1c` (#73) changed `mc_translate.c` and `memcheck.h`.
+  - Coregrind/upstream files, so they can conflict in step 5: `42632185`
+    (#84) backported an upstream fix for `$(nproc)` in
+    `auxprogs/Makefile.am`.  3.27.1 has the same line, so take upstream's
+    version; after the merge, that file no longer differs from upstream.
   - DynComp, so step 7 must keep them (no conflict expected, since
     `kvasir/` is not patched): `b2c735d7` (#79) `Iop_64x4toV256` in
     `dyncomp_translate.c`.
