@@ -117,7 +117,7 @@ and other steps would use a different copy.
 * Get Valgrind version tags::
 * Obtain a copy of the base Valgrind source tree::
 * Obtain a copy of the target Valgrind source tree::
-* Remove files that have been removed upstream::
+* Correct the files of earlier merges::
 @end menu
 
 
@@ -191,6 +191,27 @@ make -C $DAIKONDIR compile test
 
 make -C $INV/fjalar build
 make -C $DAIKONDIR/tests/kvasir-tests clean-all regression-tests
+@end example
+
+The Kvasir tests use the Fjalar installed under
+@file{$DAIKONDIR/fjalar/valgrind/inst}; they build it only if it is not
+already installed.  If @file{$DAIKONDIR/fjalar} is not
+@file{$INV/fjalar} (or a symbolic link to it), they test a different copy of Fjalar than the one you are merging; check that
+@code{readlink -f $DAIKONDIR/fjalar} and @code{readlink -f $INV/fjalar}
+print the same directory.  Alternatively,
+@command{$INV/fjalar/test-kvasir.sh} runs Daikon's Kvasir and DynComp
+tests against @file{$INV/fjalar}.  It uses the Daikon in
+@file{$DAIKONDIR}, cloning Daikon there if that directory does not
+exist, and points @file{$DAIKONDIR/fjalar} at @file{$INV/fjalar}.  If
+@file{$DAIKONDIR} already existed, the script restores
+@file{$DAIKONDIR/fjalar} when it exits; if the script cloned Daikon, it
+leaves the link in place.  It refuses to run if @file{$DAIKONDIR/fjalar}
+exists and is not a symbolic link.  In that case, set
+@env{DAIKONDIR} for that one command only (do not @code{export} it,
+because later steps use your usual @env{DAIKONDIR}):
+
+@example
+DAIKONDIR=/tmp/$USER/daikon-test-kvasir $INV/fjalar/test-kvasir.sh
 @end example
 
 The tests should pass. If any tests fail, fix them, then start over from
@@ -267,7 +288,14 @@ If you performed the last merge and saved the
 cd $INV
 rm -rf valgrind-old
 mv valgrind-new valgrind-old
+git -C valgrind-old reset --hard && git -C valgrind-old clean -fdx
 @end example
+
+@noindent
+The @command{git reset} command discards any changes to files in the
+repository, and the @command{git clean} command removes any build products.
+@file{generate-patch-files.sh} refuses to run unless both
+@file{valgrind-old} and @file{valgrind-new} are pristine clones.
 
 Otherwise, run the following commands.
 
@@ -291,23 +319,108 @@ git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git valgrind
 @c For a  full repro of the current Valgrind source:
 @c git clone https://sourceware.org/git/valgrind.git valgrind-git
 
-@node Remove files that have been removed upstream
-@section Remove files that have been removed upstream
+@node Correct the files of earlier merges
+@section Correct the files of earlier merges
 
-The following command lists
-files that have been removed by the Valgrind developers since the last
-merge:
+The patch files add and remove the files that the Valgrind developers
+added and removed between the base and the target Valgrind releases.
+They do not correct the files that earlier merges failed to add or
+remove.
+
+The following command lists the files that Fjalar tracks but that the
+base Valgrind release does not have, which earlier merges failed to
+remove:
 
 @example
-cd $INV
-diff -qrb -x.git valgrind-old valgrind-new |grep "Only in valgrind-old"
+cd $INV/fjalar
+(export LC_ALL=C
+ comm -23 <(git ls-files valgrind | sed 's|^valgrind/||' \
+              | grep -v -e '^fjalar/' -e '^REVISION$' | sort) \
+          <(git -C $INV/valgrind-old ls-files | sort) \
+   | sed 's|^|valgrind/|')
 @end example
 
-Remove these files.
+@noindent
+Setting @env{LC_ALL} makes @command{sort} and @command{comm} agree on the
+sort order; in other locales, @command{comm} can list files that
+Valgrind still has.
 
-This step could be done later, but we do it now to reduce the size
-of the patch and diff files.
+Review the list, because Fjalar may have added some of the files
+on purpose.  Write the files that Fjalar should not have to a file
+@file{$INV/extra}, one per line, and remove them:
 
+@example
+cd $INV/fjalar
+xargs -r -d '\n' git rm -- < $INV/extra
+@end example
+
+The following command lists the Memcheck files that Fjalar's copy of
+Memcheck, in @file{valgrind/fjalar}, has but that the base Valgrind
+release does not have:
+
+@example
+cd $INV/fjalar
+(export LC_ALL=C
+ comm -23 <(git ls-files valgrind/fjalar | sed 's|^valgrind/fjalar/||' \
+              | grep -E '^(mc_|memcheck)' | sort) \
+          <(git -C $INV/valgrind-old ls-files memcheck \
+              | sed 's|^memcheck/||' | sort) \
+   | sed 's|^|valgrind/fjalar/|')
+@end example
+
+@noindent
+Fjalar created some of them, such as @file{mc_translate.h}; keep those.
+Remove the others with @command{git rm}.
+
+Fjalar builds every Memcheck source file, so its copy of Memcheck must
+have every one.  The following command lists the Memcheck files that the
+base Valgrind release has but that @file{valgrind/fjalar} lacks:
+
+@example
+cd $INV/fjalar
+(export LC_ALL=C
+ comm -13 <(git ls-files valgrind/fjalar | sed 's|^valgrind/fjalar/||' \
+              | grep -E '^(mc_|memcheck)' | sort) \
+          <(git -C $INV/valgrind-old ls-files memcheck \
+              | sed 's|^memcheck/||' | grep -E '^(mc_|memcheck)' | sort) \
+   | sed 's|^|valgrind/fjalar/|')
+@end example
+
+@noindent
+Copy each of them from @file{$INV/valgrind-old/memcheck} and add it with
+@command{git add}.
+
+The following command lists the files that the base Valgrind release
+has but that Fjalar does not track, which earlier merges failed to add.
+Examples are empty files and files that match @file{.gitignore}, such
+as @file{Makefile} or @file{*.log} files.
+
+@example
+cd $INV/fjalar
+(export LC_ALL=C
+ comm -13 <(git ls-files valgrind | sed 's|^valgrind/||' | sort) \
+          <(git -C $INV/valgrind-old ls-files | sort))
+@end example
+
+@noindent
+Review the list, because Fjalar may omit some Valgrind files on purpose.
+Write the files that Fjalar should have to a file @file{$INV/missing},
+one per line, and add them:
+
+@example
+cd $INV/valgrind-old
+xargs -r -d '\n' cp -P --parents -t $INV/fjalar/valgrind < $INV/missing
+cd $INV/fjalar
+sed 's|^|valgrind/|' $INV/missing | xargs -r -d '\n' git add -f --
+@end example
+
+Commit these corrections before you apply the patch files, because
+@file{apply-patch-files.sh} requires that Fjalar has no uncommitted
+changes.
+
+After the merge, the same commands with @file{valgrind-new} in place of
+@file{valgrind-old} list the files that Fjalar tracks but the target
+Valgrind release does not have, and vice versa (@pxref{Coregrind Conflicts}).
 
 @node Creating the diffs
 @chapter Creating the diffs
@@ -324,6 +437,9 @@ the last time Valgrind code was merged into Fjalar.
 File @file{$INV/memcheck.patch} is for Memcheck, and
 file @file{$INV/coregrind.patch} is for everything else (which
 we'll call "Coregrind").
+The patch files are produced by @command{git diff --binary}, so they
+also add and remove files, change binary and empty files, and change
+file modes.  Creating them requires Git 2.51 or later.
 
 It also creates files
 @file{memcheck-Fjalar.diff} and @file{coregrind-Fjalar.diff}
@@ -351,63 +467,85 @@ verification later.
 Now we can merge the changes from the created diffs. The Coregrind patch
 should apply with very little conflicts.
 
-It can be difficult to undo a patch operation, so you should first attempt
-a dry run.
+Script @file{apply-patch-files.sh} runs @command{git apply --3way}.
+A 3-way merge compares the Fjalar version of each file, the base Valgrind
+version, and the target Valgrind version.  It applies a change even if
+Fjalar has changed the lines around it, and it leaves conflict markers in
+a file where both Valgrind and Fjalar changed the same lines.  The base
+Valgrind versions are found in @file{$INV/valgrind-old}.
+The script requires that @file{$INV/fjalar} has no uncommitted changes,
+so that @command{git reset --hard} can undo the merge.
+
+First, do a dry run, which changes no file in the work tree or the index.
+It does overwrite @file{$INV/coregrind-apply.log}:
 
 @example
-cd $INV/fjalar/valgrind
-patch -p1 -lu < $INV/coregrind.patch --dry-run
+$INV/fjalar/apply-patch-files.sh --check coregrind
 @end example
 
-There may be a few "failed hunks" (conflicts) --- this is all right, we
+There may be a few conflicts --- this is all right, we
 will explain how to deal with these shortly.  If there are massive
 numbers of conflicts or some other indication of failure,
 there might have been a problem in the previous diffing step.
+
+The script passes option @option{--whitespace=nowarn}, which overrides any
+@code{apply.whitespace} setting in your Git configuration.  That setting
+could otherwise strip whitespace from lines that upstream added.  Some of
+those lines, such as in regression test goal files, need their whitespace.
 
 When you are satisfied with the results of the dry run,
 continue with the actual merge:
 
 @example
-cd $INV/fjalar/valgrind
-patch -p1 -lu < $INV/coregrind.patch
+$INV/fjalar/apply-patch-files.sh coregrind
 @end example
 
-@strong{IMPORTANT NOTE} @*
-This process fails for two different kinds of files,
-both in the Valgrind test directories. First, new zero-length goal files
-(@file{*.exp}) are not copied from valgrind-new to fjalar.  Second,
-executable scripts (typically named @file{filter_<test>}) are copied or updated,
-but lose the execute file mode bit.
-
-While this is documented @command{patch} behavior, we need to add additional
-steps to correct these problems.
-
-@example
-cd $INV/valgrind-new
-find -size 0 -exec touch $INV'/fjalar/valgrind/@{@}' \;
-find -not -type d -executable -exec chmod +x $INV'/fjalar/valgrind/@{@}' \;
-@end example
-
-@c The 'find' commands above didn't work for me this time as the names contained a '.'
-@c that file system did not like.  I had to do:
-@c find -size 0 -exec sh -c "echo $INV'/fjalar/valgrind{}' | sed 's|\./|/|'" \;|xargs -p touch
+The script writes the output of @command{git apply} to
+@file{$INV/coregrind-apply.log}, and stages the results of the merge,
+including files that match patterns in @file{.gitignore}, such as
+@file{Makefile} or @file{*.log} files.
+If there were conflicts, the script lists them and exits with a
+nonzero status.
 
 @node Coregrind Conflicts
 @section Coregrind Conflicts
 
-Handle any conflicts. They are listed in the patch output, or run this
-command:
+Handle the conflicts that @file{apply-patch-files.sh} listed.
+
+Files with conflicts contain conflict markers, and @command{git status}
+lists them as unmerged.  For a binary file, the Fjalar version is left
+in place.  For every conflict you will need to examine both the changed
+code as well as our original code and determine if it needs to be hand
+merged or if the change is not relevant.  It may help to refer to
+@code{coregrind-Fjalar.diff} during this process.  Mark each file as
+resolved with @command{git add}, or use @command{git mergetool}.  When you
+are done, this command produces no output:
 
 @example
-find -name '*.rej'
+cd $INV/fjalar
+git diff --name-only --diff-filter=U
 @end example
 
-For every change in the file you will need to examine both the changed
-code as well as our original code and determine if it needs to be hand
-merged or if the change is not relevant. It may help to refer to
-@code{coregrind-Fjalar.diff} during this process. Remove the @code{.rej}
-and @code{.orig} files as you go, so that finally the @code{find}
-command produces no output.
+@command{git apply} refuses the patch to some files entirely, and then it
+applies no patch at all.  So the script first does a dry run and then
+excludes those files from the merge, and lists them, with the reason that
+@command{git apply} gave, as files whose patches were not applied.  The
+list is also at the end of @file{$INV/coregrind-apply.log}.  Examples are
+a removal of a file that Fjalar has changed (``patch does not apply'') and
+a change to a file that Fjalar does not have (``does not exist in
+index'').  Their patches
+are in @file{$INV/coregrind.patch}; apply each one by hand.  For a file
+that was removed upstream but that has Fjalar changes, decide whether to
+remove it with @command{git rm}.
+
+Then check that Fjalar tracks no other file that the target Valgrind
+release does not have, and that it has every file that the target
+Valgrind release has: run the commands in @ref{Correct the files of
+earlier merges}, with @file{valgrind-new} in place of @file{valgrind-old}.
+They should print only the files that you decided to keep or to omit.
+
+Commit the results, because @file{apply-patch-files.sh} requires that
+Fjalar has no uncommitted changes before the Memcheck merge.
 
 
 @node Memcheck Merge
@@ -417,43 +555,61 @@ We use the @file{memcheck.patch} file to update Fjalar as its code is
 derived from Valgrind/Memcheck.
 
 @example
-cd $INV/fjalar/valgrind/fjalar
-patch -p2 -lu < $INV/memcheck.patch --dry-run
+$INV/fjalar/apply-patch-files.sh --check memcheck
 @end example
 
-There may be a few "failed hunks" (conflicts) - this is all right, we
+There may be a few conflicts - this is all right, we
 will explain how to deal with these shortly.  If there are massive
 numbers of conflicts or some other indication of failure,
 there might have been a problem in the previous diffing step.
 
-You may wish to experiment with the fuzz factor option, the default is @option{-F2}.  I find
-that @option{-F3} often increases the success rate (reduces the
-number of conflicts), but this can be
-dangerous as it ignores more of the context in the patch file, which
-increases the odds of a faulty patch.
-
-When you are satisfied with the results of the dry run,
-continue with the actual merge:
+When you are satisfied with the results of the dry run, continue with
+the actual merge, which writes @file{$INV/memcheck-apply.log}:
 
 @example
-cd $INV/fjalar/valgrind/fjalar
-patch -p2 -lu < $INV/memcheck.patch
+$INV/fjalar/apply-patch-files.sh memcheck
+@end example
+
+The Memcheck merge does not patch Fjalar's build file
+@file{valgrind/fjalar/Makefile.am}.  Instead, @file{apply-patch-files.sh}
+runs @file{generate-fjalar-makefile.sh}, which regenerates it from
+@file{valgrind/memcheck/Makefile.am}, which the Coregrind merge updated,
+by renaming Memcheck to Fjalar.  Fjalar builds every Memcheck source file,
+so a new upstream source file is built automatically.  The generated
+file includes @file{valgrind/fjalar/fjalar.am}, which holds Fjalar's
+changes, such as its additional source files and compiler flags.  Review
+@command{git diff --cached valgrind/fjalar/Makefile.am}, and update
+@file{fjalar.am} if an upstream change conflicts with Fjalar's changes.
+The dry run writes the generated file to @file{$INV/fjalar-Makefile.am}
+instead, so you can review it before the actual merge.
+The scripts list any line of the generated file that still mentions
+Memcheck or docs, or that is a conflict marker.  Such a line may mean that
+the renaming in @file{generate-fjalar-makefile.sh} needs to handle a new
+upstream construct.  In that case, or if
+@file{generate-fjalar-makefile.sh} fails, @file{apply-patch-files.sh}
+does not stage @file{valgrind/fjalar/Makefile.am}.  After changing @file{generate-fjalar-makefile.sh} or
+@file{fjalar.am}, regenerate the file and stage it:
+
+@example
+cd $INV/fjalar
+./generate-fjalar-makefile.sh
+git add valgrind/fjalar/Makefile.am
 @end example
 
 
 @node Memcheck Conflicts
 @section Memcheck Conflicts
 
-Handle any conflicts. They are listed in the patch output, or run this
-command:
-
-@example
-find -name '*.rej'
-@end example
+Handle the conflicts that @file{apply-patch-files.sh} listed, as
+with Coregrind.
 
 For every change in the file you will need to examine both the changed
 code as well as our original code and determine if it needs to be hand
 merged or if the change is not relevant.
+
+As with Coregrind, a file that was removed upstream but that has Fjalar
+changes is not removed; decide whether to remove it with
+@command{git rm}.
 
 Our changes to Memcheck are much more substantial than our changes to
 Coregrind.
@@ -532,9 +688,9 @@ guidelines on supporting new VEX instructions.
 Valgrind has a set of verification tests known as @command{regtest}.  We want
 to run these tests on a clean version of Valgrind to establish a
 baseline set of results for partial verification of the merge process.
-Since running these tests generates a lot of additional files, we wait
-until after we have done the source merge update to run this test.
-This keeps the files used during the source merge update to a minimum.
+Because the tests run in a copy of @file{valgrind-new} (see
+below), you can run them at any time after you have obtained
+@file{valgrind-new}, for example while you merge the sources.
 
 You will need to make sure @command{gdb} is installed on your machine
 to run these tests. Also, they are very sensitive
@@ -543,15 +699,28 @@ some failures. Rather, it is important to capture the results
 as they should be similar after the source merge. They may not be
 identical due to Valgrind improvements or the addition of new test cases.
 
-To run the @command{regtest} verification tests,
-return to the root of your @file{valgrind-new} directory.  Then run
-the following commands:
+To run the @command{regtest} verification tests, build a copy of
+@file{valgrind-new}.  Do not build in @file{valgrind-new} itself, which
+must stay a pristine clone: it becomes @file{valgrind-old} for the next
+merge, and @command{generate-patch-files.sh} diffs it, so if that script
+is re-run, any build products there would end up in @file{coregrind.patch}
+and then be added to Fjalar.
 
 @example
+cd $INV
+rm -rf valgrind-new-build
+git clone -q valgrind-new valgrind-new-build
+cd valgrind-new-build
+./autogen.sh
 ./configure --prefix=`pwd`/inst
 make all install
 make regtest > test.log 2>&1
 @end example
+
+@noindent
+Do not delete @file{valgrind-new-build} until you have compared its
+@command{regtest} results, in @file{$INV/valgrind-new-build/test.log}, in
+@ref{Testing Valgrind}.
 
 @noindent
 This will take about 10-15 minutes.  A summary of the @command{regtest}
@@ -737,6 +906,10 @@ Before applying any patches, run Daikon's Kvasir tests:
 @end example
 
 @noindent
+(Make sure that @file{$DAIKONDIR/fjalar} is the Fjalar you are updating;
+@pxref{Verify current sources pass the regression tests}.)
+
+@noindent
 @xref{Verify current sources pass the regression tests} for the expected
 results of running these tests (but don't follow any of the other
 instructions in that section).
@@ -819,7 +992,16 @@ patch -p2 -lu -f -F3 --merge=diff3 < ~/tmp/binutils.patch
 @end example
 
 @noindent
-puts conflicts inline in the file; @command{git status} will list them.
+puts conflicts inline in the file, as conflict markers, and does not
+create @file{.rej} files.  @command{git status} lists the changed files,
+and this command finds the conflicts:
+
+@example
+grep -rn '^<<<<<<<' .
+@end example
+
+@noindent
+Before compiling, make sure that no conflict markers remain.
 
 @end itemize
 
@@ -840,16 +1022,71 @@ method for doing so.  As noted above, you will need to have made copies
 of @file{dwarf.c} and @file{readelf.c} prior to applying the patch. We
 will do a 3-way merge with the new Binutils file on the left, the original
 fjalar version on the right and our new fjalar version in the center.
-Look at @file{dwarf.c.rej} and note the line numbers of the failed
-patches.
+Look at @file{dwarf.c.rej} (or, if you used @option{--merge=diff3}, the
+conflict markers in @file{dwarf.c}) and note the line numbers of the
+failed patches.
 
 @example
-meld $BUNEW/binutils/dwarf.c dwarf.c dwarf.c.orig
+meld ~/tmp/$BUNEW/binutils/dwarf.c dwarf.c dwarf.c.orig
 @end example
 
 Using the line numbers noted above, locate the problem areas and modify
 the target (center) version of dwarf.c as needed to correct the merge
 issues.  Repeat this process for @file{readelf.c}.
+
+The new Binutils code may need things that Fjalar does not have:
+
+@itemize
+@item
+New header files: new @code{#include}s in @file{readelf.c},
+@file{dwarf.c}, or @file{elfcomm.c}.  New files are not in
+@file{include.patch} or @file{binutils.patch}, because @command{diff}
+lists them only as ``Only in ...''.  Copy the ones that are needed,
+preserving their location relative to @file{~/tmp/$BUNEW/}, except that
+@file{binutils/} maps to @file{$INV/fjalar/valgrind/fjalar/} itself.  For
+example, a new file in @file{~/tmp/$BUNEW/include/elf/} goes in
+@file{$INV/fjalar/valgrind/fjalar/include/elf/}, one in
+@file{~/tmp/$BUNEW/libiberty/} goes in
+@file{$INV/fjalar/valgrind/fjalar/libiberty/}, and one in
+@file{~/tmp/$BUNEW/binutils/} (like @file{bucomm.h}) goes in
+@file{$INV/fjalar/valgrind/fjalar/}.
+@item
+Code for features that Fjalar does not use, such as SFrame
+(@samp{readelf --sframe}, added in Binutils 2.40, which needs
+@file{libsframe}).  Disable such code with
+@code{#if 0 // This code is not needed for Fjalar.}, as was done for CTF,
+rather than adding the libraries it needs.
+@item
+Support for zstd-compressed debug sections (Binutils 2.40 and later):
+make sure that it compiles away when @code{HAVE_ZSTD} is not defined.
+@item
+Newer @file{bfd.h} definitions: @file{dwarf.c} and @file{readelf.c}
+include the @emph{system} @file{bfd.h} (from the
+@file{binutils-dev} or @file{binutils-devel} package), which may be older
+than the Binutils being merged.  Check that every bfd macro and function
+the new code uses exists in the oldest @file{bfd.h} that continuous
+integration uses, and add local definitions for any that do not.
+To find that @file{bfd.h}, run the following for each Docker image named
+in @file{.github/workflows/ci.yml} or @file{azure-pipelines.yml}.  (As of
+October 2026, the oldest is Binutils 2.35.2, in
+@samp{mdernst/daikon-rockylinux-jdk25-plus}.)
+
+@example
+# Ubuntu images
+docker run --rm mdernst/daikon-ubuntu-jdk11-plus:latest dpkg-query -W binutils-dev
+# Rocky Linux images
+docker run --rm mdernst/daikon-rockylinux-jdk25-plus:latest rpm -q binutils-devel
+@end example
+
+@noindent
+To check whether that @file{bfd.h} defines a given name, set
+@code{IMAGE} to the image that has the oldest @file{bfd.h}:
+
+@example
+IMAGE=mdernst/daikon-rockylinux-jdk25-plus
+docker run --rm $IMAGE:latest grep -w NAME /usr/include/bfd.h
+@end example
+@end itemize
 
 After you have completed the source merge,
 update the ``@code{export BINUTILS_VERSION=}'' line in @file{fjalar/valgrind/REVISION}.
@@ -1019,7 +1256,11 @@ The build target should @command{autogen} the @file{config} and @file{Makefiles}
 and compile Fjalar. Fix any compilation errors.
 
 Once you have run @command{make build} once, thereafter you can just run
-@command{make -C $INV/fjalar/valgrind/fjalar}.
+@command{make -C $INV/fjalar/valgrind/fjalar install} (or
+@command{make -C $INV/fjalar/valgrind install}, if you changed files
+outside @file{fjalar/}).  Do not omit @code{install}:  the Kvasir tests
+run the installed Fjalar under @file{valgrind/inst}, so without
+@code{install} they silently test the previous build.
 
 
 @node Testing Valgrind
@@ -1030,16 +1271,19 @@ broken the underlying Valgrind:
 
 @example
 cd $INV/fjalar
-make test
+make test 2>&1 | tee test-after.log
 @end example
 
 @noindent
-While a few tests may not pass, the results should be identical to
+While a few tests may not pass, the results at the end of
+@file{test-after.log} should be identical to
 the results obtained when running these tests
 as described in @ref{Get New Valgrind Regtest Baseline Results}
-(for a Valgrind update)
+(for a Valgrind update, in @file{$INV/valgrind-new-build/test.log})
 or @ref{Get Current Valgrind Regtest Baseline Results}
-(for a Binutils update).
+(for a Binutils update, in @file{$INV/fjalar/test.log}).
+For a Valgrind update, once the comparison is done, delete the build copy:
+@code{rm -rf $INV/valgrind-new-build}.
 
 
 @node Testing Fjalar
@@ -1054,6 +1298,10 @@ cd $DAIKONDIR/tests/kvasir-tests
 make clean-all
 make regression-tests
 @end example
+
+@noindent
+(Make sure that @file{$DAIKONDIR/fjalar} is the Fjalar you merged into;
+@pxref{Verify current sources pass the regression tests}.)
 
 @noindent
 @xref{Verify current sources pass the regression tests} for the expected
@@ -1076,9 +1324,22 @@ Any user-visible changes should be documented in
 Additionally, the first line in @file{fjalar/valgrind/REVISION} should be updated
 with the Valgrind version used for this merge.
 
-If new Valgrind tests were added, their names should be added to
-the @file{.gitignore} file in the "Ignore generated test drivers"
-section.
+If new Valgrind tests were added, the names of their compiled test
+programs should be added to @file{.gitignore}, in the per-tool sections
+(such as @samp{# /memcheck/}), along with any other files that building
+the tests generates.  After building and running the tests, this
+command lists the untracked files in test directories:
+
+@example
+cd $INV/fjalar
+git ls-files --others --exclude-standard -- '*tests/*' \
+  | grep -v -E '\.(out|diff)$'
+@end example
+
+@noindent
+It omits the @file{.out} and @file{.diff} files that failing tests leave
+behind.  Review the list: it may also include files that should be
+committed rather than ignored.
 
 
 @node Committing
@@ -1088,24 +1349,8 @@ Once the test suite passes without errors and all changes are documented,
 the changes should be committed to the version control repository.
 
 @menu
-* Tell Git about files that were added or removed::
 * Commit commands::
 @end menu
-
-
-@node Tell Git about files that were added or removed
-@section Tell Git about files that were added or removed
-
-The @samp{git-update} target below searches through the two patch files
-looking for files that were added or deleted.  It then does a
-@code{git add} or @code{git remove} as appropriate.
-
-@example
-cd $INV/fjalar
-make git-update > git.script
-# Double-check that it looks OK, then run it:
-bash -v ./git.script
-@end example
 
 
 @node Commit commands
@@ -1116,8 +1361,12 @@ to the repository.
 
 @example
 cd $INV/fjalar
-# Double-check the diffs - standard practice before committing
-git diff -b | more
+# Double-check the diffs, including those of the commits made during the
+# merge - standard practice before committing.  Comparing with the
+# commit where the merge branched from codespecs/fjalar works even if
+# origin is a fork.
+git fetch https://github.com/codespecs/fjalar.git master
+git diff -b "$(git merge-base FETCH_HEAD HEAD)" | more
 # If looks OK, proceed with commit.
 git commit -a -m "Valgrind merge from $@{VOLDVER@} to $@{VNEWVER@}"
 @end example
