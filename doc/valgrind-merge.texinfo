@@ -360,8 +360,7 @@ $INV/fjalar/generate-patch-files.sh
 This creates patch files showing what the Valgrind maintainers have
 changed since
 the last time Valgrind code was merged into Fjalar.
-File @file{$INV/memcheck.patch} is for Memcheck (except for removed
-files), and
+File @file{$INV/memcheck.patch} is for Memcheck, and
 file @file{$INV/coregrind.patch} is for everything else (which
 we'll call "Coregrind").
 The patch files are produced by @command{git diff --binary}, so they
@@ -443,7 +442,8 @@ A hunk that does not apply is put in a @file{.rej} file.  List those
 files with this command:
 
 @example
-find -name '*.rej'
+cd $INV/fjalar
+find valgrind -name '*.rej'
 @end example
 
 A patch to a file that @command{git apply} refuses entirely leaves no
@@ -504,6 +504,7 @@ Fjalar may not need every new Memcheck file.  Review the files that the
 patch added:
 
 @example
+cd $INV/fjalar
 git diff --cached --name-only --diff-filter=A valgrind/fjalar
 @end example
 
@@ -518,15 +519,9 @@ For every change in the file you will need to examine both the changed
 code as well as our original code and determine if it needs to be hand
 merged or if the change is not relevant.
 
-File @file{memcheck.patch} does not remove any files, because many
-Memcheck files do not exist in @file{valgrind/fjalar}.  List the files
-that upstream removed, and decide whether to remove each one from
-@file{valgrind/fjalar} with @command{git rm}:
-
-@example
-cd $INV
-git diff --no-index --name-status --no-renames --diff-filter=D valgrind-old/memcheck valgrind-new/memcheck ':(exclude,glob)**/docs' ':(exclude,glob)**/tests'
-@end example
+As with Coregrind, a file that was removed upstream but that has Fjalar
+changes is not removed; decide whether to remove it with
+@command{git rm}.
 
 Our changes to Memcheck are much more substantial than our changes to
 Coregrind.

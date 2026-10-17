@@ -8,8 +8,6 @@
 # independent of the user's Git configuration; a copy or rename patch would
 # transfer Fjalar's changes from the source file to the destination file.
 # Limiting "git diff --no-index" with a pathspec requires Git 2.51 or later.
-# memcheck.patch omits removed files, because many Memcheck files do not
-# exist in valgrind/fjalar.
 
 if ! printf '%s\n' 2.51 "$(git version | cut -d' ' -f3)" | sort -V -C; then
   echo "$0: requires Git 2.51 or later" >&2
@@ -124,7 +122,7 @@ run_diff() {
 }
 
 run_diff coregrind.patch git diff --no-index --binary --no-renames --no-ext-diff --no-color -U3 --default-prefix valgrind-old valgrind-new ':(exclude,glob)**/.git'
-run_diff memcheck.patch git diff --no-index --binary --no-renames --no-ext-diff --no-color -U3 --diff-filter=d --default-prefix valgrind-old/memcheck valgrind-new/memcheck ':(exclude,glob)**/.git' ':(exclude,glob)**/docs' ':(exclude,glob)**/tests'
+run_diff memcheck.patch git diff --no-index --binary --no-renames --no-ext-diff --no-color -U3 --default-prefix valgrind-old/memcheck valgrind-new/memcheck ':(exclude,glob)**/.git' ':(exclude,glob)**/docs' ':(exclude,glob)**/tests'
 
 # fjalar/valgrind is usually built in place.  To keep build products out of
 # the Fjalar diffs, diff a copy of the files that git does not ignore.  The

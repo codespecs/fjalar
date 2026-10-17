@@ -58,18 +58,30 @@ if [ -n "$check" ]; then
   exit
 fi
 
-# The files that the patch creates.  A file that already exists is omitted,
-# because "git apply" refuses to overwrite it.
-created=()
-while IFS= read -r file; do
-  if [ ! -e "$file" ]; then
-    created+=("$file")
+# The files that the patch may create.  A file that already exists is
+# omitted, because "git apply" refuses to overwrite it.
+if ! summary=$(git -c core.quotePath=false apply --summary "$strip" --directory="$directory" "$patch"); then
+  echo "$0: git apply --summary failed on $patch." >&2
+  exit 1
+fi
+creatable=()
+while IFS= read -r line; do
+  if [[ $line =~ ^\ create\ mode\ [0-7]+\ (.*)$ ]] && [ ! -e "${BASH_REMATCH[1]}" ]; then
+    creatable+=("${BASH_REMATCH[1]}")
   fi
-done < <(git -c core.quotePath=false apply --summary "$strip" --directory="$directory" "$patch" \
-           | sed -n 's/^ create mode [0-7]* //p')
+done <<< "$summary"
 
 status=0
 "${apply[@]}" --reject "$@" "$patch" 2>&1 | tee "$log" || status=$?
+
+# The files that the patch created.  "git apply" does not create a file
+# that the GIT-APPLY-OPTIONs exclude, nor any file if it gives up entirely.
+created=()
+for file in "${creatable[@]}"; do
+  if [ -e "$file" ]; then
+    created+=("$file")
+  fi
+done
 
 # "git add -u" stages the changed and removed files.  The created files are
 # staged with "git add -f", because some of them, such as Makefile or *.log

@@ -69,7 +69,7 @@ it completely (merged, CI green) before starting this one.  That plan's
    pristine again.  Build a copy instead:
    ```sh
    rm -rf valgrind-new-build
-   cp -a valgrind-new valgrind-new-build && cd valgrind-new-build
+   git clone -q valgrind-new valgrind-new-build && cd valgrind-new-build
    ./autogen.sh && ./configure --prefix=$(pwd)/inst
    make all install && make regtest > test.log 2>&1
    ```
@@ -108,10 +108,8 @@ it completely (merged, CI green) before starting this one.  That plan's
      (without `--check`; try passing `-C0` after `memcheck` only if needed,
      and review its results).
    - Resolve `*.rej`, and the whole-file failures that the script listed
-     (as for Coregrind).  `memcheck.patch` omits
-     removed files; list them with
-     `git diff --no-index --name-status --no-renames --diff-filter=D valgrind-old/memcheck valgrind-new/memcheck ':(exclude,glob)**/docs' ':(exclude,glob)**/tests'`
-     and `git rm` any that Fjalar does not need.  Remember part of `mc_translate.c` lives in
+     (as for Coregrind), including files that upstream removed but
+     Fjalar modified; `git rm` any that Fjalar does not need.  Remember part of `mc_translate.c` lives in
      `fjalar/mc_translate.h`.  Preserve the #73 edits to `mc_translate.c`
      and `memcheck.h`.
    - In `mc_translate.c`'s `MC_(instrument)`, check that every case has
@@ -154,8 +152,8 @@ it completely (merged, CI green) before starting this one.  That plan's
 10. **Finish.**
     - Update first line of `valgrind/REVISION`
       (`# Valgrind version 3.27.1, released ...`).
-    - Add names of new Valgrind test drivers to `.gitignore`
-      ("Ignore generated test drivers" section).
+    - Add names of new Valgrind test drivers to `.gitignore`, in the
+      per-tool sections (such as `# /memcheck/`).
     - Check that Fjalar tracks no file that upstream does not have:  the
       command of step 2, with `valgrind-new` in place of `valgrind-old`,
       prints only files that you decided to keep (step 5).
