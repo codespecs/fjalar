@@ -495,11 +495,7 @@ changes in Valgrind API/functionality. For the most part Valgrind
 maintains a relatively stable interface to its tools. Any tool-visible
 changes should be noted in the change logs.
 
-Fjalar also uses a few Valgrind core entities that are not part of the
-tool interface.  Tool files may not include the core headers that
-declare them, so @file{valgrind/fjalar/fjalar_core_decls.h} contains
-copies of those declarations.  The build compiles those copies together
-with the core headers, so if the build fails in the rule for
+If the build fails in the rule for
 @file{fjalar_core_decls.stamp}, then a core declaration has changed.
 Update the copy in @file{valgrind/fjalar/fjalar_core_decls.h} to match
 the core header that it names.
