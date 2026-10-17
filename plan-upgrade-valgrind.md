@@ -55,10 +55,14 @@ it completely (merged, CI green) before starting this one.  That plan's
    git clone -b $VOLDVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-old
    git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-new
    ```
-   Remove from `fjalar/valgrind` the files that earlier merges left behind,
-   using the command in section "Remove files that earlier merges left
-   behind" of `doc/valgrind-merge.texinfo`.  (`git apply` removes the files
-   that upstream removed since `$VOLDVER`.)
+   Correct the files that earlier merges failed to add or remove, using
+   the commands in section "Correct the files of earlier merges" of
+   `doc/valgrind-merge.texinfo`:  remove from `fjalar/valgrind` and from
+   Fjalar's copy of Memcheck in `fjalar/valgrind/fjalar` the files that
+   `valgrind-old` lacks, add the `valgrind-old` files that Fjalar lacks
+   (such as empty files and files that match `.gitignore`), and commit.
+   (`git apply` adds and removes the files that upstream added and removed
+   since `$VOLDVER`.)
 
 3. **Baseline.**  Never build in `valgrind-old` or `valgrind-new` themselves:
    `generate-patch-files.sh` refuses to run if either contains changes or

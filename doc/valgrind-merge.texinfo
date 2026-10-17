@@ -458,7 +458,8 @@ Valgrind versions are found in @file{$INV/valgrind-old}.
 The script requires that @file{$INV/fjalar} has no uncommitted changes,
 so that @command{git reset --hard} can undo the merge.
 
-First, do a dry run, which changes no file:
+First, do a dry run, which changes no file in the work tree or the index.
+It does overwrite @file{$INV/coregrind-apply.log}:
 
 @example
 $INV/fjalar/apply-patch-files.sh --check coregrind

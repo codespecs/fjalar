@@ -124,8 +124,10 @@ run_diff() {
   fi
 }
 
-run_diff coregrind.patch git diff --no-index --binary --full-index --no-renames --no-ext-diff --no-textconv --no-color -U3 --default-prefix valgrind-old valgrind-new ':(exclude,glob)**/.git'
-run_diff memcheck.patch git diff --no-index --binary --full-index --no-renames --no-ext-diff --no-textconv --no-color -U3 --default-prefix valgrind-old/memcheck valgrind-new/memcheck ':(exclude,glob)**/.git' ':(exclude,glob)**/docs' ':(exclude,glob)**/tests'
+# The options are explained at the top of this file.
+gitdiff=(git diff --no-index --binary --full-index --no-renames --no-ext-diff --no-textconv --no-color -U3 --default-prefix)
+run_diff coregrind.patch "${gitdiff[@]}" valgrind-old valgrind-new ':(exclude,glob)**/.git'
+run_diff memcheck.patch "${gitdiff[@]}" valgrind-old/memcheck valgrind-new/memcheck ':(exclude,glob)**/.git' ':(exclude,glob)**/docs' ':(exclude,glob)**/tests'
 
 # fjalar/valgrind is usually built in place.  To keep build products out of
 # the Fjalar diffs, diff a copy of the files that git does not ignore.  The

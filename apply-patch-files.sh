@@ -3,7 +3,9 @@
 # This script applies a patch file that generate-patch-files.sh created to
 # $INV/fjalar with a 3-way merge, stages the result, and lists the conflicts.
 # Usage: apply-patch-files.sh [--check] coregrind|memcheck [GIT-APPLY-OPTION...]
-# With --check, it does a dry run and does not change any file.
+# With --check, it does a dry run, which changes no file in the work tree or
+# the index, though it does add objects to the Fjalar repository and
+# overwrite the log file.
 # Each GIT-APPLY-OPTION, such as --exclude=PATH, is passed to "git apply"
 # after the default options, so it overrides them.
 # The output of "git apply" is also written to $INV/coregrind-apply.log or
@@ -48,8 +50,10 @@ fi
 cd "$INV/fjalar"
 
 # A clean work tree and index keep the merge separate from other changes,
-# so "git reset --hard" can undo it.
-if [ -z "$check" ] && [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+# so "git reset --hard" can undo it.  A dry run requires them too, because
+# option --3way implies --index, so "git apply --check" would refuse every
+# file whose work-tree version differs from its index version.
+if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
   echo "$0: $INV/fjalar has uncommitted changes; commit them first." >&2
   exit 1
 fi
@@ -74,12 +78,18 @@ export LC_ALL=C
 # Option --no-ignore-whitespace overrides any apply.ignoreWhitespace setting.
 apply=(git apply --3way --whitespace=nowarn --no-ignore-whitespace "$strip" --directory="$directory")
 
+# A patch to a file that changes only its mode has no "index" line, so
+# "git apply --3way" reports an error, falls back to direct application, and
+# succeeds.  The base blobs of all other patches were copied above, so this
+# sed command removes only messages about successful mode changes.
+quiet_mode_changes='/^error: repository lacks the necessary blob to perform 3-way merge\.$/{N;/\nFalling back to direct application\.\.\.$/d}'
+
 # "git apply" applies no patch at all if it refuses the patch to any file.
 # Examples are a removal of a file that Fjalar has changed and a change to a
 # file that does not exist.  A dry run finds those files, so that the
 # actual run can exclude them.
 status=0
-"${apply[@]}" --check "$@" "$patch" > "$log" 2>&1 || status=$?
+"${apply[@]}" --check "$@" "$patch" 2>&1 | sed "$quiet_mode_changes" > "$log" || status=$?
 refused=()
 while IFS= read -r line; do
   if [[ $line =~ ^error:\ (.+):\ [^:]+$ ]] && [[ $line != "error: patch failed: "* ]]; then
@@ -102,7 +112,8 @@ else
     exclude+=("--exclude=$(printf '%s' "$file" | sed 's/[][*?\\]/\\&/g')")
   done
   status=0
-  "${apply[@]}" "${exclude[@]}" "$@" "$patch" 2>&1 | tee "$log" || status=$?
+  "${apply[@]}" "${exclude[@]}" "$@" "$patch" 2>&1 | sed "$quiet_mode_changes" | tee "$log" \
+    || status=$?
   if [ "$status" -ne 0 ] && [ -z "$(git ls-files -u)" ]; then
     echo "$0: git apply failed; see $log." >&2
     exit 1
