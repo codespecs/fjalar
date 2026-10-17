@@ -68,8 +68,7 @@ it completely (merged, CI green) before starting this one.  That plan's
    ./autogen.sh && ./configure --prefix=$(pwd)/inst
    make all install && make regtest > test.log 2>&1
    ```
-   Save the summary at the end of `test.log` for comparison.  (Alternatively,
-   as the doc does, run this in `valgrind-new` only after steps 4-7.)
+   Save the summary at the end of `test.log` for comparison.
 
 4. **Create the diffs.** Run `$INV/fjalar/generate-patch-files.sh`, producing
    `coregrind.patch`, `memcheck.patch`, `coregrind-Fjalar.diff`,
@@ -149,8 +148,7 @@ it completely (merged, CI green) before starting this one.  That plan's
     - `make git-update > git.script`, review, run.
     - Document user-visible changes in `$INV/daikon/doc/CHANGELOG.md`.
     - Update `doc/valgrind-merge.texinfo`: regtest baseline output, dates/OS
-      versions, building the baseline in a copy (step 3), and any new
-      pitfalls.
+      versions, and any new pitfalls.
     - Commit as one PR; save the patch/diff files and `valgrind-new` (it
       becomes `valgrind-old` for the next merge; delete
       `valgrind-new-build`).
