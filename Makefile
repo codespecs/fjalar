@@ -34,6 +34,7 @@ fjalar-test:
 	valgrind/fjalar/tests/dyncomp-condition-code-test.sh
 	valgrind/fjalar/tests/dyncomp-interactions-none-test.sh
 	valgrind/fjalar/tests/dyncomp-interactions-comparisons-test.sh
+	valgrind/fjalar/tests/dyncomp-interactions-units-test.sh
 	valgrind/fjalar/tests/zero-sized-pointee-test.sh
 
 # Kvasir tests

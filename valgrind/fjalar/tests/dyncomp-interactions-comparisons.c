@@ -59,6 +59,35 @@ int addWithCarry(int a, int b, int c, int d) {
   return c;
 }
 
+// subThenInc() subtracts b from a with a sub instruction, and then an inc
+// instruction in a different basic block reads the carry flag of the
+// subtraction (via amd64g_calculate_rflags_c), in order to preserve it.
+// The inc does not use the flags as the result of a comparison, so under
+// --dyncomp-interactions=comparisons, DynComp should not make a and b
+// comparable.
+int subThenInc(int a, int b, int c) {
+  __asm__ volatile ("subl %2, %0\n\t"
+                    "jmp 1f\n"
+                    "1:\tincl %1"
+                    : "+r" (a), "+r" (c) : "r" (b) : "cc");
+  return c;
+}
+
+// subThenLahf() subtracts b from a with a sub instruction, and then a lahf
+// instruction in a different basic block copies the flags of the subtraction
+// (via amd64g_calculate_rflags_all) into a register.  Copying flags is not a
+// comparison, so under --dyncomp-interactions=comparisons, DynComp should not
+// make a and b comparable.
+int subThenLahf(int a, int b) {
+  int flags;
+  __asm__ volatile ("subl %2, %1\n\t"
+                    "jmp 1f\n"
+                    "1:\tlahf\n\t"
+                    "movzbl %%ah, %0"
+                    : "=r" (flags), "+r" (a) : "r" (b) : "cc", "rax");
+  return flags;
+}
+
 struct longPair {
   long a;
   long b;
@@ -101,6 +130,8 @@ int main(void) {
   lessMask(3, 4);
   carry(5, 6);
   addWithCarry(7, 8, 9, 10);
+  subThenInc(15, 16, 17);
+  subThenLahf(18, 19);
   copyLongs(11, 12);
   copyInts(13, 14);
   return 0;

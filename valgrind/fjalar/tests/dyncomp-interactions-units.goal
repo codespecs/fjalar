@@ -1,0 +1,6 @@
+..overflow():::EXIT0 a 1
+..overflow():::EXIT0 b 2
+..overflow():::EXIT0 return 3
+..less():::EXIT0 a 1
+..less():::EXIT0 b 1
+..less():::EXIT0 return 2

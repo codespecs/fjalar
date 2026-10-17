@@ -324,31 +324,68 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2,
 // comparison does not interact with its operands.
 //
 // Under --dyncomp-interactions=comparisons, a helper call is an
-// interaction only if it reads flags that a comparison set.  The helpers
-// that read flags (amd64g_calculate_condition, amd64g_calculate_rflags_c,
-// and amd64g_calculate_rflags_all) compute them from a flags thunk whose
-// CC_OP field says which operation set them.  CC_OP is often known only at
-// run time, for example when the flags are read in a different superblock
-// than the one that set them, so the merge checks it at run time and has
-// an effect only if the flags are the result of a subtraction (a cmp or
-// sub instruction).  For example, the operands of a cmp are merged when
-// its flags are read by a setl (via amd64g_calculate_condition) or by an
-// sbb (via amd64g_calculate_rflags_c), but the operands of an add are not
-// merged when its carry is read by an adc.  Other helpers merge no tags.
+// interaction only if it is a comparison:  that is, if it uses flags that
+// a subtraction (a cmp or sub instruction) set.  The helpers that read
+// flags (amd64g_calculate_condition, amd64g_calculate_rflags_c, and
+// amd64g_calculate_rflags_all) compute them from a flags thunk whose CC_OP
+// field says which operation set them.  CC_OP is often known only at run
+// time, for example when the flags are read in a different superblock
+// than the one that set them, so the merge checks it at run time.  For
+// example, the operands of a cmp are merged when its flags are read by a
+// setl (via amd64g_calculate_condition) or by an sbb (via
+// amd64g_calculate_rflags_c), but the operands of an add are not merged
+// when its carry is read by an adc.
+//
+// Some instructions read flags without using them as the result of a
+// comparison.  An inc or dec instruction reads the carry flag (via
+// amd64g_calculate_rflags_c) and stores it in the CC_NDEP field of its own
+// flags thunk, because it does not change the carry flag.  The other
+// callers of amd64g_calculate_rflags_c are adc and sbb.
+// amd64g_calculate_rflags_all is used mostly by instructions that preserve
+// or copy flags, such as shifts, bt, and pushf.  These calls merge no tags;
+// if the flags are later used, then the instruction that uses them reads
+// them from the new thunk.  Other helpers merge no tags either.
+//
+// Under --dyncomp-interactions=units, the operands of a subtraction are
+// interactions, and the operands of a multiplication are not, so a helper
+// call merges tags in the same cases.  If the flags are set by an add, its
+// operands were already merged when its result was computed.
 
-// Returns the index of the CC_OP argument of a call to cee, if cee is a
-// helper that reads flags, or -1 otherwise.
+// Returns True if the statement being instrumented assigns the result of
+// a helper call to a temporary that the next statement stores in the
+// CC_NDEP field of the flags thunk.
 static
-Int ccOpArgIndex_DC ( IRCallee* cee )
+Bool resultIsStoredInCCNDep_DC ( DCEnv* dce )
+{
+   const IRSB* sb = dce->sb_in;
+   Int i = dce->stmtIndex;
+   IRStmt* st = sb->stmts[i];
+   IRStmt* next;
+
+   if (st->tag != Ist_WrTmp || i + 1 >= sb->stmts_used) {
+      return False;
+   }
+   next = sb->stmts[i + 1];
+   return next->tag == Ist_Put
+      && next->Ist.Put.offset == offsetof(VexGuestAMD64State, guest_CC_NDEP)
+      && next->Ist.Put.data->tag == Iex_RdTmp
+      && next->Ist.Put.data->Iex.RdTmp.tmp == st->Ist.WrTmp.tmp;
+}
+
+// If a call to cee with arguments exprvec uses flags as the result of a
+// comparison (when the flags are the result of a subtraction), returns its
+// CC_OP argument.  Otherwise, returns NULL.
+static
+IRAtom* comparisonCCOp_DC ( DCEnv* dce, IRAtom** exprvec, IRCallee* cee )
 {
    if (cee->addr == (void*)&amd64g_calculate_condition) {
-      return 1;
+      return exprvec[1];
    }
    if (cee->addr == (void*)&amd64g_calculate_rflags_c
-       || cee->addr == (void*)&amd64g_calculate_rflags_all) {
-      return 0;
+       && !resultIsStoredInCCNDep_DC(dce)) {
+      return exprvec[0];
    }
-   return -1;
+   return NULL;
 }
 
 static
@@ -363,17 +400,19 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
    // Non-NULL if the merge depends on the CC_OP argument
    IRAtom* ccOp = NULL;
 
-   // In this mode, NOTHING is an interaction:
-   if (dyncomp_dataflow_only_mode) {
-      return IRExpr_Const(IRConst_UWord(0));
-   }
-
-   if (dyncomp_dataflow_comparisons_mode) {
-      Int ccOpIndex = ccOpArgIndex_DC(cee);
-      if (ccOpIndex < 0) {
+   if (dyncomp_dataflow_comparisons_mode || dyncomp_units_mode) {
+      ccOp = comparisonCCOp_DC(dce, exprvec, cee);
+      if (!ccOp) {
          return IRExpr_Const(IRConst_UWord(0));
       }
-      ccOp = exprvec[ccOpIndex];
+      // If CC_OP is known at translation time, decide now.
+      if (ccOp->tag == Iex_Const) {
+         tl_assert(ccOp->Iex.Const.con->tag == Ico_U64);
+         if (!cc_op_is_sub(ccOp->Iex.Const.con->Ico.U64)) {
+            return IRExpr_Const(IRConst_UWord(0));
+         }
+         ccOp = NULL;
+      }
    }
 
    if (exprvec) {

@@ -446,7 +446,10 @@ UInt MC_(helperc_CREATE_TAG)(Addr static_id) {
 // Returns the tag of the value in [a, a + len).  Loading a value whose bytes
 // have different tags is an interaction that merges those tags, except in
 // the modes in which only comparisons, or nothing, are interactions.  In
-// those modes, the result is the first non-zero tag in the range, or 0.
+// those modes, the result is the leader of the first non-zero tag in the
+// range, or 0.  That is the result of val_uf_union_tags_in_range when the
+// range contains only one non-zero tag; for example, both return 0 for a
+// range whose tags are all WEAK_FRESH_TAG.
 static UInt load_tag_in_range(Addr a, SizeT len) {
   Addr curAddr;
   UInt curTag;
@@ -457,7 +460,7 @@ static UInt load_tag_in_range(Addr a, SizeT len) {
   for (curAddr = a; curAddr < (a + len); curAddr++) {
     curTag = get_tag(curAddr);
     if (curTag) {
-      return curTag;
+      return val_uf_find_leader(curTag);
     }
   }
   return 0;
@@ -604,14 +607,19 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
   }
 }
 
+// Returns True if cc_op, the CC_OP field of the flags thunk, says that the
+// flags are the result of a subtraction (a cmp or sub instruction), which
+// is how amd64 compares values.
+Bool cc_op_is_sub(ULong cc_op) {
+  return AMD64G_CC_OP_SUBB <= cc_op && cc_op <= AMD64G_CC_OP_SUBQ;
+}
+
 // Like MC_(helperc_MERGE_TAGS_RETURN_0), but merges tag1 and tag2 only if
-// cc_op, the CC_OP field of the flags thunk, says that the flags are the
-// result of a subtraction (a cmp or sub instruction), which is how amd64
-// compares values.  tag1 and tag2 are the tags of the thunk's CC_DEP1 and
-// CC_DEP2 fields, which for a subtraction are its operands.
+// cc_op_is_sub(cc_op).  tag1 and tag2 are the tags of the thunk's CC_DEP1
+// and CC_DEP2 fields, which for a subtraction are its operands.
 VG_REGPARM(3)
 UInt MC_(helperc_MERGE_TAGS_RETURN_0_IF_SUB) ( UWord cc_op, UInt tag1, UInt tag2 ) {
-  if (AMD64G_CC_OP_SUBB <= cc_op && cc_op <= AMD64G_CC_OP_SUBQ) {
+  if (cc_op_is_sub(cc_op)) {
     return MC_(helperc_MERGE_TAGS_RETURN_0)(tag1, tag2);
   }
   return 0;
