@@ -55,10 +55,16 @@ it completely (merged, CI green) before starting this one.  That plan's
    git clone -b $VOLDVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-old
    git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-new
    ```
-   Remove from `fjalar/valgrind` the files that earlier merges left behind,
-   using the command in section "Remove files that earlier merges left
-   behind" of `doc/valgrind-merge.texinfo`.  (`git apply` removes the files
-   that upstream removed since `$VOLDVER`.)
+   Correct the files of earlier merges, following section "Correct the
+   files of earlier merges" of `doc/valgrind-merge.texinfo`.  It has three
+   checks: files that Fjalar tracks but `valgrind-old` lacks (remove those
+   that Fjalar should not have); Memcheck files in `valgrind/fjalar` that
+   `valgrind-old` lacks (keep Fjalar's own, such as `mc_translate.h`); and
+   files that `valgrind-old` has but Fjalar does not track, such as empty
+   files and files that match `.gitignore` (add those that Fjalar should
+   have).  Commit these corrections before applying the patch files,
+   because `apply-patch-files.sh` requires a clean work tree.  (`git apply`
+   handles the files that upstream added or removed since `$VOLDVER`.)
 
 3. **Baseline.**  Never build in `valgrind-old` or `valgrind-new` themselves:
    `generate-patch-files.sh` refuses to run if either contains changes or
@@ -154,9 +160,10 @@ it completely (merged, CI green) before starting this one.  That plan's
       (`# Valgrind version 3.27.1, released ...`).
     - Add names of new Valgrind test programs to `.gitignore`, in the
       per-tool sections (such as `# /memcheck/`).
-    - Check that Fjalar tracks no file that upstream does not have:  the
-      command of step 2, with `valgrind-new` in place of `valgrind-old`,
-      prints only files that you decided to keep (step 5).
+    - Check that Fjalar's files match the target release: run the
+      commands of step 2 (section "Correct the files of earlier merges")
+      with `valgrind-new` in place of `valgrind-old`.  They should list
+      only files that you decided to keep or omit (step 5).
     - Document user-visible changes in `$INV/daikon/doc/CHANGELOG.md`.
     - Update `doc/valgrind-merge.texinfo`: regtest baseline output, dates/OS
       versions, and any new pitfalls.
