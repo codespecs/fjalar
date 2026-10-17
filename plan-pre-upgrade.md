@@ -15,19 +15,20 @@ PRs:
   - #98: remove files that upstream deleted (item 7).
   - #99: `generate-patch-files.sh` checks its inputs (item 3).
   - #101: merge-doc updates (item 5, except what depends on #96).
+  - #102: backport three upstream fixes so Valgrind's test programs build
+    with GCC 15 (C23).  Without it, `make regtest` fails to build on
+    Ubuntu 26.04, so #96's `regtest_ubuntu_26_04` job runs no tests; land
+    it before #96.
 - Open, depending on #98, #99, and #101:
   - #103: create the patch files with `git diff` and apply them with
     `git apply`, which replaces `make git-update` (item 2).
-  - #102: backport three upstream fixes so Valgrind's test programs build
-    with GCC 15 (C23).  Without it, `make regtest` fails to build on
-    Ubuntu 26.04, so #96's `regtest_ubuntu_26_04` job runs no tests.
 - Not started:
-  - After #96, #97, and #98 merge: commit the expected-failure lists and
+  - After #96, #97, and #98 land: commit the expected-failure lists and
     make the regtest jobs enforce them (item 1, "Remaining").  #97 and #98
     change which checks fail, so do this after them.
-  - After #96 merges: describe `check-regtest.sh` in the merge doc
+  - After #96 lands: describe `check-regtest.sh` in the merge doc
     (item 5).
-  - DynComp scan for unhandled IROps (item 4), after #85-#88 merge; one PR
+  - DynComp scan for unhandled IROps (item 4), after #85-#88 land; one PR
     per bug found.
 - Other open PRs that both upgrades should wait for (they change files the
   upgrades merge into; see the upgrade plans):
@@ -38,8 +39,7 @@ PRs:
     (DWARF registers via guest-state offsets), #95 (unsupported DWARF
     location operations).
 
-Item 6 is a quick investigation with no code change; do it any time before
-step 4 of the readelf plan.
+Item 6 (a quick investigation with no code change) is done.
 
 ## 1. Run Valgrind's regression tests in CI, against expected failures
 
@@ -79,7 +79,7 @@ What (done):
   two entries joined by a missing newline; both are listed separately).
 
 Remaining:
-1. After #96, #97, and #98 are merged, push a branch and let the regtest jobs
+1. After #96, #97, and #98 have landed, push a branch and let the regtest jobs
    run.  Download the
    `regtest-results-*` artifacts and copy each `regtest-observed-<os>.txt`
    to `regtest-expected/<os>.txt` (or run
@@ -91,7 +91,7 @@ Remaining:
 3. Remove `--report-only` from both CI jobs (the TODO comments in
    `.github/workflows/ci.yml`) and commit the lists.
 4. Install `gdb` and glibc debuginfo in the Daikon `-plus` Docker images,
-   which Fjalar's CI uses: codespecs/daikon#916.  After it merges, rebuild
+   which Fjalar's CI uses: codespecs/daikon#916.  After it lands, rebuild
    and push the images (`scripts/Dockerfile-README.md` in Daikon), then
    regenerate the lists.  This makes most `gdbserver_tests` meaningful.
    Ideally do this before step 1, so the lists are generated only once.
@@ -135,7 +135,7 @@ What: at the top of the script,
 
 ## 4. Look for DynComp panics on unhandled IROps, now, on Valgrind 3.23
 
-Status: much of this is in open PRs; do the rest after they merge.
+Status: much of this is in open PRs; do the rest after they land.
 - #85 adds `--dyncomp-unhandled-ops=panic|warn`; `warn` reports each
   unhandled binary, ternary, or quaternary operation once and continues.
   That makes the scan below much faster: one run lists every unhandled
@@ -156,7 +156,7 @@ What:
   them with `-O2 -march=x86-64-v3` (AVX2) and also `-O3 -march=native`, and
   run them under Kvasir with DynComp
   (`$DAIKONDIR/scripts/kvasir-dtrace --dyncomp --dyncomp-unhandled-ops=warn ./prog`,
-  once #85 is merged).
+  once #85 has landed).
 - Fix each panic in its own PR, following #79's pattern.
 - Running programs finds only the operations those programs use.  Also
   compare the `Iop_*` values relevant to amd64/x86 in `VEX/pub/libvex_ir.h`
@@ -180,7 +180,7 @@ Status: PR #101, except describing `check-regtest.sh`, which waits for
 Why: so that neither upgrade plan has to say "the doc says X, but do Y".
 
 What:
-- #82 (merged after this plan was first written) already fixed http URLs
+- #82 (landed after this plan was first written) already fixed http URLs
   and typos, made the doc use `$DAIKONDIR` (set to `$INV/daikon`), and
   documented that `expr2tags_Unop_DC` does not panic.  Pull it before
   editing the doc.

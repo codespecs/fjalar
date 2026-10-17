@@ -13,7 +13,7 @@ First do the preparation in `plan-pre-upgrade.md`, at least items 7
 failures), and 6 (`bfd.h` versions); this plan assumes them.
 
 Do this upgrade first, before `plan-upgrade-valgrind.md`, and finish it
-completely (merged, CI green) before starting the Valgrind upgrade.  Reasons:
+completely (landed, CI green) before starting the Valgrind upgrade.  Reasons:
 
 - It is smaller and self-contained: about a dozen files in `valgrind/fjalar/`,
   with conflicts concentrated in `dwarf.c` and `readelf.c`.
@@ -61,7 +61,7 @@ new ones than to fix them.)
   - `287d1f44` Fix `DW_OP_breg*` locations on amd64 (#80)
 - Open PRs that change `dwarf.c`: #89 (location views), #90 (register
   parameters), #91 (DWARF registers via guest-state offsets), #95
-  (unsupported DWARF location operations).  Merge them before starting this
+  (unsupported DWARF location operations).  Land them before starting this
   upgrade, so that their changes are part of the Fjalar copy being merged
   into (and of the Fjalar-vs-2.39 diffs) rather than conflicting with the
   upgrade later.  Re-check their `dwarf.c` changes while resolving
@@ -98,8 +98,12 @@ small.
    - Make sure the system has `binutils-dev` / `binutils-devel` (for `bfd.h`).
 
 2. **Baselines** (before touching any source).
-   - `make clean && make build 2>&1 | tee build.log && ./check-regtest.sh` (Valgrind regtest baseline;
-     must report no unexpected failures).  If this machine's OS has no
+   - `(set -o pipefail; make build 2>&1 | tee build.log) && ./check-regtest.sh`
+     (Valgrind regtest baseline; must report no unexpected failures).  The
+     new clone is already clean; do not run `make clean` first, because it
+     fails until `make build` has created `valgrind/Makefile`.
+     `pipefail` makes a failed build stop the command, rather than `tee`'s
+     success hiding it.  If this machine's OS has no
      `regtest-expected/<os>.txt`, create a local one with
      `./check-regtest.sh --log regtest-<os>.log --update` and don't commit it.
    - Save the build log, and the list of compiler warnings for the
@@ -107,6 +111,10 @@ small.
      (`grep -E '(readelf|dwarf|elfcomm|dwarfnames)\.c.*warning' build.log`),
      so that new warnings can be identified later.
    - `make fjalar-test`.
+   - Record the tool's library dependencies and undefined symbols, for
+     step 8:
+     `ldd valgrind/fjalar/fjalar-amd64-linux > ldd-before.txt` and
+     `nm -u valgrind/fjalar/fjalar-amd64-linux > nm-u-before.txt`.
    - `./test-kvasir.sh 2>&1 | tee kvasir-before.log`
      (Kvasir baseline; record any pre-existing failures).
    - Run the Kvasir tests via `./test-kvasir.sh`, which temporarily points
@@ -215,19 +223,21 @@ small.
      out of guarded `printf`s.
    - Replace libc calls with `VG_(...)` equivalents and `assert` with
      `tl_assert`.
-   - Make sure Fjalar's harvesting hooks in `dwarf.c` (the calls that build
-     Fjalar's DWARF entries, see `fjalar_dwarf.c`/`typedata.c`) still run on
-     every path, especially for DWARF 5 forms and any new `DW_FORM_*`,
-     `DW_AT_*`, `DW_OP_*` handling.  Re-check the DWARF 3/4 and Rust
-     changes from #73/#76 and the `DW_OP_breg*` change from #80.
+   - Make sure Fjalar's harvesting hooks in `dwarf.c` (the `harvest_*`
+     calls that build Fjalar's DWARF entries, see
+     `fjalar_dwarf.c`/`typedata.c`) still run on every path.  Re-check every
+     call site (`harvest_formal_param_location_atom`,
+     `harvest_location_list_entry`, `harvest_frame_base`,
+     `harvest_debug_frame_entry`, etc.) against the restructured upstream
+     code, so that no hook is dropped or moved to the wrong branch,
+     especially for DWARF 5 forms and any new `DW_FORM_*`, `DW_AT_*`,
+     `DW_OP_*` handling.  Re-check the DWARF 3/4 and Rust changes from
+     #73/#76 and the `DW_OP_breg*` change from #80.
    - Areas to expect to need attention in 2.40-2.47:
      - DWARF 5 handling in `dwarf.c` (`.debug_rnglists`, `.debug_loclists`,
        `.debug_str_offsets`, `.debug_addr`, `DW_FORM_*x` forms, `DW_OP_*`
-       additions).  These are the main reason to upgrade: re-check every
-       `harvest_*` call site (`harvest_formal_param_location_atom`,
-       `harvest_location_list_entry`, `harvest_frame_base`,
-       `harvest_debug_frame_entry`, etc.) against the restructured upstream
-       code, so that no hook is dropped or moved to the wrong branch.
+       additions), the main reason to upgrade, and where the hook check
+       above matters most.
      - debuginfod (`HAVE_LIBDEBUGINFOD`): already conditionally compiled;
        ensure it stays undefined.
      - New `readelf` command-line options or global flags: Fjalar sets
@@ -244,10 +254,10 @@ small.
      the `.pre-merge` copies once the merge is complete.
 
 7. **Build and fix warnings/errors.**  `make -C $INV/fjalar build`, then
-   iterate with `make -C $INV/fjalar/valgrind/fjalar`.  Fix "implicit declaration" and
-   "undefined reference" errors (missed `VG_()` wrappers).  Reduce new
-   warnings from Valgrind's stricter flags where practical, comparing with
-   the warning list from step 2.
+   iterate with `make -C $INV/fjalar/valgrind/fjalar`.  Fix "implicit
+   declaration" and "undefined reference" errors (missed `VG_()` wrappers).
+   Reduce new warnings from Valgrind's stricter flags where practical,
+   comparing with the warning list from step 2.
    Also build against the system `bfd.h` on both Rocky Linux and Ubuntu
    (see step 4; the #63 workaround may need to change).
 
@@ -270,9 +280,10 @@ small.
      against `readelf --debug-dump` from Binutils 2.47 for sanity.
    - Before committing, `grep -c` each `harvest_` name in the old and new
      `dwarf.c`, and explain any difference.
-   - Run `ldd` and `nm -u` on `valgrind/fjalar/fjalar-amd64-linux` before
-     and after, to check that no new system-library dependency (zstd,
-     libsframe, debuginfod) leaked into the link.
+   - Run `ldd` and `nm -u` on `valgrind/fjalar/fjalar-amd64-linux` again
+     and compare with `ldd-before.txt` and `nm-u-before.txt` from step 2, to
+     check that no new system-library dependency (zstd, libsframe,
+     debuginfod) leaked into the link.
    - Push the branch and confirm GitHub Actions CI passes (Ubuntu and
      Rocky Linux: build, regtest, and Kvasir jobs).
 
@@ -305,8 +316,9 @@ small.
      `test.sh` runs in CI) to confirm that the document still formats.
    - Commit (one PR), with commit message "Upgrade Binutils (readelf) from
      2.39 to 2.47"; keep `include.patch`, `binutils.patch`, and the
-     Fjalar-vs-binutils diffs for reference (perhaps attached to the PR).  Delete `regtest-<os>.log` and
-     `regtest-observed-*.txt` (ignored by git).
+     Fjalar-vs-binutils diffs for reference (perhaps attached to the PR).
+     Delete `regtest-<os>.log` and `regtest-observed-*.txt` (ignored by
+     git).
 
 ## Risks
 
