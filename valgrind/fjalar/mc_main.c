@@ -978,6 +978,26 @@ void mc_make_noaccess ( Addr a, SizeT len )
   MC_(make_mem_noaccess) ( a, len );
 }
 
+void mc_copy_guest_reg_state ( ThreadId tid, Int guestOffset, Addr dst )
+{
+  UWord vbits;
+  SizeT b;
+  VG_(get_shadow_regs_area)(tid, (UChar*)&vbits, 1/*shadowNo*/,
+                            guestOffset, sizeof(Addr));
+  for (b = 0; b < sizeof(Addr); b++) {
+    set_abit_and_vbyte(dst + b, VGM_BIT_VALID, (vbits >> (b * 8)) & 0xff);
+  }
+#ifndef _NO_DYNCOMP
+  if (kvasir_with_dyncomp) {
+    // DynComp keeps one tag per register, at the register's offset.
+    UInt tag = *VG_(get_tag_ptr_for_guest_offset)(tid, guestOffset);
+    for (b = 0; b < sizeof(Addr); b++) {
+      set_tag(dst + b, tag);
+    }
+  }
+#endif /* _NO_DYNCOMP */
+}
+
 // end of code added for Fjalar
 
 /* --------------- Secondary V bit table ------------ */

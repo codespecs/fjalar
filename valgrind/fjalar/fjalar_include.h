@@ -690,6 +690,12 @@ typedef struct _FunctionEntry {
 
   UInt nonce;
 
+  // Bit N is set if the valid location of some formal parameter uses
+  // DWARF register N (via DW_OP_regN or DW_OP_bregN) and Fjalar can
+  // read that register.  Fjalar saves those registers at function
+  // entrance in FunctionExecutionState.entryRegs.
+  UInt entryRegsMask;
+
 } FunctionEntry;
 
 
@@ -740,6 +746,34 @@ These data structures and functions provide mechanisms for runtime
 traversals within data structures and arrays
 **********************************************************************/
 
+#if defined(VGA_amd64)
+// The DWARF register number of the frame pointer
+#define DWARF_FP_REG 6
+#else
+// The DWARF register number of the frame pointer
+#define DWARF_FP_REG 5
+#endif
+
+// If atom is DW_OP_regN or DW_OP_bregN, sets *regNum to N and returns
+// True.  Otherwise, returns False.
+Bool dwarf_op_reg_num(UInt atom, UInt* regNum);
+
+// Returns true if Fjalar can read the register with the given DWARF
+// register number.
+Bool dwarf_reg_is_readable(UInt regNum);
+
+// Returns the guest-state offset of the register with the given DWARF
+// register number, which must be readable.
+Int dwarf_reg_guest_offset(UInt regNum);
+
+// Returns the current value of the register with the given DWARF
+// register number, which must be readable.
+Addr read_dwarf_reg(ThreadId tid, UInt regNum);
+
+// Returns the name of the register with the given DWARF register
+// number, for debugging output (defined in dwarf.c).
+const HChar* dwarf_reg_name(UInt regNum);
+
 // Entries for tracking the runtime state of functions at entrances
 // and exits (used mainly by FunctionExecutionStateStack in
 // fjalar_main.c).  This class CANNOT BE SUBCLASSED because it is
@@ -789,7 +823,24 @@ typedef struct {
   // should be invisible to the calling function anyways.
   char* virtualStack;
   int virtualStackByteSize; // Number of 1-byte entries in virtualStack
+  // Number of bytes in the allocation that starts at virtualStack,
+  // which also contains entryRegs
+  int allocByteSize;
   int virtualStackFPOffset; // Where in the stack the frame pointer was
+
+  // The values at function entrance of the registers, indexed by
+  // DWARF register number:  entryRegs[N] holds register N, if bit N
+  // of func->entryRegsMask is set.  A formal parameter whose location is a
+  // register (DW_OP_reg*) is read from here, and the address of one
+  // whose location is relative to a register (DW_OP_breg*) is computed
+  // from here, at both entrance and exit, for the same reason as
+  // virtualStack:  the function body and epilogue may change the
+  // registers.  At function entrance,
+  // Fjalar copies those registers, with their A and V bits and
+  // DynComp tags, to entryRegs.  entryRegs has FJALAR_NUM_DWARF_REGS
+  // elements and lies in the same allocation as virtualStack, just
+  // after it; it is null if func->entryRegsMask is 0.
+  Addr* entryRegs;
 
 
   Addr lowSP;
@@ -955,6 +1006,12 @@ void visitVariableGroup(VariableOrigin varOrigin,
                         // address space (it's what we'll dereference)
                         Addr stackBaseAddr,
                         Addr stackBaseAddrGuest,
+                        // The values of the registers at function
+                        // entrance, which is
+                        // FunctionExecutionState.entryRegs (only
+                        // used for varOrigin == FUNCTION_FORMAL_PARAM
+                        // and if stackBaseAddr is non-zero)
+                        Addr* entryRegs,
                         // This function performs an action for each
                         // variable visited:
                         TraversalAction *performAction);
