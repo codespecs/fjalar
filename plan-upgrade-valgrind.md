@@ -80,12 +80,6 @@ Memcheck and DynComp depend tightly on Valgrind core:
 
 ## Steps
 
-Steps 3-6 and 10 still describe `patch`, the `find` fix-ups, and
-`make git-update`, and step 4 checks the patch for build products by hand.
-#99 (input checks in `generate-patch-files.sh`) and #103 (`git diff` and
-`git apply`) update those steps; until they land, the steps contradict
-items 2 and 3 of `plan-pre-upgrade.md`, which this plan assumes.
-
 1. **Preparation** (separate branch, e.g. `valgrind-3.27.1`; do not combine with
    the Binutils/readelf upgrade, which should already have landed).
    - Work in a new clone, because each working directory is dedicated to
@@ -281,9 +275,8 @@ items 2 and 3 of `plan-pre-upgrade.md`, which this plan assumes.
 10. **Finish.**
     - Update first line of `valgrind/REVISION`
       (`# Valgrind version 3.27.1, released ...`).
-    - Add names of new Valgrind test drivers to `.gitignore`, in the
-      per-tool sections (`# /memcheck/` etc.; there is no "Ignore generated
-      test drivers" section).
+    - Add names of new Valgrind test drivers to `.gitignore`
+      ("Ignore generated test drivers" section).
     - `make git-update > git.script`, review, run.
     - Document user-visible changes in `$INV/daikon/doc/CHANGELOG.md` (users
       care, because newer Valgrind supports newer CPUs, kernels, glibc, and
@@ -291,8 +284,7 @@ items 2 and 3 of `plan-pre-upgrade.md`, which this plan assumes.
       no change.
     - Update `doc/valgrind-merge.texinfo` in the same PR, while the merge is
       fresh, so that the documented procedure matches the one actually used:
-      dates/OS versions, building the baseline in a copy (step 3), and any
-      new pitfalls.  (The regtest baseline output pasted into the doc is
+      dates/OS versions and any new pitfalls.  (The regtest baseline output pasted into the doc is
       superseded by `regtest-expected/*.txt`.)  Also incorporate what this
       plan adds beyond `plan-pre-upgrade.md` item 5:
       - working in a new clone (step 1);
