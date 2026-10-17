@@ -241,6 +241,17 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
 // probably interactions.  E.g. if the args are (a, b, c, d, e), then
 // you should merge tag(a) with tag(b), tag(c), tag(d), and tag(e)
 // then return tag(a)
+//
+// Arguments that the callee's mc-exclusion mask (mcx_mask) excludes
+// do not take part in any merge, so the anchor that every other
+// argument is merged with is the first argument that is not excluded.
+// For example, amd64g_calculate_condition excludes its constant
+// condition-code argument, so the anchor is cc_dep1 (the first operand
+// of the comparison), which is merged with cc_dep2 (the second
+// operand).  An excluded constant must not be the anchor:
+// under --dyncomp-approximate-literals its tag is WEAK_FRESH_TAG, and
+// merging with WEAK_FRESH_TAG has no effect, so the operands would not
+// be merged at all.
 
 // By some informal observation, it seems like '>' and '>='
 // comparisons are translated into clean C calls.  The correct
@@ -253,13 +264,15 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
                          IRAtom** exprvec, IRCallee* cee )
 {
   if (exprvec && exprvec[0]) {
-      IRAtom* first = expr2tags_DC(dce, exprvec[0]);
+      // The tag of the first argument that is not excluded, or NULL
+      // if no argument so far is
+      IRAtom* first = NULL;
       Int i;
       IRAtom* cur;
       IRDirty* di;
       IRTemp   datatag;
 
-      for (i = 1; exprvec[i]; i++) {
+      for (i = 0; exprvec[i]; i++) {
          tl_assert(i < 32);
          tl_assert(isOriginalAtom_DC(dce, exprvec[i]));
          /* Only take notice of this arg if the callee's mc-exclusion
@@ -268,6 +281,8 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
             /* the arg is to be excluded from definedness checking.  Do
                nothing. (I guess we do nothing also just like mkLazyN) */
             if (0) printf("excluding %s(%d)\n", cee->name, i);
+         } else if (first == NULL) {
+            first = expr2tags_DC(dce, exprvec[i]);
          } else {
             /* merge the tags of first and current arguments */
             cur = expr2tags_DC(dce, exprvec[i]);
