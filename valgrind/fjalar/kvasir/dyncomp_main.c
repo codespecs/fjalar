@@ -323,6 +323,28 @@ void MC_(helperc_STORE_TAG_1) ( Addr a, UInt tag ) {
   set_tag(a, tagToWrite);
 }
 
+// The largest len for MC_(helperc_COPY_TAGS): the size of an Ity_V256 value.
+#define MAX_COPY_TAGS_LEN 32
+
+// Copies the tags of the len bytes at src to the len bytes at dst, which
+// may overlap them.  This stores a value that was loaded from src, without
+// giving all of its bytes one tag; see do_shadow_STle_DC.
+VG_REGPARM(3)
+void MC_(helperc_COPY_TAGS) ( Addr dst, Addr src, UWord len ) {
+  UInt tags[MAX_COPY_TAGS_LEN];
+  UWord i;
+
+  tl_assert(len <= MAX_COPY_TAGS_LEN);
+  DYNCOMP_TPRINTF("[DynComp] COPY_TAGS: %p <- %p, %lu bytes\n",
+                  (void *)dst, (void *)src, len);
+  for (i = 0; i < len; i++) {
+    tags[i] = get_tag(src + i);
+  }
+  for (i = 0; i < len; i++) {
+    set_tag(dst + i, tags[i]);
+  }
+}
+
 // Unions the tags belonging to these addresses and set
 // the tags of both to the canonical tag (for efficiency)
 void val_uf_union_tags_at_addr(Addr a1, Addr a2) {
@@ -350,6 +372,22 @@ void val_uf_union_tags_at_addr(Addr a1, Addr a2) {
   DYNCOMP_TPRINTF("[DynComp] val_uf_union_tags_at_addr(%p, %p) canonicalTag=%u\n",
                   (void *)a1, (void *)a2, canonicalTag);
   }
+
+// Returns the first non-zero tag in the range [a, a+len), or 0 if every tag
+// in the range is 0.
+static UInt first_nonzero_tag_in_range(Addr a, SizeT len) {
+  Addr curAddr;
+  UInt curTag;
+
+  for (curAddr = a; curAddr < (a + len); curAddr++) {
+    curTag = get_tag(curAddr);
+    if (curTag) {
+      DYNCOMP_TPRINTF("MLR debug first_nonzero_tag_in_range addr=%p, tag=%u\n", (void *)curAddr, curTag);
+      return curTag;
+    }
+  }
+  return 0;
+}
 
   // Union the tags of all addresses in the range [a, a+max)
 // and sets them all equal to the canonical tag of the merged set
@@ -390,14 +428,7 @@ UInt val_uf_union_tags_in_range(Addr a, SizeT len) {
   // that as the basis for all the mergings:
   // (Hopefully this should only take one iteration
   //  because the tag of address 'a' should be non-zero)
-  for (curAddr = a; curAddr < (a + len); curAddr++) {
-    curTag = get_tag(curAddr);
-    if (curTag) {
-DYNCOMP_TPRINTF("MLR debug val_uf_union_tags_in_range addr=%p, tag=%u\n", (void *)curAddr, curTag);
-      tagToMerge = curTag;
-      break;
-    }
-  }
+  tagToMerge = first_nonzero_tag_in_range(a, len);
 
   // If they are all zeroes, then we're done;
   // Don't merge anything
@@ -451,19 +482,13 @@ UInt MC_(helperc_CREATE_TAG)(Addr static_id) {
 // range contains only one non-zero tag; for example, both return 0 for a
 // range whose tags are all WEAK_FRESH_TAG.
 static UInt load_tag_in_range(Addr a, SizeT len) {
-  Addr curAddr;
-  UInt curTag;
+  UInt firstTag;
 
   if (!(dyncomp_dataflow_only_mode || dyncomp_dataflow_comparisons_mode)) {
     return val_uf_union_tags_in_range(a, len);
   }
-  for (curAddr = a; curAddr < (a + len); curAddr++) {
-    curTag = get_tag(curAddr);
-    if (curTag) {
-      return val_uf_find_leader(curTag);
-    }
-  }
-  return 0;
+  firstTag = first_nonzero_tag_in_range(a, len);
+  return firstTag ? val_uf_find_leader(firstTag) : 0;
 }
 
 VG_REGPARM(1)

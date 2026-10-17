@@ -123,7 +123,7 @@ struct longPair {
 // copyLongs() copies a struct with movdqu, so VEX loads both fields with one
 // 128-bit load.  Loading is not an interaction under
 // --dyncomp-interactions=comparisons, so DynComp should not make a and b
-// comparable.
+// comparable.  The copy of b should be comparable to b, not to a.
 long copyLongs(long a, long b) {
   struct longPair p, q;
   p.a = a;
@@ -131,7 +131,7 @@ long copyLongs(long a, long b) {
   __asm__ volatile ("movdqu %1, %%xmm0\n\t"
                     "movdqu %%xmm0, %0"
                     : "=m" (q) : "m" (p) : "xmm0");
-  return q.a;
+  return q.b;
 }
 
 struct intPair {
@@ -141,7 +141,8 @@ struct intPair {
 
 // copyInts() copies a struct with one 64-bit load.  Loading is not an
 // interaction under --dyncomp-interactions=comparisons, so DynComp should
-// not make a and b comparable.
+// not make a and b comparable.  The copy of b should be comparable to b, not
+// to a.
 int copyInts(int a, int b) {
   struct intPair p, q;
   p.a = a;
@@ -149,7 +150,7 @@ int copyInts(int a, int b) {
   __asm__ volatile ("movq %1, %%rax\n\t"
                     "movq %%rax, %0"
                     : "=m" (q) : "m" (p) : "rax");
-  return q.a;
+  return q.b;
 }
 
 int main(void) {

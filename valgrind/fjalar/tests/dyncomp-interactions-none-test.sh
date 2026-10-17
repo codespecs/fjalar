@@ -4,7 +4,8 @@
 # operands of a comparison comparable when the comparison's result is
 # computed by a condition-code helper such as amd64g_calculate_condition, nor
 # the two halves of a 128-bit load, nor the two fields of a struct copied by
-# a 64-bit load.
+# a 64-bit load.  Each field of the copy should be comparable to the field it
+# was copied from.
 # In that mode, no operation is an interaction, so DynComp should merge no
 # tags.  The expected comparability is in
 # dyncomp-interactions-none.goal.

@@ -10,8 +10,10 @@
 # preserved by an inc, whether via amd64g_calculate_rflags_c or, in the same
 # basic block, via a CmpLT32U, or copied by a lahf via
 # amd64g_calculate_rflags_all.  But they should be comparable when a setb
-# reads the carry flag in the same basic block as an inc preserves it.  Nor should the two halves of a 128-bit load,
-# nor the two fields of a struct copied by a 64-bit load.
+# reads the carry flag in the same basic block as an inc preserves it.  The
+# two halves of a 128-bit load should not be comparable, nor should the two
+# fields of a struct copied by a 64-bit load, and each field of the copy
+# should be comparable to the field it was copied from.
 # The expected comparability is in dyncomp-interactions-comparisons.goal.
 
 exec "$(dirname "$0")/dyncomp-comparability-test.sh" \

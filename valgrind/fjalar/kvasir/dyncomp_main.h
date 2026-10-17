@@ -285,6 +285,7 @@ extern VG_REGPARM(1) void MC_(helperc_STORE_TAG_8) ( Addr, UInt );
 extern VG_REGPARM(2) void MC_(helperc_STORE_TAG_4) ( Addr, UInt );
 extern VG_REGPARM(2) void MC_(helperc_STORE_TAG_2) ( Addr, UInt );
 extern VG_REGPARM(2) void MC_(helperc_STORE_TAG_1) ( Addr, UInt );
+extern VG_REGPARM(3) void MC_(helperc_COPY_TAGS) ( Addr, Addr, UWord );
 
 extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_8) ( Addr );
 extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_4) ( Addr );

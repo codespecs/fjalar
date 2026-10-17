@@ -348,8 +348,11 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2,
 //
 // Under --dyncomp-interactions=units, the operands of a subtraction are
 // interactions, and the operands of a multiplication are not, so a helper
-// call merges tags in the same cases.  If the flags are set by an add, its
-// operands were already merged when its result was computed.
+// call that reads flags merges tags in the same cases.  If the flags are set
+// by an add, its operands were already merged when its result was computed.
+// A helper call that does not read flags, such as one that computes a sum of
+// absolute differences (psadbw) or a CRC, merges all of its arguments, as in
+// the default mode.
 
 // The flags-carrying analysis finds the temporaries whose values only carry
 // flags forward, from one flags thunk to the next.  For example, an inc or
@@ -466,10 +469,13 @@ static Bool isCopyOrZeroExtension_DC ( IRExpr* e )
 Bool* findFlagsCarryingTmps_DC ( const IRSB* sb_in )
 {
    const Int nTmps = sb_in->tyenv->types_used;
+   // VG_(calloc) asserts that the size is non-zero, and a superblock may
+   // have no temporaries.
+   const Int nAlloc = nTmps > 0 ? nTmps : 1;
    UChar* uses = VG_(calloc)("dyncomp_translate.c.findFlagsCarryingTmps_DC.1",
-                             nTmps, sizeof(UChar));
+                             nAlloc, sizeof(UChar));
    Bool* result = VG_(malloc)("dyncomp_translate.c.findFlagsCarryingTmps_DC.2",
-                              nTmps * sizeof(Bool));
+                              nAlloc * sizeof(Bool));
    Int i, j;
 
    noteOtherUses_DC(uses, sb_in->next);
@@ -566,7 +572,17 @@ static
 Bool resultCarriesFlags_DC ( DCEnv* dce )
 {
    IRStmt* st = dce->sb_in->stmts[dce->stmtIndex];
+   tl_assert(dce->tmpCarriesFlags);
    return st->tag == Ist_WrTmp && dce->tmpCarriesFlags[st->Ist.WrTmp.tmp];
+}
+
+// Returns True if cee is a helper that computes flags from a flags thunk.
+static
+Bool readsFlags_DC ( IRCallee* cee )
+{
+   return cee->addr == (void*)&amd64g_calculate_condition
+          || cee->addr == (void*)&amd64g_calculate_rflags_c
+          || cee->addr == (void*)&amd64g_calculate_rflags_all;
 }
 
 // If a call to cee with arguments exprvec uses flags as the result of a
@@ -597,7 +613,8 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
    // Non-NULL if the merge depends on the CC_OP argument
    IRAtom* ccOp = NULL;
 
-   if (dyncomp_dataflow_comparisons_mode || dyncomp_units_mode) {
+   if (dyncomp_dataflow_comparisons_mode
+       || (dyncomp_units_mode && readsFlags_DC(cee))) {
       ccOp = comparisonCCOp_DC(dce, exprvec, cee);
       if (!ccOp) {
          return IRExpr_Const(IRConst_UWord(0));
@@ -627,6 +644,11 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
          }
       }
    }
+
+   // Only the last merge checks ccOp, so if ccOp is checked at run time,
+   // there must be at most one merge, of at most two arguments.  The
+   // masks of the helpers that comparisonCCOp_DC accepts leave two.
+   tl_assert(!ccOp || numMergedArgs <= 2);
 
    if (numMergedArgs >= 2) {
       merged = expr2tags_DC(dce, mergedArgs[0]);
@@ -2560,7 +2582,8 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 
          // Loading a value is not an interaction in these modes, so the
          // halves are not merged, and the value gets the tag of its
-         // lower half.
+         // lower half.  A store of the value can keep the tags of both
+         // halves; see do_shadow_STle_DC.
          if (dyncomp_dataflow_only_mode || dyncomp_dataflow_comparisons_mode) {
             return v64lo;
          }
@@ -2762,6 +2785,40 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
    }
 }
 
+// If data, the value stored by the statement being instrumented, was loaded
+// from memory earlier in the superblock, and no statement in between can
+// write memory, returns the address it was loaded from.  Otherwise, returns
+// NULL.
+static
+IRAtom* loadedFromAddr_DC ( DCEnv* dce, IRAtom* data )
+{
+   Int i;
+
+   if (data->tag != Iex_RdTmp) {
+      return NULL;
+   }
+   for (i = dce->stmtIndex - 1; i >= 0; i--) {
+      IRStmt* st = dce->sb_in->stmts[i];
+      switch (st->tag) {
+         case Ist_WrTmp:
+            if (st->Ist.WrTmp.tmp == data->Iex.RdTmp.tmp) {
+               IRExpr* e = st->Ist.WrTmp.data;
+               return e->tag == Iex_Load ? e->Iex.Load.addr : NULL;
+            }
+            break;
+         case Ist_Store:
+         case Ist_StoreG:
+         case Ist_CAS:
+         case Ist_LLSC:
+         case Ist_Dirty:
+            return NULL;
+         default:
+            break;
+      }
+   }
+   return NULL;
+}
+
 /* PG says we might need to resync this with Memcheck's
    do_shadow_Store().  The only problem I know about is fixing an
    endianness assumption in the 128-bit case. -SMcC */
@@ -2829,6 +2886,25 @@ void do_shadow_STle_DC ( DCEnv* dce,
    // Also, we must use shadowType to translate all type sizes
    // to integral sizes
    ty = shadowTypeV(typeOfIRExpr(dce->bb->tyenv, data));
+
+   // In these modes, loading a value is not an interaction, so the value's
+   // tag is the tag of only one of its bytes; see MC_(helperc_LOAD_TAG_8).
+   // When the value is stored unchanged, as when a struct is copied, each
+   // byte keeps its own tag rather than getting that one.
+   if ((dyncomp_dataflow_only_mode || dyncomp_dataflow_comparisons_mode)
+       && dce->sb_in->stmts[dce->stmtIndex]->tag == Ist_Store) {
+      IRAtom* srcAddr = loadedFromAddr_DC(dce, data);
+      if (srcAddr) {
+         di = unsafeIRDirty_0_N(
+                 3/*regparms*/,
+                 "MC_(helperc_COPY_TAGS)", &MC_(helperc_COPY_TAGS),
+                 mkIRExprVec_3( addr, srcAddr,
+                                mkIRExpr_HWord(sizeofIRType(ty)) ));
+         setHelperAnns_DC( dce, di );
+         stmt_DC('V', dce, IRStmt_Dirty(di));
+         return;
+      }
+   }
 
    /* Now decide which helper function to call to write the data tag
       into shadow memory. */
