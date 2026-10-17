@@ -193,16 +193,6 @@ void val_uf_make_set_for_tag(UInt tag) {
   uf_make_set(GET_UF_OBJECT_PTR(tag), tag);
 }
 
-// Returns a description of the current instruction address, for
-// trace output.  It is expensive, so call it only when tracing; for
-// example, as an argument to DYNCOMP_TPRINTF, which evaluates its
-// arguments only when tracing.
-static const HChar* current_IP_description(void) {
-  Addr eip = VG_(get_IP)(VG_(get_running_tid)());
-  // Describe this (probably live) address with current epoch
-  return VG_(describe_IP)(VG_(current_DiEpoch)(), eip, NULL);
-}
-
 // Merge the sets of tag1 and tag2 and return the leader
 UInt val_uf_tag_union(UInt tag1, UInt tag2) {
   if (!IS_ZERO_TAG(tag1) && !IS_SECONDARY_UF_NULL(tag1) &&
