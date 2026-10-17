@@ -568,11 +568,12 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
     mergeTagsReturn0Count++;
   }
 
-  // (comment added 2006)  
-  // TODO: What do we do about WEAK_FRESH_TAG???
-
+  // A tag of 0 or WEAK_FRESH_TAG has no comparability set, so there is
+  // nothing to merge.
   if (IS_ZERO_TAG(tag1) ||
-      IS_ZERO_TAG(tag2)) {
+      IS_ZERO_TAG(tag2) ||
+      (WEAK_FRESH_TAG == tag1) ||
+      (WEAK_FRESH_TAG == tag2)) {
     return 0;
   }
   else {
