@@ -8908,8 +8908,9 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
             handle_possible_exit( &mce, st->Ist.Exit.jk ); // pgbovine
             //complainIfUndefined( &mce, st->Ist.Exit.guard, NULL ); // pgbovine
 #ifndef _NO_DYNCOMP
-            if (do_dyncomp)
-               do_shadow_cond_exit_DC( &dce, st->Ist.Exit.guard );
+            // This DynComp anchor is disabled; see do_shadow_cond_exit_DC.
+            // if (do_dyncomp)
+            //    do_shadow_cond_exit_DC( &dce, st->Ist.Exit.guard );
 #endif /* _NO_DYNCOMP */
             break;
 

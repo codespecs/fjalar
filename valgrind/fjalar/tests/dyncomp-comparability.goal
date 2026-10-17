@@ -1,3 +1,12 @@
+..add_pd_const_lt():::EXIT0 a 1
+..add_pd_const_lt():::EXIT0 c 1
+..add_pd_const_lt():::EXIT0 d 2
+..add_pd_const_lt():::EXIT0 return 3
+..add_pd_lt():::EXIT0 a 1
+..add_pd_lt():::EXIT0 b 1
+..add_pd_lt():::EXIT0 c 1
+..add_pd_lt():::EXIT0 d 2
+..add_pd_lt():::EXIT0 return 3
 ..shift_by_lt():::EXIT0 a 1
 ..shift_by_lt():::EXIT0 b 1
 ..shift_by_lt():::EXIT0 x 2

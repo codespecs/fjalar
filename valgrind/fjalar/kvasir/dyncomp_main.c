@@ -197,18 +197,20 @@ void val_uf_make_set_for_tag(UInt tag) {
 UInt val_uf_tag_union(UInt tag1, UInt tag2) {
   if (!IS_ZERO_TAG(tag1) && !IS_SECONDARY_UF_NULL(tag1) &&
       !IS_ZERO_TAG(tag2) && !IS_SECONDARY_UF_NULL(tag2)) {
-    Addr eip = VG_(get_IP)(VG_(get_running_tid)());
-    const HChar *eip_info;
     uf_object* tag1_obj, *tag2_obj;
     uf_object* leader;
     tag1_obj = GET_UF_OBJECT_PTR(tag1);
     tag2_obj = GET_UF_OBJECT_PTR(tag2);
     leader = uf_union(tag1_obj, tag2_obj);
-    // Describe this (probably live) address with current epoch
-    eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), eip, NULL);
 
-    DYNCOMP_TPRINTF("[DynComp-v1] Merging %u with %u to get %u at %s\n",
-                    tag1, tag2, leader->tag, eip_info);
+    // This function is called on every merge, so look up the IP only when tracing.
+    if (dyncomp_print_trace_info) {
+      Addr eip = VG_(get_IP)(VG_(get_running_tid)());
+      // Describe this (probably live) address with current epoch
+      const HChar *eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), eip, NULL);
+      DYNCOMP_TPRINTF("[DynComp-v1] Merging %u with %u to get %u at %s\n",
+                      tag1, tag2, leader->tag, eip_info);
+    }
 
     return leader->tag;
   }
@@ -499,13 +501,17 @@ UInt tag2_is_new ( UInt tag1, UInt tag2 ) {
 // of the merged set
 VG_REGPARM(2)
 UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
-  Addr eip = VG_(get_IP)(VG_(get_running_tid)());
-  const HChar *eip_info;
-  // Describe this (probably live) address with current epoch
-  eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), eip, NULL);
+  const HChar *eip_info = NULL;
 
   if (dyncomp_profile_tags) {
     mergeTagsCount++;
+  }
+
+  // This function is called on every merge, so look up the IP only when tracing.
+  if (dyncomp_print_trace_info) {
+    Addr eip = VG_(get_IP)(VG_(get_running_tid)());
+    // Describe this (probably live) address with current epoch
+    eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), eip, NULL);
   }
 
   // Important special case - if one of the tags is 0, then
