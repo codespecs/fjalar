@@ -13,11 +13,13 @@
 # A test that is listed as an expected failure but passes produces a warning,
 # not a failure; remove it from the expected-failures file.
 #
-# Usage: ./check-regtest.sh [--log FILE] [--expected FILE] [--update] [--report-only]
+# Usage: ./check-regtest.sh [--log FILE] [--expected FILE] [--observed FILE] [--update] [--report-only]
 #   --log FILE       Read FILE (output of "make test") instead of running the tests.
 #   --expected FILE  Use FILE as the expected-failures file.  The default is
 #                    regtest-expected/<os>.txt, where <os> is computed from
 #                    /etc/os-release, for example "ubuntu-26.04" or "rocky-10".
+#   --observed FILE  Write the observed failures to FILE.  The default is
+#                    regtest-observed-<os>.txt (in this directory).
 #   --update         Rewrite the expected-failures file to match this run.
 #                    Comment lines and "?" lines are kept.  Review the diff!
 #   --report-only    Report differences, but exit with status 0 regardless.
@@ -32,11 +34,12 @@
 #    "make regtest" runs after the tests (makefile consistency, header files
 #    and include directives), such as
 #    "post_regtest_checks: *** File fjalar/typedata.c must not include ../coregrind/pub_core_mallocfree.h".
-#  * "post check failed: COMMAND" means that the "post:" command of a test
-#    failed to run.
+#  * "TEST (post check failed)", such as
+#    "massif/tests/big-alloc (post check failed)", means that the "post:"
+#    command of the test failed to run.
 #
-# Whatever the outcome, the observed failures are written to
-# regtest-observed-<os>.txt (in this directory), so that CI can save them.
+# Whatever the outcome, the observed failures are written to the --observed
+# file, so that CI can save them.
 
 # Fail the whole script if any command fails.
 set -e
@@ -46,12 +49,14 @@ FJALARDIR="$(cd "$(dirname "$0")" && pwd)"
 
 LOG=
 EXPECTED=
+OBSERVED=
 UPDATE=false
 REPORT_ONLY=false
 while [ $# -gt 0 ]; do
   case "$1" in
     --log) LOG="$2"; shift 2 ;;
     --expected) EXPECTED="$2"; shift 2 ;;
+    --observed) OBSERVED="$2"; shift 2 ;;
     --update) UPDATE=true; shift ;;
     --report-only) REPORT_ONLY=true; shift ;;
     *) echo "$0: unknown argument: $1" >&2; exit 2 ;;
@@ -60,6 +65,11 @@ done
 # Make file arguments absolute before changing directory.
 [ -n "$LOG" ] && LOG="$(realpath -m "$LOG")"
 [ -n "$EXPECTED" ] && EXPECTED="$(realpath -m "$EXPECTED")"
+[ -n "$OBSERVED" ] && OBSERVED="$(realpath -m "$OBSERVED")"
+if [ -n "$LOG" ] && [ ! -f "$LOG" ]; then
+  echo "$0: no such file: $LOG" >&2
+  exit 2
+fi
 cd "$FJALARDIR"
 
 # The operating system name, such as "ubuntu-26.04" or "rocky-10".  For
@@ -75,7 +85,7 @@ os_name() {
 }
 OS="$(os_name)"
 EXPECTED="${EXPECTED:-regtest-expected/$OS.txt}"
-OBSERVED="$FJALARDIR/regtest-observed-$OS.txt"
+OBSERVED="${OBSERVED:-$FJALARDIR/regtest-observed-$OS.txt}"
 
 if [ -z "$LOG" ]; then
   LOG="$FJALARDIR/regtest-$OS.log"
@@ -86,7 +96,12 @@ if [ -z "$LOG" ]; then
   # manual with xmllint if xmllint is installed.  That needs the DocBook DTD,
   # from a package or the network, and is not a test of Valgrind's behavior.
   # Naming a nonexistent xmllint makes docs/Makefile skip the validation.
-  make test XMLLINT=xmllint-skipped-by-check-regtest > "$LOG" 2>&1 || true
+  # "make check" builds about a thousand test programs; build them in
+  # parallel first, because "make regtest" builds them serially.
+  # vg_regtest itself runs the tests serially.
+  make -C valgrind -j"$(nproc)" check XMLLINT=xmllint-skipped-by-check-regtest \
+    > "$LOG" 2>&1 || true
+  make test XMLLINT=xmllint-skipped-by-check-regtest >> "$LOG" 2>&1 || true
 fi
 
 # The summary line has this form:
@@ -106,15 +121,24 @@ grep -E "$SUMMARY_RE" "$LOG" | tail -n 1
 # Print the observed failures, one per line, normalized to "name (kind)".
 observed_failures() {
   awk -v summary_re="$SUMMARY_RE" '
-    $0 ~ summary_re { in_summary = 1; n = 0; next }
+    $0 ~ summary_re { in_summary = 1; next }
     in_summary && /^[ \t]*$/ { in_summary = 0; next }
     in_summary { $1 = $1; failures[n++] = $0; next }
-    # A "post:" command in a .vgtest file failed to run.  vg_regtest counts
-    # this in the summary line but does not list it.
-    /^post check failed: / { $1 = $1; failures[n++] = $0; next }
+    # Track the directory and name of the test that is running, such as
+    #   -- Running  tests in massif/tests ------------------------------
+    #   big-alloc:       valgrind --stacks=no ./big-alloc
+    /^-- Running  tests in / { dir = $5; next }
+    /^[^ :]+: +valgrind / { test = substr($1, 1, length($1) - 1); next }
+    # The "post:" command of the test failed to run.  vg_regtest counts this
+    # in the summary line but does not list it.
+    /^post check failed: / { failures[n++] = dir "/" test " (post check failed)"; next }
     # Output of tests/post_regtest_checks, other than its progress messages.
+    # It ends at the first line that make prints after it.
     /^\.\.\.checking / { in_post_checks = 1; next }
-    in_post_checks && !/^make(\[[0-9]+\])?: / && !/^[ \t]*$/ {
+    in_post_checks && (/^make(\[[0-9]+\])?: / || /^[^ :]*[Mm]akefile:[0-9]+: recipe for target /) {
+      in_post_checks = 0; next
+    }
+    in_post_checks && !/^[ \t]*$/ {
       $1 = $1; post_errors[m++] = "post_regtest_checks: " $0
     }
     END {
