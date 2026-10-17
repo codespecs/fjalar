@@ -13,7 +13,7 @@
 
 ## Fjalar's changes to the Memcheck build.  Makefile.am, which includes
 ## this file at its end, is generated from ../memcheck/Makefile.am by
-## apply-patch-files.sh; see its header comment.
+## generate-fjalar-makefile.sh; see its header comment.
 
 #Fjalar has no 'tests' subdir
 SUBDIRS = .

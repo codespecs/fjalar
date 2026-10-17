@@ -120,9 +120,10 @@ it completely (merged, CI green) before starting this one.  That plan's
    - In `mc_translate.c`'s `MC_(instrument)`, check that every case has
      matching DynComp code and that new cases get a DynComp counterpart.
    - Check `mc_main.c` still has Fjalar's options/version info.
-   - The script regenerates `valgrind/fjalar/Makefile.am` from
-     `valgrind/memcheck/Makefile.am`, so Fjalar builds every new Memcheck
-     source file.  Review the staged diff of `valgrind/fjalar/Makefile.am`,
+   - The script runs `generate-fjalar-makefile.sh`, which regenerates
+     `valgrind/fjalar/Makefile.am` from `valgrind/memcheck/Makefile.am`, so
+     Fjalar builds every new Memcheck source file.  (The dry run writes it
+     to `$INV/fjalar-Makefile.am` instead.)  Review the staged diff of `valgrind/fjalar/Makefile.am`,
      and update `valgrind/fjalar/fjalar.am`, which holds Fjalar's changes
      to the build, if an upstream change conflicts with them.
 

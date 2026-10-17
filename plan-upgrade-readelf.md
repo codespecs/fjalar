@@ -98,7 +98,7 @@ Kvasir tests after each step.
    `dwarf.c`).  Copy any new needed headers into `valgrind/fjalar/include/`
    and add any new needed `.c` files to `FJALAR_SOURCES_COMMON` in
    `valgrind/fjalar/fjalar.am`.  (Do not edit `valgrind/fjalar/Makefile.am`,
-   which `apply-patch-files.sh` regenerates at each Valgrind merge.)
+   which `generate-fjalar-makefile.sh` regenerates at each Valgrind merge.)
    (`demanguse.h` and the CTF headers were added this way in the 2.39 merge.)
    - Known case: Binutils 2.40 added `readelf --sframe`, which includes
      `sframe-api.h` and calls into libsframe.  Fjalar does not need it:

@@ -554,23 +554,26 @@ $INV/fjalar/apply-patch-files.sh memcheck
 
 The Memcheck merge does not patch Fjalar's build file
 @file{valgrind/fjalar/Makefile.am}.  Instead, @file{apply-patch-files.sh}
-regenerates it from @file{valgrind/memcheck/Makefile.am}, which the
-Coregrind merge updated, by renaming Memcheck to Fjalar, so Fjalar builds
-every new Memcheck source file.  The generated
+runs @file{generate-fjalar-makefile.sh}, which regenerates it from
+@file{valgrind/memcheck/Makefile.am}, which the Coregrind merge updated,
+by renaming Memcheck to Fjalar.  Fjalar builds every Memcheck source file,
+so a new upstream source file is built automatically.  The generated
 file includes @file{valgrind/fjalar/fjalar.am}, which holds Fjalar's
 changes, such as its additional source files and compiler flags.  Review
 @command{git diff --cached valgrind/fjalar/Makefile.am}, and update
 @file{fjalar.am} if an upstream change conflicts with Fjalar's changes.
-The script lists any line of the generated file that still mentions
-Memcheck or docs; such a line may mean that the renaming in
-@file{apply-patch-files.sh} needs to handle a new upstream construct.
-
-Fjalar may not need every new Memcheck file.  Review the files that the
-patch added:
+The dry run writes the generated file to @file{$INV/fjalar-Makefile.am}
+instead, so you can review it before the actual merge.
+The scripts list any line of the generated file that still mentions
+Memcheck or docs, or that is a conflict marker.  Such a line may mean that
+the renaming in @file{generate-fjalar-makefile.sh} needs to handle a new
+upstream construct.  After changing @file{generate-fjalar-makefile.sh} or
+@file{fjalar.am}, regenerate the file and stage it:
 
 @example
 cd $INV/fjalar
-git diff --cached --name-only --diff-filter=A valgrind/fjalar
+./generate-fjalar-makefile.sh
+git add valgrind/fjalar/Makefile.am
 @end example
 
 
