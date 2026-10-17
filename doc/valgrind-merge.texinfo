@@ -117,7 +117,7 @@ and other steps would use a different copy.
 * Get Valgrind version tags::
 * Obtain a copy of the base Valgrind source tree::
 * Obtain a copy of the target Valgrind source tree::
-* Remove files that have been removed upstream::
+* Remove files that the target Valgrind release does not have::
 @end menu
 
 
@@ -291,19 +291,50 @@ git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git valgrind
 @c For a  full repro of the current Valgrind source:
 @c git clone https://sourceware.org/git/valgrind.git valgrind-git
 
-@node Remove files that have been removed upstream
-@section Remove files that have been removed upstream
+@node Remove files that the target Valgrind release does not have
+@section Remove files that the target Valgrind release does not have
 
 The following command lists
-files that have been removed by the Valgrind developers since the last
-merge:
+files that Fjalar tracks but that the target Valgrind release does not have.
+This includes files removed by the Valgrind developers since the last merge,
+and also any files that earlier merges failed to remove.
 
 @example
-cd $INV
-diff -qrb -x.git valgrind-old valgrind-new |grep "Only in valgrind-old"
+cd $INV/fjalar
+(export LC_ALL=C
+ comm -23 <(git ls-files valgrind | sed 's|^valgrind/||' \
+              | grep -v -e '^fjalar/' -e '^REVISION$' | sort) \
+          <(git -C $INV/valgrind-new ls-files | sort) \
+   | sed 's|^|valgrind/|')
 @end example
 
-Remove these files.
+@noindent
+Review the list, then remove the files by running the same command
+with @code{| xargs -r rm} appended.
+Use @command{rm}, not @command{git rm}: the @file{git.script} generated in
+@ref{Committing} runs @command{git rm} on the files that the Valgrind
+developers removed since the last merge, and fails if they are already
+removed from the index.  @samp{git commit -a} records the removal of the
+others.
+Setting @env{LC_ALL} makes @command{sort} and @command{comm} agree on the
+sort order; in other locales, @command{comm} can list files that
+Valgrind still has.
+
+Fjalar has two copies of memcheck: an unmodified one in
+@file{$INV/fjalar/valgrind/memcheck/}, and a modified one (the
+@file{mc_*} files and @file{memcheck.h}) in
+@file{$INV/fjalar/valgrind/fjalar/}.  The command above omits the
+modified copy.  The following command lists the files in the modified
+copy that have no counterpart in the target Valgrind's memcheck.  Except
+for @file{mc_translate.h}, which is Fjalar's own, check each one for
+Fjalar changes, then remove it:
+
+@example
+cd $INV/fjalar/valgrind/fjalar
+for f in mc_*.[ch] memcheck.h; do
+  [ -e $INV/valgrind-new/memcheck/$f ] || echo $f
+done
+@end example
 
 This step could be done later, but we do it now to reduce the size
 of the patch and diff files.
