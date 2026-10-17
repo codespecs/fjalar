@@ -2360,6 +2360,21 @@ static void extractLocalArrayAndStructVariables(FunctionEntry* f,
           dwarfFunctionEntry->name);
 }
 
+// Returns true if the DWARF location of var places its value (or, for
+// a location made of DW_OP_piece operations, its first piece) in a
+// register.  This holds for every var whose locationType is
+// REGISTER_LOCATION, and also for some whose location Fjalar does not
+// support, such as an XMM register or a struct split across registers.
+static Bool isInRegister(VariableEntry* var)
+{
+  UInt atom;
+  if (var->location_expression_size == 0) {
+    return False;
+  }
+  atom = var->location_expression[0].atom;
+  return atom >= DW_OP_reg0 && atom <= DW_OP_reg31;
+}
+
 // MUST BE RUN AFTER the return value for a function has been initialized!!!
 // Otherwise it cannot tell whether the function returns a struct type!!!
 //
@@ -2403,6 +2418,11 @@ static void verifyStackParamWordAlignment(FunctionEntry* f, int replace)
        cur_node = cur_node->next)
     {
       int cur_byteSize = 0;
+      // A parameter in a register occupies no stack slot, even if
+      // Fjalar cannot read the register.
+      if (isInRegister(cur_node->var)) {
+        continue;
+      }
       if (cur_node->var->locationType == NO_LOCATION || replace) {
         FJALAR_DPRINTF("MODIFY VAR LOCATION! was:\n");
         FJALAR_DPRINTF(" decType is: %s, size is: %d\n", DeclaredTypeString[cur_node->var->varType->decType],
@@ -2516,6 +2536,61 @@ int determineFormalParametersLowerStackByteSize(FunctionEntry* f)
 }
 
 
+// Returns true if the formal parameter's location is a register
+// whose entrance value Fjalar can save and from which Fjalar can read
+// the whole value.  The location must be a single DW_OP_reg operation:
+// Fjalar does not support any other operation (such as DW_OP_lit*)
+// that is not a memory location.
+static Bool isSupportedRegisterLocation(formal_parameter* paramPtr,
+                                        VariableEntry* varPtr)
+{
+  enum dwarf_location_atom atom;
+  int byteSize;
+
+  if (paramPtr->dwarf_stack_size != 1) {
+    return False;
+  }
+  atom = paramPtr->dwarf_stack[0].atom;
+  if (atom < DW_OP_reg0 || atom > DW_OP_reg31 ||
+      !dwarf_reg_is_readable(atom - DW_OP_reg0)) {
+    return False;
+  }
+  // A C++ reference is passed as a pointer.
+  byteSize = (varPtr->referenceLevels > 0
+              ? (int)sizeof(Addr)
+              : determineVariableByteSize(varPtr));
+  return 0 < byteSize && byteSize <= (int)sizeof(Addr);
+}
+
+// Adds to f->entryRegsMask each readable register that the formal
+// parameter's location uses, so that Fjalar saves the register at
+// function entrance.
+static void recordEntryRegs(FunctionEntry* f, formal_parameter* paramPtr)
+{
+  unsigned int i;
+  for (i = 0; i < paramPtr->dwarf_stack_size; i++) {
+    UInt regNum;
+    if (dwarf_op_reg_num(paramPtr->dwarf_stack[i].atom, &regNum)
+        && dwarf_reg_is_readable(regNum)) {
+      f->entryRegsMask |= 1U << regNum;
+    }
+  }
+}
+
+// Returns true if the formal parameter's location uses a register
+// (DW_OP_reg* or DW_OP_breg*).
+static Bool locationUsesRegister(formal_parameter* paramPtr)
+{
+  unsigned int i;
+  UInt regNum;
+  for (i = 0; i < paramPtr->dwarf_stack_size; i++) {
+    if (dwarf_op_reg_num(paramPtr->dwarf_stack[i].atom, &regNum)) {
+      return True;
+    }
+  }
+  return False;
+}
+
 // dwarfParamEntry->tag_name == DW_TAG_formal_parameter
 static void extractOneFormalParameterVar(FunctionEntry* f,
                                          dwarf_entry* dwarfParamEntry)
@@ -2562,24 +2637,48 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
                               0,0,0,0,0,0,0,1,
                               0);
 
-  if (paramPtr->dwarf_stack_size > 0) {
-    unsigned int i;
-    FJALAR_DPRINTF("\tCopying over DWARF Location stack\n");
-    for(i = 0; i < paramPtr->dwarf_stack_size; i++) {
-      varPtr->location_expression[i].atom = paramPtr->dwarf_stack[i].atom;
-      varPtr->location_expression[i].atom_offset = paramPtr->dwarf_stack[i].atom_offset;
-      FJALAR_DPRINTF("\tCopying over  %s (%lld)\n", location_expression_to_string(varPtr->location_expression[i].atom), varPtr->location_expression[i].atom_offset);
+  if (paramPtr->location_has_unsupported_op
+      || ((paramPtr->location_piece_size != 0)
+          && (paramPtr->location_piece_size
+              != (varPtr->ptrLevels > 0 ? sizeof(void*)
+                  : (unsigned long)varPtr->varType->byteSize)))) {
+    // varPtr->validLoc remains 0, so Fjalar omits the formal parameter.
+    FJALAR_DPRINTF(" location contains an unsupported operation\n");
+    varPtr->locationUnsupported = 1;
+  } else {
+    if (paramPtr->dwarf_stack_size > 0) {
+      unsigned int i;
+      FJALAR_DPRINTF("\tCopying over DWARF Location stack\n");
+      for(i = 0; i < paramPtr->dwarf_stack_size; i++) {
+        varPtr->location_expression[i].atom = paramPtr->dwarf_stack[i].atom;
+        varPtr->location_expression[i].atom_offset = paramPtr->dwarf_stack[i].atom_offset;
+        FJALAR_DPRINTF("\tCopying over  %s (%lld)\n", location_expression_to_string(varPtr->location_expression[i].atom), varPtr->location_expression[i].atom_offset);
+      }
+      varPtr->location_expression_size = paramPtr->dwarf_stack_size;
     }
-    varPtr->location_expression_size = paramPtr->dwarf_stack_size;
-  }
 
-  if (paramPtr->location_type == LT_FP_OFFSET) {
-    varPtr->validLoc = paramPtr->valid_loc;
-    varPtr->locationType = FP_OFFSET_LOCATION;
-    varPtr->byteOffset = paramPtr->location;
-    //    varPtr->atom = paramPtr->loc_atom;
+    if (paramPtr->location_type == LT_FP_OFFSET) {
+      varPtr->validLoc = paramPtr->valid_loc;
+      varPtr->locationType = FP_OFFSET_LOCATION;
+      varPtr->byteOffset = paramPtr->location;
+      //    varPtr->atom = paramPtr->loc_atom;
+      recordEntryRegs(f, paramPtr);
 
-    FJALAR_DPRINTF(" location_type: %u, byteOffset: %x\n", varPtr->locationType, (unsigned int)varPtr->byteOffset);
+      FJALAR_DPRINTF(" location_type: %u, byteOffset: %x\n", varPtr->locationType, (unsigned int)varPtr->byteOffset);
+    } else if (isSupportedRegisterLocation(paramPtr, varPtr)) {
+      UInt regNum = paramPtr->dwarf_stack[0].atom - DW_OP_reg0;
+      varPtr->validLoc = 1;
+      varPtr->locationType = REGISTER_LOCATION;
+      recordEntryRegs(f, paramPtr);
+      FJALAR_DPRINTF(" location is register %s\n", dwarf_reg_name(regNum));
+    } else if (locationUsesRegister(paramPtr)) {
+      // A register location that Fjalar cannot read, such as a register
+      // combined with other operations or a value larger than a register.
+      // Fjalar did not save the register at entrance, so no heuristic may
+      // make the location valid.
+      FJALAR_DPRINTF(" location is a register that Fjalar cannot read\n");
+      varPtr->locationUnsupported = 1;
+    }
   }
 
   FJALAR_DPRINTF("EXIT  extractOneFormalParameterVar\n");
@@ -3148,6 +3247,7 @@ static void processFunctions() {
       if ((f->formalParameters.numVars > 0) &&
           (f->formalParameters.first->var) &&
           !(f->formalParameters.first->var->validLoc) &&
+          !(f->formalParameters.first->var->locationUnsupported) &&
           (f->formalParameters.first->var->varType->decType == D_INT)){
         VariableEntry* var = f->formalParameters.first->var;
         printf("Found invalid argc, varByteOffset is: %d\n", var->byteOffset);
@@ -3159,6 +3259,7 @@ static void processFunctions() {
       if ((f->formalParameters.numVars > 1) &&
           (f->formalParameters.first->next->var) &&
           !(f->formalParameters.first->next->var->validLoc) &&
+          !(f->formalParameters.first->next->var->locationUnsupported) &&
           (f->formalParameters.first->next->var->varType->decType == D_CHAR)) {
         VariableEntry* var = f->formalParameters.first->next->var;
         printf("Found invalid argv, varByteOffset is: %d\n", var->byteOffset);
@@ -3210,7 +3311,9 @@ static void initConstructorsAndDestructors(void) {
 
       // (comment added 2009)  
       // RUDD - Dirty dirty hack. Force the location of this to be valid
-      f->formalParameters.first->var->validLoc = 1;
+      if (!f->formalParameters.first->var->locationUnsupported) {
+        f->formalParameters.first->var->validLoc = 1;
+      }
 
 
       // Use the regular (not mangled or demangled) name for matching

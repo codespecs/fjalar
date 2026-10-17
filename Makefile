@@ -32,6 +32,7 @@ test:
 fjalar-test:
 	valgrind/fjalar/tests/library-compilation-unit-test.sh
 	valgrind/fjalar/tests/location-views-test.sh
+	valgrind/fjalar/tests/register-params-test.sh
 
 # Kvasir tests
 daikon-test: ../daikon

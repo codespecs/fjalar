@@ -1203,7 +1203,10 @@ char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom
       formal_parameter *paramPtr = ((formal_parameter*)e->entry_ptr);
       paramPtr->loc_atom = atom;
 
-      tl_assert(paramPtr->dwarf_stack_size < MAX_DWARF_OPS);
+      if (paramPtr->dwarf_stack_size == MAX_DWARF_OPS) {
+        paramPtr->location_has_unsupported_op = 1;
+        return 1;
+      }
       paramPtr->dwarf_stack[paramPtr->dwarf_stack_size].atom = atom;
       paramPtr->dwarf_stack[paramPtr->dwarf_stack_size].atom_offset = value;
       paramPtr->dwarf_stack_size++;
@@ -1228,6 +1231,42 @@ char harvest_formal_param_location_offset(dwarf_entry* e, long value)
       ((formal_parameter*)e->entry_ptr)->location_type = LT_FP_OFFSET;
       ((formal_parameter*)e->entry_ptr)->location = value;
       ((formal_parameter*)e->entry_ptr)->valid_loc = 1;
+      return 1;
+    }
+  else
+    return 0;
+}
+
+// If e is a formal parameter, records that Fjalar cannot read its location
+// (sets location_has_unsupported_op), so Fjalar omits the parameter from the
+// .decls and .dtrace files.  Returns 1 if e is a formal parameter, 0
+// otherwise.
+char harvest_formal_param_location_unsupported(dwarf_entry* e)
+{
+  if ((e == 0) || (e->entry_ptr == 0))
+    return 0;
+
+  if (tag_is_formal_parameter(e->tag_name))
+    {
+      ((formal_parameter*)e->entry_ptr)->location_has_unsupported_op = 1;
+      return 1;
+    }
+  else
+    return 0;
+}
+
+// If e is a formal parameter, records that its location expression ends
+// with "DW_OP_piece size" (sets location_piece_size).
+// extractOneFormalParameterVar omits the parameter unless the piece is the
+// whole parameter.  Returns 1 if e is a formal parameter, 0 otherwise.
+char harvest_formal_param_location_piece(dwarf_entry* e, unsigned long size)
+{
+  if ((e == 0) || (e->entry_ptr == 0))
+    return 0;
+
+  if (tag_is_formal_parameter(e->tag_name))
+    {
+      ((formal_parameter*)e->entry_ptr)->location_piece_size = size;
       return 1;
     }
   else
@@ -1914,6 +1953,8 @@ static void process_abstract_origin_items(void)
           aliased_formal_param->location_type = cur_param->location_type;
           aliased_formal_param->loc_atom = cur_param->loc_atom;
           aliased_formal_param->valid_loc = cur_param->valid_loc;
+          aliased_formal_param->location_has_unsupported_op = cur_param->location_has_unsupported_op;
+          aliased_formal_param->location_piece_size = cur_param->location_piece_size;
           aliased_formal_param->dwarf_stack_size = cur_param->dwarf_stack_size;
 
           VG_(memcpy)(aliased_formal_param->dwarf_stack, cur_param->dwarf_stack,

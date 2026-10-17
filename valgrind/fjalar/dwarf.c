@@ -1451,6 +1451,14 @@ decode_location_expression (unsigned char * data,
 
       if(ll) {ll->atom = op;}
 
+      /* An op that Fjalar's evaluator cannot apply, such as an unreadable register,
+	 DW_OP_stack_value, or DW_OP_plus (the evaluator has no operand
+	 stack), makes a formal parameter's location unreadable.
+	 DW_OP_piece is handled below.  */
+      if (ok_to_harvest && op != DW_OP_nop && op != DW_OP_piece
+	  && !location_op_is_supported (op))
+	harvest_formal_param_location_unsupported (entry);
+
       switch (op)
 	{
 	case DW_OP_addr:
@@ -1469,10 +1477,20 @@ decode_location_expression (unsigned char * data,
 	  break;
 	case DW_OP_const1u:
 	  SAFE_BYTE_GET_AND_INC (uvalue, data, 1, end);
+	  if (ok_to_harvest)
+	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
+	      harvest_formal_param_location_atom(entry, op, uvalue);
+	      harvest_formal_param_location_offset(entry, uvalue);
+	    }
 	  printf ("DW_OP_const1u: %lu", (unsigned long) uvalue);
 	  break;
 	case DW_OP_const1s:
 	  SAFE_SIGNED_BYTE_GET_AND_INC (svalue, data, 1, end);
+	  if (ok_to_harvest)
+	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
+	      harvest_formal_param_location_atom(entry, op, svalue);
+	      harvest_formal_param_location_offset(entry, svalue);
+	    }
 	  printf ("DW_OP_const1s: %ld", (long) svalue);
 	  break;
 	case DW_OP_const2u:
@@ -1512,16 +1530,22 @@ decode_location_expression (unsigned char * data,
 	  printf ("DW_OP_const4s: %ld", (long) svalue);
 	  break;
 	case DW_OP_const8u:
-	  SAFE_BYTE_GET_AND_INC (uvalue, data, 4, end);
-	  printf ("DW_OP_const8u: %lu ", (unsigned long) uvalue);
-	  SAFE_BYTE_GET_AND_INC (uvalue, data, 4, end);
-	  printf ("%lu", (unsigned long) uvalue);
+	  SAFE_BYTE_GET_AND_INC (uvalue, data, 8, end);
+	  if (ok_to_harvest)
+	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
+	      harvest_formal_param_location_atom(entry, op, uvalue);
+	      harvest_formal_param_location_offset(entry, uvalue);
+	    }
+	  printf ("DW_OP_const8u: %s", dwarf_vmatoa ("u", uvalue));
 	  break;
 	case DW_OP_const8s:
-	  SAFE_SIGNED_BYTE_GET_AND_INC (svalue, data, 4, end);
-	  printf ("DW_OP_const8s: %ld ", (long) svalue);
-	  SAFE_SIGNED_BYTE_GET_AND_INC (svalue, data, 4, end);
-	  printf ("%ld", (long) svalue);
+	  SAFE_SIGNED_BYTE_GET_AND_INC (svalue, data, 8, end);
+	  if (ok_to_harvest)
+	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
+	      harvest_formal_param_location_atom(entry, op, svalue);
+	      harvest_formal_param_location_offset(entry, svalue);
+	    }
+	  printf ("DW_OP_const8s: %s", dwarf_vmatoa ("d", svalue));
 	  break;
 	case DW_OP_constu:
 	  READ_ULEB (uvalue, data, end);
@@ -1809,6 +1833,17 @@ decode_location_expression (unsigned char * data,
 	  break;
 	case DW_OP_piece:
 	  READ_ULEB (uvalue, data, end);
+	  /* Fjalar can read a location that consists of one piece, if that
+	     piece is the whole parameter; extractOneFormalParameterVar
+	     checks the size.  A piece that is not the last op means that
+	     the parameter is split.  A piece of size 0 covers no bytes.  */
+	  if (ok_to_harvest)
+	    {
+	      if (data == end && uvalue != 0)
+		harvest_formal_param_location_piece (entry, uvalue);
+	      else
+		harvest_formal_param_location_unsupported (entry);
+	    }
 	  printf ("DW_OP_piece: %s", dwarf_vmatoa ("u", uvalue));
 	  break;
 	case DW_OP_deref_size:
@@ -3821,6 +3856,10 @@ read_and_display_attr_value (unsigned long           attribute,
           if (ok_to_harvest) {
               // frame base location list
               harvest_frame_base(entry, DW_OP_list, uvalue);
+              // Fjalar does not evaluate a location list for a formal
+              // parameter, so it cannot read the parameter.
+              if (attribute == DW_AT_location)
+                harvest_formal_param_location_unsupported(entry);
           }
           printf ("(");
           printf ("location list");
@@ -9708,6 +9747,14 @@ regname (unsigned int regno, int name_only_p)
   else
     snprintf (reg, sizeof (reg), "r%u", regno);
   return reg;
+}
+
+/* Returns the name of DWARF register REGNO, for Fjalar's debugging
+   output.  */
+const char *
+dwarf_reg_name (unsigned int regno)
+{
+  return regname (regno, 1);
 }
 
 static void

@@ -41,4 +41,17 @@ typedef struct _dwarf_location {
 // A conversion between DWARF location atoms and a string representation
 const char* location_expression_to_string(enum dwarf_location_atom op);
 
+// One more than the largest DWARF register number that Fjalar can
+// read.
+#if defined(VGA_amd64)
+#define FJALAR_NUM_DWARF_REGS 16
+#else
+#define FJALAR_NUM_DWARF_REGS 9
+#endif
+
+// Returns true if visitVariableGroup can evaluate op in the location
+// expression of a formal parameter.  decode_location_expression
+// records every such op in the formal parameter's dwarf_stack.
+int location_op_is_supported(unsigned int op);
+
 #endif /* FJALAR_DWARF_H */

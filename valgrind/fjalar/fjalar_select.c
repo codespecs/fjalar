@@ -355,6 +355,7 @@ void outputVariableNamesToFile() {
                      0,
                      0,
 		     0,
+                     0,
                      &printVarNameAction);
 
   fputs("\n", var_dump_fp);
@@ -385,6 +386,7 @@ void outputVariableNamesToFile() {
                          0,
                          0,
 			 0,
+                         0,
                          &printVarNameAction);
 
       visitVariableGroup(FUNCTION_RETURN_VAR,
@@ -392,6 +394,7 @@ void outputVariableNamesToFile() {
                          0,
                          0,
 			 0,
+                         0,
                          &printVarNameAction);
 
       fputs("\n", var_dump_fp);
