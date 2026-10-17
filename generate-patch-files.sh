@@ -24,7 +24,7 @@ for dir in "$INV/valgrind-old" "$INV/valgrind-new"; do
   # Without this check, "git status" would report on an enclosing
   # repository, or would fail and produce no output.
   toplevel=$(git -C "$dir" rev-parse --show-toplevel 2> /dev/null) || toplevel=
-  if [ "$toplevel" != "$(cd "$dir" && pwd -P)" ]; then
+  if [ "$toplevel" != "$(cd -- "$dir" > /dev/null && pwd -P)" ]; then
     echo "$0: $dir is not the top level of a git clone." >&2
     exit 1
   fi
@@ -33,8 +33,8 @@ for dir in "$INV/valgrind-old" "$INV/valgrind-new"; do
     echo "$0: $dir has changes or files that are not in its git" >&2
     echo "$0: repository, such as build products.  It must be a pristine clone:" >&2
     echo "$status" | head -n 20 >&2
-    echo "$0: To remove untracked files and build products, run:" >&2
-    echo "$0:   git -C \"$dir\" clean -fdx" >&2
+    echo "$0: To discard changes and remove untracked files and build products, run:" >&2
+    echo "$0:   git -C \"$dir\" reset --hard && git -C \"$dir\" clean -fdx" >&2
     exit 1
   fi
 done
@@ -45,6 +45,11 @@ cd "$INV"
 # stale ones from an earlier run.
 rm -f coregrind.patch memcheck.patch coregrind-Fjalar.diff memcheck-Fjalar.diff
 
+# The temporary file that run_diff is writing, if any.  It is removed if
+# the script exits early, including when it is interrupted.
+tmp=
+trap 'rm -f "$tmp"' EXIT
+
 # Usage: run_diff OUTFILE DIFF-ARGS...
 # Creates OUTFILE only if diff succeeds, so a failure does not leave a
 # partial file.  diff exits with status 1 if the files differ, which is
@@ -52,10 +57,17 @@ rm -f coregrind.patch memcheck.patch coregrind-Fjalar.diff memcheck-Fjalar.diff
 run_diff() {
   local out=$1
   shift
-  if diff "$@" > "$out.tmp" || [ $? -eq 1 ]; then
-    mv "$out.tmp" "$out"
+  tmp=$out.tmp
+  # Create the file before running diff.  A failed redirection on the diff
+  # command would yield status 1, which is indistinguishable from "files differ".
+  if ! : > "$tmp"; then
+    echo "$0: cannot write $tmp, so $out was not created." >&2
+    exit 1
+  fi
+  if diff "$@" >> "$tmp" || [ $? -eq 1 ]; then
+    mv "$tmp" "$out"
+    tmp=
   else
-    rm -f "$out.tmp"
     echo "$0: diff failed, so $out was not created." >&2
     exit 1
   fi

@@ -532,9 +532,9 @@ guidelines on supporting new VEX instructions.
 Valgrind has a set of verification tests known as @command{regtest}.  We want
 to run these tests on a clean version of Valgrind to establish a
 baseline set of results for partial verification of the merge process.
-Since running these tests generates a lot of additional files, we wait
-until after we have done the source merge update to run this test.
-This keeps the files used during the source merge update to a minimum.
+Because the tests run in a separate copy of @file{valgrind-new} (see
+below), you can run them at any time after you have obtained
+@file{valgrind-new}, for example while you merge the sources.
 
 You will need to make sure @command{gdb} is installed on your machine
 to run these tests. Also, they are very sensitive
@@ -552,6 +552,7 @@ run the following commands:
 
 @example
 cd $INV
+rm -rf valgrind-new-build
 cp -a valgrind-new valgrind-new-build
 cd valgrind-new-build
 ./autogen.sh
