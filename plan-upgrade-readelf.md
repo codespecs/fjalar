@@ -173,8 +173,8 @@ Kvasir tests after each step.
    - Update `doc/valgrind-merge.texinfo` with anything learned (e.g. stale
      URLs, new hints such as the SFrame handling).
    - Commit (one PR); keep `include.patch`, `binutils.patch`, and the
-     Fjalar-vs-binutils diffs for reference.  Delete `regtest-<os>.log` and
-     `regtest-observed-*.txt` (ignored by git).
+     Fjalar-vs-binutils diffs for reference.  Delete `regtest-<os>.log`,
+     `regtest-<os>-post.log`, and `regtest-observed-*.txt` (ignored by git).
 
 ## Risks
 
