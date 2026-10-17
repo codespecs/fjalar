@@ -252,6 +252,11 @@ static
 IRAtom* handleCCall_DC ( DCEnv* dce,
                          IRAtom** exprvec, IRCallee* cee )
 {
+  // In this mode, NOTHING is an interaction:
+  if (dyncomp_dataflow_only_mode) {
+     return IRExpr_Const(IRConst_UWord(0));
+  }
+
   if (exprvec && exprvec[0]) {
       IRAtom* first = expr2tags_DC(dce, exprvec[0]);
       Int i;
