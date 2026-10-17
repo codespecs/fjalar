@@ -22,7 +22,8 @@ struct pair {
 
 // copy() copies a struct with movdqu, so VEX loads both fields with one
 // 128-bit load.  Under --dyncomp-interactions=none, DynComp should not make a
-// and b comparable.
+// and b comparable, but the return value should be comparable to a, from
+// which it flows.
 long copy(long a, long b) {
   struct pair p, q;
   p.a = a;
@@ -33,8 +34,28 @@ long copy(long a, long b) {
   return q.a;
 }
 
+struct int_pair {
+  int x;
+  int y;
+};
+
+// copy_ints() copies a struct with movq, so VEX loads both fields with one
+// 64-bit load.  Under --dyncomp-interactions=none, DynComp should not make x
+// and y comparable, but the return value should be comparable to x, from
+// which it flows.
+int copy_ints(int x, int y) {
+  struct int_pair p, q;
+  p.x = x;
+  p.y = y;
+  __asm__ volatile ("movq %1, %%rax\n\t"
+                    "movq %%rax, %0"
+                    : "=m" (q) : "m" (p) : "rax");
+  return q.x;
+}
+
 int main(void) {
   less(1, 2);
   copy(1, 2);
+  copy_ints(1, 2);
   return 0;
 }

@@ -436,10 +436,31 @@ UInt MC_(helperc_CREATE_TAG)(Addr static_id) {
 }
 
 
+// Returns the tag of the value loaded from the range [a, a+len).
+// Ordinarily, this merges the tags of all addresses in the range.
+// In dyncomp_dataflow_only_mode, nothing is an interaction, so this
+// returns the first non-zero tag in the range, without merging.
+static UInt load_tag_in_range(Addr a, SizeT len) {
+  Addr curAddr;
+  UInt curTag;
+
+  if (!dyncomp_dataflow_only_mode) {
+    return val_uf_union_tags_in_range(a, len);
+  }
+
+  for (curAddr = a; curAddr < (a + len); curAddr++) {
+    curTag = get_tag(curAddr);
+    if (curTag) {
+      return curTag;
+    }
+  }
+  return 0;
+}
+
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_8) ( Addr a ) {
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_8: %p\n", (void *)a);
-  return val_uf_union_tags_in_range(a, 8);
+  return load_tag_in_range(a, 8);
 }
 
 VG_REGPARM(1)
@@ -450,19 +471,19 @@ UInt MC_(helperc_LOAD_TAG_4) ( Addr a ) {
     return grab_fresh_tag();
   }
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_4: %p\n", (void *)a);
-  return val_uf_union_tags_in_range(a, 4);
+  return load_tag_in_range(a, 4);
 }
 
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_2) ( Addr a ) {
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_2: %p\n", (void *)a);
-  return val_uf_union_tags_in_range(a, 2);
+  return load_tag_in_range(a, 2);
 }
 
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_1: %p => %u\n", (void *)a, get_tag(a));
-  return val_uf_union_tags_in_range(a, 1);
+  return load_tag_in_range(a, 1);
 }
 
 // Make this const so gcc can eliminate dead code to improve
