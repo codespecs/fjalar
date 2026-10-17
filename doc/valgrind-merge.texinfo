@@ -117,7 +117,7 @@ and other steps would use a different copy.
 * Get Valgrind version tags::
 * Obtain a copy of the base Valgrind source tree::
 * Obtain a copy of the target Valgrind source tree::
-* Remove files that have been removed upstream::
+* Remove files that the target Valgrind release does not have::
 @end menu
 
 
@@ -291,8 +291,8 @@ git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git valgrind
 @c For a  full repro of the current Valgrind source:
 @c git clone https://sourceware.org/git/valgrind.git valgrind-git
 
-@node Remove files that have been removed upstream
-@section Remove files that have been removed upstream
+@node Remove files that the target Valgrind release does not have
+@section Remove files that the target Valgrind release does not have
 
 The following command lists
 files that Fjalar tracks but that the target Valgrind release does not have.
@@ -301,12 +301,18 @@ and also any files that earlier merges failed to remove.
 
 @example
 cd $INV/fjalar
-comm -23 <(git ls-files valgrind | sed 's|^valgrind/||' | grep -v '^fjalar/' | sort) \
-         <(git -C ../valgrind-new ls-files | sort)
+export LC_ALL=C
+comm -23 <(git ls-files valgrind | sed 's|^valgrind/||' \
+             | grep -v -e '^fjalar/' -e '^REVISION$' | sort) \
+         <(git -C ../valgrind-new ls-files | sort) \
+  | sed 's|^|valgrind/|'
 @end example
 
-Remove these files with @command{git rm}, except for @file{valgrind/REVISION},
-which is Fjalar's own.
+@noindent
+Remove these files with @command{git rm}.
+Setting @env{LC_ALL} makes @command{sort} and @command{comm} agree on the
+sort order; in other locales, @command{comm} can list files that
+Valgrind still has.
 
 This step could be done later, but we do it now to reduce the size
 of the patch and diff files.
