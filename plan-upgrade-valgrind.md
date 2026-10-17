@@ -19,13 +19,41 @@ assumes items 1 (regtest in CI), 2 (patch files created with `git diff` and
 applied with `git apply`), 3 (`generate-patch-files.sh` checks its inputs),
 4 (DynComp scan), and 7 (stale upstream files removed).
 
+## Scope
+
+Conceptually there are three merges, which must be done together because
+Memcheck and DynComp depend tightly on Valgrind core:
+
+1. **Coregrind** (everything under `valgrind/` except `valgrind/fjalar/`):
+   Valgrind core, VEX, other tools, tests, build system.  Fjalar's
+   modifications are listed in appendix "Valgrind modifications" of the
+   texinfo document; the most important are the extra shadow guest state
+   (`vex_extra_shadow[4]` in `coregrind/pub_core_threadstate.h`, plus the
+   alignment assertions in `coregrind/m_scheduler/scheduler.c` and the
+   spill-area size calculations in `VEX/priv/host_generic_reg_alloc2.c` and
+   `host_generic_reg_alloc3.c`), extra guest registers in
+   `VEX/pub/libvex*.h` and `VEX/priv/guest_{amd64,x86}_helpers.c`, extra
+   `VG_()` libc functions, and `configure.ac` / `Makefile.am` changes that
+   add the `fjalar` tool.
+2. **Memcheck -> Fjalar**: `valgrind/fjalar/mc_*.c`, `mc_include.h`,
+   `memcheck.h` are derived from `valgrind/memcheck/`.  `mc_translate.c`
+   contains a DynComp counterpart for each case of `MC_(instrument)`; part of
+   the original is in `fjalar/mc_translate.h`.
+3. **Memcheck -> DynComp**: `valgrind/fjalar/kvasir/dyncomp_translate.c` is
+   derived from `memcheck/mc_translate.c` with `_DC` renaming; it must be
+   updated by hand, using `memcheck.patch` as a guide.
+
 ## Current state
 
 - `valgrind/REVISION`: Valgrind 3.23.0 (released 2024-04-26).
-- Latest tag at sourceware.org: **VALGRIND_3_27_1**
+- Latest tag at sourceware.org (as of 2026-10-10): **VALGRIND_3_27_1**
   (skipped: 3.24.0, 3.25.0, 3.25.1, 3.26.0, 3.27.0).
 - Precedent: the last merge (f15d19e3, #72) jumped 3.19.0 -> 3.23.0 in one
-  step, so a single 3.23.0 -> 3.27.1 jump is reasonable.
+  step (856 files changed), so a single 3.23.0 -> 3.27.1 jump is reasonable.
+  Hopping through every release would multiply the manual DynComp work,
+  because `mc_translate.c` and `dyncomp_translate.c` would have to be
+  revisited five times.  Fall back to a hop at 3.25.1 only if the Memcheck
+  conflicts are unmanageable.
 - Fjalar-local changes made since the 3.23 merge, by where they matter:
   - Memcheck-derived files, so they can conflict in step 6:
     `1ca71b1c` (#73) changed `mc_translate.c` and `memcheck.h`.
@@ -44,7 +72,7 @@ applied with `git apply`), 3 (`generate-patch-files.sh` checks its inputs),
       `--dyncomp-unhandled-ops=warn` lists them all in one run (step 7).
     - Memcheck-derived files, so they can conflict in step 6: #90 and #95
       change `mc_main.c` and `mc_include.h`.
-  - Other changes since then (#76, #80, the rest of #73) touch only
+  - Other changes since then (#76, #80, #94, the rest of #73) touch only
     Fjalar's own files and Binutils-derived files, which this merge does not
     patch.
   - The complete checklist of Fjalar changes to upstream files is
@@ -54,15 +82,26 @@ applied with `git apply`), 3 (`generate-patch-files.sh` checks its inputs),
 
 1. **Preparation** (separate branch, e.g. `valgrind-3.27.1`; do not combine with
    the Binutils/readelf upgrade, which should already be merged).
+   - Work in a new clone, because each working directory is dedicated to
+     one branch: clone Fjalar into, e.g., `$INV/fjalar-branch-valgrind-3.27.1`
+     and create the branch there.  While merging, make `$INV/fjalar` a
+     symbolic link to that clone, because `generate-patch-files.sh`
+     hard-codes `$INV/fjalar`.
    - `git pull` both `fjalar` and `daikon`; ensure no local or outgoing changes.
    - Record baselines on current sources: `./check-regtest.sh` (must
      report no unexpected failures; if this machine's OS has no
      `regtest-expected/<os>.txt`, create a local, uncommitted one with
-     `--update`) and `./test-kvasir.sh 2>&1 | tee kvasir-before.log`.
-     Use `./test-kvasir.sh`, which points `$DAIKONDIR/fjalar` at this tree.
-     Running `$INV/daikon/tests/kvasir-tests` or `make daikon-test` directly
-     builds whatever `$INV/daikon/fjalar` points to; if you do that, first
-     check `readlink -f $INV/daikon/fjalar`.
+     `--update`), `make fjalar-test`, and
+     `./test-kvasir.sh 2>&1 | tee kvasir-before.log`.  Save the build log,
+     to compare warnings after the merge.
+   - Run the Kvasir tests with `./test-kvasir.sh`, which temporarily points
+     `$DAIKONDIR/fjalar` at this tree (it restores the old link on exit, and
+     refuses to run if `$DAIKONDIR/fjalar` is a directory rather than a
+     symbolic link; then set `DAIKONDIR` to another, possibly nonexistent,
+     directory).  Do not use `make daikon-test`: it ignores `$DAIKONDIR` and
+     builds whatever `../daikon/fjalar` points to, which may be a different
+     clone.  Running `$INV/daikon/tests/kvasir-tests` directly has the same
+     problem; if you do that, first check `readlink -f $INV/daikon/fjalar`.
    - `make very-clean`; review/delete untracked files
      (`git ls-files --others --exclude-standard`).
 
@@ -87,6 +126,8 @@ applied with `git apply`), 3 (`generate-patch-files.sh` checks its inputs),
    make all install && make regtest > test.log 2>&1
    $INV/fjalar/check-regtest.sh --log test.log --expected $INV/regtest-upstream-3.27.1.txt --update
    ```
+   Install `gdb` and the glibc debuginfo package first, or most
+   `gdbserver_tests` fail.
    `regtest-upstream-3.27.1.txt` is the list of tests that fail in upstream
    3.27.1 on this machine; step 9 uses it.  (The `inst` "Unknown directory"
    error in upstream's post-test checks shows up as
@@ -111,13 +152,20 @@ applied with `git apply`), 3 (`generate-patch-files.sh` checks its inputs),
      `m_machine.c`/`pub_tool_machine.h`/`pub_core_machine.h` (extra registers),
      `pub_core_threadstate.h` (extra shadow area), `m_scheduler/scheduler.c`
      (shadow-size assertion), VEX `guest_{amd64,x86}_helpers.c`,
-     `host_amd64_defs.c`, `host_generic_reg_alloc2.c` (and check
-     `host_generic_reg_alloc3.c`, which is now the default allocator),
+     `host_amd64_defs.c`, `host_generic_reg_alloc2.c` and
+     `host_generic_reg_alloc3.c` (spill-area size; v3 is the default
+     allocator, and the doc's "Valgrind modifications" appendix omits it),
      `libvex.h`, `libvex_ir.h`, `none/tests/Makefile.am`,
      `tests/check_headers_and_includes`.
    - Pay special attention to any upstream change to guest-state layout
      (`libvex_guest_amd64.h`, `libvex_guest_x86.h`) or to the shadow-area
      size/alignment checks, since Fjalar enlarges the shadow area.
+     `vex_extra_shadow` must remain aligned on `LibVEX_GUEST_STATE_ALIGN`,
+     and the size/alignment assertions in `scheduler.c` must still account
+     for it.  If upstream added fields to `VexGuestAMD64State`, recheck that
+     the guest state size remains a multiple of the alignment, and that
+     Fjalar's extra guest registers are still at the offsets that DynComp
+     and `mc_machine.c` expect.
 
 6. **Memcheck merge** into `valgrind/fjalar/`.
    - `cd fjalar/valgrind/fjalar; patch -p2 -lu --dry-run < $INV/memcheck.patch`,
@@ -125,8 +173,12 @@ applied with `git apply`), 3 (`generate-patch-files.sh` checks its inputs),
    - Resolve `*.rej`.  Remember part of `mc_translate.c` lives in
      `fjalar/mc_translate.h`.  Preserve the #73 edits to `mc_translate.c`
      and `memcheck.h`.
-   - In `mc_translate.c`'s `MC_(instrument)`, check that every case has
-     matching DynComp code and that new cases get a DynComp counterpart.
+   - In `mc_translate.c`'s `MC_(instrument)` and every helper that it
+     calls, check that every case has matching DynComp code, that new cases
+     get a DynComp counterpart, and that upstream changes to a Memcheck case
+     are mirrored in its DynComp case.  Go through the `mc_translate.c`
+     portion of `memcheck.patch` hunk by hunk, checking off each hunk as
+     applied, not applicable, or ported to DynComp (step 7).
    - Check `mc_main.c` still has Fjalar's options/version info.
    - New memcheck source files: decide whether Fjalar needs them; if so,
      add to `valgrind/fjalar/Makefile.am`.
@@ -149,17 +201,40 @@ applied with `git apply`), 3 (`generate-patch-files.sh` checks its inputs),
      they hit.  Search for panics/`default:`
      cases that would now be hit.  Most changes for other architectures can
      be ignored.
-   - Check NEWS for 3.24–3.27 for tool-API changes (e.g. changes to
-     `VG_(needs_*)`, debuginfo, `pub_tool_*.h` signatures, client-request
-     numbering) and update Fjalar callers.
+   - Running programs finds only the operations those programs use, so also
+     list the operations that DynComp does not mention:
+     ```sh
+     grep -oE '\bIop_[A-Za-z0-9_]+' valgrind-new/VEX/pub/libvex_ir.h | sort -u > all-ops
+     grep -oE '\bIop_[A-Za-z0-9_]+' $INV/fjalar/valgrind/fjalar/kvasir/dyncomp_translate.c | sort -u > dc-ops
+     grep -oE '\bIop_[A-Za-z0-9_]+' valgrind-new/memcheck/mc_translate.c | sort -u > mc-ops
+     comm -23 mc-ops dc-ops     # ops Memcheck handles but DynComp does not
+     comm -23 all-ops dc-ops    # all ops DynComp does not mention (mostly other architectures)
+     ```
+     Add each relevant one to the appropriate `expr2tags_*_DC` switch, or
+     leave it to the `default` case deliberately, with a comment.  Also
+     compare `Iex_*` and `Ist_*` kinds.
+   - Read NEWS for 3.24.0 through 3.27.1 and note: new platforms (each adds
+     `VEX/priv/*` and `coregrind/m_*` files and `configure.ac` cases);
+     tool-API changes (e.g. changes to `VG_(needs_*)`, `VG_(track_*)`,
+     debuginfo, `pub_tool_*.h` signatures, client-request numbering), which
+     need updates to Fjalar callers in `fjalar_main.c`, `fjalar_runtime.c`,
+     and `kvasir/*.c`; changes to Memcheck instrumentation, `--track-origins`,
+     leak checking, or error suppression, which Fjalar's `mc_*.c` files must
+     mirror; and new autotools or compiler requirements (step 8).
    - Check that Fjalar's use of Valgrind's debuginfo reader
      (`coregrind/m_debuginfo`) and its own `readelf.c`/`dwarf.c` don't now
      conflict (duplicate symbols, changed `VG_()` libc names).
 
 8. **Build.** `make -C $INV/fjalar build`; fix compilation errors and new
    warnings (newer Valgrind may enable additional warning flags; Binutils-
-   derived code is the usual source).  Test with both a current gcc and the
-   compilers in the CI containers.
+   derived code is the usual source).  Compare warnings with the step-1
+   build log.  Test with both a current gcc and the compilers in the CI
+   containers.  If `autogen.sh` or `configure` fails, the likely cause is a
+   `configure.ac` / `Makefile.am` merge error or a newer required
+   autoconf/automake version; check `valgrind-new/autogen.sh` and NEWS for
+   tool-version requirements, and make sure the CI Docker images
+   (`mdernst/daikon-ubuntu-jdk11-plus`, `mdernst/daikon-rockylinux-jdk25-plus`)
+   satisfy them.
 
 9. **Test.**  Run these from `$INV/fjalar` (`cd $INV/fjalar`; step 6 left
    the shell in `valgrind/fjalar`).
@@ -172,8 +247,16 @@ applied with `git apply`), 3 (`generate-patch-files.sh` checks its inputs),
      rewrites the list; review its diff, which goes in the PR.
    - `make fjalar-test`.
    - `./test-kvasir.sh 2>&1 | tee kvasir-after.log` — compare with
-     `kvasir-before.log` from step 1.  Address-related diffs
-     (`<STACK_ADDR>` etc.) may require updating `clean-output.pl`.
+     `kvasir-before.log` from step 1; the tests must pass with no goal-file
+     changes.  Address-related diffs (`<STACK_ADDR>`, `<STATIC_ADDR>`, or
+     `<HEAP_ADDR>` on the goal side and hex values on the new side) may
+     require updating the address ranges in
+     `$DAIKONDIR/tests/kvasir-tests/clean-output.pl`.  DynComp
+     comparability differences are the most likely regressions; investigate
+     each one rather than updating goal files.
+   - Run plain Memcheck (`valgrind/inst/bin/valgrind --tool=memcheck`) on a
+     small program, to make sure the core still works independently of
+     Fjalar.
    - Push the branch and confirm GitHub Actions CI passes (Ubuntu and
      Rocky Linux 10: build, regtest, and Kvasir jobs).  The CI containers
      differ from your machine, so the regtest jobs will probably fail
@@ -189,23 +272,83 @@ applied with `git apply`), 3 (`generate-patch-files.sh` checks its inputs),
 10. **Finish.**
     - Update first line of `valgrind/REVISION`
       (`# Valgrind version 3.27.1, released ...`).
-    - Add names of new Valgrind test drivers to `.gitignore`
-      ("Ignore generated test drivers" section).
+    - Add names of new Valgrind test drivers to `.gitignore`, in the
+      per-tool sections (`# /memcheck/` etc.; there is no "Ignore generated
+      test drivers" section).
     - `make git-update > git.script`, review, run.
-    - Document user-visible changes in `$INV/daikon/doc/CHANGELOG.md`.
-    - Update `doc/valgrind-merge.texinfo`: dates/OS versions, building the
-      baseline in a copy (step 3), and any new pitfalls.  (The regtest
-      baseline output pasted into the doc is superseded by
-      `regtest-expected/*.txt`.)
-    - Commit as one PR; save the patch/diff files and `valgrind-new` (it
-      becomes `valgrind-old` for the next merge; delete
+    - Document user-visible changes in `$INV/daikon/doc/CHANGELOG.md` (users
+      care, because newer Valgrind supports newer CPUs, kernels, glibc, and
+      compilers).  `README` mentions no Valgrind version number, so it needs
+      no change.
+    - Update `doc/valgrind-merge.texinfo` in the same PR, while the merge is
+      fresh, so that the documented procedure matches the one actually used:
+      dates/OS versions, building the baseline in a copy (step 3), and any
+      new pitfalls.  (The regtest baseline output pasted into the doc is
+      superseded by `regtest-expected/*.txt`.)  Also incorporate what this
+      plan adds beyond `plan-pre-upgrade.md` item 5:
+      - working in a new clone (step 1);
+      - reading NEWS for every intermediate release (step 7);
+      - the list of Coregrind files that need special attention (step 5),
+        especially the shadow-state layout and `host_generic_reg_alloc3.c`;
+        and, in appendix "Valgrind modifications", add
+        `host_generic_reg_alloc3.c` and make the entries match
+        `coregrind-Fjalar.diff` from this merge;
+      - the mechanical `Iop_` coverage check (step 7), in "Updating
+        Fjalar/Kvasir" and in appendix "Supporting new VEX IR Instruction";
+      - the hunk-by-hunk checkoff of `mc_translate.c` (step 6);
+      - `make fjalar-test` and the plain Memcheck run (step 9);
+      - the 3-way merge, if it was used ("Alternative" below), or why
+        step 5's approach was preferable.
+      Rebuild with `make doc` (which `test.sh` runs in CI) to confirm that
+      the document still formats.
+    - Commit as one PR, with commit message "Upgrade Valgrind from 3.23.0 to
+      3.27.1"; save the patch/diff files (perhaps attached to the PR) and
+      `valgrind-new` (it becomes `valgrind-old` for the next merge; delete
       `valgrind-new-build`).
+
+## Alternative: a 3-way merge for Coregrind
+
+If step 5 leaves too many `.rej` files, a 3-way merge in a
+scratch repository puts each conflict inline, with the base text, instead.
+`vg-merge` is a new repository, so switching branches in it is fine.  Run it
+after `make very-clean` in `$INV/fjalar`, so that build products are not
+committed as "Fjalar's copy":
+
+```sh
+cd $INV && mkdir vg-merge && cd vg-merge && git init -q
+rsync -a --exclude=/.git ../valgrind-old/ . && git add -A -f && git commit -qm "Valgrind $VOLDVER"
+base=$(git branch --show-current)
+git switch -qc fjalar
+rsync -a --delete --exclude=/.git --exclude=/fjalar/ $INV/fjalar/valgrind/ . && git add -A -f && git commit -qm "Fjalar's copy"
+git switch -q $base && git switch -qc upstream
+rsync -a --delete --exclude=/.git ../valgrind-new/ . && git add -A -f && git commit -qm "Valgrind $VNEWVER"
+git switch -q fjalar && git merge upstream      # resolve conflicts here
+rsync -a --delete --exclude=/.git --exclude=/fjalar/ $INV/vg-merge/ $INV/fjalar/valgrind/
+```
+
+`git add -f` is needed because otherwise `git add -A` skips files that match
+a `.gitignore` pattern, and Fjalar tracks some (for example
+`valgrind/NEWS.old` and `valgrind/VEX/switchback/Makefile`); a skipped file
+would be dropped from the merge.  `-f` is safe because all three trees are
+clean.  The final `rsync` copies the result back; `--exclude=/fjalar/` also
+protects `valgrind/fjalar/` from `--delete`.  Then `git status` in
+`$INV/fjalar` shows the added, removed, and changed files.
+
+For the Memcheck-derived files in step 6, use `git merge-file` per file, for
+example
+`git merge-file --diff3 $INV/fjalar/valgrind/fjalar/mc_main.c valgrind-old/memcheck/mc_main.c valgrind-new/memcheck/mc_main.c`.
+Still run `generate-patch-files.sh`, because `memcheck.patch` and the
+`*-Fjalar.diff` files are needed for steps 5-7.
 
 ## Risks
 
 - **Shadow-area / guest-state changes** in VEX or coregrind would break
   Fjalar's extra shadow state in subtle ways (crashes or wrong comparability),
-  not compile errors.
+  not compile errors.  Mitigation: the `scheduler.c` assertions, plus the
+  DynComp regression tests.
+- **A Memcheck change mirrored in `mc_translate.c` but not in
+  `dyncomp_translate.c`** (or vice versa).  Mitigation: the hunk-by-hunk
+  checkoff in step 6.
 - **New IROps** used by modern compilers (AVX/AVX2 and others on amd64) can
   make DynComp panic at run time.  Re-run the vectorized programs from
   `plan-pre-upgrade.md` item 4 (which all work on 3.23 by then); a panic
@@ -214,6 +357,9 @@ applied with `git apply`), 3 (`generate-patch-files.sh` checks its inputs),
   `configure.ac`) can silently drop Fjalar from the build or change flags.
   Likewise, changes to `memcheck/Makefile.am` must be carried into
   `valgrind/fjalar/Makefile.am` by hand (step 6).
+- **Newer upstream build requirements** (autotools, compiler) that the CI
+  images do not meet.  Mitigation: check NEWS (step 7) before starting
+  step 5.
 - **New warning flags** will hit `readelf.c`/`dwarf.c`, which were just
   merged in the readelf upgrade; expect a second round of warning fixes
   there.
