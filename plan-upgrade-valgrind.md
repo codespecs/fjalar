@@ -143,10 +143,12 @@ Memcheck and DynComp depend tightly on Valgrind core:
    rm -rf valgrind-new-build
    git clone -q valgrind-new valgrind-new-build && cd valgrind-new-build
    ./autogen.sh && ./configure --prefix=$(pwd)/inst
-   make all install && make regtest > test.log 2>&1
+   make all install && make regtest XMLLINT=xmllint-skipped-by-check-regtest > test.log 2>&1
    $INV/fjalar/check-regtest.sh --log test.log --expected $INV/regtest-upstream-3.27.1.txt \
      --observed test-observed.txt --update
    ```
+   (Setting `XMLLINT` keeps `make check` from validating the manual, which
+   fails without the DocBook DTD; see `check-regtest.sh`.)
    `regtest-upstream-3.27.1.txt` is the list of tests that fail in upstream
    3.27.1 on this machine; step 9 uses it.  (`--observed` keeps the script
    from overwriting Fjalar's `regtest-observed-<os>.txt` from step 1.)  (It contains an entry

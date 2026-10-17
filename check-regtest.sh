@@ -20,9 +20,12 @@
 #                    /etc/os-release, for example "ubuntu-26.04" or "rocky-10".
 #   --observed FILE  Write the observed failures to FILE.  The default is
 #                    regtest-observed-<os>.txt (in this directory).
-#   --update         Rewrite the expected-failures file to match this run.
-#                    Comment lines and "?" lines are kept.  Review the diff!
-#   --report-only    Report differences, but exit with status 0 regardless.
+#   --update         Rewrite the expected-failures file to match this run:
+#                    remove entries that did not fail and append new failures.
+#                    Comment lines, blank lines, and "?" lines are kept in
+#                    place.  Review the diff!
+#   --report-only    Report differences, and report tests that did not run,
+#                    but exit with status 0 regardless.
 #
 # Expected-failures file format: one failure per line, as vg_regtest prints
 # it, such as "gdbserver_tests/mcleak (stdoutB)".  Blank lines and lines
@@ -52,11 +55,18 @@ EXPECTED=
 OBSERVED=
 UPDATE=false
 REPORT_ONLY=false
+# Exit with a usage error if option $2 lacks an argument; $1 is "$#".
+need_arg() {
+  if [ "$1" -lt 2 ]; then
+    echo "$0: $2 requires an argument" >&2
+    exit 2
+  fi
+}
 while [ $# -gt 0 ]; do
   case "$1" in
-    --log) LOG="$2"; shift 2 ;;
-    --expected) EXPECTED="$2"; shift 2 ;;
-    --observed) OBSERVED="$2"; shift 2 ;;
+    --log) need_arg $# "$1"; LOG="$2"; shift 2 ;;
+    --expected) need_arg $# "$1"; EXPECTED="$2"; shift 2 ;;
+    --observed) need_arg $# "$1"; OBSERVED="$2"; shift 2 ;;
     --update) UPDATE=true; shift ;;
     --report-only) REPORT_ONLY=true; shift ;;
     *) echo "$0: unknown argument: $1" >&2; exit 2 ;;
@@ -108,15 +118,6 @@ fi
 #   == 809 tests, 0 stderr failures, 0 stdout failures, 2 stderrB failures, 16 stdoutB failures, 0 post failures ==
 # It is followed by one line per failure, then a blank line.
 SUMMARY_RE='^== [0-9]+ tests?, .* post failures? ==$'
-# A summary that reports 0 tests means that no test ran.
-NONZERO_SUMMARY_RE='^== [1-9][0-9]* tests?, .* post failures? ==$'
-if ! grep -Eq "$NONZERO_SUMMARY_RE" "$LOG"; then
-  echo "$0: no regtest summary line with a nonzero test count in $LOG; the tests did not run." >&2
-  echo "Last lines of $LOG:" >&2
-  tail -n 40 "$LOG" >&2
-  exit 1
-fi
-grep -E "$SUMMARY_RE" "$LOG" | tail -n 1
 
 # Print the observed failures, one per line, normalized to "name (kind)".
 observed_failures() {
@@ -127,7 +128,10 @@ observed_failures() {
     # Track the directory and name of the test that is running, such as
     #   -- Running  tests in massif/tests ------------------------------
     #   big-alloc:       valgrind --stacks=no ./big-alloc
-    /^-- Running  tests in / { dir = $5; next }
+    # vg_regtest recurses into subdirectories, such as none/tests/ppc64, and
+    # then continues with the parent directory, so keep a stack.
+    /^-- Running  tests in / { dirs[++depth] = $5; dir = $5; next }
+    /^-- Finished tests in / { if (depth > 0) depth--; dir = dirs[depth]; next }
     /^[^ :]+: +valgrind / { test = substr($1, 1, length($1) - 1); next }
     # The "post:" command of the test failed to run.  vg_regtest counts this
     # in the summary line but does not list it.
@@ -148,6 +152,17 @@ observed_failures() {
 }
 observed_failures > "$OBSERVED"
 
+# A summary that reports 0 tests means that no test ran.
+NONZERO_SUMMARY_RE='^== [1-9][0-9]* tests?, .* post failures? ==$'
+if ! grep -Eq "$NONZERO_SUMMARY_RE" "$LOG"; then
+  echo "$0: no regtest summary line with a nonzero test count in $LOG; the tests did not run." >&2
+  echo "Last lines of $LOG:" >&2
+  tail -n 40 "$LOG" >&2
+  [ "$REPORT_ONLY" = true ] && exit 0
+  exit 1
+fi
+grep -E "$SUMMARY_RE" "$LOG" | tail -n 1
+
 # Lines of the expected-failures file, without comments, blank lines, or "?".
 expected_required() {
   { grep -Ev '^[[:space:]]*(#|\?|$)' "$1" || true; } \
@@ -161,20 +176,28 @@ expected_optional() {
 if [ "$UPDATE" = true ]; then
   mkdir -p "$(dirname "$EXPECTED")"
   TMP="$(mktemp)"
+  trap 'rm -f "$TMP"' EXIT
   if [ -f "$EXPECTED" ]; then
-    # Keep comments and "?" lines; replace everything else.
-    { grep -E '^[[:space:]]*(#|\?)' "$EXPECTED" || true; } > "$TMP"
-    OPTIONAL="$(expected_optional "$EXPECTED")"
+    # Keep comments, blank lines, "?" lines, and the required entries that
+    # failed, each in its place, so that a comment stays next to the entry
+    # that it explains.
+    awk 'NR == FNR { observed[$0] = 1; next }
+         /^[[:space:]]*(#|\?|$)/ { print; next }
+         { line = $0; $1 = $1; if ($0 in observed) print line }' \
+      "$OBSERVED" "$EXPECTED" > "$TMP"
+    LISTED="$(printf '%s\n%s\n' "$(expected_required "$EXPECTED")" "$(expected_optional "$EXPECTED")")"
   else
     {
       echo "# Expected failures of Valgrind's regression tests (\"make test\") on $OS."
       echo "# See check-regtest.sh for the format.  Regenerate with: ./check-regtest.sh --update"
     } > "$TMP"
-    OPTIONAL=
+    LISTED=
   fi
-  # Required failures are those observed that are not already optional.
-  comm -23 "$OBSERVED" <(echo -n "${OPTIONAL:+$OPTIONAL$'\n'}" | sort -u) >> "$TMP"
-  mv "$TMP" "$EXPECTED"
+  # Append the observed failures that are not already listed.
+  comm -23 "$OBSERVED" <(echo "$LISTED" | grep -v '^$' | sort -u || true) >> "$TMP"
+  # Overwrite rather than move, so that the file keeps its permissions
+  # (or, if new, gets the default ones rather than mktemp's 0600).
+  cat "$TMP" > "$EXPECTED"
   echo "Updated $EXPECTED; review the diff before committing it."
   exit 0
 fi
