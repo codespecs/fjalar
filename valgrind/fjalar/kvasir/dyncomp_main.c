@@ -60,6 +60,7 @@
 #include "pub_tool_libcbase.h"
 #include "pub_tool_libcprint.h"
 #include "mc_include.h"
+#include "../../VEX/priv/guest_amd64_defs.h"  // AMD64G_CC_OP_*
 #include "memcheck.h"
 
 // Special reserved tags
@@ -197,7 +198,7 @@ void val_uf_make_set_for_tag(UInt tag) {
 // trace output.  It is expensive, so call it only when tracing; for
 // example, as an argument to DYNCOMP_TPRINTF, which evaluates its
 // arguments only when tracing.
-static const HChar* current_IP_description(void) {
+const HChar* current_IP_description(void) {
   Addr eip = VG_(get_IP)(VG_(get_running_tid)());
   // Describe this (probably live) address with current epoch
   return VG_(describe_IP)(VG_(current_DiEpoch)(), eip, NULL);
@@ -442,10 +443,30 @@ UInt MC_(helperc_CREATE_TAG)(Addr static_id) {
 }
 
 
+// Returns the tag of the value in [a, a + len).  Loading a value whose bytes
+// have different tags is an interaction that merges those tags, except in
+// the modes in which only comparisons, or nothing, are interactions.  In
+// those modes, the result is the first non-zero tag in the range, or 0.
+static UInt load_tag_in_range(Addr a, SizeT len) {
+  Addr curAddr;
+  UInt curTag;
+
+  if (!(dyncomp_dataflow_only_mode || dyncomp_dataflow_comparisons_mode)) {
+    return val_uf_union_tags_in_range(a, len);
+  }
+  for (curAddr = a; curAddr < (a + len); curAddr++) {
+    curTag = get_tag(curAddr);
+    if (curTag) {
+      return curTag;
+    }
+  }
+  return 0;
+}
+
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_8) ( Addr a ) {
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_8: %p\n", (void *)a);
-  return val_uf_union_tags_in_range(a, 8);
+  return load_tag_in_range(a, 8);
 }
 
 VG_REGPARM(1)
@@ -456,19 +477,19 @@ UInt MC_(helperc_LOAD_TAG_4) ( Addr a ) {
     return grab_fresh_tag();
   }
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_4: %p\n", (void *)a);
-  return val_uf_union_tags_in_range(a, 4);
+  return load_tag_in_range(a, 4);
 }
 
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_2) ( Addr a ) {
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_2: %p\n", (void *)a);
-  return val_uf_union_tags_in_range(a, 2);
+  return load_tag_in_range(a, 2);
 }
 
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_1: %p => %u\n", (void *)a, get_tag(a));
-  return val_uf_union_tags_in_range(a, 1);
+  return load_tag_in_range(a, 1);
 }
 
 // Make this const so gcc can eliminate dead code to improve
@@ -581,6 +602,19 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
     val_uf_tag_union(tag1, tag2);
     return 0;
   }
+}
+
+// Like MC_(helperc_MERGE_TAGS_RETURN_0), but merges tag1 and tag2 only if
+// cc_op, the CC_OP field of the flags thunk, says that the flags are the
+// result of a subtraction (a cmp or sub instruction), which is how amd64
+// compares values.  tag1 and tag2 are the tags of the thunk's CC_DEP1 and
+// CC_DEP2 fields, which for a subtraction are its operands.
+VG_REGPARM(3)
+UInt MC_(helperc_MERGE_TAGS_RETURN_0_IF_SUB) ( UWord cc_op, UInt tag1, UInt tag2 ) {
+  if (AMD64G_CC_OP_SUBB <= cc_op && cc_op <= AMD64G_CC_OP_SUBQ) {
+    return MC_(helperc_MERGE_TAGS_RETURN_0)(tag1, tag2);
+  }
+  return 0;
 }
 
 /*------------------------------------------------------------------*/

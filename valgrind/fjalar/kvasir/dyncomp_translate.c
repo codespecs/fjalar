@@ -36,6 +36,7 @@
 #include "dyncomp_main.h"
 #include "../fjalar_include.h"
 #include "vex_common.h"
+#include "../../VEX/priv/guest_amd64_defs.h"  // amd64g_calculate_*
 
 extern char dyncomp_profile_tags;
 static
@@ -232,9 +233,11 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
    return IRExpr_GetI( new_descr, ix, bias );
 }
 
-// Every merge of tags (that is, every interaction) is created by
-// mkMergeTags_DC or by stmtMergeTagsReturn0_DC, which create none in
-// dyncomp_dataflow_only_mode.
+// Every merge of tags (that is, every interaction) in the translated code
+// is created by mkMergeTags_DC or by stmtMergeTagsReturn0_DC, which create
+// none in dyncomp_dataflow_only_mode, or by a load of a value whose bytes
+// have different tags (see MC_(helperc_LOAD_TAG_8)), which merges none in
+// dyncomp_dataflow_only_mode or dyncomp_dataflow_comparisons_mode.
 
 // Returns a clean call to helper, one of the MC_(helperc_MERGE_*TAGS)
 // functions, that merges the tags in args.
@@ -251,8 +254,12 @@ IRAtom* mkMergeTags_DC ( Int regparms, const HChar* hname, void* helper,
 
 // Emits a dirty call that merges tag1 and tag2.  The call is dirty so
 // that it is not optimized away, though its result is unused.
+// If ccOp is non-NULL, then it is the CC_OP field of a flags thunk, and
+// the call merges the tags only if the flags are the result of a
+// subtraction; see MC_(helperc_MERGE_TAGS_RETURN_0_IF_SUB).
 static
-void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2 )
+void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2,
+                               IRAtom* ccOp )
 {
    IRTemp   datatag;
    IRDirty* di;
@@ -266,11 +273,19 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2 )
    // TODO: Why is this dirty rather than clean? - pgbovine
    //       Because it has side effects? - smcc
    datatag = newTemp(dce->mce, Ity_Word, DC);
-   di = unsafeIRDirty_1_N(datatag,
-                          2,
-                          "MC_(helperc_MERGE_TAGS_RETURN_0)",
-                          &MC_(helperc_MERGE_TAGS_RETURN_0),
-                          mkIRExprVec_2( tag1, tag2 ));
+   if (ccOp) {
+      di = unsafeIRDirty_1_N(datatag,
+                             3,
+                             "MC_(helperc_MERGE_TAGS_RETURN_0_IF_SUB)",
+                             &MC_(helperc_MERGE_TAGS_RETURN_0_IF_SUB),
+                             mkIRExprVec_3( ccOp, tag1, tag2 ));
+   } else {
+      di = unsafeIRDirty_1_N(datatag,
+                             2,
+                             "MC_(helperc_MERGE_TAGS_RETURN_0)",
+                             &MC_(helperc_MERGE_TAGS_RETURN_0),
+                             mkIRExprVec_2( tag1, tag2 ));
+   }
 
    setHelperAnns_DC( dce, di );
    stmt_DC('V', dce, IRStmt_Dirty(di));
@@ -308,10 +323,34 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2 )
 // helper such as amd64g_calculate_condition, and the result of a
 // comparison does not interact with its operands.
 //
-// Under --dyncomp-interactions=comparisons, only a helper that
-// evaluates a condition, such as amd64g_calculate_condition, is an
-// interaction.  Other helpers, such as amd64g_calculate_rflags_c (used
-// by adc and sbb), are not comparisons, so they merge no tags.
+// Under --dyncomp-interactions=comparisons, a helper call is an
+// interaction only if it reads flags that a comparison set.  The helpers
+// that read flags (amd64g_calculate_condition, amd64g_calculate_rflags_c,
+// and amd64g_calculate_rflags_all) compute them from a flags thunk whose
+// CC_OP field says which operation set them.  CC_OP is often known only at
+// run time, for example when the flags are read in a different superblock
+// than the one that set them, so the merge checks it at run time and has
+// an effect only if the flags are the result of a subtraction (a cmp or
+// sub instruction).  For example, the operands of a cmp are merged when
+// its flags are read by a setl (via amd64g_calculate_condition) or by an
+// sbb (via amd64g_calculate_rflags_c), but the operands of an add are not
+// merged when its carry is read by an adc.  Other helpers merge no tags.
+
+// Returns the index of the CC_OP argument of a call to cee, if cee is a
+// helper that reads flags, or -1 otherwise.
+static
+Int ccOpArgIndex_DC ( IRCallee* cee )
+{
+   if (cee->addr == (void*)&amd64g_calculate_condition) {
+      return 1;
+   }
+   if (cee->addr == (void*)&amd64g_calculate_rflags_c
+       || cee->addr == (void*)&amd64g_calculate_rflags_all) {
+      return 0;
+   }
+   return -1;
+}
+
 static
 IRAtom* handleCCall_DC ( DCEnv* dce,
                          IRAtom** exprvec, IRCallee* cee )
@@ -321,10 +360,20 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
    Int numMergedArgs = 0;
    Int i;
    IRAtom* merged;
+   // Non-NULL if the merge depends on the CC_OP argument
+   IRAtom* ccOp = NULL;
 
-   if (dyncomp_dataflow_comparisons_mode
-       && VG_(strstr)(cee->name, "calculate_condition") == NULL) {
+   // In this mode, NOTHING is an interaction:
+   if (dyncomp_dataflow_only_mode) {
       return IRExpr_Const(IRConst_UWord(0));
+   }
+
+   if (dyncomp_dataflow_comparisons_mode) {
+      Int ccOpIndex = ccOpArgIndex_DC(cee);
+      if (ccOpIndex < 0) {
+         return IRExpr_Const(IRConst_UWord(0));
+      }
+      ccOp = exprvec[ccOpIndex];
    }
 
    if (exprvec) {
@@ -360,7 +409,8 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
       }
       // The last merge is a dirty call, because its result is not used.
       stmtMergeTagsReturn0_DC(dce, merged,
-                              expr2tags_DC(dce, mergedArgs[numMergedArgs - 1]));
+                              expr2tags_DC(dce, mergedArgs[numMergedArgs - 1]),
+                              ccOp);
    }
    return IRExpr_Const(IRConst_UWord(0));
 }
@@ -2248,6 +2298,13 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
          // on the memory level
 
          // On second thought, let's just go ahead and do it for now:
+
+         // Loading a value is not an interaction in these modes, so the
+         // halves are not merged, and the value gets the tag of its
+         // lower half.
+         if (dyncomp_dataflow_only_mode || dyncomp_dataflow_comparisons_mode) {
+            return v64lo;
+         }
 
          // Clean call version:
          return mkMergeTags_DC (2 /*Int regparms*/,

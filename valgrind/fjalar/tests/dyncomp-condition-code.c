@@ -2,9 +2,9 @@
 
 // less() compares its parameters with a cmp instruction whose condition
 // code is read by a setl instruction in a different basic block.  VEX
-// translates the setl into a call to amd64g_calculate_condition (or
-// x86g_calculate_condition) whose first argument is the constant condition
-// code and whose other arguments include the operands of the comparison.
+// translates the setl into a call to amd64g_calculate_condition, whose
+// first argument is the constant condition code and whose other arguments
+// include the operands of the comparison.
 // DynComp should make a and b comparable.
 int less(int a, int b) {
   unsigned char result;

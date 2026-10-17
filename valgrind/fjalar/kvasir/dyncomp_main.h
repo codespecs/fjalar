@@ -128,6 +128,7 @@ void clear_list(TagList* listPtr);
 void copy_tags(  Addr src, Addr dst, SizeT len );
 void val_uf_make_set_for_tag(UInt tag);
 UInt val_uf_union_tags_in_range(Addr a, SizeT len);
+const HChar* current_IP_description(void);
 void val_uf_union_tags_at_addr(Addr a1, Addr a2);
 void set_tag_for_GOT(Addr a, SizeT len);
 
@@ -176,17 +177,14 @@ static __inline__ UInt get_tag ( Addr a )
 static __inline__ UInt get_tag ( Addr a )
 {
   UInt tag;
-  Addr tid = VG_(get_IP)(VG_(get_running_tid)());
-  const HChar *eip_info;
-  // Describe this (probably live) address with current epoch
-  eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), tid, NULL);
 
   if (IS_SECONDARY_TAG_MAP_NULL(a)) {
     tag = 0; // 0 means NO tag for that byte
   } else {
     tag = primary_tag_map[PM_IDX(a)][SM_OFF(a)];
   }
-  printf("[DynComp] Fetching tag %d for %p at %s\n", tag, (void*)a, eip_info);
+  printf("[DynComp] Fetching tag %d for %p at %s\n", tag, (void*)a,
+         current_IP_description());
   return tag;
 }
 #endif
@@ -232,16 +230,12 @@ static __inline__ UInt grab_fresh_tag(void) {
   totalNumTagsAssigned++;
 #ifndef MAX_DEBUG_INFO
   if (dyncomp_print_trace_all) {
-#endif
-    Addr tid = VG_(get_IP)(VG_(get_running_tid)());
-    const HChar *eip_info;
-    // Describe this (probably live) address with current epoch
-    eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), tid, NULL);
-#ifndef MAX_DEBUG_INFO
-    DYNCOMP_TPRINTF("[DynComp] Creating fresh tag %u at %s\n", tag, eip_info);
+    DYNCOMP_TPRINTF("[DynComp] Creating fresh tag %u at %s\n", tag,
+                    current_IP_description());
   }
 #else
-    printf("[DynComp] Creating fresh tag %u at %s\n", tag, eip_info);
+  printf("[DynComp] Creating fresh tag %u at %s\n", tag,
+         current_IP_description());
 #endif
   return tag;
 
@@ -301,6 +295,7 @@ extern VG_REGPARM(1) UInt MC_(helperc_CREATE_TAG) ( Addr static_id );
 
 extern VG_REGPARM(2) UInt MC_(helperc_MERGE_TAGS) ( UInt, UInt );
 extern VG_REGPARM(2) UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt, UInt );
+extern VG_REGPARM(3) UInt MC_(helperc_MERGE_TAGS_RETURN_0_IF_SUB) ( UWord, UInt, UInt );
 
 extern VG_REGPARM(3) UInt MC_(helperc_MERGE_3_TAGS) ( UInt, UInt, UInt );
 extern VG_REGPARM(3) UInt MC_(helperc_MERGE_4_TAGS) ( UInt, UInt, UInt, UInt );
