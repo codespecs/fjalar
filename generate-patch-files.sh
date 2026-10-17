@@ -53,6 +53,29 @@ for dir in "$INV/valgrind-old" "$INV/valgrind-new"; do
   fi
 done
 
+# At the next merge, it is easy to forget to move valgrind-new to
+# valgrind-old, or to clone the wrong tag.
+# Usage: check_version DIR VARNAME
+# If variable VARNAME is set, checks that DIR is at the tag it names.
+check_version() {
+  local dir=$1 var=$2
+  local ver=${!var}
+  local commit
+  if [ -z "$ver" ]; then
+    return
+  fi
+  if ! commit=$(git -C "$dir" rev-parse --verify -q "refs/tags/$ver^{commit}"); then
+    echo "$0: $dir has no tag $ver (the value of $var)." >&2
+    exit 1
+  fi
+  if [ "$(git -C "$dir" rev-parse HEAD)" != "$commit" ]; then
+    echo "$0: $dir is not at tag $ver (the value of $var)." >&2
+    exit 1
+  fi
+}
+check_version "$INV/valgrind-old" VOLDVER
+check_version "$INV/valgrind-new" VNEWVER
+
 cd "$INV"
 inv=$(pwd -P)
 
