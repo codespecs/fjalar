@@ -233,11 +233,18 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
    return IRExpr_GetI( new_descr, ix, bias );
 }
 
-// Every merge of tags (that is, every interaction) in the instrumentation
-// is created by mkMergeTags_DC or by stmtMergeTagsReturn0_DC, which
-// create none in dyncomp_dataflow_only_mode.  The MC_(helperc_LOAD_TAG_*)
-// functions also merge tags at run time, except in
-// dyncomp_dataflow_only_mode.
+// Tags are merged (that is, an interaction is recorded) in two ways, and
+// neither merges in dyncomp_dataflow_only_mode:
+//  * At translation time, every merge in the instrumentation is created
+//    by mkMergeTags_DC or by stmtMergeTagsReturn0_DC.
+//  * At run time, a load merges the tags of the bytes it reads; see
+//    load_tag_in_range in dyncomp_main.c.
+// expr2tags_Binop_DC and expr2tags_LDle_DC also test
+// dyncomp_dataflow_only_mode.  expr2tags_Binop_DC must give every
+// result tag 0, even where its constant-operand shortcut, which
+// bypasses mkMergeTags_DC, would pass an operand's tag through.
+// expr2tags_LDle_DC must give a wide load the tag of one of its bytes,
+// not the tag 0 that mkMergeTags_DC returns in that mode.
 
 // Returns a clean call to helper, one of the MC_(helperc_MERGE_*TAGS)
 // functions, that merges the tags in args.
@@ -265,9 +272,6 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2 )
       return;
    }
 
-   // (comment added 2006)
-   // TODO: Why is this dirty rather than clean? - pgbovine
-   //       Because it has side effects? - smcc
    datatag = newTemp(dce->mce, Ity_Word, DC);
    di = unsafeIRDirty_1_N(datatag,
                           2,
@@ -2534,7 +2538,8 @@ void do_shadow_STle_DC ( DCEnv* dce,
 
    // If data was loaded in this superblock, write the tags of the
    // loaded bytes; see expr2tags_WrTmp_DC.
-   if (data->tag == Iex_RdTmp
+   if (dce->loadTagSnapshots
+       && data->tag == Iex_RdTmp
        && data->Iex.RdTmp.tmp < dce->n_originalTmps
        && dce->loadTagSnapshots[data->Iex.RdTmp.tmp] >= 0) {
       di = unsafeIRDirty_0_N(

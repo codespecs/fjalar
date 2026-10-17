@@ -302,6 +302,8 @@ extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_1) ( Addr );
 #define DC_N_LOAD_TAG_SNAPSHOTS 128
 #define DC_LOAD_TAG_SNAPSHOT_BYTES 32
 
+extern UInt load_tag_snapshots[DC_N_LOAD_TAG_SNAPSHOTS][DC_LOAD_TAG_SNAPSHOT_BYTES];
+
 extern VG_REGPARM(3) UInt MC_(helperc_LOAD_TAG_N) ( Addr, UWord, Word );
 extern VG_REGPARM(3) void MC_(helperc_STORE_TAG_SNAPSHOT) ( Addr, UWord, UWord );
 

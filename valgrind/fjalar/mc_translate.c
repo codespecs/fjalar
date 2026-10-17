@@ -8757,9 +8757,12 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
       //dce.tmpMap         = LibVEX_Alloc(dce.n_originalTmps * sizeof(IRTemp));
       for (i = 0; i < (Int)dce.n_originalTmps; i++)
          dce.tmpMap[i] = IRTemp_INVALID;
-      dce.loadTagSnapshots = VG_(malloc)("mc_translate.c.3", dce.n_originalTmps * sizeof(Int));
-      for (i = 0; i < (Int)dce.n_originalTmps; i++)
-         dce.loadTagSnapshots[i] = -1;
+      dce.loadTagSnapshots = NULL;
+      if (dyncomp_dataflow_only_mode) {
+         dce.loadTagSnapshots = VG_(malloc)("mc_translate.c.3", dce.n_originalTmps * sizeof(Int));
+         for (i = 0; i < (Int)dce.n_originalTmps; i++)
+            dce.loadTagSnapshots[i] = -1;
+      }
       dce.n_loadTagSnapshots = 0;
    }
 
@@ -9066,7 +9069,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
       VG_(free)( mce.tmpHowUsed );
    }
 
-   if (do_dyncomp) {
+   if (do_dyncomp && dce.loadTagSnapshots) {
       VG_(free)( dce.loadTagSnapshots );
    }
 

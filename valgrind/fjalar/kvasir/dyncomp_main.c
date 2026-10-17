@@ -447,12 +447,20 @@ UInt MC_(helperc_CREATE_TAG)(Addr static_id) {
 // Returns the tag of the value loaded from the range [a, a+len).
 // Ordinarily, this merges the tags of all addresses in the range.
 // In dyncomp_dataflow_only_mode, nothing is an interaction, so this
-// returns the first non-zero tag in the range, without merging.
+// returns the leader of the first non-zero tag in the range, without
+// merging; if that tag is WEAK_FRESH_TAG, this returns a fresh tag, as
+// MC_(helperc_LOAD_TAG_4) does.
 static UInt load_tag_in_range(Addr a, SizeT len) {
+  UInt tag;
+
   if (!dyncomp_dataflow_only_mode) {
     return val_uf_union_tags_in_range(a, len);
   }
-  return first_nonzero_tag_in_range(a, len);
+  tag = first_nonzero_tag_in_range(a, len);
+  if (WEAK_FRESH_TAG == tag) {
+    return grab_fresh_tag();
+  }
+  return val_uf_find_leader(tag);
 }
 
 VG_REGPARM(1)
@@ -486,8 +494,10 @@ UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
 
 // The tags of the bytes read by loads; see expr2tags_WrTmp_DC.  A slot
 // is written and read during one execution of a superblock, and
-// Valgrind switches threads only between superblocks.
-static UInt load_tag_snapshots[DC_N_LOAD_TAG_SNAPSHOTS][DC_LOAD_TAG_SNAPSHOT_BYTES];
+// Valgrind switches threads only between superblocks.  Tags can be
+// garbage-collected between the write and the read, so
+// garbage_collect_tags() renumbers these tags too.
+UInt load_tag_snapshots[DC_N_LOAD_TAG_SNAPSHOTS][DC_LOAD_TAG_SNAPSHOT_BYTES];
 
 // Returns the tag of the value loaded from the range [a, a+len), as
 // the MC_(helperc_LOAD_TAG_*) functions do.  If slot is non-negative,
@@ -504,9 +514,6 @@ UInt MC_(helperc_LOAD_TAG_N) ( Addr a, UWord len, Word slot ) {
     for (i = 0; i < len; i++) {
       load_tag_snapshots[slot][i] = get_tag(a + i);
     }
-  }
-  if (len == 4) {
-    return MC_(helperc_LOAD_TAG_4)(a);
   }
   return load_tag_in_range(a, len);
 }
