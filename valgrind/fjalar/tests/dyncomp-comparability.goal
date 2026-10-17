@@ -1,0 +1,4 @@
+..shift_by_lt():::EXIT0 a 1
+..shift_by_lt():::EXIT0 b 1
+..shift_by_lt():::EXIT0 x 2
+..shift_by_lt():::EXIT0 return 2
