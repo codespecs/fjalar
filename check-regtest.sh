@@ -47,6 +47,8 @@
 # Fail the whole script if any command fails.
 set -e
 set -o pipefail
+# Make sort and comm order lines the same way on every machine.
+export LC_ALL=C
 
 FJALARDIR="$(cd "$(dirname "$0")" && pwd)"
 
@@ -55,18 +57,18 @@ EXPECTED=
 OBSERVED=
 UPDATE=false
 REPORT_ONLY=false
-# Exit with a usage error if option $2 lacks an argument; $1 is "$#".
+# Exit with a usage error if option $1 lacks a non-empty argument $2.
 need_arg() {
-  if [ "$1" -lt 2 ]; then
-    echo "$0: $2 requires an argument" >&2
+  if [ -z "$2" ]; then
+    echo "$0: $1 requires an argument" >&2
     exit 2
   fi
 }
 while [ $# -gt 0 ]; do
   case "$1" in
-    --log) need_arg $# "$1"; LOG="$2"; shift 2 ;;
-    --expected) need_arg $# "$1"; EXPECTED="$2"; shift 2 ;;
-    --observed) need_arg $# "$1"; OBSERVED="$2"; shift 2 ;;
+    --log) need_arg "$1" "${2-}"; LOG="$2"; shift 2 ;;
+    --expected) need_arg "$1" "${2-}"; EXPECTED="$2"; shift 2 ;;
+    --observed) need_arg "$1" "${2-}"; OBSERVED="$2"; shift 2 ;;
     --update) UPDATE=true; shift ;;
     --report-only) REPORT_ONLY=true; shift ;;
     *) echo "$0: unknown argument: $1" >&2; exit 2 ;;
@@ -94,7 +96,7 @@ os_name() {
   esac
 }
 OS="$(os_name)"
-EXPECTED="${EXPECTED:-regtest-expected/$OS.txt}"
+EXPECTED="${EXPECTED:-$FJALARDIR/regtest-expected/$OS.txt}"
 OBSERVED="${OBSERVED:-$FJALARDIR/regtest-observed-$OS.txt}"
 
 if [ -z "$LOG" ]; then
@@ -180,8 +182,9 @@ if [ "$UPDATE" = true ]; then
   if [ -f "$EXPECTED" ]; then
     # Keep comments, blank lines, "?" lines, and the required entries that
     # failed, each in its place, so that a comment stays next to the entry
-    # that it explains.
-    awk 'NR == FNR { observed[$0] = 1; next }
+    # that it explains.  The test is not "NR == FNR", which would be true for
+    # every line of $EXPECTED if $OBSERVED were empty.
+    awk 'FILENAME == ARGV[1] { observed[$0] = 1; next }
          /^[[:space:]]*(#|\?|$)/ { print; next }
          { line = $0; $1 = $1; if ($0 in observed) print line }' \
       "$OBSERVED" "$EXPECTED" > "$TMP"
@@ -206,7 +209,8 @@ if [ ! -f "$EXPECTED" ]; then
   echo "$0: no expected-failures file $EXPECTED." >&2
   echo "The observed failures (also in $OBSERVED) are:" >&2
   cat "$OBSERVED" >&2
-  echo "To create it, run: $0 --log $LOG --update" >&2
+  printf 'To create it, run: %q --log %q --expected %q --observed %q --update\n' \
+    "$0" "$LOG" "$EXPECTED" "$OBSERVED" >&2
   [ "$REPORT_ONLY" = true ] && exit 0
   exit 1
 fi
