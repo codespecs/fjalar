@@ -11,19 +11,23 @@
    License, or (at your option) any later version.
 */
 
-// Functions whose results DynComp computes with unary operations that give
-// tag 0:  a count (Ctz) or a mask (GetMSBs) computed from the bits of the
-// operand.  The result of each function should not be comparable to its
-// parameters, but the parameters that interact (via a comparison or an
-// addition) should be comparable to each other.
-// See dyncomp-unop-tag0-test.sh.
+// Functions whose parameters DynComp should make comparable, or not.
+// See dyncomp-comparability-test.sh.
 
 #include <emmintrin.h>
 
-// a and b are comparable; x and the result are comparable.
+// a and b are comparable, because they are compared, even though the shift
+// discards the tag of the comparison's result; x and the result are
+// comparable.
 int shift_by_lt(int a, int b, int x) {
   return x << (a < b);
 }
+
+// The following functions compute their results with unary operations that
+// give tag 0:  a count (Ctz) or a mask (GetMSBs) computed from the bits of
+// the operand.  The result of each function should not be comparable to its
+// parameters, but the parameters that interact (via an addition) should be
+// comparable to each other.
 
 // a and b are comparable; the result is comparable to neither.
 int ctz_of_sum(unsigned int a, unsigned int b) {
