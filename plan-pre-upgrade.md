@@ -22,7 +22,15 @@ PRs:
     change which checks fail, so do this after them.
   - After #96 merges: describe `check-regtest.sh` in the merge doc
     (item 5).
-  - DynComp scan for unhandled IROps (item 4); one PR per bug found.
+  - DynComp scan for unhandled IROps (item 4), after #85-#88 merge; one PR
+    per bug found.
+- Other open PRs that both upgrades should wait for (they change files the
+  upgrades merge into; see the upgrade plans):
+  - DynComp: #85 (`--dyncomp-unhandled-ops=panic|warn`), #86 and #87
+    (unary operations handled explicitly), #88 (vector shifts).
+  - DWARF/Fjalar: #89 (location views), #90 (register parameters), #91
+    (DWARF registers via guest-state offsets), #95 (unsupported DWARF
+    location operations).
 
 Item 6 is a quick investigation with no code change; do it any time before
 step 4 of the readelf plan.
@@ -131,6 +139,16 @@ What: at the top of the script,
 
 ## 4. Look for DynComp panics on unhandled IROps, now, on Valgrind 3.23
 
+Status: much of this is in open PRs; do the rest after they merge.
+- #85 adds `--dyncomp-unhandled-ops=panic|warn`; `warn` reports each
+  unhandled binary, ternary, or quaternary operation once and continues.
+  That makes the scan below much faster: one run lists every unhandled
+  operation a program hits, instead of stopping at the first.
+- #86 and #87 make `expr2tags_Unop_DC` switch on the operation and cover
+  all 283 unary operations, so unary operations no longer silently pass
+  their operand's tag through (the gap described below).
+- #88 handles more vector shifts that used to panic.
+
 Why: the main runtime risk of the Valgrind upgrade is IROps that
 `fjalar/kvasir/dyncomp_translate.c` does not handle; #79 was one, found by
 accident.  Finding them on 3.23 means they can be fixed separately, and any
@@ -141,16 +159,17 @@ What:
   `memcpy`/`memset`/string functions, float and integer arithmetic), compile
   them with `-O2 -march=x86-64-v3` (AVX2) and also `-O3 -march=native`, and
   run them under Kvasir with DynComp
-  (`$DAIKONDIR/scripts/kvasir-dtrace --dyncomp ./prog`).
+  (`$DAIKONDIR/scripts/kvasir-dtrace --dyncomp --dyncomp-unhandled-ops=warn ./prog`,
+  once #85 is merged).
 - Fix each panic in its own PR, following #79's pattern.
-- Running programs finds only some problems: `expr2tags_Binop_DC`,
-  `expr2tags_Triop_DC`, and `expr2tags_Qop_DC` panic on an unhandled
-  operation, but `expr2tags_Unop_DC` silently passes the operand's tag
-  through (see "Supporting new VEX IR Instruction" in the merge doc, as
-  updated by #82).  So also compare the `Iop_*` values that are amd64/x86
-  relevant in `VEX/pub/libvex_ir.h` against the cases those four functions
-  handle, and check each unhandled unary op whose result should not be
-  comparable to its operand.
+- Running programs finds only the operations those programs use.  Also
+  compare the `Iop_*` values relevant to amd64/x86 in `VEX/pub/libvex_ir.h`
+  against the cases the four `expr2tags_*_DC` functions handle.  Before
+  #86/#87, `expr2tags_Unop_DC` silently passed the operand's tag through
+  for any unary operation (see "Supporting new VEX IR Instruction" in the
+  merge doc, as updated by #82); after them, it handles each one
+  explicitly, so this comparison is mainly for binary, ternary, and
+  quaternary operations.
 - Add one such program to Daikon's Kvasir tests (`tests/kvasir-tests`, in the
   Daikon repository), compiled with `-march=x86-64-v3`, so CI exercises
   AVX2 IROps.  GitHub's runners support AVX2; check that before relying on it

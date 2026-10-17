@@ -53,6 +53,13 @@ new ones than to fix them.)
   - `1ca71b1c` Support DWARF 3 (#73)
   - `d8723ef7` spelling corrections (#75)
   - `95516533` Support Rust and DWARF 3 & 4 (#76)
+- Open PRs that change `dwarf.c`: #89 (location views), #90 (register
+  parameters), #91 (DWARF registers via guest-state offsets), #95
+  (unsupported DWARF location operations).  Merge them before starting this
+  upgrade, so that their changes are part of the Fjalar copy being merged
+  into (and of the Fjalar-vs-2.39 diffs) rather than conflicting with the
+  upgrade later.  Re-check their `dwarf.c` changes while resolving
+  conflicts, as for #73/#76.
 
 ## Key decision: one jump or stepwise?
 

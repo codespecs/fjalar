@@ -32,6 +32,14 @@ assumes items 1 (regtest in CI), 2 (`make git-update` handles memcheck),
   - DynComp, so step 7 must keep them (no conflict expected, since
     `kvasir/` is not patched): `b2c735d7` (#79) `Iop_64x4toV256` in
     `dyncomp_translate.c`.
+  - Open PRs to merge before this upgrade:
+    - DynComp, `dyncomp_translate.c`: #85 (`--dyncomp-unhandled-ops`), #86
+      and #87 (explicit handling of all 283 unary operations), #88 (vector
+      shifts).  New IROps in 3.24-3.27 then reach the `default` cases of
+      all four `expr2tags_*_DC` functions, and
+      `--dyncomp-unhandled-ops=warn` lists them all in one run (step 7).
+    - Memcheck-derived files, so they can conflict in step 6: #90 and #95
+      change `mc_main.c` and `mc_include.h`.
   - Other changes since then (#76, #80, the rest of #73) touch only
     Fjalar's own files and Binutils-derived files, which this merge does not
     patch.
@@ -144,7 +152,11 @@ assumes items 1 (regtest in CI), 2 (`make git-update` handles memcheck),
      `fjalar/kvasir/dyncomp_translate.c` (`_DC` functions).
    - For every new or renamed `IROp`, `IRExpr`, or `IRStmt` kind relevant to
      amd64/x86, add handling in the `expr2tags_*_DC` functions (see the
-     #79 `Iop_64x4toV256` fix for the pattern).  Search for panics/`default:`
+     #79 `Iop_64x4toV256` fix for the pattern).  With #87, that includes
+     new unary operations, which reach `expr2tags_Unop_DC`'s `default`
+     case.  Running the Kvasir tests and the item-4 programs with
+     `--dyncomp-unhandled-ops=warn` (#85) lists the unhandled ones that
+     they hit.  Search for panics/`default:`
      cases that would now be hit.  Most changes for other architectures can
      be ignored.
    - Check NEWS for 3.24–3.27 for tool-API changes (e.g. changes to
