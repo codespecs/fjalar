@@ -6,9 +6,10 @@
 # generated file includes.  Run this script after the Memcheck merge (see
 # doc/valgrind-merge.texinfo), and after changing it or fjalar.am.
 # Usage: generate-fjalar-makefile.sh [OUTPUT]
-# OUTPUT defaults to valgrind/fjalar/Makefile.am.  The script prints each
-# line of the generated file that may need a change to the renaming, and
-# then it exits with status 2.  It exits with status 1 if it fails.
+# OUTPUT defaults to valgrind/fjalar/Makefile.am.  If any line of the
+# generated file may need a change to the renaming, the script prints each
+# such line and exits with status 2.  Otherwise it exits with status 0, or
+# with status 1 if it fails.
 
 set -e
 set -o pipefail
