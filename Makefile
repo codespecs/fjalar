@@ -12,7 +12,7 @@ help:
 	@echo " check-options -- check that every command-line option is documented"
 	@echo " clean         -- remove basic generated files"
 	@echo " very-clean    -- remove (most) all generated files"
-	@echo " git-update    -- add/remove files as result of Valgrind merge"
+	@echo " git-update    -- print commands to add/remove files after Valgrind merge"
 	@echo " doc           -- build the valgrind-merge documentation"
 	@echo " "
 
@@ -62,30 +62,11 @@ very-clean:
 	rm -rf valgrind/Makefile.in
 	rm -rf valgrind/Makefile.vex.in
 
-# Print the git commands that add and remove files as a result of a Valgrind
-# merge.  Review the output, then run it.  Uses ../coregrind.patch and
-# ../memcheck.patch, made by generate-patch-files.sh.
-#  * Those patches are made with "diff --unidirectional-new-file", which shows
-#    a file that is new upstream as a diff against an empty file dated at the
-#    epoch (1969-12-31 or 1970-01-01, depending on the time zone).
-#  * A file or directory that upstream removed shows up as "Only in
-#    valgrind-old...: NAME".
-#  * Fjalar's copy of memcheck is valgrind/fjalar/, not valgrind/memcheck/.
-EPOCH_RE = [[:space:]](1969-12-31|1970-01-01) 
+# Print the commands that add and remove files as a result of a Valgrind
+# merge.  See git-update.sh.
 .PHONY: git-update
 git-update:
-	@echo "# Files added upstream"
-	@grep -E '^--- .*$(EPOCH_RE)' ../coregrind.patch | cut -f1 | cut -d' ' -f2 \
-	  | sed -e 's|^valgrind-old/|valgrind/|' -e 's/^/git add /'
-	@echo "# Files and directories removed upstream"
-	@grep '^Only in valgrind-old' ../coregrind.patch | sed -E 's|^Only in (.*): (.*)$$|\1/\2|' \
-	  | sed -e 's|^valgrind-old/|valgrind/|' -e 's/^/git rm -r /'
-	@echo "# Memcheck files added upstream; Fjalar may not need all of them"
-	@grep -E '^--- valgrind-old/memcheck/.*$(EPOCH_RE)' ../memcheck.patch | cut -f1 | cut -d' ' -f2 \
-	  | sed -e 's|^valgrind-old/memcheck/|valgrind/fjalar/|' -e 's/^/git add /'
-	@echo "# Memcheck files and directories removed upstream; check for Fjalar changes"
-	@grep '^Only in valgrind-old/memcheck' ../memcheck.patch | sed -E 's|^Only in (.*): (.*)$$|\1/\2|' \
-	  | sed -e 's|^valgrind-old/memcheck/|valgrind/fjalar/|' -e 's/^/git rm -r /'
+	@./git-update.sh
 
 .PHONY: doc
 doc:

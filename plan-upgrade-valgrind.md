@@ -6,7 +6,7 @@ situation and notes where it needs adjusting.
 
 Below, `$INV/fjalar` means the Fjalar tree being upgraded.  It must actually be
 at `$INV/fjalar`, because `generate-patch-files.sh` and `make git-update`
-hard-code that layout (`fjalar/valgrind`, `../coregrind.patch`).
+hard-code that layout (`fjalar/valgrind`, `../valgrind-new`).
 
 ## Ordering: do this after the readelf upgrade
 
@@ -61,8 +61,8 @@ it completely (merged, CI green) before starting this one.  That plan's
 3. **Baseline.**  Never build in `valgrind-old` or `valgrind-new` themselves:
    `generate-patch-files.sh` diffs them with `--unidirectional-new-file`, so
    any build products (`*.o`, `Makefile`, `config.h`, test binaries, `inst/`)
-   would end up in `coregrind.patch` and then be `git add`ed by
-   `make git-update`.  Build a copy instead:
+   would end up in `coregrind.patch`, and `make git-update` would print
+   `git add` commands for them.  Build a copy instead:
    ```sh
    cp -a valgrind-new valgrind-new-build && cd valgrind-new-build
    ./autogen.sh && ./configure --prefix=$(pwd)/inst
@@ -146,7 +146,7 @@ it completely (merged, CI green) before starting this one.  That plan's
       (`# Valgrind version 3.27.1, released ...`).
     - Add names of new Valgrind test drivers to `.gitignore`
       ("Ignore generated test drivers" section).
-    - `make git-update > git.script`, review, run.
+    - `make git-update > git.script`, review, run with `bash -ev`.
     - Document user-visible changes in `$INV/daikon/doc/CHANGELOG.md`.
     - Update `doc/valgrind-merge.texinfo`: regtest baseline output, dates/OS
       versions, building the baseline in a copy (step 3), and any new

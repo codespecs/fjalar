@@ -33,6 +33,7 @@ dyncomp
 DynComp
 DynComp's
 env
+ev
 everyfooting
 exampleindent
 expr2tags
@@ -106,6 +107,7 @@ TODO
 Triop
 ub
 Unop
+uncomment
 ur
 uref
 url

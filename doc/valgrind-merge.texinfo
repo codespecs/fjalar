@@ -1091,19 +1091,23 @@ the changes should be committed to the version control repository.
 @node Tell Git about files that were added or removed
 @section Tell Git about files that were added or removed
 
-The @samp{git-update} target below searches through the two patch files
-looking for files that were added or deleted.  It prints a
-@code{git add} or @code{git rm -r} command for each one, including the
-memcheck files in @file{valgrind/fjalar/}.  It does not run them.
-Fjalar may not need every new memcheck file, and a memcheck file removed
-upstream may contain Fjalar changes, so review those commands in
-particular.
+The @samp{git-update} target below compares @file{$INV/valgrind-old}
+with @file{$INV/valgrind-new} to find files and directories that were
+added or removed upstream.  It prints a @code{git add} or
+@code{git rm -r} command for each one, including the memcheck files in
+@file{valgrind/fjalar/}.  It also prints a @code{cp} command for each
+binary file that was added or changed upstream, because @code{patch}
+does not handle binary files.  It does not run any of these commands.
+Fjalar may not need every new memcheck file, so review those
+commands in particular.  A memcheck file removed upstream may contain
+Fjalar changes, so its @code{git rm -r} command is commented out;
+uncomment it after checking the file.
 
 @example
 cd $INV/fjalar
 make git-update > git.script
 # Double-check that it looks OK, then run it:
-bash -v ./git.script
+bash -ev ./git.script
 @end example
 
 
