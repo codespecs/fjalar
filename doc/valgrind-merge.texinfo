@@ -936,7 +936,7 @@ than the Binutils being merged.  Check that every bfd macro and function
 the new code uses exists in the oldest @file{bfd.h} that continuous
 integration uses, and add local definitions for any that do not.
 To find that @file{bfd.h}, run the following for each Docker image named in
-@file{.github/workflows/ci.yml}.  (As of October 2026, the oldest is
+@file{.github/workflows/ci.yml} or @file{azure-pipelines.yml}.  (As of October 2026, the oldest is
 Binutils 2.35.2, in @samp{mdernst/daikon-rockylinux-jdk25-plus}.)
 
 @example
