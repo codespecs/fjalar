@@ -10,6 +10,11 @@ if [ -z "$INV" ]; then
   echo "$0: INV is not set; see doc/valgrind-merge.texinfo." >&2
   exit 1
 fi
+
+# Remove all the output files first, so that a failure, including a failed
+# check below, does not leave stale ones from an earlier run.
+rm -f "$INV"/{coregrind.patch,memcheck.patch,coregrind-Fjalar.diff,memcheck-Fjalar.diff}
+
 for dir in "$INV/valgrind-old" "$INV/valgrind-new" "$INV/fjalar/valgrind"; do
   if [ ! -d "$dir" ]; then
     echo "$0: $dir does not exist." >&2
@@ -40,10 +45,6 @@ for dir in "$INV/valgrind-old" "$INV/valgrind-new"; do
 done
 
 cd "$INV"
-
-# Remove all the output files first, so that a failure does not leave
-# stale ones from an earlier run.
-rm -f coregrind.patch memcheck.patch coregrind-Fjalar.diff memcheck-Fjalar.diff
 
 # The temporary file that run_diff is writing, if any.  It is removed if
 # the script exits early, including when it is interrupted.

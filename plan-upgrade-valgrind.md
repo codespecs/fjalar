@@ -64,6 +64,7 @@ it completely (merged, CI green) before starting this one.  That plan's
    would end up in `coregrind.patch` and then be `git add`ed by
    `make git-update`.  Build a copy instead:
    ```sh
+   rm -rf valgrind-new-build
    cp -a valgrind-new valgrind-new-build && cd valgrind-new-build
    ./autogen.sh && ./configure --prefix=$(pwd)/inst
    make all install && make regtest > test.log 2>&1
