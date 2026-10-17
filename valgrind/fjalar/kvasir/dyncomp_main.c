@@ -569,10 +569,8 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
     mergeTagsReturn0Count++;
   }
 
-  // If either tag is WEAK_FRESH_TAG, then val_uf_tag_union has no
-  // effect, because no uf_object exists for WEAK_FRESH_TAG.  That is
-  // the correct result:  there is no other tag to merge the other
-  // argument's tag with.
+  // (comment added 2006)  
+  // TODO: What do we do about WEAK_FRESH_TAG???
 
   if (IS_ZERO_TAG(tag1) ||
       IS_ZERO_TAG(tag2)) {
