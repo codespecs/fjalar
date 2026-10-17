@@ -7,7 +7,8 @@
 # (sbb).  The operands of an add should not be comparable when its flags are
 # read via amd64g_calculate_condition (setc) or amd64g_calculate_rflags_c
 # (adc).  The operands of a sub should not be comparable when its flags are
-# preserved by an inc via amd64g_calculate_rflags_c or copied by a lahf via
+# preserved by an inc, whether via amd64g_calculate_rflags_c or, in the same
+# basic block, via a CmpLT32U, or copied by a lahf via
 # amd64g_calculate_rflags_all.  Nor should the two halves of a 128-bit load,
 # nor the two fields of a struct copied by a 64-bit load.
 # The expected comparability is in dyncomp-interactions-comparisons.goal.
@@ -21,5 +22,6 @@ exec "$(dirname "$0")/dyncomp-comparability-test.sh" \
                                  if (fn ~ / addWithCarry(\+[0-9]+)? /) adc = 1
                                  if (fn ~ / subThenInc(\+[0-9]+)? /) inc = 1 }
       /g_calculate_rflags_all\[/ { if (fn ~ / subThenLahf(\+[0-9]+)? /) lahf = 1 }
-      END { exit !(less && carry && mask && adc && inc && lahf) }' \
+      /CmpLT32U\(/ { if (fn ~ / subThenIncSameBlock(\+[0-9]+)? /) incSame = 1 }
+      END { exit !(less && carry && mask && adc && inc && lahf && incSame) }' \
      --dyncomp-interactions=comparisons
