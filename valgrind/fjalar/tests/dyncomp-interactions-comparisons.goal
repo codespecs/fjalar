@@ -7,6 +7,10 @@
 ..subThenLahf():::EXIT0 a 1
 ..subThenLahf():::EXIT0 b 2
 ..subThenLahf():::EXIT0 return 3
+..subSetbInc():::EXIT0 a 1
+..subSetbInc():::EXIT0 b 1
+..subSetbInc():::EXIT0 c 2
+..subSetbInc():::EXIT0 return 3
 ..subThenIncSameBlock():::EXIT0 a 1
 ..subThenIncSameBlock():::EXIT0 b 2
 ..subThenIncSameBlock():::EXIT0 c 3

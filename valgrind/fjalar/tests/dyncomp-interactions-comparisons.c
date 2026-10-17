@@ -85,6 +85,21 @@ int subThenIncSameBlock(int a, int b, int c) {
   return c;
 }
 
+// subSetbInc() subtracts b from a, and then, in the same basic block, a setb
+// instruction reads the carry flag of the subtraction and an inc instruction
+// preserves it.  The setb uses the flags as the result of a comparison, so
+// under --dyncomp-interactions=comparisons, DynComp should make a and b
+// comparable, even if VEX computes both reads of the carry flag with the
+// same CmpLT32U.
+int subSetbInc(int a, int b, int c) {
+  unsigned char below;
+  __asm__ volatile ("subl %3, %1\n\t"
+                    "setb %0\n\t"
+                    "incl %2"
+                    : "=q" (below), "+r" (a), "+r" (c) : "r" (b) : "cc");
+  return below;
+}
+
 // subThenLahf() subtracts b from a with a sub instruction, and then a lahf
 // instruction in a different basic block copies the flags of the subtraction
 // (via amd64g_calculate_rflags_all) into a register.  Copying flags is not a
@@ -145,6 +160,7 @@ int main(void) {
   subThenInc(15, 16, 17);
   subThenLahf(18, 19);
   subThenIncSameBlock(20, 21, 22);
+  subSetbInc(23, 24, 25);
   copyLongs(11, 12);
   copyInts(13, 14);
   return 0;

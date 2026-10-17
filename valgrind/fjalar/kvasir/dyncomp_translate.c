@@ -338,9 +338,9 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2,
 //
 // Some instructions read flags without using them as the result of a
 // comparison.  An inc or dec instruction reads the carry flag (via
-// amd64g_calculate_rflags_c) and stores it in the CC_NDEP field of its own
-// flags thunk, because it does not change the carry flag.  The other
-// callers of amd64g_calculate_rflags_c are adc and sbb.
+// amd64g_calculate_rflags_c) only to carry it forward; see
+// findFlagsCarryingTmps_DC.  The other callers of amd64g_calculate_rflags_c
+// are adc and sbb.
 // amd64g_calculate_rflags_all is used mostly by instructions that preserve
 // or copy flags, such as shifts, bt, and pushf.  These calls merge no tags;
 // if the flags are later used, then the instruction that uses them reads
@@ -351,25 +351,222 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2,
 // call merges tags in the same cases.  If the flags are set by an add, its
 // operands were already merged when its result was computed.
 
-// Returns True if the statement being instrumented assigns the result of
-// a helper call to a temporary that the next statement stores in the
-// CC_NDEP field of the flags thunk.
-static
-Bool resultIsStoredInCCNDep_DC ( DCEnv* dce )
-{
-   const IRSB* sb = dce->sb_in;
-   Int i = dce->stmtIndex;
-   IRStmt* st = sb->stmts[i];
-   IRStmt* next;
+// The flags-carrying analysis finds the temporaries whose values only carry
+// flags forward, from one flags thunk to the next.  For example, an inc or
+// dec instruction does not change the carry flag, so VEX's translation of it
+// reads the carry flag of the previous thunk and stores it in the CC_NDEP
+// field of the new thunk.  Reading the carry flag is a call to
+// amd64g_calculate_rflags_c or, when VEX knows the previous thunk's CC_OP, a
+// specialization of it:  for example, a CmpLT32U of the operands of a sub
+// in the same superblock.  Neither one compares values; if the carry flag
+// is later used, then the instruction that uses it reads it from the new
+// thunk.
+//
+// A temporary carries flags if it has at least one use, and every use of
+// it either stores it in CC_NDEP or copies or zero-extends it into another
+// temporary that carries flags.
 
-   if (st->tag != Ist_WrTmp || i + 1 >= sb->stmts_used) {
+// What the analysis knows about the uses of a temporary, from the
+// statements after the current one.  The values are ordered:  an
+// additional use can only increase the value.
+typedef enum { FcUnused = 0, FcCarriesFlags = 1, FcOther = 2 } FlagsUse;
+
+static void noteFlagsUse_DC ( UChar* uses, IRTemp t, FlagsUse use )
+{
+   if (use > uses[t]) {
+      uses[t] = use;
+   }
+}
+
+// Notes that every temporary in e is used in some way other than carrying
+// flags.
+static void noteOtherUses_DC ( UChar* uses, IRExpr* e )
+{
+   Int i;
+
+   if (!e) {
+      return;
+   }
+   switch (e->tag) {
+      case Iex_RdTmp:
+         noteFlagsUse_DC(uses, e->Iex.RdTmp.tmp, FcOther);
+         break;
+      case Iex_GetI:
+         noteOtherUses_DC(uses, e->Iex.GetI.ix);
+         break;
+      case Iex_Qop:
+         noteOtherUses_DC(uses, e->Iex.Qop.details->arg1);
+         noteOtherUses_DC(uses, e->Iex.Qop.details->arg2);
+         noteOtherUses_DC(uses, e->Iex.Qop.details->arg3);
+         noteOtherUses_DC(uses, e->Iex.Qop.details->arg4);
+         break;
+      case Iex_Triop:
+         noteOtherUses_DC(uses, e->Iex.Triop.details->arg1);
+         noteOtherUses_DC(uses, e->Iex.Triop.details->arg2);
+         noteOtherUses_DC(uses, e->Iex.Triop.details->arg3);
+         break;
+      case Iex_Binop:
+         noteOtherUses_DC(uses, e->Iex.Binop.arg1);
+         noteOtherUses_DC(uses, e->Iex.Binop.arg2);
+         break;
+      case Iex_Unop:
+         noteOtherUses_DC(uses, e->Iex.Unop.arg);
+         break;
+      case Iex_Load:
+         noteOtherUses_DC(uses, e->Iex.Load.addr);
+         break;
+      case Iex_ITE:
+         noteOtherUses_DC(uses, e->Iex.ITE.cond);
+         noteOtherUses_DC(uses, e->Iex.ITE.iftrue);
+         noteOtherUses_DC(uses, e->Iex.ITE.iffalse);
+         break;
+      case Iex_CCall:
+         for (i = 0; e->Iex.CCall.args[i]; i++) {
+            noteOtherUses_DC(uses, e->Iex.CCall.args[i]);
+         }
+         break;
+      case Iex_Binder:
+      case Iex_Get:
+      case Iex_Const:
+      case Iex_VECRET:
+      case Iex_GSPTR:
+         break;
+      default:
+         ppIRExpr(e);
+         VG_(tool_panic)("dyncomp:noteOtherUses_DC");
+   }
+}
+
+// Returns True if e copies or zero-extends a temporary.
+static Bool isCopyOrZeroExtension_DC ( IRExpr* e )
+{
+   if (e->tag == Iex_RdTmp) {
+      return True;
+   }
+   if (e->tag != Iex_Unop || e->Iex.Unop.arg->tag != Iex_RdTmp) {
       return False;
    }
-   next = sb->stmts[i + 1];
-   return next->tag == Ist_Put
-      && next->Ist.Put.offset == offsetof(VexGuestAMD64State, guest_CC_NDEP)
-      && next->Ist.Put.data->tag == Iex_RdTmp
-      && next->Ist.Put.data->Iex.RdTmp.tmp == st->Ist.WrTmp.tmp;
+   switch (e->Iex.Unop.op) {
+      case Iop_1Uto8:
+      case Iop_1Uto32:
+      case Iop_1Uto64:
+      case Iop_8Uto32:
+      case Iop_8Uto64:
+      case Iop_16Uto32:
+      case Iop_16Uto64:
+      case Iop_32Uto64:
+         return True;
+      default:
+         return False;
+   }
+}
+
+// Returns an array, indexed by the temporaries of sb_in, whose elements are
+// True for the temporaries that carry flags.  The caller frees it.
+Bool* findFlagsCarryingTmps_DC ( const IRSB* sb_in )
+{
+   const Int nTmps = sb_in->tyenv->types_used;
+   UChar* uses = VG_(calloc)("dyncomp_translate.c.findFlagsCarryingTmps_DC.1",
+                             nTmps, sizeof(UChar));
+   Bool* result = VG_(malloc)("dyncomp_translate.c.findFlagsCarryingTmps_DC.2",
+                              nTmps * sizeof(Bool));
+   Int i, j;
+
+   noteOtherUses_DC(uses, sb_in->next);
+   // Every use of a temporary follows its definition, so a backward pass
+   // sees all uses of a temporary before its definition.
+   for (i = sb_in->stmts_used - 1; i >= 0; i--) {
+      IRStmt* st = sb_in->stmts[i];
+      switch (st->tag) {
+         case Ist_WrTmp:
+            if (isCopyOrZeroExtension_DC(st->Ist.WrTmp.data)) {
+               IRExpr* src = st->Ist.WrTmp.data;
+               if (src->tag == Iex_Unop) {
+                  src = src->Iex.Unop.arg;
+               }
+               noteFlagsUse_DC(uses, src->Iex.RdTmp.tmp,
+                               uses[st->Ist.WrTmp.tmp]);
+            } else {
+               noteOtherUses_DC(uses, st->Ist.WrTmp.data);
+            }
+            break;
+         case Ist_Put:
+            if (st->Ist.Put.offset
+                   == offsetof(VexGuestAMD64State, guest_CC_NDEP)
+                && st->Ist.Put.data->tag == Iex_RdTmp) {
+               noteFlagsUse_DC(uses, st->Ist.Put.data->Iex.RdTmp.tmp,
+                               FcCarriesFlags);
+            } else {
+               noteOtherUses_DC(uses, st->Ist.Put.data);
+            }
+            break;
+         case Ist_PutI:
+            noteOtherUses_DC(uses, st->Ist.PutI.details->ix);
+            noteOtherUses_DC(uses, st->Ist.PutI.details->data);
+            break;
+         case Ist_Store:
+            noteOtherUses_DC(uses, st->Ist.Store.addr);
+            noteOtherUses_DC(uses, st->Ist.Store.data);
+            break;
+         case Ist_StoreG:
+            noteOtherUses_DC(uses, st->Ist.StoreG.details->addr);
+            noteOtherUses_DC(uses, st->Ist.StoreG.details->data);
+            noteOtherUses_DC(uses, st->Ist.StoreG.details->guard);
+            break;
+         case Ist_LoadG:
+            noteOtherUses_DC(uses, st->Ist.LoadG.details->addr);
+            noteOtherUses_DC(uses, st->Ist.LoadG.details->alt);
+            noteOtherUses_DC(uses, st->Ist.LoadG.details->guard);
+            break;
+         case Ist_CAS:
+            noteOtherUses_DC(uses, st->Ist.CAS.details->addr);
+            noteOtherUses_DC(uses, st->Ist.CAS.details->expdHi);
+            noteOtherUses_DC(uses, st->Ist.CAS.details->expdLo);
+            noteOtherUses_DC(uses, st->Ist.CAS.details->dataHi);
+            noteOtherUses_DC(uses, st->Ist.CAS.details->dataLo);
+            break;
+         case Ist_LLSC:
+            noteOtherUses_DC(uses, st->Ist.LLSC.addr);
+            noteOtherUses_DC(uses, st->Ist.LLSC.storedata);
+            break;
+         case Ist_Dirty:
+            noteOtherUses_DC(uses, st->Ist.Dirty.details->guard);
+            noteOtherUses_DC(uses, st->Ist.Dirty.details->mAddr);
+            for (j = 0; st->Ist.Dirty.details->args[j]; j++) {
+               noteOtherUses_DC(uses, st->Ist.Dirty.details->args[j]);
+            }
+            break;
+         case Ist_Exit:
+            noteOtherUses_DC(uses, st->Ist.Exit.guard);
+            break;
+         case Ist_AbiHint:
+            noteOtherUses_DC(uses, st->Ist.AbiHint.base);
+            noteOtherUses_DC(uses, st->Ist.AbiHint.nia);
+            break;
+         case Ist_NoOp:
+         case Ist_IMark:
+         case Ist_MBE:
+            break;
+         default:
+            ppIRStmt(st);
+            VG_(tool_panic)("dyncomp:findFlagsCarryingTmps_DC");
+      }
+   }
+
+   for (i = 0; i < nTmps; i++) {
+      result[i] = (uses[i] == FcCarriesFlags);
+   }
+   VG_(free)(uses);
+   return result;
+}
+
+// Returns True if the statement being instrumented assigns a value to a
+// temporary that carries flags.
+static
+Bool resultCarriesFlags_DC ( DCEnv* dce )
+{
+   IRStmt* st = dce->sb_in->stmts[dce->stmtIndex];
+   return st->tag == Ist_WrTmp && dce->tmpCarriesFlags[st->Ist.WrTmp.tmp];
 }
 
 // If a call to cee with arguments exprvec uses flags as the result of a
@@ -382,7 +579,7 @@ IRAtom* comparisonCCOp_DC ( DCEnv* dce, IRAtom** exprvec, IRCallee* cee )
       return exprvec[1];
    }
    if (cee->addr == (void*)&amd64g_calculate_rflags_c
-       && !resultIsStoredInCCNDep_DC(dce)) {
+       && !resultCarriesFlags_DC(dce)) {
       return exprvec[0];
    }
    return NULL;
@@ -1722,6 +1919,16 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       ppIROp(op);
       VG_(printf)("\nUnhandled IROp: 0x%x\n", (UInt)op);
       VG_(tool_panic)("dyncomp:expr2tags_Binop_DC");
+   }
+
+   // A comparison whose result only carries flags forward does not compare
+   // values; see findFlagsCarryingTmps_DC.  The default mode does not
+   // check this, just as it treats every helper call as an interaction.
+   if (helper == &MC_(helperc_MERGE_TAGS_RETURN_0)
+       && (dyncomp_dataflow_comparisons_mode || dyncomp_units_mode)
+       && resultCarriesFlags_DC(dce)) {
+      helper = 0;
+      hname = 0;
    }
 
    // In this mode, NOTHING is an interaction.  This check is needed, in
