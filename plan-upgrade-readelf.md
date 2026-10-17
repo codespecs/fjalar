@@ -65,8 +65,10 @@ Kvasir tests after each step.
    - Make sure the system has `binutils-dev` / `binutils-devel` (for `bfd.h`).
 
 2. **Baselines** (before touching any source).
-   - `make clean build && ./check-regtest.sh` (Valgrind regtest baseline;
-     must report no unexpected failures).  If this machine's OS has no
+   - `make build && ./check-regtest.sh` (Valgrind regtest baseline;
+     must report no unexpected failures).  Do not run `make clean` first,
+     because it fails until `make build` has created `valgrind/Makefile`.
+     If this machine's OS has no
      `regtest-expected/<os>.txt`, create a local one with
      `./check-regtest.sh --log regtest-<os>.log --update` and don't commit it.
    - `./test-kvasir.sh 2>&1 | tee kvasir-before.log`
