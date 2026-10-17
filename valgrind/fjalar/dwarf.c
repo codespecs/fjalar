@@ -9710,6 +9710,14 @@ regname (unsigned int regno, int name_only_p)
   return reg;
 }
 
+/* Returns the name of DWARF register REGNO, for Fjalar's debugging
+   output.  */
+const char *
+dwarf_reg_name (unsigned int regno)
+{
+  return regname (regno, 1);
+}
+
 static void
 frame_display_row (Frame_Chunk *fc, int *need_col_headers, unsigned int *max_regs)
 {
