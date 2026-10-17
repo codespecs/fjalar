@@ -761,10 +761,11 @@ valgrind-listener
 *-x86-linux
 *-amd64-linux
 
-# Commented out as you should really look at these
-# Ignore files generated during test runs
-#*.stderr.diff
-#*.stderr.out
+# Ignore the output and diffs that vg_regtest leaves behind for each failing
+# test (it deletes them for passing tests).  check-regtest.sh reports the
+# failing tests, and CI saves these files.
+valgrind/**/*.out
+valgrind/**/*.diff*
 
 # Ignore output of check-regtest.sh (the log is covered by *.log)
 /regtest-observed-*.txt

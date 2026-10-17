@@ -144,6 +144,7 @@ Memcheck and DynComp depend tightly on Valgrind core:
    git clone -q valgrind-new valgrind-new-build && cd valgrind-new-build
    ./autogen.sh && ./configure --prefix=$(pwd)/inst
    make all install && make regtest XMLLINT=xmllint-skipped-by-check-regtest > test.log 2>&1
+   make post-regtest-checks > test-post.log 2>&1
    $INV/fjalar/check-regtest.sh --log test.log --expected $INV/regtest-upstream-3.27.1.txt \
      --observed test-observed.txt --update
    ```

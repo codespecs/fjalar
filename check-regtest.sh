@@ -9,13 +9,20 @@
 # sometimes on the CPU.  So this script does not require every test to pass.
 # It fails if:
 #  * a test fails that is not listed in the expected-failures file,
-#  * the tests did not run (no summary line in the output), or
+#  * the tests did not run (no summary line in the output, or no output from
+#    the post-test checks), or
 #  * the expected-failures file does not exist (unless --update is given).
 # A test that is listed as an expected failure but passes produces a warning,
 # not a failure; remove it from the expected-failures file.
 #
-# Usage: ./check-regtest.sh [--log FILE] [--expected FILE] [--observed FILE] [--update] [--report-only]
+# Usage: ./check-regtest.sh [--log FILE [--post-log FILE]] [--expected FILE] [--observed FILE] [--update] [--report-only]
 #   --log FILE       Read FILE (output of "make test") instead of running the tests.
+#   --post-log FILE  With --log, read FILE (output of
+#                    "make -C valgrind post-regtest-checks") for the errors of
+#                    the post-test checks.  The default is the --log file name
+#                    with ".log" replaced by "-post.log".  Without --log, the
+#                    script writes both files: regtest-<os>.log and
+#                    regtest-<os>-post.log.
 #   --expected FILE  Use FILE as the expected-failures file.  The default is
 #                    regtest-expected/<os>.txt, where <os> is computed from
 #                    /etc/os-release, for example "ubuntu-26.04" or "rocky-10".
@@ -28,8 +35,10 @@
 #                    directly above a group of entries (lines with no blank
 #                    line between them) are removed if every entry in the
 #                    group is removed.  Review the diff!
-#   --report-only    Report differences, and report tests that did not run,
-#                    but exit with status 0 regardless.
+#   --report-only    Report differences, but exit with status 0 even if there
+#                    are unexpected failures or there is no expected-failures
+#                    file.  It still exits with non-zero status if the tests
+#                    did not run.
 #
 # Expected-failures file format: one failure per line, as vg_regtest prints
 # it, such as "gdbserver_tests/mcleak (stdoutB)".  Blank lines and lines
@@ -54,9 +63,12 @@ set -o pipefail
 # Make sort and comm order lines the same way on every machine.
 export LC_ALL=C
 
-FJALARDIR="$(cd "$(dirname "$0")" && pwd)"
+# Resolve symbolic links, so that paths that are compared with each other
+# (such as $EXPECTED, which goes through realpath) are in the same form.
+FJALARDIR="$(cd "$(dirname "$0")" && pwd -P)"
 
 LOG=
+POSTLOG=
 EXPECTED=
 OBSERVED=
 UPDATE=false
@@ -71,6 +83,7 @@ need_arg() {
 while [ $# -gt 0 ]; do
   case "$1" in
     --log) need_arg "$1" "${2-}"; LOG="$2"; shift 2 ;;
+    --post-log) need_arg "$1" "${2-}"; POSTLOG="$2"; shift 2 ;;
     --expected) need_arg "$1" "${2-}"; EXPECTED="$2"; shift 2 ;;
     --observed) need_arg "$1" "${2-}"; OBSERVED="$2"; shift 2 ;;
     --update) UPDATE=true; shift ;;
@@ -79,21 +92,38 @@ while [ $# -gt 0 ]; do
   esac
 done
 # Make file arguments absolute before changing directory.
-[ -n "$LOG" ] && LOG="$(realpath -m "$LOG")"
-[ -n "$EXPECTED" ] && EXPECTED="$(realpath -m "$EXPECTED")"
-[ -n "$OBSERVED" ] && OBSERVED="$(realpath -m "$OBSERVED")"
-if [ -n "$LOG" ] && [ ! -f "$LOG" ]; then
-  echo "$0: no such file: $LOG" >&2
+if [ -n "$POSTLOG" ] && [ -z "$LOG" ]; then
+  echo "$0: --post-log requires --log" >&2
   exit 2
 fi
+[ -n "$LOG" ] && LOG="$(realpath -m "$LOG")"
+[ -n "$LOG" ] && POSTLOG="$(realpath -m "${POSTLOG:-${LOG%.log}-post.log}")"
+[ -n "$EXPECTED" ] && EXPECTED="$(realpath -m "$EXPECTED")"
+[ -n "$OBSERVED" ] && OBSERVED="$(realpath -m "$OBSERVED")"
+for f in "$LOG" "$POSTLOG"; do
+  if [ -n "$f" ] && [ ! -f "$f" ]; then
+    echo "$0: no such file: $f" >&2
+    exit 2
+  fi
+done
 cd "$FJALARDIR"
 
 # The operating system name, such as "ubuntu-26.04" or "rocky-10".  For
 # RHEL-like distributions, use only the major version, because minor releases
-# (10.0, 10.1, ...) are routine updates of the same distribution.
+# (10.0, 10.1, ...) are routine updates of the same distribution.  A
+# rolling-release distribution (such as Arch or Debian sid) has no VERSION_ID;
+# use only its ID.
 os_name() {
+  if [ ! -f /etc/os-release ]; then
+    echo "$0: /etc/os-release does not exist; cannot determine the operating system" >&2
+    exit 2
+  fi
   # shellcheck disable=SC1091
   . /etc/os-release
+  if [ -z "${VERSION_ID-}" ]; then
+    echo "$ID"
+    return
+  fi
   case "$ID" in
     rocky|rhel|almalinux|centos|fedora) echo "$ID-${VERSION_ID%%.*}" ;;
     *) echo "$ID-$VERSION_ID" ;;
@@ -105,7 +135,8 @@ OBSERVED="${OBSERVED:-$FJALARDIR/regtest-observed-$OS.txt}"
 
 if [ -z "$LOG" ]; then
   LOG="$FJALARDIR/regtest-$OS.log"
-  echo "Running Valgrind regression tests; output is in $LOG"
+  POSTLOG="$FJALARDIR/regtest-$OS-post.log"
+  echo "Running Valgrind regression tests; output is in $LOG and $POSTLOG"
   # "make regtest" exits with non-zero status whenever any test fails, which
   # is the usual case, so ignore its status and examine its output instead.
   # "make regtest" first runs "make check", which also validates Valgrind's XML
@@ -118,6 +149,9 @@ if [ -z "$LOG" ]; then
   make -C valgrind -j"$(nproc)" check XMLLINT=xmllint-skipped-by-check-regtest \
     > "$LOG" 2>&1 || true
   make test XMLLINT=xmllint-skipped-by-check-regtest >> "$LOG" 2>&1 || true
+  # "make test" ends by running the post-test checks, but in $LOG their error
+  # messages are mixed with make's output.  Run them again by themselves.
+  make -C valgrind -s --no-print-directory post-regtest-checks > "$POSTLOG" 2>&1 || true
 fi
 
 # The summary line has this form:
@@ -149,29 +183,27 @@ observed_failures() {
     # The "post:" command of the test failed to run.  vg_regtest counts this
     # in the summary line but does not list it.
     /^post check failed: / { failures[n++] = dir "/" test " (post check failed)"; next }
-    # Output of tests/post_regtest_checks, other than its progress messages.
-    # It ends at the first line that make prints after it.
-    /^\.\.\.checking / { in_post_checks = 1; next }
-    in_post_checks && (/^make(\[[0-9]+\])?: / || /^[^ :]*[Mm]akefile:[0-9]+: recipe for target /) {
-      in_post_checks = 0; next
-    }
-    in_post_checks && !/^[ \t]*$/ {
-      post_errors[m++] = "post_regtest_checks: " $0
-    }
-    END {
-      for (i = 0; i < n; i++) print failures[i]
-      for (i = 0; i < m; i++) print post_errors[i]
-    }' "$LOG" | normalize | sort -u
+    END { for (i = 0; i < n; i++) print failures[i] }' "$LOG"
+  # The error messages of tests/post_regtest_checks: every line of $POSTLOG
+  # except its progress messages, make's messages, and blank lines.
+  { grep -Ev '^(\.\.\.checking |make(\[[0-9]+\])?: |[^ :]*[Mm]akefile:[0-9]+: recipe for target |[[:space:]]*$)' "$POSTLOG" || true; } \
+    | sed 's/^/post_regtest_checks: /'
 }
-observed_failures > "$OBSERVED"
+observed_failures | normalize | sort -u > "$OBSERVED"
 
-# A summary that reports 0 tests means that no test ran.
+# A summary that reports 0 tests means that no test ran.  This is an error
+# even with --report-only, because it means that nothing was checked.
 NONZERO_SUMMARY_RE='^== [1-9][0-9]* tests?, .* post failures? ==$'
 if ! grep -Eq "$NONZERO_SUMMARY_RE" "$LOG"; then
   echo "$0: no regtest summary line with a nonzero test count in $LOG; the tests did not run." >&2
   echo "Last lines of $LOG:" >&2
   tail -n 40 "$LOG" >&2
-  [ "$REPORT_ONLY" = true ] && exit 0
+  exit 1
+fi
+# The last of the post-test checks prints this progress message.
+if ! grep -q '^\.\.\.checking header files and include directives' "$POSTLOG"; then
+  echo "$0: the post-test checks did not run; output is in $POSTLOG:" >&2
+  tail -n 40 "$POSTLOG" >&2
   exit 1
 fi
 grep -E "$SUMMARY_RE" "$LOG" | tail -n 1
@@ -255,8 +287,8 @@ if [ ! -f "$EXPECTED" ]; then
   echo "$0: no expected-failures file $EXPECTED." >&2
   echo "The observed failures (also in $OBSERVED) are:" >&2
   cat "$OBSERVED" >&2
-  printf 'To create it, run: %q --log %q --expected %q --observed %q --update\n' \
-    "$0" "$LOG" "$EXPECTED" "$OBSERVED" >&2
+  printf 'To create it, run: %q --log %q --post-log %q --expected %q --observed %q --update\n' \
+    "$0" "$LOG" "$POSTLOG" "$EXPECTED" "$OBSERVED" >&2
   [ "$REPORT_ONLY" = true ] && exit 0
   exit 1
 fi
