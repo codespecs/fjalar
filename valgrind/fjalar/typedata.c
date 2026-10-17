@@ -40,7 +40,7 @@
 // For name demangling.
 #include "../coregrind/m_demangle/demangle.h"
 // For VG_(arena_free), to release the demanglers' results.
-#include "../coregrind/pub_core_mallocfree.h"
+#include "fjalar_core_decls.h"
 
 // Most of the following information is taken from "DWARF Debugging
 // Information Format Version 4". Published by the DWARF Debugging
