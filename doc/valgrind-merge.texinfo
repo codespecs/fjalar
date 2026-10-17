@@ -552,6 +552,16 @@ the actual merge, which writes @file{$INV/memcheck-apply.log}:
 $INV/fjalar/apply-patch-files.sh memcheck
 @end example
 
+The Memcheck merge does not patch Fjalar's build file
+@file{valgrind/fjalar/Makefile.am}.  Instead, @file{apply-patch-files.sh}
+regenerates it from @file{valgrind/memcheck/Makefile.am}, which the
+Coregrind merge updated, by renaming Memcheck to Fjalar, so Fjalar builds
+every new Memcheck source file.  The generated
+file includes @file{valgrind/fjalar/fjalar.am}, which holds Fjalar's
+changes, such as its additional source files and compiler flags.  Review
+@command{git diff --cached valgrind/fjalar/Makefile.am}, and update
+@file{fjalar.am} if an upstream change conflicts with Fjalar's changes.
+
 Fjalar may not need every new Memcheck file.  Review the files that the
 patch added:
 
