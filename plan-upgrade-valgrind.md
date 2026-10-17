@@ -152,7 +152,7 @@ it completely (merged, CI green) before starting this one.  That plan's
 10. **Finish.**
     - Update first line of `valgrind/REVISION`
       (`# Valgrind version 3.27.1, released ...`).
-    - Add names of new Valgrind test drivers to `.gitignore`, in the
+    - Add names of new Valgrind test programs to `.gitignore`, in the
       per-tool sections (such as `# /memcheck/`).
     - Check that Fjalar tracks no file that upstream does not have:  the
       command of step 2, with `valgrind-new` in place of `valgrind-old`,
