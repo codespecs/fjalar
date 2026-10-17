@@ -307,6 +307,11 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2 )
 // as '>' and '>=' may be translated into calls of a condition-code
 // helper such as amd64g_calculate_condition, and the result of a
 // comparison does not interact with its operands.
+//
+// Under --dyncomp-interactions=comparisons, only a helper that
+// evaluates a condition, such as amd64g_calculate_condition, is an
+// interaction.  Other helpers, such as amd64g_calculate_rflags_c (used
+// by adc and sbb), are not comparisons, so they merge no tags.
 static
 IRAtom* handleCCall_DC ( DCEnv* dce,
                          IRAtom** exprvec, IRCallee* cee )
@@ -316,6 +321,11 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
    Int numMergedArgs = 0;
    Int i;
    IRAtom* merged;
+
+   if (dyncomp_dataflow_comparisons_mode
+       && VG_(strstr)(cee->name, "calculate_condition") == NULL) {
+      return IRExpr_Const(IRConst_UWord(0));
+   }
 
    if (exprvec) {
       for (i = 0; exprvec[i]; i++) {

@@ -1,0 +1,8 @@
+..addWithCarry():::EXIT0 a 1
+..addWithCarry():::EXIT0 b 2
+..addWithCarry():::EXIT0 c 3
+..addWithCarry():::EXIT0 d 4
+..addWithCarry():::EXIT0 return 5
+..less():::EXIT0 a 1
+..less():::EXIT0 b 1
+..less():::EXIT0 return 2
