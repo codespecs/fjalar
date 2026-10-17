@@ -90,10 +90,14 @@ quiet_mode_changes='/^error: repository lacks the necessary blob to perform 3-wa
 # actual run can exclude them.
 status=0
 "${apply[@]}" --check "$@" "$patch" 2>&1 | sed "$quiet_mode_changes" > "$log" || status=$?
+# For each refused file, "refused" holds its name and "reasons" holds the
+# message that gives the name and the reason.
 refused=()
+reasons=()
 while IFS= read -r line; do
   if [[ $line =~ ^error:\ (.+):\ [^:]+$ ]] && [[ $line != "error: patch failed: "* ]]; then
     refused+=("${BASH_REMATCH[1]}")
+    reasons+=("${line#error: }")
   fi
 done < "$log"
 if [ "$status" -ne 0 ] && [ ${#refused[@]} -eq 0 ]; then
@@ -124,18 +128,22 @@ fi
 if [ -z "$conflicts" ] && [ ${#refused[@]} -eq 0 ]; then
   exit 0
 fi
-echo
-if [ -n "$check" ]; then
-  echo "$0: the dry run found these conflicts."
-else
-  echo "$0: Resolve these conflicts."
-fi
-if [ -n "$conflicts" ]; then
-  echo "Files with conflicts:"
-  echo "$conflicts"
-fi
-if [ ${#refused[@]} -gt 0 ]; then
-  echo "Files whose patches were not applied:"
-  printf '%s\n' "${refused[@]}"
-fi
+# The summary is also appended to the log, which otherwise would not give
+# the reasons that the dry run found for refusing files.
+{
+  echo
+  if [ -n "$check" ]; then
+    echo "$0: the dry run found these conflicts."
+  else
+    echo "$0: Resolve these conflicts."
+  fi
+  if [ -n "$conflicts" ]; then
+    echo "Files with conflicts:"
+    echo "$conflicts"
+  fi
+  if [ ${#refused[@]} -gt 0 ]; then
+    echo "Files whose patches were not applied, and why:"
+    printf '%s\n' "${reasons[@]}"
+  fi
+} | tee -a "$log"
 exit 1

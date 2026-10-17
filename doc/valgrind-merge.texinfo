@@ -510,9 +510,12 @@ git diff --name-only --diff-filter=U
 
 @command{git apply} refuses the patch to some files entirely, and then it
 applies no patch at all.  So the script first does a dry run and then
-excludes those files from the merge, and lists them as files whose patches
-were not applied.  Examples are a removal of a file that Fjalar has
-changed and a change to a file that Fjalar does not have.  Their patches
+excludes those files from the merge, and lists them, with the reason that
+@command{git apply} gave, as files whose patches were not applied.  The
+list is also at the end of @file{$INV/coregrind-apply.log}.  Examples are
+a removal of a file that Fjalar has changed (``patch does not apply'') and
+a change to a file that Fjalar does not have (``does not exist in
+index'').  Their patches
 are in @file{$INV/coregrind.patch}; apply each one by hand.  For a file
 that was removed upstream but that has Fjalar changes, decide whether to
 remove it with @command{git rm}.
