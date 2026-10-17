@@ -16,6 +16,9 @@ PRs:
   - #99: `generate-patch-files.sh` checks its inputs (item 3).
   - #100: fix `make git-update` (item 2).
   - #101: merge-doc updates (item 5, except what depends on #96).
+  - #102: backport three upstream fixes so Valgrind's test programs build
+    with GCC 15 (C23).  Without it, `make regtest` fails to build on
+    Ubuntu 26.04, so #96's `regtest_ubuntu_26_04` job runs no tests.
 - Not started:
   - After #96, #97, and #98 merge: commit the expected-failure lists and
     make the regtest jobs enforce them (item 1, "Remaining").  #97 and #98
@@ -214,6 +217,13 @@ What:
   listed in per-tool sections (`# /memcheck/` etc.).
 
 ## 6. Record the `bfd.h` version in each CI container
+
+Status: done.  #96's regtest jobs log it.  On 2026-10-16:
+- Ubuntu 26.04 (`daikon-ubuntu-jdk11-plus`): `binutils-dev` 2.46-3ubuntu2.
+- Rocky Linux 10 (`daikon-rockylinux-jdk25-plus`): `binutils-devel`
+  2.41-63.el10.
+
+So the oldest `bfd.h` in CI is from Binutils 2.41.
 
 Why: `dwarf.c`, `readelf.c`, and `elfcomm.c` include the system `bfd.h`.
 Step 4 of the readelf plan checks that the 2.47 code uses only bfd macros

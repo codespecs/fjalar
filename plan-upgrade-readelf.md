@@ -138,7 +138,10 @@ Kvasir tests after each step.
      older than 2.47.  Grep 2.47's versions of those files for bfd macros
      and functions (`bfd_*`, `BFD_*`, `startswith`, ...) and check that
      each exists in the oldest `bfd.h` used in CI (Ubuntu and Rocky Linux
-     containers; the versions are recorded by `plan-pre-upgrade.md` item 6).
+     containers; `plan-pre-upgrade.md` item 6 records them: as of
+     2026-10-16, Binutils 2.41 on Rocky Linux 10 and 2.46 on Ubuntu 26.04,
+     so the oldest is 2.41).  2.47's code may use bfd definitions newer
+     than 2.41.
      Anything missing needs a local definition, as #63 did.
 
 5. **Apply the patches**, one at a time, dry run first, using
