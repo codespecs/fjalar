@@ -391,8 +391,8 @@ steps to correct these problems.
 
 @example
 cd $INV/valgrind-new
-find -path ./.git -prune -o -size 0 -exec touch $INV'/fjalar/valgrind/@{@}' \;
-find -path ./.git -prune -o -not -type d -executable -exec chmod +x $INV'/fjalar/valgrind/@{@}' \;
+find -size 0 -exec touch $INV'/fjalar/valgrind/@{@}' \;
+find -not -type d -executable -exec chmod +x $INV'/fjalar/valgrind/@{@}' \;
 @end example
 
 @c The 'find' commands above didn't work for me this time as the names contained a '.'
@@ -534,9 +534,9 @@ guidelines on supporting new VEX instructions.
 Valgrind has a set of verification tests known as @command{regtest}.  We want
 to run these tests on a clean version of Valgrind to establish a
 baseline set of results for partial verification of the merge process.
-Because the tests run in a separate copy of @file{valgrind-new} (see
-below), you can run them at any time after you have obtained
-@file{valgrind-new}, for example while you merge the sources.
+Since running these tests generates a lot of additional files, we wait
+until after we have done the source merge update to run this test.
+This keeps the files used during the source merge update to a minimum.
 
 You will need to make sure @command{gdb} is installed on your machine
 to run these tests. Also, they are very sensitive
@@ -545,20 +545,11 @@ some failures. Rather, it is important to capture the results
 as they should be similar after the source merge. They may not be
 identical due to Valgrind improvements or the addition of new test cases.
 
-Never build in @file{valgrind-old} or @file{valgrind-new} themselves.
-@file{generate-patch-files.sh} refuses to run if either directory
-contains build products, because they would otherwise end up in
-@file{coregrind.patch}.  This includes the next merge, when
-@file{valgrind-new} becomes @file{valgrind-old}.
-Instead, build a copy.  To run the @command{regtest} verification tests,
-run the following commands:
+To run the @command{regtest} verification tests,
+return to the root of your @file{valgrind-new} directory.  Then run
+the following commands:
 
 @example
-cd $INV
-rm -rf valgrind-new-build
-cp -a valgrind-new valgrind-new-build
-cd valgrind-new-build
-./autogen.sh
 ./configure --prefix=`pwd`/inst
 make all install
 make regtest > test.log 2>&1
