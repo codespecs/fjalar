@@ -5,8 +5,8 @@ through "Committing").  This plan applies that procedure to the current
 situation and notes where it needs adjusting.
 
 Below, `$INV/fjalar` means the Fjalar tree being upgraded.  It must actually be
-at `$INV/fjalar`, because `generate-patch-files.sh` and `make git-update`
-hard-code that layout (`fjalar/valgrind`, `../coregrind.patch`).
+at `$INV/fjalar`, because `generate-patch-files.sh` hard-codes that layout
+(`fjalar/valgrind`).
 
 ## Ordering: do this after the readelf upgrade
 
@@ -55,14 +55,12 @@ it completely (merged, CI green) before starting this one.  That plan's
    git clone -b $VOLDVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-old
    git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-new
    ```
-   Remove from `fjalar/valgrind` the files listed by
-   `diff -qrb -x.git valgrind-old valgrind-new | grep "Only in valgrind-old"`.
 
 3. **Baseline.**  Never build in `valgrind-old` or `valgrind-new` themselves:
-   `generate-patch-files.sh` diffs them with `--unidirectional-new-file`, so
-   any build products (`*.o`, `Makefile`, `config.h`, test binaries, `inst/`)
-   would end up in `coregrind.patch` and then be `git add`ed by
-   `make git-update`.  Build a copy instead:
+   `generate-patch-files.sh` diffs them with `git diff --no-index --binary`,
+   so any build products (`*.o`, `Makefile`, `config.h`, test binaries,
+   `inst/`) would end up in `coregrind.patch` and then be added by
+   `git apply`.  Build a copy instead:
    ```sh
    cp -a valgrind-new valgrind-new-build && cd valgrind-new-build
    ./autogen.sh && ./configure --prefix=$(pwd)/inst
@@ -78,10 +76,9 @@ it completely (merged, CI green) before starting this one.  That plan's
    prints nothing.
 
 5. **Coregrind merge.**
-   - `cd fjalar/valgrind; patch -p1 -lu --dry-run < $INV/coregrind.patch`,
-     then for real.
-   - Fix zero-length `.exp` files and lost execute bits (the two `find`
-     commands in the doc).
+   - `cd fjalar; git apply --check --reject -C1 -p2 --directory=valgrind $INV/coregrind.patch`,
+     then for real (without `--check`), then
+     `git add -A valgrind ':(exclude)*.rej'`.
    - Resolve `*.rej` using `coregrind-Fjalar.diff` and the "Valgrind
      modifications" appendix as a checklist.  In particular, verify each
      Fjalar change still exists after the merge:
@@ -99,8 +96,9 @@ it completely (merged, CI green) before starting this one.  That plan's
      size/alignment checks, since Fjalar enlarges the shadow area.
 
 6. **Memcheck merge** into `valgrind/fjalar/`.
-   - `cd fjalar/valgrind/fjalar; patch -p2 -lu --dry-run < $INV/memcheck.patch`,
-     then for real (try `-F3` only if needed, and review its results).
+   - `cd fjalar; git apply --check --reject -C1 -p3 --directory=valgrind/fjalar $INV/memcheck.patch`,
+     then for real (try `-C0` only if needed, and review its results), then
+     `git add -A valgrind ':(exclude)*.rej'`.
    - Resolve `*.rej`.  Remember part of `mc_translate.c` lives in
      `fjalar/mc_translate.h`.  Preserve the #73 edits to `mc_translate.c`
      and `memcheck.h`.
@@ -146,7 +144,6 @@ it completely (merged, CI green) before starting this one.  That plan's
       (`# Valgrind version 3.27.1, released ...`).
     - Add names of new Valgrind test drivers to `.gitignore`
       ("Ignore generated test drivers" section).
-    - `make git-update > git.script`, review, run.
     - Document user-visible changes in `$INV/daikon/doc/CHANGELOG.md`.
     - Update `doc/valgrind-merge.texinfo`: regtest baseline output, dates/OS
       versions, building the baseline in a copy (step 3), and any new
