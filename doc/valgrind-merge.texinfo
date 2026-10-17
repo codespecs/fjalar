@@ -561,6 +561,9 @@ file includes @file{valgrind/fjalar/fjalar.am}, which holds Fjalar's
 changes, such as its additional source files and compiler flags.  Review
 @command{git diff --cached valgrind/fjalar/Makefile.am}, and update
 @file{fjalar.am} if an upstream change conflicts with Fjalar's changes.
+The script lists any line of the generated file that still mentions
+Memcheck or docs; such a line may mean that the renaming in
+@file{apply-patch-files.sh} needs to handle a new upstream construct.
 
 Fjalar may not need every new Memcheck file.  Review the files that the
 patch added:
