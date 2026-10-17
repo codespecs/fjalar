@@ -37,12 +37,24 @@ status=0
 "${valgrind}" --tool=fjalar --vex-guest-chase=no \
               --dyncomp --dyncomp-approximate-literals \
               --decls-only --decls-file="${decls}" \
+              --trace-flags=01000000 --trace-notbelow=0 \
               "${output_dir}/dyncomp-condition-code" \
               > "${output_dir}/dyncomp-condition-code.out" 2>&1 || status=$?
 
 if [ "${status}" -ne 0 ]; then
   echo "$0: FAILED: Fjalar exited with status ${status}" >&2
-  cat "${output_dir}/dyncomp-condition-code.out" >&2
+  tail -n 100 "${output_dir}/dyncomp-condition-code.out" >&2
+  exit 1
+fi
+
+# The trace contains the IR of each superblock, after the optimization that
+# precedes instrumentation.  If VEX specialized the helper call into a
+# comparison operation, then the test would not exercise DynComp's handling
+# of helper calls.
+if ! awk '/^==== SB / { inLess = ($0 ~ / less(\+[0-9]+)? /) }
+          inLess && /g_calculate_condition\[/ { found = 1 }
+          END { exit !found }' "${output_dir}/dyncomp-condition-code.out"; then
+  echo "$0: FAILED: the IR of less() does not call a calculate_condition helper" >&2
   exit 1
 fi
 

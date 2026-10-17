@@ -234,24 +234,28 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
 
 // Handling of clean helper function calls in the target program's
 // translated IR: Treat all arguments (exprvec) as 'interacting' with
-// one another and merge all of their respective tags and return the
-// value of one of the tags as the result of the helper call.  This is
-// because helpers probably implement weird x86 instructions which are
-// too difficult to handle purely in IR so these n-ary operations are
-// probably interactions.  E.g. if the args are (a, b, c, d, e), then
-// you should merge tag(a) with tag(b), tag(c), tag(d), and tag(e)
-// then return tag(a)
+// one another and merge all of their respective tags, but return a tag
+// of 0 as the result of the helper call.  This is because helpers
+// probably implement weird x86 instructions which are too difficult to
+// handle purely in IR so these n-ary operations are probably
+// interactions.  E.g. if the args are (a, b, c, d, e), then you should
+// merge tag(a), tag(b), tag(c), tag(d), and tag(e).
 //
 // Arguments that the callee's mc-exclusion mask (mcx_mask) excludes
-// do not take part in any merge, so the anchor that every other
-// argument is merged with is the first argument that is not excluded.
-// For example, amd64g_calculate_condition excludes its constant
-// condition-code argument, so the anchor is cc_dep1 (the first operand
-// of the comparison), which is merged with cc_dep2 (the second
-// operand).  An excluded constant must not be the anchor:
-// under --dyncomp-approximate-literals its tag is WEAK_FRESH_TAG, and
-// merging with WEAK_FRESH_TAG has no effect, so the operands would not
-// be merged at all.
+// do not take part in any merge.  For example,
+// amd64g_calculate_condition excludes its constant condition-code
+// argument, so only cc_dep1 and cc_dep2 (the operands of the
+// comparison) are merged.
+//
+// The merges are chained: each argument is merged with the result of
+// the previous merges, using MC_(helperc_MERGE_TAGS), which returns
+// the other tag when one tag is 0 or WEAK_FRESH_TAG.  An argument
+// whose tag is WEAK_FRESH_TAG (such as a literal under
+// --dyncomp-approximate-literals, or the stack pointer) therefore does
+// not prevent the other arguments from being merged with one another.
+// Merging every argument with a fixed argument would not work:  if the
+// fixed argument's tag were WEAK_FRESH_TAG, no merge would have any
+// effect.
 
 // By some informal observation, it seems like '>' and '>='
 // comparisons are translated into clean C calls.  The correct
@@ -263,15 +267,15 @@ static
 IRAtom* handleCCall_DC ( DCEnv* dce,
                          IRAtom** exprvec, IRCallee* cee )
 {
-  if (exprvec && exprvec[0]) {
-      // The tag of the first argument that is not excluded, or NULL
-      // if no argument so far is
-      IRAtom* first = NULL;
-      Int i;
-      IRAtom* cur;
-      IRDirty* di;
-      IRTemp   datatag;
+   // The result of merging the tags of the arguments so far that
+   // are not excluded, or NULL if there are none
+   IRAtom* merged = NULL;
+   Int i;
+   IRAtom* cur;
+   IRDirty* di;
+   IRTemp   datatag;
 
+   if (exprvec) {
       for (i = 0; exprvec[i]; i++) {
          tl_assert(i < 32);
          tl_assert(isOriginalAtom_DC(dce, exprvec[i]));
@@ -281,35 +285,29 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
             /* the arg is to be excluded from definedness checking.  Do
                nothing. (I guess we do nothing also just like mkLazyN) */
             if (0) printf("excluding %s(%d)\n", cee->name, i);
-         } else if (first == NULL) {
-            first = expr2tags_DC(dce, exprvec[i]);
+         } else if (merged == NULL) {
+            merged = expr2tags_DC(dce, exprvec[i]);
          } else {
-            /* merge the tags of first and current arguments */
+            /* merge the tag of the current argument into the result */
             cur = expr2tags_DC(dce, exprvec[i]);
 
-            // (comment added 2006)
-            // TODO: Why is this dirty rather than clean? - pgbovine
-            //       Because it has side effects? - smcc
+            // The call must be dirty rather than clean:  the result of
+            // the last merge is not used, so a clean call would be
+            // removed as dead code.
             datatag = newTemp(dce->mce, Ity_Word, DC);
             di = unsafeIRDirty_1_N(datatag,
                                    2,
-                                   "MC_(helperc_MERGE_TAGS_RETURN_0)",
-                                   &MC_(helperc_MERGE_TAGS_RETURN_0),
-                                   mkIRExprVec_2( first, cur ));
+                                   "MC_(helperc_MERGE_TAGS)",
+                                   &MC_(helperc_MERGE_TAGS),
+                                   mkIRExprVec_2( merged, cur ));
 
             setHelperAnns_DC( dce, di );
             stmt_DC('V', dce, IRStmt_Dirty(di));
+            merged = mkexpr(datatag);
          }
       }
-      // Return the tag of the first argument, if there is one
-      //      return first;
-
-      // Or, always return 0
-      return IRExpr_Const(IRConst_UWord(0));
    }
-   else {
-      return IRExpr_Const(IRConst_UWord(0));
-   }
+   return IRExpr_Const(IRConst_UWord(0));
 }
 
 /*------------------------------------------------------------*/
