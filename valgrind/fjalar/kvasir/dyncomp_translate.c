@@ -39,7 +39,8 @@
 
 extern char dyncomp_profile_tags;
 static
-IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias );
+IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
+                            Int slot );
 
 /* Find the tmp currently shadowing the given original tmp.  If none
    so far exists, allocate one.  */
@@ -1598,6 +1599,13 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       VG_(tool_panic)("dyncomp:expr2tags_Binop_DC");
    }
 
+   // In this mode, NOTHING is an interaction.  This must precede the
+   // constant-operand shortcut below, which bypasses mkMergeTags_DC.
+   if (dyncomp_dataflow_only_mode) {
+      helper = 0;
+      hname = 0;
+   }
+
    if (helper) {
       // Heuristic:
 
@@ -2086,6 +2094,23 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
    case Iop_ReinterpI128asV128:
  */
 
+/* Returns the address addr+bias. */
+static
+IRAtom* mkAddrAct_DC ( DCEnv* dce, IRAtom* addr, UInt bias )
+{
+   IROp    mkAdd;
+   IRAtom* eBias;
+   IRType  tyAddr  = dce->hWordTy;
+
+   if (bias == 0) {
+      return addr;
+   }
+   tl_assert( tyAddr == Ity_I32 || tyAddr == Ity_I64 );
+   mkAdd   = tyAddr==Ity_I32 ? Iop_Add32 : Iop_Add64;
+   eBias   = tyAddr==Ity_I32 ? mkU32(bias) : mkU64(bias);
+   return assignNew_DC(dce, tyAddr, binop(mkAdd, addr, eBias) );
+}
+
 /* Worker function; do not call directly. */
 static
 IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
@@ -2119,17 +2144,7 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
    }
 
    /* Generate the actual address into addrAct. */
-   if (bias == 0) {
-      addrAct = addr;
-   } else {
-      IROp    mkAdd;
-      IRAtom* eBias;
-      IRType  tyAddr  = dce->hWordTy;
-      tl_assert( tyAddr == Ity_I32 || tyAddr == Ity_I64 );
-      mkAdd   = tyAddr==Ity_I32 ? Iop_Add32 : Iop_Add64;
-      eBias   = tyAddr==Ity_I32 ? mkU32(bias) : mkU64(bias);
-      addrAct = assignNew_DC(dce, tyAddr, binop(mkAdd, addr, eBias) );
-   }
+   addrAct = mkAddrAct_DC(dce, addr, bias);
 
    /* We need to have a place to park the tag we're just about to
       read. */
@@ -2144,8 +2159,12 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
    return mkexpr(datatag);
 }
 
+// Returns the tag of a load of type ty from addr+bias.  If slot is
+// non-negative, the load also saves the tags of the bytes it reads in
+// that slot of MC_(helperc_LOAD_TAG_N); see expr2tags_WrTmp_DC.
 static
-IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
+IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
+                            Int slot )
 {
    IRAtom *v64hi, *v64lo;
    //   IRDirty* di;
@@ -2167,6 +2186,23 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
    setHelperAnns_DC(dce, diAddr);
    stmt_DC('V', dce, IRStmt_Dirty(diAddr));
 
+   // In this mode, NOTHING is an interaction, so a load of any size
+   // does not merge the tags of the bytes it reads.
+   if (dyncomp_dataflow_only_mode) {
+      IRTemp   datatag = newTemp(dce->mce, Ity_Word, DC);
+      IRDirty* di = unsafeIRDirty_1_N( datatag,
+                                       3/*regparms*/,
+                                       "MC_(helperc_LOAD_TAG_N)",
+                                       &MC_(helperc_LOAD_TAG_N),
+                                       mkIRExprVec_3( mkAddrAct_DC(dce, addr, bias),
+                                                      mkIRExpr_HWord(sizeofIRType(ty)),
+                                                      mkIRExpr_HWord(slot) ));
+      setHelperAnns_DC( dce, di );
+      stmt_DC('V',  dce, IRStmt_Dirty(di) );
+      return mkexpr(datatag);
+   }
+   tl_assert(slot < 0);
+
    switch (shadowTypeV(ty)) {
       case Ity_I8:
       case Ity_I16:
@@ -2178,21 +2214,6 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
       case Ity_V256:  // not right, should do 4 times?
          v64lo = expr2tags_LDle_WRK_DC(dce, Ity_I64, addr, bias);
          v64hi = expr2tags_LDle_WRK_DC(dce, Ity_I64, addr, bias+8);
-
-         // In this mode, NOTHING is an interaction.  Rather than
-         // merging the tags, pass the first non-zero one through, as
-         // MC_(helperc_LOAD_TAG_8) does for the bytes of a 64-bit load.
-         if (dyncomp_dataflow_only_mode) {
-            IRType tyTag = dce->hWordTy;
-            // assignNew_DC would create a word-sized temporary.
-            IRTemp loNonZero = newTemp(dce->mce, Ity_I1, DC);
-            assign_DC('V', dce, loNonZero,
-                      binop(tyTag==Ity_I32 ? Iop_CmpNE32 : Iop_CmpNE64,
-                            v64lo,
-                            tyTag==Ity_I32 ? mkU32(0) : mkU64(0)));
-            return assignNew_DC(dce, Ity_Word,
-                                IRExpr_ITE(mkexpr(loNonZero), v64lo, v64hi));
-         }
 
          // Merge the tags of the results of the
          // lower and upper 64-bit loads:
@@ -2396,7 +2417,8 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
 
       case Iex_Load:
          return expr2tags_LDle_DC( dce, e->Iex.Load.ty,
-                                      e->Iex.Load.addr, 0/*addr bias*/ );
+                                      e->Iex.Load.addr, 0/*addr bias*/,
+                                      -1/*no snapshot*/ );
 
       case Iex_CCall:
          return handleCCall_DC( dce,
@@ -2413,6 +2435,33 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
          printf("\n");
          VG_(tool_panic)("dyncomp: expr2tags_DC");
    }
+}
+
+// Returns the tag of data, which the original temp tmp is assigned.
+//
+// In dyncomp_dataflow_only_mode, a load of more than one byte into tmp
+// also saves the tag of each byte it reads, and a store of tmp in the
+// same superblock writes those tags back one byte at a time (see
+// do_shadow_STle_DC).  A copy of a struct or an array may move several
+// fields or elements with one load and one store; this gives each
+// copied byte the tag of its source byte, rather than giving every
+// copied byte the single tag of the loaded value.
+IRExpr* expr2tags_WrTmp_DC ( DCEnv* dce, IRTemp tmp, IRExpr* data )
+{
+   Int slot;
+
+   if (dyncomp_dataflow_only_mode
+       && data->tag == Iex_Load
+       && sizeofIRType(data->Iex.Load.ty) > 1
+       && sizeofIRType(data->Iex.Load.ty) <= DC_LOAD_TAG_SNAPSHOT_BYTES
+       && dce->n_loadTagSnapshots < DC_N_LOAD_TAG_SNAPSHOTS) {
+      tl_assert(tmp < dce->n_originalTmps);
+      slot = dce->n_loadTagSnapshots++;
+      dce->loadTagSnapshots[tmp] = slot;
+      return expr2tags_LDle_DC( dce, data->Iex.Load.ty,
+                                data->Iex.Load.addr, 0/*addr bias*/, slot );
+   }
+   return expr2tags_DC( dce, data );
 }
 
 /* PG says we might need to resync this with Memcheck's
@@ -2482,6 +2531,23 @@ void do_shadow_STle_DC ( DCEnv* dce,
    // Also, we must use shadowType to translate all type sizes
    // to integral sizes
    ty = shadowTypeV(typeOfIRExpr(dce->bb->tyenv, data));
+
+   // If data was loaded in this superblock, write the tags of the
+   // loaded bytes; see expr2tags_WrTmp_DC.
+   if (data->tag == Iex_RdTmp
+       && data->Iex.RdTmp.tmp < dce->n_originalTmps
+       && dce->loadTagSnapshots[data->Iex.RdTmp.tmp] >= 0) {
+      di = unsafeIRDirty_0_N(
+              3/*regparms*/,
+              "MC_(helperc_STORE_TAG_SNAPSHOT)",
+              &MC_(helperc_STORE_TAG_SNAPSHOT),
+              mkIRExprVec_3( addr,
+                             mkIRExpr_HWord(sizeofIRType(ty)),
+                             mkIRExpr_HWord(dce->loadTagSnapshots[data->Iex.RdTmp.tmp]) ));
+      setHelperAnns_DC( dce, di );
+      stmt_DC('V',  dce, IRStmt_Dirty(di) );
+      return;
+   }
 
    /* Now decide which helper function to call to write the data tag
       into shadow memory. */
@@ -2625,7 +2691,8 @@ static void do_shadow_CAS_single_DC ( DCEnv* dce, IRCAS* cas ) {
 
    voldLo
      = assignNew_DC(dce, elemTy,
-                    expr2tags_LDle_DC(dce,elemTy, cas->addr, 0/*Addr bias*/));
+                    expr2tags_LDle_DC(dce,elemTy, cas->addr, 0/*Addr bias*/,
+                                      -1/*no snapshot*/));
 
    orig = mkexpr(cas->oldLo);
 
@@ -2797,11 +2864,13 @@ static void do_shadow_CAS_double_DC ( DCEnv* dce, IRCAS* cas )
    voldHi
       = assignNew_DC(
            dce, elemTy,
-           expr2tags_LDle_DC(dce, elemTy, cas->addr, memOffsHi/*Addr bias*/ ));
+           expr2tags_LDle_DC(dce, elemTy, cas->addr, memOffsHi/*Addr bias*/,
+                             -1/*no snapshot*/ ));
    voldLo
       = assignNew_DC(
            dce, elemTy,
-           expr2tags_LDle_DC(dce, elemTy, cas->addr, memOffsLo/*Addr bias*/));
+           expr2tags_LDle_DC(dce, elemTy, cas->addr, memOffsLo/*Addr bias*/,
+                             -1/*no snapshot*/));
 
    origLo = mkexpr(cas->oldLo);
    origHi = mkexpr(cas->oldHi);

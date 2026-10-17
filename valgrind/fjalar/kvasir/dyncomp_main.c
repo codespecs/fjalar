@@ -316,6 +316,21 @@ void MC_(helperc_STORE_TAG_1) ( Addr a, UInt tag ) {
   set_tag(a, tagToWrite);
 }
 
+// Returns the first non-zero tag in the range [a, a+len), or 0 if
+// there is none.
+static UInt first_nonzero_tag_in_range(Addr a, SizeT len) {
+  Addr curAddr;
+  UInt curTag;
+
+  for (curAddr = a; curAddr < (a + len); curAddr++) {
+    curTag = get_tag(curAddr);
+    if (curTag) {
+      return curTag;
+    }
+  }
+  return 0;
+}
+
 // Unions the tags belonging to these addresses and set
 // the tags of both to the canonical tag (for efficiency)
 void val_uf_union_tags_at_addr(Addr a1, Addr a2) {
@@ -383,14 +398,7 @@ UInt val_uf_union_tags_in_range(Addr a, SizeT len) {
   // that as the basis for all the mergings:
   // (Hopefully this should only take one iteration
   //  because the tag of address 'a' should be non-zero)
-  for (curAddr = a; curAddr < (a + len); curAddr++) {
-    curTag = get_tag(curAddr);
-    if (curTag) {
-DYNCOMP_TPRINTF("MLR debug val_uf_union_tags_in_range addr=%p, tag=%u\n", (void *)curAddr, curTag);
-      tagToMerge = curTag;
-      break;
-    }
-  }
+  tagToMerge = first_nonzero_tag_in_range(a, len);
 
   // If they are all zeroes, then we're done;
   // Don't merge anything
@@ -441,20 +449,10 @@ UInt MC_(helperc_CREATE_TAG)(Addr static_id) {
 // In dyncomp_dataflow_only_mode, nothing is an interaction, so this
 // returns the first non-zero tag in the range, without merging.
 static UInt load_tag_in_range(Addr a, SizeT len) {
-  Addr curAddr;
-  UInt curTag;
-
   if (!dyncomp_dataflow_only_mode) {
     return val_uf_union_tags_in_range(a, len);
   }
-
-  for (curAddr = a; curAddr < (a + len); curAddr++) {
-    curTag = get_tag(curAddr);
-    if (curTag) {
-      return curTag;
-    }
-  }
-  return 0;
+  return first_nonzero_tag_in_range(a, len);
 }
 
 VG_REGPARM(1)
@@ -484,6 +482,57 @@ VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_1: %p => %u\n", (void *)a, get_tag(a));
   return load_tag_in_range(a, 1);
+}
+
+// The tags of the bytes read by loads; see expr2tags_WrTmp_DC.  A slot
+// is written and read during one execution of a superblock, and
+// Valgrind switches threads only between superblocks.
+static UInt load_tag_snapshots[DC_N_LOAD_TAG_SNAPSHOTS][DC_LOAD_TAG_SNAPSHOT_BYTES];
+
+// Returns the tag of the value loaded from the range [a, a+len), as
+// the MC_(helperc_LOAD_TAG_*) functions do.  If slot is non-negative,
+// also saves the tag of each byte in the range in that slot of
+// load_tag_snapshots.
+VG_REGPARM(3)
+UInt MC_(helperc_LOAD_TAG_N) ( Addr a, UWord len, Word slot ) {
+  UWord i;
+
+  DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_N: %p %lu %ld\n", (void *)a, len, slot);
+  if (slot >= 0) {
+    tl_assert(slot < DC_N_LOAD_TAG_SNAPSHOTS);
+    tl_assert(len <= DC_LOAD_TAG_SNAPSHOT_BYTES);
+    for (i = 0; i < len; i++) {
+      load_tag_snapshots[slot][i] = get_tag(a + i);
+    }
+  }
+  if (len == 4) {
+    return MC_(helperc_LOAD_TAG_4)(a);
+  }
+  return load_tag_in_range(a, len);
+}
+
+// Writes the tags saved in the given slot of load_tag_snapshots to the
+// range [a, a+len), one byte at a time.
+VG_REGPARM(3)
+void MC_(helperc_STORE_TAG_SNAPSHOT) ( Addr a, UWord len, UWord slot ) {
+  UWord i;
+  UInt tag;
+  UInt freshTag = 0;
+
+  DYNCOMP_TPRINTF("[DynComp] STORE_TAG_SNAPSHOT: %p %lu %lu\n", (void *)a, len, slot);
+  tl_assert(slot < DC_N_LOAD_TAG_SNAPSHOTS);
+  tl_assert(len <= DC_LOAD_TAG_SNAPSHOT_BYTES);
+  for (i = 0; i < len; i++) {
+    tag = load_tag_snapshots[slot][i];
+    // Like MC_(helperc_STORE_TAG_*), replace WEAK_FRESH_TAG by a fresh tag.
+    if (WEAK_FRESH_TAG == tag) {
+      if (0 == freshTag) {
+        freshTag = grab_fresh_tag();
+      }
+      tag = freshTag;
+    }
+    set_tag(a + i, val_uf_find_leader(tag));
+  }
 }
 
 // Make this const so gcc can eliminate dead code to improve
