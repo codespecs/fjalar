@@ -1,3 +1,6 @@
+..copy():::EXIT0 a 1
+..copy():::EXIT0 b 2
+..copy():::EXIT0 return 3
 ..less():::EXIT0 a 1
 ..less():::EXIT0 b 2
 ..less():::EXIT0 return 3

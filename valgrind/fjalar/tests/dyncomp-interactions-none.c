@@ -15,7 +15,26 @@ int less(int a, int b) {
   return result;
 }
 
+struct pair {
+  long a;
+  long b;
+};
+
+// copy() copies a struct with movdqu, so VEX loads both fields with one
+// 128-bit load.  Under --dyncomp-interactions=none, DynComp should not make a
+// and b comparable.
+long copy(long a, long b) {
+  struct pair p, q;
+  p.a = a;
+  p.b = b;
+  __asm__ volatile ("movdqu %1, %%xmm0\n\t"
+                    "movdqu %%xmm0, %0"
+                    : "=m" (q) : "m" (p) : "xmm0");
+  return q.a;
+}
+
 int main(void) {
   less(1, 2);
+  copy(1, 2);
   return 0;
 }
