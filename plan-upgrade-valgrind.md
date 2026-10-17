@@ -85,8 +85,9 @@ it completely (merged, CI green) before starting this one.  That plan's
      (without `--check`).  The script stages the results, including
      created files that match `.gitignore`, writes
      `$INV/coregrind-apply.log`, and lists the conflicts.
-   - Resolve `*.rej`, and the whole-file failures (which leave no `.rej`)
-     that the script listed,
+   - Resolve the conflicts that the script listed (files with conflict
+     markers, which `git diff --name-only --diff-filter=U` lists, and files
+     whose patches were not applied at all), then `git add` each file,
      using `coregrind-Fjalar.diff` and the "Valgrind
      modifications" appendix as a checklist.  In particular, verify each
      Fjalar change still exists after the merge:
@@ -107,8 +108,7 @@ it completely (merged, CI green) before starting this one.  That plan's
    - `$INV/fjalar/apply-patch-files.sh --check memcheck`, then for real
      (without `--check`; try passing `-C0` after `memcheck` only if needed,
      and review its results).
-   - Resolve `*.rej`, and the whole-file failures that the script listed
-     (as for Coregrind), including files that upstream removed but
+   - Resolve the conflicts that the script listed (as for Coregrind), including files that upstream removed but
      Fjalar modified; `git rm` any that Fjalar does not need.  Remember part of `mc_translate.c` lives in
      `fjalar/mc_translate.h`.  Preserve the #73 edits to `mc_translate.c`
      and `memcheck.h`.

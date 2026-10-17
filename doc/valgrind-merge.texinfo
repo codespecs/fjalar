@@ -341,11 +341,18 @@ cd $INV/fjalar
 @end example
 
 @noindent
-Review the list, then remove the files by running the same command
-with @code{| xargs -r git rm} appended.
 Setting @env{LC_ALL} makes @command{sort} and @command{comm} agree on the
 sort order; in other locales, @command{comm} can list files that
 Valgrind still has.
+
+Review the list, because Fjalar may have added some of the files
+on purpose.  Write the files that Fjalar should not have to a file
+@file{$INV/extra}, one per line, and remove them:
+
+@example
+cd $INV/fjalar
+xargs -r -d '\n' git rm -- < $INV/extra
+@end example
 
 The following command lists the Memcheck files that Fjalar's copy of
 Memcheck, in @file{valgrind/fjalar}, has but that the base Valgrind
@@ -367,8 +374,7 @@ Remove the others with @command{git rm}.
 
 The following command lists the files that the base Valgrind release
 has but that Fjalar does not track, which earlier merges failed to add.
-For example, @command{patch} did not create empty files, and
-@command{git add} did not add files that match @file{.gitignore}, such
+Examples are empty files and files that match @file{.gitignore}, such
 as @file{Makefile} or @file{*.log} files.
 
 @example
@@ -1311,8 +1317,11 @@ to the repository.
 @example
 cd $INV/fjalar
 # Double-check the diffs, including those of the commits made during the
-# merge - standard practice before committing
-git diff -b origin/master | more
+# merge - standard practice before committing.  Comparing with the
+# commit where the merge branched from codespecs/fjalar works even if
+# origin is a fork.
+git fetch https://github.com/codespecs/fjalar.git master
+git diff -b "$(git merge-base FETCH_HEAD HEAD)" | more
 # If looks OK, proceed with commit.
 git commit -a -m "Valgrind merge from $@{VOLDVER@} to $@{VNEWVER@}"
 @end example

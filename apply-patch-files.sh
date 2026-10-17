@@ -54,9 +54,15 @@ if [ -z "$check" ] && [ -n "$(git status --porcelain --untracked-files=no)" ]; t
   exit 1
 fi
 
-# The "index" lines of the patch name blobs of valgrind-old, which
-# --3way needs as the merge base.
-export GIT_ALTERNATE_OBJECT_DIRECTORIES=$INV/valgrind-old/.git/objects
+# The "index" lines of the patch name blobs of valgrind-old, which --3way
+# needs as the merge base.  Copy them into the Fjalar repository, so that
+# "git mergetool" can use them after this script exits.  An alternate object
+# directory would not suffice:  "git apply" would not write a merged blob
+# that exists in the alternate, so the index would name a missing object.
+sed -n 's/^index \([0-9a-f]\{40,\}\)\.\.[0-9a-f]\{40,\}.*/\1/p' "$patch" \
+  | sed '/^0*$/d' | sort -u \
+  | git -C "$INV/valgrind-old" pack-objects -q --stdout | git unpack-objects -q \
+  || { echo "$0: could not copy blobs from $INV/valgrind-old." >&2; exit 1; }
 # The messages of "git apply" are parsed below, so they must be in English.
 export LC_ALL=C
 
@@ -88,6 +94,7 @@ fi
 
 if [ -n "$check" ]; then
   cat "$log"
+  conflicts=$(sed -n "s/^Applied patch to '\(.*\)' with conflicts\.\$/\1/p" "$log")
 else
   exclude=()
   for file in "${refused[@]}"; do
@@ -100,13 +107,9 @@ else
     echo "$0: git apply failed; see $log." >&2
     exit 1
   fi
-fi
-
-if [ -n "$check" ]; then
-  conflicts=$(sed -n "s/^Applied patch to '\(.*\)' with conflicts\.\$/\1/p" "$log")
-else
   conflicts=$(git diff --name-only --diff-filter=U)
 fi
+
 if [ -z "$conflicts" ] && [ ${#refused[@]} -eq 0 ]; then
   exit 0
 fi
