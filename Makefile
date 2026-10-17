@@ -31,6 +31,7 @@ test:
 # Fjalar tests that do not depend on Daikon
 fjalar-test:
 	valgrind/fjalar/tests/library-compilation-unit-test.sh
+	valgrind/fjalar/tests/location-views-test.sh
 
 # Kvasir tests
 daikon-test: ../daikon
