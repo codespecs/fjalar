@@ -301,15 +301,16 @@ and also any files that earlier merges failed to remove.
 
 @example
 cd $INV/fjalar
-export LC_ALL=C
-comm -23 <(git ls-files valgrind | sed 's|^valgrind/||' \
-             | grep -v -e '^fjalar/' -e '^REVISION$' | sort) \
-         <(git -C ../valgrind-new ls-files | sort) \
-  | sed 's|^|valgrind/|'
+(export LC_ALL=C
+ comm -23 <(git ls-files valgrind | sed 's|^valgrind/||' \
+              | grep -v -e '^fjalar/' -e '^REVISION$' | sort) \
+          <(git -C $INV/valgrind-new ls-files | sort) \
+   | sed 's|^|valgrind/|')
 @end example
 
 @noindent
-Remove these files with @command{git rm}.
+Review the list, then remove the files by running the same command
+with @code{| xargs -r git rm} appended.
 Setting @env{LC_ALL} makes @command{sort} and @command{comm} agree on the
 sort order; in other locales, @command{comm} can list files that
 Valgrind still has.

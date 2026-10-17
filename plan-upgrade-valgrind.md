@@ -55,8 +55,9 @@ it completely (merged, CI green) before starting this one.  That plan's
    git clone -b $VOLDVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-old
    git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-new
    ```
-   Remove from `fjalar/valgrind` the files listed by
-   `diff -qrb -x.git valgrind-old valgrind-new | grep "Only in valgrind-old"`.
+   Remove from `fjalar/valgrind` the files that `valgrind-new` does not have,
+   using the command in section "Remove files that the target Valgrind release
+   does not have" of `doc/valgrind-merge.texinfo`.
 
 3. **Baseline.**  Never build in `valgrind-old` or `valgrind-new` themselves:
    `generate-patch-files.sh` diffs them with `--unidirectional-new-file`, so
