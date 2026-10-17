@@ -64,7 +64,8 @@ it completely (merged, CI green) before starting this one.  That plan's
    would end up in `coregrind.patch` and then be `git add`ed by
    `make git-update`.  Build a copy instead:
    ```sh
-   cp -a valgrind-new valgrind-new-build && cd valgrind-new-build
+   rm -rf valgrind-new-build
+   git clone -q valgrind-new valgrind-new-build && cd valgrind-new-build
    ./autogen.sh && ./configure --prefix=$(pwd)/inst
    make all install && make regtest > test.log 2>&1
    ```
@@ -143,8 +144,8 @@ it completely (merged, CI green) before starting this one.  That plan's
 10. **Finish.**
     - Update first line of `valgrind/REVISION`
       (`# Valgrind version 3.27.1, released ...`).
-    - Add names of new Valgrind test drivers to `.gitignore`
-      ("Ignore generated test drivers" section).
+    - Add names of new Valgrind test programs to `.gitignore`, in the
+      per-tool sections (such as `# /memcheck/`).
     - `make git-update > git.script`, review, run.
     - Document user-visible changes in `$INV/daikon/doc/CHANGELOG.md`.
     - Update `doc/valgrind-merge.texinfo`: regtest baseline output, dates/OS
