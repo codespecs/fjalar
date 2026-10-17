@@ -83,6 +83,13 @@ my %tool_export_header = (
     "cachegrind/cachegrind.h" => 1
     );
 
+# Tool files that are allowed to include particular pub_core_...h headers.
+# Fjalar needs a few core facilities that have no pub_tool_...h interface.
+my %tool_core_include_allowed = (
+    "fjalar/mc_main.c" => { "../coregrind/pub_core_aspacemgr.h" => 1 },
+    "fjalar/typedata.c" => { "../coregrind/pub_core_mallocfree.h" => 1 },
+    );
+
 my $usage=<<EOF;
 USAGE
 
@@ -291,8 +298,9 @@ sub check_tool_file {
 
     foreach my $inc (get_included_files($path_name)) {
         print "\tINCLUDE $inc\n" if ($debug);
-# Must not include pub_core_...
-        if ($inc =~ /pub_core_/) {
+# Must not include pub_core_..., except where allowed
+        if ($inc =~ /pub_core_/
+            && ! $tool_core_include_allowed{$path_name}{$inc}) {
             error("File $path_name must not include $inc\n");
         }
 # Must not include valgrind.h unless this is an export header
