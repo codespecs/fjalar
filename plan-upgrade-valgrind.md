@@ -124,9 +124,12 @@ Memcheck and DynComp depend tightly on Valgrind core:
    git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-new
    ```
    Remove from `fjalar/valgrind` the files that earlier merges left behind,
-   using the command in section "Remove files that earlier merges left
-   behind" of `doc/valgrind-merge.texinfo`.  (`git apply` removes the files
-   that upstream removed since `$VOLDVER`.)
+   using the first command in section "Remove files that the target Valgrind
+   release does not have" of `doc/valgrind-merge.texinfo` (#98), with
+   `valgrind-old` in place of `valgrind-new`.  With `valgrind-old`, the
+   command lists only the leftovers.  Do not remove the files that upstream
+   removed since `$VOLDVER`:  `git apply` (step 5) removes them, and fails
+   if they are already gone.
 
 3. **Baseline.**  Never build in `valgrind-old` or `valgrind-new` themselves:
    `generate-patch-files.sh` refuses to run if either contains changes or
@@ -141,10 +144,12 @@ Memcheck and DynComp depend tightly on Valgrind core:
    git clone -q valgrind-new valgrind-new-build && cd valgrind-new-build
    ./autogen.sh && ./configure --prefix=$(pwd)/inst
    make all install && make regtest > test.log 2>&1
-   $INV/fjalar/check-regtest.sh --log test.log --expected $INV/regtest-upstream-3.27.1.txt --update
+   $INV/fjalar/check-regtest.sh --log test.log --expected $INV/regtest-upstream-3.27.1.txt \
+     --observed test-observed.txt --update
    ```
    `regtest-upstream-3.27.1.txt` is the list of tests that fail in upstream
-   3.27.1 on this machine; step 9 uses it.  (It contains an entry
+   3.27.1 on this machine; step 9 uses it.  (`--observed` keeps the script
+   from overwriting Fjalar's `regtest-observed-<os>.txt` from step 1.)  (It contains an entry
    `post_regtest_checks: Unknown directory 'inst'. ...`, because the
    post-test header check in upstream's tree does not know the `inst`
    directory that this build installs into; Fjalar's tree does not have
@@ -296,8 +301,8 @@ Memcheck and DynComp depend tightly on Valgrind core:
     - Add names of new Valgrind test programs to `.gitignore`, in the
       per-tool sections (such as `# /memcheck/`).
     - Check that Fjalar tracks no file that upstream does not have:  the
-      command of step 2, with `valgrind-new` in place of `valgrind-old`,
-      prints only files that you decided to keep (step 5).
+      commands in the doc section of step 2, as written (with
+      `valgrind-new`), print only files that you decided to keep (step 5).
     - Document user-visible changes in `$INV/daikon/doc/CHANGELOG.md` (users
       care, because newer Valgrind supports newer CPUs, kernels, glibc, and
       compilers).  `README` mentions no Valgrind version number, so it needs

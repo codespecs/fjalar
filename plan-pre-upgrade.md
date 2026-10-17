@@ -193,8 +193,9 @@ What:
 - "Get New Valgrind Regtest Baseline Results": build the upstream baseline
   in a copy of `valgrind-new`, never in `valgrind-new` itself (build products
   would end up in `coregrind.patch`).
-- "Remove files that have been removed upstream": also handle files removed
-  from `memcheck/`, whose counterparts are in `valgrind/fjalar/` (#98).
+- "Remove files that have been removed upstream" (which #98 renames to
+  "Remove files that the target Valgrind release does not have"): also
+  handle files removed from `memcheck/`, whose counterparts are in `valgrind/fjalar/` (#98).
 - "Merging the binutils changes": `--merge=diff3` produces inline conflict
   markers, not `.rej` files (the `meld` instructions refer to `.rej` files);
   add checking that 2.4x code compiles against the oldest system `bfd.h` in
@@ -223,9 +224,9 @@ Step 4 of the readelf plan checks that the 2.47 code uses only bfd macros
 and functions that the oldest CI `bfd.h` provides; it needs to know which
 version that is.
 
-What: in each Docker image, run `rpm -q binutils-devel` (Rocky Linux) or
-`dpkg -l binutils-dev` (Ubuntu), and record the versions in the readelf plan
-(step 4).  Optionally, also print it in the CI "System information" step.
+What: the CI "System information" step of each regtest job runs
+`rpm -q binutils-devel` (Rocky Linux) or `dpkg-query -W binutils-dev`
+(Ubuntu).  The versions above are recorded in the readelf plan (step 4).
 
 ## 7. Remove upstream files that upstream deleted but Fjalar still tracks
 
@@ -259,9 +260,8 @@ Review the list (`REVISION` is Fjalar's own; check that no other entry is a
 Fjalar addition), `git rm` them, rebuild, and re-run `./check-regtest.sh`.
 The remaining two post-test-check errors are Fjalar's own
 (`fjalar/mc_main.c` includes `pub_core_aspacemgr.h`, `fjalar/typedata.c`
-includes `pub_core_mallocfree.h`); either exempt them in
-`valgrind/tests/check_headers_and_includes` or leave them in the
-expected-failures lists.
+includes `pub_core_mallocfree.h`); #97 allows them in
+`valgrind/tests/check_headers_and_includes`.
 
 Done when: the `comm` command prints nothing, and the three stale tests no
 longer run.
