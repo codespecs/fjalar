@@ -106,7 +106,7 @@ grep -E "$SUMMARY_RE" "$LOG" | tail -n 1
 # Print the observed failures, one per line, normalized to "name (kind)".
 observed_failures() {
   awk -v summary_re="$SUMMARY_RE" '
-    $0 ~ summary_re { in_summary = 1; n = 0; next }
+    $0 ~ summary_re { in_summary = 1; next }
     in_summary && /^[ \t]*$/ { in_summary = 0; next }
     in_summary { $1 = $1; failures[n++] = $0; next }
     # A "post:" command in a .vgtest file failed to run.  vg_regtest counts

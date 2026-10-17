@@ -53,9 +53,10 @@ from item 7, fixed by #98; 2 Fjalar include-rule violations, allowed by
 #97).  Expected-failure lists
 not yet bootstrapped.
 
-Why: both upgrade plans currently check Valgrind's regression tests by
-comparing `test-before.log` and `test-after.log` by eye.  More merges are
-expected after these two, so automating the check pays for itself.
+Why: without a list of expected failures, the only way to check Valgrind's
+regression tests after a merge is to compare the test logs from before and
+after it by eye, and CI cannot check them at all.  More merges are expected
+after these two, so automating the check pays for itself.
 
 What (done):
 - `check-regtest.sh` runs `make test`, extracts the failing tests from the

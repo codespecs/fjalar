@@ -111,10 +111,12 @@ small.
      (`grep -E '(readelf|dwarf|elfcomm|dwarfnames)\.c.*warning' build.log`),
      so that new warnings can be identified later.
    - `make fjalar-test`.
-   - Record the tool's library dependencies and undefined symbols, for
+   - Record the tool's symbols related to zstd, SFrame, and debuginfod, for
      step 8:
-     `ldd valgrind/fjalar/fjalar-amd64-linux > ldd-before.txt` and
-     `nm -u valgrind/fjalar/fjalar-amd64-linux > nm-u-before.txt`.
+     `nm valgrind/fjalar/fjalar-amd64-linux | grep -iE 'zstd|sframe|debuginfod' | awk '{print $3}' > nm-before.txt`.
+     (This lists only Valgrind core's own debuginfod support.)  `ldd` and
+     `nm -u` would show nothing, because Valgrind tools are linked
+     statically with `-nodefaultlibs` (`valgrind/Makefile.tool.am`).
    - `./test-kvasir.sh 2>&1 | tee kvasir-before.log`
      (Kvasir baseline; record any pre-existing failures).
    - Run the Kvasir tests via `./test-kvasir.sh`, which temporarily points
@@ -280,10 +282,12 @@ small.
      against `readelf --debug-dump` from Binutils 2.47 for sanity.
    - Before committing, `grep -c` each `harvest_` name in the old and new
      `dwarf.c`, and explain any difference.
-   - Run `ldd` and `nm -u` on `valgrind/fjalar/fjalar-amd64-linux` again
-     and compare with `ldd-before.txt` and `nm-u-before.txt` from step 2, to
-     check that no new system-library dependency (zstd, libsframe,
-     debuginfod) leaked into the link.
+   - Check that no zstd, SFrame, or debuginfod code was compiled in: run
+     the `nm` command of step 2 again, writing `nm-after.txt`;
+     `diff nm-before.txt nm-after.txt` must print nothing.  (A call into
+     a system library such as libzstd or libsframe would instead have
+     caused an "undefined reference" link error in step 7, because the
+     tool is linked with `-nodefaultlibs`.)
    - Push the branch and confirm GitHub Actions CI passes (Ubuntu and
      Rocky Linux: build, regtest, and Kvasir jobs).
 
@@ -308,7 +312,8 @@ small.
        practice, why;
      - the checklist of upgrade-sensitive areas (step 6);
      - the DWARF 4 versus DWARF 5 comparison, `--fjalar-debug-dump=yes`, the
-       `harvest_*` count check, and the `ldd` / `nm -u` check (step 8);
+       `harvest_*` count check, and the `nm` check for zstd, SFrame, and
+       debuginfod code (step 8);
      - an example `BUNEWVER` that is not 2.34.
      Also remove the stale sentence "(The `lines-notbetween` command is from
      plume-lib.)": the commands now use an `awk` filter.  Update the list of
@@ -334,8 +339,9 @@ small.
 - An unguarded side-effecting expression inside a guarded `printf` changes
   parsing only when debugging is off.  Mitigation: review every new guard
   (step 6).
-- A new system-library dependency (zstd, libsframe, debuginfod) could leak
-  into the link.  Mitigation: the `ldd` / `nm -u` check (step 8).
+- Code for zstd, SFrame, or debuginfod could be compiled in.  Mitigation:
+  the `nm` check (step 8).  A call into a system library that Fjalar does
+  not link fails the link (step 7).
 - The later Valgrind upgrade may enable additional warning flags, which will
   hit `readelf.c`/`dwarf.c` again.  Expect a second round of warning fixes
   there; it does not mean this merge was done wrong.
