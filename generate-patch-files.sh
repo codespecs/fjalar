@@ -7,7 +7,9 @@ rm -f coregrind.patch
 diff -ur --unidirectional-new-file -x.git valgrind-old valgrind-new > coregrind.patch
 
 rm -f  memcheck.patch
-diff -ur --unidirectional-new-file -x.git -xdocs -xtests valgrind-old/memcheck valgrind-new/memcheck > memcheck.patch
+# generate-fjalar-makefile.sh generates Fjalar's version of
+# memcheck/Makefile.am, so memcheck.patch omits it.
+diff -ur --unidirectional-new-file -x.git -xdocs -xtests -xMakefile.am valgrind-old/memcheck valgrind-new/memcheck > memcheck.patch
 
 rm -f coregrind-Fjalar.diff
 diff -ur -xinst -x.git -xfjalar -xMakefile.in -xfjalar/html valgrind-old fjalar/valgrind > coregrind-Fjalar.diff
