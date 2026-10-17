@@ -1092,8 +1092,12 @@ the changes should be committed to the version control repository.
 @section Tell Git about files that were added or removed
 
 The @samp{git-update} target below searches through the two patch files
-looking for files that were added or deleted.  It then does a
-@code{git add} or @code{git remove} as appropriate.
+looking for files that were added or deleted.  It prints a
+@code{git add} or @code{git rm -r} command for each one, including the
+memcheck files in @file{valgrind/fjalar/}.  It does not run them.
+Fjalar may not need every new memcheck file, and a memcheck file removed
+upstream may contain Fjalar changes, so review those commands in
+particular.
 
 @example
 cd $INV/fjalar
