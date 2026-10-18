@@ -1067,15 +1067,19 @@ than the Binutils being merged.  Check that every bfd macro and function
 the new code uses exists in the oldest @file{bfd.h} that continuous
 integration uses, and add local definitions for any that do not.
 To find that @file{bfd.h}, run the following for each Docker image named
-in @file{.github/workflows/ci.yml} or @file{azure-pipelines.yml}.  (As of
-October 2026, the oldest is Binutils 2.35.2, in
-@samp{mdernst/daikon-rockylinux-jdk25-plus}.)
+in @file{.github/workflows/ci.yml} or @file{azure-pipelines.yml}.
+@option{--pull=always} makes @command{docker} use the current image rather
+than an older copy cached on your machine.  (As of October 2026, the
+oldest is Binutils 2.41, in @samp{mdernst/daikon-rockylinux-jdk25-plus},
+which is Rocky Linux 10.)
 
 @example
 # Ubuntu images
-docker run --rm mdernst/daikon-ubuntu-jdk11-plus:latest dpkg-query -W binutils-dev
+docker run --rm --pull=always mdernst/daikon-ubuntu-jdk11-plus:latest \
+  dpkg-query -W binutils-dev
 # Rocky Linux images
-docker run --rm mdernst/daikon-rockylinux-jdk25-plus:latest rpm -q binutils-devel
+docker run --rm --pull=always mdernst/daikon-rockylinux-jdk25-plus:latest \
+  rpm -q binutils-devel
 @end example
 
 @noindent
@@ -1084,7 +1088,7 @@ To check whether that @file{bfd.h} defines a given name, set
 
 @example
 IMAGE=mdernst/daikon-rockylinux-jdk25-plus
-docker run --rm $IMAGE:latest grep -w NAME /usr/include/bfd.h
+docker run --rm --pull=always $IMAGE:latest grep -w NAME /usr/include/bfd.h
 @end example
 @end itemize
 
