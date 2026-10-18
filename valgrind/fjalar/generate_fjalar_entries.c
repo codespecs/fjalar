@@ -2637,6 +2637,19 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
                               0,0,0,0,0,0,0,1,
                               0);
 
+  // isInRegister uses the location expression even if Fjalar cannot
+  // read the location.
+  if (paramPtr->dwarf_stack_size > 0) {
+    unsigned int i;
+    FJALAR_DPRINTF("\tCopying over DWARF Location stack\n");
+    for(i = 0; i < paramPtr->dwarf_stack_size; i++) {
+      varPtr->location_expression[i].atom = paramPtr->dwarf_stack[i].atom;
+      varPtr->location_expression[i].atom_offset = paramPtr->dwarf_stack[i].atom_offset;
+      FJALAR_DPRINTF("\tCopying over  %s (%lld)\n", location_expression_to_string(varPtr->location_expression[i].atom), varPtr->location_expression[i].atom_offset);
+    }
+    varPtr->location_expression_size = paramPtr->dwarf_stack_size;
+  }
+
   if (paramPtr->location_has_unsupported_op
       || ((paramPtr->location_piece_size != 0)
           && (paramPtr->location_piece_size
@@ -2645,40 +2658,27 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     // varPtr->validLoc remains 0, so Fjalar omits the formal parameter.
     FJALAR_DPRINTF(" location contains an unsupported operation\n");
     varPtr->locationUnsupported = 1;
-  } else {
-    if (paramPtr->dwarf_stack_size > 0) {
-      unsigned int i;
-      FJALAR_DPRINTF("\tCopying over DWARF Location stack\n");
-      for(i = 0; i < paramPtr->dwarf_stack_size; i++) {
-        varPtr->location_expression[i].atom = paramPtr->dwarf_stack[i].atom;
-        varPtr->location_expression[i].atom_offset = paramPtr->dwarf_stack[i].atom_offset;
-        FJALAR_DPRINTF("\tCopying over  %s (%lld)\n", location_expression_to_string(varPtr->location_expression[i].atom), varPtr->location_expression[i].atom_offset);
-      }
-      varPtr->location_expression_size = paramPtr->dwarf_stack_size;
-    }
+  } else if (paramPtr->location_type == LT_FP_OFFSET) {
+    varPtr->validLoc = paramPtr->valid_loc;
+    varPtr->locationType = FP_OFFSET_LOCATION;
+    varPtr->byteOffset = paramPtr->location;
+    //    varPtr->atom = paramPtr->loc_atom;
+    recordEntryRegs(f, paramPtr);
 
-    if (paramPtr->location_type == LT_FP_OFFSET) {
-      varPtr->validLoc = paramPtr->valid_loc;
-      varPtr->locationType = FP_OFFSET_LOCATION;
-      varPtr->byteOffset = paramPtr->location;
-      //    varPtr->atom = paramPtr->loc_atom;
-      recordEntryRegs(f, paramPtr);
-
-      FJALAR_DPRINTF(" location_type: %u, byteOffset: %x\n", varPtr->locationType, (unsigned int)varPtr->byteOffset);
-    } else if (isSupportedRegisterLocation(paramPtr, varPtr)) {
-      UInt regNum = paramPtr->dwarf_stack[0].atom - DW_OP_reg0;
-      varPtr->validLoc = 1;
-      varPtr->locationType = REGISTER_LOCATION;
-      recordEntryRegs(f, paramPtr);
-      FJALAR_DPRINTF(" location is register %s\n", dwarf_reg_name(regNum));
-    } else if (locationUsesRegister(paramPtr)) {
-      // A register location that Fjalar cannot read, such as a register
-      // combined with other operations or a value larger than a register.
-      // Fjalar did not save the register at entrance, so no heuristic may
-      // make the location valid.
-      FJALAR_DPRINTF(" location is a register that Fjalar cannot read\n");
-      varPtr->locationUnsupported = 1;
-    }
+    FJALAR_DPRINTF(" location_type: %u, byteOffset: %x\n", varPtr->locationType, (unsigned int)varPtr->byteOffset);
+  } else if (isSupportedRegisterLocation(paramPtr, varPtr)) {
+    UInt regNum = paramPtr->dwarf_stack[0].atom - DW_OP_reg0;
+    varPtr->validLoc = 1;
+    varPtr->locationType = REGISTER_LOCATION;
+    recordEntryRegs(f, paramPtr);
+    FJALAR_DPRINTF(" location is register %s\n", dwarf_reg_name(regNum));
+  } else if (locationUsesRegister(paramPtr)) {
+    // A register location that Fjalar cannot read, such as a register
+    // combined with other operations or a value larger than a register.
+    // Fjalar did not save the register at entrance, so no heuristic may
+    // make the location valid.
+    FJALAR_DPRINTF(" location is a register that Fjalar cannot read\n");
+    varPtr->locationUnsupported = 1;
   }
 
   FJALAR_DPRINTF("EXIT  extractOneFormalParameterVar\n");
