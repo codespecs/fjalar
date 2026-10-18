@@ -41,6 +41,7 @@ void do_shadow_CAS_DC ( DCEnv* dce, IRCAS* cas );
 
 void do_shadow_Dirty_DC ( DCEnv* dce, IRDirty* d );
 
-IRExpr** findTmpDefs_DC ( const IRSB* sb_in );
+Bool* findFlagsCarryingTmps_DC ( const IRSB* sb_in );
+void notePendingCarryTags_DC ( DCEnv* dce, IRTemp tmp, IRExpr* data );
 
 #endif

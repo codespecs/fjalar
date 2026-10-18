@@ -118,6 +118,141 @@ int addWithCarry(int a, int b, int c, int d) {
   return c;
 }
 
+// subThenInc() subtracts b from a with a sub instruction, and then an inc
+// instruction in a different basic block reads the carry flag of the
+// subtraction (via amd64g_calculate_rflags_c), in order to preserve it.
+// The inc does not use the flags as the result of a comparison, so under
+// --dyncomp-interactions=comparisons, DynComp should not make a and b
+// comparable.
+int subThenInc(int a, int b, int c) {
+  __asm__ volatile ("subl %2, %0\n\t"
+                    "jmp 1f\n"
+                    "1:\tincl %1"
+                    : "+r" (a), "+r" (c) : "r" (b) : "cc");
+  return c;
+}
+
+// subThenIncSameBlock() is like subThenInc(), but the inc is in the same
+// basic block as the sub, so VEX specializes the read of the carry flag into
+// a CmpLT32U of the operands of the sub.  The inc does not use the flags as
+// the result of a comparison, so under --dyncomp-interactions=comparisons,
+// DynComp should not make a and b comparable.
+int subThenIncSameBlock(int a, int b, int c) {
+  __asm__ volatile ("subl %2, %0\n\t"
+                    "incl %1"
+                    : "+r" (a), "+r" (c) : "r" (b) : "cc");
+  return c;
+}
+
+// subSetbInc() subtracts b from a, and then, in the same basic block, a setb
+// instruction reads the carry flag of the subtraction and an inc instruction
+// preserves it.  The setb uses the flags as the result of a comparison, so
+// under --dyncomp-interactions=comparisons, DynComp should make a and b
+// comparable, even if VEX computes both reads of the carry flag with the
+// same CmpLT32U.
+int subSetbInc(int a, int b, int c) {
+  unsigned char below;
+  __asm__ volatile ("subl %3, %1\n\t"
+                    "setb %0\n\t"
+                    "incl %2"
+                    : "=q" (below), "+r" (a), "+r" (c) : "r" (b) : "cc");
+  return below;
+}
+
+// subIncJnz() is like subThenIncSameBlock(), but a jnz instruction in the
+// same basic block reads the zero flag of the inc.  VEX translates the jnz
+// into a call to amd64g_calculate_condition whose CC_NDEP argument is the
+// carry flag of the sub, which the inc preserved.  The jnz does not read the
+// carry flag, so under --dyncomp-interactions=comparisons, DynComp should
+// not make a and b comparable.
+int subIncJnz(int a, int b, int c) {
+  __asm__ volatile ("subl %2, %0\n\t"
+                    "incl %1\n\t"
+                    "jnz 1f\n"
+                    "1:"
+                    : "+r" (a), "+r" (c) : "r" (b) : "cc");
+  return c;
+}
+
+// subIncSetb() subtracts b from a, an inc instruction in the same basic block
+// preserves the carry flag of the subtraction (via a CmpLT32U), and then a
+// setb instruction in a different basic block reads that carry flag.  The
+// setb uses the carry flag as the result of a comparison, so under
+// --dyncomp-interactions=comparisons, DynComp should make a and b
+// comparable.
+int subIncSetb(int a, int b, int c) {
+  unsigned char below;
+  __asm__ volatile ("subl %3, %1\n\t"
+                    "incl %2\n\t"
+                    "jmp 1f\n"
+                    "1:\tsetb %0"
+                    : "=q" (below), "+r" (a), "+r" (c) : "r" (b) : "cc");
+  return below;
+}
+
+// subThenIncSetb() is like subIncSetb(), but the sub, the inc, and the setb
+// are each in a different basic block, so the inc reads the carry flag of
+// the subtraction via amd64g_calculate_rflags_c.  Under
+// --dyncomp-interactions=comparisons, DynComp should make a and b comparable.
+int subThenIncSetb(int a, int b, int c) {
+  unsigned char below;
+  __asm__ volatile ("subl %3, %1\n\t"
+                    "jmp 1f\n"
+                    "1:\tincl %2\n\t"
+                    "jmp 2f\n"
+                    "2:\tsetb %0"
+                    : "=q" (below), "+r" (a), "+r" (c) : "r" (b) : "cc");
+  return below;
+}
+
+// subIncSetbSameBlock() is like subIncSetb(), but the setb is in the same
+// basic block as the sub and the inc.  Under
+// --dyncomp-interactions=comparisons, DynComp should make a and b comparable.
+int subIncSetbSameBlock(int a, int b, int c) {
+  unsigned char below;
+  __asm__ volatile ("subl %3, %1\n\t"
+                    "incl %2\n\t"
+                    "setb %0"
+                    : "=q" (below), "+r" (a), "+r" (c) : "r" (b) : "cc");
+  return below;
+}
+
+// subbIncSetb() is like subIncSetb(), but the subtraction is of bytes, so
+// the inc reads the carry flag of the subtraction via a CmpLT64U of its
+// operands, each masked with 0xFF.  Under --dyncomp-interactions=comparisons,
+// DynComp should make a and b comparable.
+int subbIncSetb(unsigned char a, unsigned char b, int c) {
+  unsigned char below;
+  __asm__ volatile ("subb %3, %1\n\t"
+                    "incl %2\n\t"
+                    "jmp 1f\n"
+                    "1:\tsetb %0"
+                    : "=q" (below), "+q" (a), "+r" (c) : "q" (b) : "cc");
+  return below;
+}
+
+// subIncTestIncSetb() subtracts b from a, and an inc instruction in the same
+// basic block preserves the carry flag of the subtraction.  Then, in a
+// different basic block, a test instruction clears the carry flag, an inc
+// instruction preserves it (VEX computes the preserved carry flag as the
+// constant 0), and a setb instruction in a later basic block reads it.  The
+// carry flag that the setb reads is not the result of the subtraction, so
+// under --dyncomp-interactions=comparisons, DynComp should not make a and b
+// comparable.
+int subIncTestIncSetb(int a, int b, int c, int d) {
+  unsigned char below;
+  __asm__ volatile ("subl %3, %1\n\t"
+                    "incl %2\n\t"
+                    "jmp 1f\n"
+                    "1:\ttestl %4, %4\n\t"
+                    "incl %2\n\t"
+                    "jmp 2f\n"
+                    "2:\tsetb %0"
+                    : "=q" (below), "+r" (a), "+r" (c) : "r" (b), "r" (d)
+                    : "cc");
+  return below;
+}
+
 // subThenLahf() subtracts b from a with a sub instruction, and then a lahf
 // instruction in a different basic block copies the flags of the subtraction
 // (via amd64g_calculate_rflags_all) into a register.  Copying flags is not a
@@ -141,6 +276,15 @@ int main(void) {
   xorThenLess(28, 29, 30);
   carry(5, 6);
   addWithCarry(7, 8, 9, 10);
+  subThenInc(15, 16, 17);
   subThenLahf(18, 19);
+  subThenIncSameBlock(24, 25, 26);
+  subSetbInc(27, 28, 29);
+  subIncJnz(30, 31, 32);
+  subIncSetb(33, 34, 35);
+  subThenIncSetb(36, 37, 38);
+  subIncSetbSameBlock(39, 40, 41);
+  subbIncSetb(42, 43, 44);
+  subIncTestIncSetb(45, 46, 47, 48);
   return 0;
 }

@@ -208,11 +208,22 @@ typedef
          we're now processing, as taken from the last IMark we saw. */
       Addr origAddr;
 
+      /* READONLY: the bb being instrumented. */
+      const IRSB* sb_in;
+      /* MODIFIED: the index in sb_in of the statement being
+         instrumented. */
+      Int stmtIndex;
       /* READONLY: a table [0 .. #temps_in_original_bb-1] whose
-         entries are the expressions that the original bb assigns to
-         the temporaries; see findTmpDefs_DC.  NULL unless
+         entries are True for the temporaries that only carry flags
+         forward; see findFlagsCarryingTmps_DC.  NULL unless
          --dyncomp-interactions is comparisons. */
-      IRExpr** tmpDefs;
+      Bool* tmpCarriesFlags;
+      /* MODIFIED: a table [0 .. 2 * #temps_in_original_bb-1] whose
+         entries 2*t and 2*t+1 are the pending carry tags of t, a
+         temporary that carries flags, once its assignment has been
+         instrumented; see notePendingCarryTags_DC.  NULL unless
+         tmpCarriesFlags is non-NULL. */
+      IRExpr** tmpPendingCarryTags;
 
       /* MODIFIED: True if the most recent PUT to the CC_OP field of the
          flags thunk stored a constant that says that an sbb instruction

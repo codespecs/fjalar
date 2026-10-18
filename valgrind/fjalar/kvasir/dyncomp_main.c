@@ -623,7 +623,7 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
 // sbb, and the flags that are read are those of the sbb.  The CC_DEP2 field
 // of an sbb's thunk is the xor of its second operand and the old carry.
 // Under --dyncomp-interactions=comparisons, do_shadow_PUT_DC and
-// handleCCall_DC give that field the tag of the second operand; see
+// handleFlagsCCall_DC give that field the tag of the second operand; see
 // sbbSecondOperand_DC.  Under --dyncomp-interactions=units, the tag of that
 // field is the tag of the xor, which is 0, so merging with it would have no
 // effect; the sbb's subtraction has already merged its operands.
@@ -638,13 +638,29 @@ Bool dyncomp_cc_op_is_sbb(UWord cc_op) {
   return AMD64G_CC_OP_SBBB <= cc_op && cc_op <= AMD64G_CC_OP_SBBQ;
 }
 
-// Like MC_(helperc_MERGE_TAGS_RETURN_0), but merges tag1 and tag2 only if
-// dyncomp_cc_op_is_sub(cc_op).  tag1 and tag2 are the tags of the thunk's
-// CC_DEP1 and CC_DEP2 fields, which for a subtraction are its operands.
+// Returns True if cc_op, the CC_OP field of the flags thunk, says that the
+// flags are the result of an inc or dec instruction.  Such an instruction
+// does not change the carry flag:  its thunk's CC_NDEP field holds the carry
+// flag of the previous thunk.
+Bool dyncomp_cc_op_preserves_carry(UWord cc_op) {
+  return AMD64G_CC_OP_INCB <= cc_op && cc_op <= AMD64G_CC_OP_DECQ;
+}
+
+// Returns the tag of an operand of the subtraction whose result the flags
+// thunk holds, or 0 if the thunk does not hold the result of a subtraction.
+// cc_op is the thunk's CC_OP field, and dep_tag is the tag of its CC_DEP1 or
+// CC_DEP2 field, which for a subtraction is an operand.  If the thunk is that
+// of an inc or dec instruction, its carry flag is preserved from an earlier
+// thunk, and pending_tag is the corresponding pending carry tag of its
+// CC_NDEP field; see notePendingCarryTags_DC.
 VG_REGPARM(3)
-UInt MC_(helperc_MERGE_TAGS_RETURN_0_IF_SUB) ( UWord cc_op, UInt tag1, UInt tag2 ) {
+UWord MC_(helperc_SUB_OPERAND_TAG) ( UWord cc_op, UWord dep_tag,
+                                     UWord pending_tag ) {
   if (dyncomp_cc_op_is_sub(cc_op)) {
-    return MC_(helperc_MERGE_TAGS_RETURN_0)(tag1, tag2);
+    return dep_tag;
+  }
+  if (dyncomp_cc_op_preserves_carry(cc_op)) {
+    return pending_tag;
   }
   return 0;
 }

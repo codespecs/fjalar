@@ -1,11 +1,5 @@
 ..add_const():::EXIT0 x 1
 ..add_const():::EXIT0 return 2
-..copy_ints():::EXIT0 x 1
-..copy_ints():::EXIT0 y 2
-..copy_ints():::EXIT0 return 1
-..copy():::EXIT0 a 1
-..copy():::EXIT0 b 2
-..copy():::EXIT0 return 1
 ..less():::EXIT0 a 1
 ..less():::EXIT0 b 2
 ..less():::EXIT0 return 3

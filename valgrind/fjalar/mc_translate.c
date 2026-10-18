@@ -8753,8 +8753,18 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
       dce.layout         = layout;
       dce.n_originalTmps = sb_out->tyenv->types_used;
       dce.hWordTy        = hWordTy;
-      dce.tmpDefs        = dyncomp_dataflow_comparisons_mode
-                           ? findTmpDefs_DC(sb_in) : NULL;
+      dce.sb_in          = sb_in;
+      // Only this mode uses the flags-carrying analysis.
+      dce.tmpCarriesFlags =
+         dyncomp_dataflow_comparisons_mode
+         ? findFlagsCarryingTmps_DC(sb_in) : NULL;
+      // VG_(calloc) asserts that the size is non-zero, and a superblock
+      // may have no temporaries.
+      dce.tmpPendingCarryTags =
+         dce.tmpCarriesFlags
+         ? VG_(calloc)("mc_translate.c.tmpPendingCarryTags",
+                       2 * dce.n_originalTmps + 1, sizeof(IRExpr*))
+         : NULL;
       dce.sbbThunk       = False;
       dce.tmpMap         = VG_(malloc)("mc_translate.c.2", dce.n_originalTmps * sizeof(IRTemp));
       //dce.tmpMap         = LibVEX_Alloc(dce.n_originalTmps * sizeof(IRTemp));
@@ -8833,6 +8843,10 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
 
       st = sb_in->stmts[i];
       first_stmt = sb_out->stmts_used;
+#ifndef _NO_DYNCOMP
+      if (do_dyncomp)
+         dce.stmtIndex = i;
+#endif /* _NO_DYNCOMP */
 
       if (verboze) {
          printf("\n");
@@ -8858,9 +8872,12 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
             assign( 'V', &mce, findShadowTmpV(&mce, st->Ist.WrTmp.tmp),
                                expr2vbits( &mce, st->Ist.WrTmp.data, hu ));
 #ifndef _NO_DYNCOMP
-            if (do_dyncomp)
+            if (do_dyncomp) {
                assign_DC( 'V', &dce, findShadowTmp_DC(&dce, st->Ist.WrTmp.tmp),
                                expr2tags_DC( &dce, st->Ist.WrTmp.data) );
+               notePendingCarryTags_DC( &dce, st->Ist.WrTmp.tmp,
+                                        st->Ist.WrTmp.data );
+            }
 #endif /* _NO_DYNCOMP */
             break;
          }
@@ -9065,8 +9082,10 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
    }
 
 #ifndef _NO_DYNCOMP
-   if (do_dyncomp && dce.tmpDefs)
-      VG_(free)( dce.tmpDefs );
+   if (do_dyncomp) {
+      VG_(free)( dce.tmpCarriesFlags );
+      VG_(free)( dce.tmpPendingCarryTags );
+   }
 #endif /* _NO_DYNCOMP */
 
     tl_assert(mce.sb == sb_out);

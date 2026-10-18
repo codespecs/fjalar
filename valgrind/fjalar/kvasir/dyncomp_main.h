@@ -31,6 +31,7 @@
 #include "pub_tool_libcbase.h"
 #include "pub_tool_machine.h"
 #include "pub_tool_threadstate.h"
+#include "libvex_guest_amd64.h"   // for PENDING_CARRY_TAG1_OFFSET
 
 //RUDD-REMOVE
 //#include "../mac_shared.h"
@@ -303,9 +304,22 @@ extern VG_REGPARM(1) UInt MC_(helperc_CREATE_TAG) ( Addr static_id );
 
 extern VG_REGPARM(2) UInt MC_(helperc_MERGE_TAGS) ( UInt, UInt );
 extern VG_REGPARM(2) UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt, UInt );
-extern VG_REGPARM(3) UInt MC_(helperc_MERGE_TAGS_RETURN_0_IF_SUB) ( UWord, UInt, UInt );
+extern VG_REGPARM(3) UWord MC_(helperc_SUB_OPERAND_TAG) ( UWord, UWord, UWord );
 Bool dyncomp_cc_op_is_sub(UWord cc_op);
 Bool dyncomp_cc_op_is_sbb(UWord cc_op);
+Bool dyncomp_cc_op_preserves_carry(UWord cc_op);
+
+// The guest state offsets whose tags are the pending carry tags of the
+// CC_NDEP field; see notePendingCarryTags_DC.  Each is inside CC_NDEP, so
+// it is not the offset of any register, and the tags of offsets inside
+// CC_NDEP are not otherwise used.  The tag of an offset occupies 4 bytes
+// per byte of guest state starting at 4 times the offset (see
+// do_shadow_PUT_DC), and tags in the guest state are word-sized, so these
+// tags do not overlap one another or the tag of CC_NDEP itself.
+#define PENDING_CARRY_TAG1_OFFSET \
+  (offsetof(VexGuestAMD64State, guest_CC_NDEP) + 2)
+#define PENDING_CARRY_TAG2_OFFSET \
+  (offsetof(VexGuestAMD64State, guest_CC_NDEP) + 4)
 
 extern VG_REGPARM(3) UInt MC_(helperc_MERGE_3_TAGS) ( UInt, UInt, UInt );
 extern VG_REGPARM(3) UInt MC_(helperc_MERGE_4_TAGS) ( UInt, UInt, UInt, UInt );
