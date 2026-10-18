@@ -261,14 +261,20 @@ IRAtom* mkMergeTags_DC ( Int regparms, const HChar* hname, void* helper,
    return mkIRExprCCall(Ity_Word, regparms, hname, helper, args);
 }
 
+// Emits a dirty call to helper, which returns nothing.
+static
+void stmtDirtyCall_DC ( DCEnv* dce, Int regparms, const HChar* hname,
+                        void* helper, IRExpr** args )
+{
+   IRDirty* di = unsafeIRDirty_0_N(regparms, hname, helper, args);
+   setHelperAnns_DC( dce, di );
+   stmt_DC('V', dce, IRStmt_Dirty(di));
+}
+
 // Emits a dirty call that merges tag1 and tag2.  The call is dirty so
 // that it is not optimized away, though its result is unused.
-// If ccOp is non-NULL, then it is the CC_OP field of a flags thunk, and
-// the call merges the tags only if the flags are the result of a
-// subtraction; see MC_(helperc_MERGE_TAGS_RETURN_0_IF_SUB).
 static
-void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2,
-                               IRAtom* ccOp )
+void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2 )
 {
    IRTemp   datatag;
    IRDirty* di;
@@ -279,19 +285,11 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2,
    }
 
    datatag = newTemp(dce->mce, Ity_Word, DC);
-   if (ccOp) {
-      di = unsafeIRDirty_1_N(datatag,
-                             3,
-                             "MC_(helperc_MERGE_TAGS_RETURN_0_IF_SUB)",
-                             &MC_(helperc_MERGE_TAGS_RETURN_0_IF_SUB),
-                             mkIRExprVec_3( ccOp, tag1, tag2 ));
-   } else {
-      di = unsafeIRDirty_1_N(datatag,
-                             2,
-                             "MC_(helperc_MERGE_TAGS_RETURN_0)",
-                             &MC_(helperc_MERGE_TAGS_RETURN_0),
-                             mkIRExprVec_2( tag1, tag2 ));
-   }
+   di = unsafeIRDirty_1_N(datatag,
+                          2,
+                          "MC_(helperc_MERGE_TAGS_RETURN_0)",
+                          &MC_(helperc_MERGE_TAGS_RETURN_0),
+                          mkIRExprVec_2( tag1, tag2 ));
 
    setHelperAnns_DC( dce, di );
    stmt_DC('V', dce, IRStmt_Dirty(di));
@@ -333,7 +331,8 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2,
 // amd64g_calculate_rflags_all) compute them from a flags thunk whose CC_OP
 // field says which operation set them.  CC_OP is often known only at run
 // time, for example when the flags are read in a different superblock
-// than the one that set them, so the merge checks it at run time.  For
+// than the one that set them, so the merge checks it at run time; see
+// handleFlagsCCall_DC.  For
 // example, the operands of a cmp are merged when its flags are read by a
 // setl (via amd64g_calculate_condition) or by an sbb (via
 // amd64g_calculate_rflags_c), but the operands of an add are not merged
@@ -342,8 +341,12 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2,
 // Some instructions read flags without using them as the result of a
 // comparison.  An inc or dec instruction reads the carry flag (via
 // amd64g_calculate_rflags_c) only to carry it forward; see
-// findFlagsCarryingTmps_DC.  The other callers of amd64g_calculate_rflags_c
-// are adc and sbb.
+// findFlagsCarryingTmps_DC.  Such a read merges no tags, but if the flags
+// are the result of a subtraction, it records the tags of its operands as
+// the pending carry tags (see MC_(helperc_PRESERVE_CARRY)).  A later read
+// of the carry flag of the inc's thunk as the result of a comparison, as
+// in `cmp; inc; jb`, merges the pending carry tags.  The other callers of
+// amd64g_calculate_rflags_c are adc and sbb.
 //
 // amd64g_calculate_rflags_all is used mostly by instructions that preserve
 // or copy flags, such as shifts, bt, and pushf.  These calls merge no tags;
@@ -368,7 +371,10 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2,
 // specialization of it:  for example, a CmpLT32U of the operands of a sub
 // in the same superblock.  Neither one compares values; if the carry flag
 // is later used, then the instruction that uses it reads it from the new
-// thunk.
+// thunk, and that read merges the pending carry tags.  A comparison
+// operation whose result carries flags is assumed to be the carry flag of
+// a subtraction, and it sets the pending carry tags to the tags of its
+// operands.
 //
 // A temporary carries flags if it has at least one use, and every use of
 // it stores it in CC_NDEP, passes it as the CC_NDEP argument of a helper
@@ -608,20 +614,85 @@ Bool resultCarriesFlags_DC ( DCEnv* dce )
    return st->tag == Ist_WrTmp && dce->tmpCarriesFlags[st->Ist.WrTmp.tmp];
 }
 
-// If a call to cee with arguments exprvec uses flags as the result of a
-// comparison (when the flags are the result of a subtraction), returns its
-// CC_OP argument.  Otherwise, returns NULL.
+// Returns the tag of arg, an argument of a helper that reads flags, or 0 if
+// arg is a constant, just as expr2tags_Binop_DC does not merge a constant
+// operand.
 static
-IRAtom* comparisonCCOp_DC ( DCEnv* dce, IRAtom** exprvec, IRCallee* cee )
+IRAtom* flagsArgTag_DC ( DCEnv* dce, IRAtom* arg )
 {
+   if (arg->tag == Iex_Const) {
+      return IRExpr_Const(IRConst_UWord(0));
+   }
+   return expr2tags_DC(dce, arg);
+}
+
+// Handles a call to cee, a helper that reads flags, with arguments exprvec,
+// under --dyncomp-interactions=comparisons or units.  The call merges the
+// tags of the thunk's CC_DEP1 and CC_DEP2 arguments if it reads the flags
+// as the result of a comparison and the flags are the result of a
+// subtraction.  If it reads the carry flag that an inc or dec preserved, it
+// merges the pending carry tags instead.  If CC_OP is known at translation
+// time, this omits calls that would merge nothing; otherwise, the helpers
+// check CC_OP at run time.
+static
+void handleFlagsCCall_DC ( DCEnv* dce, IRAtom** exprvec, IRCallee* cee )
+{
+   // The index of the CC_OP argument, which CC_DEP1 and CC_DEP2 follow
+   Int ccOpIndex;
+   IRAtom* ccOp;
+   Bool knownCCOp;
+   UWord ccOpValue = 0;
+   Bool readsCarry;
+
    if (cee->addr == (void*)&amd64g_calculate_condition) {
-      return exprvec[1];
+      // The conditions are in pairs, a condition and its negation.  Only
+      // B and BE read the carry flag.
+      IRAtom* cond = exprvec[0];
+      ccOpIndex = 1;
+      if (cond->tag == Iex_Const) {
+         ULong condValue = cond->Iex.Const.con->Ico.U64 & ~1ULL;
+         readsCarry = condValue == AMD64CondB || condValue == AMD64CondBE;
+      } else {
+         readsCarry = True;
+      }
+   } else if (cee->addr == (void*)&amd64g_calculate_rflags_c) {
+      ccOpIndex = 0;
+      readsCarry = True;
+   } else {
+      return;
    }
+
+   ccOp = exprvec[ccOpIndex];
+   knownCCOp = ccOp->tag == Iex_Const;
+   if (knownCCOp) {
+      tl_assert(ccOp->Iex.Const.con->tag == Ico_U64);
+      ccOpValue = ccOp->Iex.Const.con->Ico.U64;
+   }
+
    if (cee->addr == (void*)&amd64g_calculate_rflags_c
-       && !resultCarriesFlags_DC(dce)) {
-      return exprvec[0];
+       && resultCarriesFlags_DC(dce)) {
+      // An inc or dec preserves the carry flag.  If the thunk is itself
+      // that of an inc or dec, then the pending carry tags already
+      // describe its carry flag.
+      if (!(knownCCOp && dyncomp_cc_op_preserves_carry(ccOpValue))) {
+         stmtDirtyCall_DC(dce, 3, "MC_(helperc_PRESERVE_CARRY)",
+                          &MC_(helperc_PRESERVE_CARRY),
+                          mkIRExprVec_3(ccOp,
+                                        flagsArgTag_DC(dce, exprvec[ccOpIndex + 1]),
+                                        flagsArgTag_DC(dce, exprvec[ccOpIndex + 2])));
+      }
+      return;
    }
-   return NULL;
+
+   if (knownCCOp && !dyncomp_cc_op_is_sub(ccOpValue)
+       && !(readsCarry && dyncomp_cc_op_preserves_carry(ccOpValue))) {
+      return;
+   }
+   stmtDirtyCall_DC(dce, 3, "MC_(helperc_MERGE_TAGS_IF_COMPARISON)",
+                    &MC_(helperc_MERGE_TAGS_IF_COMPARISON),
+                    mkIRExprVec_4(ccOp, mkIRExpr_HWord(readsCarry),
+                                  flagsArgTag_DC(dce, exprvec[ccOpIndex + 1]),
+                                  flagsArgTag_DC(dce, exprvec[ccOpIndex + 2])));
 }
 
 // Returns True if cee is a helper that computes flags from a flags thunk.
@@ -644,8 +715,6 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
    IRAtom* merged;
    IRDirty* di;
    IRTemp   datatag;
-   // Non-NULL if the merge depends on the CC_OP argument
-   IRAtom* ccOp = NULL;
 
    // In this mode, NOTHING is an interaction, so there is nothing to
    // merge.  Returning early avoids computing the arguments' tags.
@@ -655,18 +724,8 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
 
    if (dyncomp_dataflow_comparisons_mode
        || (dyncomp_units_mode && readsFlags_DC(cee))) {
-      ccOp = comparisonCCOp_DC(dce, exprvec, cee);
-      if (!ccOp) {
-         return IRExpr_Const(IRConst_UWord(0));
-      }
-      // If CC_OP is known at translation time, decide now.
-      if (ccOp->tag == Iex_Const) {
-         tl_assert(ccOp->Iex.Const.con->tag == Ico_U64);
-         if (!dyncomp_cc_op_is_sub(ccOp->Iex.Const.con->Ico.U64)) {
-            return IRExpr_Const(IRConst_UWord(0));
-         }
-         ccOp = NULL;
-      }
+      handleFlagsCCall_DC(dce, exprvec, cee);
+      return IRExpr_Const(IRConst_UWord(0));
    }
 
    if (exprvec) {
@@ -685,17 +744,11 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
       }
    }
 
-   // Only the last merge checks ccOp, so if ccOp is checked at run time,
-   // there must be at most one merge, of at most two arguments.  The
-   // masks of the helpers that comparisonCCOp_DC accepts leave two.
-   tl_assert(!ccOp || numMergedArgs <= 2);
-
    if (numMergedArgs >= 2) {
       merged = expr2tags_DC(dce, mergedArgs[0]);
       // Each intermediate merge is a dirty call because
       // MC_(helperc_MERGE_TAGS) has side effects.  The last merge, whose
-      // result is not used, is made by stmtMergeTagsReturn0_DC, which
-      // also checks ccOp.
+      // result is not used, is made by stmtMergeTagsReturn0_DC.
       for (i = 1; i < numMergedArgs - 1; i++) {
          datatag = newTemp(dce->mce, Ity_Word, DC);
          di = unsafeIRDirty_1_N(datatag,
@@ -709,8 +762,7 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
          merged = mkexpr(datatag);
       }
       stmtMergeTagsReturn0_DC(dce, merged,
-                              expr2tags_DC(dce, mergedArgs[numMergedArgs - 1]),
-                              ccOp);
+                              expr2tags_DC(dce, mergedArgs[numMergedArgs - 1]));
    }
    return IRExpr_Const(IRConst_UWord(0));
 }
@@ -2079,11 +2131,18 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    }
 
    // A comparison whose result only carries flags forward does not compare
-   // values; see findFlagsCarryingTmps_DC.  The default mode does not
-   // check this, just as it treats every helper call as an interaction.
+   // values, but it records the pending carry tags; see
+   // findFlagsCarryingTmps_DC.  The default mode does not check this, just
+   // as it treats every helper call as an interaction.
    if (helper == &MC_(helperc_MERGE_TAGS_RETURN_0)
        && (dyncomp_dataflow_comparisons_mode || dyncomp_units_mode)
        && resultCarriesFlags_DC(dce)) {
+      stmtDirtyCall_DC(dce, 2, "MC_(helperc_SET_PENDING_CARRY)",
+                       &MC_(helperc_SET_PENDING_CARRY),
+                       mkIRExprVec_2(atom1->tag == Iex_Const
+                                     ? IRExpr_Const(IRConst_UWord(0)) : vatom1,
+                                     atom2->tag == Iex_Const
+                                     ? IRExpr_Const(IRConst_UWord(0)) : vatom2));
       helper = 0;
       hname = 0;
    }

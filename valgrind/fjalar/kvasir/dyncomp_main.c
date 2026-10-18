@@ -628,15 +628,60 @@ Bool dyncomp_cc_op_is_sub(UWord cc_op) {
   return AMD64G_CC_OP_SUBB <= cc_op && cc_op <= AMD64G_CC_OP_SUBQ;
 }
 
-// Like MC_(helperc_MERGE_TAGS_RETURN_0), but merges tag1 and tag2 only if
-// dyncomp_cc_op_is_sub(cc_op).  tag1 and tag2 are the tags of the thunk's
-// CC_DEP1 and CC_DEP2 fields, which for a subtraction are its operands.
+// Returns True if cc_op, the CC_OP field of the flags thunk, says that the
+// flags are the result of an inc or dec instruction.  Such an instruction
+// does not change the carry flag:  its thunk's CC_NDEP field holds the carry
+// flag of the previous thunk.
+Bool dyncomp_cc_op_preserves_carry(UWord cc_op) {
+  return AMD64G_CC_OP_INCB <= cc_op && cc_op <= AMD64G_CC_OP_DECQ;
+}
+
+// The tags of the operands of the subtraction whose carry flag inc or dec
+// instructions have preserved in the CC_NDEP field of the current flags
+// thunk, or 0 if that carry flag is not the result of a subtraction.  When
+// an instruction later reads that carry flag as the result of a comparison,
+// MC_(helperc_MERGE_TAGS_IF_COMPARISON) merges these tags.  There is one
+// pair for all threads, so a thread switch between an inc and the read of
+// its carry flag may merge the wrong tags.
+UInt pendingCarryTag1 = 0;
+UInt pendingCarryTag2 = 0;
+
+// Records that the carry flag that an inc or dec instruction is preserving
+// is the result of a subtraction whose operands have tags tag1 and tag2.
+VG_REGPARM(2)
+void MC_(helperc_SET_PENDING_CARRY) ( UInt tag1, UInt tag2 ) {
+  pendingCarryTag1 = tag1;
+  pendingCarryTag2 = tag2;
+}
+
+// Called when an inc or dec instruction reads the carry flag of the flags
+// thunk in order to preserve it; tag1 and tag2 are the tags of the thunk's
+// CC_DEP1 and CC_DEP2 fields.  Updates the pending carry tags.
 VG_REGPARM(3)
-UInt MC_(helperc_MERGE_TAGS_RETURN_0_IF_SUB) ( UWord cc_op, UInt tag1, UInt tag2 ) {
+void MC_(helperc_PRESERVE_CARRY) ( UWord cc_op, UInt tag1, UInt tag2 ) {
   if (dyncomp_cc_op_is_sub(cc_op)) {
-    return MC_(helperc_MERGE_TAGS_RETURN_0)(tag1, tag2);
+    MC_(helperc_SET_PENDING_CARRY)(tag1, tag2);
+  } else if (!dyncomp_cc_op_preserves_carry(cc_op)) {
+    MC_(helperc_SET_PENDING_CARRY)(0, 0);
   }
-  return 0;
+  // Otherwise, the thunk's carry flag is preserved from an earlier thunk,
+  // and the pending carry tags already describe it.
+}
+
+// Called when an instruction reads the flags of the flags thunk as the
+// result of a comparison; tag1 and tag2 are the tags of the thunk's CC_DEP1
+// and CC_DEP2 fields, which for a subtraction are its operands.  If
+// dyncomp_cc_op_is_sub(cc_op), merges tag1 and tag2.  If reads_carry is
+// non-zero and the carry flag was preserved by inc or dec instructions,
+// merges the pending carry tags.
+VG_REGPARM(3)
+void MC_(helperc_MERGE_TAGS_IF_COMPARISON) ( UWord cc_op, UWord reads_carry,
+                                             UInt tag1, UInt tag2 ) {
+  if (dyncomp_cc_op_is_sub(cc_op)) {
+    MC_(helperc_MERGE_TAGS_RETURN_0)(tag1, tag2);
+  } else if (reads_carry && dyncomp_cc_op_preserves_carry(cc_op)) {
+    MC_(helperc_MERGE_TAGS_RETURN_0)(pendingCarryTag1, pendingCarryTag2);
+  }
 }
 
 /*------------------------------------------------------------------*/

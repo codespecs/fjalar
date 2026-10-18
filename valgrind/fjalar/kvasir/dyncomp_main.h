@@ -303,8 +303,13 @@ extern VG_REGPARM(1) UInt MC_(helperc_CREATE_TAG) ( Addr static_id );
 
 extern VG_REGPARM(2) UInt MC_(helperc_MERGE_TAGS) ( UInt, UInt );
 extern VG_REGPARM(2) UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt, UInt );
-extern VG_REGPARM(3) UInt MC_(helperc_MERGE_TAGS_RETURN_0_IF_SUB) ( UWord, UInt, UInt );
+extern VG_REGPARM(2) void MC_(helperc_SET_PENDING_CARRY) ( UInt, UInt );
+extern VG_REGPARM(3) void MC_(helperc_PRESERVE_CARRY) ( UWord, UInt, UInt );
+extern VG_REGPARM(3) void MC_(helperc_MERGE_TAGS_IF_COMPARISON) ( UWord, UWord, UInt, UInt );
 Bool dyncomp_cc_op_is_sub(UWord cc_op);
+Bool dyncomp_cc_op_preserves_carry(UWord cc_op);
+extern UInt pendingCarryTag1;
+extern UInt pendingCarryTag2;
 
 extern VG_REGPARM(3) UInt MC_(helperc_MERGE_3_TAGS) ( UInt, UInt, UInt );
 extern VG_REGPARM(3) UInt MC_(helperc_MERGE_4_TAGS) ( UInt, UInt, UInt, UInt );

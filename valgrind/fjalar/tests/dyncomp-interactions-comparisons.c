@@ -145,6 +145,48 @@ int subIncJnz(int a, int b, int c) {
   return c;
 }
 
+// subIncSetb() subtracts b from a, an inc instruction in the same basic block
+// preserves the carry flag of the subtraction (via a CmpLT32U), and then a
+// setb instruction in a different basic block reads that carry flag.  The setb uses the carry flag as the result of
+// a comparison, so under --dyncomp-interactions=comparisons, DynComp should
+// make a and b comparable.
+int subIncSetb(int a, int b, int c) {
+  unsigned char below;
+  __asm__ volatile ("subl %3, %1\n\t"
+                    "incl %2\n\t"
+                    "jmp 1f\n"
+                    "1:\tsetb %0"
+                    : "=q" (below), "+r" (a), "+r" (c) : "r" (b) : "cc");
+  return below;
+}
+
+// subThenIncSetb() is like subIncSetb(), but the sub, the inc, and the setb
+// are each in a different basic block, so the inc reads the carry flag of
+// the subtraction via amd64g_calculate_rflags_c.  Under
+// --dyncomp-interactions=comparisons, DynComp should make a and b comparable.
+int subThenIncSetb(int a, int b, int c) {
+  unsigned char below;
+  __asm__ volatile ("subl %3, %1\n\t"
+                    "jmp 1f\n"
+                    "1:\tincl %2\n\t"
+                    "jmp 2f\n"
+                    "2:\tsetb %0"
+                    : "=q" (below), "+r" (a), "+r" (c) : "r" (b) : "cc");
+  return below;
+}
+
+// subIncSetbSameBlock() is like subIncSetb(), but the setb is in the same
+// basic block as the sub and the inc.  Under
+// --dyncomp-interactions=comparisons, DynComp should make a and b comparable.
+int subIncSetbSameBlock(int a, int b, int c) {
+  unsigned char below;
+  __asm__ volatile ("subl %3, %1\n\t"
+                    "incl %2\n\t"
+                    "setb %0"
+                    : "=q" (below), "+r" (a), "+r" (c) : "r" (b) : "cc");
+  return below;
+}
+
 // subThenLahf() subtracts b from a with a sub instruction, and then a lahf
 // instruction in a different basic block copies the flags of the subtraction
 // (via amd64g_calculate_rflags_all) into a register.  Copying flags is not a
@@ -171,5 +213,8 @@ int main(void) {
   subThenIncSameBlock(24, 25, 26);
   subSetbInc(27, 28, 29);
   subIncJnz(30, 31, 32);
+  subIncSetb(33, 34, 35);
+  subThenIncSetb(36, 37, 38);
+  subIncSetbSameBlock(39, 40, 41);
   return 0;
 }
