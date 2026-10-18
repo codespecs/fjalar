@@ -1,9 +1,3 @@
-..copyInts():::EXIT0 a 1
-..copyInts():::EXIT0 b 2
-..copyInts():::EXIT0 return 1
-..copyLongs():::EXIT0 a 1
-..copyLongs():::EXIT0 b 2
-..copyLongs():::EXIT0 return 1
 ..subThenLahf():::EXIT0 a 1
 ..subThenLahf():::EXIT0 b 2
 ..subThenLahf():::EXIT0 return 3

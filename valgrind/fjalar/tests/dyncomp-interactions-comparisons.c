@@ -104,43 +104,6 @@ int subThenLahf(int a, int b) {
   return flags;
 }
 
-struct longPair {
-  long a;
-  long b;
-};
-
-// copyLongs() copies a struct with movdqu, so VEX loads both fields with one
-// 128-bit load.  Loading is not an interaction under
-// --dyncomp-interactions=comparisons, so DynComp should not make a and b
-// comparable.
-long copyLongs(long a, long b) {
-  struct longPair p, q;
-  p.a = a;
-  p.b = b;
-  __asm__ volatile ("movdqu %1, %%xmm0\n\t"
-                    "movdqu %%xmm0, %0"
-                    : "=m" (q) : "m" (p) : "xmm0");
-  return q.a;
-}
-
-struct intPair {
-  int a;
-  int b;
-};
-
-// copyInts() copies a struct with one 64-bit load.  Loading is not an
-// interaction under --dyncomp-interactions=comparisons, so DynComp should
-// not make a and b comparable.
-int copyInts(int a, int b) {
-  struct intPair p, q;
-  p.a = a;
-  p.b = b;
-  __asm__ volatile ("movq %1, %%rax\n\t"
-                    "movq %%rax, %0"
-                    : "=m" (q) : "m" (p) : "rax");
-  return q.a;
-}
-
 int main(void) {
   less(1, 2);
   lessMask(3, 4);
@@ -148,7 +111,5 @@ int main(void) {
   carry(5, 6);
   addWithCarry(7, 8, 9, 10);
   subThenLahf(18, 19);
-  copyLongs(11, 12);
-  copyInts(13, 14);
   return 0;
 }

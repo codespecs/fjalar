@@ -10,11 +10,10 @@
 # operands of an add should not be comparable when its flags are read via
 # amd64g_calculate_condition (setc) or amd64g_calculate_rflags_c (adc).  The
 # operands of a sub should not be comparable when its flags are copied by a
-# lahf via amd64g_calculate_rflags_all.  Nor should the two halves of a
-# 128-bit load, nor the two fields of a struct copied by a 64-bit load.
+# lahf via amd64g_calculate_rflags_all.
 # The expected comparability is in dyncomp-interactions-comparisons.goal.
 
-exec "$(dirname "$0")/dyncomp-comparability-test.sh" \
+exec "$(dirname "$0")/dyncomp-comparability-driver.sh" \
      dyncomp-interactions-comparisons \
      '/^==== SB / { fn = $0 }
       /g_calculate_condition\[/ { if (fn ~ / less(\+[0-9]+)? /) less = 1

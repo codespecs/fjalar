@@ -29,8 +29,25 @@ int overflow(int a, int b) {
   return result;
 }
 
+// absDiffSum() computes the sum of the absolute differences of the bytes of
+// a and b with a psadbw instruction.  VEX translates the psadbw into a call
+// to amd64g_calculate_mmx_psadbw, which does not read flags.  Subtraction is
+// an interaction under --dyncomp-interactions=units, so DynComp should make
+// a and b comparable.
+long absDiffSum(long a, long b) {
+  long result;
+  __asm__ volatile ("movq %1, %%mm0\n\t"
+                    "movq %2, %%mm1\n\t"
+                    "psadbw %%mm1, %%mm0\n\t"
+                    "movq %%mm0, %0\n\t"
+                    "emms"
+                    : "=r" (result) : "r" (a), "r" (b) : "mm0", "mm1");
+  return result;
+}
+
 int main(void) {
   less(1, 2);
   overflow(3, 4);
+  absDiffSum(5, 6);
   return 0;
 }
