@@ -624,9 +624,11 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
 // of an sbb's thunk is the xor of its second operand and the old carry.
 // Under --dyncomp-interactions=comparisons, do_shadow_PUT_DC and
 // handleFlagsCCall_DC give that field the tag of the second operand; see
-// sbbSecondOperand_DC.  Under --dyncomp-interactions=units, the tag of that
-// field is the tag of the xor, which is 0, so merging with it would have no
-// effect; the sbb's subtraction has already merged its operands.
+// sbbSecondOperand_DC.  Other modes need not accept an sbb here:  under
+// --dyncomp-interactions=units, the sbb's subtraction has already merged
+// its operands.  Every caller of this function runs only under
+// --dyncomp-interactions=comparisons, so the test of the mode matters only
+// if a helper call that reads flags is handled this way in another mode.
 Bool dyncomp_cc_op_is_sub(UWord cc_op) {
   return (AMD64G_CC_OP_SUBB <= cc_op && cc_op <= AMD64G_CC_OP_SUBQ)
          || (dyncomp_dataflow_comparisons_mode && dyncomp_cc_op_is_sbb(cc_op));
