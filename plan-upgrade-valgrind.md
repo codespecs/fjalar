@@ -149,6 +149,9 @@ it completely (merged, CI green) before starting this one.  That plan's
     - Add names of new Valgrind test drivers to `.gitignore`
       ("Ignore generated test drivers" section).
     - `make git-update > git.script`, review, run.
+    - `git add -u -- valgrind`.  This stages the removal of the files that
+      step 2 removed with `rm` and that are in neither `valgrind-old` nor
+      `valgrind-new`, which `git.script` does not cover.
     - Check that Fjalar tracks no file that upstream does not have:  the
       first command in the doc section of step 2 prints nothing.
     - Document user-visible changes in `$INV/daikon/doc/CHANGELOG.md`.
