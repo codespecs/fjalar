@@ -352,9 +352,10 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2,
 // amd64g_calculate_rflags_c) and stores it in the CC_NDEP field of its own
 // flags thunk, because it does not change the carry flag.  That read is
 // treated like any other, so a sub followed by an inc makes the operands of
-// the sub comparable.  Distinguishing it would be pointless:  when the
-// sub and the inc are in the same superblock, VEX replaces the read by a
-// comparison of the operands of the sub, which expr2tags_Binop_DC merges.
+// the sub comparable, although nothing compares them.  (When the sub and the
+// inc are in the same superblock, VEX replaces the read by a comparison of
+// the operands of the sub, which expr2tags_Binop_DC merges, with the same
+// result.)
 //
 // amd64g_calculate_rflags_all is used mostly by instructions that preserve
 // or copy flags, such as shifts, bt, and pushf.  These calls merge no tags;
