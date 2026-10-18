@@ -444,29 +444,10 @@ UInt MC_(helperc_CREATE_TAG)(Addr static_id) {
 }
 
 
-// Returns the tag of the value loaded from the range [a, a+len).
-// Ordinarily, this merges the tags of all addresses in the range.
-// In dyncomp_dataflow_only_mode, nothing is an interaction, so this
-// returns the leader of the first non-zero tag in the range, without
-// merging; if that tag is WEAK_FRESH_TAG, this returns a fresh tag, as
-// MC_(helperc_LOAD_TAG_4) does.
-static UInt load_tag_in_range(Addr a, SizeT len) {
-  UInt tag;
-
-  if (!dyncomp_dataflow_only_mode) {
-    return val_uf_union_tags_in_range(a, len);
-  }
-  tag = first_nonzero_tag_in_range(a, len);
-  if (WEAK_FRESH_TAG == tag) {
-    return grab_fresh_tag();
-  }
-  return val_uf_find_leader(tag);
-}
-
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_8) ( Addr a ) {
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_8: %p\n", (void *)a);
-  return load_tag_in_range(a, 8);
+  return val_uf_union_tags_in_range(a, 8);
 }
 
 VG_REGPARM(1)
@@ -477,27 +458,38 @@ UInt MC_(helperc_LOAD_TAG_4) ( Addr a ) {
     return grab_fresh_tag();
   }
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_4: %p\n", (void *)a);
-  return load_tag_in_range(a, 4);
+  return val_uf_union_tags_in_range(a, 4);
 }
 
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_2) ( Addr a ) {
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_2: %p\n", (void *)a);
-  return load_tag_in_range(a, 2);
+  return val_uf_union_tags_in_range(a, 2);
 }
 
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_1: %p => %u\n", (void *)a, get_tag(a));
-  return load_tag_in_range(a, 1);
+  return val_uf_union_tags_in_range(a, 1);
 }
 
-// Returns the tag of the value loaded from the range [a, a+len), as
-// the MC_(helperc_LOAD_TAG_*) functions do.
+// Returns the tag of the value loaded from the range [a, a+len), in
+// dyncomp_dataflow_only_mode.  In that mode, nothing is an interaction,
+// so unlike the other MC_(helperc_LOAD_TAG_*) functions, this does not
+// merge the tags of the addresses in the range.  It returns the leader
+// of the first non-zero tag in the range; if that tag is
+// WEAK_FRESH_TAG, it returns a fresh tag, as MC_(helperc_LOAD_TAG_4)
+// does.
 VG_REGPARM(2)
 UInt MC_(helperc_LOAD_TAG_N) ( Addr a, UWord len ) {
+  UInt tag;
+
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_N: %p %lu\n", (void *)a, len);
-  return load_tag_in_range(a, len);
+  tag = first_nonzero_tag_in_range(a, len);
+  if (WEAK_FRESH_TAG == tag) {
+    return grab_fresh_tag();
+  }
+  return val_uf_find_leader(tag);
 }
 
 // Make this const so gcc can eliminate dead code to improve
