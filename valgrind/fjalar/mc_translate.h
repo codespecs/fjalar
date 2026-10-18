@@ -216,7 +216,7 @@ typedef
       /* READONLY: a table [0 .. #temps_in_original_bb-1] whose
          entries are True for the temporaries that only carry flags
          forward; see findFlagsCarryingTmps_DC.  NULL unless
-         --dyncomp-interactions is comparisons or units. */
+         --dyncomp-interactions is comparisons. */
       Bool* tmpCarriesFlags;
       /* MODIFIED: a table [0 .. 2 * #temps_in_original_bb-1] whose
          entries 2*t and 2*t+1 are the pending carry tags of t, a

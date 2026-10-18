@@ -397,14 +397,6 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2 )
 // if the flags are later used, then the instruction that uses them reads
 // them from the new thunk.  Under --dyncomp-interactions=comparisons, other
 // helpers merge no tags either.
-//
-// Under --dyncomp-interactions=units, the operands of a subtraction are
-// interactions, and the operands of a multiplication are not, so a helper
-// call that reads flags merges tags in the same cases.  If the flags are set
-// by an add, its operands were already merged when its result was computed.
-// A helper call that does not read flags, such as one that computes a sum of
-// absolute differences (psadbw) or a CRC, merges all of its arguments, as in
-// the default mode.
 
 // The flags-carrying analysis finds the temporaries whose values only carry
 // flags forward, from one flags thunk to the next.  For example, an inc or
@@ -714,12 +706,12 @@ IRAtom* subOperandTag_DC ( DCEnv* dce, IRAtom* ccOp, IRAtom* dep,
 }
 
 // Handles a call to cee, a helper that reads flags, with arguments exprvec,
-// under --dyncomp-interactions=comparisons or units.  If the call reads the
-// flags as the result of a comparison, then it merges the tags of the
-// operands of the subtraction that set them:  the tags of the thunk's
-// CC_DEP1 and CC_DEP2 arguments if the flags are the result of a
-// subtraction, or the pending carry tags if the call reads the carry flag
-// that an inc or dec preserved.
+// under --dyncomp-interactions=comparisons.  If the call reads the flags as
+// the result of a comparison, then it merges the tags of the operands of
+// the subtraction that set them:  the tags of the thunk's CC_DEP1 and
+// CC_DEP2 arguments if the flags are the result of a subtraction, or the
+// pending carry tags if the call reads the carry flag that an inc or dec
+// preserved.
 static
 void handleFlagsCCall_DC ( DCEnv* dce, IRAtom** exprvec, IRCallee* cee )
 {
@@ -745,8 +737,8 @@ void handleFlagsCCall_DC ( DCEnv* dce, IRAtom** exprvec, IRCallee* cee )
          readsCarry = True;
       }
    } else if (cee->addr == (void*)&amd64g_calculate_rflags_c) {
-      // An inc or dec reads the carry flag only to preserve it; see
-      // notePendingCarryTags_DC.
+      // An inc or dec reads the carry flag only to carry it forward; see
+      // findFlagsCarryingTmps_DC.
       if (resultCarriesFlags_DC(dce)) {
          return;
       }
@@ -787,8 +779,8 @@ IRExpr* tmpDefinition_DC ( DCEnv* dce, IRTemp tmp )
 // amd64g_calculate_rflags_c, narrows or masks to the width of the
 // operation.  For example, VEX's specialization for a subb compares the
 // thunk's CC_DEP1 and CC_DEP2 fields, each masked with 0xFF.  The tag of a
-// bitwise and is 0 in the modes that use the flags-carrying analysis, so
-// the tag of the masked value would not be the tag of the operand.
+// bitwise and is 0 under --dyncomp-interactions=comparisons, so the tag of
+// the masked value would not be the tag of the operand.
 static
 IRAtom* unmaskedCarryOperand_DC ( DCEnv* dce, IRAtom* atom )
 {
@@ -880,15 +872,6 @@ void notePendingCarryTags_DC ( DCEnv* dce, IRTemp tmp, IRExpr* data )
    dce->tmpPendingCarryTags[2 * tmp + 1] = tag2;
 }
 
-// Returns True if cee is a helper that computes flags from a flags thunk.
-static
-Bool readsFlags_DC ( IRCallee* cee )
-{
-   return cee->addr == (void*)&amd64g_calculate_condition
-          || cee->addr == (void*)&amd64g_calculate_rflags_c
-          || cee->addr == (void*)&amd64g_calculate_rflags_all;
-}
-
 static
 IRAtom* handleCCall_DC ( DCEnv* dce,
                          IRAtom** exprvec, IRCallee* cee )
@@ -907,8 +890,7 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
       return IRExpr_Const(IRConst_UWord(0));
    }
 
-   if (dyncomp_dataflow_comparisons_mode
-       || (dyncomp_units_mode && readsFlags_DC(cee))) {
+   if (dyncomp_dataflow_comparisons_mode) {
       handleFlagsCCall_DC(dce, exprvec, cee);
       return IRExpr_Const(IRConst_UWord(0));
    }
@@ -2319,11 +2301,11 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 
    // A comparison whose result only carries flags forward does not compare
    // values; see findFlagsCarryingTmps_DC.  (Its operands become the
-   // pending carry tags; see notePendingCarryTags_DC.)  The default mode
-   // does not check this, just as it treats every helper call as an
+   // pending carry tags; see notePendingCarryTags_DC.)  The other modes do
+   // not check this, just as they treat every helper call as an
    // interaction.
    if (helper == &MC_(helperc_MERGE_TAGS_RETURN_0)
-       && (dyncomp_dataflow_comparisons_mode || dyncomp_units_mode)
+       && dyncomp_dataflow_comparisons_mode
        && resultCarriesFlags_DC(dce)) {
       helper = 0;
       hname = 0;

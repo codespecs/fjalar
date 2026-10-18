@@ -13,7 +13,9 @@
 # superblock, after the optimization that precedes instrumentation, and
 # exits with status 0 if the IR is as the test requires.  For example, if
 # VEX specialized a helper call into an IR operation, then the test would
-# not exercise DynComp's handling of helper calls.
+# not exercise DynComp's handling of helper calls.  If <trace-check> is
+# empty, the driver neither traces nor checks the IR, and it lets VEX chase
+# jumps.
 
 set -e
 
@@ -44,12 +46,16 @@ gcc -gdwarf-4 -no-pie -O0 -o "${output_dir}/${test_name}" \
 
 # --vex-guest-chase=no ends each superblock at a jump, so that VEX cannot
 # specialize a helper call that reads the flags set in an earlier basic block.
+trace_options=()
+if [ -n "${trace_check}" ]; then
+  trace_options=(--vex-guest-chase=no --trace-flags=01000000 --trace-notbelow=0)
+fi
+
 decls="${output_dir}/${test_name}.decls"
 out="${output_dir}/${test_name}.out"
 status=0
-"${valgrind}" --tool=fjalar --vex-guest-chase=no --dyncomp "$@" \
+"${valgrind}" --tool=fjalar "${trace_options[@]}" --dyncomp "$@" \
               --decls-only --decls-file="${decls}" \
-              --trace-flags=01000000 --trace-notbelow=0 \
               "${output_dir}/${test_name}" > "${out}" 2>&1 || status=$?
 
 if [ "${status}" -ne 0 ]; then
@@ -58,7 +64,7 @@ if [ "${status}" -ne 0 ]; then
   exit 1
 fi
 
-if ! awk "${trace_check}" "${out}"; then
+if [ -n "${trace_check}" ] && ! awk "${trace_check}" "${out}"; then
   echo "${test_name}: FAILED: the IR does not call the expected helpers" >&2
   # Show the IR of the test program's own code, or, if no superblock is in
   # it, the first superblock headers, in case their format has changed.

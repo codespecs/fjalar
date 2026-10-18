@@ -8754,9 +8754,9 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
       dce.n_originalTmps = sb_out->tyenv->types_used;
       dce.hWordTy        = hWordTy;
       dce.sb_in          = sb_in;
-      // Only these modes use the flags-carrying analysis.
+      // Only this mode uses the flags-carrying analysis.
       dce.tmpCarriesFlags =
-         (dyncomp_dataflow_comparisons_mode || dyncomp_units_mode)
+         dyncomp_dataflow_comparisons_mode
          ? findFlagsCarryingTmps_DC(sb_in) : NULL;
       // VG_(calloc) asserts that the size is non-zero, and a superblock
       // may have no temporaries.
