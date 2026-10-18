@@ -60,6 +60,14 @@ fi
 
 if ! awk "${trace_check}" "${out}"; then
   echo "${test_name}: FAILED: the IR does not call the expected helpers" >&2
+  # Show the IR of the test program's own code, or, if no superblock is in
+  # it, the first superblock headers, in case their format has changed.
+  awk -v prog="${output_dir}/${test_name}+" \
+      '/^==== SB / { inProg = (index($0, prog) > 0)
+                     if (inProg) { found = 1 }
+                     else if (++headers <= 10) { others = others $0 "\n" } }
+       inProg { print }
+       END { if (!found) printf "%s", others }' "${out}" >&2
   exit 1
 fi
 
