@@ -245,6 +245,14 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
 // bypasses mkMergeTags_DC, would pass an operand's tag through.
 // expr2tags_LDle_DC must give a wide load the tag of one of its bytes,
 // not the tag 0 that mkMergeTags_DC returns in that mode.
+// expr2tags_Qop_DC and expr2tags_Triop_DC return 0 early in that mode
+// rather than reaching mkMergeTags_DC, so that an unhandled operator does
+// not panic.
+//
+// Outside the instrumentation, dtrace-output.c merges tags in every mode:
+// at each program point, it merges the tags of the elements of each array
+// or sequence that it outputs (see val_uf_union_tags_at_addr and
+// val_uf_union_tags_in_range).
 
 // Returns a clean call to helper, one of the MC_(helperc_MERGE_*TAGS)
 // functions, that merges the tags in args.
@@ -369,7 +377,8 @@ IRAtom* expr2tags_Qop_DC ( DCEnv* dce,
    }
 
    // Punt early!
-   if (dyncomp_dataflow_comparisons_mode) {
+   if (dyncomp_dataflow_only_mode ||
+       dyncomp_dataflow_comparisons_mode) {
       return IRExpr_Const(IRConst_UWord(0));
    }
 
@@ -456,7 +465,8 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
    }
 
    // Punt early!
-   if (dyncomp_dataflow_comparisons_mode) {
+   if (dyncomp_dataflow_only_mode ||
+       dyncomp_dataflow_comparisons_mode) {
       return IRExpr_Const(IRConst_UWord(0));
    }
 
