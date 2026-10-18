@@ -111,7 +111,8 @@ static void setHelperAnns_DC ( DCEnv* dce, IRDirty* di ) {
 }
 
 // Returns the offset in the guest state of the tag of the guest state at
-// offset, as in do_shadow_PUT_DC.
+// offset.  The tag shadow area starts at 3 * total_sizeB, and the tag of
+// offset starts 4 * offset bytes into it.
 static Int tagOffset_DC ( DCEnv* dce, Int offset )
 {
    return (4 * offset) + (3 * dce->layout->total_sizeB);
@@ -119,13 +120,15 @@ static Int tagOffset_DC ( DCEnv* dce, Int offset )
 
 // Sets *tag1 and *tag2 to the pending carry tags of atom, the value of a
 // CC_NDEP field; see notePendingCarryTags_DC.  If atom is NULL, or is a
-// temporary whose pending carry tags are unknown, they are 0.
+// temporary whose pending carry tags are unknown, they are 0.  They are
+// unknown for every temporary except under
+// --dyncomp-interactions=comparisons, the only mode that computes them.
 static void pendingCarryTags_DC ( DCEnv* dce, IRAtom* atom,
                                   IRAtom** tag1, IRAtom** tag2 )
 {
    *tag1 = IRExpr_Const(IRConst_UWord(0));
    *tag2 = IRExpr_Const(IRConst_UWord(0));
-   if (atom && atom->tag == Iex_RdTmp
+   if (atom && atom->tag == Iex_RdTmp && dce->tmpPendingCarryTags
        && dce->tmpPendingCarryTags[2 * atom->Iex.RdTmp.tmp]) {
       *tag1 = dce->tmpPendingCarryTags[2 * atom->Iex.RdTmp.tmp];
       *tag2 = dce->tmpPendingCarryTags[2 * atom->Iex.RdTmp.tmp + 1];
@@ -233,7 +236,7 @@ void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
    //      which requires (4 * offset) + (2 * base size)
    //printf("PUT_DC offset: %d, %d, %d\n", offset, dce->layout->total_sizeB, ((4*offset)+(3*dce->layout->total_sizeB)));
    stmt_DC('V',  dce,
-         IRStmt_Put( (4 * offset) + (3 * dce->layout->total_sizeB), vatom ) );
+         IRStmt_Put( tagOffset_DC(dce, offset), vatom ) );
 }
 
 // A PUTI stores a value (dynamically indexed) into the guest state
@@ -259,7 +262,7 @@ void do_shadow_PUTI_DC ( DCEnv* dce, IRPutI *puti)
    // PG - Remember the new layout in ThreadArchState
    //      which requires (4 * offset) + (2 * base size)
    new_descr
-      = mkIRRegArray( (4 * descr->base) + (3 * dce->layout->total_sizeB),
+      = mkIRRegArray( tagOffset_DC(dce, descr->base),
                    Ity_Word, descr->nElems); // Tags are word-sized
 
    stmt_DC( 'V', dce, IRStmt_PutI(mkIRPutI(new_descr, ix, bias, vatom)));
@@ -307,7 +310,7 @@ IRExpr* shadow_GET_DC ( DCEnv* dce, Int offset, IRType ty )
    //       + 8 * sizeof(ULong))));
 
    //printf("GET_DC offset: %d, %d, %d\n", offset, dce->layout->total_sizeB, ((4*offset)+(3*dce->layout->total_sizeB)));
-   return IRExpr_Get( (4 * offset) + (3 * dce->layout->total_sizeB),
+   return IRExpr_Get( tagOffset_DC(dce, offset),
                       Ity_Word ); // Tags are word-sized
 }
 
@@ -323,7 +326,7 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
    // PG - Remember the new layout in ThreadArchState
    //      which requires (4 * offset) + (2 * base size)
    new_descr
-      = mkIRRegArray( (4 * descr->base) + (3 * dce->layout->total_sizeB),
+      = mkIRRegArray( tagOffset_DC(dce, descr->base),
                    Ity_Word, descr->nElems); // Tags are word-sized
 
    return IRExpr_GetI( new_descr, ix, bias );
@@ -346,7 +349,9 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
 // not the tag 0 that mkMergeTags_DC returns in that mode.
 // expr2tags_Qop_DC and expr2tags_Triop_DC return 0 early in that mode
 // rather than reaching mkMergeTags_DC, so that an unhandled operator does
-// not panic.
+// not panic.  handleCCall_DC returns 0 early in that mode rather than
+// reaching stmtMergeTagsReturn0_DC, so that it does not compute the
+// arguments' tags.
 //
 // Outside the instrumentation, dtrace-output.c merges tags in every mode:
 // at each program point, it merges the tags of the elements of each array
@@ -430,6 +435,7 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2 )
 // another.  Merging every argument with a fixed argument would not
 // work:  if the fixed argument's tag were WEAK_FRESH_TAG, no merge
 // would have any effect.
+//
 // Under --dyncomp-interactions=comparisons, a helper call is an
 // interaction only if it is a comparison:  that is, if it uses flags that
 // a subtraction (a cmp, sub, or sbb instruction) set; see
@@ -719,13 +725,15 @@ Bool* findFlagsCarryingTmps_DC ( const IRSB* sb_in )
 }
 
 // Returns True if the statement being instrumented assigns a value to a
-// temporary that carries flags.
+// temporary that carries flags.  Returns False if the flags-carrying
+// analysis has not been run, which is the case except under
+// --dyncomp-interactions=comparisons.
 static
 Bool resultCarriesFlags_DC ( DCEnv* dce )
 {
    IRStmt* st = dce->sb_in->stmts[dce->stmtIndex];
-   tl_assert(dce->tmpCarriesFlags);
-   return st->tag == Ist_WrTmp && dce->tmpCarriesFlags[st->Ist.WrTmp.tmp];
+   return dce->tmpCarriesFlags
+          && st->tag == Ist_WrTmp && dce->tmpCarriesFlags[st->Ist.WrTmp.tmp];
 }
 
 // Returns the tag of arg, an argument of a helper that reads flags, or 0 if
@@ -2374,9 +2382,9 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 
    // A comparison whose result only carries flags forward does not compare
    // values; see findFlagsCarryingTmps_DC.  (Its operands become the
-   // pending carry tags; see notePendingCarryTags_DC.)  The other modes do
-   // not check this, just as they treat every helper call as an
-   // interaction.
+   // pending carry tags; see notePendingCarryTags_DC.)  Only
+   // --dyncomp-interactions=comparisons runs the flags-carrying analysis,
+   // so the other modes do not check this.
    if (helper == &MC_(helperc_MERGE_TAGS_RETURN_0)
        && dyncomp_dataflow_comparisons_mode
        && resultCarriesFlags_DC(dce)) {
