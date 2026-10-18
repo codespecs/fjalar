@@ -308,8 +308,9 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
 //    by mkMergeTags_DC, by stmtMergeTagsReturn0_DC, or by handleCCall_DC,
 //    which returns early in that mode.
 //  * At run time, a load merges the tags of the bytes it reads.  In
-//    dyncomp_dataflow_only_mode, expr2tags_LDle_DC instead calls
-//    MC_(helperc_LOAD_TAG_N), which merges nothing.
+//    dyncomp_dataflow_only_mode (and dyncomp_dataflow_comparisons_mode),
+//    expr2tags_LDle_DC instead calls MC_(helperc_LOAD_TAG_N), which
+//    merges nothing.
 // expr2tags_Binop_DC and expr2tags_LDle_DC also test
 // dyncomp_dataflow_only_mode.  expr2tags_Binop_DC must give every
 // result tag 0, even where its constant-operand shortcut, which
@@ -429,9 +430,10 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2,
 // amd64g_calculate_rflags_c) and stores it in the CC_NDEP field of its own
 // flags thunk, because it does not change the carry flag.  That read is
 // treated like any other, so a sub followed by an inc makes the operands of
-// the sub comparable.  Distinguishing it would be pointless:  when the
-// sub and the inc are in the same superblock, VEX replaces the read by a
-// comparison of the operands of the sub, which expr2tags_Binop_DC merges.
+// the sub comparable, although nothing compares them.  (When the sub and the
+// inc are in the same superblock, VEX replaces the read by a comparison of
+// the operands of the sub, which expr2tags_Binop_DC merges, with the same
+// result.)
 //
 // amd64g_calculate_rflags_all is used mostly by instructions that preserve
 // or copy flags, such as shifts, bt, and pushf.  These calls merge no tags;
@@ -2424,22 +2426,14 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
    IRTemp   addrTag;
    IRDirty  *diAddr;
 
-   /* Compute the tag for the effective address, and throw the result
-      away, but anchor it to a dirty call so that Valgrind doesn't
-      optimize the merges away. */
    tl_assert(addr);
    tl_assert(isOriginalAtom_DC(dce, addr));
-   vaddr = expr2tags_DC(dce, addr);
-   tl_assert(isShadowAtom_DC(dce, vaddr));
-   addrTag = newTemp(dce->mce, Ity_Word, DC);
-   diAddr = unsafeIRDirty_1_N(addrTag, 1, "MC_(helperc_TAG_NOP)",
-			      &MC_(helperc_TAG_NOP), mkIRExprVec_1(vaddr));
-   setHelperAnns_DC(dce, diAddr);
-   stmt_DC('V', dce, IRStmt_Dirty(diAddr));
 
-   // In this mode, NOTHING is an interaction, so a load of any size
-   // does not merge the tags of the bytes it reads.
-   if (dyncomp_dataflow_only_mode) {
+   // In these modes, a load is not an interaction, so a load of any size
+   // does not merge the tags of the bytes it reads.  Returning before
+   // the code below avoids computing the address's tag, which has no
+   // merges to anchor.
+   if (dyncomp_dataflow_only_mode || dyncomp_dataflow_comparisons_mode) {
       IRTemp   datatag = newTemp(dce->mce, Ity_Word, DC);
       IRDirty* di = unsafeIRDirty_1_N( datatag,
                                        2/*regparms*/,
@@ -2451,6 +2445,17 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
       stmt_DC('V',  dce, IRStmt_Dirty(di) );
       return mkexpr(datatag);
    }
+
+   /* Compute the tag for the effective address, and throw the result
+      away, but anchor it to a dirty call so that Valgrind doesn't
+      optimize the merges away. */
+   vaddr = expr2tags_DC(dce, addr);
+   tl_assert(isShadowAtom_DC(dce, vaddr));
+   addrTag = newTemp(dce->mce, Ity_Word, DC);
+   diAddr = unsafeIRDirty_1_N(addrTag, 1, "MC_(helperc_TAG_NOP)",
+			      &MC_(helperc_TAG_NOP), mkIRExprVec_1(vaddr));
+   setHelperAnns_DC(dce, diAddr);
+   stmt_DC('V', dce, IRStmt_Dirty(diAddr));
 
    switch (shadowTypeV(ty)) {
       case Ity_I8:
