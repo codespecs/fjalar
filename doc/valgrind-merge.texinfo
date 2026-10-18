@@ -561,10 +561,10 @@ identical due to Valgrind improvements or the addition of new test cases.
 
 To run the @command{regtest} verification tests, build a copy of
 @file{valgrind-new}.  Do not build in @file{valgrind-new} itself, which
-must stay a pristine clone: it becomes @file{valgrind-old} for the next
-merge, and @command{generate-patch-files.sh} diffs it, so if that script
-is re-run, any build products there would end up in @file{coregrind.patch}
-and then be added to Fjalar.
+must stay a pristine clone: @command{generate-patch-files.sh} diffs it
+(including if you re-run that script during this merge), and it becomes
+@file{valgrind-old} for the next merge.  Build products must not end up
+in the patch files, and from there in Fjalar.
 
 @example
 cd $INV
