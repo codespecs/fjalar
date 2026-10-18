@@ -259,8 +259,7 @@ Memcheck and DynComp depend tightly on Valgrind core:
    (`mdernst/daikon-ubuntu-jdk11-plus`, `mdernst/daikon-rockylinux-jdk25-plus`)
    satisfy them.
 
-9. **Test.**  Run these from `$INV/fjalar` (`cd $INV/fjalar`; step 6 left
-   the shell in `valgrind/fjalar`).
+9. **Test.**  Run these from `$INV/fjalar` (`cd $INV/fjalar`).
    - `./check-regtest.sh`.  The expected failures will change, because
      3.27.1 adds, removes, and fixes tests.  For each unexpected failure:
      if it is also in step 3's `regtest-upstream-3.27.1.txt`, it is an
