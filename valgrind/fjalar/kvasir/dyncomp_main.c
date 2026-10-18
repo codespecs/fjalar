@@ -475,12 +475,14 @@ UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
 }
 
 // Returns the tag of the value loaded from the range [a, a+len), in
-// dyncomp_dataflow_only_mode.  In that mode, nothing is an interaction,
-// so unlike the other MC_(helperc_LOAD_TAG_*) functions, this does not
-// merge the tags of the addresses in the range.  It returns the leader
-// of the first non-zero tag in the range; if that tag is
-// WEAK_FRESH_TAG, it returns a fresh tag, as MC_(helperc_LOAD_TAG_4)
-// does.
+// dyncomp_dataflow_only_mode and dyncomp_dataflow_comparisons_mode.  In
+// those modes, a load is not an interaction, so unlike the other
+// MC_(helperc_LOAD_TAG_*) functions, this does not merge the tags of the
+// addresses in the range.  It returns the leader of the first non-zero
+// tag in the range; if that tag is WEAK_FRESH_TAG, it returns a fresh
+// tag, for a load of any size.  (Of the other functions, only
+// MC_(helperc_LOAD_TAG_4) returns a fresh tag, and only when the tag of
+// its first byte is WEAK_FRESH_TAG.)
 VG_REGPARM(2)
 UInt MC_(helperc_LOAD_TAG_N) ( Addr a, UWord len ) {
   UInt tag;

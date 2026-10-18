@@ -2164,11 +2164,11 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
    tl_assert(addr);
    tl_assert(isOriginalAtom_DC(dce, addr));
 
-   // In this mode, NOTHING is an interaction, so a load of any size
+   // In these modes, a load is not an interaction, so a load of any size
    // does not merge the tags of the bytes it reads.  Returning before
    // the code below avoids computing the address's tag, which has no
    // merges to anchor.
-   if (dyncomp_dataflow_only_mode) {
+   if (dyncomp_dataflow_only_mode || dyncomp_dataflow_comparisons_mode) {
       IRTemp   datatag = newTemp(dce->mce, Ity_Word, DC);
       IRDirty* di = unsafeIRDirty_1_N( datatag,
                                        2/*regparms*/,
