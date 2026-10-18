@@ -375,8 +375,8 @@ Bool isFloatOrVectorType_DC ( IRType ty )
    Rounding modes, shift amounts, and lane indices do not interact with
    anything.  The other operands are "data operands".
     * If the result has type I1 and there are 2 data operands, the
-      operation is a comparison:  the data operands' tags are merged, and
-      the result has no tag.
+      operation is a comparison:  the data operands' tags are merged (as
+      by mergeTagsReturn0_DC), and the result has no tag.
     * Otherwise, the data operands' tags are merged and the result gets
       the merged tag.  In units and comparisons modes, the operation is
       instead treated as a non-interaction, because it might be (for
@@ -385,7 +385,7 @@ Bool isFloatOrVectorType_DC ( IRType ty )
 
    atoms and vatoms hold the nargs operands and their tags. */
 static
-IRAtom* approximate_unhandled_op_DC ( IROp op, Int nargs,
+IRAtom* approximate_unhandled_op_DC ( DCEnv* dce, IROp op, Int nargs,
                                       IRAtom** atoms, IRAtom** vatoms,
                                       const HChar* where )
 {
@@ -466,14 +466,10 @@ IRAtom* approximate_unhandled_op_DC ( IROp op, Int nargs,
    }
 
    if (isComparison) {
-      if (nData < 2) {
-         return IRExpr_Const(IRConst_UWord(0));
+      if (nData == 2) {
+         mergeTagsReturn0_DC(dce, data[0], data[1]);
       }
-      return mkIRExprCCall (Ity_Word,
-                            2 /*Int regparms*/,
-                            "MC_(helperc_MERGE_TAGS_RETURN_0)",
-                            &MC_(helperc_MERGE_TAGS_RETURN_0),
-                            mkIRExprVec_2( data[0], data[1] ));
+      return IRExpr_Const(IRConst_UWord(0));
    }
 
    // Merge the data operands' tags and return the merged tag.
@@ -594,7 +590,7 @@ IRAtom* expr2tags_Qop_DC ( DCEnv* dce,
          {
             IRAtom* atoms[4]  = { atom1, atom2, atom3, atom4 };
             IRAtom* vatoms[4] = { vatom1, vatom2, vatom3, vatom4 };
-            return approximate_unhandled_op_DC( op, 4, atoms, vatoms,
+            return approximate_unhandled_op_DC( dce, op, 4, atoms, vatoms,
                                                 "dyncomp:expr2tags_Qop_DC" );
          }
    }
@@ -749,7 +745,7 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
          {
             IRAtom* atoms[3]  = { atom1, atom2, atom3 };
             IRAtom* vatoms[3] = { vatom1, vatom2, vatom3 };
-            return approximate_unhandled_op_DC( op, 3, atoms, vatoms,
+            return approximate_unhandled_op_DC( dce, op, 3, atoms, vatoms,
                                                 "dyncomp:expr2tags_Triop_DC" );
          }
    }
@@ -1860,7 +1856,7 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       {
          IRAtom* atoms[2]  = { atom1, atom2 };
          IRAtom* vatoms[2] = { vatom1, vatom2 };
-         return approximate_unhandled_op_DC( op, 2, atoms, vatoms,
+         return approximate_unhandled_op_DC( dce, op, 2, atoms, vatoms,
                                              "dyncomp:expr2tags_Binop_DC" );
       }
    }
