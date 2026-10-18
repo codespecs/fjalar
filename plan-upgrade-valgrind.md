@@ -68,12 +68,12 @@ it completely (merged, CI green) before starting this one.  That plan's
    error message gives the `git reset`/`git clean` command that makes a tree
    pristine again.  Build a copy instead:
    ```sh
-   cp -a valgrind-new valgrind-new-build && cd valgrind-new-build
+   rm -rf valgrind-new-build
+   git clone -q valgrind-new valgrind-new-build && cd valgrind-new-build
    ./autogen.sh && ./configure --prefix=$(pwd)/inst
    make all install && make regtest > test.log 2>&1
    ```
-   Save the summary at the end of `test.log` for comparison.  (Alternatively,
-   as the doc does, run this in `valgrind-new` only after steps 4-7.)
+   Save the summary at the end of `test.log` for comparison.
 
 4. **Create the diffs.** Run `$INV/fjalar/generate-patch-files.sh`, producing
    `coregrind.patch`, `memcheck.patch`, `coregrind-Fjalar.diff`,
@@ -147,8 +147,8 @@ it completely (merged, CI green) before starting this one.  That plan's
 10. **Finish.**
     - Update first line of `valgrind/REVISION`
       (`# Valgrind version 3.27.1, released ...`).
-    - Add names of new Valgrind test drivers to `.gitignore`
-      ("Ignore generated test drivers" section).
+    - Add names of new Valgrind test programs to `.gitignore`, in the
+      per-tool sections (such as `# /memcheck/`).
     - `make git-update > git.script`, review, run.
     - `git add -u -- valgrind`.  This stages the removal of the files that
       step 2 removed with `rm` and that are in neither `valgrind-old` nor
@@ -157,8 +157,7 @@ it completely (merged, CI green) before starting this one.  That plan's
       first command in the doc section of step 2 prints nothing.
     - Document user-visible changes in `$INV/daikon/doc/CHANGELOG.md`.
     - Update `doc/valgrind-merge.texinfo`: regtest baseline output, dates/OS
-      versions, building the baseline in a copy (step 3), and any new
-      pitfalls.
+      versions, and any new pitfalls.
     - Commit as one PR; save the patch/diff files and `valgrind-new` (it
       becomes `valgrind-old` for the next merge, after
       `git -C valgrind-old reset --hard && git -C valgrind-old clean -fdx`;
