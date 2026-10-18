@@ -100,6 +100,81 @@ int subSetbInc(int a, int b, int c) {
   return below;
 }
 
+// subIncJnz() is like subThenIncSameBlock(), but a jnz instruction in the
+// same basic block reads the zero flag of the inc.  VEX translates the jnz
+// into a call to amd64g_calculate_condition whose CC_NDEP argument is the
+// carry flag of the sub, which the inc preserved.  The jnz does not read the
+// carry flag, so under --dyncomp-interactions=comparisons, DynComp should
+// not make a and b comparable.
+int subIncJnz(int a, int b, int c) {
+  __asm__ volatile ("subl %2, %0\n\t"
+                    "incl %1\n\t"
+                    "jnz 1f\n"
+                    "1:"
+                    : "+r" (a), "+r" (c) : "r" (b) : "cc");
+  return c;
+}
+
+// subIncSetb() subtracts b from a, an inc instruction in the same basic block
+// preserves the carry flag of the subtraction (via a CmpLT32U), and then a
+// setb instruction in a different basic block reads that carry flag.  The setb uses the carry flag as the result of
+// a comparison, so under --dyncomp-interactions=comparisons, DynComp should
+// make a and b comparable.
+int subIncSetb(int a, int b, int c) {
+  unsigned char below;
+  __asm__ volatile ("subl %3, %1\n\t"
+                    "incl %2\n\t"
+                    "jmp 1f\n"
+                    "1:\tsetb %0"
+                    : "=q" (below), "+r" (a), "+r" (c) : "r" (b) : "cc");
+  return below;
+}
+
+// subThenIncSetb() is like subIncSetb(), but the sub, the inc, and the setb
+// are each in a different basic block, so the inc reads the carry flag of
+// the subtraction via amd64g_calculate_rflags_c.  Under
+// --dyncomp-interactions=comparisons, DynComp should make a and b comparable.
+int subThenIncSetb(int a, int b, int c) {
+  unsigned char below;
+  __asm__ volatile ("subl %3, %1\n\t"
+                    "jmp 1f\n"
+                    "1:\tincl %2\n\t"
+                    "jmp 2f\n"
+                    "2:\tsetb %0"
+                    : "=q" (below), "+r" (a), "+r" (c) : "r" (b) : "cc");
+  return below;
+}
+
+// subIncSetbSameBlock() is like subIncSetb(), but the setb is in the same
+// basic block as the sub and the inc.  Under
+// --dyncomp-interactions=comparisons, DynComp should make a and b comparable.
+int subIncSetbSameBlock(int a, int b, int c) {
+  unsigned char below;
+  __asm__ volatile ("subl %3, %1\n\t"
+                    "incl %2\n\t"
+                    "setb %0"
+                    : "=q" (below), "+r" (a), "+r" (c) : "r" (b) : "cc");
+  return below;
+}
+
+// lessWide() compares the 128-bit values (aHi:aLo) and (bHi:bLo), as GCC
+// compiles a comparison of __int128 values:  a cmp of the low words, an sbb
+// of the high words, and a setl that reads the flags of the sbb.  (Each
+// instruction is in its own basic block, as in lessMask() and less().)
+// Under --dyncomp-interactions=comparisons, DynComp should make aLo and bLo
+// comparable, and aHi and bHi comparable.
+int lessWide(long aLo, long aHi, long bLo, long bHi) {
+  unsigned char result;
+  __asm__ volatile ("cmpq %3, %1\n\t"
+                    "jmp 1f\n"
+                    "1:\tsbbq %4, %2\n\t"
+                    "jmp 2f\n"
+                    "2:\tsetl %0"
+                    : "=q" (result), "+r" (aLo), "+r" (aHi)
+                    : "r" (bLo), "r" (bHi) : "cc");
+  return result;
+}
+
 // subThenLahf() subtracts b from a with a sub instruction, and then a lahf
 // instruction in a different basic block copies the flags of the subtraction
 // (via amd64g_calculate_rflags_all) into a register.  Copying flags is not a
@@ -162,6 +237,11 @@ int main(void) {
   subThenLahf(18, 19);
   subThenIncSameBlock(20, 21, 22);
   subSetbInc(23, 24, 25);
+  subIncJnz(26, 27, 28);
+  subIncSetb(29, 30, 31);
+  subThenIncSetb(39, 40, 41);
+  subIncSetbSameBlock(32, 33, 34);
+  lessWide(35, 36, 37, 38);
   copyLongs(11, 12);
   copyInts(13, 14);
   return 0;

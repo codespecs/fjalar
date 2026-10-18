@@ -1256,6 +1256,19 @@ void garbage_collect_tags() {
     }
   }
 
+  // The pending carry tags, which belong with the guest state's CC_NDEP
+  // field; see MC_(helperc_PRESERVE_CARRY).
+  if (pendingCarryTag1) {
+    reassign_tag(&pendingCarryTag1,
+                 val_uf_find_leader(pendingCarryTag1),
+                 &newTagNumber);
+  }
+  if (pendingCarryTag2) {
+    reassign_tag(&pendingCarryTag2,
+                 val_uf_find_leader(pendingCarryTag2),
+                 &newTagNumber);
+  }
+
   // Now that all tags in use have been re-assigned to newer
   // (hopefully smaller) values as denoted by the running counter
   // newTagNumber, we need to initialize all uf_object entries in the

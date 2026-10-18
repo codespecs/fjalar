@@ -285,7 +285,7 @@ extern VG_REGPARM(1) void MC_(helperc_STORE_TAG_8) ( Addr, UInt );
 extern VG_REGPARM(2) void MC_(helperc_STORE_TAG_4) ( Addr, UInt );
 extern VG_REGPARM(2) void MC_(helperc_STORE_TAG_2) ( Addr, UInt );
 extern VG_REGPARM(2) void MC_(helperc_STORE_TAG_1) ( Addr, UInt );
-extern VG_REGPARM(3) void MC_(helperc_COPY_TAGS) ( Addr, Addr, UWord );
+extern VG_REGPARM(3) void MC_(helperc_COPY_TAGS) ( Addr, Addr, UWord, UInt );
 
 extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_8) ( Addr );
 extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_4) ( Addr );
@@ -296,8 +296,13 @@ extern VG_REGPARM(1) UInt MC_(helperc_CREATE_TAG) ( Addr static_id );
 
 extern VG_REGPARM(2) UInt MC_(helperc_MERGE_TAGS) ( UInt, UInt );
 extern VG_REGPARM(2) UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt, UInt );
-extern VG_REGPARM(3) UInt MC_(helperc_MERGE_TAGS_RETURN_0_IF_SUB) ( UWord, UInt, UInt );
+extern VG_REGPARM(2) void MC_(helperc_SET_PENDING_CARRY) ( UInt, UInt );
+extern VG_REGPARM(3) void MC_(helperc_PRESERVE_CARRY) ( UWord, UInt, UInt );
+extern VG_REGPARM(3) void MC_(helperc_MERGE_TAGS_IF_COMPARISON) ( UWord, UWord, UInt, UInt );
 Bool cc_op_is_sub(ULong cc_op);
+Bool cc_op_preserves_carry(ULong cc_op);
+extern UInt pendingCarryTag1;
+extern UInt pendingCarryTag2;
 
 extern VG_REGPARM(3) UInt MC_(helperc_MERGE_3_TAGS) ( UInt, UInt, UInt );
 extern VG_REGPARM(3) UInt MC_(helperc_MERGE_4_TAGS) ( UInt, UInt, UInt, UInt );

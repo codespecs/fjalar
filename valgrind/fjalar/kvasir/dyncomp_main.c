@@ -328,20 +328,32 @@ void MC_(helperc_STORE_TAG_1) ( Addr a, UInt tag ) {
 
 // Copies the tags of the len bytes at src to the len bytes at dst, which
 // may overlap them.  This stores a value that was loaded from src, without
-// giving all of its bytes one tag; see do_shadow_STle_DC.
+// giving all of its bytes one tag; see do_shadow_STle_DC.  tag is the tag
+// of the stored value.  Like MC_(helperc_STORE_TAG_8), this writes the
+// leader of each tag, and it never writes WEAK_FRESH_TAG:  it replaces a
+// source byte's WEAK_FRESH_TAG by tag, or by a fresh tag if tag is
+// WEAK_FRESH_TAG.  For example, MC_(helperc_LOAD_TAG_4) gives a value
+// whose first byte's tag is WEAK_FRESH_TAG a fresh tag, and that fresh tag
+// (which may have been merged with other tags since) is the one stored.
 VG_REGPARM(3)
-void MC_(helperc_COPY_TAGS) ( Addr dst, Addr src, UWord len ) {
+void MC_(helperc_COPY_TAGS) ( Addr dst, Addr src, UWord len, UInt tag ) {
   UInt tags[MAX_COPY_TAGS_LEN];
   UWord i;
 
   tl_assert(len <= MAX_COPY_TAGS_LEN);
-  DYNCOMP_TPRINTF("[DynComp] COPY_TAGS: %p <- %p, %lu bytes\n",
-                  (void *)dst, (void *)src, len);
+  DYNCOMP_TPRINTF("[DynComp] COPY_TAGS: %p <- %p, %lu bytes, tag %u\n",
+                  (void *)dst, (void *)src, len, tag);
   for (i = 0; i < len; i++) {
     tags[i] = get_tag(src + i);
+    if (WEAK_FRESH_TAG == tags[i]) {
+      if (WEAK_FRESH_TAG == tag) {
+        tag = grab_fresh_tag();
+      }
+      tags[i] = tag;
+    }
   }
   for (i = 0; i < len; i++) {
-    set_tag(dst + i, tags[i]);
+    set_tag(dst + i, val_uf_find_leader(tags[i]));
   }
 }
 
@@ -633,21 +645,68 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
 }
 
 // Returns True if cc_op, the CC_OP field of the flags thunk, says that the
-// flags are the result of a subtraction (a cmp or sub instruction), which
-// is how amd64 compares values.
+// flags are the result of a subtraction (a cmp, sub, or sbb instruction),
+// which is how amd64 compares values.  An sbb instruction compares the
+// high words of multi-word values, such as __int128 values.
 Bool cc_op_is_sub(ULong cc_op) {
-  return AMD64G_CC_OP_SUBB <= cc_op && cc_op <= AMD64G_CC_OP_SUBQ;
+  return (AMD64G_CC_OP_SUBB <= cc_op && cc_op <= AMD64G_CC_OP_SUBQ)
+         || (AMD64G_CC_OP_SBBB <= cc_op && cc_op <= AMD64G_CC_OP_SBBQ);
 }
 
-// Like MC_(helperc_MERGE_TAGS_RETURN_0), but merges tag1 and tag2 only if
-// cc_op_is_sub(cc_op).  tag1 and tag2 are the tags of the thunk's CC_DEP1
-// and CC_DEP2 fields, which for a subtraction are its operands.
+// Returns True if cc_op, the CC_OP field of the flags thunk, says that the
+// flags are the result of an inc or dec instruction.  Such an instruction
+// does not change the carry flag:  its thunk's CC_NDEP field holds the carry
+// flag of the previous thunk.
+Bool cc_op_preserves_carry(ULong cc_op) {
+  return AMD64G_CC_OP_INCB <= cc_op && cc_op <= AMD64G_CC_OP_DECQ;
+}
+
+// The tags of the operands of the subtraction whose carry flag inc or dec
+// instructions have preserved in the CC_NDEP field of the current flags
+// thunk, or 0 if that carry flag is not the result of a subtraction.  When
+// an instruction later reads that carry flag as the result of a comparison,
+// MC_(helperc_MERGE_TAGS_IF_COMPARISON) merges these tags.  There is one
+// pair for all threads, so a thread switch between an inc and the read of
+// its carry flag may merge the wrong tags.
+UInt pendingCarryTag1 = 0;
+UInt pendingCarryTag2 = 0;
+
+// Records that the carry flag that an inc or dec instruction is preserving
+// is the result of a subtraction whose operands have tags tag1 and tag2.
+VG_REGPARM(2)
+void MC_(helperc_SET_PENDING_CARRY) ( UInt tag1, UInt tag2 ) {
+  pendingCarryTag1 = tag1;
+  pendingCarryTag2 = tag2;
+}
+
+// Called when an inc or dec instruction reads the carry flag of the flags
+// thunk in order to preserve it; tag1 and tag2 are the tags of the thunk's
+// CC_DEP1 and CC_DEP2 fields.  Updates the pending carry tags.
 VG_REGPARM(3)
-UInt MC_(helperc_MERGE_TAGS_RETURN_0_IF_SUB) ( UWord cc_op, UInt tag1, UInt tag2 ) {
+void MC_(helperc_PRESERVE_CARRY) ( UWord cc_op, UInt tag1, UInt tag2 ) {
   if (cc_op_is_sub(cc_op)) {
-    return MC_(helperc_MERGE_TAGS_RETURN_0)(tag1, tag2);
+    MC_(helperc_SET_PENDING_CARRY)(tag1, tag2);
+  } else if (!cc_op_preserves_carry(cc_op)) {
+    MC_(helperc_SET_PENDING_CARRY)(0, 0);
   }
-  return 0;
+  // Otherwise, the thunk's carry flag is preserved from an earlier thunk,
+  // and the pending carry tags already describe it.
+}
+
+// Called when an instruction reads the flags of the flags thunk as the
+// result of a comparison; tag1 and tag2 are the tags of the thunk's CC_DEP1
+// and CC_DEP2 fields, which for a subtraction are its operands.  If the flags
+// are the result of a subtraction, merges tag1 and tag2.  If reads_carry is
+// non-zero and the carry flag was preserved by inc or dec instructions,
+// merges the pending carry tags.
+VG_REGPARM(3)
+void MC_(helperc_MERGE_TAGS_IF_COMPARISON) ( UWord cc_op, UWord reads_carry,
+                                             UInt tag1, UInt tag2 ) {
+  if (cc_op_is_sub(cc_op)) {
+    MC_(helperc_MERGE_TAGS_RETURN_0)(tag1, tag2);
+  } else if (reads_carry && cc_op_preserves_carry(cc_op)) {
+    MC_(helperc_MERGE_TAGS_RETURN_0)(pendingCarryTag1, pendingCarryTag2);
+  }
 }
 
 /*------------------------------------------------------------------*/

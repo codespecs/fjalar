@@ -9,8 +9,13 @@
 # (adc).  The operands of a sub should not be comparable when its flags are
 # preserved by an inc, whether via amd64g_calculate_rflags_c or, in the same
 # basic block, via a CmpLT32U, or copied by a lahf via
-# amd64g_calculate_rflags_all.  But they should be comparable when a setb
-# reads the carry flag in the same basic block as an inc preserves it.  The
+# amd64g_calculate_rflags_all, or when a jnz reads the zero flag of the inc.
+# But they should be comparable when a setb reads the carry flag in the same
+# basic block as an inc preserves it, or when a setb reads the carry flag
+# that an inc preserved, whether the inc read it via a CmpLT32U or via
+# amd64g_calculate_rflags_c, in the same basic block or a later one.  The high
+# words of a 128-bit comparison should be comparable when a setl reads the
+# flags of an sbb.  The
 # two halves of a 128-bit load should not be comparable, nor should the two
 # fields of a struct copied by a 64-bit load, and each field of the copy
 # should be comparable to the field it was copied from.
@@ -20,13 +25,24 @@ exec "$(dirname "$0")/dyncomp-comparability-test.sh" \
      dyncomp-interactions-comparisons \
      '/^==== SB / { fn = $0 }
       /g_calculate_condition\[/ { if (fn ~ / less(\+[0-9]+)? /) less = 1
-                                  if (fn ~ / carry(\+[0-9]+)? /) carry = 1 }
+                                  if (fn ~ / carry(\+[0-9]+)? /) carry = 1
+                                  if (fn ~ / subIncJnz(\+[0-9]+)? /) jnz = 1
+                                  if (fn ~ / subIncSetb(\+[0-9]+)? /) incSetb = 1
+                                  if (fn ~ / subThenIncSetb(\+[0-9]+)? /) thenIncSetb = 1
+                                  if (fn ~ / subIncSetbSameBlock(\+[0-9]+)? /) incSetbSame = 1
+                                  if (fn ~ / lessWide(\+[0-9]+)? /) wide = 1 }
       /g_calculate_rflags_c\[/ { if (fn ~ / lessMask(\+[0-9]+)? /) mask = 1
                                  if (fn ~ / addWithCarry(\+[0-9]+)? /) adc = 1
-                                 if (fn ~ / subThenInc(\+[0-9]+)? /) inc = 1 }
+                                 if (fn ~ / subThenInc(\+[0-9]+)? /) inc = 1
+                                 if (fn ~ / subThenIncSetb(\+[0-9]+)? /) thenIncSetbC = 1 }
       /g_calculate_rflags_all\[/ { if (fn ~ / subThenLahf(\+[0-9]+)? /) lahf = 1 }
       /CmpLT32U\(/ { if (fn ~ / subThenIncSameBlock(\+[0-9]+)? /) incSame = 1
-                     if (fn ~ / subSetbInc(\+[0-9]+)? /) setbInc = 1 }
+                     if (fn ~ / subSetbInc(\+[0-9]+)? /) setbInc = 1
+                     if (fn ~ / subIncJnz(\+[0-9]+)? /) jnzC = 1
+                     if (fn ~ / subIncSetb(\+[0-9]+)? /) incSetbC = 1
+                     if (fn ~ / subIncSetbSameBlock(\+[0-9]+)? /) incSetbSameC = 1 }
       END { exit !(less && carry && mask && adc && inc && lahf && incSame &&
-                   setbInc) }' \
+                   setbInc && jnz && jnzC && incSetb && incSetbC &&
+                   thenIncSetb && thenIncSetbC && incSetbSame &&
+                   incSetbSameC && wide) }' \
      --dyncomp-interactions=comparisons
