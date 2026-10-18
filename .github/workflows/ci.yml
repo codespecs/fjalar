@@ -30,9 +30,7 @@ jobs:
   # The JDK version doesn't matter, but these Docker images happen to use
   # different underlying OS versions.
 
-  # These jobs run ./test.sh, which builds Fjalar, checks that command-line
-  # options are documented, builds the documentation, and runs the Kvasir
-  # regression tests.
+  # These jobs run ./test.sh; see that file for the steps.
 
   ubuntu_26_04:
     runs-on: ubuntu-latest
