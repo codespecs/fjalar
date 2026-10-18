@@ -336,6 +336,7 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2 )
 // another.  Merging every argument with a fixed argument would not
 // work:  if the fixed argument's tag were WEAK_FRESH_TAG, no merge
 // would have any effect.
+//
 // Under --dyncomp-interactions=comparisons, a helper call is an
 // interaction only if it is a comparison:  that is, if it uses flags that
 // a subtraction (a cmp or sub instruction) set.  The helpers that read
