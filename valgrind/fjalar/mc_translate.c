@@ -8754,7 +8754,10 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
       dce.n_originalTmps = sb_out->tyenv->types_used;
       dce.hWordTy        = hWordTy;
       dce.sb_in          = sb_in;
-      analyzeSB_DC(&dce);
+      // Only these modes use the flags-carrying analysis.
+      dce.tmpCarriesFlags =
+         (dyncomp_dataflow_comparisons_mode || dyncomp_units_mode)
+         ? findFlagsCarryingTmps_DC(sb_in) : NULL;
       dce.tmpMap         = VG_(malloc)("mc_translate.c.2", dce.n_originalTmps * sizeof(IRTemp));
       //dce.tmpMap         = LibVEX_Alloc(dce.n_originalTmps * sizeof(IRTemp));
       for (i = 0; i < (Int)dce.n_originalTmps; i++)
@@ -9069,7 +9072,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
 
 #ifndef _NO_DYNCOMP
    if (do_dyncomp)
-      freeSBAnalysis_DC(&dce);
+      VG_(free)( dce.tmpCarriesFlags );
 #endif /* _NO_DYNCOMP */
 
     tl_assert(mce.sb == sb_out);

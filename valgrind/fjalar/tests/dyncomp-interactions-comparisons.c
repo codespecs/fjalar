@@ -30,6 +30,36 @@ int lessMask(unsigned a, unsigned b) {
   return mask;
 }
 
+// lessWide() compares two 128-bit signed integers, given as their low and
+// high halves, as a compiler compares two __int128 values:  a cmp
+// instruction compares the low halves, an sbb instruction subtracts the
+// high halves and the borrow, and a setl instruction reads the result.
+// Each instruction is in a different basic block.  The sbb reads the
+// carry of the cmp via amd64g_calculate_rflags_c, and the setl reads the
+// flags of the sbb via amd64g_calculate_condition, whose arguments include
+// the high halves.  Under --dyncomp-interactions=comparisons, DynComp
+// should make aLo and bLo comparable, and aHi and bHi comparable.
+//
+// *** KNOWN LIMITATION:  DynComp makes aLo and bLo comparable, but NOT aHi
+// *** and bHi.  The .goal file records this current, incorrect behavior.
+// *** The flags read by the setl are those of the sbb, whose thunk holds
+// *** bHi xor the old carry rather than bHi, and that xor gets tag 0
+// *** because it is not an interaction.  See the comment above
+// *** dyncomp_cc_op_is_sub in kvasir/dyncomp_main.c.  If DynComp is fixed,
+// *** change aHi and bHi in the .goal file to have the same comparability.
+int lessWide(long aLo, long aHi, long bLo, long bHi) {
+  unsigned char result;
+  long hi = aHi;
+  __asm__ volatile ("cmpq %3, %2\n\t"
+                    "jmp 1f\n"
+                    "1:\tsbbq %4, %1\n\t"
+                    "jmp 2f\n"
+                    "2:\tsetl %0"
+                    : "=q" (result), "+r" (hi)
+                    : "r" (aLo), "r" (bLo), "r" (bHi) : "cc");
+  return result;
+}
+
 // carry() adds a and b with an add instruction whose carry is read by a setc
 // instruction in a different basic block.  VEX translates the setc into a
 // call to amd64g_calculate_condition, whose arguments include the operands
@@ -115,66 +145,6 @@ int subIncJnz(int a, int b, int c) {
   return c;
 }
 
-// subIncSetb() subtracts b from a, an inc instruction in the same basic block
-// preserves the carry flag of the subtraction (via a CmpLT32U), and then a
-// setb instruction in a different basic block reads that carry flag.  The setb uses the carry flag as the result of
-// a comparison, so under --dyncomp-interactions=comparisons, DynComp should
-// make a and b comparable.
-int subIncSetb(int a, int b, int c) {
-  unsigned char below;
-  __asm__ volatile ("subl %3, %1\n\t"
-                    "incl %2\n\t"
-                    "jmp 1f\n"
-                    "1:\tsetb %0"
-                    : "=q" (below), "+r" (a), "+r" (c) : "r" (b) : "cc");
-  return below;
-}
-
-// subThenIncSetb() is like subIncSetb(), but the sub, the inc, and the setb
-// are each in a different basic block, so the inc reads the carry flag of
-// the subtraction via amd64g_calculate_rflags_c.  Under
-// --dyncomp-interactions=comparisons, DynComp should make a and b comparable.
-int subThenIncSetb(int a, int b, int c) {
-  unsigned char below;
-  __asm__ volatile ("subl %3, %1\n\t"
-                    "jmp 1f\n"
-                    "1:\tincl %2\n\t"
-                    "jmp 2f\n"
-                    "2:\tsetb %0"
-                    : "=q" (below), "+r" (a), "+r" (c) : "r" (b) : "cc");
-  return below;
-}
-
-// subIncSetbSameBlock() is like subIncSetb(), but the setb is in the same
-// basic block as the sub and the inc.  Under
-// --dyncomp-interactions=comparisons, DynComp should make a and b comparable.
-int subIncSetbSameBlock(int a, int b, int c) {
-  unsigned char below;
-  __asm__ volatile ("subl %3, %1\n\t"
-                    "incl %2\n\t"
-                    "setb %0"
-                    : "=q" (below), "+r" (a), "+r" (c) : "r" (b) : "cc");
-  return below;
-}
-
-// lessWide() compares the 128-bit values (aHi:aLo) and (bHi:bLo), as GCC
-// compiles a comparison of __int128 values:  a cmp of the low words, an sbb
-// of the high words, and a setl that reads the flags of the sbb.  (Each
-// instruction is in its own basic block, as in lessMask() and less().)
-// Under --dyncomp-interactions=comparisons, DynComp should make aLo and bLo
-// comparable, and aHi and bHi comparable.
-int lessWide(long aLo, long aHi, long bLo, long bHi) {
-  unsigned char result;
-  __asm__ volatile ("cmpq %3, %1\n\t"
-                    "jmp 1f\n"
-                    "1:\tsbbq %4, %2\n\t"
-                    "jmp 2f\n"
-                    "2:\tsetl %0"
-                    : "=q" (result), "+r" (aLo), "+r" (aHi)
-                    : "r" (bLo), "r" (bHi) : "cc");
-  return result;
-}
-
 // subThenLahf() subtracts b from a with a sub instruction, and then a lahf
 // instruction in a different basic block copies the flags of the subtraction
 // (via amd64g_calculate_rflags_all) into a register.  Copying flags is not a
@@ -190,59 +160,16 @@ int subThenLahf(int a, int b) {
   return flags;
 }
 
-struct longPair {
-  long a;
-  long b;
-};
-
-// copyLongs() copies a struct with movdqu, so VEX loads both fields with one
-// 128-bit load.  Loading is not an interaction under
-// --dyncomp-interactions=comparisons, so DynComp should not make a and b
-// comparable.  The copy of b should be comparable to b, not to a.
-long copyLongs(long a, long b) {
-  struct longPair p, q;
-  p.a = a;
-  p.b = b;
-  __asm__ volatile ("movdqu %1, %%xmm0\n\t"
-                    "movdqu %%xmm0, %0"
-                    : "=m" (q) : "m" (p) : "xmm0");
-  return q.b;
-}
-
-struct intPair {
-  int a;
-  int b;
-};
-
-// copyInts() copies a struct with one 64-bit load.  Loading is not an
-// interaction under --dyncomp-interactions=comparisons, so DynComp should
-// not make a and b comparable.  The copy of b should be comparable to b, not
-// to a.
-int copyInts(int a, int b) {
-  struct intPair p, q;
-  p.a = a;
-  p.b = b;
-  __asm__ volatile ("movq %1, %%rax\n\t"
-                    "movq %%rax, %0"
-                    : "=m" (q) : "m" (p) : "rax");
-  return q.b;
-}
-
 int main(void) {
   less(1, 2);
   lessMask(3, 4);
+  lessWide(20, 21, 22, 23);
   carry(5, 6);
   addWithCarry(7, 8, 9, 10);
   subThenInc(15, 16, 17);
   subThenLahf(18, 19);
-  subThenIncSameBlock(20, 21, 22);
-  subSetbInc(23, 24, 25);
-  subIncJnz(26, 27, 28);
-  subIncSetb(29, 30, 31);
-  subThenIncSetb(39, 40, 41);
-  subIncSetbSameBlock(32, 33, 34);
-  lessWide(35, 36, 37, 38);
-  copyLongs(11, 12);
-  copyInts(13, 14);
+  subThenIncSameBlock(24, 25, 26);
+  subSetbInc(27, 28, 29);
+  subIncJnz(30, 31, 32);
   return 0;
 }

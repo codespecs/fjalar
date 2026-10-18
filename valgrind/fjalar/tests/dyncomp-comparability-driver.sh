@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# Runs a DynComp comparability test; the *-test.sh scripts call it.
-# Usage: dyncomp-comparability-test.sh <test> <trace-check> <fjalar-option>...
+# Runs a DynComp comparability test; the *-test.sh scripts call it.  Its
+# name does not end in "-test.sh", so that it is not run as a test itself.
+# Usage: dyncomp-comparability-driver.sh <test> <trace-check> <fjalar-option>...
 #
 # Compiles <test>.c, runs Fjalar with DynComp and the given options on it,
 # and compares the comparability of the variables at each exit program point

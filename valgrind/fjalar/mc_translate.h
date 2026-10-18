@@ -218,13 +218,6 @@ typedef
          forward; see findFlagsCarryingTmps_DC.  NULL unless
          --dyncomp-interactions is comparisons or units. */
       Bool* tmpCarriesFlags;
-      /* READONLY: a table [0 .. #temps_in_original_bb-1] whose
-         entries are the expressions that sb_in assigns to the
-         temporaries.  NULL in the default mode; see analyzeSB_DC. */
-      IRExpr** tmpDefs;
-      /* READONLY: a table [0 .. #stmts_in_original_bb-1]; see
-         analyzeSB_DC.  NULL in the default mode. */
-      IRExpr** storeSrcAddrs;
    }
    DCEnv;
 

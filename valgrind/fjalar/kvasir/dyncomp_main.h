@@ -128,7 +128,6 @@ void clear_list(TagList* listPtr);
 void copy_tags(  Addr src, Addr dst, SizeT len );
 void val_uf_make_set_for_tag(UInt tag);
 UInt val_uf_union_tags_in_range(Addr a, SizeT len);
-const HChar* current_IP_description(void);
 void val_uf_union_tags_at_addr(Addr a1, Addr a2);
 void set_tag_for_GOT(Addr a, SizeT len);
 
@@ -177,14 +176,17 @@ static __inline__ UInt get_tag ( Addr a )
 static __inline__ UInt get_tag ( Addr a )
 {
   UInt tag;
+  Addr tid = VG_(get_IP)(VG_(get_running_tid)());
+  const HChar *eip_info;
+  // Describe this (probably live) address with current epoch
+  eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), tid, NULL);
 
   if (IS_SECONDARY_TAG_MAP_NULL(a)) {
     tag = 0; // 0 means NO tag for that byte
   } else {
     tag = primary_tag_map[PM_IDX(a)][SM_OFF(a)];
   }
-  printf("[DynComp] Fetching tag %d for %p at %s\n", tag, (void*)a,
-         current_IP_description());
+  printf("[DynComp] Fetching tag %d for %p at %s\n", tag, (void*)a, eip_info);
   return tag;
 }
 #endif
@@ -230,12 +232,16 @@ static __inline__ UInt grab_fresh_tag(void) {
   totalNumTagsAssigned++;
 #ifndef MAX_DEBUG_INFO
   if (dyncomp_print_trace_all) {
-    DYNCOMP_TPRINTF("[DynComp] Creating fresh tag %u at %s\n", tag,
-                    current_IP_description());
+#endif
+    Addr tid = VG_(get_IP)(VG_(get_running_tid)());
+    const HChar *eip_info;
+    // Describe this (probably live) address with current epoch
+    eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), tid, NULL);
+#ifndef MAX_DEBUG_INFO
+    DYNCOMP_TPRINTF("[DynComp] Creating fresh tag %u at %s\n", tag, eip_info);
   }
 #else
-  printf("[DynComp] Creating fresh tag %u at %s\n", tag,
-         current_IP_description());
+    printf("[DynComp] Creating fresh tag %u at %s\n", tag, eip_info);
 #endif
   return tag;
 
@@ -285,24 +291,20 @@ extern VG_REGPARM(1) void MC_(helperc_STORE_TAG_8) ( Addr, UInt );
 extern VG_REGPARM(2) void MC_(helperc_STORE_TAG_4) ( Addr, UInt );
 extern VG_REGPARM(2) void MC_(helperc_STORE_TAG_2) ( Addr, UInt );
 extern VG_REGPARM(2) void MC_(helperc_STORE_TAG_1) ( Addr, UInt );
-extern VG_REGPARM(3) void MC_(helperc_COPY_TAGS) ( Addr, Addr, UWord, UInt );
 
 extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_8) ( Addr );
 extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_4) ( Addr );
 extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_2) ( Addr );
 extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_1) ( Addr );
 
+extern VG_REGPARM(2) UInt MC_(helperc_LOAD_TAG_N) ( Addr, UWord );
+
 extern VG_REGPARM(1) UInt MC_(helperc_CREATE_TAG) ( Addr static_id );
 
 extern VG_REGPARM(2) UInt MC_(helperc_MERGE_TAGS) ( UInt, UInt );
 extern VG_REGPARM(2) UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt, UInt );
-extern VG_REGPARM(2) void MC_(helperc_SET_PENDING_CARRY) ( UInt, UInt );
-extern VG_REGPARM(3) void MC_(helperc_PRESERVE_CARRY) ( UWord, UInt, UInt );
-extern VG_REGPARM(3) void MC_(helperc_MERGE_TAGS_IF_COMPARISON) ( UWord, UWord, UInt, UInt );
-Bool cc_op_is_sub(ULong cc_op);
-Bool cc_op_preserves_carry(ULong cc_op);
-extern UInt pendingCarryTag1;
-extern UInt pendingCarryTag2;
+extern VG_REGPARM(3) UInt MC_(helperc_MERGE_TAGS_RETURN_0_IF_SUB) ( UWord, UInt, UInt );
+Bool dyncomp_cc_op_is_sub(UWord cc_op);
 
 extern VG_REGPARM(3) UInt MC_(helperc_MERGE_3_TAGS) ( UInt, UInt, UInt );
 extern VG_REGPARM(3) UInt MC_(helperc_MERGE_4_TAGS) ( UInt, UInt, UInt, UInt );

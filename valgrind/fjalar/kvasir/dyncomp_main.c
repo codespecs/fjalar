@@ -194,28 +194,22 @@ void val_uf_make_set_for_tag(UInt tag) {
   uf_make_set(GET_UF_OBJECT_PTR(tag), tag);
 }
 
-// Returns a description of the current instruction address, for
-// trace output.  It is expensive, so call it only when tracing; for
-// example, as an argument to DYNCOMP_TPRINTF, which evaluates its
-// arguments only when tracing.
-const HChar* current_IP_description(void) {
-  Addr eip = VG_(get_IP)(VG_(get_running_tid)());
-  // Describe this (probably live) address with current epoch
-  return VG_(describe_IP)(VG_(current_DiEpoch)(), eip, NULL);
-}
-
 // Merge the sets of tag1 and tag2 and return the leader
 UInt val_uf_tag_union(UInt tag1, UInt tag2) {
   if (!IS_ZERO_TAG(tag1) && !IS_SECONDARY_UF_NULL(tag1) &&
       !IS_ZERO_TAG(tag2) && !IS_SECONDARY_UF_NULL(tag2)) {
+    Addr eip = VG_(get_IP)(VG_(get_running_tid)());
+    const HChar *eip_info;
     uf_object* tag1_obj, *tag2_obj;
     uf_object* leader;
     tag1_obj = GET_UF_OBJECT_PTR(tag1);
     tag2_obj = GET_UF_OBJECT_PTR(tag2);
     leader = uf_union(tag1_obj, tag2_obj);
+    // Describe this (probably live) address with current epoch
+    eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), eip, NULL);
 
     DYNCOMP_TPRINTF("[DynComp-v1] Merging %u with %u to get %u at %s\n",
-                    tag1, tag2, leader->tag, current_IP_description());
+                    tag1, tag2, leader->tag, eip_info);
 
     return leader->tag;
   }
@@ -323,38 +317,19 @@ void MC_(helperc_STORE_TAG_1) ( Addr a, UInt tag ) {
   set_tag(a, tagToWrite);
 }
 
-// The largest len for MC_(helperc_COPY_TAGS): the size of an Ity_V256 value.
-#define MAX_COPY_TAGS_LEN 32
+// Returns the first non-zero tag in the range [a, a+len), or 0 if
+// there is none.
+static UInt first_nonzero_tag_in_range(Addr a, SizeT len) {
+  Addr curAddr;
+  UInt curTag;
 
-// Copies the tags of the len bytes at src to the len bytes at dst, which
-// may overlap them.  This stores a value that was loaded from src, without
-// giving all of its bytes one tag; see do_shadow_STle_DC.  tag is the tag
-// of the stored value.  Like MC_(helperc_STORE_TAG_8), this writes the
-// leader of each tag, and it never writes WEAK_FRESH_TAG:  it replaces a
-// source byte's WEAK_FRESH_TAG by tag, or by a fresh tag if tag is
-// WEAK_FRESH_TAG.  For example, MC_(helperc_LOAD_TAG_4) gives a value
-// whose first byte's tag is WEAK_FRESH_TAG a fresh tag, and that fresh tag
-// (which may have been merged with other tags since) is the one stored.
-VG_REGPARM(3)
-void MC_(helperc_COPY_TAGS) ( Addr dst, Addr src, UWord len, UInt tag ) {
-  UInt tags[MAX_COPY_TAGS_LEN];
-  UWord i;
-
-  tl_assert(len <= MAX_COPY_TAGS_LEN);
-  DYNCOMP_TPRINTF("[DynComp] COPY_TAGS: %p <- %p, %lu bytes, tag %u\n",
-                  (void *)dst, (void *)src, len, tag);
-  for (i = 0; i < len; i++) {
-    tags[i] = get_tag(src + i);
-    if (WEAK_FRESH_TAG == tags[i]) {
-      if (WEAK_FRESH_TAG == tag) {
-        tag = grab_fresh_tag();
-      }
-      tags[i] = tag;
+  for (curAddr = a; curAddr < (a + len); curAddr++) {
+    curTag = get_tag(curAddr);
+    if (curTag) {
+      return curTag;
     }
   }
-  for (i = 0; i < len; i++) {
-    set_tag(dst + i, val_uf_find_leader(tags[i]));
-  }
+  return 0;
 }
 
 // Unions the tags belonging to these addresses and set
@@ -384,22 +359,6 @@ void val_uf_union_tags_at_addr(Addr a1, Addr a2) {
   DYNCOMP_TPRINTF("[DynComp] val_uf_union_tags_at_addr(%p, %p) canonicalTag=%u\n",
                   (void *)a1, (void *)a2, canonicalTag);
   }
-
-// Returns the first non-zero tag in the range [a, a+len), or 0 if every tag
-// in the range is 0.
-static UInt first_nonzero_tag_in_range(Addr a, SizeT len) {
-  Addr curAddr;
-  UInt curTag;
-
-  for (curAddr = a; curAddr < (a + len); curAddr++) {
-    curTag = get_tag(curAddr);
-    if (curTag) {
-      DYNCOMP_TPRINTF("MLR debug first_nonzero_tag_in_range addr=%p, tag=%u\n", (void *)curAddr, curTag);
-      return curTag;
-    }
-  }
-  return 0;
-}
 
   // Union the tags of all addresses in the range [a, a+max)
 // and sets them all equal to the canonical tag of the merged set
@@ -486,27 +445,10 @@ UInt MC_(helperc_CREATE_TAG)(Addr static_id) {
 }
 
 
-// Returns the tag of the value in [a, a + len).  Loading a value whose bytes
-// have different tags is an interaction that merges those tags, except in
-// the modes in which only comparisons, or nothing, are interactions.  In
-// those modes, the result is the leader of the first non-zero tag in the
-// range, or 0.  That is the result of val_uf_union_tags_in_range when the
-// range contains only one non-zero tag; for example, both return 0 for a
-// range whose tags are all WEAK_FRESH_TAG.
-static UInt load_tag_in_range(Addr a, SizeT len) {
-  UInt firstTag;
-
-  if (!(dyncomp_dataflow_only_mode || dyncomp_dataflow_comparisons_mode)) {
-    return val_uf_union_tags_in_range(a, len);
-  }
-  firstTag = first_nonzero_tag_in_range(a, len);
-  return firstTag ? val_uf_find_leader(firstTag) : 0;
-}
-
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_8) ( Addr a ) {
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_8: %p\n", (void *)a);
-  return load_tag_in_range(a, 8);
+  return val_uf_union_tags_in_range(a, 8);
 }
 
 VG_REGPARM(1)
@@ -517,19 +459,38 @@ UInt MC_(helperc_LOAD_TAG_4) ( Addr a ) {
     return grab_fresh_tag();
   }
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_4: %p\n", (void *)a);
-  return load_tag_in_range(a, 4);
+  return val_uf_union_tags_in_range(a, 4);
 }
 
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_2) ( Addr a ) {
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_2: %p\n", (void *)a);
-  return load_tag_in_range(a, 2);
+  return val_uf_union_tags_in_range(a, 2);
 }
 
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_1: %p => %u\n", (void *)a, get_tag(a));
-  return load_tag_in_range(a, 1);
+  return val_uf_union_tags_in_range(a, 1);
+}
+
+// Returns the tag of the value loaded from the range [a, a+len), in
+// dyncomp_dataflow_only_mode.  In that mode, nothing is an interaction,
+// so unlike the other MC_(helperc_LOAD_TAG_*) functions, this does not
+// merge the tags of the addresses in the range.  It returns the leader
+// of the first non-zero tag in the range; if that tag is
+// WEAK_FRESH_TAG, it returns a fresh tag, as MC_(helperc_LOAD_TAG_4)
+// does.
+VG_REGPARM(2)
+UInt MC_(helperc_LOAD_TAG_N) ( Addr a, UWord len ) {
+  UInt tag;
+
+  DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_N: %p %lu\n", (void *)a, len);
+  tag = first_nonzero_tag_in_range(a, len);
+  if (WEAK_FRESH_TAG == tag) {
+    return grab_fresh_tag();
+  }
+  return val_uf_find_leader(tag);
 }
 
 // Make this const so gcc can eliminate dead code to improve
@@ -566,6 +527,11 @@ UInt tag2_is_new ( UInt tag1, UInt tag2 ) {
 // of the merged set
 VG_REGPARM(2)
 UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
+  Addr eip = VG_(get_IP)(VG_(get_running_tid)());
+  const HChar *eip_info;
+  // Describe this (probably live) address with current epoch
+  eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), eip, NULL);
+
   if (dyncomp_profile_tags) {
     mergeTagsCount++;
   }
@@ -583,12 +549,12 @@ UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
   //  but that's correctly handled)
   else if (WEAK_FRESH_TAG == tag1) {
     DYNCOMP_TPRINTF("[DynComp-m1] Merging %u with %u to get %u at %s\n",
-                    tag1, tag2, tag2, current_IP_description());
+                    tag1, tag2, tag2, eip_info);
     return tag2;
   }
   else if (WEAK_FRESH_TAG == tag2) {
     DYNCOMP_TPRINTF("[DynComp-m2] Merging %u with %u to get %u at %s\n",
-                    tag1, tag2, tag1, current_IP_description());
+                    tag1, tag2, tag1, eip_info);
     return tag1;
   }
   else {
@@ -645,68 +611,32 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
 }
 
 // Returns True if cc_op, the CC_OP field of the flags thunk, says that the
-// flags are the result of a subtraction (a cmp, sub, or sbb instruction),
-// which is how amd64 compares values.  An sbb instruction compares the
-// high words of multi-word values, such as __int128 values.
-Bool cc_op_is_sub(ULong cc_op) {
-  return (AMD64G_CC_OP_SUBB <= cc_op && cc_op <= AMD64G_CC_OP_SUBQ)
-         || (AMD64G_CC_OP_SBBB <= cc_op && cc_op <= AMD64G_CC_OP_SBBQ);
+// flags are the result of a subtraction (a cmp or sub instruction), which
+// is how amd64 compares values.
+//
+// A comparison of values wider than a register, such as two __int128
+// values, compares the low halves with a cmp and the high halves with an
+// sbb, and the flags that are read are those of the sbb.  Accepting
+// AMD64G_CC_OP_SBB* here would have no effect under
+// --dyncomp-interactions=comparisons:  the CC_DEP2 field of an sbb's thunk
+// is the xor of its second operand and the old carry, and that xor gets
+// tag 0 because it is not an interaction.  So in that mode, the high halves
+// are not comparable.  (Under --dyncomp-interactions=units, the sbb's
+// subtraction makes them comparable.)  See lessWide() in
+// tests/dyncomp-interactions-comparisons.c.
+Bool dyncomp_cc_op_is_sub(UWord cc_op) {
+  return AMD64G_CC_OP_SUBB <= cc_op && cc_op <= AMD64G_CC_OP_SUBQ;
 }
 
-// Returns True if cc_op, the CC_OP field of the flags thunk, says that the
-// flags are the result of an inc or dec instruction.  Such an instruction
-// does not change the carry flag:  its thunk's CC_NDEP field holds the carry
-// flag of the previous thunk.
-Bool cc_op_preserves_carry(ULong cc_op) {
-  return AMD64G_CC_OP_INCB <= cc_op && cc_op <= AMD64G_CC_OP_DECQ;
-}
-
-// The tags of the operands of the subtraction whose carry flag inc or dec
-// instructions have preserved in the CC_NDEP field of the current flags
-// thunk, or 0 if that carry flag is not the result of a subtraction.  When
-// an instruction later reads that carry flag as the result of a comparison,
-// MC_(helperc_MERGE_TAGS_IF_COMPARISON) merges these tags.  There is one
-// pair for all threads, so a thread switch between an inc and the read of
-// its carry flag may merge the wrong tags.
-UInt pendingCarryTag1 = 0;
-UInt pendingCarryTag2 = 0;
-
-// Records that the carry flag that an inc or dec instruction is preserving
-// is the result of a subtraction whose operands have tags tag1 and tag2.
-VG_REGPARM(2)
-void MC_(helperc_SET_PENDING_CARRY) ( UInt tag1, UInt tag2 ) {
-  pendingCarryTag1 = tag1;
-  pendingCarryTag2 = tag2;
-}
-
-// Called when an inc or dec instruction reads the carry flag of the flags
-// thunk in order to preserve it; tag1 and tag2 are the tags of the thunk's
-// CC_DEP1 and CC_DEP2 fields.  Updates the pending carry tags.
+// Like MC_(helperc_MERGE_TAGS_RETURN_0), but merges tag1 and tag2 only if
+// dyncomp_cc_op_is_sub(cc_op).  tag1 and tag2 are the tags of the thunk's
+// CC_DEP1 and CC_DEP2 fields, which for a subtraction are its operands.
 VG_REGPARM(3)
-void MC_(helperc_PRESERVE_CARRY) ( UWord cc_op, UInt tag1, UInt tag2 ) {
-  if (cc_op_is_sub(cc_op)) {
-    MC_(helperc_SET_PENDING_CARRY)(tag1, tag2);
-  } else if (!cc_op_preserves_carry(cc_op)) {
-    MC_(helperc_SET_PENDING_CARRY)(0, 0);
+UInt MC_(helperc_MERGE_TAGS_RETURN_0_IF_SUB) ( UWord cc_op, UInt tag1, UInt tag2 ) {
+  if (dyncomp_cc_op_is_sub(cc_op)) {
+    return MC_(helperc_MERGE_TAGS_RETURN_0)(tag1, tag2);
   }
-  // Otherwise, the thunk's carry flag is preserved from an earlier thunk,
-  // and the pending carry tags already describe it.
-}
-
-// Called when an instruction reads the flags of the flags thunk as the
-// result of a comparison; tag1 and tag2 are the tags of the thunk's CC_DEP1
-// and CC_DEP2 fields, which for a subtraction are its operands.  If the flags
-// are the result of a subtraction, merges tag1 and tag2.  If reads_carry is
-// non-zero and the carry flag was preserved by inc or dec instructions,
-// merges the pending carry tags.
-VG_REGPARM(3)
-void MC_(helperc_MERGE_TAGS_IF_COMPARISON) ( UWord cc_op, UWord reads_carry,
-                                             UInt tag1, UInt tag2 ) {
-  if (cc_op_is_sub(cc_op)) {
-    MC_(helperc_MERGE_TAGS_RETURN_0)(tag1, tag2);
-  } else if (reads_carry && cc_op_preserves_carry(cc_op)) {
-    MC_(helperc_MERGE_TAGS_RETURN_0)(pendingCarryTag1, pendingCarryTag2);
-  }
+  return 0;
 }
 
 /*------------------------------------------------------------------*/

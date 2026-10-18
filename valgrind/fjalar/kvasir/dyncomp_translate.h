@@ -41,7 +41,6 @@ void do_shadow_CAS_DC ( DCEnv* dce, IRCAS* cas );
 
 void do_shadow_Dirty_DC ( DCEnv* dce, IRDirty* d );
 
-void analyzeSB_DC ( DCEnv* dce );
-void freeSBAnalysis_DC ( DCEnv* dce );
+Bool* findFlagsCarryingTmps_DC ( const IRSB* sb_in );
 
 #endif

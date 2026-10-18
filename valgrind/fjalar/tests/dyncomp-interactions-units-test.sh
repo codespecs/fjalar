@@ -10,7 +10,7 @@
 # comparable.
 # The expected comparability is in dyncomp-interactions-units.goal.
 
-exec "$(dirname "$0")/dyncomp-comparability-test.sh" \
+exec "$(dirname "$0")/dyncomp-comparability-driver.sh" \
      dyncomp-interactions-units \
      '/^==== SB / { fn = $0 }
       /g_calculate_condition\[/ { if (fn ~ / less(\+[0-9]+)? /) less = 1
