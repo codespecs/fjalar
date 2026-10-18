@@ -1106,7 +1106,7 @@ void garbage_collect_tags() {
   // observed anyways).
 
 
-  // There are 4 places where tags can be kept ... we need to scan
+  // There are 3 places where tags can be kept ... we need to scan
   // through all of these places looking for tags that are in use and
   // run reassign_tag() on every non-zero tag encountered in order to
   // canonicalize every tag to its leader and, more importantly, to
@@ -1130,10 +1130,6 @@ void garbage_collect_tags() {
   //
   // 3.) Guest state - There is a tag associated with each register
   // (i.e., EAX, EBX, floating-point stack)
-  //
-  // 4.) Load tag snapshots - the tags of the bytes read by a load,
-  // which a store later in the same superblock writes to memory (see
-  // MC_(helperc_LOAD_TAG_N))
 
 
   // 1.) Shadow memory:
@@ -1257,24 +1253,6 @@ void garbage_collect_tags() {
       reassign_tag(addr,
                    val_uf_find_leader(*addr),
                    &newTagNumber);
-    }
-  }
-
-  // 4.) Load tag snapshots:
-
-  // Slots that a superblock has finished with also get renumbered.
-  // That is harmless; it only keeps their tags alive until the next
-  // garbage collection.  WEAK_FRESH_TAG is left alone, because
-  // MC_(helperc_STORE_TAG_SNAPSHOT) replaces it by a fresh tag.
-  for (i = 0; i < DC_N_LOAD_TAG_SNAPSHOTS; i++) {
-    UInt j;
-    for (j = 0; j < DC_LOAD_TAG_SNAPSHOT_BYTES; j++) {
-      addr = &load_tag_snapshots[i][j];
-      if (*addr && *addr != WEAK_FRESH_TAG) {
-        reassign_tag(addr,
-                     val_uf_find_leader(*addr),
-                     &newTagNumber);
-      }
     }
   }
 

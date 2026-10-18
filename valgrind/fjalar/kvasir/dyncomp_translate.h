@@ -31,7 +31,6 @@
 
 IRTemp findShadowTmp_DC ( DCEnv* dce, IRTemp orig );
 IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e );
-IRExpr* expr2tags_WrTmp_DC ( DCEnv* dce, IRTemp tmp, IRExpr* data );
 void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
                         IRAtom* atom, IRAtom* vatom );
 void do_shadow_PUTI_DC ( DCEnv* dce, IRPutI *puti );
