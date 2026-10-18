@@ -288,7 +288,9 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
 // not the tag 0 that mkMergeTags_DC returns in that mode.
 // expr2tags_Qop_DC and expr2tags_Triop_DC return 0 early in that mode
 // rather than reaching mkMergeTags_DC, so that an unhandled operator does
-// not panic.
+// not panic.  handleCCall_DC returns 0 early in that mode rather than
+// reaching stmtMergeTagsReturn0_DC, so that it does not compute the
+// arguments' tags.
 //
 // Outside the instrumentation, dtrace-output.c merges tags in every mode:
 // at each program point, it merges the tags of the elements of each array
@@ -372,6 +374,7 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2 )
 // another.  Merging every argument with a fixed argument would not
 // work:  if the fixed argument's tag were WEAK_FRESH_TAG, no merge
 // would have any effect.
+//
 // Under --dyncomp-interactions=comparisons, a helper call is an
 // interaction only if it is a comparison:  that is, if it uses flags that
 // a subtraction (a cmp or sub instruction) set.  The helpers that read
@@ -652,13 +655,15 @@ Bool* findFlagsCarryingTmps_DC ( const IRSB* sb_in )
 }
 
 // Returns True if the statement being instrumented assigns a value to a
-// temporary that carries flags.
+// temporary that carries flags.  Returns False if the flags-carrying
+// analysis has not been run, which is the case except under
+// --dyncomp-interactions=comparisons.
 static
 Bool resultCarriesFlags_DC ( DCEnv* dce )
 {
    IRStmt* st = dce->sb_in->stmts[dce->stmtIndex];
-   tl_assert(dce->tmpCarriesFlags);
-   return st->tag == Ist_WrTmp && dce->tmpCarriesFlags[st->Ist.WrTmp.tmp];
+   return dce->tmpCarriesFlags
+          && st->tag == Ist_WrTmp && dce->tmpCarriesFlags[st->Ist.WrTmp.tmp];
 }
 
 // Returns the tag of arg, an argument of a helper that reads flags, or 0 if
@@ -2304,9 +2309,9 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 
    // A comparison whose result only carries flags forward does not compare
    // values; see findFlagsCarryingTmps_DC.  (Its operands become the
-   // pending carry tags; see notePendingCarryTags_DC.)  The other modes do
-   // not check this, just as they treat every helper call as an
-   // interaction.
+   // pending carry tags; see notePendingCarryTags_DC.)  Only
+   // --dyncomp-interactions=comparisons runs the flags-carrying analysis,
+   // so the other modes do not check this.
    if (helper == &MC_(helperc_MERGE_TAGS_RETURN_0)
        && dyncomp_dataflow_comparisons_mode
        && resultCarriesFlags_DC(dce)) {
