@@ -1,6 +1,15 @@
 ..subThenLahf():::EXIT0 a 1
 ..subThenLahf():::EXIT0 b 2
 ..subThenLahf():::EXIT0 return 3
+..subIncTestIncSetb():::EXIT0 a 1
+..subIncTestIncSetb():::EXIT0 b 2
+..subIncTestIncSetb():::EXIT0 c 3
+..subIncTestIncSetb():::EXIT0 d 4
+..subIncTestIncSetb():::EXIT0 return 5
+..subbIncSetb():::EXIT0 a 1
+..subbIncSetb():::EXIT0 b 1
+..subbIncSetb():::EXIT0 c 2
+..subbIncSetb():::EXIT0 return 3
 ..subIncSetbSameBlock():::EXIT0 a 1
 ..subIncSetbSameBlock():::EXIT0 b 1
 ..subIncSetbSameBlock():::EXIT0 c 2

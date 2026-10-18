@@ -1256,17 +1256,17 @@ void garbage_collect_tags() {
     }
   }
 
-  // The pending carry tags, which belong with the guest state's CC_NDEP
-  // field; see MC_(helperc_PRESERVE_CARRY).
-  if (pendingCarryTag1) {
-    reassign_tag(&pendingCarryTag1,
-                 val_uf_find_leader(pendingCarryTag1),
-                 &newTagNumber);
+  // The pending carry tags of the CC_NDEP field, which are not the tags of
+  // any register; see notePendingCarryTags_DC.
+  addr = VG_(get_tag_ptr_for_guest_offset)(currentTID,
+                                           PENDING_CARRY_TAG1_OFFSET);
+  if ((*addr) > 0) {
+    reassign_tag(addr, val_uf_find_leader(*addr), &newTagNumber);
   }
-  if (pendingCarryTag2) {
-    reassign_tag(&pendingCarryTag2,
-                 val_uf_find_leader(pendingCarryTag2),
-                 &newTagNumber);
+  addr = VG_(get_tag_ptr_for_guest_offset)(currentTID,
+                                           PENDING_CARRY_TAG2_OFFSET);
+  if ((*addr) > 0) {
+    reassign_tag(addr, val_uf_find_leader(*addr), &newTagNumber);
   }
 
   // Now that all tags in use have been re-assigned to newer

@@ -108,11 +108,46 @@ static void setHelperAnns_DC ( DCEnv* dce, IRDirty* di ) {
    di->fxState[1].repeatLen = 0;
 }
 
+// Returns the offset in the guest state of the tag of the guest state at
+// offset, as in do_shadow_PUT_DC.
+static Int tagOffset_DC ( DCEnv* dce, Int offset )
+{
+   return (4 * offset) + (3 * dce->layout->total_sizeB);
+}
+
+// Sets *tag1 and *tag2 to the pending carry tags of atom, the value of a
+// CC_NDEP field; see notePendingCarryTags_DC.  If atom is NULL, or is a
+// temporary whose pending carry tags are unknown, they are 0.
+static void pendingCarryTags_DC ( DCEnv* dce, IRAtom* atom,
+                                  IRAtom** tag1, IRAtom** tag2 )
+{
+   *tag1 = IRExpr_Const(IRConst_UWord(0));
+   *tag2 = IRExpr_Const(IRConst_UWord(0));
+   if (atom && atom->tag == Iex_RdTmp
+       && dce->tmpPendingCarryTags[2 * atom->Iex.RdTmp.tmp]) {
+      *tag1 = dce->tmpPendingCarryTags[2 * atom->Iex.RdTmp.tmp];
+      *tag2 = dce->tmpPendingCarryTags[2 * atom->Iex.RdTmp.tmp + 1];
+   }
+}
+
 // A PUT stores a value into the guest state
 void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
                      IRAtom* atom, IRAtom* vatom )
 {
    IRType ty;
+
+   // The pending carry tags follow the value of CC_NDEP.
+   if (offset == offsetof(VexGuestAMD64State, guest_CC_NDEP)
+       && dce->tmpPendingCarryTags) {
+      IRAtom* tag1;
+      IRAtom* tag2;
+      pendingCarryTags_DC(dce, atom, &tag1, &tag2);
+      stmt_DC('V', dce,
+              IRStmt_Put(tagOffset_DC(dce, PENDING_CARRY_TAG1_OFFSET), tag1));
+      stmt_DC('V', dce,
+              IRStmt_Put(tagOffset_DC(dce, PENDING_CARRY_TAG2_OFFSET), tag2));
+   }
+
    if (atom) {
       tl_assert(!vatom);
       tl_assert(isOriginalAtom_DC(dce, atom));
@@ -269,14 +304,12 @@ IRAtom* mkMergeTags_DC ( Int regparms, const HChar* hname, void* helper,
    return mkIRExprCCall(Ity_Word, regparms, hname, helper, args);
 }
 
-// Emits a dirty call to helper, which returns nothing.
+// Returns True if tag is the constant 0, which merging has no effect on.
 static
-void stmtDirtyCall_DC ( DCEnv* dce, Int regparms, const HChar* hname,
-                        void* helper, IRExpr** args )
+Bool isZeroTag_DC ( IRAtom* tag )
 {
-   IRDirty* di = unsafeIRDirty_0_N(regparms, hname, helper, args);
-   setHelperAnns_DC( dce, di );
-   stmt_DC('V', dce, IRStmt_Dirty(di));
+   return tag->tag == Iex_Const && tag->Iex.Const.con->tag == Ico_U64
+          && tag->Iex.Const.con->Ico.U64 == 0;
 }
 
 // Emits a dirty call that merges tag1 and tag2.  The call is dirty so
@@ -289,6 +322,9 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2 )
 
    // In this mode, NOTHING is an interaction:
    if (dyncomp_dataflow_only_mode) {
+      return;
+   }
+   if (isZeroTag_DC(tag1) || isZeroTag_DC(tag2)) {
       return;
    }
 
@@ -340,21 +376,20 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2 )
 // field says which operation set them.  CC_OP is often known only at run
 // time, for example when the flags are read in a different superblock
 // than the one that set them, so the merge checks it at run time; see
-// handleFlagsCCall_DC.  For
-// example, the operands of a cmp are merged when its flags are read by a
-// setl (via amd64g_calculate_condition) or by an sbb (via
-// amd64g_calculate_rflags_c), but the operands of an add are not merged
-// when its carry is read by an adc.
+// handleFlagsCCall_DC.  For example, the operands of a cmp are merged when
+// its flags are read by a setl (via amd64g_calculate_condition) or by an
+// sbb (via amd64g_calculate_rflags_c), but the operands of an add are not
+// merged when its carry is read by an adc.
 //
 // Some instructions read flags without using them as the result of a
 // comparison.  An inc or dec instruction reads the carry flag (via
 // amd64g_calculate_rflags_c) only to carry it forward; see
-// findFlagsCarryingTmps_DC.  Such a read merges no tags, but if the flags
-// are the result of a subtraction, it records the tags of its operands as
-// the pending carry tags (see MC_(helperc_PRESERVE_CARRY)).  A later read
-// of the carry flag of the inc's thunk as the result of a comparison, as
-// in `cmp; inc; jb`, merges the pending carry tags.  The other callers of
-// amd64g_calculate_rflags_c are adc and sbb.
+// findFlagsCarryingTmps_DC.  Such a read merges no tags, but it computes
+// the pending carry tags of the new thunk's CC_NDEP field; see
+// notePendingCarryTags_DC.  A later read of the carry flag of the inc's
+// thunk as the result of a comparison, as in `cmp; inc; jb`, merges the
+// pending carry tags.  The other callers of amd64g_calculate_rflags_c are
+// adc and sbb.
 //
 // amd64g_calculate_rflags_all is used mostly by instructions that preserve
 // or copy flags, such as shifts, bt, and pushf.  These calls merge no tags;
@@ -377,12 +412,10 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2 )
 // field of the new thunk.  Reading the carry flag is a call to
 // amd64g_calculate_rflags_c or, when VEX knows the previous thunk's CC_OP, a
 // specialization of it:  for example, a CmpLT32U of the operands of a sub
-// in the same superblock.  Neither one compares values; if the carry flag
-// is later used, then the instruction that uses it reads it from the new
-// thunk, and that read merges the pending carry tags.  A comparison
-// operation whose result carries flags is assumed to be the carry flag of
-// a subtraction, and it sets the pending carry tags to the tags of its
-// operands.
+// in the same superblock, or the constant 0 for the carry flag of a logical
+// operation.  None of them compares values; if the carry flag is later used,
+// then the instruction that uses it reads it from the new thunk, and that
+// read merges the pending carry tags.
 //
 // A temporary carries flags if it has at least one use, and every use of
 // it stores it in CC_NDEP, passes it as the CC_NDEP argument of a helper
@@ -390,6 +423,16 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2 )
 // that carries flags.  (When iropt forwards a store of CC_NDEP to a later
 // read of CC_NDEP in the same superblock, a helper reads the temporary
 // directly.)
+//
+// The pending carry tags of a CC_NDEP value that an inc or dec preserved
+// are the tags of the operands of the subtraction whose carry flag it is,
+// or 0 if it is not the carry flag of a subtraction.  They follow the
+// value:  a temporary that carries flags has pending carry tags (in
+// tmpPendingCarryTags), and so does the CC_NDEP field of the guest state
+// (in the tags of PENDING_CARRY_TAG1_OFFSET and PENDING_CARRY_TAG2_OFFSET).
+// Every store of CC_NDEP stores its pending carry tags too, so they are
+// per-thread, and a store of a value that is not the carry flag of a
+// subtraction resets them.
 
 // If cee is a helper that computes flags from a flags thunk, returns the
 // index of its CC_NDEP argument.  Otherwise, returns -1.
@@ -634,23 +677,58 @@ IRAtom* flagsArgTag_DC ( DCEnv* dce, IRAtom* arg )
    return expr2tags_DC(dce, arg);
 }
 
+// Returns an atom for the tag of an operand of the subtraction whose result
+// a flags thunk holds, or for 0 if it does not hold the result of a
+// subtraction; see MC_(helperc_SUB_OPERAND_TAG).  ccOp and dep are the
+// thunk's CC_OP field and its CC_DEP1 or CC_DEP2 field, and pendingTag is
+// the corresponding pending carry tag of its CC_NDEP field, or 0 if the
+// carry flag is not read.
+static
+IRAtom* subOperandTag_DC ( DCEnv* dce, IRAtom* ccOp, IRAtom* dep,
+                           IRAtom* pendingTag )
+{
+   IRAtom* depTag = flagsArgTag_DC(dce, dep);
+
+   // If CC_OP is known at translation time, decide now.
+   if (ccOp->tag == Iex_Const) {
+      UWord ccOpValue;
+      tl_assert(ccOp->Iex.Const.con->tag == Ico_U64);
+      ccOpValue = ccOp->Iex.Const.con->Ico.U64;
+      if (dyncomp_cc_op_is_sub(ccOpValue)) {
+         return depTag;
+      }
+      if (dyncomp_cc_op_preserves_carry(ccOpValue)) {
+         return pendingTag;
+      }
+      return IRExpr_Const(IRConst_UWord(0));
+   }
+   if (isZeroTag_DC(depTag) && isZeroTag_DC(pendingTag)) {
+      return depTag;
+   }
+   return assignNew_DC(dce, Ity_Word,
+                       mkIRExprCCall(Ity_Word, 3,
+                                     "MC_(helperc_SUB_OPERAND_TAG)",
+                                     &MC_(helperc_SUB_OPERAND_TAG),
+                                     mkIRExprVec_3(ccOp, depTag, pendingTag)));
+}
+
 // Handles a call to cee, a helper that reads flags, with arguments exprvec,
-// under --dyncomp-interactions=comparisons or units.  The call merges the
-// tags of the thunk's CC_DEP1 and CC_DEP2 arguments if it reads the flags
-// as the result of a comparison and the flags are the result of a
-// subtraction.  If it reads the carry flag that an inc or dec preserved, it
-// merges the pending carry tags instead.  If CC_OP is known at translation
-// time, this omits calls that would merge nothing; otherwise, the helpers
-// check CC_OP at run time.
+// under --dyncomp-interactions=comparisons or units.  If the call reads the
+// flags as the result of a comparison, then it merges the tags of the
+// operands of the subtraction that set them:  the tags of the thunk's
+// CC_DEP1 and CC_DEP2 arguments if the flags are the result of a
+// subtraction, or the pending carry tags if the call reads the carry flag
+// that an inc or dec preserved.
 static
 void handleFlagsCCall_DC ( DCEnv* dce, IRAtom** exprvec, IRCallee* cee )
 {
-   // The index of the CC_OP argument, which CC_DEP1 and CC_DEP2 follow
+   // The index of the CC_OP argument, which CC_DEP1, CC_DEP2, and CC_NDEP
+   // follow
    Int ccOpIndex;
    IRAtom* ccOp;
-   Bool knownCCOp;
-   UWord ccOpValue = 0;
    Bool readsCarry;
+   IRAtom* pendingTag1 = IRExpr_Const(IRConst_UWord(0));
+   IRAtom* pendingTag2 = IRExpr_Const(IRConst_UWord(0));
 
    if (cee->addr == (void*)&amd64g_calculate_condition) {
       // The conditions are in pairs, a condition and its negation.  Only
@@ -658,12 +736,19 @@ void handleFlagsCCall_DC ( DCEnv* dce, IRAtom** exprvec, IRCallee* cee )
       IRAtom* cond = exprvec[0];
       ccOpIndex = 1;
       if (cond->tag == Iex_Const) {
-         ULong condValue = cond->Iex.Const.con->Ico.U64 & ~1ULL;
+         ULong condValue;
+         tl_assert(cond->Iex.Const.con->tag == Ico_U64);
+         condValue = cond->Iex.Const.con->Ico.U64 & ~1ULL;
          readsCarry = condValue == AMD64CondB || condValue == AMD64CondBE;
       } else {
          readsCarry = True;
       }
    } else if (cee->addr == (void*)&amd64g_calculate_rflags_c) {
+      // An inc or dec reads the carry flag only to preserve it; see
+      // notePendingCarryTags_DC.
+      if (resultCarriesFlags_DC(dce)) {
+         return;
+      }
       ccOpIndex = 0;
       readsCarry = True;
    } else {
@@ -671,36 +756,127 @@ void handleFlagsCCall_DC ( DCEnv* dce, IRAtom** exprvec, IRCallee* cee )
    }
 
    ccOp = exprvec[ccOpIndex];
-   knownCCOp = ccOp->tag == Iex_Const;
-   if (knownCCOp) {
-      tl_assert(ccOp->Iex.Const.con->tag == Ico_U64);
-      ccOpValue = ccOp->Iex.Const.con->Ico.U64;
+   if (readsCarry) {
+      pendingCarryTags_DC(dce, exprvec[ccOpIndex + 3],
+                          &pendingTag1, &pendingTag2);
    }
+   stmtMergeTagsReturn0_DC(dce,
+                           subOperandTag_DC(dce, ccOp, exprvec[ccOpIndex + 1],
+                                            pendingTag1),
+                           subOperandTag_DC(dce, ccOp, exprvec[ccOpIndex + 2],
+                                            pendingTag2));
+}
 
-   if (cee->addr == (void*)&amd64g_calculate_rflags_c
-       && resultCarriesFlags_DC(dce)) {
-      // An inc or dec preserves the carry flag.  If the thunk is itself
-      // that of an inc or dec, then the pending carry tags already
-      // describe its carry flag.
-      if (!(knownCCOp && dyncomp_cc_op_preserves_carry(ccOpValue))) {
-         stmtDirtyCall_DC(dce, 3, "MC_(helperc_PRESERVE_CARRY)",
-                          &MC_(helperc_PRESERVE_CARRY),
-                          mkIRExprVec_3(ccOp,
-                                        flagsArgTag_DC(dce, exprvec[ccOpIndex + 1]),
-                                        flagsArgTag_DC(dce, exprvec[ccOpIndex + 2])));
+// Returns the expression that the statements of the superblock before the
+// one being instrumented assign to tmp, or NULL if they do not assign it.
+static
+IRExpr* tmpDefinition_DC ( DCEnv* dce, IRTemp tmp )
+{
+   Int i;
+   for (i = dce->stmtIndex - 1; i >= 0; i--) {
+      IRStmt* st = dce->sb_in->stmts[i];
+      if (st->tag == Ist_WrTmp && st->Ist.WrTmp.tmp == tmp) {
+         return st->Ist.WrTmp.data;
       }
+   }
+   return NULL;
+}
+
+// Returns the value that atom, an operand of a specialization of
+// amd64g_calculate_rflags_c, narrows or masks to the width of the
+// operation.  For example, VEX's specialization for a subb compares the
+// thunk's CC_DEP1 and CC_DEP2 fields, each masked with 0xFF.  The tag of a
+// bitwise and is 0 in the modes that use the flags-carrying analysis, so
+// the tag of the masked value would not be the tag of the operand.
+static
+IRAtom* unmaskedCarryOperand_DC ( DCEnv* dce, IRAtom* atom )
+{
+   while (atom->tag == Iex_RdTmp) {
+      IRExpr* def = tmpDefinition_DC(dce, atom->Iex.RdTmp.tmp);
+      if (def && def->tag == Iex_Unop && def->Iex.Unop.op == Iop_64to32) {
+         atom = def->Iex.Unop.arg;
+      } else if (def && def->tag == Iex_Binop
+                 && (def->Iex.Binop.op == Iop_And64
+                     || def->Iex.Binop.op == Iop_And32)
+                 && def->Iex.Binop.arg2->tag == Iex_Const) {
+         atom = def->Iex.Binop.arg1;
+      } else {
+         break;
+      }
+   }
+   return atom;
+}
+
+// Records the pending carry tags of tmp, to which the statement being
+// instrumented assigns data, if tmp carries flags.  data is the carry flag
+// that an inc or dec preserves, or a copy of it.  If data is the carry flag
+// of a subtraction, then the pending carry tags are the tags of its
+// operands; otherwise, they are 0.
+void notePendingCarryTags_DC ( DCEnv* dce, IRTemp tmp, IRExpr* data )
+{
+   IRAtom* tag1 = IRExpr_Const(IRConst_UWord(0));
+   IRAtom* tag2 = IRExpr_Const(IRConst_UWord(0));
+
+   if (!dce->tmpCarriesFlags || !dce->tmpCarriesFlags[tmp]) {
       return;
    }
 
-   if (knownCCOp && !dyncomp_cc_op_is_sub(ccOpValue)
-       && !(readsCarry && dyncomp_cc_op_preserves_carry(ccOpValue))) {
-      return;
+   switch (data->tag) {
+      case Iex_RdTmp:
+         pendingCarryTags_DC(dce, data, &tag1, &tag2);
+         break;
+      case Iex_Unop:
+         // If data is a zero-extension (see isCopyOrZeroExtension_DC), then
+         // its argument carries flags too.
+         pendingCarryTags_DC(dce, data->Iex.Unop.arg, &tag1, &tag2);
+         break;
+      case Iex_Get:
+         if (data->Iex.Get.offset
+             == offsetof(VexGuestAMD64State, guest_CC_NDEP)) {
+            Int offset1 = tagOffset_DC(dce, PENDING_CARRY_TAG1_OFFSET);
+            Int offset2 = tagOffset_DC(dce, PENDING_CARRY_TAG2_OFFSET);
+            tag1 = assignNew_DC(dce, Ity_Word, IRExpr_Get(offset1, Ity_Word));
+            tag2 = assignNew_DC(dce, Ity_Word, IRExpr_Get(offset2, Ity_Word));
+         }
+         break;
+      case Iex_Binop:
+         // A specialization of amd64g_calculate_rflags_c for a subtraction
+         // compares its operands.  The one for an add compares its result
+         // with an operand, and that is not a comparison of values.
+         if (data->Iex.Binop.op == Iop_CmpLT32U
+             || data->Iex.Binop.op == Iop_CmpLT64U) {
+            IRAtom* operand1 =
+               unmaskedCarryOperand_DC(dce, data->Iex.Binop.arg1);
+            IRAtom* operand2 =
+               unmaskedCarryOperand_DC(dce, data->Iex.Binop.arg2);
+            IRExpr* def1 = operand1->tag == Iex_RdTmp
+                           ? tmpDefinition_DC(dce, operand1->Iex.RdTmp.tmp)
+                           : NULL;
+            if (!(def1 && def1->tag == Iex_Binop
+                  && (def1->Iex.Binop.op == Iop_Add32
+                      || def1->Iex.Binop.op == Iop_Add64))) {
+               tag1 = flagsArgTag_DC(dce, operand1);
+               tag2 = flagsArgTag_DC(dce, operand2);
+            }
+         }
+         break;
+      case Iex_CCall:
+         if (data->Iex.CCall.cee->addr == (void*)&amd64g_calculate_rflags_c) {
+            IRAtom** args = data->Iex.CCall.args;
+            IRAtom* pendingTag1;
+            IRAtom* pendingTag2;
+            pendingCarryTags_DC(dce, args[3], &pendingTag1, &pendingTag2);
+            tag1 = subOperandTag_DC(dce, args[0], args[1], pendingTag1);
+            tag2 = subOperandTag_DC(dce, args[0], args[2], pendingTag2);
+         }
+         break;
+      default:
+         // For example, the constant 0, which is the carry flag of a
+         // logical operation
+         break;
    }
-   stmtDirtyCall_DC(dce, 3, "MC_(helperc_MERGE_TAGS_IF_COMPARISON)",
-                    &MC_(helperc_MERGE_TAGS_IF_COMPARISON),
-                    mkIRExprVec_4(ccOp, mkIRExpr_HWord(readsCarry),
-                                  flagsArgTag_DC(dce, exprvec[ccOpIndex + 1]),
-                                  flagsArgTag_DC(dce, exprvec[ccOpIndex + 2])));
+   dce->tmpPendingCarryTags[2 * tmp] = tag1;
+   dce->tmpPendingCarryTags[2 * tmp + 1] = tag2;
 }
 
 // Returns True if cee is a helper that computes flags from a flags thunk.
@@ -2141,18 +2317,13 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    }
 
    // A comparison whose result only carries flags forward does not compare
-   // values, but it records the pending carry tags; see
-   // findFlagsCarryingTmps_DC.  The default mode does not check this, just
-   // as it treats every helper call as an interaction.
+   // values; see findFlagsCarryingTmps_DC.  (Its operands become the
+   // pending carry tags; see notePendingCarryTags_DC.)  The default mode
+   // does not check this, just as it treats every helper call as an
+   // interaction.
    if (helper == &MC_(helperc_MERGE_TAGS_RETURN_0)
        && (dyncomp_dataflow_comparisons_mode || dyncomp_units_mode)
        && resultCarriesFlags_DC(dce)) {
-      stmtDirtyCall_DC(dce, 2, "MC_(helperc_SET_PENDING_CARRY)",
-                       &MC_(helperc_SET_PENDING_CARRY),
-                       mkIRExprVec_2(atom1->tag == Iex_Const
-                                     ? IRExpr_Const(IRConst_UWord(0)) : vatom1,
-                                     atom2->tag == Iex_Const
-                                     ? IRExpr_Const(IRConst_UWord(0)) : vatom2));
       helper = 0;
       hname = 0;
    }

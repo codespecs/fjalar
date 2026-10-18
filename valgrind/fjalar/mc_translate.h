@@ -218,6 +218,12 @@ typedef
          forward; see findFlagsCarryingTmps_DC.  NULL unless
          --dyncomp-interactions is comparisons or units. */
       Bool* tmpCarriesFlags;
+      /* MODIFIED: a table [0 .. 2 * #temps_in_original_bb-1] whose
+         entries 2*t and 2*t+1 are the pending carry tags of t, a
+         temporary that carries flags, once its assignment has been
+         instrumented; see notePendingCarryTags_DC.  NULL unless
+         tmpCarriesFlags is non-NULL. */
+      IRExpr** tmpPendingCarryTags;
    }
    DCEnv;
 
