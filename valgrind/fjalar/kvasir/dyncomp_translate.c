@@ -2085,6 +2085,23 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
    case Iop_ReinterpI128asV128:
  */
 
+/* Returns the address addr+bias. */
+static
+IRAtom* mkAddrAct_DC ( DCEnv* dce, IRAtom* addr, UInt bias )
+{
+   IROp    mkAdd;
+   IRAtom* eBias;
+   IRType  tyAddr  = dce->hWordTy;
+
+   if (bias == 0) {
+      return addr;
+   }
+   tl_assert( tyAddr == Ity_I32 || tyAddr == Ity_I64 );
+   mkAdd   = tyAddr==Ity_I32 ? Iop_Add32 : Iop_Add64;
+   eBias   = tyAddr==Ity_I32 ? mkU32(bias) : mkU64(bias);
+   return assignNew_DC(dce, tyAddr, binop(mkAdd, addr, eBias) );
+}
+
 /* Worker function; do not call directly. */
 static
 IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
@@ -2118,17 +2135,7 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
    }
 
    /* Generate the actual address into addrAct. */
-   if (bias == 0) {
-      addrAct = addr;
-   } else {
-      IROp    mkAdd;
-      IRAtom* eBias;
-      IRType  tyAddr  = dce->hWordTy;
-      tl_assert( tyAddr == Ity_I32 || tyAddr == Ity_I64 );
-      mkAdd   = tyAddr==Ity_I32 ? Iop_Add32 : Iop_Add64;
-      eBias   = tyAddr==Ity_I32 ? mkU32(bias) : mkU64(bias);
-      addrAct = assignNew_DC(dce, tyAddr, binop(mkAdd, addr, eBias) );
-   }
+   addrAct = mkAddrAct_DC(dce, addr, bias);
 
    /* We need to have a place to park the tag we're just about to
       read. */
@@ -2143,6 +2150,7 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
    return mkexpr(datatag);
 }
 
+// Returns the tag of a load of type ty from addr+bias.
 static
 IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 {
@@ -2165,6 +2173,21 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 			      &MC_(helperc_TAG_NOP), mkIRExprVec_1(vaddr));
    setHelperAnns_DC(dce, diAddr);
    stmt_DC('V', dce, IRStmt_Dirty(diAddr));
+
+   // In this mode, NOTHING is an interaction, so a load of any size
+   // does not merge the tags of the bytes it reads.
+   if (dyncomp_dataflow_only_mode) {
+      IRTemp   datatag = newTemp(dce->mce, Ity_Word, DC);
+      IRDirty* di = unsafeIRDirty_1_N( datatag,
+                                       2/*regparms*/,
+                                       "MC_(helperc_LOAD_TAG_N)",
+                                       &MC_(helperc_LOAD_TAG_N),
+                                       mkIRExprVec_2( mkAddrAct_DC(dce, addr, bias),
+                                                      mkIRExpr_HWord(sizeofIRType(ty)) ));
+      setHelperAnns_DC( dce, di );
+      stmt_DC('V',  dce, IRStmt_Dirty(di) );
+      return mkexpr(datatag);
+   }
 
    switch (shadowTypeV(ty)) {
       case Ity_I8:

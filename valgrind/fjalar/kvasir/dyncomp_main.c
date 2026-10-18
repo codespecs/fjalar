@@ -316,6 +316,21 @@ void MC_(helperc_STORE_TAG_1) ( Addr a, UInt tag ) {
   set_tag(a, tagToWrite);
 }
 
+// Returns the first non-zero tag in the range [a, a+len), or 0 if
+// there is none.
+static UInt first_nonzero_tag_in_range(Addr a, SizeT len) {
+  Addr curAddr;
+  UInt curTag;
+
+  for (curAddr = a; curAddr < (a + len); curAddr++) {
+    curTag = get_tag(curAddr);
+    if (curTag) {
+      return curTag;
+    }
+  }
+  return 0;
+}
+
 // Unions the tags belonging to these addresses and set
 // the tags of both to the canonical tag (for efficiency)
 void val_uf_union_tags_at_addr(Addr a1, Addr a2) {
@@ -383,14 +398,7 @@ UInt val_uf_union_tags_in_range(Addr a, SizeT len) {
   // that as the basis for all the mergings:
   // (Hopefully this should only take one iteration
   //  because the tag of address 'a' should be non-zero)
-  for (curAddr = a; curAddr < (a + len); curAddr++) {
-    curTag = get_tag(curAddr);
-    if (curTag) {
-DYNCOMP_TPRINTF("MLR debug val_uf_union_tags_in_range addr=%p, tag=%u\n", (void *)curAddr, curTag);
-      tagToMerge = curTag;
-      break;
-    }
-  }
+  tagToMerge = first_nonzero_tag_in_range(a, len);
 
   // If they are all zeroes, then we're done;
   // Don't merge anything
@@ -463,6 +471,25 @@ VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_1: %p => %u\n", (void *)a, get_tag(a));
   return val_uf_union_tags_in_range(a, 1);
+}
+
+// Returns the tag of the value loaded from the range [a, a+len), in
+// dyncomp_dataflow_only_mode.  In that mode, nothing is an interaction,
+// so unlike the other MC_(helperc_LOAD_TAG_*) functions, this does not
+// merge the tags of the addresses in the range.  It returns the leader
+// of the first non-zero tag in the range; if that tag is
+// WEAK_FRESH_TAG, it returns a fresh tag, as MC_(helperc_LOAD_TAG_4)
+// does.
+VG_REGPARM(2)
+UInt MC_(helperc_LOAD_TAG_N) ( Addr a, UWord len ) {
+  UInt tag;
+
+  DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_N: %p %lu\n", (void *)a, len);
+  tag = first_nonzero_tag_in_range(a, len);
+  if (WEAK_FRESH_TAG == tag) {
+    return grab_fresh_tag();
+  }
+  return val_uf_find_leader(tag);
 }
 
 // Make this const so gcc can eliminate dead code to improve
