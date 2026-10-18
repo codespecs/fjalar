@@ -245,6 +245,14 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
 // as '>' and '>=' may be translated into calls of a condition-code
 // helper such as amd64g_calculate_condition, and the result of a
 // comparison does not interact with its operands.
+
+// Under --dyncomp-interactions=comparisons, this function still merges
+// the arguments of every helper call, which is wrong.  A condition-code
+// helper's arguments are the operands of whatever instruction last set
+// the flags, which need not be a comparison.  For example, after
+// "z = x + y" and a "jc" or "adc" that reads the carry flag, the
+// helper's arguments include x and y, so x and y become comparable even
+// though addition is not an interaction in that mode.
 static
 IRAtom* handleCCall_DC ( DCEnv* dce,
                          IRAtom** exprvec, IRCallee* cee )
