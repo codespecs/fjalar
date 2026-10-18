@@ -247,6 +247,14 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
 // bypasses mkMergeTags_DC, would pass an operand's tag through.
 // expr2tags_LDle_DC must give a wide load the tag of one of its bytes,
 // not the tag 0 that mkMergeTags_DC returns in that mode.
+// expr2tags_Qop_DC and expr2tags_Triop_DC return 0 early in that mode
+// rather than reaching mkMergeTags_DC, so that an unhandled operator does
+// not panic.
+//
+// Outside the instrumentation, dtrace-output.c merges tags in every mode:
+// at each program point, it merges the tags of the elements of each array
+// or sequence that it outputs (see val_uf_union_tags_at_addr and
+// val_uf_union_tags_in_range).
 
 // Returns a clean call to helper, one of the MC_(helperc_MERGE_*TAGS)
 // functions, that merges the tags in args.
@@ -287,15 +295,11 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2 )
 
 // Handling of clean helper function calls in the target program's
 // translated IR: Treat all arguments (exprvec) as 'interacting' with
-// one another and merge all of their respective tags, skipping each
-// argument that the callee's mc-exclusion mask excludes.  (Such
-// arguments, like the condition code or the operation code of a
-// condition-code helper such as amd64g_calculate_condition, are not
-// data that the program computes on.)  This is because helpers
-// probably implement weird x86 instructions which are too difficult to
-// handle purely in IR so these n-ary operations are probably
-// interactions.  E.g. if the args are (a, b, c, d, e) and the mask
-// excludes a, then merge tag(b) with tag(c), tag(d), and tag(e).
+// one another and merge all of their respective tags.  This is
+// because helpers probably implement weird x86 instructions which are
+// too difficult to handle purely in IR so these n-ary operations are
+// probably interactions.  E.g. if the args are (a, b, c, d, e), then
+// you should merge tag(a) with tag(b), tag(c), tag(d), and tag(e).
 
 // The result of the helper call gets tag 0, so that the arguments'
 // tags do not propagate to the result.  For example, comparisons such
@@ -306,33 +310,39 @@ static
 IRAtom* handleCCall_DC ( DCEnv* dce,
                          IRAtom** exprvec, IRCallee* cee )
 {
-   IRAtom* first = NULL;
-   Int i;
+  // In this mode, NOTHING is an interaction, so there is nothing to
+  // merge.  Returning early avoids computing the arguments' tags.
+  if (dyncomp_dataflow_only_mode) {
+     return IRExpr_Const(IRConst_UWord(0));
+  }
 
-   // In this mode, NOTHING is an interaction, so there is nothing to
-   // merge.  Returning early avoids computing the arguments' tags.
-   if (dyncomp_dataflow_only_mode) {
+  if (exprvec && exprvec[0]) {
+      IRAtom* first = expr2tags_DC(dce, exprvec[0]);
+      Int i;
+
+      for (i = 1; exprvec[i]; i++) {
+         tl_assert(i < 32);
+         tl_assert(isOriginalAtom_DC(dce, exprvec[i]));
+         /* Only take notice of this arg if the callee's mc-exclusion
+            mask does not say it is to be excluded. */
+         if (cee->mcx_mask & (1<<i)) {
+            /* the arg is to be excluded from definedness checking.  Do
+               nothing. (I guess we do nothing also just like mkLazyN) */
+            if (0) printf("excluding %s(%d)\n", cee->name, i);
+         } else {
+            /* merge the tags of first and current arguments */
+            stmtMergeTagsReturn0_DC(dce, first, expr2tags_DC(dce, exprvec[i]));
+         }
+      }
+      // Return the tag of the first argument, if there is one
+      //      return first;
+
+      // Or, always return 0
       return IRExpr_Const(IRConst_UWord(0));
    }
-
-   for (i = 0; exprvec && exprvec[i]; i++) {
-      tl_assert(i < 32);
-      tl_assert(isOriginalAtom_DC(dce, exprvec[i]));
-      /* Only take notice of this arg if the callee's mc-exclusion
-         mask does not say it is to be excluded. */
-      if (cee->mcx_mask & (1<<i)) {
-         /* the arg is to be excluded from definedness checking.  Do
-            nothing. (I guess we do nothing also just like mkLazyN) */
-         if (0) printf("excluding %s(%d)\n", cee->name, i);
-      } else if (first == NULL) {
-         first = expr2tags_DC(dce, exprvec[i]);
-      } else {
-         /* merge the tags of first and current arguments */
-         stmtMergeTagsReturn0_DC(dce, first, expr2tags_DC(dce, exprvec[i]));
-      }
+   else {
+      return IRExpr_Const(IRConst_UWord(0));
    }
-
-   return IRExpr_Const(IRConst_UWord(0));
 }
 
 /*------------------------------------------------------------*/
@@ -371,7 +381,8 @@ IRAtom* expr2tags_Qop_DC ( DCEnv* dce,
    }
 
    // Punt early!
-   if (dyncomp_dataflow_comparisons_mode) {
+   if (dyncomp_dataflow_only_mode ||
+       dyncomp_dataflow_comparisons_mode) {
       return IRExpr_Const(IRConst_UWord(0));
    }
 
@@ -458,7 +469,8 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
    }
 
    // Punt early!
-   if (dyncomp_dataflow_comparisons_mode) {
+   if (dyncomp_dataflow_only_mode ||
+       dyncomp_dataflow_comparisons_mode) {
       return IRExpr_Const(IRConst_UWord(0));
    }
 
