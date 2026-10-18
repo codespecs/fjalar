@@ -150,15 +150,18 @@ Memcheck and DynComp depend tightly on Valgrind core:
    $INV/fjalar/check-regtest.sh --log test.log --expected $INV/regtest-upstream-3.27.1.txt \
      --observed test-observed.txt --update
    ```
-   (Setting `XMLLINT` keeps `make check` from validating the manual, which
-   fails without the DocBook DTD; see `check-regtest.sh`.)
+   These are the options that `check-regtest.sh` itself uses.  Setting
+   `XMLLINT` keeps `make check` from validating the manual, which fails
+   without the DocBook DTD.  `-s --no-print-directory` keeps make's own
+   messages out of `test-post.log`, which `check-regtest.sh` reads as the
+   post-test checks' error messages.  `--observed` keeps the script from
+   overwriting Fjalar's `regtest-observed-<os>.txt` from step 1.
    `regtest-upstream-3.27.1.txt` is the list of tests that fail in upstream
-   3.27.1 on this machine; step 9 uses it.  (`--observed` keeps the script
-   from overwriting Fjalar's `regtest-observed-<os>.txt` from step 1.)  (It contains an entry
+   3.27.1 on this machine; step 9 uses it.  It contains an entry
    `post_regtest_checks: Unknown directory 'inst'. ...`, because the
    post-test header check in upstream's tree does not know the `inst`
    directory that this build installs into; Fjalar's tree does not have
-   that error.)
+   that error.
 
 4. **Create the diffs.** Run `$INV/fjalar/generate-patch-files.sh`, producing
    `coregrind.patch`, `memcheck.patch`, `coregrind-Fjalar.diff`,
