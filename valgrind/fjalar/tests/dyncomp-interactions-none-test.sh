@@ -26,22 +26,37 @@ trap 'rm -rf "${output_dir}"' EXIT
 gcc -gdwarf-4 -no-pie -O0 -o "${output_dir}/dyncomp-interactions-none" \
     "${test_dir}/dyncomp-interactions-none.c"
 
+# run_fjalar NAME [OPTION...] runs Fjalar with DynComp and the given options,
+# writing ${output_dir}/NAME.decls and ${output_dir}/NAME.out.
 # --vex-guest-chase=no ends each superblock at a jump, so that VEX cannot
 # specialize the condition-code helper call into a comparison operation.
-decls="${output_dir}/dyncomp-interactions-none.decls"
-status=0
-"${valgrind}" --tool=fjalar --vex-guest-chase=no \
-              --dyncomp --dyncomp-interactions=none \
-              --decls-only --decls-file="${decls}" \
-              --trace-flags=01000000 --trace-notbelow=0 \
-              "${output_dir}/dyncomp-interactions-none" \
-              > "${output_dir}/dyncomp-interactions-none.out" 2>&1 || status=$?
+run_fjalar() {
+  local name="$1"
+  shift
+  local status=0
+  "${valgrind}" --tool=fjalar --vex-guest-chase=no --dyncomp "$@" \
+                --decls-only --decls-file="${output_dir}/${name}.decls" \
+                "${output_dir}/dyncomp-interactions-none" \
+                > "${output_dir}/${name}.out" 2>&1 || status=$?
+  if [ "${status}" -ne 0 ]; then
+    echo "$0: FAILED: Fjalar (${name}) exited with status ${status}" >&2
+    tail -n 100 "${output_dir}/${name}.out" >&2
+    exit 1
+  fi
+}
 
-if [ "${status}" -ne 0 ]; then
-  echo "$0: FAILED: Fjalar exited with status ${status}" >&2
-  tail -n 100 "${output_dir}/dyncomp-interactions-none.out" >&2
-  exit 1
-fi
+# comparability NAME prints one line per variable at each exit program point,
+# other than main's: "<ppt> <variable> <comparability>".
+comparability() {
+  awk '/^ppt / { ppt = $2 }
+       /^  variable / { var = $2 }
+       /^    comparability / { if (ppt ~ /:::EXIT/ && ppt !~ /^\.\.main\(/)
+                                 print ppt, var, $2 }' \
+      "${output_dir}/$1.decls"
+}
+
+run_fjalar dyncomp-interactions-none --dyncomp-interactions=none \
+           --trace-flags=01000000 --trace-notbelow=0
 
 # The trace contains the IR of each superblock, after the optimization that
 # precedes instrumentation.  If VEX specialized the helper call into a
@@ -62,16 +77,24 @@ if ! awk '/^==== SB / { inLess = ($0 ~ / less(\+[0-9]+)? /) }
   exit 1
 fi
 
-# One line per variable at each exit program point, other than main's:
-# "<ppt> <variable> <comparability>".
 actual="${output_dir}/dyncomp-interactions-none.comparability"
-awk '/^ppt / { ppt = $2 }
-     /^  variable / { var = $2 }
-     /^    comparability / { if (ppt ~ /:::EXIT/ && ppt !~ /^\.\.main\(/)
-                               print ppt, var, $2 }' "${decls}" > "${actual}"
-
+comparability dyncomp-interactions-none > "${actual}"
 if ! diff -u "${test_dir}/dyncomp-interactions-none.goal" "${actual}" >&2; then
   echo "$0: FAILED: comparability differs from dyncomp-interactions-none.goal" >&2
+  exit 1
+fi
+
+# Positive control: in the default mode, the helper call makes a and b
+# comparable.  Without this check, the test would pass even if helper calls
+# never merged tags in any mode.
+run_fjalar dyncomp-interactions-default
+comparability dyncomp-interactions-default \
+    > "${output_dir}/dyncomp-interactions-default.comparability"
+if ! awk '$2 == "a" { a = $3 } $2 == "b" { b = $3 }
+          END { exit !(a != "" && a == b) }' \
+         "${output_dir}/dyncomp-interactions-default.comparability"; then
+  echo "$0: FAILED: in the default mode, a and b are not comparable" >&2
+  cat "${output_dir}/dyncomp-interactions-default.comparability" >&2
   exit 1
 fi
 
