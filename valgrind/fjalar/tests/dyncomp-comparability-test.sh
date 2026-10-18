@@ -2,7 +2,8 @@
 
 # Tests DynComp's comparability:  whether the variables at each exit
 # program point are comparable to each other.  The expected comparability is
-# in dyncomp-comparability.goal.
+# in dyncomp-comparability.goal, under both --dyncomp-interactions=all and
+# --dyncomp-interactions=units.
 
 set -e
 
@@ -23,29 +24,35 @@ trap 'rm -rf "${output_dir}"' EXIT
 gcc -gdwarf-4 -no-pie -O0 -o "${output_dir}/dyncomp-comparability" \
     "${test_dir}/dyncomp-comparability.c"
 
-decls="${output_dir}/dyncomp-comparability.decls"
-status=0
-"${valgrind}" --tool=fjalar --dyncomp --decls-only --decls-file="${decls}" \
-              "${output_dir}/dyncomp-comparability" \
-              > "${output_dir}/dyncomp-comparability.out" 2>&1 || status=$?
+for interactions in all units; do
+  decls="${output_dir}/dyncomp-comparability.decls"
+  status=0
+  "${valgrind}" --tool=fjalar --dyncomp \
+                --dyncomp-interactions="${interactions}" \
+                --decls-only --decls-file="${decls}" \
+                "${output_dir}/dyncomp-comparability" \
+                > "${output_dir}/dyncomp-comparability.out" 2>&1 || status=$?
 
-if [ "${status}" -ne 0 ]; then
-  echo "$0: FAILED: Fjalar exited with status ${status}" >&2
-  cat "${output_dir}/dyncomp-comparability.out" >&2
-  exit 1
-fi
+  if [ "${status}" -ne 0 ]; then
+    echo "$0: FAILED: under --dyncomp-interactions=${interactions}," \
+         "Fjalar exited with status ${status}" >&2
+    cat "${output_dir}/dyncomp-comparability.out" >&2
+    exit 1
+  fi
 
-# One line per variable at each exit program point, other than main's:
-# "<ppt> <variable> <comparability>".
-actual="${output_dir}/dyncomp-comparability.comparability"
-awk '/^ppt / { ppt = $2 }
-     /^  variable / { var = $2 }
-     /^    comparability / { if (ppt ~ /:::EXIT/ && ppt !~ /^\.\.main\(/)
-                               print ppt, var, $2 }' "${decls}" > "${actual}"
+  # One line per variable at each exit program point, other than main's:
+  # "<ppt> <variable> <comparability>".
+  actual="${output_dir}/dyncomp-comparability.comparability"
+  awk '/^ppt / { ppt = $2 }
+       /^  variable / { var = $2 }
+       /^    comparability / { if (ppt ~ /:::EXIT/ && ppt !~ /^\.\.main\(/)
+                                 print ppt, var, $2 }' "${decls}" > "${actual}"
 
-if ! diff -u "${test_dir}/dyncomp-comparability.goal" "${actual}" >&2; then
-  echo "$0: FAILED: comparability differs from dyncomp-comparability.goal" >&2
-  exit 1
-fi
+  if ! diff -u "${test_dir}/dyncomp-comparability.goal" "${actual}" >&2; then
+    echo "$0: FAILED: under --dyncomp-interactions=${interactions}," \
+         "comparability differs from dyncomp-comparability.goal" >&2
+    exit 1
+  fi
+done
 
 echo "$0: PASSED"
