@@ -124,8 +124,9 @@ run_diff() {
   fi
 }
 
-# The options are explained at the top of this file.  apply-patch-files.sh
-# generates Fjalar's version of memcheck/Makefile.am, so memcheck.patch omits it.
+# The options are explained at the top of this file.
+# generate-fjalar-makefile.sh, which apply-patch-files.sh runs, generates
+# Fjalar's version of memcheck/Makefile.am, so memcheck.patch omits it.
 gitdiff=(git diff --no-index --binary --full-index --no-renames --no-ext-diff --no-textconv --no-color -U3 --default-prefix)
 run_diff coregrind.patch "${gitdiff[@]}" valgrind-old valgrind-new ':(exclude,glob)**/.git'
 run_diff memcheck.patch "${gitdiff[@]}" valgrind-old/memcheck valgrind-new/memcheck ':(exclude,glob)**/.git' ':(exclude,glob)**/docs' ':(exclude,glob)**/tests' ':(exclude)Makefile.am'

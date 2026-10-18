@@ -56,14 +56,16 @@ it completely (merged, CI green) before starting this one.  That plan's
    git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-new
    ```
    Correct the files of earlier merges, following section "Correct the
-   files of earlier merges" of `doc/valgrind-merge.texinfo`.  It has three
-   checks: files that Fjalar tracks but `valgrind-old` lacks (remove those
-   that Fjalar should not have); Memcheck files in `valgrind/fjalar` that
-   `valgrind-old` lacks (keep Fjalar's own, such as `mc_translate.h`); and
-   files that `valgrind-old` has but Fjalar does not track, such as empty
-   files and files that match `.gitignore` (add those that Fjalar should
-   have).  Commit these corrections before applying the patch files,
-   because `apply-patch-files.sh` requires a clean work tree.  (`git apply`
+   files of earlier merges" of `doc/valgrind-merge.texinfo`.  It lists
+   files that Fjalar tracks but `valgrind-old` lacks (remove those that
+   Fjalar should not have); Memcheck files in `valgrind/fjalar` that
+   `valgrind-old` lacks (keep Fjalar's own, such as `mc_translate.h`);
+   Memcheck files that `valgrind-old` has but `valgrind/fjalar` lacks (copy
+   them, because Fjalar builds every Memcheck source file); and files that
+   `valgrind-old` has but Fjalar does not track, such as empty files and
+   files that match `.gitignore` (add those that Fjalar should have).
+   Commit these corrections before applying the patch files, because
+   `apply-patch-files.sh` requires a clean work tree.  (`git apply`
    handles the files that upstream added or removed since `$VOLDVER`.)
 
 3. **Baseline.**  Never build in `valgrind-old` or `valgrind-new` themselves:
