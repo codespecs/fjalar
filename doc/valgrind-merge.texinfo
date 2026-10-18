@@ -935,11 +935,11 @@ which is Rocky Linux 10.)
 
 @example
 # Ubuntu images
-docker run --rm --pull=always mdernst/daikon-ubuntu-jdk11-plus:latest \
-  dpkg-query -W binutils-dev
+docker run --rm --pull=always \
+  mdernst/daikon-ubuntu-jdk11-plus:latest dpkg-query -W binutils-dev
 # Rocky Linux images
-docker run --rm --pull=always mdernst/daikon-rockylinux-jdk25-plus:latest \
-  rpm -q binutils-devel
+docker run --rm --pull=always \
+  mdernst/daikon-rockylinux-jdk25-plus:latest rpm -q binutils-devel
 @end example
 
 @noindent
@@ -948,7 +948,8 @@ To check whether that @file{bfd.h} defines a given name, set
 
 @example
 IMAGE=mdernst/daikon-rockylinux-jdk25-plus
-docker run --rm --pull=always $IMAGE:latest grep -w NAME /usr/include/bfd.h
+docker run --rm --pull=always $IMAGE:latest \
+  grep -w NAME /usr/include/bfd.h
 @end example
 @end itemize
 
