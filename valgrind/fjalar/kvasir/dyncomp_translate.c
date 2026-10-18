@@ -238,7 +238,8 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
 //  * At translation time, every merge in the instrumentation is created
 //    by mkMergeTags_DC or by stmtMergeTagsReturn0_DC.
 //  * At run time, a load merges the tags of the bytes it reads; see
-//    load_tag_in_range in dyncomp_main.c.
+//    load_tag_in_range in dyncomp_main.c.  A load merges nothing in
+//    dyncomp_dataflow_comparisons_mode either.
 // expr2tags_Binop_DC and expr2tags_LDle_DC also test
 // dyncomp_dataflow_only_mode.  expr2tags_Binop_DC must give every
 // result tag 0, even where its constant-operand shortcut, which
@@ -2203,9 +2204,9 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
    setHelperAnns_DC(dce, diAddr);
    stmt_DC('V', dce, IRStmt_Dirty(diAddr));
 
-   // In this mode, NOTHING is an interaction, so a load of any size
-   // does not merge the tags of the bytes it reads.
-   if (dyncomp_dataflow_only_mode) {
+   // In these modes, a load is not an interaction, so a load of any
+   // size does not merge the tags of the bytes it reads.
+   if (dyncomp_dataflow_only_mode || dyncomp_dataflow_comparisons_mode) {
       IRTemp   datatag = newTemp(dce->mce, Ity_Word, DC);
       IRDirty* di = unsafeIRDirty_1_N( datatag,
                                        3/*regparms*/,
@@ -2456,7 +2457,8 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
 
 // Returns the tag of data, which the original temp tmp is assigned.
 //
-// In dyncomp_dataflow_only_mode, a load of more than one byte into tmp
+// In dyncomp_dataflow_only_mode and dyncomp_dataflow_comparisons_mode,
+// where a load is not an interaction, a load of more than one byte into tmp
 // also saves the tag of each byte it reads, and a store of tmp in the
 // same superblock writes those tags back one byte at a time (see
 // do_shadow_STle_DC).  A copy of a struct or an array may move several
@@ -2467,7 +2469,7 @@ IRExpr* expr2tags_WrTmp_DC ( DCEnv* dce, IRTemp tmp, IRExpr* data )
 {
    Int slot;
 
-   if (dyncomp_dataflow_only_mode
+   if ((dyncomp_dataflow_only_mode || dyncomp_dataflow_comparisons_mode)
        && data->tag == Iex_Load
        && sizeofIRType(data->Iex.Load.ty) > 1
        && sizeofIRType(data->Iex.Load.ty) <= DC_LOAD_TAG_SNAPSHOT_BYTES

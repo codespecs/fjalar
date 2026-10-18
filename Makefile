@@ -32,6 +32,7 @@ test:
 fjalar-test:
 	valgrind/fjalar/tests/library-compilation-unit-test.sh
 	valgrind/fjalar/tests/dyncomp-interactions-none-test.sh
+	valgrind/fjalar/tests/dyncomp-copy-comparisons-test.sh
 	valgrind/fjalar/tests/location-views-test.sh
 
 # Kvasir tests

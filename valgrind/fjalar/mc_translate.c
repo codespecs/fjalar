@@ -8758,7 +8758,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
       for (i = 0; i < (Int)dce.n_originalTmps; i++)
          dce.tmpMap[i] = IRTemp_INVALID;
       dce.loadTagSnapshots = NULL;
-      if (dyncomp_dataflow_only_mode) {
+      if (dyncomp_dataflow_only_mode || dyncomp_dataflow_comparisons_mode) {
          dce.loadTagSnapshots = VG_(malloc)("mc_translate.c.3", dce.n_originalTmps * sizeof(Int));
          for (i = 0; i < (Int)dce.n_originalTmps; i++)
             dce.loadTagSnapshots[i] = -1;

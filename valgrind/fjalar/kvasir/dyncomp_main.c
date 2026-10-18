@@ -446,14 +446,15 @@ UInt MC_(helperc_CREATE_TAG)(Addr static_id) {
 
 // Returns the tag of the value loaded from the range [a, a+len).
 // Ordinarily, this merges the tags of all addresses in the range.
-// In dyncomp_dataflow_only_mode, nothing is an interaction, so this
-// returns the leader of the first non-zero tag in the range, without
-// merging; if that tag is WEAK_FRESH_TAG, this returns a fresh tag, as
-// MC_(helperc_LOAD_TAG_4) does.
+// In dyncomp_dataflow_only_mode and dyncomp_dataflow_comparisons_mode,
+// a load is not an interaction, so this returns the leader of the first
+// non-zero tag in the range, without merging; if that tag is
+// WEAK_FRESH_TAG, this returns a fresh tag, as MC_(helperc_LOAD_TAG_4)
+// does.
 static UInt load_tag_in_range(Addr a, SizeT len) {
   UInt tag;
 
-  if (!dyncomp_dataflow_only_mode) {
+  if (!dyncomp_dataflow_only_mode && !dyncomp_dataflow_comparisons_mode) {
     return val_uf_union_tags_in_range(a, len);
   }
   tag = first_nonzero_tag_in_range(a, len);
