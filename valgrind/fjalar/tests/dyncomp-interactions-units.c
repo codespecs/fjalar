@@ -14,6 +14,21 @@ int less(int a, int b) {
   return result;
 }
 
+// lessMask() compares its parameters with a cmp instruction whose carry is
+// read by an sbb instruction in a different basic block, as in the idiom
+// mask = -(a < b) for unsigned a and b.  VEX translates the read of the
+// carry into a call to amd64g_calculate_rflags_c, whose arguments include
+// the operands of the comparison.  Under --dyncomp-interactions=units,
+// DynComp should make a and b comparable.
+int lessMask(unsigned a, unsigned b) {
+  int mask;
+  __asm__ volatile ("cmpl %2, %1\n\t"
+                    "jmp 1f\n"
+                    "1:\tsbbl %0, %0"
+                    : "=r" (mask) : "r" (a), "r" (b) : "cc");
+  return mask;
+}
+
 // overflow() multiplies a and b with an imul instruction whose overflow flag
 // is read by a seto instruction in a different basic block.  VEX translates
 // the seto into a call to amd64g_calculate_condition, whose arguments include
@@ -47,6 +62,7 @@ long absDiffSum(long a, long b) {
 
 int main(void) {
   less(1, 2);
+  lessMask(7, 8);
   overflow(3, 4);
   absDiffSum(5, 6);
   return 0;
