@@ -194,28 +194,22 @@ void val_uf_make_set_for_tag(UInt tag) {
   uf_make_set(GET_UF_OBJECT_PTR(tag), tag);
 }
 
-// Returns a description of the current instruction address, for
-// trace output.  It is expensive, so call it only when tracing; for
-// example, as an argument to DYNCOMP_TPRINTF, which evaluates its
-// arguments only when tracing.
-const HChar* current_IP_description(void) {
-  Addr eip = VG_(get_IP)(VG_(get_running_tid)());
-  // Describe this (probably live) address with current epoch
-  return VG_(describe_IP)(VG_(current_DiEpoch)(), eip, NULL);
-}
-
 // Merge the sets of tag1 and tag2 and return the leader
 UInt val_uf_tag_union(UInt tag1, UInt tag2) {
   if (!IS_ZERO_TAG(tag1) && !IS_SECONDARY_UF_NULL(tag1) &&
       !IS_ZERO_TAG(tag2) && !IS_SECONDARY_UF_NULL(tag2)) {
+    Addr eip = VG_(get_IP)(VG_(get_running_tid)());
+    const HChar *eip_info;
     uf_object* tag1_obj, *tag2_obj;
     uf_object* leader;
     tag1_obj = GET_UF_OBJECT_PTR(tag1);
     tag2_obj = GET_UF_OBJECT_PTR(tag2);
     leader = uf_union(tag1_obj, tag2_obj);
+    // Describe this (probably live) address with current epoch
+    eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), eip, NULL);
 
     DYNCOMP_TPRINTF("[DynComp-v1] Merging %u with %u to get %u at %s\n",
-                    tag1, tag2, leader->tag, current_IP_description());
+                    tag1, tag2, leader->tag, eip_info);
 
     return leader->tag;
   }
@@ -323,6 +317,21 @@ void MC_(helperc_STORE_TAG_1) ( Addr a, UInt tag ) {
   set_tag(a, tagToWrite);
 }
 
+// Returns the first non-zero tag in the range [a, a+len), or 0 if
+// there is none.
+static UInt first_nonzero_tag_in_range(Addr a, SizeT len) {
+  Addr curAddr;
+  UInt curTag;
+
+  for (curAddr = a; curAddr < (a + len); curAddr++) {
+    curTag = get_tag(curAddr);
+    if (curTag) {
+      return curTag;
+    }
+  }
+  return 0;
+}
+
 // Unions the tags belonging to these addresses and set
 // the tags of both to the canonical tag (for efficiency)
 void val_uf_union_tags_at_addr(Addr a1, Addr a2) {
@@ -390,14 +399,7 @@ UInt val_uf_union_tags_in_range(Addr a, SizeT len) {
   // that as the basis for all the mergings:
   // (Hopefully this should only take one iteration
   //  because the tag of address 'a' should be non-zero)
-  for (curAddr = a; curAddr < (a + len); curAddr++) {
-    curTag = get_tag(curAddr);
-    if (curTag) {
-DYNCOMP_TPRINTF("MLR debug val_uf_union_tags_in_range addr=%p, tag=%u\n", (void *)curAddr, curTag);
-      tagToMerge = curTag;
-      break;
-    }
-  }
+  tagToMerge = first_nonzero_tag_in_range(a, len);
 
   // If they are all zeroes, then we're done;
   // Don't merge anything
@@ -443,33 +445,10 @@ UInt MC_(helperc_CREATE_TAG)(Addr static_id) {
 }
 
 
-// Returns the tag of the value in [a, a + len).  Loading a value whose bytes
-// have different tags is an interaction that merges those tags, except in
-// the modes in which only comparisons, or nothing, are interactions.  In
-// those modes, the result is the leader of the first non-zero tag in the
-// range, or 0.  That is the result of val_uf_union_tags_in_range when the
-// range contains only one non-zero tag; for example, both return 0 for a
-// range whose tags are all WEAK_FRESH_TAG.
-static UInt load_tag_in_range(Addr a, SizeT len) {
-  Addr curAddr;
-  UInt curTag;
-
-  if (!(dyncomp_dataflow_only_mode || dyncomp_dataflow_comparisons_mode)) {
-    return val_uf_union_tags_in_range(a, len);
-  }
-  for (curAddr = a; curAddr < (a + len); curAddr++) {
-    curTag = get_tag(curAddr);
-    if (curTag) {
-      return val_uf_find_leader(curTag);
-    }
-  }
-  return 0;
-}
-
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_8) ( Addr a ) {
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_8: %p\n", (void *)a);
-  return load_tag_in_range(a, 8);
+  return val_uf_union_tags_in_range(a, 8);
 }
 
 VG_REGPARM(1)
@@ -480,19 +459,38 @@ UInt MC_(helperc_LOAD_TAG_4) ( Addr a ) {
     return grab_fresh_tag();
   }
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_4: %p\n", (void *)a);
-  return load_tag_in_range(a, 4);
+  return val_uf_union_tags_in_range(a, 4);
 }
 
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_2) ( Addr a ) {
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_2: %p\n", (void *)a);
-  return load_tag_in_range(a, 2);
+  return val_uf_union_tags_in_range(a, 2);
 }
 
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_1: %p => %u\n", (void *)a, get_tag(a));
-  return load_tag_in_range(a, 1);
+  return val_uf_union_tags_in_range(a, 1);
+}
+
+// Returns the tag of the value loaded from the range [a, a+len), in
+// dyncomp_dataflow_only_mode.  In that mode, nothing is an interaction,
+// so unlike the other MC_(helperc_LOAD_TAG_*) functions, this does not
+// merge the tags of the addresses in the range.  It returns the leader
+// of the first non-zero tag in the range; if that tag is
+// WEAK_FRESH_TAG, it returns a fresh tag, as MC_(helperc_LOAD_TAG_4)
+// does.
+VG_REGPARM(2)
+UInt MC_(helperc_LOAD_TAG_N) ( Addr a, UWord len ) {
+  UInt tag;
+
+  DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_N: %p %lu\n", (void *)a, len);
+  tag = first_nonzero_tag_in_range(a, len);
+  if (WEAK_FRESH_TAG == tag) {
+    return grab_fresh_tag();
+  }
+  return val_uf_find_leader(tag);
 }
 
 // Make this const so gcc can eliminate dead code to improve
@@ -529,6 +527,11 @@ UInt tag2_is_new ( UInt tag1, UInt tag2 ) {
 // of the merged set
 VG_REGPARM(2)
 UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
+  Addr eip = VG_(get_IP)(VG_(get_running_tid)());
+  const HChar *eip_info;
+  // Describe this (probably live) address with current epoch
+  eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), eip, NULL);
+
   if (dyncomp_profile_tags) {
     mergeTagsCount++;
   }
@@ -546,12 +549,12 @@ UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
   //  but that's correctly handled)
   else if (WEAK_FRESH_TAG == tag1) {
     DYNCOMP_TPRINTF("[DynComp-m1] Merging %u with %u to get %u at %s\n",
-                    tag1, tag2, tag2, current_IP_description());
+                    tag1, tag2, tag2, eip_info);
     return tag2;
   }
   else if (WEAK_FRESH_TAG == tag2) {
     DYNCOMP_TPRINTF("[DynComp-m2] Merging %u with %u to get %u at %s\n",
-                    tag1, tag2, tag1, current_IP_description());
+                    tag1, tag2, tag1, eip_info);
     return tag1;
   }
   else {

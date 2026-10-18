@@ -31,8 +31,8 @@ jobs:
   # different underlying OS versions.
 
   # These jobs run ./test.sh, which builds Fjalar, checks that command-line
-  # options are documented, runs the Fjalar regression tests, builds the
-  # documentation, and runs the Kvasir regression tests.
+  # options are documented, builds the documentation, and runs the Kvasir
+  # regression tests.
 
   ubuntu_26_04:
     runs-on: ubuntu-latest
