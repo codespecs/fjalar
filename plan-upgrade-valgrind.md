@@ -66,7 +66,6 @@ it completely (merged, CI green) before starting this one.  That plan's
    error message gives the `git reset`/`git clean` command that makes a tree
    pristine again.  Build a copy instead:
    ```sh
-   rm -rf valgrind-new-build
    cp -a valgrind-new valgrind-new-build && cd valgrind-new-build
    ./autogen.sh && ./configure --prefix=$(pwd)/inst
    make all install && make regtest > test.log 2>&1
