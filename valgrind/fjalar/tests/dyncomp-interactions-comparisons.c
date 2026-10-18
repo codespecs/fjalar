@@ -38,15 +38,9 @@ int lessMask(unsigned a, unsigned b) {
 // carry of the cmp via amd64g_calculate_rflags_c, and the setl reads the
 // flags of the sbb via amd64g_calculate_condition, whose arguments include
 // the high halves.  Under --dyncomp-interactions=comparisons, DynComp
-// should make aLo and bLo comparable, and aHi and bHi comparable.
-//
-// *** KNOWN LIMITATION:  DynComp makes aLo and bLo comparable, but NOT aHi
-// *** and bHi.  The .goal file records this current, incorrect behavior.
-// *** The flags read by the setl are those of the sbb, whose thunk holds
-// *** bHi xor the old carry rather than bHi, and that xor gets tag 0
-// *** because it is not an interaction.  See the comment above
-// *** dyncomp_cc_op_is_sub in kvasir/dyncomp_main.c.  If DynComp is fixed,
-// *** change aHi and bHi in the .goal file to have the same comparability.
+// should make aLo and bLo comparable, and aHi and bHi comparable.  (The
+// sbb's thunk holds bHi xor the old carry rather than bHi; see
+// flagsThunkOperand_DC in kvasir/dyncomp_translate.c.)
 int lessWide(long aLo, long aHi, long bLo, long bHi) {
   unsigned char result;
   long hi = aHi;

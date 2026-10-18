@@ -207,6 +207,12 @@ typedef
       /* MODIFIED: Original address of guest instruction whose IR
          we're now processing, as taken from the last IMark we saw. */
       Addr origAddr;
+
+      /* READONLY: a table [0 .. #temps_in_original_bb-1] whose
+         entries are the expressions that the original bb assigns to
+         the temporaries; see findTmpDefs_DC.  NULL unless
+         --dyncomp-interactions is comparisons. */
+      IRExpr** tmpDefs;
    }
    DCEnv;
 

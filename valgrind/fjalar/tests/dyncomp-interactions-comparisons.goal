@@ -12,8 +12,8 @@
 ..lessWide():::EXIT0 aLo 1
 ..lessWide():::EXIT0 aHi 2
 ..lessWide():::EXIT0 bLo 1
-..lessWide():::EXIT0 bHi 3
-..lessWide():::EXIT0 return 4
+..lessWide():::EXIT0 bHi 2
+..lessWide():::EXIT0 return 3
 ..lessMask():::EXIT0 a 1
 ..lessMask():::EXIT0 b 1
 ..lessMask():::EXIT0 return 2

@@ -5,9 +5,7 @@
 # comparison set.  The operands of a cmp should be comparable when its flags
 # are read via amd64g_calculate_condition (setl) or amd64g_calculate_rflags_c
 # (sbb), and so should the high halves of two 128-bit integers that are
-# compared with cmp, sbb, and setl (but they are not; the .goal file
-# records that known limitation, which is explained at lessWide()).  The
-# operands of an add should not be comparable when its flags are read via
+# compared with cmp, sbb, and setl.  The operands of an add should not be comparable when its flags are read via
 # amd64g_calculate_condition (setc) or amd64g_calculate_rflags_c (adc).  The
 # operands of a sub should not be comparable when its flags are copied by a
 # lahf via amd64g_calculate_rflags_all.

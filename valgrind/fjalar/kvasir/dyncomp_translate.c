@@ -109,6 +109,63 @@ static void setHelperAnns_DC ( DCEnv* dce, IRDirty* di ) {
 }
 
 // A PUT stores a value into the guest state
+// Returns an array, indexed by the temporaries of sb_in, whose elements are
+// the expressions that sb_in assigns to them with WrTmp statements, or NULL.
+// The caller frees it.
+IRExpr** findTmpDefs_DC ( const IRSB* sb_in )
+{
+   // VG_(calloc) asserts that the size is non-zero, and a superblock may
+   // have no temporaries.
+   const Int nAlloc = sb_in->tyenv->types_used > 0
+                      ? sb_in->tyenv->types_used : 1;
+   IRExpr** defs = VG_(calloc)("dyncomp_translate.c.findTmpDefs_DC.1",
+                               nAlloc, sizeof(IRExpr*));
+   Int i;
+
+   for (i = 0; i < sb_in->stmts_used; i++) {
+      IRStmt* st = sb_in->stmts[i];
+      if (st->tag == Ist_WrTmp) {
+         defs[st->Ist.WrTmp.tmp] = st->Ist.WrTmp.data;
+      }
+   }
+   return defs;
+}
+
+// If offset is that of the CC_DEP2 field of the flags thunk, and atom is
+// argR ^ oldCarry (possibly zero-extended), as an adc or sbb instruction
+// stores there, returns argR.  Otherwise, returns atom.  Under
+// --dyncomp-interactions=comparisons, an xor is not an interaction, and its
+// tag is 0, but a comparison by sbb merges the tag of CC_DEP2 with the tag of
+// CC_DEP1; see dyncomp_cc_op_is_sub.  (Under --dyncomp-interactions=units,
+// the sbb's subtraction makes its operands comparable.)
+static
+IRAtom* flagsThunkOperand_DC ( DCEnv* dce, Int offset, IRAtom* atom )
+{
+   IRExpr* def;
+
+   if (!dce->tmpDefs
+       || offset != offsetof(VexGuestAMD64State, guest_CC_DEP2)
+       || atom->tag != Iex_RdTmp) {
+      return atom;
+   }
+   def = dce->tmpDefs[atom->Iex.RdTmp.tmp];
+   if (def && def->tag == Iex_Unop
+       && (def->Iex.Unop.op == Iop_8Uto64
+           || def->Iex.Unop.op == Iop_16Uto64
+           || def->Iex.Unop.op == Iop_32Uto64)
+       && def->Iex.Unop.arg->tag == Iex_RdTmp) {
+      def = dce->tmpDefs[def->Iex.Unop.arg->Iex.RdTmp.tmp];
+   }
+   if (def && def->tag == Iex_Binop
+       && (def->Iex.Binop.op == Iop_Xor8
+           || def->Iex.Binop.op == Iop_Xor16
+           || def->Iex.Binop.op == Iop_Xor32
+           || def->Iex.Binop.op == Iop_Xor64)) {
+      return def->Iex.Binop.arg1;
+   }
+   return atom;
+}
+
 void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
                      IRAtom* atom, IRAtom* vatom )
 {
@@ -116,7 +173,7 @@ void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
    if (atom) {
       tl_assert(!vatom);
       tl_assert(isOriginalAtom_DC(dce, atom));
-      vatom = expr2tags_DC( dce, atom );
+      vatom = expr2tags_DC( dce, flagsThunkOperand_DC(dce, offset, atom) );
    } else {
       tl_assert(vatom);
       tl_assert(isShadowAtom_DC(dce, vatom));

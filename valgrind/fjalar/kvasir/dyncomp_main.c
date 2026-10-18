@@ -611,21 +611,18 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
 }
 
 // Returns True if cc_op, the CC_OP field of the flags thunk, says that the
-// flags are the result of a subtraction (a cmp or sub instruction), which
-// is how amd64 compares values.
+// flags are the result of a subtraction (a cmp, sub, or sbb instruction),
+// which is how amd64 compares values.
 //
 // A comparison of values wider than a register, such as two __int128
 // values, compares the low halves with a cmp and the high halves with an
-// sbb, and the flags that are read are those of the sbb.  Accepting
-// AMD64G_CC_OP_SBB* here would have no effect under
-// --dyncomp-interactions=comparisons:  the CC_DEP2 field of an sbb's thunk
-// is the xor of its second operand and the old carry, and that xor gets
-// tag 0 because it is not an interaction.  So in that mode, the high halves
-// are not comparable.  (Under --dyncomp-interactions=units, the sbb's
-// subtraction makes them comparable.)  See lessWide() in
-// tests/dyncomp-interactions-comparisons.c.
+// sbb, and the flags that are read are those of the sbb.  The CC_DEP2 field
+// of an sbb's thunk is the xor of its second operand and the old carry, so
+// do_shadow_PUT_DC gives it the tag of that operand; see
+// flagsThunkOperand_DC.
 Bool dyncomp_cc_op_is_sub(UWord cc_op) {
-  return AMD64G_CC_OP_SUBB <= cc_op && cc_op <= AMD64G_CC_OP_SUBQ;
+  return (AMD64G_CC_OP_SUBB <= cc_op && cc_op <= AMD64G_CC_OP_SUBQ)
+         || (AMD64G_CC_OP_SBBB <= cc_op && cc_op <= AMD64G_CC_OP_SBBQ);
 }
 
 // Like MC_(helperc_MERGE_TAGS_RETURN_0), but merges tag1 and tag2 only if
