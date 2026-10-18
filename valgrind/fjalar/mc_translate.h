@@ -194,6 +194,14 @@ typedef
       IRTemp* tmpMap;
       UInt     n_originalTmps; /* for range checking */
 
+      /* MODIFIED: a table [0 .. #temps_in_original_bb-1] which maps
+         each original temp to the slot of MC_(helperc_LOAD_TAG_N)
+         that holds the tags of the bytes loaded into it, or to -1.
+         NULL unless dyncomp_dataflow_only_mode.  See
+         expr2tags_WrTmp_DC. */
+      Int* loadTagSnapshots;
+      Int  n_loadTagSnapshots; /* number of slots in use */
+
       /* READONLY: the guest layout.  This indicates which parts of
          the guest state should be regarded as 'always defined'. */
       const VexGuestLayout* layout;

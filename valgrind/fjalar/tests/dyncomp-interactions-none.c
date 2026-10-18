@@ -37,6 +37,15 @@ long copy(long a, long b) {
   return q.a;
 }
 
+// Like copy(), but the return value should be comparable to b.
+long copy_second(long a, long b) {
+  struct pair p, q;
+  p.a = a;
+  p.b = b;
+  COPY_PAIR(q, p);
+  return q.b;
+}
+
 struct int_pair {
   int x;
   int y;
@@ -60,6 +69,15 @@ int copy_ints(int x, int y) {
   return q.x;
 }
 
+// Like copy_ints(), but the return value should be comparable to y.
+int copy_ints_second(int x, int y) {
+  struct int_pair p, q;
+  p.x = x;
+  p.y = y;
+  COPY_INT_PAIR(q, p);
+  return q.y;
+}
+
 // add_const() adds a constant to its parameter.  Under
 // --dyncomp-interactions=none, an addition is not an interaction even when one
 // operand is a constant, so the return value should not be comparable to x.
@@ -72,6 +90,8 @@ int main(void) {
   add_const(1);
   less(1, 2);
   copy(1, 2);
+  copy_second(1, 2);
   copy_ints(1, 2);
+  copy_ints_second(1, 2);
   return 0;
 }
