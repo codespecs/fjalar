@@ -8755,6 +8755,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
       dce.hWordTy        = hWordTy;
       dce.tmpDefs        = dyncomp_dataflow_comparisons_mode
                            ? findTmpDefs_DC(sb_in) : NULL;
+      dce.sbbThunk       = False;
       dce.tmpMap         = VG_(malloc)("mc_translate.c.2", dce.n_originalTmps * sizeof(IRTemp));
       //dce.tmpMap         = LibVEX_Alloc(dce.n_originalTmps * sizeof(IRTemp));
       for (i = 0; i < (Int)dce.n_originalTmps; i++)

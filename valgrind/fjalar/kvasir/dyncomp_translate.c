@@ -108,10 +108,10 @@ static void setHelperAnns_DC ( DCEnv* dce, IRDirty* di ) {
    di->fxState[1].repeatLen = 0;
 }
 
-// A PUT stores a value into the guest state
-// Returns an array, indexed by the temporaries of sb_in, whose elements are
-// the expressions that sb_in assigns to them with WrTmp statements, or NULL.
-// The caller frees it.
+// Returns an array, indexed by the temporaries of sb_in.  The element for a
+// temporary that sb_in assigns with a WrTmp statement is the assigned
+// expression; the element for any other temporary is NULL.  The caller
+// frees the array.
 IRExpr** findTmpDefs_DC ( const IRSB* sb_in )
 {
    // VG_(calloc) asserts that the size is non-zero, and a superblock may
@@ -131,21 +131,22 @@ IRExpr** findTmpDefs_DC ( const IRSB* sb_in )
    return defs;
 }
 
-// If offset is that of the CC_DEP2 field of the flags thunk, and atom is
-// argR ^ oldCarry (possibly zero-extended), as an adc or sbb instruction
-// stores there, returns argR.  Otherwise, returns atom.  Under
-// --dyncomp-interactions=comparisons, an xor is not an interaction, and its
-// tag is 0, but a comparison by sbb merges the tag of CC_DEP2 with the tag of
-// CC_DEP1; see dyncomp_cc_op_is_sub.  (Under --dyncomp-interactions=units,
-// the sbb's subtraction makes its operands comparable.)
+// atom is the value of the CC_DEP2 field of the flags thunk of an sbb
+// instruction.  If atom is argR ^ oldCarry (possibly zero-extended), as an
+// sbb instruction stores there, returns argR.  Otherwise, returns atom.
+// Under --dyncomp-interactions=comparisons, an xor is not an interaction,
+// and its tag is 0, but a comparison by sbb merges the tag of CC_DEP2 with
+// the tag of CC_DEP1; see dyncomp_cc_op_is_sub.
+//
+// The caller must ensure that the thunk is that of an sbb (by checking
+// CC_OP), because CC_DEP2 of another thunk, such as that of a cmp, may be
+// the result of an xor instruction, whose first operand was not compared.
 static
-IRAtom* flagsThunkOperand_DC ( DCEnv* dce, Int offset, IRAtom* atom )
+IRAtom* sbbSecondOperand_DC ( DCEnv* dce, IRAtom* atom )
 {
    IRExpr* def;
 
-   if (!dce->tmpDefs
-       || offset != offsetof(VexGuestAMD64State, guest_CC_DEP2)
-       || atom->tag != Iex_RdTmp) {
+   if (!dce->tmpDefs || atom->tag != Iex_RdTmp) {
       return atom;
    }
    def = dce->tmpDefs[atom->Iex.RdTmp.tmp];
@@ -166,6 +167,7 @@ IRAtom* flagsThunkOperand_DC ( DCEnv* dce, Int offset, IRAtom* atom )
    return atom;
 }
 
+// A PUT stores a value into the guest state
 void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
                      IRAtom* atom, IRAtom* vatom )
 {
@@ -173,7 +175,17 @@ void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
    if (atom) {
       tl_assert(!vatom);
       tl_assert(isOriginalAtom_DC(dce, atom));
-      vatom = expr2tags_DC( dce, flagsThunkOperand_DC(dce, offset, atom) );
+      // An instruction that sets the flags PUTs CC_OP before CC_DEP2.
+      if (offset == offsetof(VexGuestAMD64State, guest_CC_OP)) {
+         dce->sbbThunk = atom->tag == Iex_Const
+                         && atom->Iex.Const.con->tag == Ico_U64
+                         && dyncomp_cc_op_is_sbb(atom->Iex.Const.con->Ico.U64);
+      }
+      if (offset == offsetof(VexGuestAMD64State, guest_CC_DEP2)
+          && dce->sbbThunk) {
+         atom = sbbSecondOperand_DC(dce, atom);
+      }
+      vatom = expr2tags_DC( dce, atom );
    } else {
       tl_assert(vatom);
       tl_assert(isShadowAtom_DC(dce, vatom));
@@ -393,8 +405,9 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2,
 // would have any effect.
 // Under --dyncomp-interactions=comparisons, a helper call is an
 // interaction only if it is a comparison:  that is, if it uses flags that
-// a subtraction (a cmp or sub instruction) set.  The helpers that read
-// flags (amd64g_calculate_condition, amd64g_calculate_rflags_c, and
+// a subtraction (a cmp, sub, or sbb instruction) set; see
+// dyncomp_cc_op_is_sub.  The helpers that read flags
+// (amd64g_calculate_condition, amd64g_calculate_rflags_c, and
 // amd64g_calculate_rflags_all) compute them from a flags thunk whose CC_OP
 // field says which operation set them.  CC_OP is often known only at run
 // time, for example when the flags are read in a different superblock
@@ -403,6 +416,14 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2,
 // setl (via amd64g_calculate_condition) or by an sbb (via
 // amd64g_calculate_rflags_c), but the operands of an add are not merged
 // when its carry is read by an adc.
+//
+// The CC_DEP2 field of an sbb's thunk is the xor of its second operand and
+// the old carry, so its tag is 0.  When CC_OP is known at translation time
+// to be that of an sbb, which is the case when the sbb is in the same
+// superblock as the call, VEX passes that xor as the cc_dep2 argument, and
+// the merge uses the tag of the sbb's second operand instead; see
+// sbbSecondOperand_DC.  Otherwise, the cc_dep2 argument is read from the
+// guest state, to which do_shadow_PUT_DC gave the tag of that operand.
 //
 // An inc or dec instruction reads the carry flag (via
 // amd64g_calculate_rflags_c) and stores it in the CC_NDEP field of its own
@@ -428,14 +449,17 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2,
 
 // If a call to cee with arguments exprvec uses flags as the result of a
 // comparison (when the flags are the result of a subtraction), returns its
-// CC_OP argument.  Otherwise, returns NULL.
+// CC_OP argument and sets *dep2Index to the index of its cc_dep2 argument.
+// Otherwise, returns NULL.
 static
-IRAtom* comparisonCCOp_DC ( IRAtom** exprvec, IRCallee* cee )
+IRAtom* comparisonCCOp_DC ( IRAtom** exprvec, IRCallee* cee, Int* dep2Index )
 {
    if (cee->addr == (void*)&amd64g_calculate_condition) {
+      *dep2Index = 3;
       return exprvec[1];
    }
    if (cee->addr == (void*)&amd64g_calculate_rflags_c) {
+      *dep2Index = 2;
       return exprvec[0];
    }
    return NULL;
@@ -463,6 +487,11 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
    IRTemp   datatag;
    // Non-NULL if the merge depends on the CC_OP argument
    IRAtom* ccOp = NULL;
+   // The index of the cc_dep2 argument
+   Int dep2Index = -1;
+   // The index of the cc_dep2 argument if CC_OP is that of an sbb, else -1
+   Int sbbDep2Index = -1;
+   IRAtom* arg;
 
    // In this mode, NOTHING is an interaction, so there is nothing to
    // merge.  Returning early avoids computing the arguments' tags.
@@ -472,7 +501,7 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
 
    if (dyncomp_dataflow_comparisons_mode
        || (dyncomp_units_mode && readsFlags_DC(cee))) {
-      ccOp = comparisonCCOp_DC(exprvec, cee);
+      ccOp = comparisonCCOp_DC(exprvec, cee, &dep2Index);
       if (!ccOp) {
          return IRExpr_Const(IRConst_UWord(0));
       }
@@ -481,6 +510,9 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
          tl_assert(ccOp->Iex.Const.con->tag == Ico_U64);
          if (!dyncomp_cc_op_is_sub(ccOp->Iex.Const.con->Ico.U64)) {
             return IRExpr_Const(IRConst_UWord(0));
+         }
+         if (dyncomp_cc_op_is_sbb(ccOp->Iex.Const.con->Ico.U64)) {
+            sbbDep2Index = dep2Index;
          }
          ccOp = NULL;
       }
@@ -496,8 +528,12 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
             /* the arg is to be excluded from definedness checking.  Do
                nothing. (I guess we do nothing also just like mkLazyN) */
             if (0) printf("excluding %s(%d)\n", cee->name, i);
-         } else if (exprvec[i]->tag != Iex_Const) {
-            mergedArgs[numMergedArgs++] = exprvec[i];
+         } else {
+            arg = i == sbbDep2Index
+                  ? sbbSecondOperand_DC(dce, exprvec[i]) : exprvec[i];
+            if (arg->tag != Iex_Const) {
+               mergedArgs[numMergedArgs++] = arg;
+            }
          }
       }
    }

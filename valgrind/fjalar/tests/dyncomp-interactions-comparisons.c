@@ -40,7 +40,7 @@ int lessMask(unsigned a, unsigned b) {
 // the high halves.  Under --dyncomp-interactions=comparisons, DynComp
 // should make aLo and bLo comparable, and aHi and bHi comparable.  (The
 // sbb's thunk holds bHi xor the old carry rather than bHi; see
-// flagsThunkOperand_DC in kvasir/dyncomp_translate.c.)
+// sbbSecondOperand_DC in kvasir/dyncomp_translate.c.)
 int lessWide(long aLo, long aHi, long bLo, long bHi) {
   unsigned char result;
   long hi = aHi;
@@ -51,6 +51,41 @@ int lessWide(long aLo, long aHi, long bLo, long bHi) {
                     "2:\tsetl %0"
                     : "=q" (result), "+r" (hi)
                     : "r" (aLo), "r" (bLo), "r" (bHi) : "cc");
+  return result;
+}
+
+// lessWideSameBlock() is like lessWide(), but the sbb and setl instructions
+// are in the same basic block, as they are in compiled code.  VEX passes the
+// xor in the sbb's thunk directly to amd64g_calculate_condition, rather than
+// reading it from the guest state.  Under --dyncomp-interactions=comparisons,
+// DynComp should make aLo and bLo comparable, and aHi and bHi comparable.
+int lessWideSameBlock(long aLo, long aHi, long bLo, long bHi) {
+  unsigned char result;
+  long hi = aHi;
+  __asm__ volatile ("cmpq %3, %2\n\t"
+                    "jmp 1f\n"
+                    "1:\tsbbq %4, %1\n\t"
+                    "setl %0"
+                    : "=q" (result), "+r" (hi)
+                    : "r" (aLo), "r" (bLo), "r" (bHi) : "cc");
+  return result;
+}
+
+// xorThenLess() compares c with a ^ b with a cmp instruction whose
+// condition code is read by a setl instruction in a different basic block.
+// The CC_DEP2 field of the cmp's thunk is the result of the xor, but the cmp
+// is not an sbb, so DynComp should not treat a as an operand of the
+// comparison.  An xor is not an interaction, so under
+// --dyncomp-interactions=comparisons, DynComp should not make a, b, and c
+// comparable.
+int xorThenLess(long a, long b, long c) {
+  unsigned char result;
+  long x = a;
+  __asm__ volatile ("xorq %2, %1\n\t"
+                    "cmpq %1, %3\n\t"
+                    "jmp 1f\n"
+                    "1:\tsetl %0"
+                    : "=q" (result), "+r" (x) : "r" (b), "r" (c) : "cc");
   return result;
 }
 
@@ -102,6 +137,8 @@ int main(void) {
   less(1, 2);
   lessMask(3, 4);
   lessWide(20, 21, 22, 23);
+  lessWideSameBlock(24, 25, 26, 27);
+  xorThenLess(28, 29, 30);
   carry(5, 6);
   addWithCarry(7, 8, 9, 10);
   subThenLahf(18, 19);

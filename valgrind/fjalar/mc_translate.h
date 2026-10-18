@@ -213,6 +213,11 @@ typedef
          the temporaries; see findTmpDefs_DC.  NULL unless
          --dyncomp-interactions is comparisons. */
       IRExpr** tmpDefs;
+
+      /* MODIFIED: True if the most recent PUT to the CC_OP field of the
+         flags thunk stored a constant that says that an sbb instruction
+         set the flags. */
+      Bool sbbThunk;
    }
    DCEnv;
 

@@ -611,18 +611,28 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
 }
 
 // Returns True if cc_op, the CC_OP field of the flags thunk, says that the
-// flags are the result of a subtraction (a cmp, sub, or sbb instruction),
-// which is how amd64 compares values.
+// flags are the result of a subtraction, which is how amd64 compares
+// values:  a cmp or sub instruction, or, under
+// --dyncomp-interactions=comparisons, an sbb instruction.
 //
 // A comparison of values wider than a register, such as two __int128
 // values, compares the low halves with a cmp and the high halves with an
 // sbb, and the flags that are read are those of the sbb.  The CC_DEP2 field
-// of an sbb's thunk is the xor of its second operand and the old carry, so
-// do_shadow_PUT_DC gives it the tag of that operand; see
-// flagsThunkOperand_DC.
+// of an sbb's thunk is the xor of its second operand and the old carry.
+// Under --dyncomp-interactions=comparisons, do_shadow_PUT_DC and
+// handleCCall_DC give that field the tag of the second operand; see
+// sbbSecondOperand_DC.  Under --dyncomp-interactions=units, the tag of that
+// field is the tag of the xor, which is 0, so merging with it would have no
+// effect; the sbb's subtraction has already merged its operands.
 Bool dyncomp_cc_op_is_sub(UWord cc_op) {
   return (AMD64G_CC_OP_SUBB <= cc_op && cc_op <= AMD64G_CC_OP_SUBQ)
-         || (AMD64G_CC_OP_SBBB <= cc_op && cc_op <= AMD64G_CC_OP_SBBQ);
+         || (dyncomp_dataflow_comparisons_mode && dyncomp_cc_op_is_sbb(cc_op));
+}
+
+// Returns True if cc_op, the CC_OP field of the flags thunk, says that the
+// flags are the result of an sbb instruction.
+Bool dyncomp_cc_op_is_sbb(UWord cc_op) {
+  return AMD64G_CC_OP_SBBB <= cc_op && cc_op <= AMD64G_CC_OP_SBBQ;
 }
 
 // Like MC_(helperc_MERGE_TAGS_RETURN_0), but merges tag1 and tag2 only if
