@@ -631,13 +631,14 @@ Bool dyncomp_cc_op_is_sub(UWord cc_op) {
   return AMD64G_CC_OP_SUBB <= cc_op && cc_op <= AMD64G_CC_OP_SUBQ;
 }
 
-// Like MC_(helperc_MERGE_TAGS_RETURN_0), but merges tag1 and tag2 only if
-// dyncomp_cc_op_is_sub(cc_op).  tag1 and tag2 are the tags of the thunk's
-// CC_DEP1 and CC_DEP2 fields, which for a subtraction are its operands.
-VG_REGPARM(3)
-UInt MC_(helperc_MERGE_TAGS_RETURN_0_IF_SUB) ( UWord cc_op, UInt tag1, UInt tag2 ) {
+// Returns the tag of an operand of the subtraction whose result the flags
+// thunk holds, or 0 if the thunk does not hold the result of a subtraction.
+// cc_op is the thunk's CC_OP field, and dep_tag is the tag of its CC_DEP1 or
+// CC_DEP2 field, which for a subtraction is an operand.
+VG_REGPARM(2)
+UWord MC_(helperc_SUB_OPERAND_TAG) ( UWord cc_op, UWord dep_tag ) {
   if (dyncomp_cc_op_is_sub(cc_op)) {
-    return MC_(helperc_MERGE_TAGS_RETURN_0)(tag1, tag2);
+    return dep_tag;
   }
   return 0;
 }
