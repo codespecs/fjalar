@@ -25,15 +25,17 @@ check-options:
 	./check-options-documented
 
 # Valgrind tests
+.PHONY: test
 test:
 	cd valgrind && $(MAKE) regtest
 
-# Fjalar tests that do not depend on Daikon
+# Fjalar tests that do not depend on Daikon: every *-test.sh script.
+.PHONY: fjalar-test
 fjalar-test:
-	valgrind/fjalar/tests/library-compilation-unit-test.sh
-	valgrind/fjalar/tests/location-views-test.sh
+	for t in valgrind/fjalar/tests/*-test.sh; do echo "Running $$t"; $$t || exit 1; done
 
 # Kvasir tests
+.PHONY: daikon-test
 daikon-test: ../daikon
 	# debugging
 	ls -l valgrind/inst/bin/valgrind valgrind/inst/libexec/valgrind/fjalar-amd64-linux
@@ -43,6 +45,7 @@ daikon-test: ../daikon
 	ls -l ../daikon/fjalar/valgrind/inst/bin/valgrind ../daikon/fjalar/valgrind/inst/libexec/valgrind/fjalar-amd64-linux
 	$(MAKE) -C ../daikon/tests/kvasir-tests clean-all regression-tests
 
+.PHONY: TEMP-daikon-test
 TEMP-daikon-test: ../daikon
 	$(MAKE) -C ../daikon compile daikon.jar kvasir
 	$(MAKE) -C ../daikon/tests/kvasir-tests clean-all TEMP-regression-tests
