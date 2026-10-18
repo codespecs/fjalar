@@ -38,16 +38,19 @@ it completely (merged, CI green) before starting this one.  That plan's
 1. **Preparation** (separate branch, e.g. `valgrind-3.27.1`; do not combine with
    the Binutils/readelf upgrade, which should already be merged).
    - `git pull` both `fjalar` and `daikon`; ensure no local or outgoing changes.
-   - Record baselines on current sources: `./check-regtest.sh` (must
-     report no unexpected failures; if this machine's OS has no
-     `regtest-expected/<os>.txt`, create a local, uncommitted one with
-     `--update`) and `./test-kvasir.sh 2>&1 | tee kvasir-before.log`.
+   - Record baselines on current sources: `make build`; then
+     `./check-regtest.sh`, which needs the build (must report no unexpected
+     failures; if this machine's OS has no `regtest-expected/<os>.txt`,
+     create a local, uncommitted one with `--update`); and
+     `./test-kvasir.sh 2>&1 | tee kvasir-before.log`.
      Use `./test-kvasir.sh`, which points `$DAIKONDIR/fjalar` at this tree.
      Running `$INV/daikon/tests/kvasir-tests` or `make daikon-test` directly
      builds whatever `$INV/daikon/fjalar` points to; if you do that, first
      check `readlink -f $INV/daikon/fjalar`.
    - `make very-clean`; review/delete untracked files
-     (`git ls-files --others --exclude-standard`).
+     (`git ls-files --others --exclude-standard`), except
+     `regtest-expected/<os>.txt` if you created it above:  step 9 compares
+     against it.
 
 2. **Get the trees.**
    ```sh
@@ -145,8 +148,7 @@ it completely (merged, CI green) before starting this one.  That plan's
    derived code is the usual source).  Test with both a current gcc and the
    compilers in the CI containers.
 
-9. **Test.**  Run these from `$INV/fjalar` (`cd $INV/fjalar`; step 6 left
-   the shell in `valgrind/fjalar`).
+9. **Test.**  Run these from `$INV/fjalar` (`cd $INV/fjalar`).
    - `./check-regtest.sh`.  The expected failures will change, because
      3.27.1 adds, removes, and fixes tests.  For each unexpected failure:
      if it is also in step 3's `regtest-upstream-3.27.1.txt`, it is an
