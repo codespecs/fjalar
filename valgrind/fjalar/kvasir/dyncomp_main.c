@@ -325,6 +325,7 @@ static UInt first_nonzero_tag_in_range(Addr a, SizeT len) {
   for (curAddr = a; curAddr < (a + len); curAddr++) {
     curTag = get_tag(curAddr);
     if (curTag) {
+      DYNCOMP_TPRINTF("[DynComp] first_nonzero_tag_in_range addr=%p, tag=%u\n", (void *)curAddr, curTag);
       return curTag;
     }
   }
