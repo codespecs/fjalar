@@ -237,9 +237,10 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
 // neither merges in dyncomp_dataflow_only_mode:
 //  * At translation time, every merge in the instrumentation is created
 //    by mkMergeTags_DC or by stmtMergeTagsReturn0_DC.
-//  * At run time, a load merges the tags of the bytes it reads; see
-//    load_tag_in_range in dyncomp_main.c.  A load merges nothing in
-//    dyncomp_dataflow_comparisons_mode either.
+//  * At run time, a load merges the tags of the bytes it reads.  In
+//    dyncomp_dataflow_only_mode and dyncomp_dataflow_comparisons_mode,
+//    expr2tags_LDle_DC instead calls MC_(helperc_LOAD_TAG_N), which
+//    merges nothing.
 // expr2tags_Binop_DC and expr2tags_LDle_DC also test
 // dyncomp_dataflow_only_mode.  expr2tags_Binop_DC must give every
 // result tag 0, even where its constant-operand shortcut, which
