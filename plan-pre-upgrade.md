@@ -110,7 +110,7 @@ version that is.
 
 What: the CI "System information" step of each regtest job runs
 `rpm -q binutils-devel` (Rocky Linux) or `dpkg-query -W binutils-dev`
-(Ubuntu).  The versions above are recorded in the readelf plan (step 4).
+(Ubuntu).  Step 4 of the readelf plan refers to the versions above.
 #101 records the oldest one in the merge doc.
 
 ## 7. Remove upstream files that upstream deleted but Fjalar still tracks

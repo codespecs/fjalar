@@ -68,10 +68,12 @@ Memcheck and DynComp depend tightly on Valgrind core:
   - Open PRs to land before this upgrade (as of 2026-10-18):
     - DynComp, `dyncomp_translate.c`:  #85 (`--dyncomp-unhandled-ops`),
       #86 and #87 (explicit handling of all 283 unary operations), #104,
-      #106, #107, #111, #115, #116, #117, #119, #120, #122, and #123.
-      With #85 and #87, new IROps in 3.24-3.27 reach the `default` cases
-      of all four `expr2tags_*_DC` functions, and
+      #106, #107, #111, #115, #116, #117, #119, #120, #122, #123, and
+      #125.  With #85 and #87, new IROps in 3.24-3.27 reach the `default`
+      cases of all four `expr2tags_*_DC` functions, and
       `--dyncomp-unhandled-ops=warn` lists them all in one run (step 7).
+    - DynComp, `dyncomp_main.c` but not `dyncomp_translate.c`:  #108 and
+      #114.
     - Memcheck-derived files, so they can conflict in step 6:  #90 and #95
       change `mc_main.c` and `mc_include.h`; #115, #117, #119, and #120
       change `mc_translate.c` and `mc_translate.h`.
