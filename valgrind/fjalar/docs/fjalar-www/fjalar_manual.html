@@ -56,7 +56,7 @@ have un-tarred the Fjalar package (executables shown in bold):
 		    <ul>
 		      <li>valgrind/
 			<ul>
-			  <li>x86-linux/
+			  <li>amd64-linux/
 			  <ul>
 			    <li>fjalar
 			    <li>vgpreload_fjalar.so
@@ -77,9 +77,8 @@ structure.  Fjalar and its tools are located in the
 <tt>valgrind-3/valgrind/fjalar</tt> sub-directory.  The significance
 of all of these files will be explained in this document.
 
-If your system is an x86-64 (AMD64 or Intel64) machine running in
-64-bit mode, substitute "amd64" for "x86" in this and all the
-following examples.
+Fjalar supports only x86-64 (AMD64 or Intel64) machines running Linux
+in 64-bit mode.
     
 <h2><a name="programming">Creating Fjalar tools</a></h2>
 
@@ -93,7 +92,7 @@ directory and place all of your tool's source files in there.
 	list of files assigned to the
 	<tt>FJALAR_SOURCES_COMMON</tt> variable. (Feel free to tweak
 	other variables in that file.  For instance, you can adjust
-	<tt>AM_CFLAGS_X86_LINUX</tt> to add optimizations to boost
+	<tt>AM_CFLAGS_AMD64_LINUX</tt> to add optimizations to boost
   run-time performance.  The default is to turn off all optimizations
   in order to ease debugging.) IMPORTANT: you must also remove the line
   <tt>kvasir/kvasir_main.c \</tt> from the file list.  In essence, you
@@ -198,7 +197,7 @@ program to analyze).  Use <tt>--help</tt> as one of your arguments to
 view a list of command-line options.
 
 <p>In order for Fjalar to work, the target program must be compiled
-with DWARF2 debugging information (on an x86/Linux system).  Look at
+with DWARF2 debugging information (on an x86-64/Linux system).  Look at
 <tt>basic-tool-test.c</tt> for a simple target program that exercises
 Fjalar's function entrance/exit tracking and array bounds checking
 features.  First, compile it:</p>
@@ -243,7 +242,7 @@ order to debug it:
 <ol>
 
       <li>First start <tt>gdb</tt> with
-	<tt>valgrind-3/valgrind/inst/lib/valgrind/x86-linux/fjalar</tt> as the
+	<tt>valgrind-3/valgrind/inst/lib/valgrind/amd64-linux/fjalar</tt> as the
 	target program (this is a bit counter-intuitive, but you need to run
 	<tt>gdb</tt> on <tt>fjalar</tt> and NOT on <tt>valgrind</tt>).
 
@@ -452,7 +451,7 @@ Ignore static variables but still trace global variables.
        This pauses the program's execution in an infinite loop during
        initialization.  You can attach a debugger such as
        <code>gdb</code> to the running process by running gdb on <span
-       class="file">inst/lib/valgrind/x86-linux/fjalar</span> and
+       class="file">inst/lib/valgrind/amd64-linux/fjalar</span> and
        using the <code>attach</code> command (See <a
        href="#debugging">Debugging Fjalar tools</a> for more details.)
 

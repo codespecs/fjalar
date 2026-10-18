@@ -28,7 +28,7 @@ information at both the language and machine levels during run
 time.</p>
 
 <p>Fjalar can be used to build tools that dynamically instrument
-un-modified x86/Linux executables compiled with DWARF2 debugging
+un-modified x86-64 (amd64) Linux executables compiled with DWARF2 debugging
 information.  The ability to operate on executables rather than source
 code places less burden on the tool's users, because there is no need
 to deal with complex configuration and Makefile options to determine
@@ -40,9 +40,9 @@ million lines of code, including <tt>gcc</tt>, <tt>xemacs</tt>,
 <tt>Apache</tt>, and <tt>CTAS</tt>.  However, because Fjalar is built
 upon the <a href="http://valgrind.org/">Valgrind</a> binary
 instrumentation framework, it shares many of Valgrind's limitations.
-In particular, Fjalar can only work on x86 and x86-64 executables on
-the Linux platform, and imposes around a 100X slowdown while executing
-the instrumented program.</p>
+In particular, Fjalar imposes around a 100X slowdown while executing
+the instrumented program.  Fjalar supports only x86-64 (amd64)
+executables on the Linux platform.</p>
 
 <h2 id="features">Features</h2>
 
