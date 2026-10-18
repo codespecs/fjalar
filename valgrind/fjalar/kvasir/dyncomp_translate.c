@@ -2183,10 +2183,10 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
    case Iop_QNarrowUn64Sto32Sx2:       // only used by arm arm64
    case Iop_QNarrowUn64Sto32Ux2:       // only used by arm arm64
    case Iop_QNarrowUn64Uto32Ux2:       // only used by arm arm64
-   case Iop_RecipEst32F0x4:            //
+   case Iop_RecipEst32F0x4:
    case Iop_RecipEst32Fx2:             // only used by arm
-   case Iop_RecipEst32Fx4:             //
-   case Iop_RecipEst32Fx8:             //
+   case Iop_RecipEst32Fx4:
+   case Iop_RecipEst32Fx8:
    case Iop_RecipEst32Ux2:             // only used by arm
    case Iop_RecipEst32Ux4:             // only used by arm arm64
    case Iop_ReinterpF64asI64:
@@ -2221,10 +2221,10 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
    case Iop_RoundF64toF64_ZERO:        // unused
    case Iop_RoundF64toIntA0:
    case Iop_RoundF64toIntE:
-   case Iop_RSqrtEst32F0x4:            //
+   case Iop_RSqrtEst32F0x4:
    case Iop_RSqrtEst32Fx2:             // only used by arm
-   case Iop_RSqrtEst32Fx4:             //
-   case Iop_RSqrtEst32Fx8:             //
+   case Iop_RSqrtEst32Fx4:
+   case Iop_RSqrtEst32Fx8:
    case Iop_RSqrtEst32Ux2:             // only used by arm
    case Iop_RSqrtEst32Ux4:             // only used by arm arm64
    case Iop_RSqrtEst5GoodF64:          // only used by ppc
