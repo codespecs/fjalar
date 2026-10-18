@@ -109,7 +109,8 @@ static void setHelperAnns_DC ( DCEnv* dce, IRDirty* di ) {
 }
 
 // Returns the offset in the guest state of the tag of the guest state at
-// offset, as in do_shadow_PUT_DC.
+// offset.  The tag shadow area starts at 3 * total_sizeB, and the tag of
+// offset starts 4 * offset bytes into it.
 static Int tagOffset_DC ( DCEnv* dce, Int offset )
 {
    return (4 * offset) + (3 * dce->layout->total_sizeB);
@@ -117,13 +118,15 @@ static Int tagOffset_DC ( DCEnv* dce, Int offset )
 
 // Sets *tag1 and *tag2 to the pending carry tags of atom, the value of a
 // CC_NDEP field; see notePendingCarryTags_DC.  If atom is NULL, or is a
-// temporary whose pending carry tags are unknown, they are 0.
+// temporary whose pending carry tags are unknown, they are 0.  They are
+// unknown for every temporary except under
+// --dyncomp-interactions=comparisons, the only mode that computes them.
 static void pendingCarryTags_DC ( DCEnv* dce, IRAtom* atom,
                                   IRAtom** tag1, IRAtom** tag2 )
 {
    *tag1 = IRExpr_Const(IRConst_UWord(0));
    *tag2 = IRExpr_Const(IRConst_UWord(0));
-   if (atom && atom->tag == Iex_RdTmp
+   if (atom && atom->tag == Iex_RdTmp && dce->tmpPendingCarryTags
        && dce->tmpPendingCarryTags[2 * atom->Iex.RdTmp.tmp]) {
       *tag1 = dce->tmpPendingCarryTags[2 * atom->Iex.RdTmp.tmp];
       *tag2 = dce->tmpPendingCarryTags[2 * atom->Iex.RdTmp.tmp + 1];
@@ -172,7 +175,7 @@ void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
    //      which requires (4 * offset) + (2 * base size)
    //printf("PUT_DC offset: %d, %d, %d\n", offset, dce->layout->total_sizeB, ((4*offset)+(3*dce->layout->total_sizeB)));
    stmt_DC('V',  dce,
-         IRStmt_Put( (4 * offset) + (3 * dce->layout->total_sizeB), vatom ) );
+         IRStmt_Put( tagOffset_DC(dce, offset), vatom ) );
 }
 
 // A PUTI stores a value (dynamically indexed) into the guest state
@@ -198,7 +201,7 @@ void do_shadow_PUTI_DC ( DCEnv* dce, IRPutI *puti)
    // PG - Remember the new layout in ThreadArchState
    //      which requires (4 * offset) + (2 * base size)
    new_descr
-      = mkIRRegArray( (4 * descr->base) + (3 * dce->layout->total_sizeB),
+      = mkIRRegArray( tagOffset_DC(dce, descr->base),
                    Ity_Word, descr->nElems); // Tags are word-sized
 
    stmt_DC( 'V', dce, IRStmt_PutI(mkIRPutI(new_descr, ix, bias, vatom)));
@@ -246,7 +249,7 @@ IRExpr* shadow_GET_DC ( DCEnv* dce, Int offset, IRType ty )
    //       + 8 * sizeof(ULong))));
 
    //printf("GET_DC offset: %d, %d, %d\n", offset, dce->layout->total_sizeB, ((4*offset)+(3*dce->layout->total_sizeB)));
-   return IRExpr_Get( (4 * offset) + (3 * dce->layout->total_sizeB),
+   return IRExpr_Get( tagOffset_DC(dce, offset),
                       Ity_Word ); // Tags are word-sized
 }
 
@@ -262,7 +265,7 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
    // PG - Remember the new layout in ThreadArchState
    //      which requires (4 * offset) + (2 * base size)
    new_descr
-      = mkIRRegArray( (4 * descr->base) + (3 * dce->layout->total_sizeB),
+      = mkIRRegArray( tagOffset_DC(dce, descr->base),
                    Ity_Word, descr->nElems); // Tags are word-sized
 
    return IRExpr_GetI( new_descr, ix, bias );

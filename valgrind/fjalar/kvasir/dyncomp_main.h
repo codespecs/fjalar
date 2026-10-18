@@ -313,7 +313,7 @@ Bool dyncomp_cc_op_preserves_carry(UWord cc_op);
 // it is not the offset of any register, and the tags of offsets inside
 // CC_NDEP are not otherwise used.  The tag of an offset occupies 4 bytes
 // per byte of guest state starting at 4 times the offset (see
-// do_shadow_PUT_DC), and tags in the guest state are word-sized, so these
+// tagOffset_DC), and tags in the guest state are word-sized, so these
 // tags do not overlap one another or the tag of CC_NDEP itself.
 #define PENDING_CARRY_TAG1_OFFSET \
   (offsetof(VexGuestAMD64State, guest_CC_NDEP) + 2)
