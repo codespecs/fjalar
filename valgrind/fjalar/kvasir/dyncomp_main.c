@@ -325,6 +325,7 @@ static UInt first_nonzero_tag_in_range(Addr a, SizeT len) {
   for (curAddr = a; curAddr < (a + len); curAddr++) {
     curTag = get_tag(curAddr);
     if (curTag) {
+      DYNCOMP_TPRINTF("[DynComp] first_nonzero_tag_in_range addr=%p, tag=%u\n", (void *)curAddr, curTag);
       return curTag;
     }
   }
@@ -486,7 +487,9 @@ UInt load_tag_snapshots[DC_N_LOAD_TAG_SNAPSHOTS][DC_LOAD_TAG_SNAPSHOT_BYTES];
 // MC_(helperc_LOAD_TAG_*) functions, this does not merge the tags of the
 // addresses in the range.  It returns the leader of the first non-zero
 // tag in the range; if that tag is WEAK_FRESH_TAG, it returns a fresh
-// tag, as MC_(helperc_LOAD_TAG_4) does.  If slot is non-negative, it also
+// tag, for a load of any size.  (Of the other functions, only
+// MC_(helperc_LOAD_TAG_4) returns a fresh tag, and only when the tag of
+// its first byte is WEAK_FRESH_TAG.)  If slot is non-negative, it also
 // saves the tag of each byte in the range in that slot of
 // load_tag_snapshots.
 VG_REGPARM(3)
