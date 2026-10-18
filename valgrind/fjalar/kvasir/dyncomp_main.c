@@ -570,9 +570,15 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
     mergeTagsReturn0Count++;
   }
 
-  DYNCOMP_TPRINTF("[DynComp-m4] Calling val_uf_tag_union but return 0\n");
-  val_uf_tag_union(tag1, tag2);
-  return 0;
+  if (IS_ZERO_TAG(tag1) ||
+      IS_ZERO_TAG(tag2)) {
+    return 0;
+  }
+  else {
+    DYNCOMP_TPRINTF("[DynComp-m4] Calling val_uf_tag_union but return 0\n");
+    val_uf_tag_union(tag1, tag2);
+    return 0;
+  }
 }
 
 /*------------------------------------------------------------------*/
