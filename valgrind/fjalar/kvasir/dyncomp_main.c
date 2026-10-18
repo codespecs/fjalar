@@ -325,6 +325,7 @@ static UInt first_nonzero_tag_in_range(Addr a, SizeT len) {
   for (curAddr = a; curAddr < (a + len); curAddr++) {
     curTag = get_tag(curAddr);
     if (curTag) {
+      DYNCOMP_TPRINTF("[DynComp] first_nonzero_tag_in_range addr=%p, tag=%u\n", (void *)curAddr, curTag);
       return curTag;
     }
   }
@@ -478,8 +479,9 @@ UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
 // so unlike the other MC_(helperc_LOAD_TAG_*) functions, this does not
 // merge the tags of the addresses in the range.  It returns the leader
 // of the first non-zero tag in the range; if that tag is
-// WEAK_FRESH_TAG, it returns a fresh tag, as MC_(helperc_LOAD_TAG_4)
-// does.
+// WEAK_FRESH_TAG, it returns a fresh tag, for a load of any size.  (Of
+// the other functions, only MC_(helperc_LOAD_TAG_4) returns a fresh tag,
+// and only when the tag of its first byte is WEAK_FRESH_TAG.)
 VG_REGPARM(2)
 UInt MC_(helperc_LOAD_TAG_N) ( Addr a, UWord len ) {
   UInt tag;
