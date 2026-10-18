@@ -250,7 +250,9 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
 // not the tag 0 that mkMergeTags_DC returns in that mode.
 // expr2tags_Qop_DC and expr2tags_Triop_DC return 0 early in that mode
 // rather than reaching mkMergeTags_DC, so that an unhandled operator does
-// not panic.
+// not panic.  handleCCall_DC returns 0 early in that mode rather than
+// reaching stmtMergeTagsReturn0_DC, so that it does not compute the
+// arguments' tags.
 //
 // Outside the instrumentation, dtrace-output.c merges tags in every mode:
 // at each program point, it merges the tags of the elements of each array
