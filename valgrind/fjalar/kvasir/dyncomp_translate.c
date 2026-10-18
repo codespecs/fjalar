@@ -292,11 +292,13 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
    if (numMergedArgs >= 2) {
       merged = expr2tags_DC(dce, mergedArgs[0]);
       // Each intermediate merge is a clean call, although
-      // MC_(helperc_MERGE_TAGS) has side effects.  That is safe because
-      // its result is used by the next merge, and after instrumentation
-      // VEX runs only dead-code removal and constant propagation, so it
-      // neither removes nor combines the call.  A dirty call would be
-      // slower.
+      // MC_(helperc_MERGE_TAGS) has side effects.  A dirty call would be
+      // slower.  The clean call is safe because its result is used by the
+      // next merge, so VEX's post-instrumentation passes neither remove
+      // nor combine it.  The tree builder (ado_treebuild_BB) may move the
+      // call into the expression that uses it, but no statement lies
+      // between the merges (expr2tags_DC emits none for an atom), so the
+      // merges still happen in order, just before the final dirty call.
       for (i = 1; i < numMergedArgs - 1; i++) {
          merged = assignNew_DC(dce, Ity_Word,
                                mkIRExprCCall(Ity_Word,

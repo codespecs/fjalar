@@ -193,22 +193,27 @@ void val_uf_make_set_for_tag(UInt tag) {
   uf_make_set(GET_UF_OBJECT_PTR(tag), tag);
 }
 
+// Describe the current instruction address, for trace output.  This is
+// costly, so call it only as an argument to DYNCOMP_TPRINTF, which does
+// not evaluate its arguments unless tracing is on.
+static const HChar* describe_current_IP ( void ) {
+  Addr eip = VG_(get_IP)(VG_(get_running_tid)());
+  // Describe this (probably live) address with current epoch
+  return VG_(describe_IP)(VG_(current_DiEpoch)(), eip, NULL);
+}
+
 // Merge the sets of tag1 and tag2 and return the leader
 UInt val_uf_tag_union(UInt tag1, UInt tag2) {
   if (!IS_ZERO_TAG(tag1) && !IS_SECONDARY_UF_NULL(tag1) &&
       !IS_ZERO_TAG(tag2) && !IS_SECONDARY_UF_NULL(tag2)) {
-    Addr eip = VG_(get_IP)(VG_(get_running_tid)());
-    const HChar *eip_info;
     uf_object* tag1_obj, *tag2_obj;
     uf_object* leader;
     tag1_obj = GET_UF_OBJECT_PTR(tag1);
     tag2_obj = GET_UF_OBJECT_PTR(tag2);
     leader = uf_union(tag1_obj, tag2_obj);
-    // Describe this (probably live) address with current epoch
-    eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), eip, NULL);
 
     DYNCOMP_TPRINTF("[DynComp-v1] Merging %u with %u to get %u at %s\n",
-                    tag1, tag2, leader->tag, eip_info);
+                    tag1, tag2, leader->tag, describe_current_IP());
 
     return leader->tag;
   }
@@ -499,11 +504,6 @@ UInt tag2_is_new ( UInt tag1, UInt tag2 ) {
 // of the merged set
 VG_REGPARM(2)
 UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
-  Addr eip = VG_(get_IP)(VG_(get_running_tid)());
-  const HChar *eip_info;
-  // Describe this (probably live) address with current epoch
-  eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), eip, NULL);
-
   if (dyncomp_profile_tags) {
     mergeTagsCount++;
   }
@@ -521,12 +521,12 @@ UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
   //  but that's correctly handled)
   else if (WEAK_FRESH_TAG == tag1) {
     DYNCOMP_TPRINTF("[DynComp-m1] Merging %u with %u to get %u at %s\n",
-                    tag1, tag2, tag2, eip_info);
+                    tag1, tag2, tag2, describe_current_IP());
     return tag2;
   }
   else if (WEAK_FRESH_TAG == tag2) {
     DYNCOMP_TPRINTF("[DynComp-m2] Merging %u with %u to get %u at %s\n",
-                    tag1, tag2, tag1, eip_info);
+                    tag1, tag2, tag1, describe_current_IP());
     return tag1;
   }
   else {
