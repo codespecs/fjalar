@@ -52,6 +52,14 @@ if ! awk '/^==== SB / { inLess = ($0 ~ / less(\+[0-9]+)? /) }
           inLess && /g_calculate_condition\[/ { found = 1 }
           END { exit !found }' "${output_dir}/dyncomp-interactions-none.out"; then
   echo "$0: FAILED: the IR of less() does not call a calculate_condition helper" >&2
+  # Show the IR of less(), or, if no superblock is in less(), the first
+  # superblock headers, in case their format has changed.
+  awk '/^==== SB / { inLess = ($0 ~ / less(\+[0-9]+)? /)
+                     if (inLess) { found = 1 }
+                     else if (++headers <= 10) { others = others $0 "\n" } }
+       inLess { print }
+       END { if (!found) printf "%s", others }' \
+      "${output_dir}/dyncomp-interactions-none.out" >&2
   exit 1
 fi
 
