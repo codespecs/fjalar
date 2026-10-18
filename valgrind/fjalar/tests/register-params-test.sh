@@ -113,6 +113,34 @@ if readelf --debug-dump=info "${output_dir}/register-params" \
   exit 0
 fi
 
+# A formal parameter in a register occupies no stack slot, even if Fjalar
+# cannot read the register (split's p and identity's d).  Otherwise, Fjalar
+# would compute a wrong stack offset for each later formal parameter that
+# needs one.  The XML output gives each formal parameter's stack offset, if
+# any.
+xml="${output_dir}/register-params.xml"
+status=0
+"${valgrind}" --tool=fjalar --xml-output-file="${xml}" \
+              "${output_dir}/register-params" \
+              > "${output_dir}/register-params-xml.out" 2>&1 || status=$?
+if [ "${status}" -ne 0 ]; then
+  echo "$0: FAILED: Fjalar exited with status ${status} writing XML" >&2
+  cat "${output_dir}/register-params-xml.out" >&2
+  exit 1
+fi
+stack_slots=$(awk '/^<function>/ { getline; fname = $0 }
+                   /^<formal-parameters>/ { inparams = 1 }
+                   /^<\/formal-parameters>/ { inparams = 0 }
+                   inparams && /^<name>/ { pname = $0 }
+                   inparams && /^<stack-byte-offset>/ \
+                     && fname ~ /\[(add|scale|split|identity)\]/ {
+                     print fname, pname, $0 }' "${xml}")
+if [ -n "${stack_slots}" ]; then
+  echo "$0: FAILED: a formal parameter in a register has a stack offset:" >&2
+  echo "${stack_slots}" >&2
+  exit 1
+fi
+
 decls="${output_dir}/register-params.decls"
 dtrace="${output_dir}/register-params.dtrace"
 status=0
