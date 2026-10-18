@@ -601,13 +601,15 @@ Bool* findFlagsCarryingTmps_DC ( const IRSB* sb_in )
 }
 
 // Returns True if the statement being instrumented assigns a value to a
-// temporary that carries flags.
+// temporary that carries flags.  Returns False if the flags-carrying
+// analysis has not been run, which is the case except under
+// --dyncomp-interactions=comparisons.
 static
 Bool resultCarriesFlags_DC ( DCEnv* dce )
 {
    IRStmt* st = dce->sb_in->stmts[dce->stmtIndex];
-   tl_assert(dce->tmpCarriesFlags);
-   return st->tag == Ist_WrTmp && dce->tmpCarriesFlags[st->Ist.WrTmp.tmp];
+   return dce->tmpCarriesFlags
+          && st->tag == Ist_WrTmp && dce->tmpCarriesFlags[st->Ist.WrTmp.tmp];
 }
 
 // Returns the tag of arg, an argument of a helper that reads flags, or 0 if
@@ -2108,8 +2110,9 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    }
 
    // A comparison whose result only carries flags forward does not compare
-   // values; see findFlagsCarryingTmps_DC.  The other modes do not check
-   // this, just as they treat every helper call as an interaction.
+   // values; see findFlagsCarryingTmps_DC.  Only
+   // --dyncomp-interactions=comparisons runs the flags-carrying analysis,
+   // so the other modes do not check this.
    if (helper == &MC_(helperc_MERGE_TAGS_RETURN_0)
        && dyncomp_dataflow_comparisons_mode
        && resultCarriesFlags_DC(dce)) {
