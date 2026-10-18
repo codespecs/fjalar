@@ -59,7 +59,8 @@ new ones than to fix them.)
   - `d8723ef7` spelling corrections (#75)
   - `95516533` Support Rust and DWARF 3 & 4 (#76)
   - `287d1f44` Fix `DW_OP_breg*` locations on amd64 (#80)
-- Open PRs that change `dwarf.c`: #89 (location views), #90 (register
+  - `a620e75a` Fix Fjalar hang on optimized code with location views (#89)
+- Open PRs that change `dwarf.c` (as of 2026-10-18): #90 (register
   parameters), #91 (DWARF registers via guest-state offsets), #95
   (unsupported DWARF location operations).  Land them before starting this
   upgrade, so that their changes are part of the Fjalar copy being merged
@@ -162,10 +163,10 @@ small.
    `include/`, `include/elf/`, or `binutils/`) that Fjalar does not yet have,
    and whether they call into new helper files (e.g. new code split out of
    `dwarf.c`).  Copy any new needed headers into `valgrind/fjalar/include/`
-   and add any new needed `.c` files to `valgrind/fjalar/Makefile.am`, or
-   disable the `#include` under `#if 0` if the code that needs it is
-   disabled.  Remove headers that upstream deleted.
+   and add any new needed `.c` files to `valgrind/fjalar/Makefile.am`.
    (`demanguse.h` and the CTF headers were added this way in the 2.39 merge.)
+   If the code that needs a new header is disabled, disable the `#include`
+   under `#if 0` instead.  Remove headers that upstream deleted.
    - Known case: Binutils 2.40 added `readelf --sframe`, which includes
      `sframe-api.h` and calls into libsframe.  Fjalar does not need it:
      disable that code with `#if 0 // This code is not needed for Fjalar.`
@@ -233,7 +234,8 @@ small.
      code, so that no hook is dropped or moved to the wrong branch,
      especially for DWARF 5 forms and any new `DW_FORM_*`, `DW_AT_*`,
      `DW_OP_*` handling.  Re-check the DWARF 3/4 and Rust changes from
-     #73/#76 and the `DW_OP_breg*` change from #80.
+     #73/#76, the `DW_OP_breg*` change from #80, and the location-view
+     change from #89.
    - Areas to expect to need attention in 2.40-2.47:
      - DWARF 5 handling in `dwarf.c` (`.debug_rnglists`, `.debug_loclists`,
        `.debug_str_offsets`, `.debug_addr`, `DW_FORM_*x` forms, `DW_OP_*`
