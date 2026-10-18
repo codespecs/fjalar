@@ -336,11 +336,14 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2,
 // amd64g_calculate_rflags_c), but the operands of an add are not merged
 // when its carry is read by an adc.
 //
-// Some instructions read flags without using them as the result of a
-// comparison.  An inc or dec instruction reads the carry flag (via
+// An inc or dec instruction reads the carry flag (via
 // amd64g_calculate_rflags_c) and stores it in the CC_NDEP field of its own
-// flags thunk, because it does not change the carry flag.  The other
-// callers of amd64g_calculate_rflags_c are adc and sbb.
+// flags thunk, because it does not change the carry flag.  That read is
+// treated like any other, so a sub followed by an inc makes the operands of
+// the sub comparable.  Distinguishing it would be pointless:  when the
+// sub and the inc are in the same superblock, VEX replaces the read by a
+// comparison of the operands of the sub, which expr2tags_Binop_DC merges.
+//
 // amd64g_calculate_rflags_all is used mostly by instructions that preserve
 // or copy flags, such as shifts, bt, and pushf.  These calls merge no tags;
 // if the flags are later used, then the instruction that uses them reads
@@ -351,38 +354,16 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2,
 // call merges tags in the same cases.  If the flags are set by an add, its
 // operands were already merged when its result was computed.
 
-// Returns True if the statement being instrumented assigns the result of
-// a helper call to a temporary that the next statement stores in the
-// CC_NDEP field of the flags thunk.
-static
-Bool resultIsStoredInCCNDep_DC ( DCEnv* dce )
-{
-   const IRSB* sb = dce->sb_in;
-   Int i = dce->stmtIndex;
-   IRStmt* st = sb->stmts[i];
-   IRStmt* next;
-
-   if (st->tag != Ist_WrTmp || i + 1 >= sb->stmts_used) {
-      return False;
-   }
-   next = sb->stmts[i + 1];
-   return next->tag == Ist_Put
-      && next->Ist.Put.offset == offsetof(VexGuestAMD64State, guest_CC_NDEP)
-      && next->Ist.Put.data->tag == Iex_RdTmp
-      && next->Ist.Put.data->Iex.RdTmp.tmp == st->Ist.WrTmp.tmp;
-}
-
 // If a call to cee with arguments exprvec uses flags as the result of a
 // comparison (when the flags are the result of a subtraction), returns its
 // CC_OP argument.  Otherwise, returns NULL.
 static
-IRAtom* comparisonCCOp_DC ( DCEnv* dce, IRAtom** exprvec, IRCallee* cee )
+IRAtom* comparisonCCOp_DC ( IRAtom** exprvec, IRCallee* cee )
 {
    if (cee->addr == (void*)&amd64g_calculate_condition) {
       return exprvec[1];
    }
-   if (cee->addr == (void*)&amd64g_calculate_rflags_c
-       && !resultIsStoredInCCNDep_DC(dce)) {
+   if (cee->addr == (void*)&amd64g_calculate_rflags_c) {
       return exprvec[0];
    }
    return NULL;
@@ -401,33 +382,31 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
    IRAtom* ccOp = NULL;
 
    if (dyncomp_dataflow_comparisons_mode || dyncomp_units_mode) {
-      ccOp = comparisonCCOp_DC(dce, exprvec, cee);
+      ccOp = comparisonCCOp_DC(exprvec, cee);
       if (!ccOp) {
          return IRExpr_Const(IRConst_UWord(0));
       }
       // If CC_OP is known at translation time, decide now.
       if (ccOp->tag == Iex_Const) {
          tl_assert(ccOp->Iex.Const.con->tag == Ico_U64);
-         if (!cc_op_is_sub(ccOp->Iex.Const.con->Ico.U64)) {
+         if (!dyncomp_cc_op_is_sub(ccOp->Iex.Const.con->Ico.U64)) {
             return IRExpr_Const(IRConst_UWord(0));
          }
          ccOp = NULL;
       }
    }
 
-   if (exprvec) {
-      for (i = 0; exprvec[i]; i++) {
-         tl_assert(i < 32);
-         tl_assert(isOriginalAtom_DC(dce, exprvec[i]));
-         /* Only take notice of this arg if the callee's mc-exclusion
-            mask does not say it is to be excluded. */
-         if (cee->mcx_mask & (1<<i)) {
-            /* the arg is to be excluded from definedness checking.  Do
-               nothing. (I guess we do nothing also just like mkLazyN) */
-            if (0) printf("excluding %s(%d)\n", cee->name, i);
-         } else if (exprvec[i]->tag != Iex_Const) {
-            mergedArgs[numMergedArgs++] = exprvec[i];
-         }
+   for (i = 0; exprvec[i]; i++) {
+      tl_assert(i < 32);
+      tl_assert(isOriginalAtom_DC(dce, exprvec[i]));
+      /* Only take notice of this arg if the callee's mc-exclusion
+         mask does not say it is to be excluded. */
+      if (cee->mcx_mask & (1<<i)) {
+         /* the arg is to be excluded from definedness checking.  Do
+            nothing. (I guess we do nothing also just like mkLazyN) */
+         if (0) printf("excluding %s(%d)\n", cee->name, i);
+      } else if (exprvec[i]->tag != Iex_Const) {
+         mergedArgs[numMergedArgs++] = exprvec[i];
       }
    }
 

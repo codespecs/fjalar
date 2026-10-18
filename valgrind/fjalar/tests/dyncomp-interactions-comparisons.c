@@ -30,6 +30,36 @@ int lessMask(unsigned a, unsigned b) {
   return mask;
 }
 
+// lessWide() compares two 128-bit signed integers, given as their low and
+// high halves, as a compiler compares two __int128 values:  a cmp
+// instruction compares the low halves, an sbb instruction subtracts the
+// high halves and the borrow, and a setl instruction reads the result.
+// Each instruction is in a different basic block.  The sbb reads the
+// carry of the cmp via amd64g_calculate_rflags_c, and the setl reads the
+// flags of the sbb via amd64g_calculate_condition, whose arguments include
+// the high halves.  Under --dyncomp-interactions=comparisons, DynComp
+// should make aLo and bLo comparable, and aHi and bHi comparable.
+//
+// *** KNOWN LIMITATION:  DynComp makes aLo and bLo comparable, but NOT aHi
+// *** and bHi.  The .goal file records this current, incorrect behavior.
+// *** The flags read by the setl are those of the sbb, whose thunk holds
+// *** bHi xor the old carry rather than bHi, and that xor gets tag 0
+// *** because it is not an interaction.  See the comment above
+// *** dyncomp_cc_op_is_sub in kvasir/dyncomp_main.c.  If DynComp is fixed,
+// *** change aHi and bHi in the .goal file to have the same comparability.
+int lessWide(long aLo, long aHi, long bLo, long bHi) {
+  unsigned char result;
+  long hi = aHi;
+  __asm__ volatile ("cmpq %3, %2\n\t"
+                    "jmp 1f\n"
+                    "1:\tsbbq %4, %1\n\t"
+                    "jmp 2f\n"
+                    "2:\tsetl %0"
+                    : "=q" (result), "+r" (hi)
+                    : "r" (aLo), "r" (bLo), "r" (bHi) : "cc");
+  return result;
+}
+
 // carry() adds a and b with an add instruction whose carry is read by a setc
 // instruction in a different basic block.  VEX translates the setc into a
 // call to amd64g_calculate_condition, whose arguments include the operands
@@ -56,20 +86,6 @@ int addWithCarry(int a, int b, int c, int d) {
                     "jmp 1f\n"
                     "1:\tadcl %3, %1"
                     : "+r" (a), "+r" (c) : "r" (b), "r" (d) : "cc");
-  return c;
-}
-
-// subThenInc() subtracts b from a with a sub instruction, and then an inc
-// instruction in a different basic block reads the carry flag of the
-// subtraction (via amd64g_calculate_rflags_c), in order to preserve it.
-// The inc does not use the flags as the result of a comparison, so under
-// --dyncomp-interactions=comparisons, DynComp should not make a and b
-// comparable.
-int subThenInc(int a, int b, int c) {
-  __asm__ volatile ("subl %2, %0\n\t"
-                    "jmp 1f\n"
-                    "1:\tincl %1"
-                    : "+r" (a), "+r" (c) : "r" (b) : "cc");
   return c;
 }
 
@@ -128,9 +144,9 @@ int copyInts(int a, int b) {
 int main(void) {
   less(1, 2);
   lessMask(3, 4);
+  lessWide(20, 21, 22, 23);
   carry(5, 6);
   addWithCarry(7, 8, 9, 10);
-  subThenInc(15, 16, 17);
   subThenLahf(18, 19);
   copyLongs(11, 12);
   copyInts(13, 14);

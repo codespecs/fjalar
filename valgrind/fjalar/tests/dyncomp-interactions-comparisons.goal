@@ -7,10 +7,6 @@
 ..subThenLahf():::EXIT0 a 1
 ..subThenLahf():::EXIT0 b 2
 ..subThenLahf():::EXIT0 return 3
-..subThenInc():::EXIT0 a 1
-..subThenInc():::EXIT0 b 2
-..subThenInc():::EXIT0 c 3
-..subThenInc():::EXIT0 return 4
 ..addWithCarry():::EXIT0 a 1
 ..addWithCarry():::EXIT0 b 2
 ..addWithCarry():::EXIT0 c 3
@@ -19,6 +15,11 @@
 ..carry():::EXIT0 a 1
 ..carry():::EXIT0 b 2
 ..carry():::EXIT0 return 3
+..lessWide():::EXIT0 aLo 1
+..lessWide():::EXIT0 aHi 2
+..lessWide():::EXIT0 bLo 1
+..lessWide():::EXIT0 bHi 3
+..lessWide():::EXIT0 return 4
 ..lessMask():::EXIT0 a 1
 ..lessMask():::EXIT0 b 1
 ..lessMask():::EXIT0 return 2

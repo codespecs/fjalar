@@ -207,12 +207,6 @@ typedef
       /* MODIFIED: Original address of guest instruction whose IR
          we're now processing, as taken from the last IMark we saw. */
       Addr origAddr;
-
-      /* READONLY: the bb being instrumented. */
-      const IRSB* sb_in;
-      /* MODIFIED: the index in sb_in of the statement being
-         instrumented. */
-      Int stmtIndex;
    }
    DCEnv;
 

@@ -610,16 +610,27 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
 // Returns True if cc_op, the CC_OP field of the flags thunk, says that the
 // flags are the result of a subtraction (a cmp or sub instruction), which
 // is how amd64 compares values.
-Bool cc_op_is_sub(ULong cc_op) {
+//
+// A comparison of values wider than a register, such as two __int128
+// values, compares the low halves with a cmp and the high halves with an
+// sbb, and the flags that are read are those of the sbb.  Accepting
+// AMD64G_CC_OP_SBB* here would have no effect under
+// --dyncomp-interactions=comparisons:  the CC_DEP2 field of an sbb's thunk
+// is the xor of its second operand and the old carry, and that xor gets
+// tag 0 because it is not an interaction.  So in that mode, the high halves
+// are not comparable.  (Under --dyncomp-interactions=units, the sbb's
+// subtraction makes them comparable.)  See lessWide() in
+// tests/dyncomp-interactions-comparisons.c.
+Bool dyncomp_cc_op_is_sub(UWord cc_op) {
   return AMD64G_CC_OP_SUBB <= cc_op && cc_op <= AMD64G_CC_OP_SUBQ;
 }
 
 // Like MC_(helperc_MERGE_TAGS_RETURN_0), but merges tag1 and tag2 only if
-// cc_op_is_sub(cc_op).  tag1 and tag2 are the tags of the thunk's CC_DEP1
-// and CC_DEP2 fields, which for a subtraction are its operands.
+// dyncomp_cc_op_is_sub(cc_op).  tag1 and tag2 are the tags of the thunk's
+// CC_DEP1 and CC_DEP2 fields, which for a subtraction are its operands.
 VG_REGPARM(3)
 UInt MC_(helperc_MERGE_TAGS_RETURN_0_IF_SUB) ( UWord cc_op, UInt tag1, UInt tag2 ) {
-  if (cc_op_is_sub(cc_op)) {
+  if (dyncomp_cc_op_is_sub(cc_op)) {
     return MC_(helperc_MERGE_TAGS_RETURN_0)(tag1, tag2);
   }
   return 0;
