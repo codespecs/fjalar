@@ -294,25 +294,20 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2 )
 
 // Handling of clean helper function calls in the target program's
 // translated IR: Treat all arguments (exprvec) as 'interacting' with
-// one another and merge all of their respective tags.  This is
+// one another and merge all of their respective tags and return the
+// value of one of the tags as the result of the helper call.  This is
 // because helpers probably implement weird x86 instructions which are
 // too difficult to handle purely in IR so these n-ary operations are
 // probably interactions.  E.g. if the args are (a, b, c, d, e), then
-// you should merge tag(a) with tag(b), tag(c), tag(d), and tag(e).
+// you should merge tag(a) with tag(b), tag(c), tag(d), and tag(e)
+// then return tag(a)
 
-// The result of the helper call gets tag 0, so that the arguments'
-// tags do not propagate to the result.  For example, comparisons such
-// as '>' and '>=' may be translated into calls of a condition-code
-// helper such as amd64g_calculate_condition, and the result of a
-// comparison does not interact with its operands.
-
-// Under --dyncomp-interactions=comparisons, this function still merges
-// the arguments of every helper call, which is wrong.  A condition-code
-// helper's arguments are the operands of whatever instruction last set
-// the flags, which need not be a comparison.  For example, after
-// "z = x + y" and a "jc" or "adc" that reads the carry flag, the
-// helper's arguments include x and y, so x and y become comparable even
-// though addition is not an interaction in that mode.
+// By some informal observation, it seems like '>' and '>='
+// comparisons are translated into clean C calls.  The correct
+// behavior is to merge the tags of all arguments but return a new tag
+// of 0 so that the tags do not propagate to the results.  Without
+// further testing on what other operations are translated into IR as
+// clean C calls, I will simply return a tag of 0 for now.
 static
 IRAtom* handleCCall_DC ( DCEnv* dce,
                          IRAtom** exprvec, IRCallee* cee )
