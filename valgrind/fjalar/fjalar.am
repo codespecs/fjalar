@@ -92,7 +92,7 @@ endif
 # because tests/check_headers_and_includes forbids tool .c files from
 # including pub_core headers.  Each fjalar program depends on the stamp,
 # so the check runs whenever a program is built.
-CLEANFILES = fjalar_core_decls.stamp
+MOSTLYCLEANFILES = fjalar_core_decls.stamp
 
 fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_DEPENDENCIES += fjalar_core_decls.stamp
 if VGCONF_HAVE_PLATFORM_SEC
