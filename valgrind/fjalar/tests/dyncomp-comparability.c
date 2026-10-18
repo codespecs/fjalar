@@ -45,6 +45,25 @@ int movemask(long a, long b) {
   return _mm_movemask_epi8(v);
 }
 
+// a_lo and b_lo are comparable, and a_hi and b_hi are comparable, because
+// the two 128-bit integers are compared as a compiler compares two __int128
+// values:  a cmp instruction compares the low halves, an sbb instruction
+// subtracts the high halves and the borrow, and a setl instruction reads the
+// result.  Because the cmp and the sbb are in the same superblock, VEX
+// computes the borrow with a CmpLT64U of the low halves.  Under
+// --dyncomp-interactions=units, the tag of the borrow (the comparison's
+// result, masked with 1) is 0, so nothing uses the result of the merge.
+int less_wide(long a_lo, long a_hi, long b_lo, long b_hi) {
+  unsigned char result;
+  long hi = a_hi;
+  __asm__ volatile ("cmpq %3, %2\n\t"
+                    "sbbq %4, %1\n\t"
+                    "setl %0"
+                    : "=q" (result), "+r" (hi)
+                    : "r" (a_lo), "r" (b_lo), "r" (b_hi) : "cc");
+  return result;
+}
+
 int main(void) {
   int r = 0;
   // j is computed independently of i, so ctz_of_sum's a and b become
@@ -57,5 +76,6 @@ int main(void) {
     r += ctz(i * 4);
     r += movemask(i, -i);
   }
+  r += less_wide(20, 21, 22, 23);
   return r == 12345;
 }

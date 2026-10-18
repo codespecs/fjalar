@@ -1,3 +1,8 @@
+..less_wide():::EXIT0 a_lo 1
+..less_wide():::EXIT0 a_hi 2
+..less_wide():::EXIT0 b_lo 1
+..less_wide():::EXIT0 b_hi 2
+..less_wide():::EXIT0 return 3
 ..movemask():::EXIT0 a 1
 ..movemask():::EXIT0 b 1
 ..movemask():::EXIT0 return 2
