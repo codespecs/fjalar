@@ -107,6 +107,22 @@ static void setHelperAnns_DC ( DCEnv* dce, IRDirty* di ) {
    di->fxState[1].repeatLen = 0;
 }
 
+// Merge the tags vatom1 and vatom2, for an operation whose result
+// gets tag 0 (such as a comparison).  The merge is a dirty call
+// rather than a clean one.  VEX would remove a clean call as dead
+// code whenever the operations that use the result discard its tag
+// (for example, a shift discards the tag of its shift amount), and
+// the merge would be lost.
+static void mergeTagsReturn0_DC ( DCEnv* dce,
+                                  IRAtom* vatom1, IRAtom* vatom2 ) {
+   IRDirty* di = unsafeIRDirty_0_N(2,
+                                   "MC_(helperc_MERGE_TAGS_RETURN_0)",
+                                   &MC_(helperc_MERGE_TAGS_RETURN_0),
+                                   mkIRExprVec_2( vatom1, vatom2 ));
+   setHelperAnns_DC( dce, di );
+   stmt_DC('V', dce, IRStmt_Dirty(di));
+}
+
 // A PUT stores a value into the guest state
 void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
                      IRAtom* atom, IRAtom* vatom )
@@ -273,6 +289,12 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
    IRAtom* merged;
    IRDirty* di;
    IRTemp   datatag;
+
+   // In this mode, NOTHING is an interaction, so there is nothing to
+   // merge.  Returning early avoids computing the arguments' tags.
+   if (dyncomp_dataflow_only_mode) {
+      return IRExpr_Const(IRConst_UWord(0));
+   }
 
    if (exprvec) {
       for (i = 0; exprvec[i]; i++) {
@@ -1736,6 +1758,11 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
          else if (helper == &MC_(helperc_MERGE_TAGS_RETURN_0)) {
             return IRExpr_Const(IRConst_UWord(0));
          }
+      }
+
+      if (helper == &MC_(helperc_MERGE_TAGS_RETURN_0)) {
+         mergeTagsReturn0_DC(dce, vatom1, vatom2);
+         return IRExpr_Const(IRConst_UWord(0));
       }
 
       // Let's try a clean call.  It seems to be correct
