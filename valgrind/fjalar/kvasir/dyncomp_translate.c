@@ -1732,6 +1732,8 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
          }
       }
 
+      // A comparison:  merge the operands' tags with a dirty call,
+      // which VEX does not remove; the result's tag is 0.
       if (helper == &MC_(helperc_MERGE_TAGS_RETURN_0)) {
          mergeTagsReturn0_DC(dce, vatom1, vatom2);
          return IRExpr_Const(IRConst_UWord(0));
