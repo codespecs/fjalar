@@ -3,18 +3,10 @@
 # This script generates Fjalar's build file valgrind/fjalar/Makefile.am from
 # Memcheck's, valgrind/memcheck/Makefile.am, by renaming Memcheck to Fjalar.
 # Fjalar's changes to the build are in valgrind/fjalar/fjalar.am, which the
-<<<<<<< HEAD
 # generated file includes.  apply-patch-files.sh runs this script during the
-# Memcheck merge; run it by itself after changing it or fjalar.am.
-||||||| ee4b2c1e
-# generated file includes.  Run this script after the Memcheck merge (see
-# doc/valgrind-merge.texinfo), and after changing it or fjalar.am.
-=======
-# generated file includes.  Run this script after the Memcheck merge (see
-# doc/valgrind-merge.texinfo), and after changing this script.  A change to
+# Memcheck merge; run it by itself after changing this script.  A change to
 # fjalar.am needs only a rerun of automake, such as by auto-everything.sh,
 # because the generated file includes fjalar.am.
->>>>>>> origin/generate-fjalar-makefile
 # Usage: generate-fjalar-makefile.sh [OUTPUT]
 # OUTPUT defaults to valgrind/fjalar/Makefile.am.  If any line of the
 # generated file may need a change to the renaming, the script prints each
