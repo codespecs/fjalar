@@ -440,7 +440,6 @@ valgrind/memcheck/tests/manuel1
 valgrind/memcheck/tests/manuel2
 valgrind/memcheck/tests/manuel3
 valgrind/memcheck/tests/match-overrun
-valgrind/memcheck/tests/memalign2
 valgrind/memcheck/tests/memalign_args
 valgrind/memcheck/tests/memalign_test
 valgrind/memcheck/tests/memccpy1
