@@ -1240,13 +1240,11 @@ command lists the untracked files in test directories:
 
 @example
 cd $INV/fjalar
-git ls-files --others --exclude-standard -- '*tests/*' \
-  | grep -v -E '\.(out|diff)$'
+git ls-files --others --exclude-standard -- '*tests/*'
 @end example
 
 @noindent
-It omits the @file{.out} and @file{.diff} files that failing tests leave
-behind.  Review the list: it may also include files that should be
+Review the list: it may also include files that should be
 committed rather than ignored.
 
 
