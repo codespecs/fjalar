@@ -22543,7 +22543,7 @@ fjalar_process_file (const char * file_name)
   Filedata * filedata = NULL;
   struct vg_stat statbuf;
   unsigned int i;
-  bool res = TRUE;
+  bool res = true;
 
   SysRes sys_res = VG_(stat) (file_name, &statbuf);
   if (sr_isError(sys_res))
@@ -22553,7 +22553,7 @@ fjalar_process_file (const char * file_name)
       else
         error (_("Could not locate '%s'.  System error message: %s\n"),
                file_name, my_strerror (errno));
-      return FALSE;
+      return false;
     }
 
   if (! S_ISREG (statbuf.mode))
