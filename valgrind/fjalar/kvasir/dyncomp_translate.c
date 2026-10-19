@@ -1852,7 +1852,8 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
       // dyncomp_dataflow_comparisons_mode, no binary operation merges
       // with a clean call (comparisons merge with a dirty call; see
       // mergeTagsReturn0_DC), so the anchor is not worth the cost of
-      // a helper call.
+      // a helper call.  A constant operand involves no tag merges, so
+      // it needs no anchor.
       if (atom->tag != Iex_Const
           && !dyncomp_dataflow_only_mode
           && !dyncomp_dataflow_comparisons_mode) {
