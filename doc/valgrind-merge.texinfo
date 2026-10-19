@@ -131,6 +131,7 @@ repositories:
 
 @example
 export INV=`pwd`
+export DAIKONDIR=$INV/daikon
 git clone https://github.com/codespecs/daikon.git
 git clone https://github.com/codespecs/fjalar.git
 @end example
@@ -352,17 +353,28 @@ Fjalar has two copies of memcheck: an unmodified one in
 @file{$INV/fjalar/valgrind/memcheck/}, and a modified one (the
 @file{mc_*} files and @file{memcheck.h}) in
 @file{$INV/fjalar/valgrind/fjalar/}.  The command above omits the
-modified copy.  The following command lists the files in the modified
-copy that have no counterpart in the target Valgrind's memcheck.  Except
-for @file{mc_translate.h}, which is Fjalar's own, check each one for
-Fjalar changes, then remove it:
+modified copy.  The Memcheck merge (@pxref{Memcheck Merge}) does not
+remove files from the modified copy, either: @command{patch} ignores the
+files that the Valgrind developers removed.  The following command lists
+the files in the modified copy that the base Valgrind's memcheck has but
+the target Valgrind's memcheck does not:
 
 @example
 cd $INV/fjalar/valgrind/fjalar
 for f in mc_*.[ch] memcheck.h; do
-  [ -e $INV/valgrind-new/memcheck/$f ] || echo $f
+  [ -e $INV/valgrind-old/memcheck/$f ] \
+    && [ ! -e $INV/valgrind-new/memcheck/$f ] && echo $f
 done
 @end example
+
+@noindent
+For each listed file @var{f}, run
+@code{diff -u $INV/valgrind-old/memcheck/@var{f} @var{f}}
+to see whether Fjalar changed it.  If there is no output, remove
+@var{f} with @command{rm}.  Otherwise, save the output, for example in
+@file{$INV/@var{f}-Fjalar.diff}, and then remove @var{f}.  The Valgrind
+developers probably moved the code of @var{f} to another file; after the
+Memcheck merge, make Fjalar's changes in that file.
 
 This step could be done later, but we do it now to reduce the size
 of the patch and diff files.
@@ -411,7 +423,14 @@ Now we can merge the changes from the created diffs. The Coregrind patch
 should apply with very little conflicts.
 
 It can be difficult to undo a patch operation, so you should first attempt
-a dry run.
+a dry run.  When you apply a patch, you may also add the @option{-b}
+option, which saves the original version of each file that
+@command{patch} modifies, in a file whose name ends in @file{.orig}.
+(Without @option{-b}, @command{patch} saves a @file{.orig} file only when
+the patch does not match a file exactly.)  The @file{.orig} files are useful for
+reviewing the changes and for undoing them, and you can give them to a
+visual merge tool such as @command{meld}.  This applies to every patch
+in this document.
 
 @example
 cd $INV/fjalar/valgrind
@@ -859,8 +878,8 @@ For these two, a visual merge tool (such as @command{meld}) will be
 helpful.
 If you plan to use such a tool, you should make copies of these
 two files prior to applying the patch. Alternatively, you could add the
-"-b" option to the @file{binutils} patch command to backup all the files
-modified by the patch.
+@option{-b} option (@pxref{Coregrind Merge}) to the @file{binutils.patch}
+command to back up all the files that the patch modifies.
 
 @example
 cp -pf dwarf.c dwarf.c.orig
