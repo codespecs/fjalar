@@ -193,10 +193,12 @@ void val_uf_make_set_for_tag(UInt tag) {
   uf_make_set(GET_UF_OBJECT_PTR(tag), tag);
 }
 
-// Merge the sets of tag1 and tag2 and return the leader
+// Merge the sets of tag1 and tag2 and return the leader.
+// A tag of 0 or WEAK_FRESH_TAG has no comparability set, so there is
+// nothing to merge and the result is 0.
 UInt val_uf_tag_union(UInt tag1, UInt tag2) {
-  if (!IS_ZERO_TAG(tag1) && !IS_SECONDARY_UF_NULL(tag1) &&
-      !IS_ZERO_TAG(tag2) && !IS_SECONDARY_UF_NULL(tag2)) {
+  if (!IS_ZERO_TAG(tag1) && (WEAK_FRESH_TAG != tag1) && !IS_SECONDARY_UF_NULL(tag1) &&
+      !IS_ZERO_TAG(tag2) && (WEAK_FRESH_TAG != tag2) && !IS_SECONDARY_UF_NULL(tag2)) {
     uf_object* tag1_obj, *tag2_obj;
     uf_object* leader;
     tag1_obj = GET_UF_OBJECT_PTR(tag1);
@@ -558,9 +560,6 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
   if (dyncomp_profile_tags) {
     mergeTagsReturn0Count++;
   }
-
-  // (comment added 2006)  
-  // TODO: What do we do about WEAK_FRESH_TAG???
 
   if (IS_ZERO_TAG(tag1) ||
       IS_ZERO_TAG(tag2)) {
