@@ -58,7 +58,13 @@ cd "$INV/fjalar"
 # so "git reset --hard" can undo it.  A dry run requires them too, because
 # option --3way implies --index, so "git apply --check" would refuse every
 # file whose work-tree version differs from its index version.
-if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+# A failure of a command substitution in a condition does not stop the
+# script, so check git's exit status separately.
+if ! changes=$(git status --porcelain --untracked-files=no); then
+  echo "$0: git status failed in $INV/fjalar." >&2
+  exit 1
+fi
+if [ -n "$changes" ]; then
   echo "$0: $INV/fjalar has uncommitted changes; commit them first." >&2
   exit 1
 fi
