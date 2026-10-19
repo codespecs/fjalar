@@ -22559,14 +22559,14 @@ fjalar_process_file (const char * file_name)
   if (! S_ISREG (statbuf.mode))
     {
       error (_("'%s' is not an ordinary file\n"), file_name);
-      return FALSE;
+      return false;
     }
 
   filedata = VG_(calloc) ("readelf.c: fjalar_process_file.1", 1, sizeof * filedata);
   if (filedata == NULL)
     {
       error (_("Out of memory allocating file data structure\n"));
-      return FALSE;
+      return false;
     }
 
   filedata->file_name = file_name;
@@ -22575,7 +22575,7 @@ fjalar_process_file (const char * file_name)
     {
       error (_("Input file '%s' is not readable.\n"), file_name);
       VG_(free) (filedata);
-      return FALSE;
+      return false;
     }
 
   filedata->file_size = (bfd_size_type) statbuf.size;
@@ -22585,7 +22585,7 @@ fjalar_process_file (const char * file_name)
       error (_("%s: Failed to read file header\n"), file_name);
       fclose (filedata->handle);
       VG_(free) (filedata);
-      return FALSE;
+      return false;
     }
 
   /* Initialise per file variables.  */
@@ -22608,7 +22608,7 @@ fjalar_process_file (const char * file_name)
       // FJALAR_DPRINTF("failed process_file_header()\n");
       fclose (filedata->handle);
       VG_(free) (filedata);
-      return FALSE;
+      return false;
     }
 
   // FJALAR_DPRINTF("before process_section_headers()\n");
@@ -22626,36 +22626,36 @@ fjalar_process_file (const char * file_name)
   if (! get_program_headers (filedata))
     {
       // FJALAR_DPRINTF("failed get_program_headers()\n");
-      res = FALSE;
+      res = false;
     }
 
   // FJALAR_DPRINTF("before process_relocs()\n");
   if (! process_relocs (filedata))
-    res = FALSE;
+    res = false;
 
 //  Fjalar does not need the unwind info (do_unwind always = 0).
 //if (! process_unwind (filedata))
-//  res = FALSE;
+//  res = false;
 
   // FJALAR_DPRINTF("before process_symbol_table()\n");
   if (! process_symbol_table (filedata))
-    res = FALSE;
+    res = false;
 
   // FJALAR_DPRINTF("before process_syminfo()\n");
   if (! process_syminfo (filedata))
-    res = FALSE;
+    res = false;
 
 //  Fjalar does not need the version info (do_version always = 0).
 //if (! process_version_sections (filedata))
-//  res = FALSE;
+//  res = false;
 
   // FJALAR_DPRINTF("before process_section_contents()\n");
   if (! process_section_contents (filedata))
-    res = FALSE;
+    res = false;
 
 //  Fjalar does not need the notes info (do_notes always = 0).
 //if (! process_notes (filedata))
-//  res = FALSE;
+//  res = false;
 
 //  Fjalar does not need the gnu liblist info (do_arch always = 0).
 //if (! process_gnu_liblist (filedata))
