@@ -997,7 +997,7 @@ create @file{.rej} files.  @command{git status} lists the changed files,
 and this command finds the conflicts:
 
 @example
-grep -rn '^<<<<<<<' .
+grep -rnE '^(<@{7@}|[|]@{7@}|=@{7@}|>@{7@})( |$)' .
 @end example
 
 @noindent
