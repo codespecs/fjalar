@@ -20,8 +20,9 @@ trap 'exit 1' ERR
 
 top=$(dirname "$0")
 output=${1:-$top/valgrind/fjalar/Makefile.am}
-# Write to a temporary file, so that a failure leaves OUTPUT unchanged.
-tmp=$output.tmp
+# Write to a temporary file, so that a failure leaves OUTPUT unchanged.  mktemp
+# creates it exclusively, with an unpredictable name.
+tmp=$(mktemp "$output.XXXXXX")
 trap 'rm -f "$tmp"' EXIT
 
 # Fjalar's version is generated instead of patched, because almost every
@@ -41,6 +42,9 @@ trap 'rm -f "$tmp"' EXIT
   echo
   echo 'include $(srcdir)/fjalar.am'
 } > "$tmp"
+# mktemp creates the file readable only by its owner; give it the usual
+# permissions, as a plain redirection would.
+chmod "$(printf '%o' $((0666 & ~0$(umask))))" "$tmp"
 mv "$tmp" "$output"
 
 # An upstream change that the renaming does not handle needs a change to
