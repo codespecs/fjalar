@@ -199,18 +199,14 @@ void val_uf_make_set_for_tag(UInt tag) {
 UInt val_uf_tag_union(UInt tag1, UInt tag2) {
   if (!IS_ZERO_TAG(tag1) && (WEAK_FRESH_TAG != tag1) && !IS_SECONDARY_UF_NULL(tag1) &&
       !IS_ZERO_TAG(tag2) && (WEAK_FRESH_TAG != tag2) && !IS_SECONDARY_UF_NULL(tag2)) {
-    Addr eip = VG_(get_IP)(VG_(get_running_tid)());
-    const HChar *eip_info;
     uf_object* tag1_obj, *tag2_obj;
     uf_object* leader;
     tag1_obj = GET_UF_OBJECT_PTR(tag1);
     tag2_obj = GET_UF_OBJECT_PTR(tag2);
     leader = uf_union(tag1_obj, tag2_obj);
-    // Describe this (probably live) address with current epoch
-    eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), eip, NULL);
 
     DYNCOMP_TPRINTF("[DynComp-v1] Merging %u with %u to get %u at %s\n",
-                    tag1, tag2, leader->tag, eip_info);
+                    tag1, tag2, leader->tag, current_IP_description());
 
     return leader->tag;
   }
@@ -501,11 +497,6 @@ UInt tag2_is_new ( UInt tag1, UInt tag2 ) {
 // of the merged set
 VG_REGPARM(2)
 UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
-  Addr eip = VG_(get_IP)(VG_(get_running_tid)());
-  const HChar *eip_info;
-  // Describe this (probably live) address with current epoch
-  eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), eip, NULL);
-
   if (dyncomp_profile_tags) {
     mergeTagsCount++;
   }
@@ -523,12 +514,12 @@ UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
   //  but that's correctly handled)
   else if (WEAK_FRESH_TAG == tag1) {
     DYNCOMP_TPRINTF("[DynComp-m1] Merging %u with %u to get %u at %s\n",
-                    tag1, tag2, tag2, eip_info);
+                    tag1, tag2, tag2, current_IP_description());
     return tag2;
   }
   else if (WEAK_FRESH_TAG == tag2) {
     DYNCOMP_TPRINTF("[DynComp-m2] Merging %u with %u to get %u at %s\n",
-                    tag1, tag2, tag1, eip_info);
+                    tag1, tag2, tag1, current_IP_description());
     return tag1;
   }
   else {
