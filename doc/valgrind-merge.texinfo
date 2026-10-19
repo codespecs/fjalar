@@ -609,7 +609,11 @@ merged or if the change is not relevant.
 
 As with Coregrind, a file that was removed upstream but that has Fjalar
 changes is not removed; decide whether to remove it with
-@command{git rm}.
+@command{git rm}.  The Valgrind developers probably moved the code of
+such a file @var{f} to another file.  Before you remove @var{f}, save
+Fjalar's changes to it, which
+@code{diff -u $INV/valgrind-old/memcheck/@var{f} valgrind/fjalar/@var{f}}
+shows (run it in @file{$INV/fjalar}), and then make them in that other file.
 
 Our changes to Memcheck are much more substantial than our changes to
 Coregrind.
