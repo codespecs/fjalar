@@ -55,27 +55,30 @@ it completely (merged, CI green) before starting this one.  That plan's
    git clone -b $VOLDVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-old
    git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-new
    ```
-   Remove from `fjalar/valgrind` the files listed by
-   `diff -qrb -x.git valgrind-old valgrind-new | grep "Only in valgrind-old"`.
+   Remove from `fjalar/valgrind` the files that `valgrind-new` does not have,
+   using the commands in section "Remove files that the target Valgrind release
+   does not have" of `doc/valgrind-merge.texinfo`.  The second command there
+   handles Fjalar's own copy of memcheck in `valgrind/fjalar/`.
 
 3. **Baseline.**  Never build in `valgrind-old` or `valgrind-new` themselves:
-   `generate-patch-files.sh` diffs them with `--unidirectional-new-file`, so
-   any build products (`*.o`, `Makefile`, `config.h`, test binaries, `inst/`)
-   would end up in `coregrind.patch` and then be `git add`ed by
-   `make git-update`.  Build a copy instead:
+   `generate-patch-files.sh` refuses to run if either contains changes or
+   untracked files, such as build products (`*.o`, `Makefile`, `config.h`,
+   test binaries, `inst/`).  Otherwise they would end up in
+   `coregrind.patch` and then be `git add`ed by `make git-update`.  The
+   error message gives the `git reset`/`git clean` command that makes a tree
+   pristine again.  Build a copy instead:
    ```sh
-   cp -a valgrind-new valgrind-new-build && cd valgrind-new-build
+   rm -rf valgrind-new-build
+   git clone -q valgrind-new valgrind-new-build && cd valgrind-new-build
    ./autogen.sh && ./configure --prefix=$(pwd)/inst
    make all install && make regtest > test.log 2>&1
    ```
-   Save the summary at the end of `test.log` for comparison.  (Alternatively,
-   as the doc does, run this in `valgrind-new` only after steps 4-7.)
+   Save the summary at the end of `test.log` for comparison.
 
 4. **Create the diffs.** Run `$INV/fjalar/generate-patch-files.sh`, producing
    `coregrind.patch`, `memcheck.patch`, `coregrind-Fjalar.diff`,
-   `memcheck-Fjalar.diff`.  Sanity check: no build products in the patch, i.e.
-   `grep -E '^diff .*(\.o|/config\.h|/inst/.*)$' $INV/coregrind.patch`
-   prints nothing.
+   `memcheck-Fjalar.diff`.  The script checks that `valgrind-old` and
+   `valgrind-new` are pristine clones at `$VOLDVER` and `$VNEWVER`.
 
 5. **Coregrind merge.**
    - `cd fjalar/valgrind; patch -p1 -lu --dry-run < $INV/coregrind.patch`,
@@ -144,16 +147,21 @@ it completely (merged, CI green) before starting this one.  That plan's
 10. **Finish.**
     - Update first line of `valgrind/REVISION`
       (`# Valgrind version 3.27.1, released ...`).
-    - Add names of new Valgrind test drivers to `.gitignore`
-      ("Ignore generated test drivers" section).
+    - Add names of new Valgrind test programs to `.gitignore`, in the
+      per-tool sections (such as `# /memcheck/`).
     - `make git-update > git.script`, review, run.
+    - `git add -u -- valgrind`.  This stages the removal of the files that
+      step 2 removed with `rm` and that are in neither `valgrind-old` nor
+      `valgrind-new`, which `git.script` does not cover.
+    - Check that Fjalar tracks no file that upstream does not have:  the
+      first command in the doc section of step 2 prints nothing.
     - Document user-visible changes in `$INV/daikon/doc/CHANGELOG.md`.
     - Update `doc/valgrind-merge.texinfo`: regtest baseline output, dates/OS
-      versions, building the baseline in a copy (step 3), and any new
-      pitfalls.
+      versions, and any new pitfalls.
     - Commit as one PR; save the patch/diff files and `valgrind-new` (it
-      becomes `valgrind-old` for the next merge; delete
-      `valgrind-new-build`).
+      becomes `valgrind-old` for the next merge, after
+      `git -C valgrind-old reset --hard && git -C valgrind-old clean -fdx`;
+      delete `valgrind-new-build`).
 
 ## Risks
 
