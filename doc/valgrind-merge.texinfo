@@ -834,19 +834,35 @@ need to be corrected as described below.
 @file{readelf.c}.
 For these two, a visual merge tool (such as @command{meld}) will be
 helpful.
-If you plan to use such a tool, you should make copies of these
-two files prior to applying the patch. Alternatively, you could add the
-@option{-b} option to the @command{patch} command that applies
-@file{binutils.patch}.  With @option{-b}, @command{patch} backs up each
-file that it modifies, in a file whose name ends in @file{.orig}.  (Without @option{-b}, @command{patch}
-saves a @file{.orig} file only when the patch does not match a file
-exactly.)  The @file{.orig} files are useful for reviewing the changes
-and for undoing them, as well as for the visual merge tool.
+If you plan to use such a tool, you need copies of these two files
+from before the patch is applied.  There are two ways to make them.
+
+@itemize
+@item
+Copy the two files before applying the patch:
 
 @example
 cp -pf dwarf.c dwarf.c.orig
 cp -pf readelf.c readelf.c.orig
 @end example
+
+@item
+Add the @option{-b} option to the actual (not the dry-run)
+@command{patch} command that applies @file{binutils.patch}, in
+whichever of the two ways of applying the patches (shown below) you
+use.  With @option{-b}, @command{patch} backs up each file that it
+modifies, in a file whose name ends in @file{.orig}.  (Without
+@option{-b}, @command{patch} saves a @file{.orig} file only when the
+patch does not match a file exactly.)  The @file{.orig} files are
+useful for reviewing the changes and for undoing them, as well as for
+the visual merge tool.  Run @command{patch -b} only once:  a second run
+overwrites each @file{.orig} file with the already-patched file, so the
+copy of the original file is lost.
+@end itemize
+
+When you have finished the merge, remove the @file{.orig} files.
+Because @file{.gitignore} lists @file{*.orig}, @command{git status}
+does not show them; find them with @code{find -name '*.orig'}.
 
 It can be difficult to undo a patch operation, so you should first attempt
 a dry run.  It is recommended that you only do one of the patches at a
