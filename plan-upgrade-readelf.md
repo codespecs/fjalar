@@ -9,8 +9,8 @@ Below, `$INV/fjalar` means the Fjalar tree being upgraded.
 ## Ordering: do this before the Valgrind upgrade
 
 First do the preparation in `plan-pre-upgrade.md`, at least items 7
-(stale upstream files removed), 1 (Valgrind regtest in CI with expected
-failures), and 6 (`bfd.h` versions); this plan assumes them.
+(stale upstream files removed; done), 1 (Valgrind regtest in CI with
+expected failures), and 6 (`bfd.h` versions; done); this plan assumes them.
 
 Do this upgrade first, before `plan-upgrade-valgrind.md`, and finish it
 completely (landed, CI green) before starting the Valgrind upgrade.  Reasons:

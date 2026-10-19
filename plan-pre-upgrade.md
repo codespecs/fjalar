@@ -7,22 +7,23 @@ Both upgrade plans assume these are done.
 
 Below, `$INV/fjalar` means the Fjalar tree being changed.
 
-Items 1, 2, 3, 5, and 7 are pull requests; their descriptions give the
-details.  Items 4 and 6 are described here.  Other open PRs that both
+Items 3, 5, and 7 are done:  #99, #101, and #98 have landed.  Items 1
+and 2 are open pull requests; their descriptions give the details.
+Items 4 and 6 are described here.  Other open PRs that both
 upgrades should wait for, because they change files that the upgrades
 merge into, are listed in the "Current state" section of each upgrade
 plan.
 
 ## 1. Run Valgrind's regression tests in CI, against expected failures
 
-#96 (which contains #102, so that Valgrind's test programs build with
-GCC 15 on Ubuntu 26.04).  Its CI jobs only report the failures.
+#96.  (#102, which has landed, makes Valgrind's test programs build with
+GCC 15 on Ubuntu 26.04.)  Its CI jobs only report the failures.
 
-Remaining, after #96 and #98 land (#98 changes which tests fail):
-1. Install `gdb` and glibc debuginfo in the Daikon `-plus` Docker images,
-   which Fjalar's CI uses:  codespecs/daikon#916.  After it lands, rebuild
-   and push the images (`scripts/Dockerfile-README.md` in Daikon).  This
-   makes most `gdbserver_tests` meaningful.  Ideally, do this before
+Remaining, after #96 lands:
+1. Rebuild and push the Daikon `-plus` Docker images, which Fjalar's CI
+   uses (`scripts/Dockerfile-README.md` in Daikon), so that they contain
+   `gdb` and glibc debuginfo, which codespecs/daikon#916 (landed) added.
+   This makes most `gdbserver_tests` meaningful.  Ideally, do this before
    step 2, so that the lists are generated only once.
 2. Push a branch and let the regtest jobs run.  Download the
    `regtest-results-*` artifacts and copy each `regtest-observed-<os>.txt`
@@ -42,12 +43,12 @@ Done when:  CI enforces the lists on both distributions and is green.
 ## 2. Add and remove files during the merge without `make git-update`
 
 #103:  create the patch files with `git diff` and apply them with
-`git apply --3way`.  It contains #98, #99, #101, and #113 (generate
+`git apply --3way`.  It contains #113 (generate
 `valgrind/fjalar/Makefile.am` from Memcheck's).
 
 ## 3. Make `generate-patch-files.sh` check its inputs
 
-#99.
+Done:  #99 has landed.
 
 ## 4. Look for DynComp panics on unhandled IROps, now, on Valgrind 3.23
 
@@ -89,8 +90,8 @@ What:
 
 ## 5. Update `doc/valgrind-merge.texinfo` with what is already known
 
-#101, except describing `check-regtest.sh` (item 1).  #98, #103, and #113
-also update the merge doc.
+Done:  #101 has landed.  Describing `check-regtest.sh` remains (item 1).
+#98 (landed), #103, and #113 also update the merge doc.
 
 ## 6. Record the `bfd.h` version in each CI container
 
@@ -115,4 +116,4 @@ What: the CI "System information" step of each regtest job runs
 
 ## 7. Remove upstream files that upstream deleted but Fjalar still tracks
 
-#98.
+Done:  #98 has landed.

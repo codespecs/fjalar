@@ -62,18 +62,24 @@ Memcheck and DynComp depend tightly on Valgrind core:
     (#84) backported an upstream fix for `$(nproc)` in
     `auxprogs/Makefile.am`.  3.27.1 has the same line, so take upstream's
     version; after the merge, that file no longer differs from upstream.
+    Likewise, `f57698c1` (#102) backported upstream fixes to
+    `drd/tests/swapcontext.c`, `helgrind/tests/tc17_sembar.c`, and
+    `none/tests/bug234814.c`, so that they build with GCC 15; take
+    upstream's versions.
+  - Upstream files that Fjalar still tracked although upstream had deleted
+    them were removed by `1d9a43ad` (#98).
   - DynComp, so step 7 must keep them (no conflict expected, since
     `kvasir/` is not patched): `b2c735d7` (#79) `Iop_64x4toV256` and
-    `125330a0` (#88) vector shifts, in `dyncomp_translate.c`.
-  - Open PRs to land before this upgrade (as of 2026-10-18):
+    `125330a0` (#88) vector shifts, in `dyncomp_translate.c`;
+    `a4d693e1` (#114, instruction address only when tracing) and
+    `ab0b6145` (#108, `WEAK_FRESH_TAG` check), in `dyncomp_main.c`.
+  - Open PRs to land before this upgrade (as of 2026-10-19):
     - DynComp, `dyncomp_translate.c`:  #85 (`--dyncomp-unhandled-ops`),
       #86 and #87 (explicit handling of all 283 unary operations), #104,
       #106, #107, #111, #115, #116, #117, #119, #120, #122, #123, and
       #125.  With #85 and #87, new IROps in 3.24-3.27 reach the `default`
       cases of all four `expr2tags_*_DC` functions, and
       `--dyncomp-unhandled-ops=warn` lists them all in one run (step 7).
-    - DynComp, `dyncomp_main.c` but not `dyncomp_translate.c`:  #108 and
-      #114.
     - Memcheck-derived files, so they can conflict in step 6:  #90 and #95
       change `mc_main.c` and `mc_include.h`; #115, #117, #119, and #120
       change `mc_translate.c` and `mc_translate.h`.
