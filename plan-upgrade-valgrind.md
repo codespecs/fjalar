@@ -128,6 +128,8 @@ it completely (merged, CI green) before starting this one.  That plan's
    - Pay special attention to any upstream change to guest-state layout
      (`libvex_guest_amd64.h`, `libvex_guest_x86.h`) or to the shadow-area
      size/alignment checks, since Fjalar enlarges the shadow area.
+   - Commit the results, because `apply-patch-files.sh` requires that
+     Fjalar has no uncommitted changes before the Memcheck merge.
 
 6. **Memcheck merge** into `valgrind/fjalar/`.
    - `$INV/fjalar/apply-patch-files.sh --check memcheck`, then for real
@@ -199,7 +201,7 @@ it completely (merged, CI green) before starting this one.  That plan's
     - Check that Fjalar's files match the target release: run the
       commands of step 2 (section "Correct the files of earlier merges")
       with `valgrind-new` in place of `valgrind-old`.  They should list
-      only files that you decided to keep or omit (step 5).
+      only files that you decided to keep or omit (steps 5 and 6).
     - Document user-visible changes in `$INV/daikon/doc/CHANGELOG.md`.
     - Update `doc/valgrind-merge.texinfo`: dates/OS versions and any new
       pitfalls.  (The regtest baseline output pasted into the doc is

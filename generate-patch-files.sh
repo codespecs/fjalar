@@ -12,11 +12,6 @@
 # destination file.
 # Limiting "git diff --no-index" with a pathspec requires Git 2.51 or later.
 
-if ! printf '%s\n' 2.51 "$(git version | cut -d' ' -f3)" | sort -V -C; then
-  echo "$0: requires Git 2.51 or later" >&2
-  exit 1
-fi
-
 # Fail the whole script if any command fails, including within a pipeline.
 set -e
 set -o pipefail
@@ -33,6 +28,11 @@ fi
 # Remove all the output files first, so that a failure, including a failed
 # check below, does not leave stale ones from an earlier run.
 rm -f "$INV"/{coregrind.patch,memcheck.patch,coregrind-Fjalar.diff,memcheck-Fjalar.diff}
+
+if ! printf '%s\n' 2.51 "$(git version | cut -d' ' -f3)" | sort -V -C; then
+  echo "$0: requires Git 2.51 or later" >&2
+  exit 1
+fi
 
 for dir in "$INV/valgrind-old" "$INV/valgrind-new" "$INV/fjalar/valgrind"; do
   if [ ! -d "$dir" ]; then
@@ -93,32 +93,39 @@ check_version "$INV/valgrind-new" VNEWVER
 cd "$INV"
 inv=$(pwd -P)
 
-# The temporary file that run_diff is writing, if any, and the copy of
+# The temporary files that run_diff is writing, if any, and the copy of
 # fjalar/valgrind.  They are removed when the script exits, including when
 # it exits early or is interrupted.
 tmp=
+errtmp=
 fjalar_copy=
-trap 'rm -f "$tmp"; [ -z "$fjalar_copy" ] || rm -rf "$fjalar_copy"' EXIT
+trap 'rm -f "$tmp" "$errtmp"; [ -z "$fjalar_copy" ] || rm -rf "$fjalar_copy"' EXIT
 
 # Usage: run_diff OUTFILE COMMAND ARGS...
 # Runs COMMAND, which is diff or "git diff --no-index", and creates OUTFILE
 # from its output only if it succeeds, so a failure does not leave a partial
 # file.  Both commands exit with status 1 if the files differ, which is
-# expected, and with another nonzero status if there was trouble.
+# expected.  "git diff --no-index" also exits with status 1 after some
+# errors, such as an unreadable directory, so the command is considered to
+# have failed if it writes to standard error.
 run_diff() {
   local out=$1
   shift
   tmp=$out.tmp
-  # Create the file before running the command.  A failed redirection on the
+  errtmp=$out.err
+  # Create the files before running the command.  A failed redirection on the
   # command would yield status 1, which is indistinguishable from "files differ".
-  if ! : > "$tmp"; then
-    echo "$0: cannot write $tmp, so $out was not created." >&2
+  if ! : > "$tmp" || ! : > "$errtmp"; then
+    echo "$0: cannot write $tmp or $errtmp, so $out was not created." >&2
     exit 1
   fi
-  if "$@" >> "$tmp" || [ $? -eq 1 ]; then
+  if { "$@" >> "$tmp" 2>> "$errtmp" || [ $? -eq 1 ]; } && [ ! -s "$errtmp" ]; then
     mv "$tmp" "$out"
     tmp=
+    rm -f "$errtmp"
+    errtmp=
   else
+    cat "$errtmp" >&2
     echo "$0: $1 failed, so $out was not created." >&2
     exit 1
   fi

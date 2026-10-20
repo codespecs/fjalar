@@ -41,6 +41,14 @@ case "$1" in
 esac
 name=$1
 shift
+# Option --check passed through to "git apply" would apply nothing, but the
+# script would still stage the merge results.
+for arg in "$@"; do
+  if [ "$arg" = "--check" ]; then
+    echo "$usage" >&2
+    exit 1
+  fi
+done
 
 if [ -z "$INV" ]; then
   echo "$0: INV is not set; see doc/valgrind-merge.texinfo." >&2
@@ -74,8 +82,8 @@ fi
 # "git mergetool" can use them after this script exits.  An alternate object
 # directory would not suffice:  "git apply" would not write a merged blob
 # that exists in the alternate, so the index would name a missing object.
-sed -n 's/^index \([0-9a-f]\{40,\}\)\.\.[0-9a-f]\{40,\}.*/\1/p' "$patch" \
-  | sed '/^0*$/d' | sort -u \
+sed -n '/^index 0*\.\./d; s/^index \([0-9a-f]\{40,\}\)\.\.[0-9a-f]\{40,\}.*/\1/p' "$patch" \
+  | sort -u \
   | git -C "$INV/valgrind-old" pack-objects -q --stdout | git unpack-objects -q \
   || { echo "$0: could not copy blobs from $INV/valgrind-old." >&2; exit 1; }
 # The messages of "git apply" are parsed below, so they must be in English.

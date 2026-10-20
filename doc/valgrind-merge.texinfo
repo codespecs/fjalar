@@ -541,9 +541,15 @@ remove it with @command{git rm}.
 
 Then check that Fjalar tracks no other file that the target Valgrind
 release does not have, and that it has every file that the target
-Valgrind release has: run the commands in @ref{Correct the files of
-earlier merges}, with @file{valgrind-new} in place of @file{valgrind-old}.
-They should print only the files that you decided to keep or to omit.
+Valgrind release has: follow @ref{Correct the files of earlier merges},
+with @file{valgrind-new} in place of @file{valgrind-old}, but skip the
+two commands that compare @file{valgrind/fjalar} with Memcheck.  The
+other commands should print only the files that you decided to keep or
+to omit.  Before the Memcheck merge, they
+list the Memcheck files that upstream added or removed, and the Memcheck
+merge handles those files.  If you copied or removed them by hand, the
+Memcheck merge would refuse their patches, and you would lose Fjalar's
+changes to a removed file.
 
 Commit the results, because @file{apply-patch-files.sh} requires that
 Fjalar has no uncommitted changes before the Memcheck merge.
@@ -572,7 +578,8 @@ $INV/fjalar/apply-patch-files.sh memcheck
 @end example
 
 The Memcheck merge does not patch Fjalar's build file
-@file{valgrind/fjalar/Makefile.am}.  Instead, @file{apply-patch-files.sh}
+@file{valgrind/fjalar/Makefile.am}; @file{memcheck.patch} omits
+@file{Makefile.am}.  Instead, @file{apply-patch-files.sh}
 runs @file{generate-fjalar-makefile.sh}, which regenerates it from
 @file{valgrind/memcheck/Makefile.am}, which the Coregrind merge updated,
 by renaming Memcheck to Fjalar.  Fjalar builds every Memcheck source file,
@@ -597,30 +604,6 @@ cd $INV/fjalar
 git add valgrind/fjalar/Makefile.am
 @end example
 
-The Memcheck merge does not patch Fjalar's build file
-@file{valgrind/fjalar/Makefile.am}; @file{memcheck.patch} omits
-@file{Makefile.am}.  Instead, regenerate it from
-@file{valgrind/memcheck/Makefile.am}, which the Coregrind merge updated:
-
-@example
-cd $INV/fjalar
-./generate-fjalar-makefile.sh
-@end example
-
-@file{generate-fjalar-makefile.sh} renames Memcheck to Fjalar.  Fjalar
-builds every Memcheck source file, so a new upstream source file is built
-automatically.  The generated file includes
-@file{valgrind/fjalar/fjalar.am}, which holds Fjalar's changes, such as
-its additional source files and compiler flags.  Review
-@command{git diff valgrind/fjalar/Makefile.am}, and update
-@file{fjalar.am} if an upstream change conflicts with Fjalar's changes.
-The script lists any line of the generated file that still mentions
-Memcheck or docs, or that is a conflict marker, and then exits with
-status 2.  Such a line may mean that the renaming in
-@file{generate-fjalar-makefile.sh} needs to handle a new upstream
-construct.  After changing @file{generate-fjalar-makefile.sh} or
-@file{fjalar.am}, rerun it.
-
 
 @node Memcheck Conflicts
 @section Memcheck Conflicts
@@ -639,6 +622,13 @@ such a file @var{f} to another file.  Before you remove @var{f}, save
 Fjalar's changes to it, which
 @code{diff -u $INV/valgrind-old/memcheck/@var{f} valgrind/fjalar/@var{f}}
 shows (run it in @file{$INV/fjalar}), and then make them in that other file.
+
+Then check that @file{valgrind/fjalar} has exactly the Memcheck files
+that the target Valgrind release has: run the two commands in
+@ref{Correct the files of earlier merges} that compare
+@file{valgrind/fjalar} with Memcheck, with @file{valgrind-new} in place
+of @file{valgrind-old}.  They should print only the files that Fjalar
+created and the files that you decided to keep.
 
 Our changes to Memcheck are much more substantial than our changes to
 Coregrind.
