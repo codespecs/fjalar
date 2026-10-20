@@ -405,10 +405,12 @@ IRAtom* approximate_unhandled_op_DC ( DCEnv* dce, IROp op, Int nargs,
                                       IRAtom** atoms, IRAtom** vatoms,
                                       const HChar* where )
 {
+   // warned[op - Iop_INVALID] is true if a warning about op has been printed.
    static Bool warned[Iop_LAST - Iop_INVALID];
    IRType       t_dst, t_arg[4];
-   Bool         isData[4];
-   IRAtom*      data[4];
+   Bool         isData[4];      // whether each operand is a data operand
+   IRAtom*      data[4];        // tags of the non-constant data operands
+   // nDataTypes counts the data operands; nData counts the non-constant ones.
    Int          i, nDataTypes = 0, nData = 0;
    Bool         isRoundingMode = False, isComparison, isInteraction;
    const HChar* description;
@@ -436,6 +438,7 @@ IRAtom* approximate_unhandled_op_DC ( DCEnv* dce, IROp op, Int nargs,
 
    typeOfPrimop(op, &t_dst, &t_arg[0], &t_arg[1], &t_arg[2], &t_arg[3]);
 
+   // Determine which operands are data operands.
    if (t_arg[0] == Ity_I32) {
       isRoundingMode = isFloatOrVectorType_DC(t_dst);
       for (i = 1; i < nargs; i++) {
@@ -453,6 +456,7 @@ IRAtom* approximate_unhandled_op_DC ( DCEnv* dce, IROp op, Int nargs,
       }
    }
 
+   // Decide how to treat the operation, honoring --dyncomp-interactions.
    isComparison = (t_dst == Ity_I1 && nDataTypes == 2);
    isInteraction = (!dyncomp_dataflow_only_mode
                     && (isComparison
@@ -496,6 +500,7 @@ IRAtom* approximate_unhandled_op_DC ( DCEnv* dce, IROp op, Int nargs,
       return IRExpr_Const(IRConst_UWord(0));
    }
 
+   // Merge the data operands' tags and return the merged tag.
    switch (nData) {
       case 0:
          return IRExpr_Const(IRConst_UWord(0));
