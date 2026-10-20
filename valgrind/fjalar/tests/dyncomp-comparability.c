@@ -39,7 +39,8 @@ int ctz(unsigned int x) {
   return __builtin_ctz(x);
 }
 
-// The result is comparable to neither a nor b.
+// a and b are comparable, because they are packed into one vector; the
+// result is comparable to neither.
 int movemask(long a, long b) {
   __m128i v = _mm_set_epi64x(a, b);
   return _mm_movemask_epi8(v);
