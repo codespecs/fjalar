@@ -2546,17 +2546,17 @@ static int formalParamByteSize(VariableEntry* varPtr)
 }
 
 // Returns true if the formal parameter's location is a register
-// whose entrance value Fjalar can save and from which Fjalar can read
-// the whole value.  The location must be a single DW_OP_reg operation:
-// Fjalar does not support any other operation (such as DW_OP_lit*)
-// that is not a memory location.  Call this after copying the DWARF
-// location into varPtr->location_expression.
+// from which Fjalar can read the whole value.  The location must be a
+// single DW_OP_reg operation:  Fjalar does not support any other
+// operation (such as DW_OP_lit*) that is not a memory location.  The
+// register is readable, because a location that uses an unreadable
+// register is unsupported (see location_op_kind_of).  Call this after
+// copying the DWARF location into varPtr->location_expression.
 static Bool isSupportedRegisterLocation(VariableEntry* varPtr)
 {
   int byteSize;
 
-  if (varPtr->location_expression_size != 1 || !isInRegister(varPtr) ||
-      !dwarf_reg_is_readable(varPtr->location_expression[0].atom - DW_OP_reg0)) {
+  if (varPtr->location_expression_size != 1 || !isInRegister(varPtr)) {
     return False;
   }
   byteSize = formalParamByteSize(varPtr);
@@ -2565,7 +2565,9 @@ static Bool isSupportedRegisterLocation(VariableEntry* varPtr)
 
 // Returns the set of the registers that the formal parameter's location uses
 // (in DW_OP_reg* or DW_OP_breg*).  The set is represented as a bit mask indexed
-// by DWARF register number.
+// by DWARF register number.  Every such register is readable, because a
+// location that uses an unreadable register is unsupported (see
+// location_op_kind_of).
 static UInt locationRegisterMask(formal_parameter* paramPtr)
 {
   unsigned int i;
@@ -2573,6 +2575,7 @@ static UInt locationRegisterMask(formal_parameter* paramPtr)
   for (i = 0; i < paramPtr->dwarf_stack_size; i++) {
     UInt regNum;
     if (dwarf_op_reg_num(paramPtr->dwarf_stack[i].atom, &regNum)) {
+      tl_assert(dwarf_reg_is_readable(regNum));
       mask |= 1U << regNum;
     }
   }
