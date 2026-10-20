@@ -184,7 +184,8 @@ Re-compile Fjalar, then run Daikon's Kvasir tests. (The tests take about 20 minu
 make -C $DAIKONDIR compile test
 
 make -C $INV/fjalar build
-make -C $DAIKONDIR/tests/kvasir-tests clean-all regression-tests
+make -C $DAIKONDIR/tests/kvasir-tests clean-all
+make -C $DAIKONDIR/tests/kvasir-tests regression-tests
 @end example
 
 The Kvasir tests use the Fjalar installed under
@@ -815,7 +816,8 @@ the next section merges each of them with @command{git merge-file}, a
 Before applying any patches, run Daikon's Kvasir tests:
 
 @example
-  make -C $DAIKONDIR/tests/kvasir-tests clean-all regression-tests
+  make -C $DAIKONDIR/tests/kvasir-tests clean-all
+  make -C $DAIKONDIR/tests/kvasir-tests regression-tests
 @end example
 
 @noindent
@@ -1163,7 +1165,7 @@ Before we test Fjalar, it is a good idea to verify we haven't
 broken the underlying Valgrind:
 
 @example
-make -C $INV/fjalar test 2>&1 | tee $INV/fjalar/test-after.log
+make -C $INV/fjalar --no-print-directory test 2>&1 | tee $INV/fjalar/test-after.log
 @end example
 
 @noindent
@@ -1186,7 +1188,8 @@ of the Daikon tree.
 It can be run using the following commands (takes about 20 minutes):
 
 @example
-make -C $DAIKONDIR/tests/kvasir-tests clean-all regression-tests
+make -C $DAIKONDIR/tests/kvasir-tests clean-all
+make -C $DAIKONDIR/tests/kvasir-tests regression-tests
 @end example
 
 @noindent
