@@ -2651,8 +2651,6 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     varPtr->byteOffset = paramPtr->location;
     //    varPtr->atom = paramPtr->loc_atom;
     // Save at function entrance each register that the location uses.
-    // Every such register is readable, because a location that uses an
-    // unreadable register is unsupported.
     f->entryRegsMask |= locationRegisterMask(paramPtr);
 
     FJALAR_DPRINTF(" location_type: %u, byteOffset: %x\n", varPtr->locationType, (unsigned int)varPtr->byteOffset);
