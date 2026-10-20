@@ -545,8 +545,8 @@ Valgrind release has: follow @ref{Correct the files of earlier merges},
 with @file{valgrind-new} in place of @file{valgrind-old}, but skip the
 two commands that compare @file{valgrind/fjalar} with Memcheck.  The
 other commands should print only the files that you decided to keep or
-to omit.  Before the Memcheck merge, they
-list the Memcheck files that upstream added or removed, and the Memcheck
+to omit.  Before the Memcheck merge, the two skipped commands would list
+the Memcheck files that upstream added or removed, and the Memcheck
 merge handles those files.  If you copied or removed them by hand, the
 Memcheck merge would refuse their patches, and you would lose Fjalar's
 changes to a removed file.

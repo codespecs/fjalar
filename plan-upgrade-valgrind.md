@@ -6,7 +6,8 @@ situation and notes where it needs adjusting.
 
 Below, `$INV/fjalar` means the Fjalar tree being upgraded.  It must actually be
 at `$INV/fjalar`, because `generate-patch-files.sh` hard-codes that layout
-(`fjalar/valgrind`).
+(`fjalar/valgrind`), and `apply-patch-files.sh` merges into `$INV/fjalar` and
+refuses to run from any other tree.
 
 ## Ordering: do this after the readelf upgrade
 

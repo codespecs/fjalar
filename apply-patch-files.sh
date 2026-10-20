@@ -54,6 +54,19 @@ if [ -z "$INV" ]; then
   echo "$0: INV is not set; see doc/valgrind-merge.texinfo." >&2
   exit 1
 fi
+# Make INV absolute, because the paths below are used after the "cd".
+if ! inv=$(cd "$INV" && pwd -P); then
+  echo "$0: cannot change to directory $INV." >&2
+  exit 1
+fi
+INV=$inv
+# The script merges into $INV/fjalar and runs its generate-fjalar-makefile.sh,
+# as generate-patch-files.sh and the documentation assume, so a copy of the
+# script in another tree, such as a worktree, must not be run.
+if [ "$(cd "$(dirname "$0")" && pwd -P)" != "$(cd "$INV/fjalar" 2> /dev/null && pwd -P)" ]; then
+  echo "$0: run $INV/fjalar/apply-patch-files.sh instead." >&2
+  exit 1
+fi
 patch=$INV/$name.patch
 log=$INV/$name-apply.log
 if [ ! -f "$patch" ]; then
@@ -117,13 +130,17 @@ quiet_fallbacks='/^error: repository lacks the necessary blob to perform 3-way m
 status=0
 "${apply[@]}" --check "$@" "$patch" 2>&1 | sed "$quiet_fallbacks" > "$log" || status=$?
 # For each refused file, "refused" holds its name and "reasons" holds the
-# message that gives the name and the reason.
+# message that gives the name and the reason.  "other_errors" holds the
+# error messages that name no file, which the summary of a dry run lists.
 refused=()
 reasons=()
+other_errors=()
 while IFS= read -r line; do
   if [[ $line =~ ^error:\ (.+):\ [^:]+$ ]]; then
     refused+=("${BASH_REMATCH[1]}")
     reasons+=("${line#error: }")
+  elif [[ $line == error:* ]]; then
+    other_errors+=("$line")
   fi
 done < "$log"
 # Print the files that the dry run refused and the reasons.
@@ -203,6 +220,10 @@ fi
   fi
   if [ ${#refused[@]} -gt 0 ]; then
     print_refused
+  fi
+  if [ -n "$check" ] && [ ${#other_errors[@]} -gt 0 ]; then
+    echo "Other errors, which may make the actual merge fail:"
+    printf '%s\n' "${other_errors[@]}"
   fi
   if [ -n "$makefile_problems" ]; then
     echo "$makefile_problems"
