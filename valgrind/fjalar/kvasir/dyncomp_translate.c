@@ -2386,18 +2386,21 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
    case Iop_ReinterpI128asV128:
  */
 
-/* Returns the address addr+bias. */
+/* Returns an atom for the address addr+bias.  If bias is nonzero,
+   this emits into dce->bb a statement that computes the sum into a new
+   temporary, so callers should not call it repeatedly for the same
+   address and bias. */
 static
-IRAtom* mkAddrAct_DC ( DCEnv* dce, IRAtom* addr, UInt bias )
+IRAtom* mkAddrPlusBias_DC ( DCEnv* dce, IRAtom* addr, UInt bias )
 {
    IROp    mkAdd;
    IRAtom* eBias;
    IRType  tyAddr  = dce->hWordTy;
 
+   tl_assert( tyAddr == Ity_I32 || tyAddr == Ity_I64 );
    if (bias == 0) {
       return addr;
    }
-   tl_assert( tyAddr == Ity_I32 || tyAddr == Ity_I64 );
    mkAdd   = tyAddr==Ity_I32 ? Iop_Add32 : Iop_Add64;
    eBias   = tyAddr==Ity_I32 ? mkU32(bias) : mkU64(bias);
    return assignNew_DC(dce, tyAddr, binop(mkAdd, addr, eBias) );
@@ -2436,7 +2439,7 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
    }
 
    /* Generate the actual address into addrAct. */
-   addrAct = mkAddrAct_DC(dce, addr, bias);
+   addrAct = mkAddrPlusBias_DC(dce, addr, bias);
 
    /* We need to have a place to park the tag we're just about to
       read. */
@@ -2454,6 +2457,8 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 // Returns the tag of a load of type ty from addr+bias.  If slot is
 // non-negative, the load also saves the tags of the bytes it reads in
 // that slot of MC_(helperc_LOAD_TAG_N); see expr2tags_WrTmp_DC.
+// For Ity_V256, only the low 16 bytes are read, so the tag ignores the
+// upper 16 bytes.
 static
 IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
                             Int slot )
@@ -2478,7 +2483,7 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
                                        3/*regparms*/,
                                        "MC_(helperc_LOAD_TAG_N)",
                                        &MC_(helperc_LOAD_TAG_N),
-                                       mkIRExprVec_3( mkAddrAct_DC(dce, addr, bias),
+                                       mkIRExprVec_3( mkAddrPlusBias_DC(dce, addr, bias),
                                                       mkIRExpr_HWord(sizeofIRType(ty)),
                                                       mkIRExpr_HWord(slot) ));
       setHelperAnns_DC( dce, di );
