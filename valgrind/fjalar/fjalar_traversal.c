@@ -1036,9 +1036,9 @@ void visitVariableGroup(VariableOrigin varOrigin,
               Bool isBreg = (op >= DW_OP_breg0) && (op <= DW_OP_breg31);
               dwarf_op_reg_num(op, &regNum);
               if (!entryRegs || !(funcPtr->entryRegsMask & (1U << regNum))) {
-                // extractOneFormalParameterVar() did not accept the
-                // register location, so the register was not saved,
-                // but some heuristic marked the location valid anyway.
+                // extractOneFormalParameterVar() saves every register that
+                // a valid location uses, but some heuristic marked the
+                // location valid anyway.
                 FJALAR_DPRINTF("\tRegister %s was not saved at entrance; value is nonsensical\n",
                                dwarf_reg_name(regNum));
                 var_loc = 0;
