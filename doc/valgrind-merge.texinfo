@@ -474,7 +474,9 @@ version, and the target Valgrind version.  It applies a change even if
 Fjalar has changed the lines around it, and it leaves conflict markers in
 a file where both Valgrind and Fjalar changed the same lines.  The base
 Valgrind versions are found in @file{$INV/valgrind-old}.
-The script requires that @file{$INV/fjalar} has no uncommitted changes,
+The script merges into the Fjalar tree that contains it, so run the copy
+in the tree that you are merging into.
+The script requires that the tree has no uncommitted changes,
 so that @command{git reset --hard} can undo the merge.
 
 First, do a dry run, which changes no file in the work tree or the index.

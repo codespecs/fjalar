@@ -6,8 +6,8 @@ situation and notes where it needs adjusting.
 
 Below, `$INV/fjalar` means the Fjalar tree being upgraded.  It must actually be
 at `$INV/fjalar`, because `generate-patch-files.sh` hard-codes that layout
-(`fjalar/valgrind`), and `apply-patch-files.sh` merges into `$INV/fjalar` and
-refuses to run from any other tree.
+(`fjalar/valgrind`).  (`apply-patch-files.sh` merges into the tree that
+contains it, wherever that is.)
 
 ## Ordering: do this after the readelf upgrade
 
@@ -135,9 +135,10 @@ it completely (merged, CI green) before starting this one.  That plan's
 6. **Memcheck merge** into `valgrind/fjalar/`.
    - `$INV/fjalar/apply-patch-files.sh --check memcheck`, then for real
      (without `--check`).
-   - Resolve the conflicts that the script listed (as for Coregrind), including files that upstream removed but
-     Fjalar modified; `git rm` any that Fjalar does not need.  Remember part of `mc_translate.c` lives in
-     `fjalar/mc_translate.h`.  Preserve the #73 edits to `mc_translate.c`
+   - Resolve the conflicts that the script listed (as for Coregrind),
+     including files that upstream removed but Fjalar modified; `git rm`
+     any that Fjalar does not need.  Remember part of `mc_translate.c`
+     lives in `fjalar/mc_translate.h`.  Preserve the #73 edits to `mc_translate.c`
      and `memcheck.h`.
    - In `mc_translate.c`'s `MC_(instrument)`, check that every case has
      matching DynComp code and that new cases get a DynComp counterpart.
@@ -145,9 +146,10 @@ it completely (merged, CI green) before starting this one.  That plan's
    - The script runs `generate-fjalar-makefile.sh`, which regenerates
      `valgrind/fjalar/Makefile.am` from `valgrind/memcheck/Makefile.am`, so
      Fjalar builds every new Memcheck source file.  (The dry run writes it
-     to `$INV/fjalar-Makefile.am` instead.)  Review the staged diff of `valgrind/fjalar/Makefile.am`,
-     and update `valgrind/fjalar/fjalar.am`, which holds Fjalar's changes
-     to the build, if an upstream change conflicts with them.
+     to `$INV/fjalar-Makefile.am` instead.)  Review the staged diff of
+     `valgrind/fjalar/Makefile.am`, and update `valgrind/fjalar/fjalar.am`,
+     which holds Fjalar's changes to the build, if an upstream change
+     conflicts with them.
 
 7. **DynComp / Fjalar / Kvasir updates.**
    - `diff -b valgrind-old/VEX/pub/libvex_ir.h valgrind-new/VEX/pub/libvex_ir.h`

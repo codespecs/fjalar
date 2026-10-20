@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # This script applies a patch file that generate-patch-files.sh created to
-# $INV/fjalar with a 3-way merge, stages the result, and lists the conflicts.
+# the Fjalar tree that contains this script, which need not be $INV/fjalar,
+# with a 3-way merge, stages the result, and lists the conflicts.
 # Usage: apply-patch-files.sh [--check] coregrind|memcheck [GIT-APPLY-OPTION...]
 # With --check, it does a dry run, which changes no file in the work tree or
 # the index, though it does add objects to the Fjalar repository and
@@ -60,11 +61,12 @@ if ! inv=$(cd "$INV" && pwd -P); then
   exit 1
 fi
 INV=$inv
-# The script merges into $INV/fjalar and runs its generate-fjalar-makefile.sh,
-# as generate-patch-files.sh and the documentation assume, so a copy of the
-# script in another tree, such as a worktree, must not be run.
-if [ "$(cd "$(dirname "$0")" && pwd -P)" != "$(cd "$INV/fjalar" 2> /dev/null && pwd -P)" ]; then
-  echo "$0: run $INV/fjalar/apply-patch-files.sh instead." >&2
+# The Fjalar tree that contains this script.
+fjalar="$(cd "$(dirname "$0")" && pwd -P)"
+# Without this check, the git commands below would operate on an enclosing
+# repository, or would fail.
+if [ "$(git -C "$fjalar" rev-parse --show-toplevel 2> /dev/null)" != "$fjalar" ]; then
+  echo "$0: $fjalar is not the top level of a git clone." >&2
   exit 1
 fi
 patch=$INV/$name.patch
@@ -73,7 +75,7 @@ if [ ! -f "$patch" ]; then
   echo "$0: $patch does not exist; run generate-patch-files.sh." >&2
   exit 1
 fi
-cd "$INV/fjalar"
+cd "$fjalar"
 
 # A clean work tree and index keep the merge separate from other changes,
 # so "git reset --hard" can undo it.  A dry run requires them too, because
@@ -82,11 +84,11 @@ cd "$INV/fjalar"
 # A failure of a command substitution in a condition does not stop the
 # script, so check git's exit status separately.
 if ! changes=$(git status --porcelain --untracked-files=no); then
-  echo "$0: git status failed in $INV/fjalar." >&2
+  echo "$0: git status failed in $fjalar." >&2
   exit 1
 fi
 if [ -n "$changes" ]; then
-  echo "$0: $INV/fjalar has uncommitted changes; commit them first." >&2
+  echo "$0: $fjalar has uncommitted changes; commit them first." >&2
   exit 1
 fi
 
@@ -189,7 +191,7 @@ if [ "$name" = memcheck ]; then
     makefile=valgrind/fjalar/Makefile.am
   fi
   status=0
-  makefile_problems=$("$INV/fjalar/generate-fjalar-makefile.sh" "$makefile") || status=$?
+  makefile_problems=$("$fjalar/generate-fjalar-makefile.sh" "$makefile") || status=$?
   if [ "$status" -ne 0 ] && [ "$status" -ne 2 ]; then
     makefile_problems="generate-fjalar-makefile.sh failed; fix the problem and rerun it."
   fi
