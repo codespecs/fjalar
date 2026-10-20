@@ -381,6 +381,9 @@ $INV/fjalar/generate-patch-files.sh
 This creates patch files showing what the Valgrind maintainers have
 changed since
 the last time Valgrind code was merged into Fjalar.
+The script compares the Fjalar tree that contains it, so you can run it
+from a clone of Fjalar other than @file{$INV/fjalar}, such as one
+dedicated to the merge branch.
 File @file{$INV/memcheck.patch} is for Memcheck, and
 file @file{$INV/coregrind.patch} is for everything else (which
 we'll call "Coregrind").

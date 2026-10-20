@@ -73,24 +73,25 @@ very-clean:
 	rm -rf valgrind/Makefile.vex.in
 
 git-update:
-	@grep -q '^\-\-\-.*1969\-12\-31' ../coregrind.patch; \
+	@if [ -z "$(INV)" ]; then echo "INV is not set; see doc/valgrind-merge.texinfo." >&2; exit 1; fi
+	@grep -q '^\-\-\-.*1969\-12\-31' $(INV)/coregrind.patch; \
 	if [ $$? -eq 0 ]; then \
-	  echo git add `grep '^\-\-\-.*1969\-12\-31' ../coregrind.patch | cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-old/valgrind/g'`; \
+	  echo git add `grep '^\-\-\-.*1969\-12\-31' $(INV)/coregrind.patch | cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-old/valgrind/g'`; \
 	fi
 
-	@grep -q '^Only in valgrind-old' ../coregrind.patch; \
+	@grep -q '^Only in valgrind-old' $(INV)/coregrind.patch; \
 	if [ $$? -eq 0 ]; then \
-	  echo git rm `grep '^Only in valgrind-old' ../coregrind.patch | perl -p -e 's/: /\//g' | cut -d ' ' --fields=3 | perl -p -e 's/^valgrind-old/valgrind/g'`; \
+	  echo git rm `grep '^Only in valgrind-old' $(INV)/coregrind.patch | perl -p -e 's/: /\//g' | cut -d ' ' --fields=3 | perl -p -e 's/^valgrind-old/valgrind/g'`; \
 	fi
 
-	@grep -q '^\-\-\-.*1969\-12\-31' ../memcheck.patch; \
+	@grep -q '^\-\-\-.*1969\-12\-31' $(INV)/memcheck.patch; \
 	if [ $$? -eq 0 ]; then \
-	  echo add `grep '^\-\-\-.*1969\-12\-31' ../memcheck.patch| cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-old/valgrind/g'`; \
+	  echo add `grep '^\-\-\-.*1969\-12\-31' $(INV)/memcheck.patch| cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-old/valgrind/g'`; \
 	fi
 
-	@grep -q '^\+\+\+.*1969\-12\-31' ../memcheck.patch; \
+	@grep -q '^\+\+\+.*1969\-12\-31' $(INV)/memcheck.patch; \
 	if [ $$? -eq 0 ]; then \
-	  echo remove `grep '^\+\+\+.*1969\-12\-31' ../memcheck.patch| cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-new/valgrind/g'`; \
+	  echo remove `grep '^\+\+\+.*1969\-12\-31' $(INV)/memcheck.patch| cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-new/valgrind/g'`; \
 	fi
 
 .PHONY: doc

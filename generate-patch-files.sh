@@ -1,7 +1,9 @@
 #!/bin/bash
 
 # This script creates patch files that are used when merging a newer
-# version of upstream Valgrind into Fjalar and Kvasir.
+# version of upstream Valgrind into Fjalar and Kvasir.  It compares the
+# Valgrind trees $INV/valgrind-old and $INV/valgrind-new, and the Fjalar
+# tree that contains this script, which need not be $INV/fjalar.
 
 # Fail the whole script if any command fails, including within a pipeline.
 set -e
@@ -16,11 +18,14 @@ if [ -z "$INV" ]; then
   exit 1
 fi
 
+# The Fjalar tree that contains this script.
+fjalar="$(cd "$(dirname "$0")" && pwd -P)"
+
 # Remove all the output files first, so that a failure, including a failed
 # check below, does not leave stale ones from an earlier run.
 rm -f "$INV"/{coregrind.patch,memcheck.patch,coregrind-Fjalar.diff,memcheck-Fjalar.diff}
 
-for dir in "$INV/valgrind-old" "$INV/valgrind-new" "$INV/fjalar/valgrind"; do
+for dir in "$INV/valgrind-old" "$INV/valgrind-new" "$fjalar/valgrind"; do
   if [ ! -d "$dir" ]; then
     echo "$0: $dir does not exist." >&2
     exit 1
@@ -124,12 +129,12 @@ mkdir "$fjalar_copy/fjalar"
 # Omit tracked files that have been deleted from the work tree.  Any other
 # failure to read a file stops the script, rather than producing an
 # incomplete diff.
-git -C fjalar ls-files -z --cached --others --exclude-standard -- valgrind \
-  | (cd fjalar \
+git -C "$fjalar" ls-files -z --cached --others --exclude-standard -- valgrind \
+  | (cd "$fjalar" \
      && while IFS= read -r -d '' f; do
           if [ -e "$f" ] || [ -L "$f" ]; then printf '%s\0' "$f"; fi
         done) \
-  | tar -C fjalar --null --files-from=- -cf - \
+  | tar -C "$fjalar" --null --files-from=- -cf - \
   | tar -C "$fjalar_copy/fjalar" -xf -
 cd "$fjalar_copy"
 run_diff "$inv/coregrind-Fjalar.diff" -ur -x.git -xfjalar valgrind-old fjalar/valgrind
