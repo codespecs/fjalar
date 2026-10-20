@@ -302,7 +302,6 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
    Int i;
    IRAtom* merged;
    IRDirty* di;
-   IRTemp   datatag;
 
    // In this mode, NOTHING is an interaction, so there is nothing to
    // merge.  Returning early avoids computing the arguments' tags.
@@ -328,21 +327,33 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
 
    if (numMergedArgs >= 2) {
       merged = expr2tags_DC(dce, mergedArgs[0]);
-      // Each merge is a dirty call because MC_(helperc_MERGE_TAGS) has
-      // side effects.  The result of the last merge is not used, so a
-      // clean call would be removed as dead code.
-      for (i = 1; i < numMergedArgs; i++) {
-         datatag = newTemp(dce->mce, Ity_Word, DC);
-         di = unsafeIRDirty_1_N(datatag,
-                                2,
-                                "MC_(helperc_MERGE_TAGS)",
-                                &MC_(helperc_MERGE_TAGS),
-                                mkIRExprVec_2(merged,
-                                              expr2tags_DC(dce, mergedArgs[i])));
-         setHelperAnns_DC( dce, di );
-         stmt_DC('V', dce, IRStmt_Dirty(di));
-         merged = mkexpr(datatag);
+      // Each intermediate merge is a clean call, although
+      // MC_(helperc_MERGE_TAGS) has side effects.  A dirty call would be
+      // slower.  The clean call is safe because its result is used by the
+      // next merge, so VEX's post-instrumentation passes neither remove
+      // nor combine it.  The tree builder (ado_treebuild_BB) may move the
+      // call into the expression that uses it, but no statement lies
+      // between the merges (expr2tags_DC emits none for an atom), so the
+      // merges still happen in order, just before the final dirty call.
+      for (i = 1; i < numMergedArgs - 1; i++) {
+         merged = assignNew_DC(dce, Ity_Word,
+                               mkIRExprCCall(Ity_Word,
+                                             2 /*Int regparms*/,
+                                             "MC_(helperc_MERGE_TAGS)",
+                                             &MC_(helperc_MERGE_TAGS),
+                                             mkIRExprVec_2(merged,
+                                                           expr2tags_DC(dce, mergedArgs[i]))));
       }
+      // The last merge must be a dirty call rather than a clean call:
+      // its result is not used, so a clean call would be removed as
+      // dead code.
+      di = unsafeIRDirty_0_N(2,
+                             "MC_(helperc_MERGE_TAGS)",
+                             &MC_(helperc_MERGE_TAGS),
+                             mkIRExprVec_2(merged,
+                                           expr2tags_DC(dce, mergedArgs[numMergedArgs - 1])));
+      setHelperAnns_DC( dce, di );
+      stmt_DC('V', dce, IRStmt_Dirty(di));
    }
    return IRExpr_Const(IRConst_UWord(0));
 }
