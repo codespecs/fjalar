@@ -28,9 +28,9 @@
 #                    regtest-expected/<os>.txt.  With --log, <os> comes from
 #                    the log's name, because the log may come from another
 #                    machine (such as a CI job).  So without --expected, the
-#                    --log file must be named regtest-<os>.log, and
-#                    regtest-expected/<os>.txt must exist unless --update is
-#                    given.
+#                    --log file must be named regtest-<os>.log, and --update
+#                    does not create regtest-expected/<os>.txt (a renamed log
+#                    would give a bogus <os>); to create it, give --expected.
 #   --update         Rewrite the expected-failures file to match this run:
 #                    remove entries that did not fail and append new failures.
 #                    Blank lines and "?" lines are kept in place.  Comment
@@ -41,8 +41,7 @@
 #   --report-only    Report differences, but exit with status 0 even if there
 #                    are unexpected failures or there is no expected-failures
 #                    file.  It still exits with non-zero status if the tests
-#                    did not run, or if a --log file's name gives an <os>
-#                    that has no expected-failures file.
+#                    did not run.
 #
 # Expected-failures file format: one failure per line, as vg_regtest prints
 # it, such as "gdbserver_tests/mcleak (stdoutB)".  Blank lines and lines
@@ -96,10 +95,10 @@ if [ -n "$LOG_FILE" ] && [ "${LOG_FILE%.log}" = "$LOG_FILE" ]; then
   echo "$0: --log file name must end in .log: $LOG_FILE" >&2
   exit 2
 fi
-# The name of the log as given, before realpath resolves symbolic links.
-[ -n "$LOG_FILE" ] && LOG_BASE="$(basename "$LOG_FILE" .log)"
-# Make file arguments absolute before changing directory.
-[ -n "$LOG_FILE" ] && LOG_FILE="$(realpath -m "$LOG_FILE")"
+# Make file arguments absolute before changing directory.  Do not resolve
+# symbolic links in the --log file name, because <os> comes from that name and
+# FILE-post.log and FILE-observed.txt are next to it.
+[ -n "$LOG_FILE" ] && LOG_FILE="$(realpath -ms "$LOG_FILE")"
 [ -n "$EXPECTED_FILE" ] && EXPECTED_FILE="$(realpath -m "$EXPECTED_FILE")"
 # A missing log means a mistyped --log or a run that never happened.
 if [ -n "$LOG_FILE" ]; then
@@ -141,23 +140,22 @@ if [ -z "$LOG_FILE" ]; then
   OS="$(os_name)"
   LOG_FILE="$FJALARDIR/regtest-$OS.log"
 else
+  LOG_BASE="$(basename "$LOG_FILE" .log)"
   case "$LOG_BASE" in
     regtest-?*) OS="${LOG_BASE#regtest-}" ;;
   esac
 fi
+# True if $EXPECTED_FILE is regtest-expected/<os>.txt, with <os> from the name
+# of the --log file.  A log that was renamed (such as
+# regtest-ubuntu-26.04-before.log) gives a bogus <os>.
+EXPECTED_FROM_LOG_NAME=false
 if [ -z "$EXPECTED_FILE" ]; then
   if [ -z "$OS" ]; then
     echo "$0: give --expected, or rename the --log file to regtest-<os>.log: $LOG_FILE" >&2
     exit 2
   fi
   EXPECTED_FILE="$FJALARDIR/regtest-expected/$OS.txt"
-  # A log that was renamed (such as regtest-ubuntu-26.04-before.log) gives a
-  # bogus <os>.  Do not silently compare against no expected failures.
-  if [ "$RUN_TESTS" = false ] && [ "$UPDATE" = false ] && [ ! -f "$EXPECTED_FILE" ]; then
-    echo "$0: the --log file name gives OS \"$OS\", but $EXPECTED_FILE does not exist." >&2
-    echo "Give --expected, rename the --log file to regtest-<os>.log, or (for a new OS) give --update." >&2
-    exit 2
-  fi
+  [ "$RUN_TESTS" = false ] && EXPECTED_FROM_LOG_NAME=true
 fi
 POSTLOG_FILE="${LOG_FILE%.log}-post.log"
 OBSERVED_FILE="${LOG_FILE%.log}-observed.txt"
@@ -251,6 +249,12 @@ UNEXPECTED="$(LC_ALL=C comm -23 "$OBSERVED_FILE" <(echo "$ALLOWED") | grep -v '^
 NEWLY_PASSING="$(LC_ALL=C comm -13 "$OBSERVED_FILE" <(echo "$REQUIRED") | grep -v '^$' || true)"
 
 if [ "$UPDATE" = true ]; then
+  # Do not create an expected-failures file for a bogus <os>.
+  if [ "$EXPECTED_FROM_LOG_NAME" = true ] && [ ! -f "$EXPECTED_FILE" ]; then
+    echo "$0: the --log file name gives OS \"$OS\", but $EXPECTED_FILE does not exist." >&2
+    echo "Rename the --log file to regtest-<os>.log, or (for a new OS) give --expected $EXPECTED_FILE." >&2
+    exit 2
+  fi
   mkdir -p "$(dirname "$EXPECTED_FILE")"
   TMP_FILE="$(mktemp)"
   trap 'rm -f "$TMP_FILE"' EXIT
@@ -283,11 +287,12 @@ if [ "$UPDATE" = true ]; then
       "$OBSERVED_FILE" - > "$TMP_FILE"
   else
     {
-      echo "# Expected failures of Valgrind's regression tests (\"make regtest\")${OS:+ on $OS}."
       if [ "$EXPECTED_FILE" = "$FJALARDIR/regtest-expected/$OS.txt" ]; then
+        echo "# Expected failures of Valgrind's regression tests (\"make regtest\") on $OS."
         echo "# See check-regtest.sh for the format.  Regenerate on $OS with:"
         echo "#   ./check-regtest.sh --update"
       else
+        echo "# Expected failures of Valgrind's regression tests (\"make regtest\")."
         echo "# See check-regtest.sh for the format.  Regenerate with:"
         echo "#   check-regtest.sh --log <output of \"make regtest\"> --expected <this file> --update"
       fi
@@ -315,6 +320,9 @@ fi
 # No expected failures are recorded yet for this OS or --expected path.
 if [ ! -f "$EXPECTED_FILE" ]; then
   echo "$0: no expected-failures file $EXPECTED_FILE." >&2
+  if [ "$EXPECTED_FROM_LOG_NAME" = true ]; then
+    echo "OS \"$OS\" comes from the --log file name; if the log was renamed, rename it to regtest-<os>.log or give --expected." >&2
+  fi
   echo "The observed failures (also in $OBSERVED_FILE) are:" >&2
   cat "$OBSERVED_FILE" >&2
   printf 'To create it, run: %q --log %q --expected %q --update\n' \
