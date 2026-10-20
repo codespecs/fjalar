@@ -1,3 +1,13 @@
+..copy_int_quad_last():::EXIT0 w 1
+..copy_int_quad_last():::EXIT0 x 2
+..copy_int_quad_last():::EXIT0 y 3
+..copy_int_quad_last():::EXIT0 z 4
+..copy_int_quad_last():::EXIT0 return 4
+..copy_quad_last():::EXIT0 a 1
+..copy_quad_last():::EXIT0 b 2
+..copy_quad_last():::EXIT0 c 3
+..copy_quad_last():::EXIT0 d 4
+..copy_quad_last():::EXIT0 return 4
 ..copy_ints_second():::EXIT0 x 1
 ..copy_ints_second():::EXIT0 y 2
 ..copy_ints_second():::EXIT0 return 2
