@@ -58,8 +58,9 @@
 # Fail the whole script if any command fails.
 set -e
 set -o pipefail
-# Make sort and comm order lines the same way on every machine.
-export LC_ALL=C
+# sort and comm run with LC_ALL=C, so that they order lines the same way on
+# every machine.  The tests themselves run in the caller's locale, as the
+# upstream baseline in plan-upgrade-valgrind.md does.
 
 # Resolve symbolic links, so that paths that are compared with each other
 # (such as $EXPECTED_FILE, which goes through realpath) are in the same form.
@@ -187,7 +188,7 @@ print_observed_failures() {
   { grep -Ev '^(\.\.\.checking |make(\[[0-9]+\])?: |[^ :]*[Mm]akefile:[0-9]+: recipe for target |[[:space:]]*$)' "$POSTLOG_FILE" || true; } \
     | sed 's/^/post_regtest_checks: /'
 }
-print_observed_failures | normalize_whitespace | sort -u > "$OBSERVED_FILE"
+print_observed_failures | normalize_whitespace | LC_ALL=C sort -u > "$OBSERVED_FILE"
 
 # A summary that reports 0 tests means that no test ran.  This is an error
 # even with --report-only, because it means that nothing was checked.
@@ -211,17 +212,17 @@ grep -E "$SUMMARY_RE" "$LOG_FILE" | tail -n 1
 # and ALLOWED (both).  The file is absent for an OS or an --expected path
 # that has no expected failures recorded yet; then every failure is unexpected.
 if [ -f "$EXPECTED_FILE" ]; then
-  REQUIRED="$({ grep -Ev '^[[:space:]]*(#|\?|$)' "$EXPECTED_FILE" || true; } | normalize_whitespace | sort -u)"
+  REQUIRED="$({ grep -Ev '^[[:space:]]*(#|\?|$)' "$EXPECTED_FILE" || true; } | normalize_whitespace | LC_ALL=C sort -u)"
   OPTIONAL="$({ grep -E '^[[:space:]]*\?' "$EXPECTED_FILE" || true; } \
-    | sed -E 's/^[[:space:]]*\?//' | normalize_whitespace | sort -u)"
+    | sed -E 's/^[[:space:]]*\?//' | normalize_whitespace | LC_ALL=C sort -u)"
 else
   REQUIRED=
   OPTIONAL=
 fi
-ALLOWED="$(printf '%s\n%s\n' "$REQUIRED" "$OPTIONAL" | grep -v '^$' | sort -u || true)"
+ALLOWED="$(printf '%s\n%s\n' "$REQUIRED" "$OPTIONAL" | grep -v '^$' | LC_ALL=C sort -u || true)"
 
-UNEXPECTED="$(comm -23 "$OBSERVED_FILE" <(echo "$ALLOWED") | grep -v '^$' || true)"
-NEWLY_PASSING="$(comm -13 "$OBSERVED_FILE" <(echo "$REQUIRED") | grep -v '^$' || true)"
+UNEXPECTED="$(LC_ALL=C comm -23 "$OBSERVED_FILE" <(echo "$ALLOWED") | grep -v '^$' || true)"
+NEWLY_PASSING="$(LC_ALL=C comm -13 "$OBSERVED_FILE" <(echo "$REQUIRED") | grep -v '^$' || true)"
 
 if [ "$UPDATE" = true ]; then
   mkdir -p "$(dirname "$EXPECTED_FILE")"
