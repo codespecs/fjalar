@@ -821,10 +821,12 @@ void exit_function(FunctionEntry* f)
   // XMM registers are represented as a 128-bit integer
   // (Actually an array of 4 32-bit integers), so reinterpret
   // cast it as a double.
-  // TODO: FPUshadow holds only the low 32 bits of XMM0's shadow, so
-  // the V bits of bytes 4-7 of a double return value are always
-  // "defined".  Also use element [1] of the shadow.
-  FPUshadow = (VG_(get_shadow_XMM_N)(currentTID, 0))[0];
+  // The shadow is likewise an array of 4 32-bit integers; a double
+  // occupies the low 2 of them.
+  {
+    UInt* XMM0shadow = VG_(get_shadow_XMM_N)(currentTID, 0);
+    FPUshadow = (ULong)XMM0shadow[0] | ((ULong)XMM0shadow[1] << 32);
+  }
   fpuReturnVal = *(double *)VG_(get_XMM_N)(currentTID, 0);
   //RUDD DEBUG
   /* for(i=0 ; i < 4; i++) { */
