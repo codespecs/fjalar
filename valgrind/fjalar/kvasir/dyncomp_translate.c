@@ -265,10 +265,9 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
 // Tags are merged (that is, an interaction is recorded) in two ways, and
 // neither merges in dyncomp_dataflow_only_mode:
 //  * At translation time, every merge in the instrumentation is created
-//    by mkMergeTags_DC, by stmtMergeTagsReturn0_DC, by
+//    by mkMergeTags_DC, by stmtMergeTagsReturn0_DC, or by
 //    mergeTagsReturn0_DC (which neither expr2tags_Binop_DC nor
-//    approximate_unhandled_op_DC reaches in that mode), or by
-//    handleCCall_DC, which returns early in that mode.
+//    approximate_unhandled_op_DC reaches in that mode).
 //  * At run time, a load merges the tags of the bytes it reads.  In
 //    dyncomp_dataflow_only_mode (and dyncomp_dataflow_comparisons_mode),
 //    expr2tags_LDle_DC instead calls MC_(helperc_LOAD_TAG_N), which
