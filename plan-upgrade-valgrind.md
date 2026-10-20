@@ -173,12 +173,13 @@ Memcheck and DynComp depend tightly on Valgrind core:
    test binaries, `inst/`).  Otherwise they would end up in
    `coregrind.patch` and then be `git add`ed by `make git-update`.  The
    error message gives the `git reset`/`git clean` command that makes a tree
-   pristine again.  Build a copy instead:
+   pristine again.  Build a copy instead.  First install `gdb` and the
+   glibc debuginfo package; without them, most `gdbserver_tests` fail.
    ```sh
    rm -rf valgrind-new-build
    git clone -q valgrind-new valgrind-new-build && cd valgrind-new-build
    ./autogen.sh && ./configure --prefix=$(pwd)/inst
-   make all install && make regtest XMLLINT=xmllint-skipped-by-check-regtest > test.log 2>&1
+   make -j"$(nproc)" all install && make -j"$(nproc)" regtest XMLLINT=xmllint-skipped-by-check-regtest > test.log 2>&1
    make -s --no-print-directory post-regtest-checks > test-post.log 2>&1
    $INV/fjalar/check-regtest.sh --log test.log --expected $INV/regtest-upstream-3.27.1.txt --update
    ```
@@ -194,8 +195,6 @@ Memcheck and DynComp depend tightly on Valgrind core:
    post-test header check in upstream's tree does not know the `inst`
    directory that this build installs into; Fjalar's tree does not have
    that error.
-   Before building, install `gdb` and the glibc debuginfo package; without
-   them, most `gdbserver_tests` fail.
 
 4. **Create the diffs.** Run `$INV/fjalar/generate-patch-files.sh`, producing
    `coregrind.patch`, `memcheck.patch`, `coregrind-Fjalar.diff`,
@@ -388,10 +387,17 @@ Memcheck and DynComp depend tightly on Valgrind core:
       the document still formats.
     - Use the commit message "Upgrade Valgrind from 3.23.0 to 3.27.1".  The
       patch/diff files can also be attached to the PR.
-    - Commit as one PR; save the patch/diff files and `valgrind-new` (it
-      becomes `valgrind-old` for the next merge, after
-      `git -C valgrind-old reset --hard && git -C valgrind-old clean -fdx`;
-      delete `valgrind-new-build`).
+    - Commit as one PR.  Save the patch/diff files, keep `valgrind-new` as
+      the next merge's `valgrind-old` (step 2 reuses it), and delete
+      `valgrind-new-build`:
+      ```sh
+      cd $INV
+      rm -rf valgrind-old valgrind-new-build
+      mv valgrind-new valgrind-old
+      git -C valgrind-old reset --hard && git -C valgrind-old clean -fdx
+      ```
+      Remove `valgrind-old` first; otherwise `mv` moves `valgrind-new`
+      inside it.
 
 ## Risks
 

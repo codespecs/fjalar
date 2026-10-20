@@ -100,7 +100,8 @@ small.
    - `git pull` both `fjalar` and `daikon`; ensure clean trees.
    - Make sure the system has `binutils-dev` / `binutils-devel` (for `bfd.h`).
 
-2. **Baselines** (before touching any source).
+2. **Baselines** (before touching any source).  Run these from the new
+   clone (`cd $FJALAR`).
    - `(set -o pipefail; make build 2>&1 | tee build-before.log) && ./check-regtest.sh`
      (Valgrind regtest baseline; must report no unexpected failures).  The
      new clone is already clean; do not run `make clean` first, because it
@@ -113,11 +114,13 @@ small.
      Binutils-derived files, so that new warnings can be identified later:
      ```sh
      mkdir -p ~/tmp/binutils
-     grep -E '((^|/)(readelf|dwarf|elfcomm|dwarfnames|bucomm|demanguse)\.[ch]|^include/[^:]*\.h):[0-9]+:[0-9]+: warning' build-before.log \
+     grep -E '^((readelf|dwarf|elfcomm|bucomm|demanguse)\.[ch]|include/[^:]*\.h|libiberty/dwarfnames\.c):[0-9]+:[0-9]+: warning' build-before.log \
        | sed -E 's/:[0-9]+:[0-9]+:/:/' | sort > ~/tmp/binutils/warnings-before.txt
      ```
      The pattern covers the Binutils-derived `.c` and `.h` files, including
-     `valgrind/fjalar/include/`, and excludes `fjalar_dwarf.c`.  The `sed` command removes the
+     `valgrind/fjalar/include/`.  It is anchored at the start of the line,
+     because the compiler names them relative to `valgrind/fjalar`; that
+     excludes `fjalar_dwarf.c` and Valgrind core's `m_debuginfo/readelf.c`.  The `sed` command removes the
      line and column numbers, which the merge changes, so that step 7 can
      compare the lists.
    - `make fjalar-test`.
@@ -296,9 +299,12 @@ small.
    `diff ~/tmp/binutils/warnings-before.txt ~/tmp/binutils/warnings-after.txt`.
    Also build against the system `bfd.h` on both Rocky Linux and Ubuntu
    (see step 4; the #63 workaround may need to change).
+   Finally, run `make -C $FJALAR/valgrind/fjalar install`.
+   `make -C valgrind/fjalar` does not install the tool, but
+   `make fjalar-test` (step 8) runs the installed one,
+   `valgrind/inst/bin/valgrind`.
 
-8. **Test.**  Run these from `$FJALAR` (`cd $FJALAR`; step 5 left
-   the shell in `valgrind/fjalar`).
+8. **Test.**  Run these from `$FJALAR` (`cd $FJALAR`).
    - `./check-regtest.sh` — must report no unexpected failures, with no
      change to `regtest-expected/*.txt`.  This upgrade doesn't touch
      Valgrind, so any new failure is a bug in the merge (or an OS/compiler
