@@ -978,6 +978,9 @@ void mc_make_noaccess ( Addr a, SizeT len )
   MC_(make_mem_noaccess) ( a, len );
 }
 
+// Marks the bytes at dst addressable, gives each one the V bits of the
+// corresponding byte of the register, and gives all of them the
+// register's DynComp tag.
 void mc_copy_guest_reg_state ( ThreadId tid, Int guestOffset, Addr dst )
 {
   UWord vbits;
