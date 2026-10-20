@@ -2326,18 +2326,21 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
    case Iop_ReinterpI128asV128:
  */
 
-/* Returns the address addr+bias. */
+/* Returns an atom for the address addr+bias.  If bias is nonzero,
+   this emits into dce->bb a statement that computes the sum into a new
+   temporary, so callers should not call it repeatedly for the same
+   address and bias. */
 static
-IRAtom* mkAddrAct_DC ( DCEnv* dce, IRAtom* addr, UInt bias )
+IRAtom* mkAddrPlusBias_DC ( DCEnv* dce, IRAtom* addr, UInt bias )
 {
    IROp    mkAdd;
    IRAtom* eBias;
    IRType  tyAddr  = dce->hWordTy;
 
+   tl_assert( tyAddr == Ity_I32 || tyAddr == Ity_I64 );
    if (bias == 0) {
       return addr;
    }
-   tl_assert( tyAddr == Ity_I32 || tyAddr == Ity_I64 );
    mkAdd   = tyAddr==Ity_I32 ? Iop_Add32 : Iop_Add64;
    eBias   = tyAddr==Ity_I32 ? mkU32(bias) : mkU64(bias);
    return assignNew_DC(dce, tyAddr, binop(mkAdd, addr, eBias) );
@@ -2376,7 +2379,7 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
    }
 
    /* Generate the actual address into addrAct. */
-   addrAct = mkAddrAct_DC(dce, addr, bias);
+   addrAct = mkAddrPlusBias_DC(dce, addr, bias);
 
    /* We need to have a place to park the tag we're just about to
       read. */
