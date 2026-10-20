@@ -94,7 +94,7 @@ jobs:
           # The *.out and *.diff* files are the outputs and diffs of the
           # failing tests; vg_regtest deletes them for passing tests.
           path: |
-            regtest-observed-*.txt
+            regtest-*-observed.txt
             regtest-*.log
             valgrind/**/*.out
             valgrind/**/*.diff*
@@ -130,7 +130,7 @@ jobs:
           # The *.out and *.diff* files are the outputs and diffs of the
           # failing tests; vg_regtest deletes them for passing tests.
           path: |
-            regtest-observed-*.txt
+            regtest-*-observed.txt
             regtest-*.log
             valgrind/**/*.out
             valgrind/**/*.diff*

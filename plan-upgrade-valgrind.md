@@ -77,15 +77,14 @@ it completely (merged, CI green) before starting this one.  That plan's
    ./autogen.sh && ./configure --prefix=$(pwd)/inst
    make all install && make regtest XMLLINT=xmllint-skipped-by-check-regtest > test.log 2>&1
    make -s --no-print-directory post-regtest-checks > test-post.log 2>&1
-   $INV/fjalar/check-regtest.sh --log test.log --expected $INV/regtest-upstream-3.27.1.txt \
-     --observed test-observed.txt --update
+   $INV/fjalar/check-regtest.sh --log test.log --expected $INV/regtest-upstream-3.27.1.txt --update
    ```
    These are the options that `check-regtest.sh` itself uses.  Setting
    `XMLLINT` keeps `make check` from validating the manual, which fails
    without the DocBook DTD.  `-s --no-print-directory` keeps make's own
-   messages out of `test-post.log`, which `check-regtest.sh` reads as the
-   post-test checks' error messages.  `--observed` keeps the script from
-   overwriting Fjalar's `regtest-observed-<os>.txt` from step 1.
+   messages out of `test-post.log`, which `check-regtest.sh` reads (because
+   its name is derived from `test.log`) as the post-test checks' error
+   messages.  The script writes the observed failures to `test-observed.txt`.
    `regtest-upstream-3.27.1.txt` is the list of tests that fail in upstream
    3.27.1 on this machine; step 9 uses it.  It contains an entry
    `post_regtest_checks: Unknown directory 'inst'. ...`, because the
@@ -167,7 +166,7 @@ it completely (merged, CI green) before starting this one.  That plan's
    - Push the branch and confirm GitHub Actions CI passes (Ubuntu and
      Rocky Linux 10: build, regtest, and Kvasir jobs).  The CI containers
      differ from your machine, so the regtest jobs will probably fail
-     until their lists are updated too: take `regtest-observed-<os>.txt`
+     until their lists are updated too: take `regtest-<os>-observed.txt`
      from each job's `regtest-results-*` artifact, apply the same
      upstream-or-merge-bug test as above, and commit the updated
      `regtest-expected/<os>.txt`.  Step 3's upstream list comes from your
