@@ -423,7 +423,9 @@ void warn_unhandled_op_DC ( IROp op, const HChar* where,
       the merged tag.  In units and comparisons modes, the operation is
       instead treated as a non-interaction, because it might be (for
       example) a multiplication.
-   With --dyncomp-interactions=none, the operation is a non-interaction.
+   With --dyncomp-interactions=none, an operation with 2 or more operands
+   is a non-interaction.  --dyncomp-interactions does not affect a unary
+   operation.
 
    atoms and vatoms hold the nargs operands and their tags. */
 static
@@ -1999,10 +2001,12 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
    switch (op) {
 
    // ----------------------------------------------------------
-   // The result is a boolean, or a mask or count computed from
-   // the bits of the operand, rather than a value of the same kind
-   // as the operand.  As for binary comparisons (see
-   // expr2tags_Binop_DC), the result gets tag 0.
+   // The result is a comparison of the operand with zero, or a mask
+   // or count computed from the bits of the operand, rather than a
+   // value of the same kind as the operand.  As for binary comparisons
+   // (see expr2tags_Binop_DC), the result gets tag 0.  (Iop_32to1 and
+   // Iop_64to1 also produce a boolean, but they truncate the operand,
+   // so they are narrowing operations that return the operand's tag.)
    // ----------------------------------------------------------
 
    case Iop_Clz32:
@@ -2317,6 +2321,10 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
    case Iop_ZeroHI120ofV128:           // only used by arm64
       return vatom;
 
+   // Every unary IROp has a case above, as
+   // tests/dyncomp-unop-coverage-test.sh checks.  A unary IROp that a
+   // VEX merge adds reaches this default, which by default panics,
+   // until it gets a case.
    default:
       return approximate_unhandled_op_DC( dce, op, 1, &atom, &vatom,
                                           "dyncomp:expr2tags_Unop_DC" );
