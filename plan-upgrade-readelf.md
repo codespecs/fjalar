@@ -322,7 +322,7 @@ small.
      2.39 to 2.47"; keep `include.patch`, `binutils.patch`, and the
      Fjalar-vs-binutils diffs for reference (perhaps attached to the PR).
      Delete `regtest-<os>.log`, `regtest-<os>-post.log`, and
-     `regtest-observed-*.txt` (ignored by git).
+     `regtest-<os>-observed.txt` (ignored by git).
 
 ## Risks
 

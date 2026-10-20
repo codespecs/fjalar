@@ -15,19 +15,17 @@
 # A test that is listed as an expected failure but passes produces a warning,
 # not a failure; remove it from the expected-failures file.
 #
-# Usage: ./check-regtest.sh [--log FILE [--post-log FILE]] [--expected FILE] [--observed FILE] [--update] [--report-only]
-#   --log FILE       Read FILE (output of "make test") instead of running the tests.
-#   --post-log FILE  With --log, read FILE (output of
-#                    "make -C valgrind post-regtest-checks") for the errors of
-#                    the post-test checks.  The default is the --log file name
-#                    with ".log" replaced by "-post.log".  Without --log, the
-#                    script writes both files: regtest-<os>.log and
-#                    regtest-<os>-post.log.
+# Usage: ./check-regtest.sh [--log FILE.log] [--expected FILE] [--update] [--report-only]
+#   --log FILE.log   Read FILE.log (output of "make test") instead of running
+#                    the tests, and read FILE-post.log (output of
+#                    "make -C valgrind -s --no-print-directory post-regtest-checks")
+#                    for the errors of the post-test checks.  Without --log,
+#                    the script runs the tests and writes both files, as
+#                    regtest-<os>.log and regtest-<os>-post.log in this
+#                    directory, where <os> is computed from /etc/os-release,
+#                    for example "ubuntu-26.04" or "rocky-10".
 #   --expected FILE  Use FILE as the expected-failures file.  The default is
-#                    regtest-expected/<os>.txt, where <os> is computed from
-#                    /etc/os-release, for example "ubuntu-26.04" or "rocky-10".
-#   --observed FILE  Write the observed failures to FILE.  The default is
-#                    regtest-observed-<os>.txt (in this directory).
+#                    regtest-expected/<os>.txt.
 #   --update         Rewrite the expected-failures file to match this run:
 #                    remove entries that did not fail and append new failures.
 #                    Blank lines and "?" lines are kept in place.  Comment
@@ -54,27 +52,26 @@
 #    "massif/tests/big-alloc (post check failed)", means that the "post:"
 #    command of the test failed to run.
 #
-# Whatever the outcome, the observed failures are written to the --observed
-# file, so that CI can save them.
+# Whatever the outcome, the observed failures are written to FILE-observed.txt
+# (next to FILE.log), so that CI can save them.
 
 # Fail the whole script if any command fails.
 set -e
 set -o pipefail
-# Make sort and comm order lines the same way on every machine.
-export LC_ALL=C
+# sort and comm run with LC_ALL=C, so that they order lines the same way on
+# every machine.  The tests themselves run in the caller's locale, as the
+# upstream baseline in plan-upgrade-valgrind.md does.
 
 # Resolve symbolic links, so that paths that are compared with each other
-# (such as $EXPECTED, which goes through realpath) are in the same form.
+# (such as $EXPECTED_FILE, which goes through realpath) are in the same form.
 FJALARDIR="$(cd "$(dirname "$0")" && pwd -P)"
 
-LOG=
-POSTLOG=
-EXPECTED=
-OBSERVED=
+LOG_FILE=
+EXPECTED_FILE=
 UPDATE=false
 REPORT_ONLY=false
 # Exit with a usage error if option $1 lacks a non-empty argument $2.
-need_arg() {
+require_option_argument() {
   if [ -z "$2" ]; then
     echo "$0: $1 requires an argument" >&2
     exit 2
@@ -82,30 +79,29 @@ need_arg() {
 }
 while [ $# -gt 0 ]; do
   case "$1" in
-    --log) need_arg "$1" "${2-}"; LOG="$2"; shift 2 ;;
-    --post-log) need_arg "$1" "${2-}"; POSTLOG="$2"; shift 2 ;;
-    --expected) need_arg "$1" "${2-}"; EXPECTED="$2"; shift 2 ;;
-    --observed) need_arg "$1" "${2-}"; OBSERVED="$2"; shift 2 ;;
+    --log) require_option_argument "$1" "${2-}"; LOG_FILE="$2"; shift 2 ;;
+    --expected) require_option_argument "$1" "${2-}"; EXPECTED_FILE="$2"; shift 2 ;;
     --update) UPDATE=true; shift ;;
     --report-only) REPORT_ONLY=true; shift ;;
     *) echo "$0: unknown argument: $1" >&2; exit 2 ;;
   esac
 done
-# Make file arguments absolute before changing directory.
-if [ -n "$POSTLOG" ] && [ -z "$LOG" ]; then
-  echo "$0: --post-log requires --log" >&2
+if [ -n "$LOG_FILE" ] && [ "${LOG_FILE%.log}" = "$LOG_FILE" ]; then
+  echo "$0: --log file name must end in .log: $LOG_FILE" >&2
   exit 2
 fi
-[ -n "$LOG" ] && LOG="$(realpath -m "$LOG")"
-[ -n "$LOG" ] && POSTLOG="$(realpath -m "${POSTLOG:-${LOG%.log}-post.log}")"
-[ -n "$EXPECTED" ] && EXPECTED="$(realpath -m "$EXPECTED")"
-[ -n "$OBSERVED" ] && OBSERVED="$(realpath -m "$OBSERVED")"
-for f in "$LOG" "$POSTLOG"; do
-  if [ -n "$f" ] && [ ! -f "$f" ]; then
-    echo "$0: no such file: $f" >&2
-    exit 2
-  fi
-done
+# Make file arguments absolute before changing directory.
+[ -n "$LOG_FILE" ] && LOG_FILE="$(realpath -m "$LOG_FILE")"
+[ -n "$EXPECTED_FILE" ] && EXPECTED_FILE="$(realpath -m "$EXPECTED_FILE")"
+# A missing log means a mistyped --log or a run that never happened.
+if [ -n "$LOG_FILE" ]; then
+  for f in "$LOG_FILE" "${LOG_FILE%.log}-post.log"; do
+    if [ ! -f "$f" ]; then
+      echo "$0: no such file: $f" >&2
+      exit 2
+    fi
+  done
+fi
 cd "$FJALARDIR"
 
 # The operating system name, such as "ubuntu-26.04" or "rocky-10".  For
@@ -130,28 +126,30 @@ os_name() {
   esac
 }
 OS="$(os_name)"
-EXPECTED="${EXPECTED:-$FJALARDIR/regtest-expected/$OS.txt}"
-OBSERVED="${OBSERVED:-$FJALARDIR/regtest-observed-$OS.txt}"
+EXPECTED_FILE="${EXPECTED_FILE:-$FJALARDIR/regtest-expected/$OS.txt}"
 
-if [ -z "$LOG" ]; then
-  LOG="$FJALARDIR/regtest-$OS.log"
-  POSTLOG="$FJALARDIR/regtest-$OS-post.log"
-  echo "Running Valgrind regression tests; output is in $LOG and $POSTLOG"
+RUN_TESTS=false
+if [ -z "$LOG_FILE" ]; then
+  RUN_TESTS=true
+  LOG_FILE="$FJALARDIR/regtest-$OS.log"
+fi
+POSTLOG_FILE="${LOG_FILE%.log}-post.log"
+OBSERVED_FILE="${LOG_FILE%.log}-observed.txt"
+
+if [ "$RUN_TESTS" = true ]; then
+  echo "Running Valgrind regression tests; output is in $LOG_FILE and $POSTLOG_FILE"
   # "make regtest" exits with non-zero status whenever any test fails, which
   # is the usual case, so ignore its status and examine its output instead.
   # "make regtest" first runs "make check", which also validates Valgrind's XML
   # manual with xmllint if xmllint is installed.  That needs the DocBook DTD,
   # from a package or the network, and is not a test of Valgrind's behavior.
   # Naming a nonexistent xmllint makes docs/Makefile skip the validation.
-  # "make check" builds about a thousand test programs; build them in
-  # parallel first, because "make regtest" builds them serially.
-  # vg_regtest itself runs the tests serially.
-  make -C valgrind -j"$(nproc)" check XMLLINT=xmllint-skipped-by-check-regtest \
-    > "$LOG" 2>&1 || true
-  make test XMLLINT=xmllint-skipped-by-check-regtest >> "$LOG" 2>&1 || true
-  # "make test" ends by running the post-test checks, but in $LOG their error
-  # messages are mixed with make's output.  Run them again by themselves.
-  make -C valgrind -s --no-print-directory post-regtest-checks > "$POSTLOG" 2>&1 || true
+  # -j speeds up "make check", which builds about a thousand test programs.
+  # It does not affect vg_regtest, which runs the tests serially.
+  make -j"$(nproc)" test XMLLINT=xmllint-skipped-by-check-regtest > "$LOG_FILE" 2>&1 || true
+  # "make test" ends by running the post-test checks, but in $LOG_FILE their
+  # error messages are mixed with make's output.  Run them again by themselves.
+  make -C valgrind -s --no-print-directory post-regtest-checks > "$POSTLOG_FILE" 2>&1 || true
 fi
 
 # The summary line has this form:
@@ -162,12 +160,12 @@ SUMMARY_RE='^== [0-9]+ tests?, .* post failures? ==$'
 # Collapse each run of whitespace to one space, and remove leading and
 # trailing whitespace.  Observed and expected entries are compared in this
 # form, so that differences in whitespace do not matter.
-normalize() {
+normalize_whitespace() {
   sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//'
 }
 
 # Print the observed failures, one per line, normalized to "name (kind)".
-observed_failures() {
+print_observed_failures() {
   awk -v summary_re="$SUMMARY_RE" '
     $0 ~ summary_re { in_summary = 1; next }
     in_summary && /^[ \t]*$/ { in_summary = 0; next }
@@ -183,64 +181,68 @@ observed_failures() {
     # The "post:" command of the test failed to run.  vg_regtest counts this
     # in the summary line but does not list it.
     /^post check failed: / { failures[n++] = dir "/" test " (post check failed)"; next }
-    END { for (i = 0; i < n; i++) print failures[i] }' "$LOG"
-  # The error messages of tests/post_regtest_checks: every line of $POSTLOG
-  # except its progress messages, make's messages, and blank lines.
-  { grep -Ev '^(\.\.\.checking |make(\[[0-9]+\])?: |[^ :]*[Mm]akefile:[0-9]+: recipe for target |[[:space:]]*$)' "$POSTLOG" || true; } \
+    END { for (i = 0; i < n; i++) print failures[i] }' "$LOG_FILE"
+  # The error messages of tests/post_regtest_checks: every line of
+  # $POSTLOG_FILE except its progress messages, make's messages, and blank
+  # lines.
+  { grep -Ev '^(\.\.\.checking |make(\[[0-9]+\])?: |[^ :]*[Mm]akefile:[0-9]+: recipe for target |[[:space:]]*$)' "$POSTLOG_FILE" || true; } \
     | sed 's/^/post_regtest_checks: /'
 }
-observed_failures | normalize | sort -u > "$OBSERVED"
+print_observed_failures | normalize_whitespace | LC_ALL=C sort -u > "$OBSERVED_FILE"
 
 # A summary that reports 0 tests means that no test ran.  This is an error
 # even with --report-only, because it means that nothing was checked.
 NONZERO_SUMMARY_RE='^== [1-9][0-9]* tests?, .* post failures? ==$'
-if ! grep -Eq "$NONZERO_SUMMARY_RE" "$LOG"; then
-  echo "$0: no regtest summary line with a nonzero test count in $LOG; the tests did not run." >&2
-  echo "Last lines of $LOG:" >&2
-  tail -n 40 "$LOG" >&2
+if ! grep -Eq "$NONZERO_SUMMARY_RE" "$LOG_FILE"; then
+  echo "$0: no regtest summary line with a nonzero test count in $LOG_FILE; the tests did not run." >&2
+  echo "Last lines of $LOG_FILE:" >&2
+  tail -n 40 "$LOG_FILE" >&2
   exit 1
 fi
 # The last of the post-test checks prints this progress message.
-if ! grep -q '^\.\.\.checking header files and include directives' "$POSTLOG"; then
-  echo "$0: the post-test checks did not run; output is in $POSTLOG:" >&2
-  tail -n 40 "$POSTLOG" >&2
+if ! grep -q '^\.\.\.checking header files and include directives' "$POSTLOG_FILE"; then
+  echo "$0: the post-test checks did not run; output is in $POSTLOG_FILE:" >&2
+  tail -n 40 "$POSTLOG_FILE" >&2
   exit 1
 fi
-grep -E "$SUMMARY_RE" "$LOG" | tail -n 1
+grep -E "$SUMMARY_RE" "$LOG_FILE" | tail -n 1
 
 # The entries of the expected-failures file: REQUIRED (without comments,
 # blank lines, or "?" lines), OPTIONAL (the "?" lines, without the "?"),
-# and ALLOWED (both).
-if [ -f "$EXPECTED" ]; then
-  REQUIRED="$({ grep -Ev '^[[:space:]]*(#|\?|$)' "$EXPECTED" || true; } | normalize | sort -u)"
-  OPTIONAL="$({ grep -E '^[[:space:]]*\?' "$EXPECTED" || true; } \
-    | sed -E 's/^[[:space:]]*\?//' | normalize | sort -u)"
+# and ALLOWED (both).  The file is absent for an OS or an --expected path
+# that has no expected failures recorded yet; then every failure is unexpected.
+if [ -f "$EXPECTED_FILE" ]; then
+  REQUIRED="$({ grep -Ev '^[[:space:]]*(#|\?|$)' "$EXPECTED_FILE" || true; } | normalize_whitespace | LC_ALL=C sort -u)"
+  OPTIONAL="$({ grep -E '^[[:space:]]*\?' "$EXPECTED_FILE" || true; } \
+    | sed -E 's/^[[:space:]]*\?//' | normalize_whitespace | LC_ALL=C sort -u)"
 else
   REQUIRED=
   OPTIONAL=
 fi
-ALLOWED="$(printf '%s\n%s\n' "$REQUIRED" "$OPTIONAL" | grep -v '^$' | sort -u || true)"
+ALLOWED="$(printf '%s\n%s\n' "$REQUIRED" "$OPTIONAL" | grep -v '^$' | LC_ALL=C sort -u || true)"
 
-UNEXPECTED="$(comm -23 "$OBSERVED" <(echo "$ALLOWED") | grep -v '^$' || true)"
-NEWLY_PASSING="$(comm -13 "$OBSERVED" <(echo "$REQUIRED") | grep -v '^$' || true)"
+UNEXPECTED="$(LC_ALL=C comm -23 "$OBSERVED_FILE" <(echo "$ALLOWED") | grep -v '^$' || true)"
+NEWLY_PASSING="$(LC_ALL=C comm -13 "$OBSERVED_FILE" <(echo "$REQUIRED") | grep -v '^$' || true)"
 
 if [ "$UPDATE" = true ]; then
-  mkdir -p "$(dirname "$EXPECTED")"
-  TMP="$(mktemp)"
-  trap 'rm -f "$TMP"' EXIT
-  if [ -f "$EXPECTED" ]; then
+  mkdir -p "$(dirname "$EXPECTED_FILE")"
+  TMP_FILE="$(mktemp)"
+  trap 'rm -f "$TMP_FILE"' EXIT
+  # Update the existing file, or create a new one with a header.
+  if [ -f "$EXPECTED_FILE" ]; then
     # Keep comments, blank lines, "?" lines, and the required entries that
-    # failed, each in its place, so that a comment stays next to the entries
-    # that it explains.  A group is the comment lines directly above some
-    # entries plus those entries ("?" lines count as kept entries).  The
+    # failed, in their original order (the file is not sorted), so that a
+    # comment stays next to the entries that it explains.  A group is the
+    # comment lines directly above some entries plus those entries.  A kept
+    # entry is a "?" line or a required entry that failed in this run.  The
     # group's comment lines are printed when its first kept entry is, and are
     # dropped if it has none.  Consecutive blank lines are collapsed, because
     # dropping a group can leave two blank lines next to each other.
-    # The awk input is each line of $EXPECTED, normalized, then a tab (which
-    # a normalized line does not contain), then the line itself.
+    # The awk input is each line of $EXPECTED_FILE, normalized, then a tab
+    # (which a normalized line does not contain), then the line itself.
     # The test is not "NR == FNR", which would be true for every line of
-    # $EXPECTED if $OBSERVED were empty.
-    paste <(normalize < "$EXPECTED") "$EXPECTED" \
+    # $EXPECTED_FILE if $OBSERVED_FILE were empty.
+    paste <(normalize_whitespace < "$EXPECTED_FILE") "$EXPECTED_FILE" \
       | awk -F '\t' 'function flush() { printf "%s", held; held = "" }
          function out(s) { flush(); print s; last_blank = (s ~ /^[[:space:]]*$/) }
          FILENAME == ARGV[1] { observed[$0] = 1; next }
@@ -252,12 +254,12 @@ if [ "$UPDATE" = true ]; then
          entry ~ /^\?/ { in_group = 1; out(line); next }
          { in_group = 1; if (entry in observed) out(line) }
          END { if (!in_group) flush() }' \
-      "$OBSERVED" - > "$TMP"
+      "$OBSERVED_FILE" - > "$TMP_FILE"
   else
     {
       echo "# Expected failures of Valgrind's regression tests (\"make regtest\") on $OS."
       echo "# See check-regtest.sh for the format.  Regenerate with:"
-      if [ "$EXPECTED" = "$FJALARDIR/regtest-expected/$OS.txt" ]; then
+      if [ "$EXPECTED_FILE" = "$FJALARDIR/regtest-expected/$OS.txt" ]; then
         echo "#   ./check-regtest.sh --update"
       else
         echo "#   check-regtest.sh --log <output of \"make regtest\"> --expected <this file> --update"
@@ -265,54 +267,55 @@ if [ "$UPDATE" = true ]; then
       # Separate the header from the entries, so that removing every entry
       # does not remove the header too.
       echo
-    } > "$TMP"
+    } > "$TMP_FILE"
   fi
   # Append the observed failures that are not already listed.  Separate them
   # from a comment at the end of the file, so that the comment does not
   # appear to explain them.
   if [ -n "$UNEXPECTED" ]; then
-    if [ -n "$(tail -n 1 "$TMP" | tr -d '[:space:]')" ]; then
-      echo >> "$TMP"
+    if [ -n "$(tail -n 1 "$TMP_FILE" | tr -d '[:space:]')" ]; then
+      echo >> "$TMP_FILE"
     fi
-    echo "$UNEXPECTED" >> "$TMP"
+    echo "$UNEXPECTED" >> "$TMP_FILE"
   fi
   # Overwrite rather than move, so that the file keeps its permissions
   # (or, if new, gets the default ones rather than mktemp's 0600).
-  cat "$TMP" > "$EXPECTED"
-  echo "Updated $EXPECTED; review the diff before committing it."
+  cat "$TMP_FILE" > "$EXPECTED_FILE"
+  echo "Updated $EXPECTED_FILE; review the diff before committing it."
   exit 0
 fi
 
-if [ ! -f "$EXPECTED" ]; then
-  echo "$0: no expected-failures file $EXPECTED." >&2
-  echo "The observed failures (also in $OBSERVED) are:" >&2
-  cat "$OBSERVED" >&2
-  printf 'To create it, run: %q --log %q --post-log %q --expected %q --observed %q --update\n' \
-    "$0" "$LOG" "$POSTLOG" "$EXPECTED" "$OBSERVED" >&2
+# No expected failures are recorded yet for this OS or --expected path.
+if [ ! -f "$EXPECTED_FILE" ]; then
+  echo "$0: no expected-failures file $EXPECTED_FILE." >&2
+  echo "The observed failures (also in $OBSERVED_FILE) are:" >&2
+  cat "$OBSERVED_FILE" >&2
+  printf 'To create it, run: %q --log %q --expected %q --update\n' \
+    "$0" "$LOG_FILE" "$EXPECTED_FILE" >&2
   [ "$REPORT_ONLY" = true ] && exit 0
   exit 1
 fi
 
 # Print each line of the argument, indented.
-indent() {
+indent_each_line() {
   while IFS= read -r line; do echo "  $line"; done <<< "$1"
 }
 
 if [ -n "$NEWLY_PASSING" ]; then
   echo
-  echo "Warning: these tests are listed in $EXPECTED but did not fail:"
-  indent "$NEWLY_PASSING"
-  echo "Remove them from $EXPECTED, or mark them with \"?\" if they fail only sometimes."
+  echo "Warning: these tests are listed in $EXPECTED_FILE but did not fail:"
+  indent_each_line "$NEWLY_PASSING"
+  echo "Remove them from $EXPECTED_FILE, or mark them with \"?\" if they fail only sometimes."
 fi
 
 if [ -n "$UNEXPECTED" ]; then
   echo
-  echo "Error: these tests failed but are not listed in $EXPECTED:"
-  indent "$UNEXPECTED"
-  echo "Full output is in $LOG."
+  echo "Error: these tests failed but are not listed in $EXPECTED_FILE:"
+  indent_each_line "$UNEXPECTED"
+  echo "Full output is in $LOG_FILE."
   [ "$REPORT_ONLY" = true ] && exit 0
   exit 1
 fi
 
 echo
-echo "Valgrind regression tests: no unexpected failures (compared to $EXPECTED)."
+echo "Valgrind regression tests: no unexpected failures (compared to $EXPECTED_FILE)."

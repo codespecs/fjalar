@@ -767,7 +767,7 @@ valgrind/**/*.out
 valgrind/**/*.diff*
 
 # Ignore output of check-regtest.sh (the log is covered by *.log)
-/regtest-observed-*.txt
+/regtest-*-observed.txt
 
 # Ignore generated and installed valgrind tools
 valgrind/inst
