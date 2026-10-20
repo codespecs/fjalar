@@ -78,6 +78,8 @@ MEMCHECK_PATCH = $(INV)/memcheck.patch
 
 # Prints the git commands that add the files that the Valgrind developers
 # added since the last merge, and remove the files that they removed.
+# diff dates a file that one tree lacks at the epoch, which is 1969-12-31
+# or 1970-01-01 depending on the time zone.
 # Memcheck files map to Fjalar's modified copy in valgrind/fjalar/.
 git-update:
 	@if [ -z "$(INV)" ]; then echo "INV is not set; see doc/valgrind-merge.texinfo." >&2; exit 1; fi
@@ -85,13 +87,13 @@ git-update:
 	  if [ ! -f "$$f" ]; then echo "$$f does not exist; run generate-patch-files.sh." >&2; exit 1; fi; \
 	done
 
-	@files=`grep '^\-\-\-.*1969\-12\-31' "$(COREGRIND_PATCH)" | cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-old/valgrind/g'`; \
+	@files=`grep '^\-\-\-.*[[:space:]]\(1969\-12\-31\|1970\-01\-01\) ' "$(COREGRIND_PATCH)" | cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-old/valgrind/g'`; \
 	if [ -n "$$files" ]; then echo git add $$files; fi
 
 	@files=`grep '^Only in valgrind-old' "$(COREGRIND_PATCH)" | perl -p -e 's/: /\//g' | cut -d ' ' --fields=3 | perl -p -e 's/^valgrind-old/valgrind/g'`; \
 	if [ -n "$$files" ]; then echo git rm $$files; fi
 
-	@files=`grep '^\-\-\-.*1969\-12\-31' "$(MEMCHECK_PATCH)" | cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-old\/memcheck/valgrind\/fjalar/g'`; \
+	@files=`grep '^\-\-\-.*[[:space:]]\(1969\-12\-31\|1970\-01\-01\) ' "$(MEMCHECK_PATCH)" | cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-old\/memcheck/valgrind\/fjalar/g'`; \
 	if [ -n "$$files" ]; then echo git add $$files; fi
 
 	@files=`grep '^Only in valgrind-old' "$(MEMCHECK_PATCH)" | perl -p -e 's/: /\//g' | cut -d ' ' --fields=3 | perl -p -e 's/^valgrind-old\/memcheck/valgrind\/fjalar/g'`; \
