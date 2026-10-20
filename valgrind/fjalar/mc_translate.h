@@ -207,23 +207,6 @@ typedef
       /* MODIFIED: Original address of guest instruction whose IR
          we're now processing, as taken from the last IMark we saw. */
       Addr origAddr;
-
-      /* MODIFIED: a table [0 .. #temps_in_original_bb-1] which maps
-         each original temp that holds the value of a load to the
-         load's address, and every other original temp to NULL.
-         do_shadow_STle_DC uses it to copy the tags of the loaded bytes
-         when the value is stored unchanged.  note_stmt_DC maintains
-         it. */
-      IRExpr** loadAddr;
-
-      /* MODIFIED: a table [0 .. #temps_in_original_bb-1] which maps
-         each original temp in loadAddr to the value of memWrites when
-         the load happened. */
-      UInt* loadMemWrites;
-
-      /* MODIFIED: the number of statements so far that may write
-         memory. */
-      UInt memWrites;
    }
    DCEnv;
 

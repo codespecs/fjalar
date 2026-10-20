@@ -41,6 +41,4 @@ void do_shadow_CAS_DC ( DCEnv* dce, IRCAS* cas );
 
 void do_shadow_Dirty_DC ( DCEnv* dce, IRDirty* d );
 
-void note_stmt_DC ( DCEnv* dce, IRStmt* st );
-
 #endif
