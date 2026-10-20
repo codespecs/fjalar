@@ -60,6 +60,81 @@ jobs:
       - name: test.sh
         run: ./test.sh
 
+  # These jobs run Valgrind's own regression tests ("make test") and compare the
+  # failures with regtest-expected/<os>.txt; see check-regtest.sh.
+
+  regtest_ubuntu_26_04:
+    runs-on: ubuntu-latest
+    container:
+      image: mdernst/daikon-ubuntu-jdk11-plus:latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          set-safe-directory: true
+          fetch-depth: 25
+          persist-credentials: false
+      # Which tests fail depends on the CPU and on whether gdb is installed.
+      - name: System information
+        run: |
+          grep -m1 '^model name' /proc/cpuinfo; grep -m1 '^flags' /proc/cpuinfo
+          gdb --version || echo "gdb is not installed"
+          # The version of bfd.h that dwarf.c, readelf.c, and elfcomm.c use.
+          rpm -q binutils-devel 2>/dev/null || dpkg-query -W binutils-dev 2>/dev/null || echo "binutils-dev(el) version unknown"
+      - name: Build
+        run: make build
+      # TODO: Remove --report-only once regtest-expected/<os>.txt is committed.
+      - name: check-regtest.sh
+        run: ./check-regtest.sh --report-only
+      - name: Upload regtest results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: regtest-results-regtest_ubuntu_26_04
+          # The *.out and *.diff* files are the outputs and diffs of the
+          # failing tests; vg_regtest deletes them for passing tests.
+          path: |
+            regtest-*-observed.txt
+            regtest-*.log
+            valgrind/**/*.out
+            valgrind/**/*.diff*
+
+  regtest_rocky_10:
+    runs-on: ubuntu-latest
+    container:
+      image: mdernst/daikon-rockylinux-jdk25-plus:latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          set-safe-directory: true
+          fetch-depth: 25
+          persist-credentials: false
+      # Which tests fail depends on the CPU and on whether gdb is installed.
+      - name: System information
+        run: |
+          grep -m1 '^model name' /proc/cpuinfo; grep -m1 '^flags' /proc/cpuinfo
+          gdb --version || echo "gdb is not installed"
+          # The version of bfd.h that dwarf.c, readelf.c, and elfcomm.c use.
+          rpm -q binutils-devel 2>/dev/null || dpkg-query -W binutils-dev 2>/dev/null || echo "binutils-dev(el) version unknown"
+      - name: Build
+        run: make build
+      # TODO: Remove --report-only once regtest-expected/<os>.txt is committed.
+      - name: check-regtest.sh
+        run: ./check-regtest.sh --report-only
+      - name: Upload regtest results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: regtest-results-regtest_rocky_10
+          # The *.out and *.diff* files are the outputs and diffs of the
+          # failing tests; vg_regtest deletes them for passing tests.
+          path: |
+            regtest-*-observed.txt
+            regtest-*.log
+            valgrind/**/*.out
+            valgrind/**/*.diff*
+
   # These jobs run ./test-kvasir.sh, which runs Daikon's own scripts/test-kvasir.sh
   # against this repository.  That additionally runs the DynComp regression tests.
 

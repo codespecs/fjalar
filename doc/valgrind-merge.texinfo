@@ -500,6 +500,30 @@ cd $INV/fjalar/valgrind/fjalar
 patch -p2 -lu < $INV/memcheck.patch
 @end example
 
+The Memcheck merge does not patch Fjalar's build file
+@file{valgrind/fjalar/Makefile.am}; @file{memcheck.patch} omits
+@file{Makefile.am}.  Instead, regenerate it from
+@file{valgrind/memcheck/Makefile.am}, which the Coregrind merge updated:
+
+@example
+cd $INV/fjalar
+./generate-fjalar-makefile.sh
+@end example
+
+@file{generate-fjalar-makefile.sh} renames Memcheck to Fjalar.  Fjalar
+builds every Memcheck source file, so a new upstream source file is built
+automatically.  The generated file includes
+@file{valgrind/fjalar/fjalar.am}, which holds Fjalar's changes, such as
+its additional source files and compiler flags.  Review
+@command{git diff valgrind/fjalar/Makefile.am}, and update
+@file{fjalar.am} if an upstream change conflicts with Fjalar's changes.
+The script lists any line of the generated file that still mentions
+Memcheck or docs, or that is a conflict marker, and then exits with
+status 2.  Such a line may mean that the renaming in
+@file{generate-fjalar-makefile.sh} needs to handle a new upstream
+construct.  After changing @file{generate-fjalar-makefile.sh} or
+@file{fjalar.am}, rerun it.
+
 
 @node Memcheck Conflicts
 @section Memcheck Conflicts
@@ -1261,13 +1285,11 @@ command lists the untracked files in test directories:
 
 @example
 cd $INV/fjalar
-git ls-files --others --exclude-standard -- '*tests/*' \
-  | grep -v -E '\.(out|diff)$'
+git ls-files --others --exclude-standard -- '*tests/*'
 @end example
 
 @noindent
-It omits the @file{.out} and @file{.diff} files that failing tests leave
-behind.  Review the list: it may also include files that should be
+Review the list: it may also include files that should be
 committed rather than ignored.
 
 
