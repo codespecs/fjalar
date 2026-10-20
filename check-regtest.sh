@@ -25,7 +25,10 @@
 #                    directory, where <os> is computed from /etc/os-release,
 #                    for example "ubuntu-26.04" or "rocky-10".
 #   --expected FILE  Use FILE as the expected-failures file.  The default is
-#                    regtest-expected/<os>.txt.
+#                    regtest-expected/<os>.txt.  With --log, <os> comes from
+#                    the log's name, which must then be regtest-<os>.log,
+#                    because the log may come from another machine (such as
+#                    a CI job).
 #   --update         Rewrite the expected-failures file to match this run:
 #                    remove entries that did not fail and append new failures.
 #                    Blank lines and "?" lines are kept in place.  Comment
@@ -125,13 +128,25 @@ os_name() {
     *) echo "$ID-$VERSION_ID" ;;
   esac
 }
-OS="$(os_name)"
-EXPECTED_FILE="${EXPECTED_FILE:-$FJALARDIR/regtest-expected/$OS.txt}"
-
+# The operating system that produced the log, or empty if it is unknown.
 RUN_TESTS=false
 if [ -z "$LOG_FILE" ]; then
   RUN_TESTS=true
+  OS="$(os_name)"
   LOG_FILE="$FJALARDIR/regtest-$OS.log"
+else
+  LOG_BASE="$(basename "$LOG_FILE" .log)"
+  case "$LOG_BASE" in
+    regtest-?*) OS="${LOG_BASE#regtest-}" ;;
+    *) OS= ;;
+  esac
+fi
+if [ -z "$EXPECTED_FILE" ]; then
+  if [ -z "$OS" ]; then
+    echo "$0: --log file name is not regtest-<os>.log, so give --expected: $LOG_FILE" >&2
+    exit 2
+  fi
+  EXPECTED_FILE="$FJALARDIR/regtest-expected/$OS.txt"
 fi
 POSTLOG_FILE="${LOG_FILE%.log}-post.log"
 OBSERVED_FILE="${LOG_FILE%.log}-observed.txt"
@@ -257,7 +272,7 @@ if [ "$UPDATE" = true ]; then
       "$OBSERVED_FILE" - > "$TMP_FILE"
   else
     {
-      echo "# Expected failures of Valgrind's regression tests (\"make regtest\") on $OS."
+      echo "# Expected failures of Valgrind's regression tests (\"make regtest\")${OS:+ on $OS}."
       echo "# See check-regtest.sh for the format.  Regenerate with:"
       if [ "$EXPECTED_FILE" = "$FJALARDIR/regtest-expected/$OS.txt" ]; then
         echo "#   ./check-regtest.sh --update"
