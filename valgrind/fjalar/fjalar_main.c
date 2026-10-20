@@ -800,7 +800,7 @@ void exit_function(FunctionEntry* f)
   ULong FPUshadow;
   double fpuReturnVal;
   Addr xAX, xDX, xAXshadow, xDXshadow;
-  Bool foundFunc;
+  Bool foundFunc = False;
 
   FJALAR_DPRINTF("Exit function: %s\n", f->fjalar_name);
 
