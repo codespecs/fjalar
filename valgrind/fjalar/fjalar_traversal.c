@@ -1009,7 +1009,6 @@ void visitVariableGroup(VariableOrigin varOrigin,
             dwarf_location *dloc  = &(var->location_expression[i]);
             unsigned int  op = dloc->atom;
             location_op_kind kind = location_op_kind_of(op);
-            UInt regNum;
 
             if(kind == LOC_OP_DEREF) {
               // Dereference result of last DWARF operation
@@ -1024,7 +1023,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
               // Add DWARF supplied constant to value to result of last DWARF operation
               var_loc += dloc->atom_offset;
 
-            } else if(kind == LOC_OP_REG) {
+            } else if((kind == LOC_OP_REG) || (kind == LOC_OP_BREG)) {
               // DW_OP_regN: the value is in register N.
               // DW_OP_bregN: the value is at an offset from register N's value.
               // Either way, use the value that the register held at
@@ -1033,8 +1032,10 @@ void visitVariableGroup(VariableOrigin varOrigin,
               // FunctionExecutionState.  At function exit, the body may
               // have overwritten the register and the epilogue has
               // already restored or popped it.
-              Bool isBreg = (op >= DW_OP_breg0) && (op <= DW_OP_breg31);
-              dwarf_op_reg_num(op, &regNum);
+              Bool isBreg = (kind == LOC_OP_BREG);
+              UInt regNum;
+              Bool isReg = dwarf_op_reg_num(op, &regNum);
+              tl_assert(isReg);
               if (!entryRegs || !(funcPtr->entryRegsMask & (1U << regNum))) {
                 // extractOneFormalParameterVar() saves every register that
                 // a valid location uses, but some heuristic marked the
