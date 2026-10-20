@@ -2563,20 +2563,19 @@ static Bool isSupportedRegisterLocation(VariableEntry* varPtr)
   return 0 < byteSize && byteSize <= (int)sizeof(Addr);
 }
 
-// Returns the set, as a bit mask indexed by DWARF register number, of
-// the registers that the formal parameter's location uses (in
-// DW_OP_reg* or DW_OP_breg*).
-static UInt locationRegisterMask(formal_parameter* paramPtr)
+// Adds to f->entryRegsMask each readable register that the formal
+// parameter's location uses, so that Fjalar saves the register at
+// function entrance.
+static void recordEntryRegs(FunctionEntry* f, formal_parameter* paramPtr)
 {
   unsigned int i;
-  UInt mask = 0;
   for (i = 0; i < paramPtr->dwarf_stack_size; i++) {
     UInt regNum;
-    if (dwarf_op_reg_num(paramPtr->dwarf_stack[i].atom, &regNum)) {
-      mask |= 1U << regNum;
+    if (dwarf_op_reg_num(paramPtr->dwarf_stack[i].atom, &regNum)
+        && dwarf_reg_is_readable(regNum)) {
+      f->entryRegsMask |= 1U << regNum;
     }
   }
-  return mask;
 }
 
 // dwarfParamEntry->tag_name == DW_TAG_formal_parameter
@@ -2638,11 +2637,7 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     varPtr->location_expression_size = paramPtr->dwarf_stack_size;
   }
 
-  if (paramPtr->location_has_unsupported_op
-      || ((paramPtr->location_piece_size != 0)
-          && ((paramPtr->dwarf_stack_size == 0)
-              || (paramPtr->location_piece_size
-                  != (unsigned long)formalParamByteSize(varPtr))))) {
+  if (paramPtr->location_has_unsupported_op) {
     // varPtr->validLoc remains 0, so Fjalar omits the formal parameter.
     FJALAR_DPRINTF(" location contains an unsupported operation\n");
     varPtr->locationUnsupported = 1;
@@ -2651,25 +2646,15 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     varPtr->locationType = FP_OFFSET_LOCATION;
     varPtr->byteOffset = paramPtr->location;
     //    varPtr->atom = paramPtr->loc_atom;
-    // Save at function entrance each register that the location uses.
-    // Every such register is readable, because a location that uses an
-    // unreadable register is unsupported.
-    f->entryRegsMask |= locationRegisterMask(paramPtr);
+    recordEntryRegs(f, paramPtr);
 
     FJALAR_DPRINTF(" location_type: %u, byteOffset: %x\n", varPtr->locationType, (unsigned int)varPtr->byteOffset);
   } else if (isSupportedRegisterLocation(varPtr)) {
     UInt regNum = varPtr->location_expression[0].atom - DW_OP_reg0;
     varPtr->validLoc = 1;
     varPtr->locationType = REGISTER_LOCATION;
-    f->entryRegsMask |= 1U << regNum;
+    recordEntryRegs(f, paramPtr);
     FJALAR_DPRINTF(" location is register %s\n", dwarf_reg_name(regNum));
-  } else if (locationRegisterMask(paramPtr) != 0) {
-    // A register location that Fjalar cannot read, such as a register
-    // combined with other operations or a value larger than a register.
-    // Fjalar did not save the register at entrance, so no heuristic may
-    // make the location valid.
-    FJALAR_DPRINTF(" location is a register that Fjalar cannot read\n");
-    varPtr->locationUnsupported = 1;
   }
 
   FJALAR_DPRINTF("EXIT  extractOneFormalParameterVar\n");
