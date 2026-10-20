@@ -15,9 +15,12 @@ it completely (landed, CI green) before starting this one.  That plan's
 "Ordering" section gives the reasons and the exception.
 
 The preparation in `plan-pre-upgrade.md` must also be done; this plan
-assumes items 1 (regtest in CI), 2 (patch files created with `git diff` and
-applied with `git apply`), 3 (`generate-patch-files.sh` checks its inputs),
-4 (DynComp scan), and 7 (stale upstream files removed).
+assumes items 1 (regtest in CI), 3 (`generate-patch-files.sh` checks its
+inputs), 4 (DynComp scan), and 7 (stale upstream files removed).  Item 2
+(#103:  patch files created with `git diff` and applied with
+`git apply --3way`) is still open.  Until it lands, steps 2, 3, 5, 6,
+and 10 below describe the current procedure (`patch`, `*.rej` files, and
+`make git-update`); #103 rewrites them for its procedure.
 
 ## Scope
 
@@ -107,15 +110,25 @@ Memcheck and DynComp depend tightly on Valgrind core:
      one branch: clone Fjalar into, e.g., `$INV/fjalar-branch-valgrind-3.27.1`
      and create the branch there.  While merging, make `$INV/fjalar` a
      symbolic link to that clone, because `generate-patch-files.sh`
-     hard-codes `$INV/fjalar`.  If `$INV/fjalar` is a directory, first
-     move it aside; otherwise `ln -s` creates the link inside it:
+     hard-codes `$INV/fjalar`.  If `$INV/fjalar` is already a symbolic
+     link, record its target (`readlink $INV/fjalar`) and replace it with
+     `ln -sfn fjalar-branch-valgrind-3.27.1 $INV/fjalar`.  If it is a
+     directory, first move it aside; otherwise `ln -s` creates the link
+     inside it:
      ```sh
      mv $INV/fjalar $INV/fjalar-orig
+     git -C $INV/fjalar-orig worktree repair
      ln -s fjalar-branch-valgrind-3.27.1 $INV/fjalar
      ```
+     `git worktree repair` reconnects the worktrees linked to the moved
+     clone (`git -C $INV/fjalar-orig worktree list`).  Without it, their
+     `.git` files still name `$INV/fjalar/.git/worktrees/...`, which the
+     new link redirects into the merge clone, so git commands in them fail
+     or act on the wrong repository.
      Meanwhile, `$INV/daikon/fjalar` (which by default points to
      `$INV/fjalar`) also reaches the new clone.  When the merge PR has
-     landed, undo this: `rm $INV/fjalar && mv $INV/fjalar-orig $INV/fjalar`.
+     landed, undo this:  point the link back at its recorded target, or
+     `rm $INV/fjalar && mv $INV/fjalar-orig $INV/fjalar && git -C $INV/fjalar worktree repair`.
    - `git pull` both `fjalar` and `daikon`; ensure no local or outgoing changes.
    - Record baselines on current sources:
      `(set -o pipefail; make build 2>&1 | tee build-before.log)` (save the
@@ -232,7 +245,11 @@ Memcheck and DynComp depend tightly on Valgrind core:
      which holds Fjalar's changes to the build, if an upstream change
      conflicts with them.
 
-7. **DynComp / Fjalar / Kvasir updates.**
+7. **DynComp / Fjalar / Kvasir updates.**  Run the commands of this step
+   from `$INV` (`cd $INV`; step 6 left the shell in
+   `fjalar/valgrind/fjalar`), so that the relative paths are right and the
+   scratch files `all-ops`, `dc-ops`, and `mc-ops` are written outside the
+   Fjalar tree.
    - `diff -b valgrind-old/VEX/pub/libvex_ir.h valgrind-new/VEX/pub/libvex_ir.h`
      and hand-port relevant `memcheck.patch` hunks into
      `fjalar/kvasir/dyncomp_translate.c` (`_DC` functions).
@@ -249,8 +266,9 @@ Memcheck and DynComp depend tightly on Valgrind core:
    - Running programs finds only the operations those programs use, so also
      list the operations that DynComp does not mention:
      ```sh
+     cd $INV
      grep -oE '\bIop_[A-Za-z0-9_]+' valgrind-new/VEX/pub/libvex_ir.h | sort -u > all-ops
-     grep -oE '\bIop_[A-Za-z0-9_]+' $INV/fjalar/valgrind/fjalar/kvasir/dyncomp_translate.c | sort -u > dc-ops
+     grep -oE '\bIop_[A-Za-z0-9_]+' fjalar/valgrind/fjalar/kvasir/dyncomp_translate.c | sort -u > dc-ops
      grep -oE '\bIop_[A-Za-z0-9_]+' valgrind-new/memcheck/mc_translate.c | sort -u > mc-ops
      comm -23 mc-ops dc-ops     # ops Memcheck handles but DynComp does not
      comm -23 all-ops dc-ops    # all ops DynComp does not mention (mostly other architectures)

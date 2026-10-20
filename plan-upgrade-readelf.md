@@ -109,13 +109,20 @@ small.
      `regtest-expected/<os>.txt`, create a local one with
      `./check-regtest.sh --log regtest-<os>.log --update` and don't commit it.
    - Save the build log, and the list of compiler warnings for the
-     Binutils-derived files
-     (`grep -E '(readelf|dwarf|elfcomm|dwarfnames)\.c.*warning' build.log`),
-     so that new warnings can be identified later.
+     Binutils-derived files, so that new warnings can be identified later:
+     ```sh
+     mkdir -p ~/tmp/binutils
+     grep -E '(^|/)(readelf|dwarf|elfcomm|dwarfnames)\.c:[0-9]+:[0-9]+: warning' build.log \
+       | sed -E 's/:[0-9]+:[0-9]+:/:/' | sort > ~/tmp/binutils/warnings-before.txt
+     ```
+     The pattern excludes `fjalar_dwarf.c`.  The `sed` command removes the
+     line and column numbers, which the merge changes, so that step 7 can
+     compare the lists.
    - `make fjalar-test`.
    - Record the tool's symbols related to zstd, SFrame, and debuginfod, for
      step 8:
-     `nm valgrind/fjalar/fjalar-amd64-linux | grep -iE 'zstd|sframe|debuginfod' | awk '{print $3}' > nm-before.txt`.
+     `nm valgrind/fjalar/fjalar-amd64-linux | grep -iE 'zstd|sframe|debuginfod' | awk '{print $3}' > ~/tmp/binutils/nm-before.txt`
+     (outside the tree, so that it is not committed).
      (This lists only Valgrind core's own debuginfod support.)  `ldd` and
      `nm -u` would show nothing, because Valgrind tools are linked
      statically with `-nodefaultlibs` (`valgrind/Makefile.tool.am`).
@@ -142,9 +149,10 @@ small.
    tar xzf $BUOLD.tar.gz && tar xzf $BUNEW.tar.gz
    diff -ur $BUOLD/include $BUNEW/include > include.patch
    diff -u  $BUOLD/libiberty/dwarfnames.c $BUNEW/libiberty/dwarfnames.c >> include.patch
-   diff -u -x'Makefile*' -xdwarf.c -xdwarf.h -xreadelf.c $BUOLD/binutils $BUNEW/binutils > binutils.patch
+   diff -u -x'Makefile*' -xdwarf.c -xdwarf.h -xreadelf.c -xelfcomm.c -xelfcomm.h $BUOLD/binutils $BUNEW/binutils > binutils.patch
    ```
-   `binutils.patch` omits `dwarf.c`, `dwarf.h`, and `readelf.c`, because
+   `binutils.patch` omits `dwarf.c`, `dwarf.h`, `readelf.c`, `elfcomm.c`,
+   and `elfcomm.h`, which carry Fjalar edits, because
    step 5 merges them with `git merge-file` instead; applying both would
    apply the upstream changes twice.
    Also create the reference diffs (Fjalar vs. pristine 2.39), for visual
@@ -180,7 +188,7 @@ small.
    - Binutils 2.40+ can decompress zstd-compressed debug sections.  Make
      sure that code compiles out cleanly with `HAVE_ZSTD` undefined, rather
      than pulling in libzstd.
-   - `dwarf.c`, `readelf.c`, and `elfcomm.c` include the *system* `bfd.h`
+   - `dwarf.c` and `readelf.c` include the *system* `bfd.h`
      (from `binutils-devel`/`binutils-dev`), which on the CI distros is
      older than 2.47.  Grep 2.47's versions of those files for bfd macros
      and functions (`bfd_*`, `BFD_*`, `startswith`, ...) and check that
@@ -191,7 +199,7 @@ small.
 
 5. **Apply the patches**, one at a time, dry run first, using
    `--merge=diff3` so conflicts are inline, and merge `dwarf.c`, `dwarf.h`,
-   and `readelf.c` with a 3-way merge:
+   `readelf.c`, `elfcomm.c`, and `elfcomm.h` with a 3-way merge:
    ```sh
    cd $FJALAR/valgrind/fjalar
    SKIPFILTER='/can.t find file to patch/ {skip=1} !skip && !/hunks? ignored/ {print} /Skipping patch\./ {skip=0}'
@@ -200,7 +208,7 @@ small.
    patch -p2 -lu -f -F3 --dry-run < ~/tmp/binutils/binutils.patch | awk "$SKIPFILTER"
    patch -p2 -lu -f -F3 --merge=diff3 < ~/tmp/binutils/binutils.patch | awk "$SKIPFILTER"
    B=~/tmp/binutils
-   for f in dwarf.c dwarf.h readelf.c; do
+   for f in dwarf.c dwarf.h readelf.c elfcomm.c elfcomm.h; do
      cp -p $f $f.pre-merge
      git merge-file -L fjalar -L $BUOLD -L $BUNEW --diff3 \
        $f $B/$BUOLD/binutils/$f $B/$BUNEW/binutils/$f
@@ -260,8 +268,11 @@ small.
 7. **Build and fix warnings/errors.**  `make -C $FJALAR build`, then
    iterate with `make -C $FJALAR/valgrind/fjalar`.  Fix "implicit
    declaration" and "undefined reference" errors (missed `VG_()` wrappers).
-   Reduce new warnings from Valgrind's stricter flags where practical,
-   comparing with the warning list from step 2.
+   Reduce new warnings from Valgrind's stricter flags where practical.
+   To list them, save the build output as `build.log`, run step 2's
+   commands with `warnings-after.txt` in place of `warnings-before.txt`,
+   and run
+   `diff ~/tmp/binutils/warnings-before.txt ~/tmp/binutils/warnings-after.txt`.
    Also build against the system `bfd.h` on both Rocky Linux and Ubuntu
    (see step 4; the #63 workaround may need to change).
 
@@ -285,8 +296,9 @@ small.
    - Before committing, `grep -c` each `harvest_` name in the old and new
      `dwarf.c`, and explain any difference.
    - Check that no zstd, SFrame, or debuginfod code was compiled in: run
-     the `nm` command of step 2 again, writing `nm-after.txt`;
-     `diff nm-before.txt nm-after.txt` must print nothing.  (A call into
+     the `nm` command of step 2 again, writing `~/tmp/binutils/nm-after.txt`;
+     `diff ~/tmp/binutils/nm-before.txt ~/tmp/binutils/nm-after.txt` must
+     print nothing.  (A call into
      a system library such as libzstd or libsframe would instead have
      caused an "undefined reference" link error in step 7, because the
      tool is linked with `-nodefaultlibs`.)
@@ -308,8 +320,9 @@ small.
      - working in a new clone (step 1);
      - the warning-list comparison (steps 2 and 7);
      - reference diffs for `dwarf.h` and `elfcomm.c` too (step 3);
-     - the `git merge-file --diff3` merge of `dwarf.c`, `dwarf.h`, and
-       `readelf.c`, with those files excluded from `binutils.patch`
+     - the `git merge-file --diff3` merge of `dwarf.c`, `dwarf.h`,
+       `readelf.c`, `elfcomm.c`, and `elfcomm.h`, with those files
+       excluded from `binutils.patch`
        (steps 3 and 5), or, if it turned out worse than `patch` in
        practice, why;
      - the checklist of upgrade-sensitive areas (step 6);

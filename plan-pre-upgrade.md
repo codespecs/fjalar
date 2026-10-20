@@ -19,7 +19,7 @@ plan.
 ## 1. Run Valgrind's regression tests in CI, against expected failures
 
 #96, which has landed.  (#102, which has also landed, makes Valgrind's test programs build with
-GCC 15 on Ubuntu 26.04.)  Its CI jobs only report the failures.
+GCC 15 on Ubuntu 26.04.)  #96's CI jobs only report the failures.
 
 Remaining:
 1. Rebuild and push the Daikon `-plus` Docker images, which Fjalar's CI
@@ -73,9 +73,12 @@ panic after the upgrade can then be blamed on the upgrade.
 What:
 - Write a few small C programs whose hot loops vectorize (array sums,
   `memcpy`/`memset`/string functions, float and integer arithmetic), compile
-  them with `-O2 -march=x86-64-v3` (AVX2) and also `-O3 -march=native`, and
-  run them under Kvasir with DynComp
+  them with `-O2 -march=x86-64-v3` (AVX2) and also `-O3 -march=x86-64-v3`,
+  and run them under Kvasir with DynComp
   (`$DAIKONDIR/scripts/kvasir-dtrace --dyncomp --dyncomp-unhandled-ops=warn ./prog`).
+  Do not use `-march=native` or `-march=x86-64-v4`:  on a machine with
+  AVX-512, they emit AVX-512 instructions, which Valgrind 3.23 cannot
+  decode, so the program dies with SIGILL before DynComp sees its IROps.
 - Fix each panic in its own PR, following #79's pattern.
 - Running programs finds only the operations those programs use.  Also
   compare the `Iop_*` values relevant to amd64/x86 in `VEX/pub/libvex_ir.h`
@@ -106,7 +109,9 @@ or `dpkg-query -W binutils-dev`):
 
 So the oldest `bfd.h` in CI is from Binutils 2.41.
 
-Why: `dwarf.c`, `readelf.c`, and `elfcomm.c` include the system `bfd.h`.
+Why: `dwarf.c` and `readelf.c` include the system `bfd.h`.  (So does
+upstream's `elfcomm.c`, but in Fjalar's copy that `#include` is inside
+`#if 0`.)
 Step 4 of the readelf plan checks that the 2.47 code uses only bfd macros
 and functions that the oldest CI `bfd.h` provides; it needs to know which
 version that is.
