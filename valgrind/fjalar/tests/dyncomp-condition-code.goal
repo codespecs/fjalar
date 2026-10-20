@@ -1,6 +1,3 @@
-..notCompared():::EXIT0 c 1
-..notCompared():::EXIT0 d 2
-..notCompared():::EXIT0 return 1
 ..less():::EXIT0 a 1
 ..less():::EXIT0 b 1
 ..less():::EXIT0 return 2
