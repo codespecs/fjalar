@@ -1008,26 +1008,23 @@ void visitVariableGroup(VariableOrigin varOrigin,
           for(i = 0; i < var->location_expression_size; i++ ) {
             dwarf_location *dloc  = &(var->location_expression[i]);
             unsigned int  op = dloc->atom;
+            location_op_kind kind = location_op_kind_of(op);
             UInt regNum;
 
-            if(op == DW_OP_addr) {
-              // DWARF supplied address
-              var_loc = dloc->atom_offset;
-
-            } else if(op == DW_OP_deref) {
+            if(kind == LOC_OP_DEREF) {
               // Dereference result of last DWARF operation
               tl_assert(var_loc);
               var_loc = *(Addr *)var_loc;
 
-            } else if((op >= DW_OP_const1u) && (op <= DW_OP_consts)) {
+            } else if(kind == LOC_OP_CONST) {
               // DWARF supplied constant
               var_loc = dloc->atom_offset;
 
-            } else if((op >= DW_OP_plus) && (op <= DW_OP_plus_uconst)) {
+            } else if(kind == LOC_OP_PLUS_UCONST) {
               // Add DWARF supplied constant to value to result of last DWARF operation
               var_loc += dloc->atom_offset;
 
-            } else if(dwarf_op_reg_num(op, &regNum)) {
+            } else if(kind == LOC_OP_REG) {
               // DW_OP_regN: the value is in register N.
               // DW_OP_bregN: the value is at an offset from register N's value.
               // Either way, use the value that the register held at
@@ -1037,6 +1034,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
               // have overwritten the register and the epilogue has
               // already restored or popped it.
               Bool isBreg = (op >= DW_OP_breg0) && (op <= DW_OP_breg31);
+              dwarf_op_reg_num(op, &regNum);
               if (!entryRegs || !(funcPtr->entryRegsMask & (1U << regNum))) {
                 // extractOneFormalParameterVar() did not accept the
                 // register location, so the register was not saved,
@@ -1058,7 +1056,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
                 var_loc = (Addr)&entryRegs[regNum];
               }
 
-            } else if(op == DW_OP_fbreg) {
+            } else if(kind == LOC_OP_FBREG) {
               // Get value located at an offset from the FRAME_BASE.
               FJALAR_DPRINTF("atom offset: %lld vs. byteOffset: %d\n", dloc->atom_offset, var->byteOffset);
               var_loc = stackBaseAddrGuest + dloc->atom_offset;

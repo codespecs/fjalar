@@ -41,4 +41,18 @@ typedef struct _dwarf_location {
 // A conversion between DWARF location atoms and a string representation
 const char* location_expression_to_string(enum dwarf_location_atom op);
 
+// The kinds of operation that visitVariableGroup evaluates in the
+// location expression of a formal parameter.
+typedef enum {
+  LOC_OP_UNSUPPORTED,  // any operation not listed below
+  LOC_OP_DEREF,        // DW_OP_deref
+  LOC_OP_CONST,        // DW_OP_const*
+  LOC_OP_PLUS_UCONST,  // DW_OP_plus_uconst
+  LOC_OP_REG,          // DW_OP_reg* or DW_OP_breg*
+  LOC_OP_FBREG         // DW_OP_fbreg
+} location_op_kind;
+
+// Returns the kind of op.
+location_op_kind location_op_kind_of(unsigned int op);
+
 #endif /* FJALAR_DWARF_H */
