@@ -1094,9 +1094,8 @@ void visitVariableGroup(VariableOrigin varOrigin,
             // entryRegs, which has no guest address.  Its address
             // serves as the guest address, so a static array within
             // the variable has a non-null hashcode.  That hashcode is
-            // the same at entrance and exit of an invocation (entryRegs
-            // lives as long as the FunctionExecutionState) and differs
-            // across invocations, as a stack address would.
+            // the same at entrance and exit of an invocation, because
+            // entryRegs lives as long as the FunctionExecutionState.
             basePtrValue = var_loc;
             var->entryLoc = var_loc;
             basePtrValueGuest = var_loc;
@@ -1880,8 +1879,10 @@ void visitSingleVar(VisitArgs* args) {
           if (overrideIsInit)
             derivedIsAllocated = 1;
           else if (!pValueGuest)
-            /* This has no address, because it was somewhere like a
-               register. No need to check A bits. */
+            /* This has no guest address, as for a return value in a
+               register. No need to check A bits.  (A formal parameter
+               in a register has a non-null pValueGuest: its address
+               in entryRegs, whose A bits are set.) */
             derivedIsAllocated = 1;
           else
             derivedIsAllocated = addressIsAllocated(pValue, sizeof(void*));

@@ -2536,6 +2536,15 @@ int determineFormalParametersLowerStackByteSize(FunctionEntry* f)
 }
 
 
+// Returns the number of bytes that the formal parameter's location
+// holds.  A C++ reference is passed as a pointer.
+static int formalParamByteSize(VariableEntry* varPtr)
+{
+  return (varPtr->referenceLevels > 0
+          ? (int)sizeof(Addr)
+          : determineVariableByteSize(varPtr));
+}
+
 // Returns true if the formal parameter's location is a register
 // whose entrance value Fjalar can save and from which Fjalar can read
 // the whole value.  The location must be a single DW_OP_reg operation:
@@ -2550,10 +2559,7 @@ static Bool isSupportedRegisterLocation(VariableEntry* varPtr)
       !dwarf_reg_is_readable(varPtr->location_expression[0].atom - DW_OP_reg0)) {
     return False;
   }
-  // A C++ reference is passed as a pointer.
-  byteSize = (varPtr->referenceLevels > 0
-              ? (int)sizeof(Addr)
-              : determineVariableByteSize(varPtr));
+  byteSize = formalParamByteSize(varPtr);
   return 0 < byteSize && byteSize <= (int)sizeof(Addr);
 }
 
