@@ -2457,8 +2457,9 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 // Returns the tag of a load of type ty from addr+bias.  If slot is
 // non-negative, the load also saves the tags of the bytes it reads in
 // that slot of MC_(helperc_LOAD_TAG_N); see expr2tags_WrTmp_DC.
-// For Ity_V256, only the low 16 bytes are read, so the tag ignores the
-// upper 16 bytes.
+// For Ity_V256, except in dyncomp_dataflow_only_mode and
+// dyncomp_dataflow_comparisons_mode, only the low 16 bytes are read, so
+// the tag ignores the upper 16 bytes.
 static
 IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
                             Int slot )
