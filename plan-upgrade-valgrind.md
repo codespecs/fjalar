@@ -5,13 +5,12 @@ through "Committing").  This plan applies that procedure to the current
 situation and notes where it needs adjusting.
 
 Below, `$FJALAR` is the Fjalar clone being upgraded (see step 1); it
-must be directly in `$INV`.  Some scripts that the merge uses read the
-Fjalar tree from `$INV/fjalar`, so step 1 makes `$INV/fjalar` a symbolic
-link to `$FJALAR` while any of them is in use:  `generate-patch-files.sh`
-until #133 lands, and `apply-patch-files.sh`, which #103 adds and which
-uses `$INV/fjalar`.  (`make git-update`, which #103 removes, reads
-`../coregrind.patch` and `../memcheck.patch`, which are in `$INV` for any
-clone directly in `$INV`, so it needs no link.)
+must be directly in `$INV`.  Until #133 lands, `generate-patch-files.sh`
+reads the Fjalar tree from `$INV/fjalar`, so step 1 makes `$INV/fjalar` a
+symbolic link to `$FJALAR` while the merge uses that script.
+(`make git-update` reads `../coregrind.patch` and
+`../memcheck.patch`, which are in `$INV` for any clone directly in `$INV`,
+so it needs no link.)
 
 ## Ordering: do this after the readelf upgrade
 
@@ -21,12 +20,7 @@ it completely (landed, CI green) before starting this one.  That plan's
 
 The preparation in `plan-pre-upgrade.md` must also be done; this plan
 assumes items 1 (expected regtest failures enforced in CI) and 3
-(DynComp scan).  Item 2
-(#103:  patch files created with `git diff` and applied with
-`git apply --3way`) is still open.  Until it lands, the paragraph above
-and steps 2, 3, 5, 6, and 10 below describe the current procedure
-(`patch`, `*.rej` files, and `make git-update`); #103 rewrites them for
-its procedure.
+(DynComp scan).
 
 ## Scope
 
@@ -128,8 +122,8 @@ Memcheck and DynComp depend tightly on Valgrind core:
      the new clone (below), that clone's `origin` would be itself, so
      `git pull` would silently pull nothing.  Set `FJALAR` to that clone, e.g.,
      `FJALAR=$INV/fjalar-branch-valgrind-3.27.1`; the commands below use
-     it.  If none of the scripts that read `$INV/fjalar` is in use (see the
-     paragraph at the top of this plan), skip the rest of this bullet.
+     it.  If #133 has landed (see the paragraph at the top of this plan),
+     skip the rest of this bullet.
      Otherwise, while merging, make `$INV/fjalar` a symbolic link to that
      clone.  If `$INV/fjalar` is already a symbolic
      link, record its target (`readlink $INV/fjalar`) and replace it with
@@ -201,40 +195,26 @@ Memcheck and DynComp depend tightly on Valgrind core:
    handles Fjalar's own copy of memcheck in `valgrind/fjalar/`.  The
    doc's commands use `$INV/fjalar`; use `$FJALAR` in its place.
 
-3. **Baseline.**  Never build in `valgrind-old` or `valgrind-new` themselves:
-   `generate-patch-files.sh` refuses to run if either contains changes or
-   untracked files, such as build products (`*.o`, `Makefile`, `config.h`,
-   test binaries, `inst/`).  Otherwise they would end up in
-   `coregrind.patch` and then be `git add`ed by `make git-update`.  The
-   error message gives the `git reset`/`git clean` command that makes a tree
-   pristine again.  Build a copy instead.  First install `gdb` and the
-   glibc debuginfo package; without them, most `gdbserver_tests` fail.
-
-   ```sh
-   cd $INV
-   rm -rf valgrind-new-build
-   git clone -q valgrind-new valgrind-new-build && cd valgrind-new-build
-   ./autogen.sh && ./configure --prefix=$(pwd)/inst
-   make -j"$(nproc)" all install \
-     && make -j"$(nproc)" regtest XMLLINT=xmllint-skipped-by-check-regtest \
-       > test.log 2>&1
-   make -s --no-print-directory post-regtest-checks > test-post.log 2>&1
-   $FJALAR/check-regtest.sh --log test.log \
-     --expected $INV/regtest-upstream-3.27.1.txt --update
-   ```
-
-   These are the options that `check-regtest.sh` itself uses.  Setting
-   `XMLLINT` keeps `make check` from validating the manual, which fails
-   without the DocBook DTD.  `-s --no-print-directory` keeps make's own
-   messages out of `test-post.log`, which `check-regtest.sh` reads (because
-   its name is derived from `test.log`) as the post-test checks' error
-   messages.  The script writes the observed failures to `test-observed.txt`.
-   `regtest-upstream-3.27.1.txt` is the list of tests that fail in upstream
-   3.27.1 on this machine; step 9 uses it.  It contains an entry
+3. **Baseline.**  First install `gdb` and the glibc debuginfo package;
+   without them, most `gdbserver_tests` fail.  Then run
+   `$FJALAR/upstream-regtest.sh $INV/regtest-upstream-3.27.1.txt`, which
+   takes about 15 minutes.  It builds a fresh copy of `valgrind-new`, in
+   `valgrind-new-build`, runs the regression tests there with the options
+   that `check-regtest.sh` uses, and writes the tests that fail to
+   `regtest-upstream-3.27.1.txt`, the list of tests that fail in upstream
+   3.27.1 on this machine; step 9 uses it.  The list contains an entry
    `post_regtest_checks: Unknown directory 'inst'. ...`, because the
    post-test header check in upstream's tree does not know the `inst`
    directory that this build installs into; Fjalar's tree does not have
    that error.
+
+   The script never builds in `valgrind-old` or `valgrind-new`
+   themselves:  `generate-patch-files.sh` refuses to run if either
+   contains changes or untracked files, such as build products (`*.o`,
+   `Makefile`, `config.h`, test binaries, `inst/`).  Otherwise they would
+   end up in `coregrind.patch` and then be `git add`ed by
+   `make git-update`.  The error message gives the `git reset`/`git clean`
+   command that makes a tree pristine again.
 
 4. **Create the diffs.** Run `$FJALAR/generate-patch-files.sh`, producing
    `coregrind.patch`, `memcheck.patch`, `coregrind-Fjalar.diff`,
@@ -289,12 +269,8 @@ Memcheck and DynComp depend tightly on Valgrind core:
      which holds Fjalar's changes to the build, if an upstream change
      conflicts with them.
 
-7. **DynComp / Fjalar / Kvasir updates.**  Run the commands of this step
-   from `$INV` (`cd $INV`; step 6 left the shell in
-   `$FJALAR/valgrind/fjalar`), so that the relative paths are right and the
-   scratch files `all-ops`, `dc-ops`, and `mc-ops` are written outside the
-   Fjalar tree.
-   - `diff -b valgrind-old/VEX/pub/libvex_ir.h valgrind-new/VEX/pub/libvex_ir.h`
+7. **DynComp / Fjalar / Kvasir updates.**
+   - `diff -b $INV/valgrind-old/VEX/pub/libvex_ir.h $INV/valgrind-new/VEX/pub/libvex_ir.h`
      and hand-port relevant `memcheck.patch` hunks into
      `fjalar/kvasir/dyncomp_translate.c` (`_DC` functions).
    - For every new or renamed `IROp`, `IRExpr`, or `IRStmt` kind relevant to
@@ -308,20 +284,9 @@ Memcheck and DynComp depend tightly on Valgrind core:
      cases that would now be hit.  Most changes for other architectures can
      be ignored.
    - Running programs finds only the operations those programs use, so also
-     list the operations that DynComp does not mention:
-
-     ```sh
-     cd $INV
-     ops() { grep -oE '\bIop_[A-Za-z0-9_]+' "$1" | sort -u; }
-     ops valgrind-new/VEX/pub/libvex_ir.h > all-ops
-     ops $FJALAR/valgrind/fjalar/kvasir/dyncomp_translate.c > dc-ops
-     ops valgrind-new/memcheck/mc_translate.c > mc-ops
-     # Ops that Memcheck handles but DynComp does not:
-     comm -23 mc-ops dc-ops
-     # All ops that DynComp does not mention (mostly other architectures):
-     comm -23 all-ops dc-ops
-     ```
-
+     run `$FJALAR/list-dyncomp-missing-iops.sh`.  It lists the operations
+     that Memcheck handles but DynComp does not mention, and all operations
+     that DynComp does not mention (mostly for other architectures).
      Add each relevant one to the appropriate `expr2tags_*_DC` switch, or
      leave it to the `default` case deliberately, with a comment.  Also
      compare `Iex_*` and `Ist_*` kinds.
@@ -339,19 +304,17 @@ Memcheck and DynComp depend tightly on Valgrind core:
 
 8. **Build.**  Step 1 ended with `make very-clean`, so the first build
    compiles every file.  Save its output, and list the warnings that are
-   new since step 1's `build-before.log`.  The merge shifts line numbers,
-   so the commands remove them before comparing:
+   new since step 1's `build-before.log`:
 
    ```sh
    cd $FJALAR
    (set -o pipefail; make build 2>&1 | tee build-after.log)
-   for f in before after; do
-     grep -E ':[0-9]+:[0-9]+: warning' build-$f.log \
-       | sed -E 's/:[0-9]+:[0-9]+:/:/' | sort > $INV/warnings-$f.txt
-   done
-   diff $INV/warnings-before.txt $INV/warnings-after.txt
+   ./compare-warnings.sh build-before.log build-after.log
    ```
 
+   `compare-warnings.sh` prints the new warnings (`>` lines) and the ones
+   that are gone (`<` lines), ignoring line numbers, which the merge
+   shifts.
    Fix compilation errors and new warnings (newer Valgrind may enable
    additional warning flags; Binutils-derived code is the usual source).
    If the build stopped at an error, its log is incomplete:  after fixing
@@ -395,7 +358,8 @@ Memcheck and DynComp depend tightly on Valgrind core:
      machine; a failure that appears only in CI may be an upstream failure
      specific to that container or CPU.  To check, build upstream 3.27.1 in
      that container (e.g., `docker run` the CI image, clone
-     `VALGRIND_3_27_1`, and run `make regtest` as in step 3) and compare.
+     `VALGRIND_3_27_1`, and run `upstream-regtest.sh` as in step 3) and
+     compare.
 
 10. **Finish.**
     - Update first line of `valgrind/REVISION`
@@ -425,8 +389,9 @@ Memcheck and DynComp depend tightly on Valgrind core:
         and, in appendix "Valgrind modifications", add
         `host_generic_reg_alloc3.c` and make the entries match
         `coregrind-Fjalar.diff` from this merge;
-      - the mechanical `Iop_` coverage check (step 7), in "Updating
-        Fjalar/Kvasir" and in appendix "Supporting new VEX IR Instruction";
+      - the mechanical `Iop_` coverage check (step 7), in appendix
+        "Supporting new VEX IR Instruction" (section "Updating
+        Fjalar/Kvasir" already runs `list-dyncomp-missing-iops.sh`);
       - the hunk-by-hunk checkoff of `mc_translate.c` (step 6);
       - `make fjalar-test` and the plain Memcheck run (step 9).
       Rebuild with `make doc` (which `test.sh` runs in CI) to confirm that

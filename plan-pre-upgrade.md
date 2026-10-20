@@ -34,9 +34,11 @@ the failures.
    `?` prefix.
 4. Remove `--report-only` from both CI jobs (the TODO comments in
    `.github/workflows/ci.yml`) and commit the lists.
-5. Describe `check-regtest.sh` in `doc/valgrind-merge.texinfo` ("Get New
-   Valgrind Regtest Baseline Results", "Testing Valgrind"), replacing the
-   comparison of logs by eye.
+5. Describe `check-regtest.sh` in section "Testing Valgrind" of
+   `doc/valgrind-merge.texinfo`, replacing the comparison of logs by eye:
+   a failure that is not expected is an upstream failure if it is in the
+   list that `upstream-regtest.sh` wrote (section "Get New Valgrind
+   Regtest Baseline Results"), and otherwise probably a bug in the merge.
 
 Done when:  CI enforces the lists on both distributions and is green.
 
