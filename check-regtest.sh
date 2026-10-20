@@ -146,7 +146,11 @@ if [ "$RUN_TESTS" = true ]; then
   # Naming a nonexistent xmllint makes docs/Makefile skip the validation.
   # -j speeds up "make check", which builds about a thousand test programs.
   # It does not affect vg_regtest, which runs the tests serially.
-  make -j"$(nproc)" test XMLLINT=xmllint-skipped-by-check-regtest > "$LOG_FILE" 2>&1 || true
+  # vg_regtest runs each test with this script's standard input, and some
+  # tests read it:  memcheck/tests/null_socket calls recvfrom() on it, which
+  # waits forever if standard input is a socket.  So it is /dev/null.
+  make -j"$(nproc)" test XMLLINT=xmllint-skipped-by-check-regtest \
+    < /dev/null > "$LOG_FILE" 2>&1 || true
   # "make test" ends by running the post-test checks, but in $LOG_FILE their
   # error messages are mixed with make's output.  Run them again by themselves.
   make -C valgrind -s --no-print-directory post-regtest-checks > "$POSTLOG_FILE" 2>&1 || true
