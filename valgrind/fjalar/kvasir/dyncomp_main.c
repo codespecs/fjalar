@@ -316,12 +316,12 @@ void MC_(helperc_STORE_TAG_1) ( Addr a, UInt tag ) {
 
 // Returns the first non-zero tag in the range [a, a+len), or 0 if
 // there is none.
-// (Hopefully this should only take one iteration
-//  because the tag of address 'a' should be non-zero)
 static UInt first_nonzero_tag_in_range(Addr a, SizeT len) {
   Addr curAddr;
   UInt curTag;
 
+  // (Hopefully this should only take one iteration
+  //  because the tag of address 'a' should be non-zero)
   for (curAddr = a; curAddr < (a + len); curAddr++) {
     curTag = get_tag(curAddr);
     if (curTag) {
