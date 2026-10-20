@@ -800,7 +800,6 @@ void exit_function(FunctionEntry* f)
   ULong FPUshadow;
   double fpuReturnVal;
   Addr xAX, xDX, xAXshadow, xDXshadow;
-  Bool foundFunc = False;
 
   FJALAR_DPRINTF("Exit function: %s\n", f->fjalar_name);
 
@@ -854,8 +853,6 @@ void exit_function(FunctionEntry* f)
 
   FJALAR_DPRINTF("Value of eax: %lx, edx: %lx\n",xAX, xDX);
 
-  FJALAR_DPRINTF("Exit function: %s\n", f->fjalar_name);
-
   // Only do something if top->func matches func
   if (!top->func) {
     printf("More exit_function()s than entry_function()s!\n");
@@ -892,25 +889,19 @@ void exit_function(FunctionEntry* f)
     for(i = fn_stack_first_free_index[currentTID] - 1; i >= 0; i-- ) {
       FunctionExecutionState* curFuncExecPtr = &FunctionExecutionStateStack[currentTID][i];
       if(curFuncExecPtr->func == f) {
-        foundFunc = True;
         break;
       }
     }
 
-    if(!foundFunc) {
+    if(i < 0) {
       VG_(get_and_pp_StackTrace) (currentTID, 15);
       return;
     }
 
-    while(top->func) {
-      top = fnStackTop(currentTID);
-      if(top->func == f) {
-        break;
-      }
+    while(fn_stack_first_free_index[currentTID] > i + 1) {
       fnStackPop(currentTID);
     }
-
-    tl_assert(top->func == f);
+    top = fnStackTop(currentTID);
   }
 
   top->xAX = xAX;
