@@ -39,7 +39,7 @@ new ones than to fix them.)
 - Fjalar does not run `readelf`; it compiles a modified copy of the
   `readelf` sources and uses the `harvest_*` hooks in `dwarf.c` to collect
   DWARF information.  Binutils-derived files in `valgrind/fjalar/`:
-  - `readelf.c` (~23.4k lines, 39 `#if 0` regions), `dwarf.c` (~13.4k, 29
+  - `readelf.c` (~23.4k lines, 39 `#if 0` regions), `dwarf.c` (~13.4k, 31
     `#if 0` regions), `dwarf.h`, `elfcomm.c/h`, `bucomm.h`, `demanguse.h`
   - `include/` (`dwarf2.def`, `dwarf2.h`, `demangle.h`, `ctf.h`, `ctf-api.h`,
     `safe-ctype.h`, `elf/*.h`)
@@ -163,6 +163,7 @@ small.
    diff -ub ~/tmp/binutils/$BUOLD/binutils/readelf.c readelf.c > ~/tmp/binutils/readelf-binutils-vs-fjalar.diff
    diff -ub ~/tmp/binutils/$BUOLD/binutils/dwarf.h dwarf.h > ~/tmp/binutils/dwarf.h-binutils-vs-fjalar.diff
    diff -ub ~/tmp/binutils/$BUOLD/binutils/elfcomm.c elfcomm.c > ~/tmp/binutils/elfcomm-binutils-vs-fjalar.diff
+   diff -ub ~/tmp/binutils/$BUOLD/binutils/elfcomm.h elfcomm.h > ~/tmp/binutils/elfcomm.h-binutils-vs-fjalar.diff
    ```
    (This plan uses `~/tmp/binutils/`; the doc uses `~/tmp/`.  Adjust paths
    if you follow the doc's commands.)
@@ -234,9 +235,11 @@ small.
      out of guarded `printf`s.
    - Replace libc calls with `VG_(...)` equivalents and `assert` with
      `tl_assert`.
-   - Make sure Fjalar's harvesting hooks in `dwarf.c` (the `harvest_*`
-     calls that build Fjalar's DWARF entries, see
-     `fjalar_dwarf.c`/`typedata.c`) still run on every path.  Re-check every
+   - Make sure Fjalar's hooks in `dwarf.c` still run on every path.  The
+     hooks are the calls to functions declared in `typedata.h` and
+     `fjalar_dwarf.h`, which build Fjalar's DWARF entries:  the
+     `harvest_*` functions, and others such as `add_comp_unit`,
+     `initialize_dwarf_entry_array`, and `tag_is_formal_parameter`.  Re-check every
      call site (`harvest_formal_param_location_atom`,
      `harvest_location_list_entry`, `harvest_frame_base`,
      `harvest_debug_frame_entry`, etc.) against the restructured upstream
@@ -269,9 +272,16 @@ small.
    iterate with `make -C $FJALAR/valgrind/fjalar`.  Fix "implicit
    declaration" and "undefined reference" errors (missed `VG_()` wrappers).
    Reduce new warnings from Valgrind's stricter flags where practical.
-   To list them, save the build output as `build.log`, run step 2's
-   commands with `warnings-after.txt` in place of `warnings-before.txt`,
-   and run
+   To list them, recompile the Binutils-derived files, from `$FJALAR`.
+   The incremental builds have already compiled those files, so a build
+   that does not remove their object files prints none of their warnings.
+   ```sh
+   cd $FJALAR
+   rm -f valgrind/fjalar/*-{readelf,dwarf,elfcomm}.o valgrind/fjalar/libiberty/*-dwarfnames.o
+   (set -o pipefail; make -C valgrind/fjalar 2>&1 | tee build.log)
+   ```
+   Then run step 2's `grep` command with `warnings-after.txt` in place of
+   `warnings-before.txt`, and run
    `diff ~/tmp/binutils/warnings-before.txt ~/tmp/binutils/warnings-after.txt`.
    Also build against the system `bfd.h` on both Rocky Linux and Ubuntu
    (see step 4; the #63 workaround may need to change).
@@ -293,8 +303,17 @@ small.
      `.decls` output is identical between the two DWARF versions.
    - Run with `--fjalar-debug-dump=yes` on a DWARF 5 binary and compare
      against `readelf --debug-dump` from Binutils 2.47 for sanity.
-   - Before committing, `grep -c` each `harvest_` name in the old and new
-     `dwarf.c`, and explain any difference.
+   - Before committing, count the calls of each hook (step 6) in the old
+     and new `dwarf.c`, and explain each difference.  This prints each
+     hook whose count changed, with the old and new counts:
+     ```sh
+     git show HEAD:valgrind/fjalar/dwarf.c > ~/tmp/binutils/dwarf.c.old
+     sed -nE 's/^[A-Za-z_][A-Za-z0-9_ *]*[ *]([A-Za-z_][A-Za-z0-9_]*)\(.*/\1/p' \
+         valgrind/fjalar/typedata.h valgrind/fjalar/fjalar_dwarf.h | sort -u \
+       | while read -r f; do
+           echo "$f $(grep -cw "$f" ~/tmp/binutils/dwarf.c.old) $(grep -cw "$f" valgrind/fjalar/dwarf.c)"
+         done | awk '$2 != $3'
+     ```
    - Check that no zstd, SFrame, or debuginfod code was compiled in: run
      the `nm` command of step 2 again, writing `~/tmp/binutils/nm-after.txt`;
      `diff ~/tmp/binutils/nm-before.txt ~/tmp/binutils/nm-after.txt` must
@@ -319,7 +338,8 @@ small.
      `plan-pre-upgrade.md` item 5:
      - working in a new clone (step 1);
      - the warning-list comparison (steps 2 and 7);
-     - reference diffs for `dwarf.h` and `elfcomm.c` too (step 3);
+     - reference diffs for `dwarf.h`, `elfcomm.c`, and `elfcomm.h` too
+       (step 3);
      - the `git merge-file --diff3` merge of `dwarf.c`, `dwarf.h`,
        `readelf.c`, `elfcomm.c`, and `elfcomm.h`, with those files
        excluded from `binutils.patch`
@@ -327,7 +347,7 @@ small.
        practice, why;
      - the checklist of upgrade-sensitive areas (step 6);
      - the DWARF 4 versus DWARF 5 comparison, `--fjalar-debug-dump=yes`, the
-       `harvest_*` count check, and the `nm` check for zstd, SFrame, and
+       hook-count check, and the `nm` check for zstd, SFrame, and
        debuginfod code (step 8);
      - an example `BUNEWVER` that is not 2.34.
      Also remove the stale sentence "(The `lines-notbetween` command is from
@@ -353,7 +373,7 @@ small.
   up only on one distro, so CI on both Ubuntu and Rocky Linux matters.
 - Silent loss of a Fjalar hook in a conflicted hunk would show up only as
   missing variables in Kvasir output, so the Kvasir regression tests are the
-  essential check, together with the `harvest_*` count check (step 8).
+  essential check, together with the hook-count check (step 8).
 - An unguarded side-effecting expression inside a guarded `printf` changes
   parsing only when debugging is off.  Mitigation: review every new guard
   (step 6).

@@ -92,7 +92,8 @@ Memcheck and DynComp depend tightly on Valgrind core:
       `expr2tags_*_DC` functions, and
       `--dyncomp-unhandled-ops=warn` lists them all in one run (step 7).
     - Memcheck-derived files, so they can conflict in step 6:  #115,
-      #117, #119, and #120 change `mc_translate.c` and `mc_translate.h`.
+      #117, #119, #120, and #122 change `mc_translate.c` and
+      `mc_translate.h`.
     - Other open PRs may have been opened since.  To list the open PRs
       that change files under `valgrind/`:
       `gh pr list -R codespecs/fjalar --json number,files --jq '.[] | select(any(.files[]; .path | startswith("valgrind/"))) | .number'`.
@@ -290,8 +291,23 @@ Memcheck and DynComp depend tightly on Valgrind core:
 
 8. **Build.** `make -C $INV/fjalar build`; fix compilation errors and new
    warnings (newer Valgrind may enable additional warning flags; Binutils-
-   derived code is the usual source).  Compare warnings with the step-1
-   build log (`build-before.log`).  Test with both a current gcc and the
+   derived code is the usual source).  To list the new warnings, compare
+   the warnings of a complete build with those of step 1's
+   `build-before.log`.  The merge shifts line numbers, so remove them
+   before comparing:
+   ```sh
+   cd $INV/fjalar
+   make very-clean
+   (set -o pipefail; make build 2>&1 | tee build-after.log)
+   for f in before after; do
+     grep -E ':[0-9]+:[0-9]+: warning' build-$f.log | sed -E 's/:[0-9]+:[0-9]+:/:/' \
+       | sort > $INV/warnings-$f.txt
+   done
+   diff $INV/warnings-before.txt $INV/warnings-after.txt
+   ```
+   `make very-clean` makes the build recompile every file; otherwise an
+   incremental build prints no warnings for files that it does not
+   recompile.  Test with both a current gcc and the
    compilers in the CI containers.  If `autogen.sh` or `configure` fails,
    the likely cause is a `configure.ac` / `Makefile.am` merge error or a
    newer required autoconf/automake version; check `valgrind-new/autogen.sh`

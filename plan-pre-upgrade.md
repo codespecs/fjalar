@@ -3,7 +3,8 @@
 These changes are independent of both upgrades (`plan-upgrade-readelf.md`,
 `plan-upgrade-valgrind.md`).  Doing them first, as separate PRs, makes both
 upgrades smaller and easier to review, and makes future merges cheaper.
-Both upgrade plans assume these are done.
+Each upgrade plan's "Ordering" section says which of these items it
+requires; neither requires all of them.
 
 Below, `$INV/fjalar` means the Fjalar tree being changed.
 
