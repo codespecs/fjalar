@@ -99,9 +99,9 @@ To determine whether a newer version of Binutils is available, compare file
 The instructions in this document assume you use bash as your shell.
 If you use a different shell, you will need to adjust the instructions
 accordingly.  Also, we assume @env{$INV} points to a parent directory that
-contains both the Daikon and Fjalar source trees, that @env{$DAIKONDIR}
-points to the Daikon source tree within it, and that @env{$FJALAR} points
-to the Fjalar tree that you are merging into:
+contains the Daikon source tree, that @env{$DAIKONDIR} points to the
+Daikon source tree within it, and that @env{$FJALAR} points to the Fjalar
+tree that you are merging into, which is usually also within @env{$INV}:
 
 @example
 export DAIKONDIR=$INV/daikon
@@ -1358,8 +1358,8 @@ include additional information specific to the amd64 and x86 platforms.
 Finally, we had to extend Valgrind's implementation of the C library
 with a few extra functions.
 
-(Remember that we assume @env{$INV} points to a parent directory that
-contains both the Daikon and Fjalar source trees.)
+(Remember that @env{$FJALAR} points to the Fjalar tree that you are
+merging into.)
 
 @table @asis
 @item $FJALAR/valgrind/configure.ac

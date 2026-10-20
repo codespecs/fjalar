@@ -22,20 +22,18 @@ fi
 # The Fjalar tree that contains this script.
 fjalar=$(dirname "$(readlink -f "$0")")
 echo "$0: Fjalar tree: $fjalar" >&2
-# Running the script from a tree other than the one being merged into would
-# silently diff the wrong tree.
-if [ -n "$FJALAR" ]; then
-  fjalar_var=$(cd -- "$FJALAR" 2> /dev/null && pwd -P) || fjalar_var=
-  if [ "$fjalar_var" != "$fjalar" ]; then
-    echo "$0: FJALAR is $FJALAR, but this script is in $fjalar." >&2
-    echo "$0: Run \$FJALAR/generate-patch-files.sh instead." >&2
-    exit 1
-  fi
-fi
 
 # Remove all the output files first, so that a failure, including a failed
 # check below, does not leave stale ones from an earlier run.
 rm -f "$INV"/{coregrind.patch,memcheck.patch,coregrind-Fjalar.diff,memcheck-Fjalar.diff}
+
+# Running the script from a tree other than the one being merged into would
+# silently diff the wrong tree.
+if [ -n "$FJALAR" ] && [ ! "$FJALAR" -ef "$fjalar" ]; then
+  echo "$0: FJALAR is $FJALAR, but this script is in $fjalar." >&2
+  echo "$0: Run \$FJALAR/generate-patch-files.sh instead." >&2
+  exit 1
+fi
 
 for dir in "$INV/valgrind-old" "$INV/valgrind-new" "$fjalar/valgrind"; do
   if [ ! -d "$dir" ]; then

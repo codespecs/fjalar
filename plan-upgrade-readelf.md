@@ -82,6 +82,7 @@ Kvasir tests after each step.
      directly, first check `readlink -f $INV/daikon/fjalar`.
 
 3. **Create patch files.**
+
    ```sh
    export BUOLDVER=2.39 BUNEWVER=2.47
    export BUOLD=binutils-$BUOLDVER BUNEW=binutils-$BUNEWVER
@@ -92,6 +93,7 @@ Kvasir tests after each step.
    diff -u  $BUOLD/libiberty/dwarfnames.c $BUNEW/libiberty/dwarfnames.c >> include.patch
    diff -u -x'Makefile*' $BUOLD/binutils $BUNEW/binutils > binutils.patch
    ```
+
    Also create the reference diffs (Fjalar vs. pristine 2.39) for
    `dwarf.c` and `readelf.c` as described in the doc.  Verify the tarballs'
    signatures (`.sig` files) while downloading.
@@ -115,6 +117,7 @@ Kvasir tests after each step.
 
 5. **Apply the patches**, one at a time, dry run first, using
    `--merge=diff3` so conflicts are inline:
+
    ```sh
    cd $FJALAR/valgrind/fjalar
    cp -p dwarf.c dwarf.c.pre-merge; cp -p readelf.c readelf.c.pre-merge
