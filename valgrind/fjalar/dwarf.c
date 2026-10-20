@@ -1460,61 +1460,78 @@ decode_location_expression (unsigned char * data,
 	  printf ("DW_OP_addr: %s", dwarf_vmatoa ("x", uvalue));
 	  break;
 	case DW_OP_deref:
-	  if (ok_to_harvest)
-	    harvest_formal_param_location_atom(entry, op, 0);
+	  if (ok_to_harvest) {
+	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
+	       harvest_formal_param_location_atom(entry, op, 0);
+	    }
+	  }
 	  printf ("DW_OP_deref");
 	  break;
 	case DW_OP_const1u:
 	  SAFE_BYTE_GET_AND_INC (uvalue, data, 1, end);
 	  if (ok_to_harvest)
-	    harvest_formal_param_location_atom(entry, op, uvalue);
+	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
+	      harvest_formal_param_location_atom(entry, op, uvalue);
+	    }
 	  printf ("DW_OP_const1u: %lu", (unsigned long) uvalue);
 	  break;
 	case DW_OP_const1s:
 	  SAFE_SIGNED_BYTE_GET_AND_INC (svalue, data, 1, end);
 	  if (ok_to_harvest)
-	    harvest_formal_param_location_atom(entry, op, svalue);
+	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
+	      harvest_formal_param_location_atom(entry, op, svalue);
+	    }
 	  printf ("DW_OP_const1s: %ld", (long) svalue);
 	  break;
 	case DW_OP_const2u:
 	  SAFE_BYTE_GET_AND_INC (uvalue, data, 2, end);
 	  if (ok_to_harvest)
-	    harvest_formal_param_location_atom(entry, op, uvalue);
+	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
+	      harvest_formal_param_location_atom(entry, op, uvalue);
+	    }
 	  printf ("DW_OP_const2u: %lu", (unsigned long) uvalue);
 	  break;
 	case DW_OP_const2s:
 	  SAFE_SIGNED_BYTE_GET_AND_INC (svalue, data, 2, end);
 	  if (ok_to_harvest)
-	    harvest_formal_param_location_atom(entry, op, svalue);
+	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
+	      harvest_formal_param_location_atom(entry, op, svalue);
+	    }
 	  printf ("DW_OP_const2s: %ld", (long) svalue);
 	  break;
 	case DW_OP_const4u:
 	  SAFE_BYTE_GET_AND_INC (uvalue, data, 4, end);
 	  if (ok_to_harvest)
-	    harvest_formal_param_location_atom(entry, op, uvalue);
+	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
+	      harvest_formal_param_location_atom(entry, op, uvalue);
+	  }
 	  printf ("DW_OP_const4u: %lu", (unsigned long) uvalue);
 	  break;
 	case DW_OP_const4s:
 	  SAFE_SIGNED_BYTE_GET_AND_INC (svalue, data, 4, end);
-	  if (ok_to_harvest)
-	    harvest_formal_param_location_atom(entry, op, svalue);
+      if (ok_to_harvest)
+	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
+	      harvest_formal_param_location_atom(entry, op, svalue);
+	    }
 	  printf ("DW_OP_const4s: %ld", (long) svalue);
 	  break;
 	case DW_OP_const8u:
-	  if (ok_to_harvest) {
-	    SAFE_BYTE_GET (uvalue, data, 8, end);
-	    harvest_formal_param_location_atom(entry, op, uvalue);
-	  }
+	  if (ok_to_harvest)
+	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
+	      SAFE_BYTE_GET (uvalue, data, 8, end);
+	      harvest_formal_param_location_atom(entry, op, uvalue);
+	    }
 	  SAFE_BYTE_GET_AND_INC (uvalue, data, 4, end);
 	  printf ("DW_OP_const8u: %lu ", (unsigned long) uvalue);
 	  SAFE_BYTE_GET_AND_INC (uvalue, data, 4, end);
 	  printf ("%lu", (unsigned long) uvalue);
 	  break;
 	case DW_OP_const8s:
-	  if (ok_to_harvest) {
-	    SAFE_SIGNED_BYTE_GET (svalue, data, 8, end);
-	    harvest_formal_param_location_atom(entry, op, svalue);
-	  }
+	  if (ok_to_harvest)
+	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
+	      SAFE_SIGNED_BYTE_GET (svalue, data, 8, end);
+	      harvest_formal_param_location_atom(entry, op, svalue);
+	    }
 	  SAFE_SIGNED_BYTE_GET_AND_INC (svalue, data, 4, end);
 	  printf ("DW_OP_const8s: %ld ", (long) svalue);
 	  SAFE_SIGNED_BYTE_GET_AND_INC (svalue, data, 4, end);
@@ -1523,13 +1540,17 @@ decode_location_expression (unsigned char * data,
 	case DW_OP_constu:
 	  READ_ULEB (uvalue, data, end);
 	  if (ok_to_harvest)
-	    harvest_formal_param_location_atom(entry, op, uvalue);
+	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
+	      harvest_formal_param_location_atom(entry, op, uvalue);
+	  }
 	  printf ("DW_OP_constu: %s", dwarf_vmatoa ("u", uvalue));
 	  break;
 	case DW_OP_consts:
 	  READ_SLEB (svalue, data, end);
 	  if (ok_to_harvest)
-	    harvest_formal_param_location_atom(entry, op, svalue);
+	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
+	      harvest_formal_param_location_atom(entry, op, svalue);
+	  }
 	  printf ("DW_OP_consts: %s", dwarf_vmatoa ("d", svalue));
 	  break;
 	case DW_OP_dup:
@@ -1587,8 +1608,10 @@ decode_location_expression (unsigned char * data,
 	case DW_OP_plus_uconst:
 	  READ_ULEB (uvalue, data, end);
 	  if (ok_to_harvest) {
-	    harvest_formal_param_location_atom(entry, op, uvalue);
-	    harvest_formal_param_location_offset(entry, uvalue);
+	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
+		  harvest_formal_param_location_atom(entry, op, uvalue);
+		  harvest_formal_param_location_offset(entry, uvalue);
+	    }
 	    harvest_data_member_location(entry, uvalue);
 	  }
 
@@ -1666,7 +1689,9 @@ decode_location_expression (unsigned char * data,
 	case DW_OP_lit30:
 	case DW_OP_lit31:
 	  if (ok_to_harvest)
-	    harvest_formal_param_location_atom(entry, op, 0);
+	    if (entry && (tag_is_formal_parameter(entry->tag_name))) {
+	          harvest_formal_param_location_atom(entry, op, 0);
+	    }
 	  printf ("DW_OP_lit%u", op - DW_OP_lit0);
 	  break;
 
@@ -1703,7 +1728,9 @@ decode_location_expression (unsigned char * data,
 	case DW_OP_reg30:
 	case DW_OP_reg31:
 	  if (ok_to_harvest)
-	    harvest_formal_param_location_atom(entry, op, 0);
+	    if (entry && (tag_is_formal_parameter(entry->tag_name))) {
+	          harvest_formal_param_location_atom(entry, op, 0);
+	    }
 	  printf ("DW_OP_reg%u (%s)", op - DW_OP_reg0,
 		  regname (op - DW_OP_reg0, 1));
 	  break;
@@ -1741,13 +1768,21 @@ decode_location_expression (unsigned char * data,
 	case DW_OP_breg30:
 	case DW_OP_breg31:
 	  READ_SLEB (svalue, data, end);
-	  if (ok_to_harvest) {
-	    if (ll)
-	      ll->atom_offset = svalue;
-	    harvest_local_var_offset(entry, svalue, (op - DW_OP_breg0));
-	    harvest_formal_param_location_atom(entry, op, svalue);
-	    harvest_formal_param_location_offset(entry, svalue);
-	  }
+          if (ok_to_harvest) {
+              if(ll) {
+                ll->atom_offset = svalue;
+              }
+
+             if(entry) {
+               if (tag_is_variable(entry->tag_name)) {
+                 harvest_local_var_offset(entry, svalue, (op - DW_OP_breg0));
+               }
+               else if (tag_is_formal_parameter(entry->tag_name)) {
+                 harvest_formal_param_location_atom(entry, op, svalue);
+                 harvest_formal_param_location_offset(entry, svalue);
+               }
+             }
+          }
 	  printf ("DW_OP_breg%u (%s): %s", op - DW_OP_breg0,
 		  regname (op - DW_OP_breg0, 1), dwarf_vmatoa ("d", svalue));
 	  break;
@@ -1760,13 +1795,21 @@ decode_location_expression (unsigned char * data,
 	case DW_OP_fbreg:
 	  need_frame_base = 1;
 	  READ_SLEB (svalue, data, end);
-	  if (ok_to_harvest) {
-	    if (ll)
-	      ll->atom_offset = svalue;
-	    harvest_local_var_offset(entry, svalue, -1);
-	    harvest_formal_param_location_atom(entry, op, svalue);
-	    harvest_formal_param_location_offset(entry, svalue);
-	  }
+          if (ok_to_harvest) {
+              if(ll) {
+                ll->atom_offset = svalue;
+              }
+
+	          if(entry) {
+		          if (tag_is_variable(entry->tag_name)) {
+		            harvest_local_var_offset(entry, svalue, -1);
+		          }
+		          else if (tag_is_formal_parameter(entry->tag_name)) {
+		            harvest_formal_param_location_atom(entry, op, svalue);
+		            harvest_formal_param_location_offset(entry, svalue);
+		          }
+	          }
+          }
 	  printf ("DW_OP_fbreg: %s", dwarf_vmatoa ("d", svalue));
 	  break;
 	case DW_OP_bregx:
