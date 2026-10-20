@@ -154,7 +154,7 @@ fi
 LOG_OS_UNVERIFIED=false
 if [ -z "$EXPECTED_FILE" ]; then
   if [ -z "$OS" ]; then
-    echo "$0: give --expected, or rename the --log file to regtest-<os>.log: $LOG_FILE" >&2
+    echo "$0: give --expected, or rename $LOG_FILE and ${LOG_FILE%.log}-post.log to regtest-<os>.log and regtest-<os>-post.log." >&2
     exit 2
   fi
   EXPECTED_FILE="$FJALARDIR/regtest-expected/$OS.txt"
@@ -259,7 +259,7 @@ print_how_to_create_expected() {
   local command
   command="$(printf '%q --log %q --expected %q --update' "$0" "$LOG_FILE" "$EXPECTED_FILE")"
   if [ "$LOG_OS_UNVERIFIED" = true ]; then
-    echo "OS \"$OS\" comes from the --log file name and is not this machine's.  If the log was renamed, rename it to regtest-<os>.log." >&2
+    echo "OS \"$OS\" comes from the --log file name and is not this machine's.  If the log was renamed, rename $LOG_FILE and $POSTLOG_FILE to regtest-<os>.log and regtest-<os>-post.log." >&2
     echo "If \"$OS\" is the right OS, then to create $EXPECTED_FILE, run: $command" >&2
   else
     echo "To create it, run: $command" >&2
