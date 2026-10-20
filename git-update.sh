@@ -23,6 +23,9 @@ for dir in "$INV/valgrind-old" "$INV/valgrind-new"; do
   fi
 done
 
+# The Fjalar tree that contains this script.
+fjalar=$(dirname "$(readlink -f "$0")")
+
 # Make sort and comm agree on the sort order.
 export LC_ALL=C
 
@@ -55,8 +58,27 @@ print_commands() {
   done
 }
 
+# Usage: print_fjalar_removals < PATHS
+# Like print_commands "git rm --ignore-unmatch" valgrind/fjalar, but for a
+# file that is still in the work tree, prints a comment instead.  Such a
+# file may contain Fjalar changes, so the user must check it before
+# removing it; see doc/valgrind-merge.texinfo.
+print_fjalar_removals() {
+  local f
+  while IFS= read -r -d '' f; do
+    if [ -e "$fjalar/valgrind/fjalar/$f" ] || [ -L "$fjalar/valgrind/fjalar/$f" ]; then
+      printf '# Valgrind removed %q.  Check it for Fjalar changes, then run:\n' \
+        "valgrind/fjalar/$f"
+      printf '# git rm -- %q\n' "valgrind/fjalar/$f"
+      echo "$0: Valgrind removed valgrind/fjalar/$f; check it for Fjalar changes." >&2
+    else
+      printf '%s -- %q\n' "git rm --ignore-unmatch" "valgrind/fjalar/$f"
+    fi
+  done
+}
+
 print_commands "git add" valgrind < "$tmpdir/added"
 print_commands "git rm --ignore-unmatch" valgrind < "$tmpdir/removed"
 # Fjalar's modified copy of Memcheck is in valgrind/fjalar/.
 memcheck_files < "$tmpdir/added" | print_commands "git add" valgrind/fjalar
-memcheck_files < "$tmpdir/removed" | print_commands "git rm --ignore-unmatch" valgrind/fjalar
+memcheck_files < "$tmpdir/removed" | print_fjalar_removals
