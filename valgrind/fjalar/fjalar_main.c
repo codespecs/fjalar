@@ -832,7 +832,6 @@ void exit_function(FunctionEntry* f)
   ULong FPUshadow;
   double fpuReturnVal;
   Addr xAX, xDX, xAXshadow, xDXshadow;
-  Bool foundFunc;
 
   FJALAR_DPRINTF("Exit function: %s\n", f->fjalar_name);
 
@@ -853,6 +852,9 @@ void exit_function(FunctionEntry* f)
   // XMM registers are represented as a 128-bit integer
   // (Actually an array of 4 32-bit integers), so reinterpret
   // cast it as a double.
+  // TODO: FPUshadow holds only the low 32 bits of XMM0's shadow, so
+  // the V bits of bytes 4-7 of a double return value are always
+  // "defined".  Also use element [1] of the shadow.
   FPUshadow = (VG_(get_shadow_XMM_N)(currentTID, 0))[0];
   fpuReturnVal = *(double *)VG_(get_XMM_N)(currentTID, 0);
   //RUDD DEBUG
@@ -885,8 +887,6 @@ void exit_function(FunctionEntry* f)
   xDXshadow = VG_(get_shadow_xDX)(currentTID);
 
   FJALAR_DPRINTF("Value of eax: %lx, edx: %lx\n",xAX, xDX);
-
-  FJALAR_DPRINTF("Exit function: %s\n", f->fjalar_name);
 
   // Only do something if top->func matches func
   if (!top->func) {
@@ -924,25 +924,19 @@ void exit_function(FunctionEntry* f)
     for(i = fn_stack_first_free_index[currentTID] - 1; i >= 0; i-- ) {
       FunctionExecutionState* curFuncExecPtr = &FunctionExecutionStateStack[currentTID][i];
       if(curFuncExecPtr->func == f) {
-        foundFunc = True;
         break;
       }
     }
 
-    if(!foundFunc) {
+    if(i < 0) {
       VG_(get_and_pp_StackTrace) (currentTID, 15);
       return;
     }
 
-    while(top->func) {
-      top = fnStackTop(currentTID);
-      if(top->func == f) {
-        break;
-      }
+    while(fn_stack_first_free_index[currentTID] > i + 1) {
       fnStackPop(currentTID);
     }
-
-    tl_assert(top->func == f);
+    top = fnStackTop(currentTID);
   }
 
   top->xAX = xAX;
@@ -954,16 +948,14 @@ void exit_function(FunctionEntry* f)
   // state as well:
   for (i = 0; i < sizeof(Addr); i++) {
     set_abit_and_vbyte((Addr)(&top->xAX) + (Addr)i, VGM_BIT_VALID,
-                      (xAXshadow & 0xff) << (i * 8));
+                      (xAXshadow >> (i * 8)) & 0xff);
     set_abit_and_vbyte((Addr)(&top->xDX) + (Addr)i, VGM_BIT_VALID,
-                      (xDXshadow & 0xff) << (i * 8));
-    set_abit_and_vbyte((Addr)(&top->FPU) + (Addr)i, VGM_BIT_VALID,
-                      (FPUshadow & 0xff) << (i * 8));
+                      (xDXshadow >> (i * 8)) & 0xff);
   }
 
   for (i = 0; i < 8; i++) {
     set_abit_and_vbyte((Addr)(&top->FPU) + (Addr)i, VGM_BIT_VALID,
-                       (FPUshadow & 0xff) << (i * 8));
+                       (FPUshadow >> (i * 8)) & 0xff);
   }
 
   curFunctionExecutionStatePtr = top;
