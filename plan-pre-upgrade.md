@@ -8,8 +8,8 @@ requires; neither requires all of them.
 
 Below, `$INV/fjalar` means the Fjalar tree being changed.
 
-Items 2 and 4 are open pull requests; their descriptions give the
-details.  Items 1 and 3 are described here.
+Item 2 is done (#103).  Item 4 is an open pull request; its description
+gives the details.  Items 1 and 3 are described here.
 Other open PRs that both
 upgrades should wait for, because they change files that the upgrades
 merge into, are listed in the "Current state" section of each upgrade
@@ -42,16 +42,16 @@ the failures.
 
 Done when:  CI enforces the lists on both distributions and is green.
 
-## 2. Add and remove files during the merge without `make git-update`
+## 2. Add and remove files during the merge without `make git-update` (done)
 
-\#103:  merge upstream with `git cherry-pick`, a 3-way merge that adds and
+\#103 merges upstream with `git cherry-pick`, a 3-way merge that adds and
 removes files itself.
 
 ## 3. Look for DynComp panics on unhandled IROps, now, on Valgrind 3.23
 
-Do this after #87 lands.  #87 makes `expr2tags_Unop_DC` switch on the
-operation and cover all 283 unary operations, so unary operations no
-longer silently pass their operand's tag through.
+\#87 made `expr2tags_Unop_DC` switch on the operation and cover all 283
+unary operations, so unary operations no longer silently pass their
+operand's tag through.
 
 Why: the main runtime risk of the Valgrind upgrade is IROps that
 `fjalar/kvasir/dyncomp_translate.c` does not handle; #79 was one, found by

@@ -67,19 +67,22 @@ new ones than to fix them.)
   - `89754787` Read DWARF registers through their guest-state offsets (#91)
   - `a6948b30` and `0d7bdabd` use `true`/`false`, not `TRUE`/`FALSE`, in
     `fjalar_process_file` in `readelf.c`
-- Open PRs that change `dwarf.c` (as of 2026-10-20): #95 (unsupported DWARF
-  location operations) and #134 (whitespace that matches Binutils 2.39;
-  `plan-pre-upgrade.md` item 4), which also changes `readelf.c` and
-  `bucomm.h`.  Land them before starting this upgrade, so that their
-  changes are part of the Fjalar copy being merged into (and of the
-  Fjalar-vs-2.39 diffs) rather than conflicting with the upgrade later.
-  Re-check #95's `dwarf.c` changes while resolving conflicts, as for
-  #73/#76.
-  Whichever of #95 and #134 lands second must keep the other's changes.
-  In particular, no line that #95 adds or changes may differ from
-  Binutils 2.39 only in whitespace; after both have landed, redo #134's
-  procedure (in its description), which then changes nothing if all is
-  well.
+- Open PRs that change `dwarf.c` (as of 2026-10-20):  the formal-parameter
+  location PRs #144 (record every `DW_OP_const*`), #145 (no tag tests around
+  the `harvest_*` calls), #95 (unsupported DWARF location operations, which
+  contains #144 and #145), and #146 (`DW_OP_piece`) and #147 (register
+  locations that Fjalar cannot read), which contain #95; and #134
+  (whitespace that matches Binutils 2.39; `plan-pre-upgrade.md` item 4),
+  which also changes `readelf.c` and `bucomm.h`.  Land them before starting
+  this upgrade, so that their changes are part of the Fjalar copy being
+  merged into (and of the Fjalar-vs-2.39 diffs) rather than conflicting
+  with the upgrade later.  Re-check the location PRs' `dwarf.c` changes
+  while resolving conflicts, as for #73/#76.
+  Whichever of #134 and each location PR lands second must keep the
+  other's changes.  In particular, no line that a location PR adds or
+  changes may differ from Binutils 2.39 only in whitespace; after all of
+  them have landed, redo #134's procedure (in its description), which then
+  changes nothing if all is well.
 
 ## Key decision: one jump or stepwise?
 
