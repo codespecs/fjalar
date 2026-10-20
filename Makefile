@@ -7,6 +7,7 @@ help:
 	@echo "Targets:"
 	@echo " build         -- build all of valgrind and fjalar (includes kvasir)"
 	@echo " test          -- build and run valgrind regression tests"
+	@echo " check-regtest -- run valgrind regression tests; fail on unexpected failures"
 	@echo " fjalar-test   -- run the Fjalar regression tests in this repository"
 	@echo " daikon-test   -- run Fjalar/Kvasir regression tests from Daikon"
 	@echo " check-options -- check that every command-line option is documented"
@@ -25,15 +26,22 @@ check-options:
 	./check-options-documented
 
 # Valgrind tests
+.PHONY: test
 test:
 	cd valgrind && $(MAKE) regtest
 
-# Fjalar tests that do not depend on Daikon
+# Valgrind tests, compared to the expected failures for this OS
+.PHONY: check-regtest
+check-regtest:
+	./check-regtest.sh
+
+# Fjalar tests that do not depend on Daikon: every *-test.sh script.
+.PHONY: fjalar-test
 fjalar-test:
-	valgrind/fjalar/tests/library-compilation-unit-test.sh
-	valgrind/fjalar/tests/location-views-test.sh
+	for t in valgrind/fjalar/tests/*-test.sh; do echo "Running $$t"; $$t || exit 1; done
 
 # Kvasir tests
+.PHONY: daikon-test
 daikon-test: ../daikon
 	# debugging
 	ls -l valgrind/inst/bin/valgrind valgrind/inst/libexec/valgrind/fjalar-amd64-linux
@@ -43,6 +51,7 @@ daikon-test: ../daikon
 	ls -l ../daikon/fjalar/valgrind/inst/bin/valgrind ../daikon/fjalar/valgrind/inst/libexec/valgrind/fjalar-amd64-linux
 	$(MAKE) -C ../daikon/tests/kvasir-tests clean-all regression-tests
 
+.PHONY: TEMP-daikon-test
 TEMP-daikon-test: ../daikon
 	$(MAKE) -C ../daikon compile daikon.jar kvasir
 	$(MAKE) -C ../daikon/tests/kvasir-tests clean-all TEMP-regression-tests

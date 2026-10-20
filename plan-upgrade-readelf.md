@@ -65,8 +65,12 @@ Kvasir tests after each step.
    - Make sure the system has `binutils-dev` / `binutils-devel` (for `bfd.h`).
 
 2. **Baselines** (before touching any source).
-   - `make clean build && make test 2>&1 | tee test-before.log`
-     (Valgrind regtest baseline).
+   - `make build && ./check-regtest.sh` (Valgrind regtest baseline;
+     must report no unexpected failures).  Do not run `make clean` first,
+     because it fails until `make build` has created `valgrind/Makefile`.
+     If this machine's OS has no
+     `regtest-expected/<os>.txt`, create a local one with
+     `./check-regtest.sh --log regtest-<os>.log --update` and don't commit it.
    - `./test-kvasir.sh 2>&1 | tee kvasir-before.log`
      (Kvasir baseline; record any pre-existing failures).
    - Run the Kvasir tests via `./test-kvasir.sh`, which points
@@ -96,7 +100,9 @@ Kvasir tests after each step.
    `include/`, `include/elf/`, or `binutils/`) that Fjalar does not yet have,
    and whether they call into new helper files (e.g. new code split out of
    `dwarf.c`).  Copy any new needed headers into `valgrind/fjalar/include/`
-   and add any new needed `.c` files to `valgrind/fjalar/Makefile.am`.
+   and add any new needed `.c` files to `FJALAR_SOURCES_COMMON` in
+   `valgrind/fjalar/fjalar.am`.  (Do not edit `valgrind/fjalar/Makefile.am`,
+   which `generate-fjalar-makefile.sh` regenerates at each Valgrind merge.)
    (`demanguse.h` and the CTF headers were added this way in the 2.39 merge.)
    - Known case: Binutils 2.40 added `readelf --sframe`, which includes
      `sframe-api.h` and calls into libsframe.  Fjalar does not need it:
@@ -147,9 +153,12 @@ Kvasir tests after each step.
    Also check against the system `bfd.h` on both Rocky Linux and Ubuntu
    (the #63 workaround may need to change).
 
-8. **Test.**
-   - `make test 2>&1 | tee test-after.log` — compare with
-     `test-before.log`; results should match.
+8. **Test.**  Run these from `$INV/fjalar` (`cd $INV/fjalar`; step 5 left
+   the shell in `valgrind/fjalar`).
+   - `./check-regtest.sh` — must report no unexpected failures, with no
+     change to `regtest-expected/*.txt`.  This upgrade doesn't touch
+     Valgrind, so any new failure is a bug in the merge (or an OS/compiler
+     update; then re-run on the old sources to check).
    - `make fjalar-test`.
    - `./test-kvasir.sh 2>&1 | tee kvasir-after.log` — compare with
      `kvasir-before.log`.  Superfluous output in `.out` diffs usually means
@@ -157,7 +166,7 @@ Kvasir tests after each step.
    - Spot-check `--fjalar-debug-dump` style output on a DWARF 5 binary
      compiled by the current gcc and clang.
    - Push the branch and confirm GitHub Actions CI passes (Ubuntu and
-     Rocky Linux, both build and Kvasir jobs).
+     Rocky Linux: build, regtest, and Kvasir jobs).
 
 9. **Finish.**
    - Update `valgrind/REVISION`: the `# Binutils version 2.47, released ...`
@@ -166,7 +175,8 @@ Kvasir tests after each step.
    - Update `doc/valgrind-merge.texinfo` with anything learned (e.g. stale
      URLs, new hints such as the SFrame handling).
    - Commit (one PR); keep `include.patch`, `binutils.patch`, and the
-     Fjalar-vs-binutils diffs for reference.
+     Fjalar-vs-binutils diffs for reference.  Delete `regtest-<os>.log`,
+     `regtest-<os>-post.log`, and `regtest-<os>-observed.txt` (ignored by git).
 
 ## Risks
 

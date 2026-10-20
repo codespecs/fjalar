@@ -67,7 +67,7 @@ valgrind/cachegrind/cg_merge
 valgrind/cachegrind/tests/cachegrind.out
 valgrind/cachegrind/tests/chdir
 valgrind/cachegrind/tests/clreq
-valgrind/cachegrind/tests/clreqvalgrind/tests/filter_discards
+valgrind/cachegrind/tests/clreq2
 valgrind/cachegrind/tests/dlclose
 
 # /callgrind/
@@ -95,6 +95,7 @@ valgrind/dhat/tests/copy
 valgrind/dhat/tests/empty
 valgrind/dhat/tests/sig
 valgrind/dhat/tests/single
+valgrind/dhat/tests/user_histo1
 
 # /drd/
 valgrind/drd/scripts/download-and-build-splash2
@@ -173,6 +174,7 @@ valgrind/drd/tests/std_thread
 valgrind/drd/tests/std_thread2
 valgrind/drd/tests/swapcontent
 valgrind/drd/tests/swapcontext
+valgrind/drd/tests/thrd_create
 valgrind/drd/tests/threaded-fork
 valgrind/drd/tests/thread_name
 valgrind/drd/tests/timed_mutex
@@ -224,12 +226,16 @@ valgrind/helgrind/tests/annotate_rwlock
 valgrind/helgrind/tests/bar_bad
 valgrind/helgrind/tests/bar_trivial
 valgrind/helgrind/tests/bug322621
+valgrind/helgrind/tests/bug327548
+valgrind/helgrind/tests/bug392331
+valgrind/helgrind/tests/bug484480
 valgrind/helgrind/tests/cond_init_destroy
 valgrind/helgrind/tests/cond_timedwait_invalid
 valgrind/helgrind/tests/cond_timedwait_test
 valgrind/helgrind/tests/filter_stderr
 valgrind/helgrind/tests/free_is_write
 valgrind/helgrind/tests/garbage.filtered.out
+valgrind/helgrind/tests/getaddrinfo
 valgrind/helgrind/tests/hg01_all_ok
 valgrind/helgrind/tests/hg02_deadlock
 valgrind/helgrind/tests/hg03_inherit
@@ -241,6 +247,7 @@ valgrind/helgrind/tests/locked_vs_unlocked2
 valgrind/helgrind/tests/locked_vs_unlocked3
 valgrind/helgrind/tests/pth_destroy_cond
 valgrind/helgrind/tests/pth_mempcpy_false_races
+valgrind/helgrind/tests/sem_timedwait
 valgrind/helgrind/tests/shmem_abits
 valgrind/helgrind/tests/stackteardown
 valgrind/helgrind/tests/t2t
@@ -273,6 +280,7 @@ valgrind/massif/ms_print
 valgrind/massif/tests/alloc-fns
 valgrind/massif/tests/basic
 valgrind/massif/tests/big-alloc
+valgrind/massif/tests/bug469146
 valgrind/massif/tests/culling1
 valgrind/massif/tests/culling2
 valgrind/massif/tests/custom_alloc
@@ -308,7 +316,11 @@ valgrind/memcheck/tests/amd64/insn-pmovmskb
 valgrind/memcheck/tests/amd64-linux/access_below_sp
 valgrind/memcheck/tests/amd64-linux/defcfaexpr
 valgrind/memcheck/tests/amd64-linux/int3-amd64
+valgrind/memcheck/tests/amd64-linux/reallocarray
 valgrind/memcheck/tests/amd64/more_x87_fp
+valgrind/memcheck/tests/amd64/pcmpgt
+valgrind/memcheck/tests/amd64/rh2257546_128
+valgrind/memcheck/tests/amd64/rh2257546_256
 valgrind/memcheck/tests/amd64/sh-mem-vec128
 valgrind/memcheck/tests/amd64/sh-mem-vec256
 valgrind/memcheck/tests/amd64/shr_edx
@@ -330,6 +342,10 @@ valgrind/memcheck/tests/buflen_check
 valgrind/memcheck/tests/bug155125
 valgrind/memcheck/tests/bug287260
 valgrind/memcheck/tests/bug340392
+valgrind/memcheck/tests/bug401284
+valgrind/memcheck/tests/bug464969_d_demangle
+valgrind/memcheck/tests/bug472219
+valgrind/memcheck/tests/bug484002
 valgrind/memcheck/tests/calloc-overflow
 valgrind/memcheck/tests/cdebug_zlib
 valgrind/memcheck/tests/cdebug_zlib_gnu
@@ -338,6 +354,7 @@ valgrind/memcheck/tests/client-msg
 valgrind/memcheck/tests/clientperm
 valgrind/memcheck/tests/clireq_nofill
 valgrind/memcheck/tests/clo_redzone
+valgrind/memcheck/tests/close_range
 valgrind/memcheck/tests/cond_ld_st
 valgrind/memcheck/tests/custom_alloc
 valgrind/memcheck/tests/custom-overlap
@@ -380,7 +397,9 @@ valgrind/memcheck/tests/leak-delta
 valgrind/memcheck/tests/leak-pool
 valgrind/memcheck/tests/leak-segv-jmp
 valgrind/memcheck/tests/leak-tree
+valgrind/memcheck/tests/linux/aligned_alloc
 valgrind/memcheck/tests/linux/brk
+valgrind/memcheck/tests/linux/bug480706
 valgrind/memcheck/tests/linux/capget
 valgrind/memcheck/tests/linux/check_execveat
 valgrind/memcheck/tests/linux/check_preadv2_pwritev2
@@ -392,12 +411,14 @@ valgrind/memcheck/tests/linux/getregset
 valgrind/memcheck/tests/linux/ioctl-tiocsig
 valgrind/memcheck/tests/linux/lsframe1
 valgrind/memcheck/tests/linux/lsframe2
+valgrind/memcheck/tests/linux/memalign
 valgrind/memcheck/tests/linux/memfd_create
 valgrind/memcheck/tests/linux/proc-auxv
 valgrind/memcheck/tests/linux/rfcomm
 valgrind/memcheck/tests/linux/sigqueue
 valgrind/memcheck/tests/linux/stack_changes
 valgrind/memcheck/tests/linux/stack_switch
+valgrind/memcheck/tests/linux/strlcat_strlcpy
 valgrind/memcheck/tests/linux/syscalls-2007
 valgrind/memcheck/tests/linux/sys-copy_file_range
 valgrind/memcheck/tests/linux/sys-execveat
@@ -419,9 +440,12 @@ valgrind/memcheck/tests/manuel1
 valgrind/memcheck/tests/manuel2
 valgrind/memcheck/tests/manuel3
 valgrind/memcheck/tests/match-overrun
-valgrind/memcheck/tests/memalign2
+valgrind/memcheck/tests/memalign_args
 valgrind/memcheck/tests/memalign_test
+valgrind/memcheck/tests/memccpy1
+valgrind/memcheck/tests/memccpy2
 valgrind/memcheck/tests/memcmptest
+valgrind/memcheck/tests/memmem
 valgrind/memcheck/tests/mempool
 valgrind/memcheck/tests/mempool2
 valgrind/memcheck/tests/metadata
@@ -429,6 +453,8 @@ valgrind/memcheck/tests/mismatches
 valgrind/memcheck/tests/mmaptest
 valgrind/memcheck/tests/nanoleak2
 valgrind/memcheck/tests/nanoleak_supp
+valgrind/memcheck/tests/new_aligned_delete_default
+valgrind/memcheck/tests/new_delete_mismatch_size
 valgrind/memcheck/tests/new_nothrow
 valgrind/memcheck/tests/new_override
 valgrind/memcheck/tests/noisy_child
@@ -446,11 +472,15 @@ valgrind/memcheck/tests/pdb-realloc
 valgrind/memcheck/tests/pdb-realloc2
 valgrind/memcheck/tests/pipe
 valgrind/memcheck/tests/pointer-trace
+valgrind/memcheck/tests/posix_memalign
 valgrind/memcheck/tests/post-syscall
 valgrind/memcheck/tests/reach_thread_register
 valgrind/memcheck/tests/realloc1
 valgrind/memcheck/tests/realloc2
 valgrind/memcheck/tests/realloc3
+valgrind/memcheck/tests/realloc_size_zero
+valgrind/memcheck/tests/realloc_size_zero_again
+valgrind/memcheck/tests/realloc_size_zero_mismatch
 valgrind/memcheck/tests/recursive-merge
 valgrind/memcheck/tests/resvn_stack
 valgrind/memcheck/tests/sbfragment
@@ -461,6 +491,10 @@ valgrind/memcheck/tests/sigaltstack
 valgrind/memcheck/tests/sigkill
 valgrind/memcheck/tests/signal2
 valgrind/memcheck/tests/sigprocmask
+valgrind/memcheck/tests/sized_aligned_new_delete_args
+valgrind/memcheck/tests/sized_aligned_new_delete_misaligned1
+valgrind/memcheck/tests/sized_aligned_new_delete_misaligned2
+valgrind/memcheck/tests/sized_aligned_new_delete_misaligned3
 valgrind/memcheck/tests/sized_delete
 valgrind/memcheck/tests/stack_changes
 valgrind/memcheck/tests/stack_switch
@@ -491,7 +525,10 @@ valgrind/memcheck/tests/vbit-test/vbit-test
 valgrind/memcheck/tests/vbit-test/vbit-test-sec
 valgrind/memcheck/tests/vcpu_fbench
 valgrind/memcheck/tests/vcpu_fnfns
+valgrind/memcheck/tests/wcpncpy
 valgrind/memcheck/tests/wcs
+valgrind/memcheck/tests/wcsncpy
+valgrind/memcheck/tests/wmemcmp
 valgrind/memcheck/tests/wrap1
 valgrind/memcheck/tests/wrap2
 valgrind/memcheck/tests/wrap3
@@ -538,6 +575,7 @@ valgrind/none/tests/amd64-linux/cet_nops_fs
 valgrind/none/tests/amd64-linux/cet_nops_gs
 valgrind/none/tests/amd64-linux/bug345887
 valgrind/none/tests/amd64-linux/map_32bits
+valgrind/none/tests/amd64/bug485148
 valgrind/none/tests/amd64/getseg
 valgrind/none/tests/amd64/insn_basic
 valgrind/none/tests/amd64/insn_basic.c
@@ -560,6 +598,7 @@ valgrind/none/tests/amd64/looper
 valgrind/none/tests/amd64/loopnel
 valgrind/none/tests/amd64/lzcnt64
 valgrind/none/tests/amd64/movbe
+valgrind/none/tests/amd64/mpx
 valgrind/none/tests/amd64/nan80and64
 valgrind/none/tests/amd64/nibz_bennee_mmap
 valgrind/none/tests/amd64/pcmpstr64
@@ -590,6 +629,7 @@ valgrind/none/tests/closeall
 valgrind/none/tests/coolo_sigaction
 valgrind/none/tests/coolo_strlen
 valgrind/none/tests/discard
+valgrind/none/tests/double_close_range
 valgrind/none/tests/exec-sigmask
 valgrind/none/tests/execve
 valgrind/none/tests/faultstatus
@@ -603,6 +643,7 @@ valgrind/none/tests/fdleak_ipv4
 valgrind/none/tests/fdleak_open
 valgrind/none/tests/fdleak_pipe
 valgrind/none/tests/fdleak_socketpair
+valgrind/none/tests/file_dclose
 valgrind/none/tests/floored
 valgrind/none/tests/fork
 valgrind/none/tests/fucomip
@@ -629,6 +670,7 @@ valgrind/none/tests/manythreads
 valgrind/none/tests/map_unaligned
 valgrind/none/tests/map_unmap
 valgrind/none/tests/mmap_fcntl_bug
+valgrind/none/tests/mmap_o_direct
 valgrind/none/tests/mq
 valgrind/none/tests/munmap_exe
 valgrind/none/tests/nestedfns
@@ -671,6 +713,7 @@ valgrind/none/tests/shorts
 valgrind/none/tests/sigprocmask
 valgrind/none/tests/sigstackgrowth
 valgrind/none/tests/sigsusp
+valgrind/none/tests/socket_close
 valgrind/none/tests/stackgrowth
 valgrind/none/tests/syscall-restart1
 valgrind/none/tests/syscall-restart2
@@ -717,10 +760,14 @@ valgrind-listener
 *-x86-linux
 *-amd64-linux
 
-# Commented out as you should really look at these
-# Ignore files generated during test runs
-#*.stderr.diff
-#*.stderr.out
+# Ignore the output and diffs that vg_regtest leaves behind for each failing
+# test (it deletes them for passing tests).  check-regtest.sh reports the
+# failing tests, and CI saves these files.
+valgrind/**/*.out
+valgrind/**/*.diff*
+
+# Ignore output of check-regtest.sh (the log is covered by *.log)
+/regtest-*-observed.txt
 
 # Ignore generated and installed valgrind tools
 valgrind/inst
