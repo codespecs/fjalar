@@ -337,20 +337,30 @@ location_expression_to_string(enum dwarf_location_atom op) {
   }
 }
 
-// Returns true if Fjalar's location evaluator (in visitVariableGroup) applies
-// op.  A register operation (DW_OP_reg* or DW_OP_breg*) is supported only if
+// A register operation (DW_OP_reg* or DW_OP_breg*) is supported only if
 // Fjalar can read the register; Fjalar saves such a register, with its A and
 // V bits and DynComp tags, at function entrance.  extractOneFormalParameterVar
 // further restricts which locations that use DW_OP_reg* it accepts.
-int location_op_is_supported(unsigned int op) {
+location_op_kind location_op_kind_of(unsigned int op) {
   if ((op >= DW_OP_breg0) && (op <= DW_OP_breg31)) {
-    return (op - DW_OP_breg0) < FJALAR_NUM_DWARF_REGS;
+    return ((op - DW_OP_breg0) < FJALAR_NUM_DWARF_REGS
+            ? LOC_OP_REG : LOC_OP_UNSUPPORTED);
   }
   if ((op >= DW_OP_reg0) && (op <= DW_OP_reg31)) {
-    return (op - DW_OP_reg0) < FJALAR_NUM_DWARF_REGS;
+    return ((op - DW_OP_reg0) < FJALAR_NUM_DWARF_REGS
+            ? LOC_OP_REG : LOC_OP_UNSUPPORTED);
   }
-  return ((op == DW_OP_deref)
-          || ((op >= DW_OP_const1u) && (op <= DW_OP_consts))
-          || (op == DW_OP_plus_uconst)
-          || (op == DW_OP_fbreg));
+  if (op == DW_OP_deref) {
+    return LOC_OP_DEREF;
+  }
+  if ((op >= DW_OP_const1u) && (op <= DW_OP_consts)) {
+    return LOC_OP_CONST;
+  }
+  if (op == DW_OP_plus_uconst) {
+    return LOC_OP_PLUS_UCONST;
+  }
+  if (op == DW_OP_fbreg) {
+    return LOC_OP_FBREG;
+  }
+  return LOC_OP_UNSUPPORTED;
 }

@@ -1005,26 +1005,26 @@ void visitVariableGroup(VariableOrigin varOrigin,
         else {
 
           // Dwarf Locations are implemented as a sequence of operations to be performed.
-          // Every op satisfies location_op_is_supported.
           for(i = 0; i < var->location_expression_size; i++ ) {
             dwarf_location *dloc  = &(var->location_expression[i]);
             unsigned int  op = dloc->atom;
+            location_op_kind kind = location_op_kind_of(op);
             UInt regNum;
 
-            if(op == DW_OP_deref) {
+            if(kind == LOC_OP_DEREF) {
               // Dereference result of last DWARF operation
               tl_assert(var_loc);
               var_loc = *(Addr *)var_loc;
 
-            } else if((op >= DW_OP_const1u) && (op <= DW_OP_consts)) {
+            } else if(kind == LOC_OP_CONST) {
               // DWARF supplied constant
               var_loc = dloc->atom_offset;
 
-            } else if(op == DW_OP_plus_uconst) {
+            } else if(kind == LOC_OP_PLUS_UCONST) {
               // Add DWARF supplied constant to value to result of last DWARF operation
               var_loc += dloc->atom_offset;
 
-            } else if(dwarf_op_reg_num(op, &regNum)) {
+            } else if(kind == LOC_OP_REG) {
               // DW_OP_regN: the value is in register N.
               // DW_OP_bregN: the value is at an offset from register N's value.
               // Either way, use the value that the register held at
@@ -1034,11 +1034,16 @@ void visitVariableGroup(VariableOrigin varOrigin,
               // have overwritten the register and the epilogue has
               // already restored or popped it.
               Bool isBreg = (op >= DW_OP_breg0) && (op <= DW_OP_breg31);
-              // extractOneFormalParameterVar() saves every register that
-              // a valid location uses.  It sets locationUnsupported for any
-              // other register location, which keeps the main and this
-              // heuristics from making the location valid.
-              tl_assert(entryRegs && (funcPtr->entryRegsMask & (1U << regNum)));
+              dwarf_op_reg_num(op, &regNum);
+              if (!entryRegs || !(funcPtr->entryRegsMask & (1U << regNum))) {
+                // extractOneFormalParameterVar() saves every register that
+                // a valid location uses, but some heuristic marked the
+                // location valid anyway.
+                FJALAR_DPRINTF("\tRegister %s was not saved at entrance; value is nonsensical\n",
+                               dwarf_reg_name(regNum));
+                var_loc = 0;
+                break;
+              }
               if (isBreg) {
                 Addr reg_val = entryRegs[regNum];
                 FJALAR_DPRINTF("\tObtaining entrance register value: [%%%s]: %p\n", dwarf_reg_name(regNum),
@@ -1051,13 +1056,13 @@ void visitVariableGroup(VariableOrigin varOrigin,
                 var_loc = (Addr)&entryRegs[regNum];
               }
 
-            } else if(op == DW_OP_fbreg) {
+            } else if(kind == LOC_OP_FBREG) {
               // Get value located at an offset from the FRAME_BASE.
               FJALAR_DPRINTF("atom offset: %lld vs. byteOffset: %d\n", dloc->atom_offset, var->byteOffset);
               var_loc = stackBaseAddrGuest + dloc->atom_offset;
 
             } else {
-              // location_op_is_supported must agree with this evaluator.
+              // decode_location_expression marked the location unsupported.
               FJALAR_DPRINTF("\tUnsupported DWARF stack OP: %s\n", location_expression_to_string(op));
               tl_assert(0);
             }

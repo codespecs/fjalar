@@ -347,17 +347,18 @@ typedef struct
                  //       way to get the parameter location
   unsigned int valid_loc;
 
-  // True if the location expression contains an operation that does
-  // not satisfy location_op_is_supported, such as a register that Fjalar cannot read,
-  // DW_OP_stack_value, or a DW_OP_piece that is not the last operation or
-  // that has size 0,
-  // or contains more than MAX_DWARF_OPS operations, or is a location list.
-  // Fjalar cannot read such a location.
+  // True if the location expression contains an operation of kind
+  // LOC_OP_UNSUPPORTED (see location_op_kind_of), such as a register that
+  // Fjalar cannot read or DW_OP_stack_value, or contains a DW_OP_piece that
+  // is not the last operation or that has size 0, or contains more than
+  // MAX_DWARF_OPS operations.  Fjalar cannot read such a location.  A
+  // location list does not set this flag:  like a missing location, it
+  // leaves the location unknown, so heuristics may supply it.
   char location_has_unsupported_op;
 
   // If the location expression ends with DW_OP_piece, the size of that
   // piece; otherwise 0.  Fjalar can read the location only if the piece is
-  // the whole parameter.
+  // the whole parameter and some operation precedes it.
   unsigned long location_piece_size;
 
   unsigned long abstract_origin_ID; // See comment in the function struct definition

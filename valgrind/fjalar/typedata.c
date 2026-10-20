@@ -1218,23 +1218,24 @@ char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom
     return 0;
 }
 
+// Returns e's formal_parameter if e is a formal parameter, otherwise 0.
+static formal_parameter* formal_parameter_of(dwarf_entry* e)
+{
+  if ((e == 0) || (e->entry_ptr == 0) || !tag_is_formal_parameter(e->tag_name))
+    return 0;
+  return (formal_parameter*)e->entry_ptr;
+}
+
 char harvest_formal_param_location_offset(dwarf_entry* e, long value)
 {
-  unsigned long tag;
-  if ((e == 0) || (e->entry_ptr == 0))
+  formal_parameter* paramPtr = formal_parameter_of(e);
+  if (paramPtr == 0)
     return 0;
 
-  tag = e->tag_name;
-
-  if (tag_is_formal_parameter(tag))
-    {
-      ((formal_parameter*)e->entry_ptr)->location_type = LT_FP_OFFSET;
-      ((formal_parameter*)e->entry_ptr)->location = value;
-      ((formal_parameter*)e->entry_ptr)->valid_loc = 1;
-      return 1;
-    }
-  else
-    return 0;
+  paramPtr->location_type = LT_FP_OFFSET;
+  paramPtr->location = value;
+  paramPtr->valid_loc = 1;
+  return 1;
 }
 
 // If e is a formal parameter, records that Fjalar cannot read its location
@@ -1243,34 +1244,27 @@ char harvest_formal_param_location_offset(dwarf_entry* e, long value)
 // otherwise.
 char harvest_formal_param_location_unsupported(dwarf_entry* e)
 {
-  if ((e == 0) || (e->entry_ptr == 0))
+  formal_parameter* paramPtr = formal_parameter_of(e);
+  if (paramPtr == 0)
     return 0;
 
-  if (tag_is_formal_parameter(e->tag_name))
-    {
-      ((formal_parameter*)e->entry_ptr)->location_has_unsupported_op = 1;
-      return 1;
-    }
-  else
-    return 0;
+  paramPtr->location_has_unsupported_op = 1;
+  return 1;
 }
 
 // If e is a formal parameter, records that its location expression ends
 // with "DW_OP_piece size" (sets location_piece_size).
 // extractOneFormalParameterVar omits the parameter unless the piece is the
-// whole parameter.  Returns 1 if e is a formal parameter, 0 otherwise.
+// whole parameter and some operation precedes it.  Returns 1 if e is a
+// formal parameter, 0 otherwise.
 char harvest_formal_param_location_piece(dwarf_entry* e, unsigned long size)
 {
-  if ((e == 0) || (e->entry_ptr == 0))
+  formal_parameter* paramPtr = formal_parameter_of(e);
+  if (paramPtr == 0)
     return 0;
 
-  if (tag_is_formal_parameter(e->tag_name))
-    {
-      ((formal_parameter*)e->entry_ptr)->location_piece_size = size;
-      return 1;
-    }
-  else
-    return 0;
+  paramPtr->location_piece_size = size;
+  return 1;
 }
 
 char harvest_data_member_location(dwarf_entry* e, unsigned long value)

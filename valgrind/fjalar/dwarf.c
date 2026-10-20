@@ -1456,7 +1456,7 @@ decode_location_expression (unsigned char * data,
 	 stack), makes a formal parameter's location unreadable.
 	 DW_OP_piece is handled below.  */
       if (ok_to_harvest && op != DW_OP_nop && op != DW_OP_piece
-	  && !location_op_is_supported (op))
+	  && location_op_kind_of (op) == LOC_OP_UNSUPPORTED)
 	harvest_formal_param_location_unsupported (entry);
 
       switch (op)
@@ -1835,7 +1835,9 @@ decode_location_expression (unsigned char * data,
 	  READ_ULEB (uvalue, data, end);
 	  /* Fjalar can read a location that consists of one piece, if that
 	     piece is the whole parameter; extractOneFormalParameterVar
-	     checks the size.  A piece that is not the last op means that
+	     checks the size and that the piece has a location (a piece
+	     with no preceding op is optimized out).  A piece that is not
+	     the last op means that
 	     the parameter is split.  A piece of size 0 covers no bytes.  */
 	  if (ok_to_harvest)
 	    {
@@ -3856,10 +3858,6 @@ read_and_display_attr_value (unsigned long           attribute,
           if (ok_to_harvest) {
               // frame base location list
               harvest_frame_base(entry, DW_OP_list, uvalue);
-              // Fjalar does not evaluate a location list for a formal
-              // parameter, so it cannot read the parameter.
-              if (attribute == DW_AT_location)
-                harvest_formal_param_location_unsupported(entry);
           }
           printf ("(");
           printf ("location list");
