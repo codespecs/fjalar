@@ -853,15 +853,11 @@ void exit_function(FunctionEntry* f)
   // now have shadow V-bits for the FPU stack.
 
 #if defined(VGA_amd64)
-  // XMM registers are represented as a 128-bit integer
-  // (Actually an array of 4 32-bit integers), so reinterpret
-  // cast it as a double.
-  // The shadow is likewise an array of 4 32-bit integers; a double
-  // occupies the low 2 of them.
-  {
-    UInt* XMM0shadow = VG_(get_shadow_XMM_N)(currentTID, 0);
-    FPUshadow = (ULong)XMM0shadow[0] | ((ULong)XMM0shadow[1] << 32);
-  }
+  // VG_(get_XMM_N) and VG_(get_shadow_XMM_N) return the whole 256-bit
+  // YMM register, as an array of 8 32-bit integers.  A double occupies
+  // the low 2 of them, so reinterpret cast the register as a double
+  // and its shadow as a 64-bit integer.
+  FPUshadow = *(ULong *)VG_(get_shadow_XMM_N)(currentTID, 0);
   fpuReturnVal = *(double *)VG_(get_XMM_N)(currentTID, 0);
   //RUDD DEBUG
   /* for(i=0 ; i < 4; i++) { */
