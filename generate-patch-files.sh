@@ -110,7 +110,9 @@ run_diff() {
 }
 
 run_diff coregrind.patch -ur --unidirectional-new-file -x.git valgrind-old valgrind-new
-run_diff memcheck.patch -ur --unidirectional-new-file -x.git -xdocs -xtests valgrind-old/memcheck valgrind-new/memcheck
+# generate-fjalar-makefile.sh generates Fjalar's version of
+# memcheck/Makefile.am, so memcheck.patch omits it.
+run_diff memcheck.patch -ur --unidirectional-new-file -x.git -xdocs -xtests -xMakefile.am valgrind-old/memcheck valgrind-new/memcheck
 
 # fjalar/valgrind is usually built in place.  To keep build products out of
 # the Fjalar diffs, diff a copy of the files that git does not ignore.  The
