@@ -2495,18 +2495,21 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
    case Iop_ReinterpI128asV128:
  */
 
-/* Returns the address addr+bias. */
+/* Returns an atom for the address addr+bias.  If bias is nonzero,
+   this emits into dce->bb a statement that computes the sum into a new
+   temporary, so callers should not call it repeatedly for the same
+   address and bias. */
 static
-IRAtom* mkAddrAct_DC ( DCEnv* dce, IRAtom* addr, UInt bias )
+IRAtom* mkAddrPlusBias_DC ( DCEnv* dce, IRAtom* addr, UInt bias )
 {
    IROp    mkAdd;
    IRAtom* eBias;
    IRType  tyAddr  = dce->hWordTy;
 
+   tl_assert( tyAddr == Ity_I32 || tyAddr == Ity_I64 );
    if (bias == 0) {
       return addr;
    }
-   tl_assert( tyAddr == Ity_I32 || tyAddr == Ity_I64 );
    mkAdd   = tyAddr==Ity_I32 ? Iop_Add32 : Iop_Add64;
    eBias   = tyAddr==Ity_I32 ? mkU32(bias) : mkU64(bias);
    return assignNew_DC(dce, tyAddr, binop(mkAdd, addr, eBias) );
@@ -2545,7 +2548,7 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
    }
 
    /* Generate the actual address into addrAct. */
-   addrAct = mkAddrAct_DC(dce, addr, bias);
+   addrAct = mkAddrPlusBias_DC(dce, addr, bias);
 
    /* We need to have a place to park the tag we're just about to
       read. */
@@ -2561,6 +2564,9 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 }
 
 // Returns the tag of a load of type ty from addr+bias.
+// For Ity_V256, except in dyncomp_dataflow_only_mode and
+// dyncomp_dataflow_comparisons_mode, only the low 16 bytes are read, so
+// the tag ignores the upper 16 bytes.
 static
 IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 {
@@ -2584,7 +2590,7 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
                                        2/*regparms*/,
                                        "MC_(helperc_LOAD_TAG_N)",
                                        &MC_(helperc_LOAD_TAG_N),
-                                       mkIRExprVec_2( mkAddrAct_DC(dce, addr, bias),
+                                       mkIRExprVec_2( mkAddrPlusBias_DC(dce, addr, bias),
                                                       mkIRExpr_HWord(sizeofIRType(ty)) ));
       setHelperAnns_DC( dce, di );
       stmt_DC('V',  dce, IRStmt_Dirty(di) );
