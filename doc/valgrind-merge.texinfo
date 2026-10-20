@@ -750,8 +750,8 @@ to run the tests prior to the source update as we will use the
 current Fjalar sources.
 
 @example
-make -C $INV/fjalar --no-print-directory clean build
-make -C $INV/fjalar --no-print-directory test 2>&1 | tee $INV/fjalar/test.log
+make -C $INV/fjalar --no-print-directory clean build && \
+  make -C $INV/fjalar --no-print-directory test 2>&1 | tee $INV/fjalar/test.log
 @end example
 
 @noindent
