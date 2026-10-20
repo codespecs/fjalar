@@ -132,6 +132,16 @@ UInt val_uf_union_tags_in_range(Addr a, SizeT len);
 void val_uf_union_tags_at_addr(Addr a1, Addr a2);
 void set_tag_for_GOT(Addr a, SizeT len);
 
+// Returns a description of the current instruction address, for
+// trace output.  It is expensive, so call it only when tracing; for
+// example, as an argument to DYNCOMP_TPRINTF, which evaluates its
+// arguments only when tracing.
+static __inline__ const HChar* current_IP_description(void) {
+  Addr eip = VG_(get_IP)(VG_(get_running_tid)());
+  // Describe this (probably live) address with current epoch
+  return VG_(describe_IP)(VG_(current_DiEpoch)(), eip, NULL);
+}
+
 static __inline__ void set_tag ( Addr a, UInt tag )
 {
   if (IS_SECONDARY_TAG_MAP_NULL(a)) {
@@ -177,17 +187,14 @@ static __inline__ UInt get_tag ( Addr a )
 static __inline__ UInt get_tag ( Addr a )
 {
   UInt tag;
-  Addr tid = VG_(get_IP)(VG_(get_running_tid)());
-  const HChar *eip_info;
-  // Describe this (probably live) address with current epoch
-  eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), tid, NULL);
 
   if (IS_SECONDARY_TAG_MAP_NULL(a)) {
     tag = 0; // 0 means NO tag for that byte
   } else {
     tag = primary_tag_map[PM_IDX(a)][SM_OFF(a)];
   }
-  printf("[DynComp] Fetching tag %d for %p at %s\n", tag, (void*)a, eip_info);
+  printf("[DynComp] Fetching tag %d for %p at %s\n", tag, (void*)a,
+         current_IP_description());
   return tag;
 }
 #endif
@@ -233,16 +240,12 @@ static __inline__ UInt grab_fresh_tag(void) {
   totalNumTagsAssigned++;
 #ifndef MAX_DEBUG_INFO
   if (dyncomp_print_trace_all) {
-#endif
-    Addr tid = VG_(get_IP)(VG_(get_running_tid)());
-    const HChar *eip_info;
-    // Describe this (probably live) address with current epoch
-    eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), tid, NULL);
-#ifndef MAX_DEBUG_INFO
-    DYNCOMP_TPRINTF("[DynComp] Creating fresh tag %u at %s\n", tag, eip_info);
+    DYNCOMP_TPRINTF("[DynComp] Creating fresh tag %u at %s\n", tag,
+                    current_IP_description());
   }
 #else
-    printf("[DynComp] Creating fresh tag %u at %s\n", tag, eip_info);
+  printf("[DynComp] Creating fresh tag %u at %s\n", tag,
+         current_IP_description());
 #endif
   return tag;
 
