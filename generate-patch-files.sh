@@ -3,7 +3,8 @@
 # This script creates patch files that are used when merging a newer
 # version of upstream Valgrind into Fjalar and Kvasir.  It compares the
 # Valgrind trees $INV/valgrind-old and $INV/valgrind-new, and the Fjalar
-# tree that contains this script, which need not be $INV/fjalar.
+# tree that contains this script, which need not be $INV/fjalar.  If
+# variable FJALAR is set, it must name that tree.
 
 # Fail the whole script if any command fails, including within a pipeline.
 set -e
@@ -19,7 +20,18 @@ if [ -z "$INV" ]; then
 fi
 
 # The Fjalar tree that contains this script.
-fjalar="$(cd "$(dirname "$0")" && pwd -P)"
+fjalar=$(dirname "$(readlink -f "$0")")
+echo "$0: Fjalar tree: $fjalar" >&2
+# Running the script from a tree other than the one being merged into would
+# silently diff the wrong tree.
+if [ -n "$FJALAR" ]; then
+  fjalar_var=$(cd -- "$FJALAR" 2> /dev/null && pwd -P) || fjalar_var=
+  if [ "$fjalar_var" != "$fjalar" ]; then
+    echo "$0: FJALAR is $FJALAR, but this script is in $fjalar." >&2
+    echo "$0: Run \$FJALAR/generate-patch-files.sh instead." >&2
+    exit 1
+  fi
+fi
 
 # Remove all the output files first, so that a failure, including a failed
 # check below, does not leave stale ones from an earlier run.

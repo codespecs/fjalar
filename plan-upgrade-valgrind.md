@@ -4,9 +4,10 @@ Reference procedure: `doc/valgrind-merge.texinfo` (chapters "Getting Started"
 through "Committing").  This plan applies that procedure to the current
 situation and notes where it needs adjusting.
 
-Below, `$INV/fjalar` means the Fjalar tree being upgraded.  That tree need not
-be at `$INV/fjalar`; for example, it may be a clone dedicated to the merge
-branch.  The patch and diff files are written to `$INV` regardless.
+Below, `$FJALAR` is the Fjalar tree being upgraded, as in the reference
+procedure.  That tree need not be at `$INV/fjalar`; for example, it may be a
+clone dedicated to the merge branch.  The patch and diff files are written to
+`$INV` regardless.
 
 ## Ordering: do this after the readelf upgrade
 
@@ -53,13 +54,15 @@ it completely (merged, CI green) before starting this one.  That plan's
      against it.
 
 2. **Get the trees.**
+
    ```sh
    export VOLDVER=VALGRIND_3_23_0 VNEWVER=VALGRIND_3_27_1
    cd $INV
    git clone -b $VOLDVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-old
    git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-new
    ```
-   Remove from `$INV/fjalar/valgrind` the files that `valgrind-new` does not have,
+
+   Remove from `$FJALAR/valgrind` the files that `valgrind-new` does not have,
    using the commands in section "Remove files that the target Valgrind release
    does not have" of `doc/valgrind-merge.texinfo`.  The second command there
    handles Fjalar's own copy of memcheck in `valgrind/fjalar/`.
@@ -71,14 +74,16 @@ it completely (merged, CI green) before starting this one.  That plan's
    `coregrind.patch` and then be `git add`ed by `make git-update`.  The
    error message gives the `git reset`/`git clean` command that makes a tree
    pristine again.  Build a copy instead:
+
    ```sh
    rm -rf valgrind-new-build
    git clone -q valgrind-new valgrind-new-build && cd valgrind-new-build
    ./autogen.sh && ./configure --prefix=$(pwd)/inst
    make all install && make regtest XMLLINT=xmllint-skipped-by-check-regtest > test.log 2>&1
    make -s --no-print-directory post-regtest-checks > test-post.log 2>&1
-   $INV/fjalar/check-regtest.sh --log test.log --expected $INV/regtest-upstream-3.27.1.txt --update
+   $FJALAR/check-regtest.sh --log test.log --expected $INV/regtest-upstream-3.27.1.txt --update
    ```
+
    These are the options that `check-regtest.sh` itself uses.  Setting
    `XMLLINT` keeps `make check` from validating the manual, which fails
    without the DocBook DTD.  `-s --no-print-directory` keeps make's own
@@ -92,13 +97,13 @@ it completely (merged, CI green) before starting this one.  That plan's
    directory that this build installs into; Fjalar's tree does not have
    that error.
 
-4. **Create the diffs.** Run `$INV/fjalar/generate-patch-files.sh`, producing
+4. **Create the diffs.** Run `$FJALAR/generate-patch-files.sh`, producing
    `coregrind.patch`, `memcheck.patch`, `coregrind-Fjalar.diff`,
    `memcheck-Fjalar.diff`.  The script checks that `valgrind-old` and
    `valgrind-new` are pristine clones at `$VOLDVER` and `$VNEWVER`.
 
 5. **Coregrind merge.**
-   - `cd $INV/fjalar/valgrind; patch -p1 -lu --dry-run < $INV/coregrind.patch`,
+   - `cd $FJALAR/valgrind; patch -p1 -lu --dry-run < $INV/coregrind.patch`,
      then for real.
    - Fix zero-length `.exp` files and lost execute bits (the two `find`
      commands in the doc).
@@ -119,7 +124,7 @@ it completely (merged, CI green) before starting this one.  That plan's
      size/alignment checks, since Fjalar enlarges the shadow area.
 
 6. **Memcheck merge** into `valgrind/fjalar/`.
-   - `cd $INV/fjalar/valgrind/fjalar; patch -p2 -lu --dry-run < $INV/memcheck.patch`,
+   - `cd $FJALAR/valgrind/fjalar; patch -p2 -lu --dry-run < $INV/memcheck.patch`,
      then for real (try `-F3` only if needed, and review its results).
    - Resolve `*.rej`.  Remember part of `mc_translate.c` lives in
      `fjalar/mc_translate.h`.  Preserve the #73 edits to `mc_translate.c`
@@ -127,7 +132,7 @@ it completely (merged, CI green) before starting this one.  That plan's
    - In `mc_translate.c`'s `MC_(instrument)`, check that every case has
      matching DynComp code and that new cases get a DynComp counterpart.
    - Check `mc_main.c` still has Fjalar's options/version info.
-   - Run `$INV/fjalar/generate-fjalar-makefile.sh`, which regenerates
+   - Run `$FJALAR/generate-fjalar-makefile.sh`, which regenerates
      `valgrind/fjalar/Makefile.am` from `valgrind/memcheck/Makefile.am`, so
      Fjalar builds every new Memcheck source file.  Review the diff of
      `valgrind/fjalar/Makefile.am`, and update `valgrind/fjalar/fjalar.am`,
@@ -150,12 +155,12 @@ it completely (merged, CI green) before starting this one.  That plan's
      (`coregrind/m_debuginfo`) and its own `readelf.c`/`dwarf.c` don't now
      conflict (duplicate symbols, changed `VG_()` libc names).
 
-8. **Build.** `make -C $INV/fjalar build`; fix compilation errors and new
+8. **Build.** `make -C $FJALAR build`; fix compilation errors and new
    warnings (newer Valgrind may enable additional warning flags; Binutils-
    derived code is the usual source).  Test with both a current gcc and the
    compilers in the CI containers.
 
-9. **Test.**  Run these from `$INV/fjalar` (`cd $INV/fjalar`).
+9. **Test.**  Run these from `$FJALAR` (`cd $FJALAR`).
    - `./check-regtest.sh`.  The expected failures will change, because
      3.27.1 adds, removes, and fixes tests.  For each unexpected failure:
      if it is also in step 3's `regtest-upstream-3.27.1.txt`, it is an

@@ -4,7 +4,8 @@ Reference procedure: `doc/valgrind-merge.texinfo`, chapter "Updating Readelf
 from Binutils".  This plan applies that procedure to the current situation and
 notes where it needs adjusting.
 
-Below, `$INV/fjalar` means the Fjalar tree being upgraded.
+Below, `$FJALAR` is the Fjalar tree being upgraded, as in the reference
+procedure.
 
 ## Ordering: do this before the Valgrind upgrade
 
@@ -115,7 +116,7 @@ Kvasir tests after each step.
 5. **Apply the patches**, one at a time, dry run first, using
    `--merge=diff3` so conflicts are inline:
    ```sh
-   cd $INV/fjalar/valgrind/fjalar
+   cd $FJALAR/valgrind/fjalar
    cp -p dwarf.c dwarf.c.pre-merge; cp -p readelf.c readelf.c.pre-merge
    SKIPFILTER='/can.t find file to patch/ {skip=1} !skip && !/hunks? ignored/ {print} /Skipping patch\./ {skip=0}'
    patch -p1 -lu -f --dry-run < ~/tmp/binutils/include.patch | awk "$SKIPFILTER"
@@ -123,6 +124,7 @@ Kvasir tests after each step.
    patch -p2 -lu -f -F3 --dry-run < ~/tmp/binutils/binutils.patch | awk "$SKIPFILTER"
    patch -p2 -lu -f -F3 --merge=diff3 < ~/tmp/binutils/binutils.patch | awk "$SKIPFILTER"
    ```
+
    The `awk` filter hides the messages for Binutils files that Fjalar doesn't
    use.  The `.pre-merge` copies are for a visual merge tool, e.g.
    `meld ~/tmp/binutils/$BUNEW/binutils/dwarf.c dwarf.c dwarf.c.pre-merge`.
@@ -146,14 +148,14 @@ Kvasir tests after each step.
    - Remove `.rej` files (and any `.orig` files that `patch` creates) as you
      go.  Delete the `.pre-merge` copies once the merge is complete.
 
-7. **Build and fix warnings/errors.**  `make -C $INV/fjalar build`, then
+7. **Build and fix warnings/errors.**  `make -C $FJALAR build`, then
    iterate with `make -C valgrind/fjalar`.  Fix "implicit declaration" and
    "undefined reference" errors (missed `VG_()` wrappers).  Reduce new
    warnings from Valgrind's stricter flags where practical.
    Also check against the system `bfd.h` on both Rocky Linux and Ubuntu
    (the #63 workaround may need to change).
 
-8. **Test.**  Run these from `$INV/fjalar` (`cd $INV/fjalar`; step 5 left
+8. **Test.**  Run these from `$FJALAR` (`cd $FJALAR`; step 5 left
    the shell in `valgrind/fjalar`).
    - `./check-regtest.sh` — must report no unexpected failures, with no
      change to `regtest-expected/*.txt`.  This upgrade doesn't touch

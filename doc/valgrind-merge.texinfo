@@ -99,12 +99,19 @@ To determine whether a newer version of Binutils is available, compare file
 The instructions in this document assume you use bash as your shell.
 If you use a different shell, you will need to adjust the instructions
 accordingly.  Also, we assume @env{$INV} points to a parent directory that
-contains both the Daikon and Fjalar source trees, and that @env{$DAIKONDIR}
-points to the Daikon source tree within it:
+contains both the Daikon and Fjalar source trees, that @env{$DAIKONDIR}
+points to the Daikon source tree within it, and that @env{$FJALAR} points
+to the Fjalar tree that you are merging into:
 
 @example
 export DAIKONDIR=$INV/daikon
+export FJALAR=$INV/fjalar
 @end example
+
+The Fjalar tree need not be at @file{$INV/fjalar}; for example, it may be
+a clone dedicated to the merge branch.  In that case, set @env{$FJALAR} to
+its location.  The patch and diff files are written to @file{$INV}
+regardless.
 
 If you already had @env{$DAIKONDIR} set, make sure it is @file{$INV/daikon}.
 If it pointed elsewhere, some steps would build and test one copy of Daikon,
@@ -136,12 +143,6 @@ git clone https://github.com/codespecs/daikon.git
 git clone https://github.com/codespecs/fjalar.git
 @end example
 
-In this document, @file{$INV/fjalar} means the Fjalar tree that you are
-merging into.  That tree need not be at @file{$INV/fjalar}; for example,
-it may be a clone dedicated to the merge branch.  In that case,
-substitute its location for @file{$INV/fjalar} in every command.  The
-patch and diff files are written to @file{$INV} regardless.
-
 If your operating system is Ubuntu, run
 @example
 sudo apt -yqq install binutils-dev
@@ -158,7 +159,7 @@ Update your enlistment to the latest versions:
 @example
 cd $DAIKONDIR
 git pull
-cd $INV/fjalar
+cd $FJALAR
 git pull
 @end example
 
@@ -167,7 +168,7 @@ Ensure there are no local changes:
 @example
 cd $DAIKONDIR
 git diff
-cd $INV/fjalar
+cd $FJALAR
 git diff
 @end example
 
@@ -179,7 +180,7 @@ Ensure there are no outgoing changes:
 @example
 cd $DAIKONDIR
 git log --branches --not --remotes
-cd $INV/fjalar
+cd $FJALAR
 git log --branches --not --remotes
 @end example
 
@@ -196,20 +197,20 @@ Re-compile Fjalar, then run Daikon's Kvasir tests. (The tests take about 20 minu
 # Optional, to verify Daikon
 make -C $DAIKONDIR compile test
 
-make -C $INV/fjalar build
+make -C $FJALAR build
 make -C $DAIKONDIR/tests/kvasir-tests clean-all regression-tests
 @end example
 
 The Kvasir tests use the Fjalar installed under
 @file{$DAIKONDIR/fjalar/valgrind/inst}; they build it only if it is not
 already installed.  If @file{$DAIKONDIR/fjalar} is not
-@file{$INV/fjalar} (or a symbolic link to it), they test a different copy of Fjalar than the one you are merging; check that
-@code{readlink -f $DAIKONDIR/fjalar} and @code{readlink -f $INV/fjalar}
+@file{$FJALAR} (or a symbolic link to it), they test a different copy of Fjalar than the one you are merging; check that
+@code{readlink -f $DAIKONDIR/fjalar} and @code{readlink -f $FJALAR}
 print the same directory.  Alternatively,
-@command{$INV/fjalar/test-kvasir.sh} runs Daikon's Kvasir and DynComp
-tests against @file{$INV/fjalar}.  It uses the Daikon in
+@command{$FJALAR/test-kvasir.sh} runs Daikon's Kvasir and DynComp
+tests against @file{$FJALAR}.  It uses the Daikon in
 @file{$DAIKONDIR}, cloning Daikon there if that directory does not
-exist, and points @file{$DAIKONDIR/fjalar} at @file{$INV/fjalar}.  If
+exist, and points @file{$DAIKONDIR/fjalar} at @file{$FJALAR}.  If
 @file{$DAIKONDIR} already existed, the script restores
 @file{$DAIKONDIR/fjalar} when it exits; if the script cloned Daikon, it
 leaves the link in place.  It refuses to run if @file{$DAIKONDIR/fjalar}
@@ -218,7 +219,7 @@ exists and is not a symbolic link.  In that case, set
 because later steps use your usual @env{DAIKONDIR}):
 
 @example
-DAIKONDIR=/tmp/$USER/daikon-test-kvasir $INV/fjalar/test-kvasir.sh
+DAIKONDIR=/tmp/$USER/daikon-test-kvasir $FJALAR/test-kvasir.sh
 @end example
 
 The tests should pass. If any tests fail, fix them, then start over from
@@ -235,7 +236,7 @@ need to be omitted to
 simplify the output of the diff commands below.
 
 @example
-cd $INV/fjalar
+cd $FJALAR
 make very-clean
 @end example
 
@@ -246,7 +247,7 @@ all unknown (not tracked) files.  Review the list and in most cases
 you will want to delete the file(s).
 
 @example
-cd $INV/fjalar
+cd $FJALAR
 git ls-files --others --exclude-standard
 @end example
 
@@ -335,7 +336,7 @@ This includes files removed by the Valgrind developers since the last merge,
 and also any files that earlier merges failed to remove.
 
 @example
-cd $INV/fjalar
+cd $FJALAR
 (export LC_ALL=C
  comm -23 <(git ls-files valgrind | sed 's|^valgrind/||' \
               | grep -v -e '^fjalar/' -e '^REVISION$' | sort) \
@@ -351,16 +352,16 @@ sort order; in other locales, @command{comm} can list files that
 Valgrind still has.
 
 Fjalar has two copies of memcheck: an unmodified one in
-@file{$INV/fjalar/valgrind/memcheck/}, and a modified one (the
+@file{$FJALAR/valgrind/memcheck/}, and a modified one (the
 @file{mc_*} files and @file{memcheck.h}) in
-@file{$INV/fjalar/valgrind/fjalar/}.  The command above omits the
+@file{$FJALAR/valgrind/fjalar/}.  The command above omits the
 modified copy.  The following command lists the files in the modified
 copy that have no counterpart in the target Valgrind's memcheck.  Except
 for @file{mc_translate.h}, which is Fjalar's own, check each one for
 Fjalar changes, then remove it:
 
 @example
-cd $INV/fjalar/valgrind/fjalar
+cd $FJALAR/valgrind/fjalar
 for f in mc_*.[ch] memcheck.h; do
   [ -e $INV/valgrind-new/memcheck/$f ] || echo $f
 done
@@ -376,7 +377,7 @@ of the patch and diff files.
 Run:
 
 @example
-$INV/fjalar/generate-patch-files.sh
+$FJALAR/generate-patch-files.sh
 @end example
 
 This creates patch files showing what the Valgrind maintainers have
@@ -417,7 +418,7 @@ It can be difficult to undo a patch operation, so you should first attempt
 a dry run.
 
 @example
-cd $INV/fjalar/valgrind
+cd $FJALAR/valgrind
 patch -p1 -lu < $INV/coregrind.patch --dry-run
 @end example
 
@@ -430,7 +431,7 @@ When you are satisfied with the results of the dry run,
 continue with the actual merge:
 
 @example
-cd $INV/fjalar/valgrind
+cd $FJALAR/valgrind
 patch -p1 -lu < $INV/coregrind.patch
 @end example
 
@@ -446,13 +447,13 @@ steps to correct these problems.
 
 @example
 cd $INV/valgrind-new
-find -size 0 -exec touch $INV'/fjalar/valgrind/@{@}' \;
-find -not -type d -executable -exec chmod +x $INV'/fjalar/valgrind/@{@}' \;
+find -size 0 -exec touch $FJALAR'/valgrind/@{@}' \;
+find -not -type d -executable -exec chmod +x $FJALAR'/valgrind/@{@}' \;
 @end example
 
 @c The 'find' commands above didn't work for me this time as the names contained a '.'
 @c that file system did not like.  I had to do:
-@c find -size 0 -exec sh -c "echo $INV'/fjalar/valgrind{}' | sed 's|\./|/|'" \;|xargs -p touch
+@c find -size 0 -exec sh -c "echo $FJALAR'/valgrind{}' | sed 's|\./|/|'" \;|xargs -p touch
 
 @node Coregrind Conflicts
 @section Coregrind Conflicts
@@ -479,7 +480,7 @@ We use the @file{memcheck.patch} file to update Fjalar as its code is
 derived from Valgrind/Memcheck.
 
 @example
-cd $INV/fjalar/valgrind/fjalar
+cd $FJALAR/valgrind/fjalar
 patch -p2 -lu < $INV/memcheck.patch --dry-run
 @end example
 
@@ -498,7 +499,7 @@ When you are satisfied with the results of the dry run,
 continue with the actual merge:
 
 @example
-cd $INV/fjalar/valgrind/fjalar
+cd $FJALAR/valgrind/fjalar
 patch -p2 -lu < $INV/memcheck.patch
 @end example
 
@@ -508,7 +509,7 @@ The Memcheck merge does not patch Fjalar's build file
 @file{valgrind/memcheck/Makefile.am}, which the Coregrind merge updated:
 
 @example
-cd $INV/fjalar
+cd $FJALAR
 ./generate-fjalar-makefile.sh
 @end example
 
@@ -764,7 +765,7 @@ to run the tests prior to the source update as we will use the
 current Fjalar sources.
 
 @example
-cd $INV/fjalar
+cd $FJALAR
 make clean build && make test 2>&1 | tee test.log
 @end example
 
@@ -796,7 +797,7 @@ to find the correct value.
 # Get new version number from @uref{https://ftp.gnu.org/gnu/binutils/?C=M;O=D}
 export BUNEWVER=2.34
 
-source $INV/fjalar/valgrind/REVISION
+source $FJALAR/valgrind/REVISION
 export BUOLDVER=$BINUTILS_VERSION
 
 export BUOLD=binutils-$BUOLDVER
@@ -820,7 +821,7 @@ the files should patch quite well, we prepare diffs for only the two
 largest and most complicated files.
 
 @example
-cd $INV/fjalar/valgrind/fjalar
+cd $FJALAR/valgrind/fjalar
 diff -ub ~/tmp/$BUOLD/binutils/dwarf.c dwarf.c > dwarf-binutils-vs-fjalar.diff
 diff -ub ~/tmp/$BUOLD/binutils/readelf.c readelf.c > readelf-binutils-vs-fjalar.diff
 @end example
@@ -897,11 +898,11 @@ time in order to make review of the output easier.
 @uref{https://mernst.github.io/plume-lib/, plume-lib}.)
 
 @smallexample
-cd $INV/fjalar/valgrind/fjalar
+cd $FJALAR/valgrind/fjalar
 patch -p1 -lu -f < ~/tmp/include.patch --dry-run \
  | awk '/can.t find file to patch/ @{skip=1@} !skip && !/hunks? ignored/ @{print@} /Skipping patch\./ @{skip=0@}'
 
-cd $INV/fjalar/valgrind/fjalar
+cd $FJALAR/valgrind/fjalar
 patch -p2 -lu -f -F3 < ~/tmp/binutils.patch --dry-run \
  | awk '/can.t find file to patch/ @{skip=1@} !skip && !/hunks? ignored/ @{print@} /Skipping patch\./ @{skip=0@}'
 @end smallexample
@@ -919,7 +920,7 @@ continue with the actual merge.  Here are two ways to do it.
 This command:
 
 @example
-cd $INV/fjalar/valgrind/fjalar
+cd $FJALAR/valgrind/fjalar
 patch -p1 -lu -f < ~/tmp/include.patch
 patch -p2 -lu -f -F3 < ~/tmp/binutils.patch
 @end example
@@ -936,7 +937,7 @@ find -name '*.rej'
 Alternately, this command:
 
 @example
-cd $INV/fjalar/valgrind/fjalar
+cd $FJALAR/valgrind/fjalar
 patch -p1 -lu -f --merge=diff3 < ~/tmp/include.patch
 patch -p2 -lu -f -F3 --merge=diff3 < ~/tmp/binutils.patch
 @end example
@@ -993,13 +994,13 @@ New header files: new @code{#include}s in @file{readelf.c},
 @file{include.patch} or @file{binutils.patch}, because @command{diff}
 lists them only as ``Only in ...''.  Copy the ones that are needed,
 preserving their location relative to @file{~/tmp/$BUNEW/}, except that
-@file{binutils/} maps to @file{$INV/fjalar/valgrind/fjalar/} itself.  For
+@file{binutils/} maps to @file{$FJALAR/valgrind/fjalar/} itself.  For
 example, a new file in @file{~/tmp/$BUNEW/include/elf/} goes in
-@file{$INV/fjalar/valgrind/fjalar/include/elf/}, one in
+@file{$FJALAR/valgrind/fjalar/include/elf/}, one in
 @file{~/tmp/$BUNEW/libiberty/} goes in
-@file{$INV/fjalar/valgrind/fjalar/libiberty/}, and one in
+@file{$FJALAR/valgrind/fjalar/libiberty/}, and one in
 @file{~/tmp/$BUNEW/binutils/} (like @file{bucomm.h}) goes in
-@file{$INV/fjalar/valgrind/fjalar/}.
+@file{$FJALAR/valgrind/fjalar/}.
 @item
 Code for features that Fjalar does not use, such as SFrame
 (@samp{readelf --sframe}, added in Binutils 2.40, which needs
@@ -1203,7 +1204,7 @@ the regression test suite.
 The first step is to build Fjalar/Kvasir.
 
 @example
-cd $INV/fjalar
+cd $FJALAR
 make build
 @end example
 
@@ -1211,8 +1212,8 @@ The build target should @command{autogen} the @file{config} and @file{Makefiles}
 and compile Fjalar. Fix any compilation errors.
 
 Once you have run @command{make build} once, thereafter you can just run
-@command{make -C $INV/fjalar/valgrind/fjalar install} (or
-@command{make -C $INV/fjalar/valgrind install}, if you changed files
+@command{make -C $FJALAR/valgrind/fjalar install} (or
+@command{make -C $FJALAR/valgrind install}, if you changed files
 outside @file{fjalar/}).  Do not omit @code{install}:  the Kvasir tests
 run the installed Fjalar under @file{valgrind/inst}, so without
 @code{install} they silently test the previous build.
@@ -1225,7 +1226,7 @@ Before we test Fjalar, it is a good idea to verify we haven't
 broken the underlying Valgrind:
 
 @example
-cd $INV/fjalar
+cd $FJALAR
 make test 2>&1 | tee test-after.log
 @end example
 
@@ -1236,7 +1237,7 @@ the results obtained when running these tests
 as described in @ref{Get New Valgrind Regtest Baseline Results}
 (for a Valgrind update, in @file{$INV/valgrind-new-build/test.log})
 or @ref{Get Current Valgrind Regtest Baseline Results}
-(for a Binutils update, in @file{$INV/fjalar/test.log}).
+(for a Binutils update, in @file{$FJALAR/test.log}).
 For a Valgrind update, once the comparison is done, delete the build copy:
 @code{rm -rf $INV/valgrind-new-build}.
 
@@ -1286,7 +1287,7 @@ the tests generates.  After building and running the tests, this
 command lists the untracked files in test directories:
 
 @example
-cd $INV/fjalar
+cd $FJALAR
 git ls-files --others --exclude-standard -- '*tests/*'
 @end example
 
@@ -1315,7 +1316,7 @@ looking for files that were added or deleted.  It prints the
 @code{git add} and @code{git rm} commands that record them.
 
 @example
-cd $INV/fjalar
+cd $FJALAR
 make git-update > git.script
 # Double-check that it looks OK, then run it:
 bash -v ./git.script
@@ -1329,7 +1330,7 @@ Next, we do a final visual verification of the changes and commit them
 to the repository.
 
 @example
-cd $INV/fjalar
+cd $FJALAR
 # Double-check the diffs - standard practice before committing
 git diff -b | more
 # If looks OK, proceed with commit.
@@ -1361,43 +1362,43 @@ with a few extra functions.
 contains both the Daikon and Fjalar source trees.)
 
 @table @asis
-@item $INV/fjalar/valgrind/configure.ac
+@item $FJALAR/valgrind/configure.ac
 Change id to Fjalar; add fjalar/Makefile to list of targets
-@item $INV/fjalar/valgrind/coregrind/m_libcbase.c
+@item $FJALAR/valgrind/coregrind/m_libcbase.c
 Add VG_ version of strnlen
-@item $INV/fjalar/valgrind/coregrind/m_libcfile.c
+@item $FJALAR/valgrind/coregrind/m_libcfile.c
 Add VG_ version of mkdir
-@item $INV/fjalar/valgrind/coregrind/m_machine.c
+@item $FJALAR/valgrind/coregrind/m_machine.c
 Add get and set functions for additional machine registers
-@item $INV/fjalar/valgrind/coregrind/m_scheduler/scheduler.c
+@item $FJALAR/valgrind/coregrind/m_scheduler/scheduler.c
 Modify an assertion that triggers based on shadow size
-@item $INV/fjalar/valgrind/coregrind/pub_core_machine.h
+@item $FJALAR/valgrind/coregrind/pub_core_machine.h
 Add additional general purpose registers to the guest state
-@item $INV/fjalar/valgrind/coregrind/pub_core_threadstate.h
+@item $FJALAR/valgrind/coregrind/pub_core_threadstate.h
 The declaration of the extra shadow space
-@item $INV/fjalar/valgrind/include/pub_tool_libcbase.h
+@item $FJALAR/valgrind/include/pub_tool_libcbase.h
 Add VG_ version of strnlen
-@item $INV/fjalar/valgrind/include/pub_tool_libcfile.h
+@item $FJALAR/valgrind/include/pub_tool_libcfile.h
 Add VG_ version of mkdir and fcntl
-@item $INV/fjalar/valgrind/include/pub_tool_machine.h
+@item $FJALAR/valgrind/include/pub_tool_machine.h
 Add get and set functions for additional machine registers
-@item $INV/fjalar/valgrind/Makefile.am
+@item $FJALAR/valgrind/Makefile.am
 Add fjalar to the list of tools; add files to clean-local target
-@item $INV/fjalar/valgrind/none/tests/Makefile.am
+@item $FJALAR/valgrind/none/tests/Makefile.am
 Add @nospellcheck{coregrind/libcoregrind-amd64-linux.a to libvex} tests
-@item $INV/fjalar/valgrind/tests/check_headers_and_includes
+@item $FJALAR/valgrind/tests/check_headers_and_includes
 Add fjalar to @nospellcheck{tool_dirs and inst to dirs_to_ignore}
-@item $INV/fjalar/valgrind/VEX/priv/guest_amd64_helpers.c
+@item $FJALAR/valgrind/VEX/priv/guest_amd64_helpers.c
 Add additional general purpose registers to the guest state
-@item $INV/fjalar/valgrind/VEX/priv/guest_x86_helpers.c
+@item $FJALAR/valgrind/VEX/priv/guest_x86_helpers.c
 Add additional general purpose registers to the guest state
-@item $INV/fjalar/valgrind/VEX/priv/host_amd64_defs.c
+@item $FJALAR/valgrind/VEX/priv/host_amd64_defs.c
 Add function name to debug dump of call instruction
-@item $INV/fjalar/valgrind/VEX/priv/host_generic_reg_alloc2.c
+@item $FJALAR/valgrind/VEX/priv/host_generic_reg_alloc2.c
 Modify memory calculation using the shadow size
-@item $INV/fjalar/valgrind/VEX/pub/libvex.h
+@item $FJALAR/valgrind/VEX/pub/libvex.h
 Add additional general purpose registers to the guest state
-@item $INV/fjalar/valgrind/VEX/pub/libvex_ir.h
+@item $FJALAR/valgrind/VEX/pub/libvex_ir.h
 Add additional general purpose registers to the guest state
 @end table
 
@@ -1414,10 +1415,10 @@ for use of function name as variable.
 Other modifications include:
 
 @table @asis
-@item $INV/fjalar/valgrind/fjalar/mc_main.c
+@item $FJALAR/valgrind/fjalar/mc_main.c
 Run-time arguments and versioning information for Kvasir to replace
 the default Memcheck ones
-@item $INV/fjalar/valgrind/fjalar/mc_translate.c
+@item $FJALAR/valgrind/fjalar/mc_translate.c
 In Memcheck's instrumentation block, duplicate each case for DynComp.
 @end table
 
@@ -1429,8 +1430,8 @@ It is recommended that you acquaint yourself with the VEX IR by reading
 through:
 
 @table @asis
-@item $INV/fjalar/valgrind/VEX/pub/libvex.h
-@item $INV/fjalar/valgrind/VEX/pub/libvex_ir.h
+@item $FJALAR/valgrind/VEX/pub/libvex.h
+@item $FJALAR/valgrind/VEX/pub/libvex_ir.h
 @end table
 
 In addition to being the primary headers for the VEX library, the above
@@ -1479,7 +1480,7 @@ IR Instructions will have a similar format. DynComp is particularly
 interested in analyzing all possible IR Expressions.
 
 @example
-$INV/fjalar/valgrind/fjalar/kvasir/dyncomp_translate.c
+$FJALAR/valgrind/fjalar/kvasir/dyncomp_translate.c
 @end example
 
 contains the following set of functions for processing IR Expressions.
