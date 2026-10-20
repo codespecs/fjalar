@@ -44,8 +44,8 @@ Done when:  CI enforces the lists on both distributions and is green.
 
 ## 2. Add and remove files during the merge without `make git-update`
 
-\#103:  create the patch files with `git diff` and apply them with
-`git apply --3way`.
+\#103:  merge upstream with `git cherry-pick`, a 3-way merge that adds and
+removes files itself.
 
 ## 3. Look for DynComp panics on unhandled IROps, now, on Valgrind 3.23
 

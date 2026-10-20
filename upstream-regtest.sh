@@ -12,9 +12,8 @@
 #
 # The script builds and tests a fresh copy of $INV/valgrind-new, in
 # $INV/valgrind-new-build, replacing any earlier copy.  It never builds in
-# $INV/valgrind-new itself, which must stay a pristine clone:
-# generate-patch-files.sh diffs it, and it becomes valgrind-old for the
-# next merge.  The test output is in $INV/valgrind-new-build/test.log and
+# $INV/valgrind-new itself, so that $INV/valgrind-new stays a clean clone,
+# which becomes valgrind-old for the next merge.  The test output is in $INV/valgrind-new-build/test.log and
 # test-post.log.  The tests take about 15 minutes.
 #
 # Many of the gdbserver tests fail unless gdb and the glibc debuginfo

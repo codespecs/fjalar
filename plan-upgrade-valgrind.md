@@ -5,9 +5,11 @@ through "Committing").  This plan applies that procedure to the current
 situation and notes where it needs adjusting.
 
 Below, `$FJALAR` is the Fjalar clone being upgraded (see step 1); it
-must be directly in `$INV`.  Until #133 lands, `generate-patch-files.sh`
+must be directly in `$INV`.  Until #103 lands, `generate-patch-files.sh`
 reads the Fjalar tree from `$INV/fjalar`, so step 1 makes `$INV/fjalar` a
-symbolic link to `$FJALAR` while the merge uses that script.
+symbolic link to `$FJALAR` while the merge uses that script.  (#103
+replaces it with `merge-valgrind.sh`, which merges into the tree that
+contains it.)
 (`make git-update` reads `../coregrind.patch` and
 `../memcheck.patch`, which are in `$INV` for any clone directly in `$INV`,
 so it needs no link.)
@@ -92,10 +94,10 @@ Memcheck and DynComp depend tightly on Valgrind core:
     - Memcheck-derived files, so they can conflict in step 6:  #115,
       #117, #119, #120, and #122 change `mc_translate.c` and
       `mc_translate.h`.
-    - Scripts that this plan uses:  #133 (`generate-patch-files.sh` and
-      `make git-update` find the Fjalar tree themselves, so that step 1
-      needs no symbolic link) and #132 (`check-regtest.sh --log` takes the
-      operating system from the log's name).
+    - Scripts that this plan uses:  #103 (`merge-valgrind.sh` merges into
+      the tree that contains it, so that step 1 needs no symbolic link)
+      and #132 (`check-regtest.sh --log` takes the operating system from
+      the log's name).
     - Other open PRs may have been opened since.  To list the open PRs
       that change files under `valgrind/`:
 
@@ -122,7 +124,7 @@ Memcheck and DynComp depend tightly on Valgrind core:
      the new clone (below), that clone's `origin` would be itself, so
      `git pull` would silently pull nothing.  Set `FJALAR` to that clone, e.g.,
      `FJALAR=$INV/fjalar-branch-valgrind-3.27.1`; the commands below use
-     it.  If #133 has landed (see the paragraph at the top of this plan),
+     it.  If #103 has landed (see the paragraph at the top of this plan),
      skip the rest of this bullet.
      Otherwise, while merging, make `$INV/fjalar` a symbolic link to that
      clone.  If `$INV/fjalar` is already a symbolic
@@ -307,9 +309,8 @@ Memcheck and DynComp depend tightly on Valgrind core:
    new since step 1's `build-before.log`:
 
    ```sh
-   cd $FJALAR
-   (set -o pipefail; make build 2>&1 | tee build-after.log)
-   ./compare-warnings.sh build-before.log build-after.log
+   (set -o pipefail; make -C $FJALAR build 2>&1 | tee $FJALAR/build-after.log)
+   $FJALAR/compare-warnings.sh $FJALAR/build-before.log $FJALAR/build-after.log
    ```
 
    `compare-warnings.sh` prints the new warnings (`>` lines) and the ones

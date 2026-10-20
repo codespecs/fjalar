@@ -653,11 +653,8 @@ $INV/fjalar/upstream-regtest.sh $INV/regtest-upstream.txt
 @noindent
 The script builds a copy of @file{valgrind-new}, in
 @file{$INV/valgrind-new-build}, and runs the tests there.  It never builds
-in @file{valgrind-new} itself, which must stay a pristine clone:
-@command{generate-patch-files.sh} diffs it (including if you re-run that
-script during this merge), and it becomes @file{valgrind-old} for the next
-merge.  Build products must not end up in the patch files, and from there
-in Fjalar.
+in @file{valgrind-new} itself, so that @file{valgrind-new} stays a clean
+clone, which becomes @file{valgrind-old} for the next merge.
 
 @noindent
 This will take about 10-15 minutes.  The test output is in
@@ -775,9 +772,8 @@ to run the tests prior to the source update as we will use the
 current Fjalar sources.
 
 @example
-cd $INV/fjalar
-(set -o pipefail; make clean build 2>&1 | tee build-before.log) \
-  && make test 2>&1 | tee test.log
+(set -o pipefail; make -C $INV/fjalar clean build 2>&1 | tee $INV/fjalar/build-before.log) \
+  && make -C $INV/fjalar test 2>&1 | tee $INV/fjalar/test.log
 @end example
 
 @noindent
@@ -903,10 +899,6 @@ you have finished the merge, remove the @file{.pre-merge} files.
 
 Now, handle the conflicts.
 
-For every change in the file you will need to examine both the changed
-code as well as our original code and determine if it needs to be hand
-merged or if the change is not relevant.
-
 As noted above, @file{dwarf.c} and @file{readelf.c} will probably
 have several conflicts.  As you edit the new files, you may wish to
 review the diffs in the previous versions as the new diffs should be similar.
@@ -920,8 +912,7 @@ version in the center.  Look at the conflict markers in @file{dwarf.c}
 and note their line numbers.
 
 @example
-cd $INV/fjalar/valgrind/fjalar
-meld ~/tmp/binutils/binutils-$BUNEWVER/binutils/dwarf.c dwarf.c dwarf.c.pre-merge
+meld ~/tmp/binutils/binutils-$BUNEWVER/binutils/dwarf.c $INV/fjalar/valgrind/fjalar/dwarf.c $INV/fjalar/valgrind/fjalar/dwarf.c.pre-merge
 @end example
 
 Using the line numbers noted above, locate the problem areas and modify
@@ -1055,10 +1046,9 @@ before the merge, and of a build after the merge that recompiles the
 Binutils-derived files, and compare them:
 
 @example
-cd $INV/fjalar
-make -C valgrind/fjalar clean
-(set -o pipefail; make -C valgrind/fjalar 2>&1 | tee build-after.log)
-./compare-warnings.sh --binutils build-before.log build-after.log
+make -C $INV/fjalar/valgrind/fjalar clean
+(set -o pipefail; make -C $INV/fjalar/valgrind/fjalar 2>&1 | tee $INV/fjalar/build-after.log)
+$INV/fjalar/compare-warnings.sh --binutils $INV/fjalar/build-before.log $INV/fjalar/build-after.log
 @end example
 
 @noindent

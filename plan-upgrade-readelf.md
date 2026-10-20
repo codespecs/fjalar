@@ -295,10 +295,9 @@ small.
    warnings.
 
    ```sh
-   cd $FJALAR
-   make -C valgrind/fjalar clean
-   (set -o pipefail; make -C valgrind/fjalar 2>&1 | tee build-after.log)
-   ./compare-warnings.sh --binutils build-before.log build-after.log
+   make -C $FJALAR/valgrind/fjalar clean
+   (set -o pipefail; make -C $FJALAR/valgrind/fjalar 2>&1 | tee $FJALAR/build-after.log)
+   $FJALAR/compare-warnings.sh --binutils $FJALAR/build-before.log $FJALAR/build-after.log
    ```
 
    `compare-warnings.sh` prints the warnings for the Binutils-derived files
