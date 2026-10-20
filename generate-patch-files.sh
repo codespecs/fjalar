@@ -32,17 +32,27 @@ for dir in "$INV/valgrind-old" "$INV/valgrind-new" "$fjalar/valgrind"; do
   fi
 done
 
-# Any build product in an upstream tree would end up in coregrind.patch,
-# and then be added to Fjalar by "make git-update".  So both trees must be
-# pristine clones.  Build the upstream baseline in a copy instead.
-for dir in "$INV/valgrind-old" "$INV/valgrind-new"; do
-  # Without this check, "git status" would report on an enclosing
-  # repository, or would fail and produce no output.
+# Usage: check_toplevel DIR
+# Checks that DIR is the top level of a git clone.  Without this check, a
+# git command in DIR would operate on an enclosing repository, or would
+# fail.
+check_toplevel() {
+  local dir=$1
+  local toplevel
   toplevel=$(git -C "$dir" rev-parse --show-toplevel 2> /dev/null) || toplevel=
   if [ "$toplevel" != "$(cd -- "$dir" > /dev/null && pwd -P)" ]; then
     echo "$0: $dir is not the top level of a git clone." >&2
     exit 1
   fi
+}
+# The Fjalar diffs use "git ls-files" in the Fjalar tree.
+check_toplevel "$fjalar"
+
+# Any build product in an upstream tree would end up in coregrind.patch,
+# and then be added to Fjalar by "make git-update".  So both trees must be
+# pristine clones.  Build the upstream baseline in a copy instead.
+for dir in "$INV/valgrind-old" "$INV/valgrind-new"; do
+  check_toplevel "$dir"
   status=$(git -C "$dir" status --porcelain --ignored)
   if [ -n "$status" ]; then
     echo "$0: $dir has changes or files that are not in its git" >&2

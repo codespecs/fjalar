@@ -4,9 +4,9 @@ Reference procedure: `doc/valgrind-merge.texinfo` (chapters "Getting Started"
 through "Committing").  This plan applies that procedure to the current
 situation and notes where it needs adjusting.
 
-Below, `$INV/fjalar` means the Fjalar tree being upgraded.  It must actually be
-at `$INV/fjalar`, because `generate-patch-files.sh` and `make git-update`
-hard-code that layout (`fjalar/valgrind`, `../coregrind.patch`).
+Below, `$INV/fjalar` means the Fjalar tree being upgraded.  That tree need not
+be at `$INV/fjalar`; for example, it may be a clone dedicated to the merge
+branch.  The patch and diff files are written to `$INV` regardless.
 
 ## Ordering: do this after the readelf upgrade
 

@@ -72,27 +72,30 @@ very-clean:
 	rm -rf valgrind/Makefile.in
 	rm -rf valgrind/Makefile.vex.in
 
+# The patch files that generate-patch-files.sh writes.
+COREGRIND_PATCH = $(INV)/coregrind.patch
+MEMCHECK_PATCH = $(INV)/memcheck.patch
+
+# Prints the git commands that add the files that the Valgrind developers
+# added since the last merge, and remove the files that they removed.
+# Memcheck files map to Fjalar's modified copy in valgrind/fjalar/.
 git-update:
 	@if [ -z "$(INV)" ]; then echo "INV is not set; see doc/valgrind-merge.texinfo." >&2; exit 1; fi
-	@grep -q '^\-\-\-.*1969\-12\-31' $(INV)/coregrind.patch; \
-	if [ $$? -eq 0 ]; then \
-	  echo git add `grep '^\-\-\-.*1969\-12\-31' $(INV)/coregrind.patch | cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-old/valgrind/g'`; \
-	fi
+	@for f in "$(COREGRIND_PATCH)" "$(MEMCHECK_PATCH)"; do \
+	  if [ ! -f "$$f" ]; then echo "$$f does not exist; run generate-patch-files.sh." >&2; exit 1; fi; \
+	done
 
-	@grep -q '^Only in valgrind-old' $(INV)/coregrind.patch; \
-	if [ $$? -eq 0 ]; then \
-	  echo git rm `grep '^Only in valgrind-old' $(INV)/coregrind.patch | perl -p -e 's/: /\//g' | cut -d ' ' --fields=3 | perl -p -e 's/^valgrind-old/valgrind/g'`; \
-	fi
+	@files=`grep '^\-\-\-.*1969\-12\-31' "$(COREGRIND_PATCH)" | cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-old/valgrind/g'`; \
+	if [ -n "$$files" ]; then echo git add $$files; fi
 
-	@grep -q '^\-\-\-.*1969\-12\-31' $(INV)/memcheck.patch; \
-	if [ $$? -eq 0 ]; then \
-	  echo add `grep '^\-\-\-.*1969\-12\-31' $(INV)/memcheck.patch| cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-old/valgrind/g'`; \
-	fi
+	@files=`grep '^Only in valgrind-old' "$(COREGRIND_PATCH)" | perl -p -e 's/: /\//g' | cut -d ' ' --fields=3 | perl -p -e 's/^valgrind-old/valgrind/g'`; \
+	if [ -n "$$files" ]; then echo git rm $$files; fi
 
-	@grep -q '^\+\+\+.*1969\-12\-31' $(INV)/memcheck.patch; \
-	if [ $$? -eq 0 ]; then \
-	  echo remove `grep '^\+\+\+.*1969\-12\-31' $(INV)/memcheck.patch| cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-new/valgrind/g'`; \
-	fi
+	@files=`grep '^\-\-\-.*1969\-12\-31' "$(MEMCHECK_PATCH)" | cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-old\/memcheck/valgrind\/fjalar/g'`; \
+	if [ -n "$$files" ]; then echo git add $$files; fi
+
+	@files=`grep '^Only in valgrind-old' "$(MEMCHECK_PATCH)" | perl -p -e 's/: /\//g' | cut -d ' ' --fields=3 | perl -p -e 's/^valgrind-old\/memcheck/valgrind\/fjalar/g'`; \
+	if [ -n "$$files" ]; then echo git rm $$files; fi
 
 .PHONY: doc
 doc:
