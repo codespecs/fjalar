@@ -316,6 +316,8 @@ void MC_(helperc_STORE_TAG_1) ( Addr a, UInt tag ) {
 
 // Returns the first non-zero tag in the range [a, a+len), or 0 if
 // there is none.
+// (Hopefully this should only take one iteration
+//  because the tag of address 'a' should be non-zero)
 static UInt first_nonzero_tag_in_range(Addr a, SizeT len) {
   Addr curAddr;
   UInt curTag;
@@ -393,10 +395,7 @@ UInt val_uf_union_tags_in_range(Addr a, SizeT len) {
 /*     } */
 /*   } */
 
-  // Scan the range for the first non-zero tag and use
-  // that as the basis for all the mergings:
-  // (Hopefully this should only take one iteration
-  //  because the tag of address 'a' should be non-zero)
+  // Use the first non-zero tag in the range as the basis for all the mergings:
   tagToMerge = first_nonzero_tag_in_range(a, len);
 
   // If they are all zeroes, then we're done;
