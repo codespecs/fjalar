@@ -1091,9 +1091,12 @@ void visitVariableGroup(VariableOrigin varOrigin,
           else {
             // The location is not on the stack, so Fjalar reads the
             // variable where it is.  For a register location, that is
-            // entryRegs, which has no guest address; using its address
-            // as the guest address gives a static array within the
-            // variable a non-null address.
+            // entryRegs, which has no guest address.  Its address
+            // serves as the guest address, so a static array within
+            // the variable has a non-null hashcode.  That hashcode is
+            // the same at entrance and exit of an invocation (entryRegs
+            // lives as long as the FunctionExecutionState) and differs
+            // across invocations, as a stack address would.
             basePtrValue = var_loc;
             var->entryLoc = var_loc;
             basePtrValueGuest = var_loc;
