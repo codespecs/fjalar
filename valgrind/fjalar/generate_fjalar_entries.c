@@ -2635,7 +2635,11 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     varPtr->location_expression_size = paramPtr->dwarf_stack_size;
   }
 
-  if (paramPtr->location_type == LT_FP_OFFSET) {
+  if (paramPtr->incomplete_loc) {
+    // visitVariableGroup cannot evaluate the location, so validLoc
+    // remains False.
+    FJALAR_DPRINTF(" location expression has an unsupported operation\n");
+  } else if (paramPtr->location_type == LT_FP_OFFSET) {
     varPtr->validLoc = paramPtr->valid_loc;
     varPtr->locationType = FP_OFFSET_LOCATION;
     varPtr->byteOffset = paramPtr->location;

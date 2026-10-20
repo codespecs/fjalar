@@ -47,7 +47,6 @@ typedef enum {
   LOC_OP_UNSUPPORTED,  // any operation not listed below
   LOC_OP_DEREF,        // DW_OP_deref
   LOC_OP_CONST,        // DW_OP_const*
-  LOC_OP_LIT,          // DW_OP_lit*
   LOC_OP_PLUS_UCONST,  // DW_OP_plus_uconst
   LOC_OP_REG,          // DW_OP_reg*
   LOC_OP_BREG,         // DW_OP_breg*
@@ -67,9 +66,6 @@ static __inline__ location_op_kind location_op_kind_of(enum dwarf_location_atom 
   }
   if ((op >= DW_OP_const1u) && (op <= DW_OP_consts)) {
     return LOC_OP_CONST;
-  }
-  if ((op >= DW_OP_lit0) && (op <= DW_OP_lit31)) {
-    return LOC_OP_LIT;
   }
   if (op == DW_OP_plus_uconst) {
     return LOC_OP_PLUS_UCONST;
