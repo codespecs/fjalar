@@ -53,11 +53,13 @@ it completely (merged, CI green) before starting this one.  That plan's
      against it.
 
 2. **Get the trees.**
+
    ```sh
    export VOLDVER=VALGRIND_3_23_0 VNEWVER=VALGRIND_3_27_1
    git clone -b $VOLDVER --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-old
    git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-new
    ```
+
    Remove from `fjalar/valgrind` the files that `valgrind-new` does not have,
    using the commands in section "Remove files that the target Valgrind release
    does not have" of `doc/valgrind-merge.texinfo`.  The second command there
@@ -70,6 +72,7 @@ it completely (merged, CI green) before starting this one.  That plan's
    `coregrind.patch` and then be `git add`ed by `make git-update`.  The
    error message gives the `git reset`/`git clean` command that makes a tree
    pristine again.  Build a copy instead:
+
    ```sh
    rm -rf $INV/valgrind-new-build
    git clone -q $INV/valgrind-new $INV/valgrind-new-build && cd $INV/valgrind-new-build
@@ -78,6 +81,7 @@ it completely (merged, CI green) before starting this one.  That plan's
    make -s --no-print-directory post-regtest-checks > test-post.log 2>&1
    $INV/fjalar/check-regtest.sh --log test.log --expected $INV/regtest-upstream-3.27.1.txt --update
    ```
+
    These are the options that `check-regtest.sh` itself uses.  Setting
    `XMLLINT` keeps `make check` from validating the manual, which fails
    without the DocBook DTD.  `-s --no-print-directory` keeps make's own
@@ -97,7 +101,7 @@ it completely (merged, CI green) before starting this one.  That plan's
    `valgrind-new` are pristine clones at `$VOLDVER` and `$VNEWVER`.
 
 5. **Coregrind merge.**
-   - `cd fjalar/valgrind; patch -p1 -lu --dry-run < $INV/coregrind.patch`,
+   - `cd $INV/fjalar/valgrind; patch -p1 -lu --dry-run < $INV/coregrind.patch`,
      then for real.
    - Fix zero-length `.exp` files and lost execute bits (the two `find`
      commands in the doc).
@@ -118,7 +122,7 @@ it completely (merged, CI green) before starting this one.  That plan's
      size/alignment checks, since Fjalar enlarges the shadow area.
 
 6. **Memcheck merge** into `valgrind/fjalar/`.
-   - `cd fjalar/valgrind/fjalar; patch -p2 -lu --dry-run < $INV/memcheck.patch`,
+   - `cd $INV/fjalar/valgrind/fjalar; patch -p2 -lu --dry-run < $INV/memcheck.patch`,
      then for real (try `-F3` only if needed, and review its results).
    - Resolve `*.rej`.  Remember part of `mc_translate.c` lives in
      `fjalar/mc_translate.h`.  Preserve the #73 edits to `mc_translate.c`
@@ -195,7 +199,7 @@ it completely (merged, CI green) before starting this one.  That plan's
       superseded by `regtest-expected/*.txt`.)
     - Commit as one PR; save the patch/diff files and `valgrind-new` (it
       becomes `valgrind-old` for the next merge, after
-      `git -C valgrind-old reset --hard && git -C valgrind-old clean -fdx`;
+      `git -C $INV/valgrind-old reset --hard && git -C $INV/valgrind-old clean -fdx`;
       delete `valgrind-new-build`).
 
 ## Risks
