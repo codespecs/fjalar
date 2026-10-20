@@ -17,7 +17,7 @@ none, and step 8 compares against it.  Until CI enforces the lists, that
 local comparison is the only regtest check, because the CI regtest jobs
 only report failures.
 
-Do this upgrade first, before `plan-upgrade-valgrind.md`, and finish it
+Do this upgrade, before `plan-upgrade-valgrind.md`, and finish it
 completely (landed, CI green) before starting the Valgrind upgrade.  Reasons:
 
 - It is smaller and self-contained: about a dozen files in `valgrind/fjalar/`,
