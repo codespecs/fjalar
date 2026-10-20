@@ -139,6 +139,7 @@ repositories:
 @example
 export INV=`pwd`
 export DAIKONDIR=$INV/daikon
+export FJALAR=$INV/fjalar
 git clone https://github.com/codespecs/daikon.git
 git clone https://github.com/codespecs/fjalar.git
 @end example
