@@ -155,9 +155,13 @@ Memcheck and DynComp depend tightly on Valgrind core:
    ```sh
    export VOLDVER=VALGRIND_3_23_0 VNEWVER=VALGRIND_3_27_1
    cd $INV
-   git clone -b $VOLDVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-old
+   [ -d valgrind-old ] || git clone -b $VOLDVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-old
+   rm -rf valgrind-new
    git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-new
    ```
+   Step 10 of the previous merge kept that merge's `valgrind-new` as
+   `valgrind-old`, so reuse it if it exists; `generate-patch-files.sh`
+   (step 4) checks that it is a pristine clone at `$VOLDVER`.
    Remove from `fjalar/valgrind` the files that `valgrind-new` does not have,
    using the commands in section "Remove files that the target Valgrind release
    does not have" of `doc/valgrind-merge.texinfo`.  The second command there
@@ -199,7 +203,7 @@ Memcheck and DynComp depend tightly on Valgrind core:
    `valgrind-new` are pristine clones at `$VOLDVER` and `$VNEWVER`.
 
 5. **Coregrind merge.**
-   - `cd fjalar/valgrind; patch -p1 -lu --dry-run < $INV/coregrind.patch`,
+   - `cd $INV/fjalar/valgrind && patch -p1 -lu --dry-run < $INV/coregrind.patch`,
      then for real.
    - Fix zero-length `.exp` files and lost execute bits (the two `find`
      commands in the doc).
@@ -227,7 +231,7 @@ Memcheck and DynComp depend tightly on Valgrind core:
      and `mc_machine.c` expect.
 
 6. **Memcheck merge** into `valgrind/fjalar/`.
-   - `cd fjalar/valgrind/fjalar; patch -p2 -lu --dry-run < $INV/memcheck.patch`,
+   - `cd $INV/fjalar/valgrind/fjalar && patch -p2 -lu --dry-run < $INV/memcheck.patch`,
      then for real (try `-F3` only if needed, and review its results).
    - Resolve `*.rej`.  Remember part of `mc_translate.c` lives in
      `fjalar/mc_translate.h`.  Preserve the #73 edits to `mc_translate.c`

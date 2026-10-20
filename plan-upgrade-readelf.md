@@ -58,9 +58,10 @@ new ones than to fix them.)
   - `1ca71b1c` Support DWARF 3 (#73)
   - `d8723ef7` spelling corrections (#75)
   - `95516533` Support Rust and DWARF 3 & 4 (#76)
-  - `287d1f44` Fix `DW_OP_breg*` locations on amd64 (#80)
   - `a620e75a` Fix Fjalar hang on optimized code with location views (#89)
   - `89754787` Read DWARF registers through their guest-state offsets (#91)
+  - `a6948b30` and `0d7bdabd` use `true`/`false`, not `TRUE`/`FALSE`, in
+    `fjalar_process_file` in `readelf.c`
 - Open PRs that change `dwarf.c` (as of 2026-10-20): #95 (unsupported DWARF
   location operations).  Land it before starting this upgrade, so that its
   changes are part of the Fjalar copy being merged into (and of the
@@ -100,7 +101,7 @@ small.
    - Make sure the system has `binutils-dev` / `binutils-devel` (for `bfd.h`).
 
 2. **Baselines** (before touching any source).
-   - `(set -o pipefail; make build 2>&1 | tee build.log) && ./check-regtest.sh`
+   - `(set -o pipefail; make build 2>&1 | tee build-before.log) && ./check-regtest.sh`
      (Valgrind regtest baseline; must report no unexpected failures).  The
      new clone is already clean; do not run `make clean` first, because it
      fails until `make build` has created `valgrind/Makefile`.
@@ -112,10 +113,11 @@ small.
      Binutils-derived files, so that new warnings can be identified later:
      ```sh
      mkdir -p ~/tmp/binutils
-     grep -E '(^|/)(readelf|dwarf|elfcomm|dwarfnames)\.c:[0-9]+:[0-9]+: warning' build.log \
+     grep -E '((^|/)(readelf|dwarf|elfcomm|dwarfnames|bucomm|demanguse)\.[ch]|^include/[^:]*\.h):[0-9]+:[0-9]+: warning' build-before.log \
        | sed -E 's/:[0-9]+:[0-9]+:/:/' | sort > ~/tmp/binutils/warnings-before.txt
      ```
-     The pattern excludes `fjalar_dwarf.c`.  The `sed` command removes the
+     The pattern covers the Binutils-derived `.c` and `.h` files, including
+     `valgrind/fjalar/include/`, and excludes `fjalar_dwarf.c`.  The `sed` command removes the
      line and column numbers, which the merge changes, so that step 7 can
      compare the lists.
    - `make fjalar-test`.
@@ -149,21 +151,24 @@ small.
    tar xzf $BUOLD.tar.gz && tar xzf $BUNEW.tar.gz
    diff -ur $BUOLD/include $BUNEW/include > include.patch
    diff -u  $BUOLD/libiberty/dwarfnames.c $BUNEW/libiberty/dwarfnames.c >> include.patch
-   diff -u -x'Makefile*' -xdwarf.c -xdwarf.h -xreadelf.c -xelfcomm.c -xelfcomm.h $BUOLD/binutils $BUNEW/binutils > binutils.patch
    ```
-   `binutils.patch` omits `dwarf.c`, `dwarf.h`, `readelf.c`, `elfcomm.c`,
-   and `elfcomm.h`, which carry Fjalar edits, because
-   step 5 merges them with `git merge-file` instead; applying both would
-   apply the upstream changes twice.
+   There is no patch file for Binutils' `binutils/` directory.  Fjalar's
+   copies of files from that directory (`$BINUTILS_FILES`, below) carry
+   Fjalar edits, so step 5 merges each of them with `git merge-file`
+   instead.
    Also create the reference diffs (Fjalar vs. pristine 2.39), for visual
    verification while resolving conflicts:
    ```sh
+   export BINUTILS_FILES="dwarf.c dwarf.h readelf.c elfcomm.c elfcomm.h bucomm.h demanguse.h"
    cd $FJALAR/valgrind/fjalar
-   diff -ub ~/tmp/binutils/$BUOLD/binutils/dwarf.c dwarf.c > ~/tmp/binutils/dwarf-binutils-vs-fjalar.diff
-   diff -ub ~/tmp/binutils/$BUOLD/binutils/readelf.c readelf.c > ~/tmp/binutils/readelf-binutils-vs-fjalar.diff
-   diff -ub ~/tmp/binutils/$BUOLD/binutils/dwarf.h dwarf.h > ~/tmp/binutils/dwarf.h-binutils-vs-fjalar.diff
-   diff -ub ~/tmp/binutils/$BUOLD/binutils/elfcomm.c elfcomm.c > ~/tmp/binutils/elfcomm-binutils-vs-fjalar.diff
-   diff -ub ~/tmp/binutils/$BUOLD/binutils/elfcomm.h elfcomm.h > ~/tmp/binutils/elfcomm.h-binutils-vs-fjalar.diff
+   for f in $BINUTILS_FILES; do
+     diff -ub ~/tmp/binutils/$BUOLD/binutils/$f $f > ~/tmp/binutils/$f-binutils-vs-fjalar.diff
+   done
+   (cd include && find . -type f | sort) | while read -r f; do
+     diff -ub ~/tmp/binutils/$BUOLD/include/$f include/$f
+   done > ~/tmp/binutils/include-binutils-vs-fjalar.diff
+   diff -ub ~/tmp/binutils/$BUOLD/libiberty/dwarfnames.c libiberty/dwarfnames.c \
+     > ~/tmp/binutils/dwarfnames-binutils-vs-fjalar.diff
    ```
    (This plan uses `~/tmp/binutils/`; the doc uses `~/tmp/`.  Adjust paths
    if you follow the doc's commands.)
@@ -198,18 +203,17 @@ small.
      2.47's code may use bfd definitions newer than that version.
      Anything missing needs a local definition, as #63 did.
 
-5. **Apply the patches**, one at a time, dry run first, using
-   `--merge=diff3` so conflicts are inline, and merge `dwarf.c`, `dwarf.h`,
-   `readelf.c`, `elfcomm.c`, and `elfcomm.h` with a 3-way merge:
+5. **Apply `include.patch` and merge `$BINUTILS_FILES`.**  Apply
+   `include.patch` with a dry run first, using `--merge=diff3` so that
+   conflicts are inline, and merge each of `$BINUTILS_FILES` with a 3-way
+   merge:
    ```sh
    cd $FJALAR/valgrind/fjalar
    SKIPFILTER='/can.t find file to patch/ {skip=1} !skip && !/hunks? ignored/ {print} /Skipping patch\./ {skip=0}'
    patch -p1 -lu -f --dry-run < ~/tmp/binutils/include.patch | awk "$SKIPFILTER"
    patch -p1 -lu -f --merge=diff3 < ~/tmp/binutils/include.patch | awk "$SKIPFILTER"
-   patch -p2 -lu -f -F3 --dry-run < ~/tmp/binutils/binutils.patch | awk "$SKIPFILTER"
-   patch -p2 -lu -f -F3 --merge=diff3 < ~/tmp/binutils/binutils.patch | awk "$SKIPFILTER"
    B=~/tmp/binutils
-   for f in dwarf.c dwarf.h readelf.c elfcomm.c elfcomm.h; do
+   for f in $BINUTILS_FILES; do
      cp -p $f $f.pre-merge
      git merge-file -L fjalar -L $BUOLD -L $BUNEW --diff3 \
        $f $B/$BUOLD/binutils/$f $B/$BUNEW/binutils/$f
@@ -219,7 +223,7 @@ small.
    use.  `patch --merge=diff3` and `git merge-file --diff3` both write
    conflicts inline as `<<<<<<<`/`|||||||`/`=======`/`>>>>>>>` markers
    instead of creating `.rej` files; find them with `git status` and
-   `grep -rln '^<<<<<<<' .`.  Unlike `patch -F3`, `git merge-file` never
+   `grep -rln '^<<<<<<<' .`.  Unlike `patch` with fuzz, `git merge-file` never
    applies a hunk at the wrong location.  The `.pre-merge` copies are for a
    visual merge tool, e.g.
    `meld ~/tmp/binutils/$BUNEW/binutils/dwarf.c dwarf.c dwarf.c.pre-merge`.
@@ -235,19 +239,24 @@ small.
      out of guarded `printf`s.
    - Replace libc calls with `VG_(...)` equivalents and `assert` with
      `tl_assert`.
-   - Make sure Fjalar's hooks in `dwarf.c` still run on every path.  The
-     hooks are the calls to functions declared in `typedata.h` and
-     `fjalar_dwarf.h`, which build Fjalar's DWARF entries:  the
-     `harvest_*` functions, and others such as `add_comp_unit`,
-     `initialize_dwarf_entry_array`, and `tag_is_formal_parameter`.  Re-check every
+   - Make sure Fjalar's hooks in `dwarf.c` and `readelf.c` still run on
+     every path.  The hooks are the calls to functions declared in
+     `typedata.h` and `fjalar_dwarf.h`, which build Fjalar's DWARF entries
+     and symbol tables:  the `harvest_*` functions, and others such as
+     `add_comp_unit`, `initialize_dwarf_entry_array`, and
+     `tag_is_formal_parameter` in `dwarf.c`, and
+     `insertIntoFunctionSymbolTable`, `insertIntoVariableSymbolTable`, and
+     `process_elf_binary_data` in `readelf.c`.  Re-check every
      call site (`harvest_formal_param_location_atom`,
      `harvest_location_list_entry`, `harvest_frame_base`,
      `harvest_debug_frame_entry`, etc.) against the restructured upstream
      code, so that no hook is dropped or moved to the wrong branch,
      especially for DWARF 5 forms and any new `DW_FORM_*`, `DW_AT_*`,
      `DW_OP_*` handling.  Re-check the DWARF 3/4 and Rust changes from
-     #73/#76, the `DW_OP_breg*` change from #80, and the location-view
-     change from #89.
+     #73/#76, the location-view change from #89, and #91's
+     `dwarf_reg_name()`, which wraps `regname()` and which `fjalar_main.c`,
+     `fjalar_traversal.c`, and `generate_fjalar_entries.c` call:  re-check
+     it if upstream changed `regname()`'s signature or behavior.
    - Areas to expect to need attention in 2.40-2.47:
      - DWARF 5 handling in `dwarf.c` (`.debug_rnglists`, `.debug_loclists`,
        `.debug_str_offsets`, `.debug_addr`, `DW_FORM_*x` forms, `DW_OP_*`
@@ -274,13 +283,15 @@ small.
    Reduce new warnings from Valgrind's stricter flags where practical.
    To list them, recompile the Binutils-derived files, from `$FJALAR`.
    The incremental builds have already compiled those files, so a build
-   that does not remove their object files prints none of their warnings.
+   that does not first remove Fjalar's object files prints none of their
+   warnings.
    ```sh
    cd $FJALAR
-   rm -f valgrind/fjalar/*-{readelf,dwarf,elfcomm}.o valgrind/fjalar/libiberty/*-dwarfnames.o
-   (set -o pipefail; make -C valgrind/fjalar 2>&1 | tee build.log)
+   make -C valgrind/fjalar clean
+   (set -o pipefail; make -C valgrind/fjalar 2>&1 | tee build-after.log)
    ```
-   Then run step 2's `grep` command with `warnings-after.txt` in place of
+   Then run step 2's `grep` command with `build-after.log` and
+   `warnings-after.txt` in place of `build-before.log` and
    `warnings-before.txt`, and run
    `diff ~/tmp/binutils/warnings-before.txt ~/tmp/binutils/warnings-after.txt`.
    Also build against the system `bfd.h` on both Rocky Linux and Ubuntu
@@ -304,15 +315,22 @@ small.
    - Run with `--fjalar-debug-dump=yes` on a DWARF 5 binary and compare
      against `readelf --debug-dump` from Binutils 2.47 for sanity.
    - Before committing, count the calls of each hook (step 6) in the old
-     and new `dwarf.c`, and explain each difference.  This prints each
-     hook whose count changed, with the old and new counts:
+     and new `dwarf.c` and `readelf.c`, and explain each difference.  The
+     old files are those of the commit where this branch started, even if
+     the branch already has commits (as in the stepwise fallback).  This
+     prints each hook whose count changed, with the file and the old and
+     new counts:
      ```sh
-     git show HEAD:valgrind/fjalar/dwarf.c > ~/tmp/binutils/dwarf.c.old
-     sed -nE 's/^[A-Za-z_][A-Za-z0-9_ *]*[ *]([A-Za-z_][A-Za-z0-9_]*)\(.*/\1/p' \
-         valgrind/fjalar/typedata.h valgrind/fjalar/fjalar_dwarf.h | sort -u \
-       | while read -r f; do
-           echo "$f $(grep -cw "$f" ~/tmp/binutils/dwarf.c.old) $(grep -cw "$f" valgrind/fjalar/dwarf.c)"
-         done | awk '$2 != $3'
+     git fetch -q https://github.com/codespecs/fjalar.git master
+     base=$(git merge-base FETCH_HEAD HEAD)
+     hooks=$(sed -nE 's/^[A-Za-z_][A-Za-z0-9_ *]*[ *]([A-Za-z_][A-Za-z0-9_]*)\(.*/\1/p' \
+               valgrind/fjalar/typedata.h valgrind/fjalar/fjalar_dwarf.h | sort -u)
+     for file in dwarf.c readelf.c; do
+       git show "$base:valgrind/fjalar/$file" > ~/tmp/binutils/$file.old
+       for f in $hooks; do
+         echo "$file $f $(grep -cw "$f" ~/tmp/binutils/$file.old) $(grep -cw "$f" valgrind/fjalar/$file)"
+       done
+     done | awk '$3 != $4'
      ```
    - Check that no zstd, SFrame, or debuginfod code was compiled in: run
      the `nm` command of step 2 again, writing `~/tmp/binutils/nm-after.txt`;
@@ -338,13 +356,10 @@ small.
      `plan-pre-upgrade.md` item 5:
      - working in a new clone (step 1);
      - the warning-list comparison (steps 2 and 7);
-     - reference diffs for `dwarf.h`, `elfcomm.c`, and `elfcomm.h` too
-       (step 3);
-     - the `git merge-file --diff3` merge of `dwarf.c`, `dwarf.h`,
-       `readelf.c`, `elfcomm.c`, and `elfcomm.h`, with those files
-       excluded from `binutils.patch`
-       (steps 3 and 5), or, if it turned out worse than `patch` in
-       practice, why;
+     - reference diffs for every Binutils-derived file (step 3);
+     - the `git merge-file --diff3` merge of every file from Binutils'
+       `binutils/` directory, instead of `binutils.patch` (steps 3 and 5),
+       or, if it turned out worse than `patch` in practice, why;
      - the checklist of upgrade-sensitive areas (step 6);
      - the DWARF 4 versus DWARF 5 comparison, `--fjalar-debug-dump=yes`, the
        hook-count check, and the `nm` check for zstd, SFrame, and
@@ -358,7 +373,7 @@ small.
      before committing:  git does not ignore it, so `git add -A` would
      commit it.
    - Commit (one PR), with commit message "Upgrade Binutils (readelf) from
-     2.39 to 2.47"; keep `include.patch`, `binutils.patch`, and the
+     2.39 to 2.47"; keep `include.patch` and the
      Fjalar-vs-binutils diffs for reference (perhaps attached to the PR).
      Delete `regtest-<os>.log`, `regtest-<os>-post.log`, and
      `regtest-<os>-observed.txt` (ignored by git).
