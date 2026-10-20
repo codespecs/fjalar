@@ -691,7 +691,8 @@ typedef struct _FunctionEntry {
   UInt nonce;
 
   // Bit N is set if the valid location of some formal parameter uses
-  // DWARF register N (via DW_OP_regN or DW_OP_bregN) and Fjalar can
+  // DWARF register N (via DW_OP_regN or DW_OP_bregN, anywhere in its
+  // location expression) and Fjalar can
   // read that register.  Fjalar saves those registers at function
   // entrance in FunctionExecutionState.entryRegs.
   UInt entryRegsMask;
@@ -839,7 +840,10 @@ typedef struct {
   // Fjalar copies those registers, with their A and V bits and
   // DynComp tags, to entryRegs.  entryRegs has FJALAR_NUM_DWARF_REGS
   // elements and lies in the same allocation as virtualStack, just
-  // after it; it is null if func->entryRegsMask is 0.
+  // after it; it is null if func->entryRegsMask is 0.  (An inline
+  // array would add FJALAR_NUM_DWARF_REGS words to every one of the
+  // FN_STACK_SIZE entries of every thread's function stack, even for
+  // functions with no register parameters.)
   Addr* entryRegs;
 
 
