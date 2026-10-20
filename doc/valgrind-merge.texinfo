@@ -150,19 +150,15 @@ sudo apt -yqq install binutils-dev
 Update your enlistment to the latest versions:
 
 @example
-cd $DAIKONDIR
-git pull
-cd $INV/fjalar
-git pull
+git -C $DAIKONDIR pull
+git -C $INV/fjalar pull
 @end example
 
 Ensure there are no local changes:
 
 @example
-cd $DAIKONDIR
-git diff
-cd $INV/fjalar
-git diff
+git -C $DAIKONDIR diff
+git -C $INV/fjalar diff
 @end example
 
 The diff commands should produce no output. If there are any differences,
@@ -171,10 +167,8 @@ commit and push them, then start over from the beginning.
 Ensure there are no outgoing changes:
 
 @example
-cd $DAIKONDIR
-git log --branches --not --remotes
-cd $INV/fjalar
-git log --branches --not --remotes
+git -C $DAIKONDIR log --branches --not --remotes
+git -C $INV/fjalar log --branches --not --remotes
 @end example
 
 The log commands should produce no output. If there are outgoing changes,
@@ -229,8 +223,7 @@ need to be omitted to
 simplify the output of the diff commands below.
 
 @example
-cd $INV/fjalar
-make very-clean
+make -C $INV/fjalar very-clean
 @end example
 
 In a later step, we will add any new files found to the Git repository.
@@ -240,8 +233,7 @@ all unknown (not tracked) files.  Review the list and in most cases
 you will want to delete the file(s).
 
 @example
-cd $INV/fjalar
-git ls-files --others --exclude-standard
+git -C $INV/fjalar ls-files --others --exclude-standard
 @end example
 
 
@@ -286,10 +278,9 @@ If you performed the last merge and saved the
 @file{valgrind-old} and @file{valgrind-new} directories, then just run:
 
 @example
-cd $INV
-rm -rf valgrind-old
-mv valgrind-new valgrind-old
-git -C valgrind-old reset --hard && git -C valgrind-old clean -fdx
+rm -rf $INV/valgrind-old
+mv $INV/valgrind-new $INV/valgrind-old
+git -C $INV/valgrind-old reset --hard && git -C $INV/valgrind-old clean -fdx
 @end example
 
 @noindent
@@ -301,8 +292,7 @@ repository, and the @command{git clean} command removes any build products.
 Otherwise, run the following commands.
 
 @example
-cd $INV
-git clone -b $VOLDVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-old
+git clone -b $VOLDVER --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-old
 @end example
 
 
@@ -313,8 +303,7 @@ Next, make the directory @file{valgrind-new} that contains a copy of the
 latest Valgrind source tree.
 
 @example
-cd $INV
-git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-new
+git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-new
 @end example
 
 @c For a  full repro of the current Valgrind source:
@@ -590,8 +579,7 @@ reflected. Most of the changes to the public VEX IR can be discovered
 by running the following command:
 
 @example
-cd $INV
-diff -b valgrind-old/VEX/pub/libvex_ir.h valgrind-new/VEX/pub/libvex_ir.h
+diff -b $INV/valgrind-old/VEX/pub/libvex_ir.h $INV/valgrind-new/VEX/pub/libvex_ir.h
 @end example
 
 It is also worth noting that almost all the changes will be for machines
@@ -1201,8 +1189,7 @@ the regression test suite.
 The first step is to build Fjalar/Kvasir.
 
 @example
-cd $INV/fjalar
-make build
+make -C $INV/fjalar build
 @end example
 
 The build target should @command{autogen} the @file{config} and @file{Makefiles}
@@ -1223,8 +1210,7 @@ Before we test Fjalar, it is a good idea to verify we haven't
 broken the underlying Valgrind:
 
 @example
-cd $INV/fjalar
-make test 2>&1 | tee test-after.log
+make -C $INV/fjalar test 2>&1 | tee $INV/fjalar/test-after.log
 @end example
 
 @noindent
@@ -1247,9 +1233,7 @@ of the Daikon tree.
 It can be run using the following commands (takes about 20 minutes):
 
 @example
-cd $DAIKONDIR/tests/kvasir-tests
-make clean-all
-make regression-tests
+make -C $DAIKONDIR/tests/kvasir-tests clean-all regression-tests
 @end example
 
 @noindent
@@ -1284,8 +1268,7 @@ the tests generates.  After building and running the tests, this
 command lists the untracked files in test directories:
 
 @example
-cd $INV/fjalar
-git ls-files --others --exclude-standard -- '*tests/*'
+git -C $INV/fjalar ls-files --others --exclude-standard -- '*tests/*'
 @end example
 
 @noindent

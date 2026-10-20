@@ -55,9 +55,8 @@ it completely (merged, CI green) before starting this one.  That plan's
 2. **Get the trees.**
    ```sh
    export VOLDVER=VALGRIND_3_23_0 VNEWVER=VALGRIND_3_27_1
-   cd $INV
-   git clone -b $VOLDVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-old
-   git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-new
+   git clone -b $VOLDVER --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-old
+   git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-new
    ```
    Remove from `fjalar/valgrind` the files that `valgrind-new` does not have,
    using the commands in section "Remove files that the target Valgrind release
@@ -72,8 +71,8 @@ it completely (merged, CI green) before starting this one.  That plan's
    error message gives the `git reset`/`git clean` command that makes a tree
    pristine again.  Build a copy instead:
    ```sh
-   rm -rf valgrind-new-build
-   git clone -q valgrind-new valgrind-new-build && cd valgrind-new-build
+   rm -rf $INV/valgrind-new-build
+   git clone -q $INV/valgrind-new $INV/valgrind-new-build && cd $INV/valgrind-new-build
    ./autogen.sh && ./configure --prefix=$(pwd)/inst
    make all install && make regtest XMLLINT=xmllint-skipped-by-check-regtest > test.log 2>&1
    make -s --no-print-directory post-regtest-checks > test-post.log 2>&1
@@ -135,7 +134,7 @@ it completely (merged, CI green) before starting this one.  That plan's
      conflicts with them.
 
 7. **DynComp / Fjalar / Kvasir updates.**
-   - `diff -b valgrind-old/VEX/pub/libvex_ir.h valgrind-new/VEX/pub/libvex_ir.h`
+   - `diff -b $INV/valgrind-old/VEX/pub/libvex_ir.h $INV/valgrind-new/VEX/pub/libvex_ir.h`
      and hand-port relevant `memcheck.patch` hunks into
      `fjalar/kvasir/dyncomp_translate.c` (`_DC` functions).
    - For every new or renamed `IROp`, `IRExpr`, or `IRStmt` kind relevant to
