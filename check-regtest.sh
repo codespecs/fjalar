@@ -26,9 +26,11 @@
 #                    for example "ubuntu-26.04" or "rocky-10".
 #   --expected FILE  Use FILE as the expected-failures file.  The default is
 #                    regtest-expected/<os>.txt.  With --log, <os> comes from
-#                    the log's name, which must then be regtest-<os>.log,
-#                    because the log may come from another machine (such as
-#                    a CI job).
+#                    the log's name, because the log may come from another
+#                    machine (such as a CI job).  So without --expected, the
+#                    --log file must be named regtest-<os>.log, and
+#                    regtest-expected/<os>.txt must exist unless --update is
+#                    given.
 #   --update         Rewrite the expected-failures file to match this run:
 #                    remove entries that did not fail and append new failures.
 #                    Blank lines and "?" lines are kept in place.  Comment
@@ -39,7 +41,8 @@
 #   --report-only    Report differences, but exit with status 0 even if there
 #                    are unexpected failures or there is no expected-failures
 #                    file.  It still exits with non-zero status if the tests
-#                    did not run.
+#                    did not run, or if a --log file's name gives an <os>
+#                    that has no expected-failures file.
 #
 # Expected-failures file format: one failure per line, as vg_regtest prints
 # it, such as "gdbserver_tests/mcleak (stdoutB)".  Blank lines and lines
@@ -93,6 +96,8 @@ if [ -n "$LOG_FILE" ] && [ "${LOG_FILE%.log}" = "$LOG_FILE" ]; then
   echo "$0: --log file name must end in .log: $LOG_FILE" >&2
   exit 2
 fi
+# The name of the log as given, before realpath resolves symbolic links.
+[ -n "$LOG_FILE" ] && LOG_BASE="$(basename "$LOG_FILE" .log)"
 # Make file arguments absolute before changing directory.
 [ -n "$LOG_FILE" ] && LOG_FILE="$(realpath -m "$LOG_FILE")"
 [ -n "$EXPECTED_FILE" ] && EXPECTED_FILE="$(realpath -m "$EXPECTED_FILE")"
@@ -128,25 +133,31 @@ os_name() {
     *) echo "$ID-$VERSION_ID" ;;
   esac
 }
-# The operating system that produced the log, or empty if it is unknown.
 RUN_TESTS=false
+# The operating system that produced the log, or empty if it is unknown.
+OS=
 if [ -z "$LOG_FILE" ]; then
   RUN_TESTS=true
   OS="$(os_name)"
   LOG_FILE="$FJALARDIR/regtest-$OS.log"
 else
-  LOG_BASE="$(basename "$LOG_FILE" .log)"
   case "$LOG_BASE" in
     regtest-?*) OS="${LOG_BASE#regtest-}" ;;
-    *) OS= ;;
   esac
 fi
 if [ -z "$EXPECTED_FILE" ]; then
   if [ -z "$OS" ]; then
-    echo "$0: --log file name is not regtest-<os>.log, so give --expected: $LOG_FILE" >&2
+    echo "$0: give --expected, or rename the --log file to regtest-<os>.log: $LOG_FILE" >&2
     exit 2
   fi
   EXPECTED_FILE="$FJALARDIR/regtest-expected/$OS.txt"
+  # A log that was renamed (such as regtest-ubuntu-26.04-before.log) gives a
+  # bogus <os>.  Do not silently compare against no expected failures.
+  if [ "$RUN_TESTS" = false ] && [ "$UPDATE" = false ] && [ ! -f "$EXPECTED_FILE" ]; then
+    echo "$0: the --log file name gives OS \"$OS\", but $EXPECTED_FILE does not exist." >&2
+    echo "Give --expected, rename the --log file to regtest-<os>.log, or (for a new OS) give --update." >&2
+    exit 2
+  fi
 fi
 POSTLOG_FILE="${LOG_FILE%.log}-post.log"
 OBSERVED_FILE="${LOG_FILE%.log}-observed.txt"
@@ -273,10 +284,11 @@ if [ "$UPDATE" = true ]; then
   else
     {
       echo "# Expected failures of Valgrind's regression tests (\"make regtest\")${OS:+ on $OS}."
-      echo "# See check-regtest.sh for the format.  Regenerate with:"
       if [ "$EXPECTED_FILE" = "$FJALARDIR/regtest-expected/$OS.txt" ]; then
+        echo "# See check-regtest.sh for the format.  Regenerate on $OS with:"
         echo "#   ./check-regtest.sh --update"
       else
+        echo "# See check-regtest.sh for the format.  Regenerate with:"
         echo "#   check-regtest.sh --log <output of \"make regtest\"> --expected <this file> --update"
       fi
       # Separate the header from the entries, so that removing every entry
