@@ -7276,7 +7276,7 @@ process_section_headers (Filedata * filedata)
       if (! filedata->is_separate || process_links)
         FJALAR_DPRINTF (ngettext ("There is %u section header, "
 			  "starting at offset 0x%lx:\n",
-		      "There are %u section headers, "
+			  "There are %u section headers, "
 			  "starting at offset 0x%lx:\n",
 			  filedata->file_header.e_shnum),
 		filedata->file_header.e_shnum,
