@@ -1215,24 +1215,6 @@ char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom
     return 0;
 }
 
-// Returns the number of operations recorded in the dwarf_stack of e, or
-// 0 if e is not a formal parameter.
-unsigned int formal_param_dwarf_stack_size(dwarf_entry* e)
-{
-  if ((e == 0) || (e->entry_ptr == 0) || !tag_is_formal_parameter(e->tag_name))
-    return 0;
-  return ((formal_parameter*)e->entry_ptr)->dwarf_stack_size;
-}
-
-// If e is a formal parameter, notes that its location expression
-// contains an operation that is not recorded in its dwarf_stack.
-void harvest_formal_param_incomplete_location(dwarf_entry* e)
-{
-  if ((e == 0) || (e->entry_ptr == 0) || !tag_is_formal_parameter(e->tag_name))
-    return;
-  ((formal_parameter*)e->entry_ptr)->incomplete_loc = 1;
-}
-
 char harvest_formal_param_location_offset(dwarf_entry* e, long value)
 {
   unsigned long tag;
@@ -1932,7 +1914,6 @@ static void process_abstract_origin_items(void)
           aliased_formal_param->location_type = cur_param->location_type;
           aliased_formal_param->loc_atom = cur_param->loc_atom;
           aliased_formal_param->valid_loc = cur_param->valid_loc;
-          aliased_formal_param->incomplete_loc = cur_param->incomplete_loc;
           aliased_formal_param->dwarf_stack_size = cur_param->dwarf_stack_size;
 
           VG_(memcpy)(aliased_formal_param->dwarf_stack, cur_param->dwarf_stack,
@@ -2853,14 +2834,13 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
     case DW_TAG_formal_parameter:
       {
         formal_parameter* formal_param_ptr = (formal_parameter*)(e->entry_ptr);
-        FJALAR_DPRINTF("  Name: %s, Type ID: 0x%lx, num-ops: %u, atom: %x, loc_type: %u, offset: %ld, incomplete_loc: %u\n",
+        FJALAR_DPRINTF("  Name: %s, Type ID: 0x%lx, num-ops: %u, atom: %x, loc_type: %u, offset: %ld\n",
                formal_param_ptr->name,
                formal_param_ptr->type_ID,
                formal_param_ptr->dwarf_stack_size,
                formal_param_ptr->loc_atom,
                formal_param_ptr->location_type,
-               formal_param_ptr->location,
-               formal_param_ptr->incomplete_loc);
+               formal_param_ptr->location);
         break;
       }
     case DW_TAG_template_type_param:

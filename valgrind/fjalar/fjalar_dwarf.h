@@ -42,11 +42,9 @@ typedef struct _dwarf_location {
 const char* location_expression_to_string(enum dwarf_location_atom op);
 
 // The kinds of operation that visitVariableGroup evaluates in the
-// location expression of a formal parameter.  Fjalar omits a formal
-// parameter whose location expression has any other operation.
+// location expression of a formal parameter.
 typedef enum {
   LOC_OP_UNSUPPORTED,  // any operation not listed below
-  LOC_OP_NOP,          // DW_OP_nop, which dwarf.c does not record
   LOC_OP_DEREF,        // DW_OP_deref
   LOC_OP_CONST,        // DW_OP_const*
   LOC_OP_PLUS_UCONST,  // DW_OP_plus_uconst
@@ -62,9 +60,6 @@ static __inline__ location_op_kind location_op_kind_of(enum dwarf_location_atom 
   }
   if ((op >= DW_OP_breg0) && (op <= DW_OP_breg31)) {
     return LOC_OP_BREG;
-  }
-  if (op == DW_OP_nop) {
-    return LOC_OP_NOP;
   }
   if (op == DW_OP_deref) {
     return LOC_OP_DEREF;

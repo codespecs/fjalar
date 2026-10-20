@@ -347,11 +347,6 @@ typedef struct
                  //       way to get the parameter location
   unsigned int valid_loc;
 
-  // True if the location expression contains an operation that is not
-  // recorded in dwarf_stack, so dwarf_stack does not describe the
-  // location.
-  unsigned int incomplete_loc;
-
   unsigned long abstract_origin_ID; // See comment in the function struct definition
                                     // for the uses of this.
 
@@ -574,8 +569,6 @@ char harvest_comp_dir(dwarf_entry* e, const char* str);
 char harvest_producer(dwarf_entry* e, const char* str);
 char harvest_formal_param_location_offset(dwarf_entry* e, long value);
 char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom atom, long value);
-unsigned int formal_param_dwarf_stack_size(dwarf_entry* e);
-void harvest_formal_param_incomplete_location(dwarf_entry* e);
 char harvest_data_member_location(dwarf_entry* e, unsigned long value);
 char harvest_string(dwarf_entry* e, unsigned long attr, const char* str);
 char harvest_external_flag_value(dwarf_entry *e, unsigned long value);

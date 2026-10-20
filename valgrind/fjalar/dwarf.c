@@ -1444,23 +1444,12 @@ decode_location_expression (unsigned char * data,
   unsigned char *end = data + length;
   int need_frame_base = 0;
   int ok_to_print = fjalar_debug_dump && pass2;
-  unsigned int harvested_ops = 0;
 
   while (data < end)
     {
       op = *data++;
 
       if(ll) {ll->atom = op;}
-
-      // Fjalar: detect an operation that visitVariableGroup cannot
-      // evaluate.  This check precedes the switch, because some cases
-      // return early.  The check after the switch detects an operation
-      // that is not harvested.
-      if (ok_to_harvest) {
-        if (location_op_kind_of(op) == LOC_OP_UNSUPPORTED)
-          harvest_formal_param_incomplete_location(entry);
-        harvested_ops = formal_param_dwarf_stack_size(entry);
-      }
 
       switch (op)
 	{
@@ -2088,10 +2077,6 @@ decode_location_expression (unsigned char * data,
 	  /* No way to tell where the next op is, so just bail.  */
 	  return need_frame_base;
 	}
-
-      if (ok_to_harvest && op != DW_OP_nop
-          && formal_param_dwarf_stack_size(entry) == harvested_ops)
-        harvest_formal_param_incomplete_location(entry);
 
       /* Separate the ops.  */
       if (data < end)
