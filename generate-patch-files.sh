@@ -28,7 +28,7 @@ for dir in "$INV/valgrind-old" "$INV/valgrind-new" "$INV/fjalar/valgrind"; do
 done
 
 # Any build product in an upstream tree would end up in coregrind.patch,
-# and then be added to Fjalar by "make git-update".  So both trees must be
+# and applying the patch would copy it into Fjalar.  So both trees must be
 # pristine clones.  Build the upstream baseline in a copy instead.
 for dir in "$INV/valgrind-old" "$INV/valgrind-new"; do
   # Without this check, "git status" would report on an enclosing

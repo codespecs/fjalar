@@ -1308,9 +1308,12 @@ the changes should be committed to the version control repository.
 @node Tell Git about files that were added or removed
 @section Tell Git about files that were added or removed
 
-The @samp{git-update} target below searches through the two patch files
-looking for files that were added or deleted.  It then does a
-@code{git add} or @code{git remove} as appropriate.
+The @samp{git-update} target below compares the files in
+@file{$INV/valgrind-old} and @file{$INV/valgrind-new} to find the files
+that the Valgrind developers added or removed.  It prints the
+@code{git add} and @code{git rm} commands that record them, both in
+@file{valgrind/} and in Fjalar's copy of Memcheck in
+@file{valgrind/fjalar/}.  It does not stage anything itself.
 
 @example
 cd $INV/fjalar

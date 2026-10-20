@@ -5,8 +5,8 @@ through "Committing").  This plan applies that procedure to the current
 situation and notes where it needs adjusting.
 
 Below, `$INV/fjalar` means the Fjalar tree being upgraded.  It must actually be
-at `$INV/fjalar`, because `generate-patch-files.sh` and `make git-update`
-hard-code that layout (`fjalar/valgrind`, `../coregrind.patch`).
+at `$INV/fjalar`, because `generate-patch-files.sh` hard-codes that layout
+(`fjalar/valgrind`).
 
 ## Ordering: do this after the readelf upgrade
 
@@ -68,7 +68,7 @@ it completely (merged, CI green) before starting this one.  That plan's
    `generate-patch-files.sh` refuses to run if either contains changes or
    untracked files, such as build products (`*.o`, `Makefile`, `config.h`,
    test binaries, `inst/`).  Otherwise they would end up in
-   `coregrind.patch` and then be `git add`ed by `make git-update`.  The
+   `coregrind.patch`, and applying it would copy them into Fjalar.  The
    error message gives the `git reset`/`git clean` command that makes a tree
    pristine again.  Build a copy instead:
    ```sh
