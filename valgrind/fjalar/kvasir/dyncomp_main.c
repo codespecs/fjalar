@@ -320,8 +320,8 @@ static UInt first_nonzero_tag_in_range(Addr a, SizeT len) {
   Addr curAddr;
   UInt curTag;
 
-  // (Hopefully this should only take one iteration
-  //  because the tag of address 'a' should be non-zero)
+  // Hopefully this should only take one iteration
+  // because the tag of address 'a' should be non-zero.
   for (curAddr = a; curAddr < (a + len); curAddr++) {
     curTag = get_tag(curAddr);
     if (curTag) {
