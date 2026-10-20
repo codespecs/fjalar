@@ -336,23 +336,3 @@ location_expression_to_string(enum dwarf_location_atom op) {
     return(0);    // to stop compiler warning
   }
 }
-
-location_op_kind location_op_kind_of(unsigned int op) {
-  if (((op >= DW_OP_breg0) && (op <= DW_OP_breg31))
-      || ((op >= DW_OP_reg0) && (op <= DW_OP_reg31))) {
-    return LOC_OP_REG;
-  }
-  if (op == DW_OP_deref) {
-    return LOC_OP_DEREF;
-  }
-  if ((op >= DW_OP_const1u) && (op <= DW_OP_consts)) {
-    return LOC_OP_CONST;
-  }
-  if (op == DW_OP_plus_uconst) {
-    return LOC_OP_PLUS_UCONST;
-  }
-  if (op == DW_OP_fbreg) {
-    return LOC_OP_FBREG;
-  }
-  return LOC_OP_UNSUPPORTED;
-}

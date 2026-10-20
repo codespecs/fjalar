@@ -47,12 +47,37 @@ typedef enum {
   LOC_OP_UNSUPPORTED,  // any operation not listed below
   LOC_OP_DEREF,        // DW_OP_deref
   LOC_OP_CONST,        // DW_OP_const*
+  LOC_OP_LIT,          // DW_OP_lit*
   LOC_OP_PLUS_UCONST,  // DW_OP_plus_uconst
-  LOC_OP_REG,          // DW_OP_reg* or DW_OP_breg*
+  LOC_OP_REG,          // DW_OP_reg*
+  LOC_OP_BREG,         // DW_OP_breg*
   LOC_OP_FBREG         // DW_OP_fbreg
 } location_op_kind;
 
 // Returns the kind of op.
-location_op_kind location_op_kind_of(unsigned int op);
+static __inline__ location_op_kind location_op_kind_of(enum dwarf_location_atom op) {
+  if ((op >= DW_OP_reg0) && (op <= DW_OP_reg31)) {
+    return LOC_OP_REG;
+  }
+  if ((op >= DW_OP_breg0) && (op <= DW_OP_breg31)) {
+    return LOC_OP_BREG;
+  }
+  if (op == DW_OP_deref) {
+    return LOC_OP_DEREF;
+  }
+  if ((op >= DW_OP_const1u) && (op <= DW_OP_consts)) {
+    return LOC_OP_CONST;
+  }
+  if ((op >= DW_OP_lit0) && (op <= DW_OP_lit31)) {
+    return LOC_OP_LIT;
+  }
+  if (op == DW_OP_plus_uconst) {
+    return LOC_OP_PLUS_UCONST;
+  }
+  if (op == DW_OP_fbreg) {
+    return LOC_OP_FBREG;
+  }
+  return LOC_OP_UNSUPPORTED;
+}
 
 #endif /* FJALAR_DWARF_H */
