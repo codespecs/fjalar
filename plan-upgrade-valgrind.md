@@ -20,8 +20,8 @@ it completely (landed, CI green) before starting this one.  That plan's
 "Ordering" section gives the reasons and the exception.
 
 The preparation in `plan-pre-upgrade.md` must also be done; this plan
-assumes items 1 (regtest in CI), 3 (`generate-patch-files.sh` checks its
-inputs), 4 (DynComp scan), and 7 (stale upstream files removed).  Item 2
+assumes items 1 (expected regtest failures enforced in CI) and 3
+(DynComp scan).  Item 2
 (#103:  patch files created with `git diff` and applied with
 `git apply --3way`) is still open.  Until it lands, the paragraph above
 and steps 2, 3, 5, 6, and 10 below describe the current procedure
@@ -76,8 +76,6 @@ Memcheck and DynComp depend tightly on Valgrind core:
     `drd/tests/swapcontext.c`, `helgrind/tests/tc17_sembar.c`, and
     `none/tests/bug234814.c`, so that they build with GCC 15; take
     upstream's versions.
-  - Upstream files that Fjalar still tracked although upstream had deleted
-    them were removed by `1d9a43ad` (#98).
   - DynComp, so step 7 must keep them (no conflict expected, since
     `kvasir/` is not patched): `b2c735d7` (#79) `Iop_64x4toV256` and
     `125330a0` (#88) vector shifts, `d3b71509` (#85,
@@ -93,8 +91,8 @@ Memcheck and DynComp depend tightly on Valgrind core:
   - Open PRs to land before this upgrade (as of 2026-10-20):
     - DynComp, `dyncomp_translate.c`:  #87 (explicit handling of all 283
       unary operations), #111,
-      #115, #116, #117, #119, #120, #122, #123, and #125.  With #85
-      (landed) and #87, new IROps in 3.24-3.27 reach the `default` cases of all four
+      #115, #116, #117, #119, #120, #122, #123, and #125.  With #87,
+      new IROps in 3.24-3.27 reach the `default` cases of all four
       `expr2tags_*_DC` functions, and
       `--dyncomp-unhandled-ops=warn` lists them all in one run (step 7).
     - Memcheck-derived files, so they can conflict in step 6:  #115,
@@ -106,7 +104,13 @@ Memcheck and DynComp depend tightly on Valgrind core:
       operating system from the log's name).
     - Other open PRs may have been opened since.  To list the open PRs
       that change files under `valgrind/`:
-      `gh pr list -R codespecs/fjalar --json number,files --jq '.[] | select(any(.files[]; .path | startswith("valgrind/"))) | .number'`.
+
+      ```sh
+      gh pr list -R codespecs/fjalar --json number,files --jq \
+        '.[] | select(any(.files[]; .path | startswith("valgrind/")))
+             | .number'
+      ```
+
   - Other changes since then (#76, #80, #89, #91, #94, the rest of #73)
     touch only Fjalar's own files and Binutils-derived files, which this
     merge does not patch.
@@ -132,11 +136,13 @@ Memcheck and DynComp depend tightly on Valgrind core:
      `ln -sfn fjalar-branch-valgrind-3.27.1 $INV/fjalar`.  If it is a
      directory, first move it aside; otherwise `ln -s` creates the link
      inside it:
+
      ```sh
      mv $INV/fjalar $INV/fjalar-orig
      git -C $INV/fjalar-orig worktree repair
      ln -s fjalar-branch-valgrind-3.27.1 $INV/fjalar
      ```
+
      `git worktree repair` reconnects the worktrees linked to the moved
      clone (`git -C $INV/fjalar-orig worktree list`).  Without it, their
      `.git` files still name `$INV/fjalar/.git/worktrees/...`, which the
@@ -145,7 +151,13 @@ Memcheck and DynComp depend tightly on Valgrind core:
      Meanwhile, `$INV/daikon/fjalar` (which by default points to
      `$INV/fjalar`) also reaches the new clone.  When the merge PR has
      landed, undo this:  point the link back at its recorded target, or
-     `rm $INV/fjalar && mv $INV/fjalar-orig $INV/fjalar && git -C $INV/fjalar worktree repair`.
+     run
+
+     ```sh
+     rm $INV/fjalar && mv $INV/fjalar-orig $INV/fjalar \
+       && git -C $INV/fjalar worktree repair
+     ```
+
    - `git pull` both `fjalar` and `daikon`; ensure no local or outgoing changes.
    - Record baselines on current sources, from the new clone
      (`cd $FJALAR`):
@@ -169,13 +181,17 @@ Memcheck and DynComp depend tightly on Valgrind core:
      against it.
 
 2. **Get the trees.**
+
    ```sh
    export VOLDVER=VALGRIND_3_23_0 VNEWVER=VALGRIND_3_27_1
    cd $INV
-   [ -d valgrind-old ] || git clone -b $VOLDVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-old
+   VALGRIND_GIT=https://sourceware.org/git/valgrind.git
+   [ -d valgrind-old ] \
+     || git clone -b $VOLDVER --depth 1 $VALGRIND_GIT valgrind-old
    rm -rf valgrind-new
-   git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-new
+   git clone -b $VNEWVER --depth 1 $VALGRIND_GIT valgrind-new
    ```
+
    Step 10 of the previous merge kept that merge's `valgrind-new` as
    `valgrind-old`, so reuse it if it exists; `generate-patch-files.sh`
    (step 4) checks that it is a pristine clone at `$VOLDVER`.
@@ -193,15 +209,20 @@ Memcheck and DynComp depend tightly on Valgrind core:
    error message gives the `git reset`/`git clean` command that makes a tree
    pristine again.  Build a copy instead.  First install `gdb` and the
    glibc debuginfo package; without them, most `gdbserver_tests` fail.
+
    ```sh
    cd $INV
    rm -rf valgrind-new-build
    git clone -q valgrind-new valgrind-new-build && cd valgrind-new-build
    ./autogen.sh && ./configure --prefix=$(pwd)/inst
-   make -j"$(nproc)" all install && make -j"$(nproc)" regtest XMLLINT=xmllint-skipped-by-check-regtest > test.log 2>&1
+   make -j"$(nproc)" all install \
+     && make -j"$(nproc)" regtest XMLLINT=xmllint-skipped-by-check-regtest \
+       > test.log 2>&1
    make -s --no-print-directory post-regtest-checks > test-post.log 2>&1
-   $FJALAR/check-regtest.sh --log test.log --expected $INV/regtest-upstream-3.27.1.txt --update
+   $FJALAR/check-regtest.sh --log test.log \
+     --expected $INV/regtest-upstream-3.27.1.txt --update
    ```
+
    These are the options that `check-regtest.sh` itself uses.  Setting
    `XMLLINT` keeps `make check` from validating the manual, which fails
    without the DocBook DTD.  `-s --no-print-directory` keeps make's own
@@ -281,21 +302,26 @@ Memcheck and DynComp depend tightly on Valgrind core:
      #79 `Iop_64x4toV256` fix for the pattern).  With #87, that includes
      new unary operations, which reach `expr2tags_Unop_DC`'s `default`
      case.  Running the Kvasir tests and the programs of
-     `plan-pre-upgrade.md` item 4 with
+     `plan-pre-upgrade.md` item 3 with
      `--dyncomp-unhandled-ops=warn` (#85) lists the unhandled ones that
      they hit.  Search for panics/`default:`
      cases that would now be hit.  Most changes for other architectures can
      be ignored.
    - Running programs finds only the operations those programs use, so also
      list the operations that DynComp does not mention:
+
      ```sh
      cd $INV
-     grep -oE '\bIop_[A-Za-z0-9_]+' valgrind-new/VEX/pub/libvex_ir.h | sort -u > all-ops
-     grep -oE '\bIop_[A-Za-z0-9_]+' $FJALAR/valgrind/fjalar/kvasir/dyncomp_translate.c | sort -u > dc-ops
-     grep -oE '\bIop_[A-Za-z0-9_]+' valgrind-new/memcheck/mc_translate.c | sort -u > mc-ops
-     comm -23 mc-ops dc-ops     # ops Memcheck handles but DynComp does not
-     comm -23 all-ops dc-ops    # all ops DynComp does not mention (mostly other architectures)
+     ops() { grep -oE '\bIop_[A-Za-z0-9_]+' "$1" | sort -u; }
+     ops valgrind-new/VEX/pub/libvex_ir.h > all-ops
+     ops $FJALAR/valgrind/fjalar/kvasir/dyncomp_translate.c > dc-ops
+     ops valgrind-new/memcheck/mc_translate.c > mc-ops
+     # Ops that Memcheck handles but DynComp does not:
+     comm -23 mc-ops dc-ops
+     # All ops that DynComp does not mention (mostly other architectures):
+     comm -23 all-ops dc-ops
      ```
+
      Add each relevant one to the appropriate `expr2tags_*_DC` switch, or
      leave it to the `default` case deliberately, with a comment.  Also
      compare `Iex_*` and `Ist_*` kinds.
@@ -315,15 +341,17 @@ Memcheck and DynComp depend tightly on Valgrind core:
    compiles every file.  Save its output, and list the warnings that are
    new since step 1's `build-before.log`.  The merge shifts line numbers,
    so the commands remove them before comparing:
+
    ```sh
    cd $FJALAR
    (set -o pipefail; make build 2>&1 | tee build-after.log)
    for f in before after; do
-     grep -E ':[0-9]+:[0-9]+: warning' build-$f.log | sed -E 's/:[0-9]+:[0-9]+:/:/' \
-       | sort > $INV/warnings-$f.txt
+     grep -E ':[0-9]+:[0-9]+: warning' build-$f.log \
+       | sed -E 's/:[0-9]+:[0-9]+:/:/' | sort > $INV/warnings-$f.txt
    done
    diff $INV/warnings-before.txt $INV/warnings-after.txt
    ```
+
    Fix compilation errors and new warnings (newer Valgrind may enable
    additional warning flags; Binutils-derived code is the usual source).
    If the build stopped at an error, its log is incomplete:  after fixing
@@ -389,8 +417,7 @@ Memcheck and DynComp depend tightly on Valgrind core:
       superseded by `regtest-expected/*.txt`.)
     - In the same PR, while the merge is fresh, also make the documented
       procedure in `doc/valgrind-merge.texinfo` match the one actually
-      used, by incorporating what this plan adds beyond
-      `plan-pre-upgrade.md` item 5:
+      used, by incorporating what this plan adds to it:
       - working in a new clone (step 1);
       - reading NEWS for every intermediate release (step 7);
       - the list of Coregrind files that need special attention (step 5),
@@ -412,12 +439,14 @@ Memcheck and DynComp depend tightly on Valgrind core:
       Do not do this earlier:  review may require regenerating the patch
       files, which needs `valgrind-old`, or comparing a failure that
       appears only in CI with upstream's build (step 9).
+
       ```sh
       cd $INV
       rm -rf valgrind-old valgrind-new-build
       mv valgrind-new valgrind-old
       git -C valgrind-old reset --hard && git -C valgrind-old clean -fdx
       ```
+
       Remove `valgrind-old` first; otherwise `mv` moves `valgrind-new`
       inside it.
 
@@ -432,7 +461,7 @@ Memcheck and DynComp depend tightly on Valgrind core:
   checkoff in step 6.
 - **New IROps** used by modern compilers (AVX/AVX2 and others on amd64) can
   make DynComp panic at run time.  Re-run the vectorized programs from
-  `plan-pre-upgrade.md` item 4 (which all work on 3.23 by then); a panic
+  `plan-pre-upgrade.md` item 3 (which all work on 3.23 by then); a panic
   there after the merge is due to the upgrade.
 - **Build-system changes** (`Makefile.all.am`, `Makefile.tool.am`,
   `configure.ac`) can silently drop Fjalar from the build or change flags.
