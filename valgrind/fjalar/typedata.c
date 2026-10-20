@@ -2853,13 +2853,14 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
     case DW_TAG_formal_parameter:
       {
         formal_parameter* formal_param_ptr = (formal_parameter*)(e->entry_ptr);
-        FJALAR_DPRINTF("  Name: %s, Type ID: 0x%lx, num-ops: %u, atom: %x, loc_type: %u, offset: %ld\n",
+        FJALAR_DPRINTF("  Name: %s, Type ID: 0x%lx, num-ops: %u, atom: %x, loc_type: %u, offset: %ld, incomplete_loc: %u\n",
                formal_param_ptr->name,
                formal_param_ptr->type_ID,
                formal_param_ptr->dwarf_stack_size,
                formal_param_ptr->loc_atom,
                formal_param_ptr->location_type,
-               formal_param_ptr->location);
+               formal_param_ptr->location,
+               formal_param_ptr->incomplete_loc);
         break;
       }
     case DW_TAG_template_type_param:
