@@ -112,14 +112,28 @@ static void setHelperAnns_DC ( DCEnv* dce, IRDirty* di ) {
 // gets tag 0 (such as a comparison).  The merge is a dirty call
 // rather than a clean one.  VEX would remove a clean call as dead
 // code whenever the operations that use the result discard its tag
-// (for example, a shift discards the tag of its shift amount), and
-// the merge would be lost.
+// (for example, a shift discards the tag of its shift amount, and a
+// unary operation that gives tag 0 discards the tag of its operand),
+// and the merge would be lost.
 static void mergeTagsReturn0_DC ( DCEnv* dce,
                                   IRAtom* vatom1, IRAtom* vatom2 ) {
    IRDirty* di = unsafeIRDirty_0_N(2,
                                    "MC_(helperc_MERGE_TAGS_RETURN_0)",
                                    &MC_(helperc_MERGE_TAGS_RETURN_0),
                                    mkIRExprVec_2( vatom1, vatom2 ));
+   setHelperAnns_DC( dce, di );
+   stmt_DC('V', dce, IRStmt_Dirty(di));
+}
+
+// 'Anchor' the tag vatom by passing it to a NOP dirty call, so that
+// the IR optimizer does not delete the computation of vatom, along
+// with any tag merges (clean helper calls) that it performs, even
+// though the caller discards vatom.
+static void anchorTag_DC ( DCEnv* dce, IRAtom* vatom ) {
+   IRDirty* di = unsafeIRDirty_0_N(1,
+                                   "MC_(helperc_TAG_NOP)",
+                                   &MC_(helperc_TAG_NOP),
+                                   mkIRExprVec_1( vatom ));
    setHelperAnns_DC( dce, di );
    stmt_DC('V', dce, IRStmt_Dirty(di));
 }
@@ -253,8 +267,9 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
 // neither merges in dyncomp_dataflow_only_mode:
 //  * At translation time, every merge in the instrumentation is created
 //    by mkMergeTags_DC, by stmtMergeTagsReturn0_DC, by
-//    mergeTagsReturn0_DC (which expr2tags_Binop_DC does not reach in that
-//    mode), or by handleCCall_DC, which returns early in that mode.
+//    mergeTagsReturn0_DC (which neither expr2tags_Binop_DC nor
+//    approximate_unhandled_op_DC reaches in that mode), or by
+//    handleCCall_DC, which returns early in that mode.
 //  * At run time, a load merges the tags of the bytes it reads.  In
 //    dyncomp_dataflow_only_mode (and dyncomp_dataflow_comparisons_mode),
 //    expr2tags_LDle_DC instead calls MC_(helperc_LOAD_TAG_N), which
@@ -776,6 +791,156 @@ UInt numConsts = 0;
 // as one big switch statement for now in order to provide
 // flexibility for future edits
 
+/* Returns true if ty is a floating-point or vector type. */
+static
+Bool isFloatOrVectorType_DC ( IRType ty )
+{
+   switch (ty) {
+      case Ity_F16: case Ity_F32: case Ity_F64: case Ity_F128:
+      case Ity_D32: case Ity_D64: case Ity_D128:
+      case Ity_V128: case Ity_V256:
+         return True;
+      default:
+         return False;
+   }
+}
+
+/* Handles an IROp that DynComp does not handle.  By default, panics.
+   With --dyncomp-unhandled-ops=warn, prints a warning the first time
+   that each IROp is encountered and returns the tag of an approximation
+   of the operation.
+
+   The approximation guesses each operand's role from its type, as given
+   by typeOfPrimop:
+    * A first operand of type I32 is a rounding mode if the result or
+      another operand is a floating-point or vector value.
+    * A later operand of type I8 is a shift amount or lane index if the
+      first operand is not also of type I8.
+   Rounding modes, shift amounts, and lane indices do not interact with
+   anything.  The other operands are "data operands".
+    * If the result has type I1 and there are 2 data operands, the
+      operation is a comparison:  the data operands' tags are merged (as
+      by mergeTagsReturn0_DC), and the result has no tag.
+    * Otherwise, the data operands' tags are merged and the result gets
+      the merged tag.  In units and comparisons modes, the operation is
+      instead treated as a non-interaction, because it might be (for
+      example) a multiplication.
+   With --dyncomp-interactions=none, the operation is a non-interaction.
+
+   atoms and vatoms hold the nargs operands and their tags. */
+static
+IRAtom* approximate_unhandled_op_DC ( DCEnv* dce, IROp op, Int nargs,
+                                      IRAtom** atoms, IRAtom** vatoms,
+                                      const HChar* where )
+{
+   // warned[op - Iop_INVALID] is true if a warning about op has been printed.
+   static Bool warned[Iop_LAST - Iop_INVALID];
+   IRType       t_dst, t_arg[4];
+   Bool         isData[4];      // whether each operand is a data operand
+   IRAtom*      data[4];        // tags of the non-constant data operands
+   // nDataTypes counts the data operands; nData counts the non-constant ones.
+   Int          i, nDataTypes = 0, nData = 0;
+   Bool         isRoundingMode = False, isComparison, isInteraction;
+   const HChar* description;
+
+   if (!dyncomp_warn_unhandled_ops) {
+      ppIROp(op);
+      VG_(printf)("\nUnhandled IROp: 0x%x\n", (UInt)op);
+      VG_(tool_panic)(where);
+   }
+
+   tl_assert(op > Iop_INVALID && op < Iop_LAST);
+   tl_assert(nargs >= 2 && nargs <= 4);
+
+   typeOfPrimop(op, &t_dst, &t_arg[0], &t_arg[1], &t_arg[2], &t_arg[3]);
+
+   // Determine which operands are data operands.
+   if (t_arg[0] == Ity_I32) {
+      isRoundingMode = isFloatOrVectorType_DC(t_dst);
+      for (i = 1; i < nargs; i++) {
+         isRoundingMode |= isFloatOrVectorType_DC(t_arg[i]);
+      }
+   }
+   for (i = 0; i < nargs; i++) {
+      if (i == 0) {
+         isData[i] = !isRoundingMode;
+      } else {
+         isData[i] = !(t_arg[i] == Ity_I8 && t_arg[0] != Ity_I8);
+      }
+      if (isData[i]) {
+         nDataTypes++;
+      }
+   }
+
+   // Decide how to treat the operation, honoring --dyncomp-interactions.
+   isComparison = (t_dst == Ity_I1 && nDataTypes == 2);
+   isInteraction = (!dyncomp_dataflow_only_mode
+                    && (isComparison
+                        || !(dyncomp_units_mode
+                             || dyncomp_dataflow_comparisons_mode)));
+
+   if (!warned[op - Iop_INVALID]) {
+      warned[op - Iop_INVALID] = True;
+      if (!isInteraction) {
+         description = "treating it as a non-interaction";
+      } else if (isComparison) {
+         description = "treating it as a comparison of its operands";
+      } else {
+         description = "merging the tags of its operands";
+      }
+      VG_(printf)("Warning: DynComp does not handle IROp ");
+      ppIROp(op);
+      VG_(printf)(" (0x%x) in %s; %s", (UInt)op, where, description);
+      if (nDataTypes < nargs) {
+         VG_(printf)(" (other than rounding modes, shift amounts, and"
+                     " lane indices)");
+      }
+      VG_(printf)(".  Its comparability may be imprecise.\n");
+   }
+
+   if (!isInteraction) {
+      return IRExpr_Const(IRConst_UWord(0));
+   }
+
+   // A constant has no tag, so it need not be merged.
+   for (i = 0; i < nargs; i++) {
+      if (isData[i] && atoms[i]->tag != Iex_Const) {
+         data[nData++] = vatoms[i];
+      }
+   }
+
+   if (isComparison) {
+      if (nData == 2) {
+         mergeTagsReturn0_DC(dce, data[0], data[1]);
+      }
+      return IRExpr_Const(IRConst_UWord(0));
+   }
+
+   // Merge the data operands' tags and return the merged tag.
+   switch (nData) {
+      case 0:
+         return IRExpr_Const(IRConst_UWord(0));
+      case 1:
+         return data[0];
+      case 2:
+         return mkMergeTags_DC (2 /*Int regparms*/,
+                                "MC_(helperc_MERGE_TAGS)",
+                                &MC_(helperc_MERGE_TAGS),
+                                mkIRExprVec_2( data[0], data[1] ));
+      case 3:
+         return mkMergeTags_DC (3 /*Int regparms*/,
+                                "MC_(helperc_MERGE_3_TAGS)",
+                                &MC_(helperc_MERGE_3_TAGS),
+                                mkIRExprVec_3( data[0], data[1], data[2] ));
+      default:
+         return mkMergeTags_DC (3 /*Int regparms*/,
+                                "MC_(helperc_MERGE_4_TAGS)",
+                                &MC_(helperc_MERGE_4_TAGS),
+                                mkIRExprVec_4( data[0], data[1], data[2],
+                                               data[3] ));
+   }
+}
+
 static
 IRAtom* expr2tags_Qop_DC ( DCEnv* dce,
                            IROp op,
@@ -860,12 +1025,13 @@ IRAtom* expr2tags_Qop_DC ( DCEnv* dce,
       case Iop_Rotx64:                      // only used by mips
 
       default:
-         ppIROp(op);
-         VG_(printf)("\nUnhandled IROp: 0x%x\n", (UInt)op);
-         VG_(tool_panic)("memcheck:expr2tags_Qop");
+         {
+            IRAtom* atoms[4]  = { atom1, atom2, atom3, atom4 };
+            IRAtom* vatoms[4] = { vatom1, vatom2, vatom3, vatom4 };
+            return approximate_unhandled_op_DC( dce, op, 4, atoms, vatoms,
+                                                "dyncomp:expr2tags_Qop_DC" );
+         }
    }
-
-   VG_(tool_panic)("memcheck:expr2tags_Qop");
 }
 
 static
@@ -1012,9 +1178,12 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
       case Iop_2xMultU64Add128CarryOut:     // only used by ppc
 
       default:
-         ppIROp(op);
-         VG_(printf)("\nUnhandled IROp: 0x%x\n", (UInt)op);
-         VG_(tool_panic)("memcheck:expr2tags_Triop");
+         {
+            IRAtom* atoms[3]  = { atom1, atom2, atom3 };
+            IRAtom* vatoms[3] = { vatom1, vatom2, vatom3 };
+            return approximate_unhandled_op_DC( dce, op, 3, atoms, vatoms,
+                                                "dyncomp:expr2tags_Triop_DC" );
+         }
    }
 
    return IRExpr_Const(IRConst_UWord(0));
@@ -2119,12 +2288,13 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_RSqrtStep32Fx4:              // only used by arm arm64
    case Iop_RSqrtStep64Fx2:              // only used by arm64
 
-      // Hopefully we will never get here if we've had had cases which
-      // handle every possible IR binary op. type (right?)
    default:
-      ppIROp(op);
-      VG_(printf)("\nUnhandled IROp: 0x%x\n", (UInt)op);
-      VG_(tool_panic)("dyncomp:expr2tags_Binop_DC");
+      {
+         IRAtom* atoms[2]  = { atom1, atom2 };
+         IRAtom* vatoms[2] = { vatom1, vatom2 };
+         return approximate_unhandled_op_DC( dce, op, 2, atoms, vatoms,
+                                             "dyncomp:expr2tags_Binop_DC" );
+      }
    }
 
    // A comparison whose result only carries flags forward does not compare
@@ -2232,13 +2402,91 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 }
 
 static
-IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
+IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
 {
    IRAtom* vatom = expr2tags_DC( dce, atom );
    tl_assert(isOriginalAtom_DC(dce,atom));
 
-   // Do nothing with unary ops.  Just evaluate the
-   // sub-expression and return it:
+   switch (op) {
+
+   // ----------------------------------------------------------
+   // The result is a boolean, or a mask or count computed from
+   // the bits of the operand, rather than a value of the same kind
+   // as the operand.  As for binary comparisons (see
+   // expr2tags_Binop_DC), the result gets tag 0.
+   // ----------------------------------------------------------
+
+   case Iop_Clz32:
+   case Iop_Clz64:
+   case Iop_ClzNat32:                  // only used by ppc
+   case Iop_ClzNat64:                  // only used by ppc
+   case Iop_Clz16x4:                   // only used by arm
+   case Iop_Clz16x8:                   // only used by arm ppc arm64 mips s390
+   case Iop_Clz32x2:                   // only used by arm
+   case Iop_Clz32x4:                   // only used by arm ppc arm64 mips s390
+   case Iop_Clz64x2:                   // only used by ppc mips s390
+   case Iop_Clz8x16:                   // only used by arm ppc arm64 mips s390
+   case Iop_Clz8x8:                    // only used by arm
+   case Iop_Cls16x4:                   // only used by arm
+   case Iop_Cls16x8:                   // only used by arm arm64
+   case Iop_Cls32x2:                   // only used by arm
+   case Iop_Cls32x4:                   // only used by arm arm64
+   case Iop_Cls8x16:                   // only used by arm arm64
+   case Iop_Cls8x8:                    // only used by arm
+   case Iop_CmpNEZ128x1:               // unused
+   case Iop_CmpNEZ16:                  // unused
+   case Iop_CmpNEZ16x16:               // unused
+   case Iop_CmpNEZ16x2:                // unused
+   case Iop_CmpNEZ16x4:                // only used by arm
+   case Iop_CmpNEZ16x8:                // only used by arm
+   case Iop_CmpNEZ32:                  // unused
+   case Iop_CmpNEZ32x2:                // only used by arm
+   case Iop_CmpNEZ32x4:                // only used by arm
+   case Iop_CmpNEZ32x8:                // unused
+   case Iop_CmpNEZ64:                  // unused
+   case Iop_CmpNEZ64x2:                // only used by arm
+   case Iop_CmpNEZ64x4:                // unused
+   case Iop_CmpNEZ8:                   // unused
+   case Iop_CmpNEZ8x16:                // only used by arm
+   case Iop_CmpNEZ8x32:                // unused
+   case Iop_CmpNEZ8x4:                 // unused
+   case Iop_CmpNEZ8x8:                 // only used by arm
+   case Iop_CmpwNEZ32:                 // unused
+   case Iop_CmpwNEZ64:                 // only used by arm
+   case Iop_Cnt8x16:                   // only used by arm arm64
+   case Iop_Cnt8x8:                    // only used by arm
+   case Iop_Ctz16x8:
+   case Iop_Ctz8x16:
+   case Iop_Ctz32:
+   case Iop_CtzNat32:
+   case Iop_Ctz32x4:
+   case Iop_Ctz64:
+   case Iop_CtzNat64:
+   case Iop_Ctz64x2:
+   case Iop_GetMSBs8x16:
+   case Iop_GetMSBs8x8:
+   case Iop_PopCount32:                // only used by ppc
+   case Iop_PopCount64:                // only used by ppc
+      // The result discards vatom, so anchor it to preserve the tag
+      // merges that computed it, such as the merge of a and b in
+      // 'ctz(a + b)'.  In dyncomp_dataflow_only_mode and
+      // dyncomp_dataflow_comparisons_mode, no binary operation merges
+      // with a clean call (comparisons merge with a dirty call; see
+      // mergeTagsReturn0_DC), so the anchor is not worth the cost of
+      // a helper call.  A constant operand involves no tag merges, so
+      // it needs no anchor.
+      if (atom->tag != Iex_Const
+          && !dyncomp_dataflow_only_mode
+          && !dyncomp_dataflow_comparisons_mode) {
+         anchorTag_DC(dce, vatom);
+      }
+      return IRExpr_Const(IRConst_UWord(0));
+
+   // ----------------------------------------------------------
+   // Return the tag of the operand:
+   // ----------------------------------------------------------
+
+   default:
    // pgbovine: Actually, when you widen stuff, don't you want to
    //       create new tags for the new bytes and merge them?
    //       But you can't do that because you only have the word-sized
@@ -2247,7 +2495,8 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
    //       we only consider the tag of the first bytes of each
    //       operand anyways.
    //
-   // For documentation purposes, here is a list of all the unary ops.
+   // For documentation purposes, here is a list of all the unary ops
+   // that return the tag of the operand.
    // Iop_128HIto64
    // Iop_128to64
    // Iop_16HIto8
@@ -2302,53 +2551,6 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
    // Iop_BCDtoDPB:                    // only used by ppc
    // Iop_BCD128toI128S:               // only used by ppc
    // Iop_CipherSV128:                 // only used by ppc
-   // Iop_Cls16x4:                     // only used by arm
-   // Iop_Cls16x8:                     // only used by arm arm64
-   // Iop_Cls32x2:                     // only used by arm
-   // Iop_Cls32x4:                     // only used by arm arm64
-   // Iop_Cls8x16:                     // only used by arm arm64
-   // Iop_Cls8x8:                      // only used by arm
-   // Iop_Clz32
-   // Iop_Clz64
-   // Iop_ClzNat32                     // only used by ppc
-   // Iop_ClzNat64                     // only used by ppc
-   // Iop_Clz16x4:                     // only used by arm
-   // Iop_Clz16x8:                     // only used by arm ppc arm64 mips s390
-   // Iop_Clz32x2:                     // only used by arm
-   // Iop_Clz32x4:                     // only used by arm ppc arm64 mips s390
-   // Iop_Clz64x2:                     // only used by ppc mips s390
-   // Iop_Clz8x16:                     // only used by arm ppc arm64 mips s390
-   // Iop_Clz8x8:                      // only used by arm
-   // Iop_CmpNEZ128x1:                 // unused
-   // Iop_CmpNEZ16:                    // unused
-   // Iop_CmpNEZ16x16:                 // unused
-   // Iop_CmpNEZ16x2:                  // unused
-   // Iop_CmpNEZ16x4:                  // only used by arm
-   // Iop_CmpNEZ16x8:                  // only used by arm
-   // Iop_CmpNEZ32:                    // unused
-   // Iop_CmpNEZ32x2:                  // only used by arm
-   // Iop_CmpNEZ32x4:                  // only used by arm
-   // Iop_CmpNEZ32x8:                  // unused
-   // Iop_CmpNEZ64:                    // unused
-   // Iop_CmpNEZ64x2:                  // only used by arm
-   // Iop_CmpNEZ64x4:                  // unused
-   // Iop_CmpNEZ8:                     // unused
-   // Iop_CmpNEZ8x16:                  // only used by arm
-   // Iop_CmpNEZ8x32:                  // unused
-   // Iop_CmpNEZ8x4:                   // unused
-   // Iop_CmpNEZ8x8:                   // only used by arm
-   // Iop_CmpwNEZ32:                   // unused
-   // Iop_CmpwNEZ64:                   // only used by arm
-   // Iop_Cnt8x16:                     // only used by arm arm64
-   // Iop_Cnt8x8:                      // only used by arm
-   // Iop_Ctz16x8:
-   // Iop_Ctz8x16:
-   // Iop_Ctz32:
-   // Iop_CtzNat32:
-   // Iop_Ctz32x4:
-   // Iop_Ctz64:
-   // Iop_CtzNat64:
-   // Iop_Ctz64x2:
    // Iop_D128HItoD64:                 // only used by ppc s390
    // Iop_D128LOtoD64:                 // only used by ppc s390
    // Iop_D32toD64:                    // only used by ppc s390
@@ -2379,8 +2581,6 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
    // Iop_F32toI32Ux2_RZ:              // only used by arm mips
    // Iop_F32toI32Ux4_RZ:              // only used by arm mips
    // Iop_F64toF128:                   // only used by s390
-   // Iop_GetMSBs8x16
-   // Iop_GetMSBs8x8
    // Iop_I32StoD128:                  // only used by s390
    // Iop_I32StoD64:                   // only used by s390
    // Iop_I32StoF128:                  // only used by s390
@@ -2425,8 +2625,6 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
    // Iop_Not64:
    // Iop_NotV128:
    // Iop_NotV256:
-   // Iop_PopCount32:                  // only used by ppc
-   // Iop_PopCount64:                  // only used by ppc
    // Iop_PwAddL16Sx4:                 // only used by arm
    // Iop_PwAddL16Sx8:                 // only used by arm
    // Iop_PwAddL16Ux4:                 // only used by arm
@@ -2528,7 +2726,8 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
    // Iop_Widen8Sto16x8:               // only used by arm
    // Iop_Widen8Uto16x8:               // only used by arm
 
-   return vatom;
+      return vatom;
+   }
 }
 
 /*
@@ -2877,7 +3076,7 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
                 );
 
       case Iex_Unop:
-         return expr2tags_Unop_DC( dce, e->Iex.Unop.arg );
+         return expr2tags_Unop_DC( dce, e->Iex.Unop.op, e->Iex.Unop.arg );
 
       case Iex_Load:
          return expr2tags_LDle_DC( dce, e->Iex.Load.ty,
