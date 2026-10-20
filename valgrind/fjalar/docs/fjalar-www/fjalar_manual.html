@@ -33,6 +33,7 @@ have un-tarred the Fjalar package (executables shown in bold):
 	      <li>fjalar/
 		<ul>
 		  <li>Makefile.am
+		  <li>fjalar.am
 		  <li>fjalar_tool.h
 		  <li>fjalar_include.h
 		  <li>mc_main.c
@@ -88,26 +89,28 @@ To create a new tool:
 <li>Create a sub-directory in the <tt>valgrind-3/valgrind/fjalar</tt>
 directory and place all of your tool's source files in there.
 
-<li>Edit <tt>Makefile.am</tt> in <tt>valgrind-3/valgrind/fjalar</tt>
+<li>Edit <tt>fjalar.am</tt> in <tt>valgrind-3/valgrind/fjalar</tt>
 	to include all the .c files of your tool by adding them to the
-	list of files assigned to the
-	<tt>FJALAR_SOURCES_COMMON</tt> variable. (Feel free to tweak
-	other variables in that file.  For instance, you can adjust
-	<tt>AM_CFLAGS_X86_LINUX</tt> to add optimizations to boost
+	list of files that are added to the
+	<tt>FJALAR_SOURCES_COMMON</tt> variable.  (Do not edit
+	<tt>Makefile.am</tt>, which is generated from Memcheck's
+	<tt>Makefile.am</tt> and includes <tt>fjalar.am</tt>.  Feel free to tweak
+	other variables in <tt>fjalar.am</tt>.  For instance, you can remove
+	the <tt>-O0</tt> from <tt>EXTRA_CFLAGS</tt> to enable optimizations that boost
   run-time performance.  The default is to turn off all optimizations
   in order to ease debugging.) IMPORTANT: you must also remove the line
   <tt>kvasir/kvasir_main.c \</tt> from the file list.  In essence, you
   are replacing the kvasir tool with your own.
 
 <li>Run <tt>auto-everything.sh</tt> to create a new <tt>Makefile</tt>
-	from your modified <tt>Makefile.am</tt> and re-compile
+	from <tt>Makefile.am</tt> and your modified <tt>fjalar.am</tt> and re-compile
 	everything.  You only need to run <tt>auto-everything.sh</tt>
-	whenever you make a change to <tt>Makefile.am</tt>.  (Notice
+	whenever you make a change to <tt>fjalar.am</tt>.  (Notice
 	that directly editing <tt>Makefile</tt> and
 	<tt>Makefile.in</tt> is probably futile because they are
 	auto-generated from <tt>Makefile.am</tt> every time
 	<tt>auto-everything.sh</tt> is run.)  If you do not
-  subsequently change <tt>Makefile.am</tt>, you can simply use
+  subsequently change <tt>fjalar.am</tt>, you can simply use
   <tt>make</tt> and <tt>make install</tt> to compile and install,
   respectively.
 
