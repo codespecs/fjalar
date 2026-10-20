@@ -184,6 +184,22 @@ IRAtom* flagsDep2Operand_DC ( DCEnv* dce, IRAtom* ccOp, IRAtom* dep2 )
    return dep2;
 }
 
+// Merge the tags vatom1 and vatom2, for an operation whose result
+// gets tag 0 (such as a comparison).  The merge is a dirty call
+// rather than a clean one.  VEX would remove a clean call as dead
+// code whenever the operations that use the result discard its tag
+// (for example, a shift discards the tag of its shift amount), and
+// the merge would be lost.
+static void mergeTagsReturn0_DC ( DCEnv* dce,
+                                  IRAtom* vatom1, IRAtom* vatom2 ) {
+   IRDirty* di = unsafeIRDirty_0_N(2,
+                                   "MC_(helperc_MERGE_TAGS_RETURN_0)",
+                                   &MC_(helperc_MERGE_TAGS_RETURN_0),
+                                   mkIRExprVec_2( vatom1, vatom2 ));
+   setHelperAnns_DC( dce, di );
+   stmt_DC('V', dce, IRStmt_Dirty(di));
+}
+
 // A PUT stores a value into the guest state
 void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
                      IRAtom* atom, IRAtom* vatom )
@@ -335,8 +351,9 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
 // Tags are merged (that is, an interaction is recorded) in two ways, and
 // neither merges in dyncomp_dataflow_only_mode:
 //  * At translation time, every merge in the instrumentation is created
-//    by mkMergeTags_DC, by stmtMergeTagsReturn0_DC, or by handleCCall_DC,
-//    which returns early in that mode.
+//    by mkMergeTags_DC, by stmtMergeTagsReturn0_DC, by
+//    mergeTagsReturn0_DC (which expr2tags_Binop_DC does not reach in that
+//    mode), or by handleCCall_DC, which returns early in that mode.
 //  * At run time, a load merges the tags of the bytes it reads.  In
 //    dyncomp_dataflow_only_mode (and dyncomp_dataflow_comparisons_mode),
 //    expr2tags_LDle_DC instead calls MC_(helperc_LOAD_TAG_N), which
@@ -2448,6 +2465,13 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
          else if (helper == &MC_(helperc_MERGE_TAGS_RETURN_0)) {
             return IRExpr_Const(IRConst_UWord(0));
          }
+      }
+
+      // A comparison:  merge the operands' tags with a dirty call,
+      // which VEX does not remove; the result's tag is 0.
+      if (helper == &MC_(helperc_MERGE_TAGS_RETURN_0)) {
+         mergeTagsReturn0_DC(dce, vatom1, vatom2);
+         return IRExpr_Const(IRConst_UWord(0));
       }
 
       // Let's try a clean call.  It seems to be correct
