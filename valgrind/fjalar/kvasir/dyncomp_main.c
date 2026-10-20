@@ -477,10 +477,15 @@ UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
 // those modes, a load is not an interaction, so unlike the other
 // MC_(helperc_LOAD_TAG_*) functions, this does not merge the tags of the
 // addresses in the range.  It returns the leader of the first non-zero
-// tag in the range; if that tag is WEAK_FRESH_TAG, it returns a fresh
-// tag, for a load of any size.  (Of the other functions, only
-// MC_(helperc_LOAD_TAG_4) returns a fresh tag, and only when the tag of
-// its first byte is WEAK_FRESH_TAG.)
+// tag in the range, or WEAK_FRESH_TAG if that tag is WEAK_FRESH_TAG.
+// If the range holds several fields, that tag is the tag of only the
+// first one; when the value is stored unchanged, do_shadow_STle_DC in
+// dyncomp_translate.c uses MC_(helperc_COPY_TAGS) when it can, so that
+// each field keeps its own tag.
+// Returning WEAK_FRESH_TAG rather than a fresh tag avoids allocating a
+// tag for each load of a GOT entry, such as the one in every PLT call;
+// the MC_(helperc_STORE_TAG_*) functions replace WEAK_FRESH_TAG with a
+// fresh tag if the value is stored.
 VG_REGPARM(2)
 UInt MC_(helperc_LOAD_TAG_N) ( Addr a, UWord len ) {
   UInt tag;
@@ -488,9 +493,38 @@ UInt MC_(helperc_LOAD_TAG_N) ( Addr a, UWord len ) {
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_N: %p %lu\n", (void *)a, len);
   tag = first_nonzero_tag_in_range(a, len);
   if (WEAK_FRESH_TAG == tag) {
-    return grab_fresh_tag();
+    return WEAK_FRESH_TAG;
   }
   return val_uf_find_leader(tag);
+}
+
+// Copies the tags of the len bytes at src to the len bytes at dst, in
+// dyncomp_dataflow_only_mode and dyncomp_dataflow_comparisons_mode, when
+// a value loaded from src is stored unchanged to dst.  Like the
+// MC_(helperc_STORE_TAG_*) functions, it writes leaders and replaces
+// WEAK_FRESH_TAG with a fresh tag.  Unlike copy_tags, it is correct when
+// the ranges overlap.
+VG_REGPARM(3)
+void MC_(helperc_COPY_TAGS) ( Addr dst, Addr src, UWord len ) {
+  UInt tags[32];
+  UInt freshTag = 0;
+  UWord i;
+
+  DYNCOMP_TPRINTF("[DynComp] COPY_TAGS: %p %p %lu\n", (void *)dst, (void *)src, len);
+  tl_assert(len <= sizeof(tags) / sizeof(tags[0]));
+  for (i = 0; i < len; i++) {
+    tags[i] = get_tag(src + i);
+  }
+  for (i = 0; i < len; i++) {
+    UInt tag = tags[i];
+    if (WEAK_FRESH_TAG == tag) {
+      if (0 == freshTag) {
+        freshTag = grab_fresh_tag();
+      }
+      tag = freshTag;
+    }
+    set_tag(dst + i, val_uf_find_leader(tag));
+  }
 }
 
 // Make this const so gcc can eliminate dead code to improve

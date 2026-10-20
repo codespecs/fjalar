@@ -2728,6 +2728,30 @@ void do_shadow_STle_DC ( DCEnv* dce,
    setHelperAnns_DC(dce, diAddr);
    stmt_DC('V', dce, IRStmt_Dirty(diAddr));
 
+   // In these modes, the tag of a loaded value is the tag of only one of
+   // the bytes it was loaded from (see MC_(helperc_LOAD_TAG_N)), so
+   // storing that tag to every byte would give each field of a copied
+   // struct the tag of one field.  If the value was loaded in this
+   // superblock and no statement since then may have written memory,
+   // then the loaded bytes still have their tags, and the store copies
+   // them one by one.
+   if ((dyncomp_dataflow_only_mode || dyncomp_dataflow_comparisons_mode)
+       && data->tag == Iex_RdTmp) {
+      IRTemp t = data->Iex.RdTmp.tmp;
+      tl_assert(t < dce->n_originalTmps);
+      if (dce->loadAddr[t] && dce->loadMemWrites[t] == dce->memWrites) {
+         di = unsafeIRDirty_0_N(
+                 3/*regparms*/,
+                 "MC_(helperc_COPY_TAGS)", &MC_(helperc_COPY_TAGS),
+                 mkIRExprVec_3( addr, dce->loadAddr[t],
+                                mkIRExpr_HWord(sizeofIRType(
+                                   typeOfIRTemp(dce->bb->tyenv, t))) ));
+         setHelperAnns_DC( dce, di );
+         stmt_DC('V',  dce, IRStmt_Dirty(di) );
+         return;
+      }
+   }
+
    // Get the byte size of the REAL data (and not our tag vdata, which
    // is ALWAYS word-sized).  This is very different from Memcheck's
    // V-bits, which is always guaranteed to be the same byte size as 'data'
@@ -2814,6 +2838,30 @@ void do_shadow_Dirty_DC ( DCEnv* dce, IRDirty* d ) {
                                       mkIRExprVec_0());
       setHelperAnns_DC( dce, di );
       stmt_DC('V',  dce, IRStmt_Dirty(di) );
+   }
+}
+
+// Records, for do_shadow_STle_DC, whether st loads a value into a temp
+// or may write memory.  Call it after instrumenting st.
+void note_stmt_DC ( DCEnv* dce, IRStmt* st ) {
+   switch (st->tag) {
+      case Ist_WrTmp:
+         if (st->Ist.WrTmp.data->tag == Iex_Load) {
+            IRTemp t = st->Ist.WrTmp.tmp;
+            tl_assert(t < dce->n_originalTmps);
+            dce->loadAddr[t] = st->Ist.WrTmp.data->Iex.Load.addr;
+            dce->loadMemWrites[t] = dce->memWrites;
+         }
+         break;
+      case Ist_Store:
+      case Ist_StoreG:
+      case Ist_CAS:
+      case Ist_LLSC:
+      case Ist_Dirty:
+         dce->memWrites++;
+         break;
+      default:
+         break;
    }
 }
 
