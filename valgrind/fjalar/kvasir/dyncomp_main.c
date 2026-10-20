@@ -314,6 +314,22 @@ void MC_(helperc_STORE_TAG_1) ( Addr a, UInt tag ) {
   set_tag(a, tagToWrite);
 }
 
+// Returns the first non-zero tag in the range [a, a+len), or 0 if
+// there is none.
+static UInt first_nonzero_tag_in_range(Addr a, SizeT len) {
+  Addr curAddr;
+  UInt curTag;
+
+  for (curAddr = a; curAddr < (a + len); curAddr++) {
+    curTag = get_tag(curAddr);
+    if (curTag) {
+      DYNCOMP_TPRINTF("[DynComp] first_nonzero_tag_in_range addr=%p, tag=%u\n", (void *)curAddr, curTag);
+      return curTag;
+    }
+  }
+  return 0;
+}
+
 // Unions the tags belonging to these addresses and set
 // the tags of both to the canonical tag (for efficiency)
 void val_uf_union_tags_at_addr(Addr a1, Addr a2) {
@@ -381,14 +397,7 @@ UInt val_uf_union_tags_in_range(Addr a, SizeT len) {
   // that as the basis for all the mergings:
   // (Hopefully this should only take one iteration
   //  because the tag of address 'a' should be non-zero)
-  for (curAddr = a; curAddr < (a + len); curAddr++) {
-    curTag = get_tag(curAddr);
-    if (curTag) {
-DYNCOMP_TPRINTF("MLR debug val_uf_union_tags_in_range addr=%p, tag=%u\n", (void *)curAddr, curTag);
-      tagToMerge = curTag;
-      break;
-    }
-  }
+  tagToMerge = first_nonzero_tag_in_range(a, len);
 
   // If they are all zeroes, then we're done;
   // Don't merge anything
