@@ -27,6 +27,16 @@ long copy(long a, long b) {
   return q.a;
 }
 
+// a and b should not be comparable; the return value should be comparable
+// to b.
+long copy_second(long a, long b) {
+  struct pair p, q;
+  p.a = a;
+  p.b = b;
+  COPY_PAIR(q, p);
+  return q.b;
+}
+
 struct int_pair {
   int x;
   int y;
@@ -49,8 +59,20 @@ int copy_ints(int x, int y) {
   return q.x;
 }
 
+// x and y should not be comparable; the return value should be comparable
+// to y.
+int copy_ints_second(int x, int y) {
+  struct int_pair p, q;
+  p.x = x;
+  p.y = y;
+  COPY_INT_PAIR(q, p);
+  return q.y;
+}
+
 int main(void) {
   copy(1, 2);
+  copy_second(1, 2);
   copy_ints(1, 2);
+  copy_ints_second(1, 2);
   return 0;
 }

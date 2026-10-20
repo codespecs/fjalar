@@ -8757,6 +8757,11 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
       //dce.tmpMap         = LibVEX_Alloc(dce.n_originalTmps * sizeof(IRTemp));
       for (i = 0; i < (Int)dce.n_originalTmps; i++)
          dce.tmpMap[i] = IRTemp_INVALID;
+      dce.loadAddr       = VG_(malloc)("mc_translate.c.3", dce.n_originalTmps * sizeof(IRExpr*));
+      dce.loadMemWrites  = VG_(malloc)("mc_translate.c.4", dce.n_originalTmps * sizeof(UInt));
+      for (i = 0; i < (Int)dce.n_originalTmps; i++)
+         dce.loadAddr[i] = NULL;
+      dce.memWrites      = 0;
    }
 
    /* Finally, begin instrumentation. */
@@ -9005,6 +9010,11 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
 
       } /* switch (st->tag) */
 
+#ifndef _NO_DYNCOMP
+      if (do_dyncomp)
+         note_stmt_DC( &dce, st );
+#endif /* _NO_DYNCOMP */
+
       if (0 && verboze) {
          for (j = first_stmt; j < sb_out->stmts_used; j++) {
             printf("   ");
@@ -9060,6 +9070,13 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
    if (mce.tmpHowUsed) {
       VG_(free)( mce.tmpHowUsed );
    }
+
+#ifndef _NO_DYNCOMP
+   if (do_dyncomp) {
+      VG_(free)( dce.loadAddr );
+      VG_(free)( dce.loadMemWrites );
+   }
+#endif /* _NO_DYNCOMP */
 
     tl_assert(mce.sb == sb_out);
     return sb_out;
