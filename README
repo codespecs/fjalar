@@ -10,7 +10,7 @@ more about Valgrind by visiting its home page at:
 The document valgrind-merge.texinfo, located in the doc sub-directory of
 the Fjalar repository, describes how to obtain the latest version of
 Valgrind and merge it into our Fjalar system.  You can format it with
-either of the following commands:
+either of the following commands, run from the repository root:
   make -C doc html
   make -C doc pdf
 
