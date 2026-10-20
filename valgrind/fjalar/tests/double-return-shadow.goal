@@ -1,0 +1,3 @@
+..initialized():::EXIT0 1.5 1
+..low_uninitialized():::EXIT0 nonsensical 2
+..high_uninitialized():::EXIT0 nonsensical 2
