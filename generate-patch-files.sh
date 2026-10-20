@@ -4,7 +4,7 @@
 # version of upstream Valgrind into Fjalar and Kvasir.  It compares the
 # Valgrind trees $INV/valgrind-old and $INV/valgrind-new, and the Fjalar
 # tree that contains this script, which need not be $INV/fjalar.  If
-# variable FJALAR is set, it must name that tree.
+# variable FJALARDIR is set, it must name that tree.
 
 # Fail the whole script if any command fails, including within a pipeline.
 set -e
@@ -29,9 +29,9 @@ rm -f "$INV"/{coregrind.patch,memcheck.patch,coregrind-Fjalar.diff,memcheck-Fjal
 
 # Running the script from a tree other than the one being merged into would
 # silently diff the wrong tree.
-if [ -n "$FJALAR" ] && [ ! "$FJALAR" -ef "$fjalar" ]; then
-  echo "$0: FJALAR is $FJALAR, but this script is in $fjalar." >&2
-  echo "$0: Run \$FJALAR/generate-patch-files.sh instead." >&2
+if [ -n "$FJALARDIR" ] && [ ! "$FJALARDIR" -ef "$fjalar" ]; then
+  echo "$0: FJALARDIR is $FJALARDIR, but this script is in $fjalar." >&2
+  echo "$0: Run \$FJALARDIR/generate-patch-files.sh instead." >&2
   exit 1
 fi
 

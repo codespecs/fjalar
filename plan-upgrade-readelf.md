@@ -4,7 +4,7 @@ Reference procedure: `doc/valgrind-merge.texinfo`, chapter "Updating Readelf
 from Binutils".  This plan applies that procedure to the current situation and
 notes where it needs adjusting.
 
-Below, `$FJALAR` is the Fjalar tree being upgraded, as in the reference
+Below, `$FJALARDIR` is the Fjalar tree being upgraded, as in the reference
 procedure.
 
 ## Ordering: do this before the Valgrind upgrade
@@ -119,7 +119,7 @@ Kvasir tests after each step.
    `--merge=diff3` so conflicts are inline:
 
    ```sh
-   cd $FJALAR/valgrind/fjalar
+   cd $FJALARDIR/valgrind/fjalar
    cp -p dwarf.c dwarf.c.pre-merge; cp -p readelf.c readelf.c.pre-merge
    SKIPFILTER='/can.t find file to patch/ {skip=1} !skip && !/hunks? ignored/ {print} /Skipping patch\./ {skip=0}'
    patch -p1 -lu -f --dry-run < ~/tmp/binutils/include.patch | awk "$SKIPFILTER"
@@ -151,14 +151,14 @@ Kvasir tests after each step.
    - Remove `.rej` files (and any `.orig` files that `patch` creates) as you
      go.  Delete the `.pre-merge` copies once the merge is complete.
 
-7. **Build and fix warnings/errors.**  `make -C $FJALAR build`, then
+7. **Build and fix warnings/errors.**  `make -C $FJALARDIR build`, then
    iterate with `make -C valgrind/fjalar`.  Fix "implicit declaration" and
    "undefined reference" errors (missed `VG_()` wrappers).  Reduce new
    warnings from Valgrind's stricter flags where practical.
    Also check against the system `bfd.h` on both Rocky Linux and Ubuntu
    (the #63 workaround may need to change).
 
-8. **Test.**  Run these from `$FJALAR` (`cd $FJALAR`; step 5 left
+8. **Test.**  Run these from `$FJALARDIR` (`cd $FJALARDIR`; step 5 left
    the shell in `valgrind/fjalar`).
    - `./check-regtest.sh` — must report no unexpected failures, with no
      change to `regtest-expected/*.txt`.  This upgrade doesn't touch
