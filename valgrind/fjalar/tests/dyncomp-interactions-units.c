@@ -44,6 +44,22 @@ int overflow(int a, int b) {
   return result;
 }
 
+// mulThenLahf() multiplies a and b with an imul instruction, and then a lahf
+// instruction in a different basic block copies the flags of the
+// multiplication (via amd64g_calculate_rflags_all) into a register.  Copying
+// flags is not an interaction, and the operands of a multiplication need not
+// have the same units, so under --dyncomp-interactions=units, DynComp should
+// not make a and b comparable.
+int mulThenLahf(int a, int b) {
+  int flags;
+  __asm__ volatile ("imull %2, %1\n\t"
+                    "jmp 1f\n"
+                    "1:\tlahf\n\t"
+                    "movzbl %%ah, %0"
+                    : "=r" (flags), "+r" (a) : "r" (b) : "cc", "rax");
+  return flags;
+}
+
 // absDiffSum() computes the sum of the absolute differences of the bytes of
 // a and b with a psadbw instruction.  VEX translates the psadbw into a call
 // to amd64g_calculate_mmx_psadbw, which does not read flags.  Subtraction is
@@ -64,6 +80,7 @@ int main(void) {
   less(1, 2);
   lessMask(7, 8);
   overflow(3, 4);
+  mulThenLahf(9, 10);
   absDiffSum(5, 6);
   return 0;
 }

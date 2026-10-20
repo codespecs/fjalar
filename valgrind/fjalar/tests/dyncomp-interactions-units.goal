@@ -1,6 +1,9 @@
 ..absDiffSum():::EXIT0 a 1
 ..absDiffSum():::EXIT0 b 1
 ..absDiffSum():::EXIT0 return 2
+..mulThenLahf():::EXIT0 a 1
+..mulThenLahf():::EXIT0 b 2
+..mulThenLahf():::EXIT0 return 3
 ..overflow():::EXIT0 a 1
 ..overflow():::EXIT0 b 2
 ..overflow():::EXIT0 return 3
