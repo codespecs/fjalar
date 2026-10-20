@@ -4,10 +4,9 @@ Reference procedure: `doc/valgrind-merge.texinfo` (chapters "Getting Started"
 through "Committing").  This plan applies that procedure to the current
 situation and notes where it needs adjusting.
 
-Below, `$INV/fjalar` means the Fjalar tree being upgraded.  It must actually be
-at `$INV/fjalar`, because `generate-patch-files.sh` hard-codes that layout
-(`fjalar/valgrind`).  (`apply-patch-files.sh` merges into the tree that
-contains it, wherever that is.)
+Below, `$INV/fjalar` means the Fjalar tree being upgraded.
+(`merge-valgrind.sh` merges into the tree that contains it, wherever that
+is.)
 
 ## Ordering: do this after the readelf upgrade
 
@@ -23,14 +22,14 @@ it completely (merged, CI green) before starting this one.  That plan's
 - Precedent: the last merge (f15d19e3, #72) jumped 3.19.0 -> 3.23.0 in one
   step, so a single 3.23.0 -> 3.27.1 jump is reasonable.
 - Fjalar-local changes made since the 3.23 merge, by where they matter:
-  - Memcheck-derived files, so they can conflict in step 6:
+  - Memcheck-derived files, so they can conflict (step 6):
     `1ca71b1c` (#73) changed `mc_translate.c` and `memcheck.h`.
   - DynComp, so step 7 must keep them (no conflict expected, since
-    `kvasir/` is not patched): `b2c735d7` (#79) `Iop_64x4toV256` in
+    upstream has no `kvasir/`): `b2c735d7` (#79) `Iop_64x4toV256` in
     `dyncomp_translate.c`.
   - Other changes since then (#76, #80, the rest of #73) touch only
     Fjalar's own files and Binutils-derived files, which this merge does not
-    patch.
+    change.
   - The complete checklist of Fjalar changes to upstream files is
     `coregrind-Fjalar.diff` and `memcheck-Fjalar.diff` (step 4).
 
@@ -54,14 +53,16 @@ it completely (merged, CI green) before starting this one.  That plan's
      against it.
 
 2. **Get the trees.**
+
    ```sh
    export VOLDVER=VALGRIND_3_23_0 VNEWVER=VALGRIND_3_27_1
-   cd $INV
-   git clone -b $VOLDVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-old
-   git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-new
+   git clone -b $VOLDVER --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-old
+   git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-new
    ```
+
    Correct the files of earlier merges, following section "Correct the
-   files of earlier merges" of `doc/valgrind-merge.texinfo`.  It lists
+   files of earlier merges" of `doc/valgrind-merge.texinfo`.
+   `./list-file-discrepancies.sh $INV/valgrind-old` lists
    files that Fjalar tracks but `valgrind-old` lacks (remove those that
    Fjalar should not have); Memcheck files in `valgrind/fjalar` that
    `valgrind-old` lacks (keep Fjalar's own, such as `mc_translate.h`);
@@ -69,17 +70,13 @@ it completely (merged, CI green) before starting this one.  That plan's
    them, because Fjalar builds every Memcheck source file); and files that
    `valgrind-old` has but Fjalar does not track, such as empty files and
    files that match `.gitignore` (add those that Fjalar should have).
-   Commit these corrections before applying the patch files, because
-   `apply-patch-files.sh` requires a clean work tree.  (`git apply`
-   handles the files that upstream added or removed since `$VOLDVER`.)
+   Commit these corrections before merging, because
+   `merge-valgrind.sh` requires a clean work tree.  (The merge handles the
+   files that upstream added or removed since `$VOLDVER`.)
 
-3. **Baseline.**  Never build in `valgrind-old` or `valgrind-new` themselves:
-   `generate-patch-files.sh` refuses to run if either contains changes or
-   untracked files, such as build products (`*.o`, `Makefile`, `config.h`,
-   test binaries, `inst/`).  Otherwise they would end up in
-   `coregrind.patch` and then be added by `git apply`.  The
-   error message gives the `git reset`/`git clean` command that makes a tree
-   pristine again.  Build a copy instead:
+3. **Baseline.**  Build in a copy of `valgrind-new`, so that `valgrind-new`
+   stays a clean clone, which becomes `valgrind-old` for the next merge:
+
    ```sh
    rm -rf valgrind-new-build
    git clone -q valgrind-new valgrind-new-build && cd valgrind-new-build
@@ -88,6 +85,7 @@ it completely (merged, CI green) before starting this one.  That plan's
    make -s --no-print-directory post-regtest-checks > test-post.log 2>&1
    $INV/fjalar/check-regtest.sh --log test.log --expected $INV/regtest-upstream-3.27.1.txt --update
    ```
+
    These are the options that `check-regtest.sh` itself uses.  Setting
    `XMLLINT` keeps `make check` from validating the manual, which fails
    without the DocBook DTD.  `-s --no-print-directory` keeps make's own
@@ -101,20 +99,20 @@ it completely (merged, CI green) before starting this one.  That plan's
    directory that this build installs into; Fjalar's tree does not have
    that error.
 
-4. **Create the diffs.** Run `$INV/fjalar/generate-patch-files.sh`, producing
-   `coregrind.patch`, `memcheck.patch`, `coregrind-Fjalar.diff`,
-   `memcheck-Fjalar.diff`.  The script checks that `valgrind-old` and
-   `valgrind-new` are pristine clones at `$VOLDVER` and `$VNEWVER`.
+4. **Merge.**  Run `$INV/fjalar/merge-valgrind.sh`.  It checks that
+   `valgrind-old` and `valgrind-new` are at `$VOLDVER` and `$VNEWVER`,
+   writes `coregrind-Fjalar.diff` and `memcheck-Fjalar.diff`, merges
+   upstream's changes into Coregrind and into both copies of Memcheck
+   (`valgrind/memcheck` and `valgrind/fjalar`) with `git cherry-pick`,
+   regenerates `valgrind/fjalar/Makefile.am`, stages the result, and lists
+   the conflicts.  `git diff valgrind-merge/base valgrind-merge/new` shows
+   upstream's changes.  To start over, run `git reset --hard`.
 
-5. **Coregrind merge.**
-   - `$INV/fjalar/apply-patch-files.sh --check coregrind`, then for real
-     (without `--check`).  The script stages the results, including
-     created files that match `.gitignore`, writes
-     `$INV/coregrind-apply.log`, and lists the conflicts.
-   - Resolve the conflicts that the script listed (files with conflict
-     markers, which `git diff --name-only --diff-filter=U` lists, and files
-     whose patches were not applied at all), then `git add` each file,
-     using `coregrind-Fjalar.diff` and the "Valgrind
+5. **Coregrind conflicts.**
+   - Resolve the conflicts outside `valgrind/fjalar` (files with conflict
+     markers, and modify/delete conflicts, all of which
+     `git diff --name-only --diff-filter=U` lists), then `git add` or
+     `git rm` each file, using `coregrind-Fjalar.diff` and the "Valgrind
      modifications" appendix as a checklist.  In particular, verify each
      Fjalar change still exists after the merge:
      `configure.ac`, top-level `Makefile.am`, `m_libcbase.c`/`pub_tool_libcbase.h`
@@ -129,31 +127,31 @@ it completely (merged, CI green) before starting this one.  That plan's
    - Pay special attention to any upstream change to guest-state layout
      (`libvex_guest_amd64.h`, `libvex_guest_x86.h`) or to the shadow-area
      size/alignment checks, since Fjalar enlarges the shadow area.
-   - Commit the results, because `apply-patch-files.sh` requires that
-     Fjalar has no uncommitted changes before the Memcheck merge.
 
-6. **Memcheck merge** into `valgrind/fjalar/`.
-   - `$INV/fjalar/apply-patch-files.sh --check memcheck`, then for real
-     (without `--check`).
-   - Resolve the conflicts that the script listed (as for Coregrind),
-     including files that upstream removed but Fjalar modified; `git rm`
+6. **Memcheck conflicts** in `valgrind/fjalar/`.
+   - Resolve the conflicts (as for Coregrind), using
+     `memcheck-Fjalar.diff`, including files that upstream removed but
+     Fjalar modified; `git rm`
      any that Fjalar does not need.  Remember part of `mc_translate.c`
      lives in `fjalar/mc_translate.h`.  Preserve the #73 edits to `mc_translate.c`
      and `memcheck.h`.
    - In `mc_translate.c`'s `MC_(instrument)`, check that every case has
      matching DynComp code and that new cases get a DynComp counterpart.
    - Check `mc_main.c` still has Fjalar's options/version info.
-   - The script runs `generate-fjalar-makefile.sh`, which regenerates
+   - `merge-valgrind.sh` runs `generate-fjalar-makefile.sh`, which regenerates
      `valgrind/fjalar/Makefile.am` from `valgrind/memcheck/Makefile.am`, so
-     Fjalar builds every new Memcheck source file.  (The dry run writes it
-     to `$INV/fjalar-Makefile.am` instead.)  Review the staged diff of
+     Fjalar builds every new Memcheck source file.  If
+     `valgrind/memcheck/Makefile.am` had a conflict, rerun it after
+     resolving the conflict.  Review the staged diff of
      `valgrind/fjalar/Makefile.am`, and update `valgrind/fjalar/fjalar.am`,
      which holds Fjalar's changes to the build, if an upstream change
      conflicts with them.
 
 7. **DynComp / Fjalar / Kvasir updates.**
-   - `diff -b valgrind-old/VEX/pub/libvex_ir.h valgrind-new/VEX/pub/libvex_ir.h`
-     and hand-port relevant `memcheck.patch` hunks into
+   - `diff -b $INV/valgrind-old/VEX/pub/libvex_ir.h $INV/valgrind-new/VEX/pub/libvex_ir.h`
+     and hand-port relevant hunks of
+     `git diff valgrind-merge/base valgrind-merge/new -- valgrind/fjalar/mc_translate.c`
+     into
      `fjalar/kvasir/dyncomp_translate.c` (`_DC` functions).
    - For every new or renamed `IROp`, `IRExpr`, or `IRStmt` kind relevant to
      amd64/x86, add handling in the `expr2tags_*_DC` functions (see the
@@ -201,18 +199,15 @@ it completely (merged, CI green) before starting this one.  That plan's
       (`# Valgrind version 3.27.1, released ...`).
     - Add names of new Valgrind test programs to `.gitignore`, in the
       per-tool sections (such as `# /memcheck/`).
-    - Check that Fjalar's files match the target release: run the
-      commands of step 2 (section "Correct the files of earlier merges")
-      with `valgrind-new` in place of `valgrind-old`.  They should list
+    - Check that Fjalar's files match the target release:
+      `./list-file-discrepancies.sh $INV/valgrind-new`.  It should list
       only files that you decided to keep or omit (steps 5 and 6).
     - Document user-visible changes in `$INV/daikon/doc/CHANGELOG.md`.
     - Update `doc/valgrind-merge.texinfo`: dates/OS versions and any new
       pitfalls.  (The regtest baseline output pasted into the doc is
       superseded by `regtest-expected/*.txt`.)
-    - Commit as one PR; save the patch/diff files and `valgrind-new` (it
-      becomes `valgrind-old` for the next merge, after
-      `git -C valgrind-old reset --hard && git -C valgrind-old clean -fdx`;
-      delete `valgrind-new-build`).
+    - Commit as one PR; save `valgrind-new` (it becomes `valgrind-old` for
+      the next merge) and delete `valgrind-new-build`.
 
 ## Risks
 
