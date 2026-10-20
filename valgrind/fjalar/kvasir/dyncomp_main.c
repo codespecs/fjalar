@@ -483,12 +483,13 @@ UInt load_tag_snapshots[DC_N_LOAD_TAG_SNAPSHOTS][DC_LOAD_TAG_SNAPSHOT_BYTES];
 // those modes, a load is not an interaction, so unlike the other
 // MC_(helperc_LOAD_TAG_*) functions, this does not merge the tags of the
 // addresses in the range.  It returns the leader of the first non-zero
-// tag in the range; if that tag is WEAK_FRESH_TAG, it returns a fresh
-// tag, for a load of any size.  (Of the other functions, only
-// MC_(helperc_LOAD_TAG_4) returns a fresh tag, and only when the tag of
-// its first byte is WEAK_FRESH_TAG.)  If slot is non-negative, it also
-// saves the tag of each byte in the range in that slot of
-// load_tag_snapshots.
+// tag in the range, or WEAK_FRESH_TAG if that tag is WEAK_FRESH_TAG.
+// Returning WEAK_FRESH_TAG rather than a fresh tag avoids allocating a
+// tag for each load of a GOT entry, such as the one in every PLT call;
+// the MC_(helperc_STORE_TAG_*) functions, and
+// MC_(helperc_STORE_TAG_SNAPSHOT), replace WEAK_FRESH_TAG with a fresh
+// tag if the value is stored.  If slot is non-negative, it also saves
+// the tag of each byte in the range in that slot of load_tag_snapshots.
 VG_REGPARM(3)
 UInt MC_(helperc_LOAD_TAG_N) ( Addr a, UWord len, Word slot ) {
   UWord i;
@@ -504,7 +505,7 @@ UInt MC_(helperc_LOAD_TAG_N) ( Addr a, UWord len, Word slot ) {
   }
   tag = first_nonzero_tag_in_range(a, len);
   if (WEAK_FRESH_TAG == tag) {
-    return grab_fresh_tag();
+    return WEAK_FRESH_TAG;
   }
   return val_uf_find_leader(tag);
 }
