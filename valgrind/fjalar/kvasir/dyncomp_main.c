@@ -378,7 +378,7 @@ UInt val_uf_union_tags_in_range(Addr a, SizeT len) {
 /*   if (dyncomp_approximate_literals) { */
 /*     char allLiteralTags = 1; */
 /*     for (curAddr = a; curAddr < (a + len); curAddr++) { */
-/*       if (WEAK_FRESH_TAG != get_tag(curAddr)) { */
+/*       if (get_tag(curAddr) != WEAK_FRESH_TAG) { */
 /*         allLiteralTags = 0; */
 /*         break; */
 /*       } */
@@ -452,7 +452,7 @@ UInt MC_(helperc_LOAD_TAG_8) ( Addr a ) {
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_4) ( Addr a ) {
   UInt first_tag = get_tag(a);
-  if (WEAK_FRESH_TAG == first_tag) {
+  if (first_tag == WEAK_FRESH_TAG) {
     DYNCOMP_TPRINTF("[DynComp] helperx_LOAD_ATG_4: %p =>\n", (void *)a);
     return grab_fresh_tag();
   }
@@ -648,7 +648,7 @@ void enqueue_tag(TagList* listPtr, UInt tag) {
   tl_assert(tag);
 
   // Special case for no elements
-  if (0 == listPtr->numElts) {
+  if (listPtr->numElts == 0) {
     listPtr->first = listPtr->last =
       (TagNode*)VG_(calloc)("dyncomp_main.c: enqueue_tag", 1, sizeof(TagNode));
   }
@@ -678,7 +678,7 @@ UInt dequeue_tag(TagList* listPtr) {
   listPtr->numElts--;
 
   // Special case for no elements
-  if (0 == listPtr->numElts) {
+  if (listPtr->numElts == 0) {
     listPtr->last = listPtr->first = NULL;
   }
 
@@ -693,13 +693,13 @@ char is_tag_in_list(TagList* listPtr, UInt tag, UInt n) {
 
   tl_assert(tag);
 
-  if (0 == listPtr->numElts) {
+  if (listPtr->numElts == 0) {
     return 0;
   }
   else {
     TagNode* i;
     for (i = listPtr->first;
-         (NULL != i) && (count < n);
+         (i != NULL) && (count < n);
          i = i->next, count++) {
       if (i->tag == tag) {
         return 1;
@@ -714,12 +714,12 @@ void clear_list(TagList* listPtr) {
   if (listPtr->numElts > 0) {
     TagNode* i = listPtr->first;
     TagNode* next = i->next;
-    for (i = listPtr->first; NULL != i; i = next) {
+    for (i = listPtr->first; i != NULL; i = next) {
       next = i->next;
       VG_(free)(i);
       listPtr->numElts--;
     }
   }
 
-  tl_assert(0 == listPtr->numElts);
+  tl_assert(listPtr->numElts == 0);
 }
