@@ -375,13 +375,41 @@ Bool isFloatOrVectorType_DC ( IRType ty )
    }
 }
 
+/* Prints a warning that DynComp does not handle op, unless a warning
+   about op has already been printed.  description says how op is
+   approximated.  hasNonData is true if some operand is a rounding mode,
+   shift amount, or lane index. */
+static
+void warn_unhandled_op_DC ( IROp op, const HChar* where,
+                            const HChar* description, Bool hasNonData )
+{
+   // warned[op - Iop_INVALID] is true if a warning about op has been printed.
+   static Bool warned[Iop_LAST - Iop_INVALID];
+
+   if (warned[op - Iop_INVALID]) {
+      return;
+   }
+   warned[op - Iop_INVALID] = True;
+   VG_(printf)("Warning: DynComp does not handle IROp ");
+   ppIROp(op);
+   VG_(printf)(" (0x%x) in %s; %s", (UInt)op, where, description);
+   if (hasNonData) {
+      VG_(printf)(" (other than rounding modes, shift amounts, and"
+                  " lane indices)");
+   }
+   VG_(printf)(".  Its comparability may be imprecise.\n");
+}
+
 /* Handles an IROp that DynComp does not handle.  By default, panics.
    With --dyncomp-unhandled-ops=warn, prints a warning the first time
    that each IROp is encountered and returns the tag of an approximation
    of the operation.
 
-   The approximation guesses each operand's role from its type, as given
-   by typeOfPrimop:
+   A unary operation returns the tag of its operand, as most unary
+   operations (widening, narrowing, negation, conversion, ...) do.
+
+   For an operation with 2 or more operands, the approximation guesses
+   each operand's role from its type, as given by typeOfPrimop:
     * A first operand of type I32 is a rounding mode if the result or
       another operand is a floating-point or vector value.
     * A later operand of type I8 is a shift amount or lane index if the
@@ -396,8 +424,6 @@ Bool isFloatOrVectorType_DC ( IRType ty )
       instead treated as a non-interaction, because it might be (for
       example) a multiplication.
    With --dyncomp-interactions=none, the operation is a non-interaction.
-   A unary operation instead returns the tag of its operand, as most
-   unary operations (widening, narrowing, negation, conversion, ...) do.
 
    atoms and vatoms hold the nargs operands and their tags. */
 static
@@ -405,8 +431,6 @@ IRAtom* approximate_unhandled_op_DC ( DCEnv* dce, IROp op, Int nargs,
                                       IRAtom** atoms, IRAtom** vatoms,
                                       const HChar* where )
 {
-   // warned[op - Iop_INVALID] is true if a warning about op has been printed.
-   static Bool warned[Iop_LAST - Iop_INVALID];
    IRType       t_dst, t_arg[4];
    Bool         isData[4];      // whether each operand is a data operand
    IRAtom*      data[4];        // tags of the non-constant data operands
@@ -425,14 +449,8 @@ IRAtom* approximate_unhandled_op_DC ( DCEnv* dce, IROp op, Int nargs,
    tl_assert(nargs >= 1 && nargs <= 4);
 
    if (nargs == 1) {
-      if (!warned[op - Iop_INVALID]) {
-         warned[op - Iop_INVALID] = True;
-         VG_(printf)("Warning: DynComp does not handle IROp ");
-         ppIROp(op);
-         VG_(printf)(" (0x%x) in %s; returning the tag of its operand."
-                     "  Its comparability may be imprecise.\n",
-                     (UInt)op, where);
-      }
+      warn_unhandled_op_DC(op, where, "returning the tag of its operand",
+                           False);
       return vatoms[0];
    }
 
@@ -463,24 +481,14 @@ IRAtom* approximate_unhandled_op_DC ( DCEnv* dce, IROp op, Int nargs,
                         || !(dyncomp_units_mode
                              || dyncomp_dataflow_comparisons_mode)));
 
-   if (!warned[op - Iop_INVALID]) {
-      warned[op - Iop_INVALID] = True;
-      if (!isInteraction) {
-         description = "treating it as a non-interaction";
-      } else if (isComparison) {
-         description = "treating it as a comparison of its operands";
-      } else {
-         description = "merging the tags of its operands";
-      }
-      VG_(printf)("Warning: DynComp does not handle IROp ");
-      ppIROp(op);
-      VG_(printf)(" (0x%x) in %s; %s", (UInt)op, where, description);
-      if (nDataTypes < nargs) {
-         VG_(printf)(" (other than rounding modes, shift amounts, and"
-                     " lane indices)");
-      }
-      VG_(printf)(".  Its comparability may be imprecise.\n");
+   if (!isInteraction) {
+      description = "treating it as a non-interaction";
+   } else if (isComparison) {
+      description = "treating it as a comparison of its operands";
+   } else {
+      description = "merging the tags of its operands";
    }
+   warn_unhandled_op_DC(op, where, description, nDataTypes < nargs);
 
    if (!isInteraction) {
       return IRExpr_Const(IRConst_UWord(0));
@@ -2158,6 +2166,7 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
    case Iop_F32toI32Ux2_RZ:            // only used by arm mips
    case Iop_F32toI32Ux4_RZ:            // only used by arm mips
    case Iop_F64toF128:                 // only used by s390
+   case Iop_F64toF16x2_DEP:            // only used by ppc
    case Iop_I32StoD128:                // only used by s390
    case Iop_I32StoD64:                 // only used by s390
    case Iop_I32StoF128:                // only used by s390
@@ -2178,8 +2187,8 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
    case Iop_Left32:                    // unused
    case Iop_Left64:                    // unused
    case Iop_Left8:                     // unused
-   case Iop_Log2_32Fx4:                // used only by mips
-   case Iop_Exp2_32Fx4:                // ??????
+   case Iop_Log2_32Fx4:                // only used by mips ppc
+   case Iop_Exp2_32Fx4:                // only used by ppc
    case Iop_Log2_64Fx2:                // used only by mips
    case Iop_MulI128by10:
    case Iop_MulI128by10Carry:
@@ -2231,6 +2240,7 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
    case Iop_RecipEst32Fx8:
    case Iop_RecipEst32Ux2:             // only used by arm
    case Iop_RecipEst32Ux4:             // only used by arm arm64
+   case Iop_RecipEst64Fx2:             // only used by arm64 mips
    case Iop_ReinterpF64asI64:
    case Iop_ReinterpI32asF32:
    case Iop_ReinterpI64asF64:
@@ -2283,6 +2293,7 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
    case Iop_TruncF128toI128S:
    case Iop_TruncF128toI128U:
    case Iop_ReinterpV128asI128:
+   case Iop_ReinterpI128asV128:        // only used by ppc
    case Iop_ReinterpI128asF128:
    case Iop_ReinterpF128asI128:
    case Iop_V128HIto64:
@@ -2300,16 +2311,11 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
    case Iop_Widen32Uto64x2:            // only used by arm
    case Iop_Widen8Sto16x8:             // only used by arm
    case Iop_Widen8Uto16x8:             // only used by arm
-      return vatom;
-
-// Unimplemented
-   case Iop_F64toF16x2_DEP:            // only used by ppc
-   case Iop_RecipEst64Fx2:             // only used by arm64 mips
-   case Iop_ReinterpI128asV128:        // only used by ppc
-   case Iop_ZeroHI112ofV128:           // only used by arm64
-   case Iop_ZeroHI120ofV128:           // only used by arm64
    case Iop_ZeroHI64ofV128:            // only used by arm64
    case Iop_ZeroHI96ofV128:            // only used by arm64
+   case Iop_ZeroHI112ofV128:           // only used by arm64
+   case Iop_ZeroHI120ofV128:           // only used by arm64
+      return vatom;
 
    default:
       return approximate_unhandled_op_DC( dce, op, 1, &atom, &vatom,
