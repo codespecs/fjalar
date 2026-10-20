@@ -122,7 +122,7 @@ const HChar* executable_filename = 0;
 #if defined(VGA_amd64)
 // AMD64 Dwarf to Architecture mapping is (thankfully) specified
 // in the AMD64 ABI (http://x86-64.org/documentation/abi.pdf)
-static const Int dwarf_reg_guest_offsets[FJALAR_NUM_DWARF_REGS] = {
+static const Int dwarf_reg_guest_offsets[] = {
   offsetof(VexGuestArchState, guest_RAX),
   offsetof(VexGuestArchState, guest_RDX),
   offsetof(VexGuestArchState, guest_RCX),
@@ -141,7 +141,7 @@ static const Int dwarf_reg_guest_offsets[FJALAR_NUM_DWARF_REGS] = {
   offsetof(VexGuestArchState, guest_R15),
 };
 #else
-static const Int dwarf_reg_guest_offsets[FJALAR_NUM_DWARF_REGS] = {
+static const Int dwarf_reg_guest_offsets[] = {
   offsetof(VexGuestArchState, guest_EAX),
   offsetof(VexGuestArchState, guest_ECX),
   offsetof(VexGuestArchState, guest_EDX),
@@ -153,6 +153,8 @@ static const Int dwarf_reg_guest_offsets[FJALAR_NUM_DWARF_REGS] = {
   offsetof(VexGuestArchState, guest_EIP),
 };
 #endif
+STATIC_ASSERT(sizeof(dwarf_reg_guest_offsets) / sizeof(dwarf_reg_guest_offsets[0])
+              == FJALAR_NUM_DWARF_REGS);
 
 Bool dwarf_reg_is_readable(UInt regNum)
 {

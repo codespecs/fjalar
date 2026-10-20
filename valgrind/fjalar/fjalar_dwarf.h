@@ -41,12 +41,18 @@ typedef struct _dwarf_location {
 // A conversion between DWARF location atoms and a string representation
 const char* location_expression_to_string(enum dwarf_location_atom op);
 
-// One more than the largest DWARF register number that Fjalar can
-// read.
+// DWARF_FP_REG is the DWARF register number of the frame pointer.
+// FJALAR_NUM_DWARF_REGS is one more than the largest DWARF register
+// number that Fjalar can read; it must equal the number of entries in
+// dwarf_reg_guest_offsets in fjalar_main.c.
 #if defined(VGA_amd64)
+#define DWARF_FP_REG 6
 #define FJALAR_NUM_DWARF_REGS 16
-#else
+#elif defined(VGA_x86)
+#define DWARF_FP_REG 5
 #define FJALAR_NUM_DWARF_REGS 9
+#else
+#error "Fjalar supports only amd64 and x86"
 #endif
 
 #endif /* FJALAR_DWARF_H */
