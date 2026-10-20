@@ -1190,40 +1190,31 @@ char harvest_local_var_offset(dwarf_entry* e, unsigned long value, int regNum)
       return 0;
 }
 
-char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom atom, long value)
-{
-  unsigned long tag;
-  if ((e == 0) || (e->entry_ptr == 0))
-    return 0;
-
-  tag = e->tag_name;
-
-  if (tag_is_formal_parameter(tag))
-    {
-      formal_parameter *paramPtr = ((formal_parameter*)e->entry_ptr);
-      paramPtr->loc_atom = atom;
-
-      if (paramPtr->dwarf_stack_size == MAX_DWARF_OPS) {
-        paramPtr->location_has_unsupported_op = 1;
-        return 1;
-      }
-      paramPtr->dwarf_stack[paramPtr->dwarf_stack_size].atom = atom;
-      paramPtr->dwarf_stack[paramPtr->dwarf_stack_size].atom_offset = value;
-      paramPtr->dwarf_stack_size++;
-      paramPtr->valid_loc = 1;
-
-      return 1;
-    }
-  else
-    return 0;
-}
-
-// Returns e's formal_parameter if e is a formal parameter, otherwise 0.
+// Returns e's formal_parameter, or 0 if e is null, has no entry_ptr, or is not a formal parameter.
 static formal_parameter* formal_parameter_of(dwarf_entry* e)
 {
   if ((e == 0) || (e->entry_ptr == 0) || !tag_is_formal_parameter(e->tag_name))
     return 0;
   return (formal_parameter*)e->entry_ptr;
+}
+
+char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom atom, long value)
+{
+  formal_parameter* paramPtr = formal_parameter_of(e);
+  if (paramPtr == 0)
+    return 0;
+
+  paramPtr->loc_atom = atom;
+
+  if (paramPtr->dwarf_stack_size == MAX_DWARF_OPS) {
+    paramPtr->location_has_unsupported_op = 1;
+    return 1;
+  }
+  paramPtr->dwarf_stack[paramPtr->dwarf_stack_size].atom = atom;
+  paramPtr->dwarf_stack[paramPtr->dwarf_stack_size].atom_offset = value;
+  paramPtr->dwarf_stack_size++;
+  paramPtr->valid_loc = 1;
+  return 1;
 }
 
 char harvest_formal_param_location_offset(dwarf_entry* e, long value)
