@@ -78,8 +78,8 @@ it completely (merged, CI green) before starting this one.  That plan's
    stays a clean clone, which becomes `valgrind-old` for the next merge:
 
    ```sh
-   rm -rf valgrind-new-build
-   git clone -q valgrind-new valgrind-new-build && cd valgrind-new-build
+   rm -rf $INV/valgrind-new-build
+   git clone -q $INV/valgrind-new $INV/valgrind-new-build && cd $INV/valgrind-new-build
    ./autogen.sh && ./configure --prefix=$(pwd)/inst
    make all install && make regtest XMLLINT=xmllint-skipped-by-check-regtest > test.log 2>&1
    make -s --no-print-directory post-regtest-checks > test-post.log 2>&1
