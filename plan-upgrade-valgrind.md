@@ -4,13 +4,14 @@ Reference procedure: `doc/valgrind-merge.texinfo` (chapters "Getting Started"
 through "Committing").  This plan applies that procedure to the current
 situation and notes where it needs adjusting.
 
-Below, `$FJALAR` is the Fjalar clone being upgraded (see step 1).  Some
-scripts that the merge uses read the Fjalar tree from `$INV/fjalar`, so
-step 1 makes `$INV/fjalar` a symbolic link to `$FJALAR` while any of them
-is in use:  `generate-patch-files.sh` and `make git-update` until #133
-lands (they use `fjalar/valgrind` and `../coregrind.patch`), and
-`apply-patch-files.sh`, which #103 adds in place of `make git-update`
-and which uses `$INV/fjalar`.
+Below, `$FJALAR` is the Fjalar clone being upgraded (see step 1); it
+must be directly in `$INV`.  Some scripts that the merge uses read the
+Fjalar tree from `$INV/fjalar`, so step 1 makes `$INV/fjalar` a symbolic
+link to `$FJALAR` while any of them is in use:  `generate-patch-files.sh`
+until #133 lands, and `apply-patch-files.sh`, which #103 adds and which
+uses `$INV/fjalar`.  (`make git-update`, which #103 removes, reads
+`../coregrind.patch` and `../memcheck.patch`, which are in `$INV` for any
+clone directly in `$INV`, so it needs no link.)
 
 ## Ordering: do this after the readelf upgrade
 
@@ -117,11 +118,14 @@ Memcheck and DynComp depend tightly on Valgrind core:
 1. **Preparation** (separate branch, e.g. `valgrind-3.27.1`; do not combine with
    the Binutils/readelf upgrade, which should already have landed).
    - Work in a new clone, because each working directory is dedicated to
-     one branch: clone Fjalar into, e.g., `$INV/fjalar-branch-valgrind-3.27.1`
-     and create the branch there.  Set `FJALAR` to that clone, e.g.,
+     one branch: clone Fjalar from GitHub into, e.g.,
+     `$INV/fjalar-branch-valgrind-3.27.1`, and create the branch there.
+     Do not clone `$INV/fjalar`:  once `$INV/fjalar` is a symbolic link to
+     the new clone (below), that clone's `origin` would be itself, so
+     `git pull` would silently pull nothing.  Set `FJALAR` to that clone, e.g.,
      `FJALAR=$INV/fjalar-branch-valgrind-3.27.1`; the commands below use
      it.  If none of the scripts that read `$INV/fjalar` is in use (see the
-     paragraph at the top of this plan), skip the rest of this item.
+     paragraph at the top of this plan), skip the rest of this bullet.
      Otherwise, while merging, make `$INV/fjalar` a symbolic link to that
      clone.  If `$INV/fjalar` is already a symbolic
      link, record its target (`readlink $INV/fjalar`) and replace it with
@@ -190,6 +194,7 @@ Memcheck and DynComp depend tightly on Valgrind core:
    pristine again.  Build a copy instead.  First install `gdb` and the
    glibc debuginfo package; without them, most `gdbserver_tests` fail.
    ```sh
+   cd $INV
    rm -rf valgrind-new-build
    git clone -q valgrind-new valgrind-new-build && cd valgrind-new-build
    ./autogen.sh && ./configure --prefix=$(pwd)/inst

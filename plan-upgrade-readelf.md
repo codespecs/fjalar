@@ -350,7 +350,10 @@ small.
      old files are those of the commit where this branch started, even if
      the branch already has commits (as in the stepwise fallback).  The
      count omits `#if 0` regions and comments, so that it notices a hook
-     that conflict resolution moved into disabled code.  This prints each
+     that conflict resolution moved into disabled code, and it counts
+     occurrences, not lines.  It does include string literals, so a hook's
+     name in a debugging message counts as a call; check any difference
+     that involves one.  This prints each
      hook whose count changed, with the file and the old and new counts:
      ```sh
      # Print C file $1 without its "#if 0" regions and comments.
@@ -373,7 +376,7 @@ small.
        live valgrind/fjalar/$file > ~/tmp/binutils/$file.new.live \
          || echo "error: cannot process the new $file" >&2
        for f in $hooks; do
-         echo "$file $f $(grep -cw "$f" ~/tmp/binutils/$file.old.live) $(grep -cw "$f" ~/tmp/binutils/$file.new.live)"
+         echo "$file $f $(grep -ow "$f" ~/tmp/binutils/$file.old.live | wc -l) $(grep -ow "$f" ~/tmp/binutils/$file.new.live | wc -l)"
        done
      done | awk '$3 != $4'
      ```
