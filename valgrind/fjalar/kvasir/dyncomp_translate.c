@@ -108,6 +108,22 @@ static void setHelperAnns_DC ( DCEnv* dce, IRDirty* di ) {
    di->fxState[1].repeatLen = 0;
 }
 
+// Merge the tags vatom1 and vatom2, for an operation whose result
+// gets tag 0 (such as a comparison).  The merge is a dirty call
+// rather than a clean one.  VEX would remove a clean call as dead
+// code whenever the operations that use the result discard its tag
+// (for example, a shift discards the tag of its shift amount), and
+// the merge would be lost.
+static void mergeTagsReturn0_DC ( DCEnv* dce,
+                                  IRAtom* vatom1, IRAtom* vatom2 ) {
+   IRDirty* di = unsafeIRDirty_0_N(2,
+                                   "MC_(helperc_MERGE_TAGS_RETURN_0)",
+                                   &MC_(helperc_MERGE_TAGS_RETURN_0),
+                                   mkIRExprVec_2( vatom1, vatom2 ));
+   setHelperAnns_DC( dce, di );
+   stmt_DC('V', dce, IRStmt_Dirty(di));
+}
+
 // A PUT stores a value into the guest state
 void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
                      IRAtom* atom, IRAtom* vatom )
@@ -236,7 +252,9 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
 // Tags are merged (that is, an interaction is recorded) in two ways, and
 // neither merges in dyncomp_dataflow_only_mode:
 //  * At translation time, every merge in the instrumentation is created
-//    by mkMergeTags_DC or by stmtMergeTagsReturn0_DC.
+//    by mkMergeTags_DC, by stmtMergeTagsReturn0_DC, by
+//    mergeTagsReturn0_DC (which expr2tags_Binop_DC does not reach in that
+//    mode), or by handleCCall_DC, which returns early in that mode.
 //  * At run time, a load merges the tags of the bytes it reads.  In
 //    dyncomp_dataflow_only_mode (and dyncomp_dataflow_comparisons_mode),
 //    expr2tags_LDle_DC instead calls MC_(helperc_LOAD_TAG_N), which
@@ -297,35 +315,54 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2 )
 
 // Handling of clean helper function calls in the target program's
 // translated IR: Treat all arguments (exprvec) as 'interacting' with
-// one another and merge all of their respective tags and return the
-// value of one of the tags as the result of the helper call.  This is
-// because helpers probably implement weird x86 instructions which are
-// too difficult to handle purely in IR so these n-ary operations are
-// probably interactions.  E.g. if the args are (a, b, c, d, e), then
-// you should merge tag(a) with tag(b), tag(c), tag(d), and tag(e)
-// then return tag(a)
+// one another and merge all of their respective tags.  Helpers
+// probably implement weird x86 instructions which are too difficult to
+// handle purely in IR, so these n-ary operations are probably
+// interactions.  E.g. if the args are (a, b, c, d, e), then you should
+// merge tag(a), tag(b), tag(c), tag(d), and tag(e).  Comparisons such as
+// '>' and '>=' are often translated into clean calls.
+//
+// The result of the helper call has a tag of 0, so that the merged
+// tags do not propagate to the result.
+//
+// Arguments that the callee's mc-exclusion mask (mcx_mask) excludes
+// do not take part in any merge.  For example, the arguments of
+// amd64g_calculate_condition are (cond, cc_op, cc_dep1, cc_dep2,
+// cc_ndep), and its mask excludes cond, cc_op, and cc_ndep, so only
+// cc_dep1 and cc_dep2 (the operands of the comparison) are merged.
+//
+// Constant arguments do not take part in any merge either, just as
+// expr2tags_Binop_DC does not merge a constant operand.
+//
+// The merges are chained: each argument is merged with the result of
+// the previous merges, using MC_(helperc_MERGE_TAGS), which returns
+// the other tag when one tag is 0 or WEAK_FRESH_TAG.  An argument
+// whose tag is WEAK_FRESH_TAG (such as the stack pointer) therefore
+// does not prevent the other arguments from being merged with one
+// another.  Merging every argument with a fixed argument would not
+// work:  if the fixed argument's tag were WEAK_FRESH_TAG, no merge
+// would have any effect.
 
-// By some informal observation, it seems like '>' and '>='
-// comparisons are translated into clean C calls.  The correct
-// behavior is to merge the tags of all arguments but return a new tag
-// of 0 so that the tags do not propagate to the results.  Without
-// further testing on what other operations are translated into IR as
-// clean C calls, I will simply return a tag of 0 for now.
 static
 IRAtom* handleCCall_DC ( DCEnv* dce,
                          IRAtom** exprvec, IRCallee* cee )
 {
-  // In this mode, NOTHING is an interaction, so there is nothing to
-  // merge.  Returning early avoids computing the arguments' tags.
-  if (dyncomp_dataflow_only_mode) {
-     return IRExpr_Const(IRConst_UWord(0));
-  }
+   // The arguments whose tags are merged
+   IRAtom* mergedArgs[32];
+   Int numMergedArgs = 0;
+   Int i;
+   IRAtom* merged;
+   IRDirty* di;
+   IRTemp   datatag;
 
-  if (exprvec && exprvec[0]) {
-      IRAtom* first = expr2tags_DC(dce, exprvec[0]);
-      Int i;
+   // In this mode, NOTHING is an interaction, so there is nothing to
+   // merge.  Returning early avoids computing the arguments' tags.
+   if (dyncomp_dataflow_only_mode) {
+      return IRExpr_Const(IRConst_UWord(0));
+   }
 
-      for (i = 1; exprvec[i]; i++) {
+   if (exprvec) {
+      for (i = 0; exprvec[i]; i++) {
          tl_assert(i < 32);
          tl_assert(isOriginalAtom_DC(dce, exprvec[i]));
          /* Only take notice of this arg if the callee's mc-exclusion
@@ -334,20 +371,33 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
             /* the arg is to be excluded from definedness checking.  Do
                nothing. (I guess we do nothing also just like mkLazyN) */
             if (0) printf("excluding %s(%d)\n", cee->name, i);
-         } else {
-            /* merge the tags of first and current arguments */
-            stmtMergeTagsReturn0_DC(dce, first, expr2tags_DC(dce, exprvec[i]));
+         } else if (exprvec[i]->tag != Iex_Const) {
+            mergedArgs[numMergedArgs++] = exprvec[i];
          }
       }
-      // Return the tag of the first argument, if there is one
-      //      return first;
+   }
 
-      // Or, always return 0
-      return IRExpr_Const(IRConst_UWord(0));
+   if (numMergedArgs >= 2) {
+      merged = expr2tags_DC(dce, mergedArgs[0]);
+      // Each intermediate merge is a dirty call because
+      // MC_(helperc_MERGE_TAGS) has side effects.  The last merge, whose
+      // result is not used, is made by stmtMergeTagsReturn0_DC.
+      for (i = 1; i < numMergedArgs - 1; i++) {
+         datatag = newTemp(dce->mce, Ity_Word, DC);
+         di = unsafeIRDirty_1_N(datatag,
+                                2,
+                                "MC_(helperc_MERGE_TAGS)",
+                                &MC_(helperc_MERGE_TAGS),
+                                mkIRExprVec_2(merged,
+                                              expr2tags_DC(dce, mergedArgs[i])));
+         setHelperAnns_DC( dce, di );
+         stmt_DC('V', dce, IRStmt_Dirty(di));
+         merged = mkexpr(datatag);
+      }
+      stmtMergeTagsReturn0_DC(dce, merged,
+                              expr2tags_DC(dce, mergedArgs[numMergedArgs - 1]));
    }
-   else {
-      return IRExpr_Const(IRConst_UWord(0));
-   }
+   return IRExpr_Const(IRConst_UWord(0));
 }
 
 /*------------------------------------------------------------*/
@@ -1771,6 +1821,13 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
          else if (helper == &MC_(helperc_MERGE_TAGS_RETURN_0)) {
             return IRExpr_Const(IRConst_UWord(0));
          }
+      }
+
+      // A comparison:  merge the operands' tags with a dirty call,
+      // which VEX does not remove; the result's tag is 0.
+      if (helper == &MC_(helperc_MERGE_TAGS_RETURN_0)) {
+         mergeTagsReturn0_DC(dce, vatom1, vatom2);
+         return IRExpr_Const(IRConst_UWord(0));
       }
 
       // Let's try a clean call.  It seems to be correct
