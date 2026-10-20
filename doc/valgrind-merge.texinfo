@@ -346,11 +346,6 @@ cd $INV/fjalar
 @noindent
 Review the list, then remove the files by running the same command
 with @code{| xargs -r rm} appended.
-Use @command{rm}, not @command{git rm}: the @file{git.script} generated in
-@ref{Committing} runs @command{git rm} on the files that the Valgrind
-developers removed since the last merge, and fails if they are already
-removed from the index.  @samp{git commit -a} records the removal of the
-others.
 Setting @env{LC_ALL} makes @command{sort} and @command{comm} agree on the
 sort order; in other locales, @command{comm} can list files that
 Valgrind still has.
@@ -362,8 +357,7 @@ Fjalar has two copies of memcheck: an unmodified one in
 modified copy.  The following command lists the files in the modified
 copy that have no counterpart in the target Valgrind's memcheck.  Except
 for @file{mc_translate.h}, which is Fjalar's own, check each one for
-Fjalar changes, then remove it with @command{rm}, not @command{git rm},
-for the reason given above:
+Fjalar changes, then remove it:
 
 @example
 cd $INV/fjalar/valgrind/fjalar
