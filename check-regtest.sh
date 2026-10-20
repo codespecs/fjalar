@@ -148,7 +148,8 @@ if [ "$RUN_TESTS" = true ]; then
   # It does not affect vg_regtest, which runs the tests serially.
   # vg_regtest runs each test with this script's standard input, and some
   # tests read it:  memcheck/tests/null_socket calls recvfrom() on it, which
-  # waits forever if standard input is a socket.  So it is /dev/null.
+  # waits forever if standard input is an idle socket.  So run the tests with
+  # standard input from /dev/null.
   make -j"$(nproc)" test XMLLINT=xmllint-skipped-by-check-regtest \
     < /dev/null > "$LOG_FILE" 2>&1 || true
   # "make test" ends by running the post-test checks, but in $LOG_FILE their
