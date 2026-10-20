@@ -76,6 +76,10 @@ void set_abit_and_vbyte ( Addr a, UWord abit, UWord vbyte );
 
 extern void mc_copy_address_range_state ( Addr src, Addr dst, SizeT len );
 void mc_make_noaccess ( Addr a, SizeT len );
+// Copies the A and V bits and the DynComp tag of the pointer-sized
+// guest register at guestOffset in thread tid's guest state to the
+// sizeof(Addr) bytes of memory at dst.
+void mc_copy_guest_reg_state ( ThreadId tid, Int guestOffset, Addr dst );
 
 extern char mc_are_some_bytes_initialized (Addr a, SizeT len);
 Bool mc_check_writable ( Addr a, SizeT len, Addr* bad_addr );
