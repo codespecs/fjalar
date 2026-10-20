@@ -4,9 +4,12 @@ Reference procedure: `doc/valgrind-merge.texinfo` (chapters "Getting Started"
 through "Committing").  This plan applies that procedure to the current
 situation and notes where it needs adjusting.
 
-Below, `$INV/fjalar` means the Fjalar tree being upgraded.  It must actually be
-at `$INV/fjalar`, because `generate-patch-files.sh` and `make git-update`
-hard-code that layout (`fjalar/valgrind`, `../coregrind.patch`).
+Below, `$INV/fjalar` means the Fjalar tree being upgraded.  Until #133
+lands, it must actually be at `$INV/fjalar`, because
+`generate-patch-files.sh` and `make git-update` hard-code that layout
+(`fjalar/valgrind`, `../coregrind.patch`).  #103 replaces
+`make git-update` with `apply-patch-files.sh`, which also uses
+`$INV/fjalar`.
 
 ## Ordering: do this after the readelf upgrade
 
@@ -18,9 +21,10 @@ The preparation in `plan-pre-upgrade.md` must also be done; this plan
 assumes items 1 (regtest in CI), 3 (`generate-patch-files.sh` checks its
 inputs), 4 (DynComp scan), and 7 (stale upstream files removed).  Item 2
 (#103:  patch files created with `git diff` and applied with
-`git apply --3way`) is still open.  Until it lands, steps 2, 3, 5, 6,
-and 10 below describe the current procedure (`patch`, `*.rej` files, and
-`make git-update`); #103 rewrites them for its procedure.
+`git apply --3way`) is still open.  Until it lands, the paragraph above
+and steps 2, 3, 5, 6, and 10 below describe the current procedure
+(`patch`, `*.rej` files, and `make git-update`); #103 rewrites them for
+its procedure.
 
 ## Scope
 
@@ -94,6 +98,10 @@ Memcheck and DynComp depend tightly on Valgrind core:
     - Memcheck-derived files, so they can conflict in step 6:  #115,
       #117, #119, #120, and #122 change `mc_translate.c` and
       `mc_translate.h`.
+    - Scripts that this plan uses:  #133 (`generate-patch-files.sh` and
+      `make git-update` find the Fjalar tree themselves, so that step 1
+      needs no symbolic link) and #132 (`check-regtest.sh --log` takes the
+      operating system from the log's name).
     - Other open PRs may have been opened since.  To list the open PRs
       that change files under `valgrind/`:
       `gh pr list -R codespecs/fjalar --json number,files --jq '.[] | select(any(.files[]; .path | startswith("valgrind/"))) | .number'`.
@@ -109,9 +117,11 @@ Memcheck and DynComp depend tightly on Valgrind core:
    the Binutils/readelf upgrade, which should already have landed).
    - Work in a new clone, because each working directory is dedicated to
      one branch: clone Fjalar into, e.g., `$INV/fjalar-branch-valgrind-3.27.1`
-     and create the branch there.  While merging, make `$INV/fjalar` a
-     symbolic link to that clone, because `generate-patch-files.sh`
-     hard-codes `$INV/fjalar`.  If `$INV/fjalar` is already a symbolic
+     and create the branch there.  If every script that the merge uses
+     finds the Fjalar tree itself (#133, and `apply-patch-files.sh` if #103
+     has landed), skip the rest of this item.  Otherwise, while merging,
+     make `$INV/fjalar` a symbolic link to that clone, because the scripts
+     hard-code `$INV/fjalar`.  If `$INV/fjalar` is already a symbolic
      link, record its target (`readlink $INV/fjalar`) and replace it with
      `ln -sfn fjalar-branch-valgrind-3.27.1 $INV/fjalar`.  If it is a
      directory, first move it aside; otherwise `ln -s` creates the link
@@ -292,15 +302,12 @@ Memcheck and DynComp depend tightly on Valgrind core:
      (`coregrind/m_debuginfo`) and its own `readelf.c`/`dwarf.c` don't now
      conflict (duplicate symbols, changed `VG_()` libc names).
 
-8. **Build.** `make -C $INV/fjalar build`; fix compilation errors and new
-   warnings (newer Valgrind may enable additional warning flags; Binutils-
-   derived code is the usual source).  To list the new warnings, compare
-   the warnings of a complete build with those of step 1's
-   `build-before.log`.  The merge shifts line numbers, so remove them
-   before comparing:
+8. **Build.**  Step 1 ended with `make very-clean`, so the first build
+   compiles every file.  Save its output, and list the warnings that are
+   new since step 1's `build-before.log`.  The merge shifts line numbers,
+   so the commands remove them before comparing:
    ```sh
    cd $INV/fjalar
-   make very-clean
    (set -o pipefail; make build 2>&1 | tee build-after.log)
    for f in before after; do
      grep -E ':[0-9]+:[0-9]+: warning' build-$f.log | sed -E 's/:[0-9]+:[0-9]+:/:/' \
@@ -308,7 +315,10 @@ Memcheck and DynComp depend tightly on Valgrind core:
    done
    diff $INV/warnings-before.txt $INV/warnings-after.txt
    ```
-   `make very-clean` makes the build recompile every file; otherwise an
+   Fix compilation errors and new warnings (newer Valgrind may enable
+   additional warning flags; Binutils-derived code is the usual source).
+   If the build stopped at an error, its log is incomplete:  after fixing
+   the error, run `make very-clean` and the commands again, because an
    incremental build prints no warnings for files that it does not
    recompile.  Test with both a current gcc and the
    compilers in the CI containers.  If `autogen.sh` or `configure` fails,
@@ -387,9 +397,12 @@ Memcheck and DynComp depend tightly on Valgrind core:
       the document still formats.
     - Use the commit message "Upgrade Valgrind from 3.23.0 to 3.27.1".  The
       patch/diff files can also be attached to the PR.
-    - Commit as one PR.  Save the patch/diff files, keep `valgrind-new` as
-      the next merge's `valgrind-old` (step 2 reuses it), and delete
-      `valgrind-new-build`:
+    - Commit as one PR, and save the patch/diff files.
+    - After the PR has landed, keep `valgrind-new` as the next merge's
+      `valgrind-old` (step 2 reuses it), and delete `valgrind-new-build`.
+      Do not do this earlier:  review may require regenerating the patch
+      files, which needs `valgrind-old`, or comparing a failure that
+      appears only in CI with upstream's build (step 9).
       ```sh
       cd $INV
       rm -rf valgrind-old valgrind-new-build

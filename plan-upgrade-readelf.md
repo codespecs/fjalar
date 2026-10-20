@@ -10,7 +10,14 @@ Below, `$FJALAR` is the Fjalar tree being upgraded (see step 1).
 
 First do the preparation in `plan-pre-upgrade.md`, at least items 7
 (stale upstream files removed; done), 1 (Valgrind regtest in CI with
-expected failures), and 6 (`bfd.h` versions; done); this plan assumes them.
+expected failures), 6 (`bfd.h` versions; done), and 8 (whitespace that
+matches Binutils 2.39, so that step 5's `git merge-file` reports no
+whitespace-only conflicts); this plan assumes them.  For item 1, #96
+(landed) suffices; its remaining follow-up work need not be done first.
+Step 2 creates a local expected-failures list if this machine's OS has
+none, and step 8 compares against it.  Until CI enforces the lists, that
+local comparison is the only regtest check, because the CI regtest jobs
+only report failures.
 
 Do this upgrade first, before `plan-upgrade-valgrind.md`, and finish it
 completely (landed, CI green) before starting the Valgrind upgrade.  Reasons:
@@ -63,11 +70,18 @@ new ones than to fix them.)
   - `a6948b30` and `0d7bdabd` use `true`/`false`, not `TRUE`/`FALSE`, in
     `fjalar_process_file` in `readelf.c`
 - Open PRs that change `dwarf.c` (as of 2026-10-20): #95 (unsupported DWARF
-  location operations).  Land it before starting this upgrade, so that its
+  location operations) and #134 (whitespace that matches Binutils 2.39;
+  `plan-pre-upgrade.md` item 8), which also changes `readelf.c` and
+  `bucomm.h`.  Land them before starting this upgrade, so that their
   changes are part of the Fjalar copy being merged into (and of the
   Fjalar-vs-2.39 diffs) rather than conflicting with the upgrade later.
-  Re-check its `dwarf.c` changes while resolving conflicts, as for
+  Re-check #95's `dwarf.c` changes while resolving conflicts, as for
   #73/#76.
+  Whichever of #95 and #134 lands second must keep the other's changes.
+  In particular, no line that #95 adds or changes may differ from
+  Binutils 2.39 only in whitespace; after both have landed, redo #134's
+  procedure (in its description), which then changes nothing if all is
+  well.
 
 ## Key decision: one jump or stepwise?
 
@@ -244,12 +258,13 @@ small.
      `tl_assert`.
    - Make sure Fjalar's hooks in `dwarf.c` and `readelf.c` still run on
      every path.  The hooks are the calls to functions declared in
-     `typedata.h` and `fjalar_dwarf.h`, which build Fjalar's DWARF entries
-     and symbol tables:  the `harvest_*` functions, and others such as
+     `typedata.h`, `fjalar_dwarf.h`, and `fjalar_include.h`, which build
+     Fjalar's DWARF entries and symbol tables:  the `harvest_*` functions, and others such as
      `add_comp_unit`, `initialize_dwarf_entry_array`, and
      `tag_is_formal_parameter` in `dwarf.c`, and
      `insertIntoFunctionSymbolTable`, `insertIntoVariableSymbolTable`, and
-     `process_elf_binary_data` in `readelf.c`.  Re-check every
+     `process_elf_binary_data` in `readelf.c`.  (`dwarf.c` also defines
+     one, `dwarf_reg_name`.)  Re-check every
      call site (`harvest_formal_param_location_atom`,
      `harvest_location_list_entry`, `harvest_frame_base`,
      `harvest_debug_frame_entry`, etc.) against the restructured upstream
@@ -323,18 +338,29 @@ small.
    - Before committing, count the calls of each hook (step 6) in the old
      and new `dwarf.c` and `readelf.c`, and explain each difference.  The
      old files are those of the commit where this branch started, even if
-     the branch already has commits (as in the stepwise fallback).  This
-     prints each hook whose count changed, with the file and the old and
-     new counts:
+     the branch already has commits (as in the stepwise fallback).  The
+     count omits `#if 0` regions and comments, so that it notices a hook
+     that conflict resolution moved into disabled code.  This prints each
+     hook whose count changed, with the file and the old and new counts:
      ```sh
+     # Print C file $1 without its "#if 0" regions and comments.
+     live() {
+       awk '!skip && /^[ \t]*#[ \t]*if[ \t]+0([^0-9]|$)/ {skip=1; depth=1; next}
+            skip && /^[ \t]*#[ \t]*if/ {depth++; next}
+            skip && /^[ \t]*#[ \t]*endif/ {if (--depth == 0) skip=0; next}
+            skip && depth == 1 && /^[ \t]*#[ \t]*(else|elif)/ {skip=0; next}
+            !skip' "$1" | gcc -fpreprocessed -dD -E -P -x c - 2> /dev/null
+     }
      git fetch -q https://github.com/codespecs/fjalar.git master
      base=$(git merge-base FETCH_HEAD HEAD)
      hooks=$(sed -nE 's/^[A-Za-z_][A-Za-z0-9_ *]*[ *]([A-Za-z_][A-Za-z0-9_]*)\(.*/\1/p' \
-               valgrind/fjalar/typedata.h valgrind/fjalar/fjalar_dwarf.h | sort -u)
+               valgrind/fjalar/{typedata.h,fjalar_dwarf.h,fjalar_include.h} | sort -u)
      for file in dwarf.c readelf.c; do
        git show "$base:valgrind/fjalar/$file" > ~/tmp/binutils/$file.old
+       live ~/tmp/binutils/$file.old > ~/tmp/binutils/$file.old.live
+       live valgrind/fjalar/$file > ~/tmp/binutils/$file.new.live
        for f in $hooks; do
-         echo "$file $f $(grep -cw "$f" ~/tmp/binutils/$file.old) $(grep -cw "$f" valgrind/fjalar/$file)"
+         echo "$file $f $(grep -cw "$f" ~/tmp/binutils/$file.old.live) $(grep -cw "$f" ~/tmp/binutils/$file.new.live)"
        done
      done | awk '$3 != $4'
      ```

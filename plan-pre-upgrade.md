@@ -11,7 +11,8 @@ Below, `$INV/fjalar` means the Fjalar tree being changed.
 Items 3, 5, and 7 are done:  #99, #101, and #98 have landed.  Item 6 is
 done too, by #96.  Item 1's pull request,
 #96, has landed, but follow-up work remains.  Item 2 is an open pull
-request; its description gives the details.  Item 4 is described here.
+request; its description gives the details.  Item 8 is open pull
+request #134.  Item 4 is described here.
 Other open PRs that both
 upgrades should wait for, because they change files that the upgrades
 merge into, are listed in the "Current state" section of each upgrade
@@ -125,3 +126,12 @@ What: the CI "System information" step of each regtest job runs
 ## 7. Remove upstream files that upstream deleted but Fjalar still tracks
 
 Done:  #98 has landed.
+
+## 8. Make the whitespace of the Binutils-derived files match Binutils 2.39
+
+#134.  Hundreds of lines of Fjalar's `dwarf.c`, and some of `readelf.c`
+and `bucomm.h`, differed from Binutils 2.39 only in whitespace.  The
+readelf upgrade merges these files with `git merge-file`, which cannot
+ignore whitespace, so each such line near an upstream change would
+become a spurious conflict.  #134 gives those lines Binutils 2.39's
+whitespace.
