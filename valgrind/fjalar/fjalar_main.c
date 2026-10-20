@@ -928,8 +928,6 @@ void exit_function(FunctionEntry* f)
                       (xAXshadow >> (i * 8)) & 0xff);
     set_abit_and_vbyte((Addr)(&top->xDX) + (Addr)i, VGM_BIT_VALID,
                       (xDXshadow >> (i * 8)) & 0xff);
-    set_abit_and_vbyte((Addr)(&top->FPU) + (Addr)i, VGM_BIT_VALID,
-                      (FPUshadow >> (i * 8)) & 0xff);
   }
 
   for (i = 0; i < 8; i++) {
