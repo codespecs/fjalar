@@ -1470,68 +1470,54 @@ decode_location_expression (unsigned char * data,
 	case DW_OP_const1u:
 	  SAFE_BYTE_GET_AND_INC (uvalue, data, 1, end);
 	  if (ok_to_harvest)
-	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
-	      harvest_formal_param_location_atom(entry, op, uvalue);
-	    }
+	    harvest_formal_param_location_atom(entry, op, uvalue);
 	  printf ("DW_OP_const1u: %lu", (unsigned long) uvalue);
 	  break;
 	case DW_OP_const1s:
 	  SAFE_SIGNED_BYTE_GET_AND_INC (svalue, data, 1, end);
 	  if (ok_to_harvest)
-	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
-	      harvest_formal_param_location_atom(entry, op, svalue);
-	    }
+	    harvest_formal_param_location_atom(entry, op, svalue);
 	  printf ("DW_OP_const1s: %ld", (long) svalue);
 	  break;
 	case DW_OP_const2u:
 	  SAFE_BYTE_GET_AND_INC (uvalue, data, 2, end);
 	  if (ok_to_harvest)
-	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
-	      harvest_formal_param_location_atom(entry, op, uvalue);
-	    }
+	    harvest_formal_param_location_atom(entry, op, uvalue);
 	  printf ("DW_OP_const2u: %lu", (unsigned long) uvalue);
 	  break;
 	case DW_OP_const2s:
 	  SAFE_SIGNED_BYTE_GET_AND_INC (svalue, data, 2, end);
 	  if (ok_to_harvest)
-	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
-	      harvest_formal_param_location_atom(entry, op, svalue);
-	    }
+	    harvest_formal_param_location_atom(entry, op, svalue);
 	  printf ("DW_OP_const2s: %ld", (long) svalue);
 	  break;
 	case DW_OP_const4u:
 	  SAFE_BYTE_GET_AND_INC (uvalue, data, 4, end);
 	  if (ok_to_harvest)
-	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
-	      harvest_formal_param_location_atom(entry, op, uvalue);
-	  }
+	    harvest_formal_param_location_atom(entry, op, uvalue);
 	  printf ("DW_OP_const4u: %lu", (unsigned long) uvalue);
 	  break;
 	case DW_OP_const4s:
 	  SAFE_SIGNED_BYTE_GET_AND_INC (svalue, data, 4, end);
-      if (ok_to_harvest)
-	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
-	      harvest_formal_param_location_atom(entry, op, svalue);
-	    }
+	  if (ok_to_harvest)
+	    harvest_formal_param_location_atom(entry, op, svalue);
 	  printf ("DW_OP_const4s: %ld", (long) svalue);
 	  break;
 	case DW_OP_const8u:
-	  if (ok_to_harvest)
-	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
-	      SAFE_BYTE_GET (uvalue, data, 8, end);
-	      harvest_formal_param_location_atom(entry, op, uvalue);
-	    }
+	  if (ok_to_harvest) {
+	    SAFE_BYTE_GET (uvalue, data, 8, end);
+	    harvest_formal_param_location_atom(entry, op, uvalue);
+	  }
 	  SAFE_BYTE_GET_AND_INC (uvalue, data, 4, end);
 	  printf ("DW_OP_const8u: %lu ", (unsigned long) uvalue);
 	  SAFE_BYTE_GET_AND_INC (uvalue, data, 4, end);
 	  printf ("%lu", (unsigned long) uvalue);
 	  break;
 	case DW_OP_const8s:
-	  if (ok_to_harvest)
-	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
-	      SAFE_SIGNED_BYTE_GET (svalue, data, 8, end);
-	      harvest_formal_param_location_atom(entry, op, svalue);
-	    }
+	  if (ok_to_harvest) {
+	    SAFE_SIGNED_BYTE_GET (svalue, data, 8, end);
+	    harvest_formal_param_location_atom(entry, op, svalue);
+	  }
 	  SAFE_SIGNED_BYTE_GET_AND_INC (svalue, data, 4, end);
 	  printf ("DW_OP_const8s: %ld ", (long) svalue);
 	  SAFE_SIGNED_BYTE_GET_AND_INC (svalue, data, 4, end);
@@ -1540,17 +1526,13 @@ decode_location_expression (unsigned char * data,
 	case DW_OP_constu:
 	  READ_ULEB (uvalue, data, end);
 	  if (ok_to_harvest)
-	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
-	      harvest_formal_param_location_atom(entry, op, uvalue);
-	  }
+	    harvest_formal_param_location_atom(entry, op, uvalue);
 	  printf ("DW_OP_constu: %s", dwarf_vmatoa ("u", uvalue));
 	  break;
 	case DW_OP_consts:
 	  READ_SLEB (svalue, data, end);
 	  if (ok_to_harvest)
-	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
-	      harvest_formal_param_location_atom(entry, op, svalue);
-	  }
+	    harvest_formal_param_location_atom(entry, op, svalue);
 	  printf ("DW_OP_consts: %s", dwarf_vmatoa ("d", svalue));
 	  break;
 	case DW_OP_dup:
