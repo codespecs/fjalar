@@ -1241,6 +1241,7 @@ static int exit_count = 0;
                      isEnter,
                      0,
                      0,
+                     0,
                      &printDtraceEntryAction);
   //  print_info = 0;
 
@@ -1252,6 +1253,7 @@ static int exit_count = 0;
                      (Addr)f_state->virtualStack
                        + f_state->virtualStackFPOffset,
                      f_state->FP,
+                     f_state->entryRegs,
                      &printDtraceEntryAction);
 
   // If isEnter == 0, print out return value:

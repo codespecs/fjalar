@@ -9,15 +9,16 @@
 # the given options on it, and compares the comparability of the variables at
 # each exit program point (other than main's) with <test>.goal, whose lines
 # have the form "<ppt> <variable> <comparability>".  --program lets several
-# tests run one program with different options.
+# tests call this script on one program with different options.
 #
-# <trace-check> is an awk program that reads the trace of the IR of each
-# superblock, after the optimization that precedes instrumentation, and
-# exits with status 0 if the IR is as the test requires.  For example, if
-# VEX specialized a helper call into an IR operation, then the test would
-# not exercise DynComp's handling of helper calls.  If <trace-check> is
-# empty, the driver neither traces nor checks the IR, and it lets VEX chase
-# jumps.
+# <trace-check> is the empty string or an awk program.  The awk program
+# reads the trace of the IR of each superblock, after the optimization that
+# precedes instrumentation, and exits with status 0 if the IR is as the test
+# requires -- for example, if the IR calls a specific helper function.  The
+# check is needed because if VEX specialized a helper call into an IR
+# operation, then the test would not exercise DynComp's handling of helper
+# calls.  If <trace-check> is the empty string, the driver neither traces nor
+# checks the IR.
 
 set -e
 
@@ -51,11 +52,12 @@ trap 'rm -rf "${output_dir}"' EXIT
 gcc -gdwarf-4 -no-pie -O0 -o "${output_dir}/${program}" \
     "${test_dir}/${program}.c"
 
-# --vex-guest-chase=no ends each superblock at a jump, so that VEX cannot
+# Fjalar disables chasing, so each superblock ends at a jump and VEX cannot
 # specialize a helper call that reads the flags set in an earlier basic block.
+# The description of <trace-check> above says why that matters.
 trace_options=()
 if [ -n "${trace_check}" ]; then
-  trace_options=(--vex-guest-chase=no --trace-flags=01000000 --trace-notbelow=0)
+  trace_options=(--trace-flags=01000000 --trace-notbelow=0)
 fi
 
 decls="${output_dir}/${test_name}.decls"
