@@ -71,13 +71,15 @@ Memcheck and DynComp depend tightly on Valgrind core:
   - DynComp, so step 7 must keep them (no conflict expected, since
     `kvasir/` is not patched): `b2c735d7` (#79) `Iop_64x4toV256` and
     `125330a0` (#88) vector shifts, in `dyncomp_translate.c`;
+    `8cd25174` (#104, comparison tags merged with a dirty call) and
+    `1ff7ffe4` (#107, no helper-call merges under
+    `--dyncomp-interactions=none`), in `dyncomp_translate.c`;
     `a4d693e1` (#114, instruction address only when tracing) and
     `ab0b6145` (#108, `WEAK_FRESH_TAG` check), in `dyncomp_main.c`.
   - Open PRs to land before this upgrade (as of 2026-10-19):
     - DynComp, `dyncomp_translate.c`:  #85 (`--dyncomp-unhandled-ops`),
-      #86 and #87 (explicit handling of all 283 unary operations), #104,
-      #106, #107, #111, #115, #116, #117, #119, #120, #122, #123, and
-      #125.  With #85 and #87, new IROps in 3.24-3.27 reach the `default`
+      #86 and #87 (explicit handling of all 283 unary operations), #106,
+      #111, #115, #116, #117, #119, #120, #122, #123, #125, and #126.  With #85 and #87, new IROps in 3.24-3.27 reach the `default`
       cases of all four `expr2tags_*_DC` functions, and
       `--dyncomp-unhandled-ops=warn` lists them all in one run (step 7).
     - Memcheck-derived files, so they can conflict in step 6:  #90 and #95

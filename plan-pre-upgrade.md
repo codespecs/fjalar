@@ -91,7 +91,7 @@ What:
 ## 5. Update `doc/valgrind-merge.texinfo` with what is already known
 
 Done:  #101 has landed.  Describing `check-regtest.sh` remains (item 1).
-#98 (landed), #103, and #113 also update the merge doc.
+#98 (landed), #103, #113, and #127 also update the merge doc.
 
 ## 6. Record the `bfd.h` version in each CI container
 

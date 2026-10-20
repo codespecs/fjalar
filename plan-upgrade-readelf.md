@@ -60,10 +60,10 @@ new ones than to fix them.)
   - `95516533` Support Rust and DWARF 3 & 4 (#76)
   - `287d1f44` Fix `DW_OP_breg*` locations on amd64 (#80)
   - `a620e75a` Fix Fjalar hang on optimized code with location views (#89)
-- Open PRs that change `dwarf.c` (as of 2026-10-18): #90 (register
-  parameters), #91 (DWARF registers via guest-state offsets), #95
-  (unsupported DWARF location operations).  Land them before starting this
-  upgrade, so that their changes are part of the Fjalar copy being merged
+  - `89754787` Read DWARF registers through their guest-state offsets (#91)
+- Open PRs that change `dwarf.c` (as of 2026-10-19): #95 (unsupported DWARF
+  location operations), which depends on #90 (register parameters).  Land
+  them before starting this upgrade, so that their changes are part of the Fjalar copy being merged
   into (and of the Fjalar-vs-2.39 diffs) rather than conflicting with the
   upgrade later.  Re-check their `dwarf.c` changes while resolving
   conflicts, as for #73/#76.
