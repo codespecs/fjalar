@@ -7,19 +7,21 @@ Both upgrade plans assume these are done.
 
 Below, `$INV/fjalar` means the Fjalar tree being changed.
 
-Items 3, 5, and 7 are done:  #99, #101, and #98 have landed.  Items 1
-and 2 are open pull requests; their descriptions give the details.
-Items 4 and 6 are described here.  Other open PRs that both
+Items 3, 5, and 7 are done:  #99, #101, and #98 have landed.  Item 6 is
+done too, by #96.  Item 1's pull request,
+#96, has landed, but follow-up work remains.  Item 2 is an open pull
+request; its description gives the details.  Item 4 is described here.
+Other open PRs that both
 upgrades should wait for, because they change files that the upgrades
 merge into, are listed in the "Current state" section of each upgrade
 plan.
 
 ## 1. Run Valgrind's regression tests in CI, against expected failures
 
-#96.  (#102, which has landed, makes Valgrind's test programs build with
+#96, which has landed.  (#102, which has also landed, makes Valgrind's test programs build with
 GCC 15 on Ubuntu 26.04.)  Its CI jobs only report the failures.
 
-Remaining, after #96 lands:
+Remaining:
 1. Rebuild and push the Daikon `-plus` Docker images, which Fjalar's CI
    uses (`scripts/Dockerfile-README.md` in Daikon), so that they contain
    `gdb` and glibc debuginfo, which codespecs/daikon#916 (landed) added.
@@ -43,8 +45,8 @@ Done when:  CI enforces the lists on both distributions and is green.
 ## 2. Add and remove files during the merge without `make git-update`
 
 #103:  create the patch files with `git diff` and apply them with
-`git apply --3way`.  It contains #113 (generate
-`valgrind/fjalar/Makefile.am` from Memcheck's).
+`git apply --3way`.  It builds on #113 (generate
+`valgrind/fjalar/Makefile.am` from Memcheck's), which has landed.
 
 ## 3. Make `generate-patch-files.sh` check its inputs
 
@@ -52,12 +54,13 @@ Done:  #99 has landed.
 
 ## 4. Look for DynComp panics on unhandled IROps, now, on Valgrind 3.23
 
-Status: much of this is in open PRs; do the rest after they land.
+Status: #85 and #86 have landed; #87 is open.  Do the rest after #87
+lands.
 - #85 adds `--dyncomp-unhandled-ops=panic|warn`; `warn` reports each
   unhandled binary, ternary, or quaternary operation once and continues.
   That makes the scan below much faster: one run lists every unhandled
   operation a program hits, instead of stopping at the first.
-- #86 and #87 make `expr2tags_Unop_DC` switch on the operation and cover
+- #86 (landed) and #87 (open) make `expr2tags_Unop_DC` switch on the operation and cover
   all 283 unary operations, so unary operations no longer silently pass
   their operand's tag through (the gap described below).
 - #88, which has landed, handles more vector shifts that used to panic.
@@ -72,8 +75,7 @@ What:
   `memcpy`/`memset`/string functions, float and integer arithmetic), compile
   them with `-O2 -march=x86-64-v3` (AVX2) and also `-O3 -march=native`, and
   run them under Kvasir with DynComp
-  (`$DAIKONDIR/scripts/kvasir-dtrace --dyncomp --dyncomp-unhandled-ops=warn ./prog`,
-  once #85 has landed).
+  (`$DAIKONDIR/scripts/kvasir-dtrace --dyncomp --dyncomp-unhandled-ops=warn ./prog`).
 - Fix each panic in its own PR, following #79's pattern.
 - Running programs finds only the operations those programs use.  Also
   compare the `Iop_*` values relevant to amd64/x86 in `VEX/pub/libvex_ir.h`
@@ -91,7 +93,7 @@ What:
 ## 5. Update `doc/valgrind-merge.texinfo` with what is already known
 
 Done:  #101 has landed.  Describing `check-regtest.sh` remains (item 1).
-#98 and #127 (both landed), #103, and #113 also update the merge doc.
+#98, #113, and #127 (all landed) and #103 also update the merge doc.
 
 ## 6. Record the `bfd.h` version in each CI container
 

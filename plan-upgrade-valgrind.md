@@ -56,8 +56,9 @@ Memcheck and DynComp depend tightly on Valgrind core:
   conflicts are unmanageable.
 - Fjalar-local changes made since the 3.23 merge, by where they matter:
   - Memcheck-derived files, so they can conflict in step 6:
-    `1ca71b1c` (#73) changed `mc_translate.c` and `memcheck.h`, and
-    `2377944a` (#97) changed `mc_main.c`.
+    `1ca71b1c` (#73) changed `mc_translate.c` and `memcheck.h`,
+    `2377944a` (#97) changed `mc_main.c`, and `a671ce4c` (#90, register
+    parameters) changed `mc_main.c` and `mc_include.h`.
   - Coregrind/upstream files, so they can conflict in step 5: `42632185`
     (#84) backported an upstream fix for `$(nproc)` in
     `auxprogs/Makefile.am`.  3.27.1 has the same line, so take upstream's
@@ -70,7 +71,9 @@ Memcheck and DynComp depend tightly on Valgrind core:
     them were removed by `1d9a43ad` (#98).
   - DynComp, so step 7 must keep them (no conflict expected, since
     `kvasir/` is not patched): `b2c735d7` (#79) `Iop_64x4toV256` and
-    `125330a0` (#88) vector shifts, in `dyncomp_translate.c`;
+    `125330a0` (#88) vector shifts, `d3b71509` (#85,
+    `--dyncomp-unhandled-ops`), and `225fae19` (#86, tag 0 for unary
+    operations whose result is a mask or count), in `dyncomp_translate.c`;
     `8cd25174` (#104, comparison tags merged with a dirty call),
     `1ff7ffe4` (#107, no helper-call merges under
     `--dyncomp-interactions=none`), `7c4b6598` (#106, chained helper-call
@@ -78,16 +81,15 @@ Memcheck and DynComp depend tightly on Valgrind core:
     `dyncomp_translate.c`;
     `a4d693e1` (#114, instruction address only when tracing) and
     `ab0b6145` (#108, `WEAK_FRESH_TAG` check), in `dyncomp_main.c`.
-  - Open PRs to land before this upgrade (as of 2026-10-19):
-    - DynComp, `dyncomp_translate.c`:  #85 (`--dyncomp-unhandled-ops`),
-      #86 and #87 (explicit handling of all 283 unary operations), #111,
-      #115, #116, #117, #119, #120, #122, #123, and #125.  With #85 and
-      #87, new IROps in 3.24-3.27 reach the `default` cases of all four
+  - Open PRs to land before this upgrade (as of 2026-10-20):
+    - DynComp, `dyncomp_translate.c`:  #87 (explicit handling of all 283
+      unary operations), #111,
+      #115, #116, #117, #119, #120, #122, #123, and #125.  With #85
+      (landed) and #87, new IROps in 3.24-3.27 reach the `default` cases of all four
       `expr2tags_*_DC` functions, and
       `--dyncomp-unhandled-ops=warn` lists them all in one run (step 7).
-    - Memcheck-derived files, so they can conflict in step 6:  #90 and #95
-      change `mc_main.c` and `mc_include.h`; #115, #117, #119, and #120
-      change `mc_translate.c` and `mc_translate.h`.
+    - Memcheck-derived files, so they can conflict in step 6:  #115,
+      #117, #119, and #120 change `mc_translate.c` and `mc_translate.h`.
     - Other open PRs may have been opened since.  To list the open PRs
       that change files under `valgrind/`:
       `gh pr list -R codespecs/fjalar --json number,files --jq '.[] | select(any(.files[]; .path | startswith("valgrind/"))) | .number'`.

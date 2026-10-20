@@ -4,7 +4,7 @@ Reference procedure: `doc/valgrind-merge.texinfo`, chapter "Updating Readelf
 from Binutils".  This plan applies that procedure to the current situation and
 notes where it needs adjusting.
 
-Below, `$INV/fjalar` means the Fjalar tree being upgraded.
+Below, `$FJALAR` is the Fjalar tree being upgraded (see step 1).
 
 ## Ordering: do this before the Valgrind upgrade
 
@@ -61,12 +61,12 @@ new ones than to fix them.)
   - `287d1f44` Fix `DW_OP_breg*` locations on amd64 (#80)
   - `a620e75a` Fix Fjalar hang on optimized code with location views (#89)
   - `89754787` Read DWARF registers through their guest-state offsets (#91)
-- Open PRs that change `dwarf.c` (as of 2026-10-19): #95 (unsupported DWARF
-  location operations), which depends on #90 (register parameters).  Land
-  them before starting this upgrade, so that their changes are part of the Fjalar copy being merged
-  into (and of the Fjalar-vs-2.39 diffs) rather than conflicting with the
-  upgrade later.  Re-check their `dwarf.c` changes while resolving
-  conflicts, as for #73/#76.
+- Open PRs that change `dwarf.c` (as of 2026-10-20): #95 (unsupported DWARF
+  location operations).  Land it before starting this upgrade, so that its
+  changes are part of the Fjalar copy being merged into (and of the
+  Fjalar-vs-2.39 diffs) rather than conflicting with the upgrade later.
+  Re-check its `dwarf.c` changes while resolving conflicts, as for
+  #73/#76.
 
 ## Key decision: one jump or stepwise?
 
@@ -94,7 +94,8 @@ small.
    the Valgrind upgrade).
    - Work in a new clone, because each working directory is dedicated to
      one branch: clone Fjalar into, e.g., `$INV/fjalar-branch-binutils-2.47`
-     and create the branch there.  Below, `$INV/fjalar` means that clone.
+     and create the branch there.  Set `FJALAR` to that clone, e.g.,
+     `FJALAR=$INV/fjalar-branch-binutils-2.47`; the commands below use it.
    - `git pull` both `fjalar` and `daikon`; ensure clean trees.
    - Make sure the system has `binutils-dev` / `binutils-devel` (for `bfd.h`).
 
@@ -125,7 +126,7 @@ small.
      symbolic link; then set `DAIKONDIR` to another, possibly nonexistent,
      directory).  Do not use `make daikon-test`: it ignores `$DAIKONDIR` and
      builds whatever `../daikon/fjalar` points to (by default `$INV/fjalar`,
-     which may be a different clone than the one being upgraded).  Running
+     which is a different clone than `$FJALAR`).  Running
      `$INV/daikon/tests/kvasir-tests` directly has the same problem; if you
      do that, first check `readlink -f $INV/daikon/fjalar`.
 
@@ -149,7 +150,7 @@ small.
    Also create the reference diffs (Fjalar vs. pristine 2.39), for visual
    verification while resolving conflicts:
    ```sh
-   cd $INV/fjalar/valgrind/fjalar
+   cd $FJALAR/valgrind/fjalar
    diff -ub ~/tmp/binutils/$BUOLD/binutils/dwarf.c dwarf.c > ~/tmp/binutils/dwarf-binutils-vs-fjalar.diff
    diff -ub ~/tmp/binutils/$BUOLD/binutils/readelf.c readelf.c > ~/tmp/binutils/readelf-binutils-vs-fjalar.diff
    diff -ub ~/tmp/binutils/$BUOLD/binutils/dwarf.h dwarf.h > ~/tmp/binutils/dwarf.h-binutils-vs-fjalar.diff
@@ -192,7 +193,7 @@ small.
    `--merge=diff3` so conflicts are inline, and merge `dwarf.c`, `dwarf.h`,
    and `readelf.c` with a 3-way merge:
    ```sh
-   cd $INV/fjalar/valgrind/fjalar
+   cd $FJALAR/valgrind/fjalar
    SKIPFILTER='/can.t find file to patch/ {skip=1} !skip && !/hunks? ignored/ {print} /Skipping patch\./ {skip=0}'
    patch -p1 -lu -f --dry-run < ~/tmp/binutils/include.patch | awk "$SKIPFILTER"
    patch -p1 -lu -f --merge=diff3 < ~/tmp/binutils/include.patch | awk "$SKIPFILTER"
@@ -256,15 +257,15 @@ small.
      Remove any `.rej` or `.orig` files that `patch` created, and delete
      the `.pre-merge` copies once the merge is complete.
 
-7. **Build and fix warnings/errors.**  `make -C $INV/fjalar build`, then
-   iterate with `make -C $INV/fjalar/valgrind/fjalar`.  Fix "implicit
+7. **Build and fix warnings/errors.**  `make -C $FJALAR build`, then
+   iterate with `make -C $FJALAR/valgrind/fjalar`.  Fix "implicit
    declaration" and "undefined reference" errors (missed `VG_()` wrappers).
    Reduce new warnings from Valgrind's stricter flags where practical,
    comparing with the warning list from step 2.
    Also build against the system `bfd.h` on both Rocky Linux and Ubuntu
    (see step 4; the #63 workaround may need to change).
 
-8. **Test.**  Run these from `$INV/fjalar` (`cd $INV/fjalar`; step 5 left
+8. **Test.**  Run these from `$FJALAR` (`cd $FJALAR`; step 5 left
    the shell in `valgrind/fjalar`).
    - `./check-regtest.sh` — must report no unexpected failures, with no
      change to `regtest-expected/*.txt`.  This upgrade doesn't touch
@@ -320,6 +321,9 @@ small.
      plume-lib.)": the commands now use an `awk` filter.  Update the list of
      compiler warning flags if it changed.  Rebuild with `make doc` (which
      `test.sh` runs in CI) to confirm that the document still formats.
+   - If step 2 created a local `regtest-expected/<os>.txt`, delete it
+     before committing:  git does not ignore it, so `git add -A` would
+     commit it.
    - Commit (one PR), with commit message "Upgrade Binutils (readelf) from
      2.39 to 2.47"; keep `include.patch`, `binutils.patch`, and the
      Fjalar-vs-binutils diffs for reference (perhaps attached to the PR).
