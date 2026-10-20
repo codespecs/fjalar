@@ -90,6 +90,8 @@ Memcheck and DynComp depend tightly on Valgrind core:
     - Memcheck-derived files, so they can conflict in step 6:  #115,
       #117, #119, #120, and #122 change `mc_translate.c` and
       `mc_translate.h`.
+    - A script that this plan uses:  #132 (`check-regtest.sh --log` takes
+      the operating system from the log's name).
     - Other open PRs may have been opened since.  To list the open PRs
       that change files under `valgrind/`:
 
@@ -311,9 +313,7 @@ Memcheck and DynComp depend tightly on Valgrind core:
      upstream failure, so add it to the expected list; otherwise it was
      probably caused by the merge, so fix it.  Remove expected failures
      that now pass.  `./check-regtest.sh --log regtest-<os>.log --update`
-     rewrites the list; review its diff, which goes in the PR.  To update
-     the list of another distribution from its CI log, #132 is needed:  it
-     makes `--log` take the operating system from the log's name.
+     rewrites the list; review its diff, which goes in the PR.
    - `make fjalar-test`.
    - `./test-kvasir.sh 2>&1 | tee kvasir-after.log` — compare with
      `kvasir-before.log` from step 1; the tests must pass with no goal-file
