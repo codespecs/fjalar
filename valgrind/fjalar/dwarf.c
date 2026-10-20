@@ -1469,10 +1469,20 @@ decode_location_expression (unsigned char * data,
 	  break;
 	case DW_OP_const1u:
 	  SAFE_BYTE_GET_AND_INC (uvalue, data, 1, end);
+	  if (ok_to_harvest)
+	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
+	      harvest_formal_param_location_atom(entry, op, uvalue);
+	      harvest_formal_param_location_offset(entry, uvalue);
+	    }
 	  printf ("DW_OP_const1u: %lu", (unsigned long) uvalue);
 	  break;
 	case DW_OP_const1s:
 	  SAFE_SIGNED_BYTE_GET_AND_INC (svalue, data, 1, end);
+	  if (ok_to_harvest)
+	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
+	      harvest_formal_param_location_atom(entry, op, svalue);
+	      harvest_formal_param_location_offset(entry, svalue);
+	    }
 	  printf ("DW_OP_const1s: %ld", (long) svalue);
 	  break;
 	case DW_OP_const2u:
@@ -1512,16 +1522,22 @@ decode_location_expression (unsigned char * data,
 	  printf ("DW_OP_const4s: %ld", (long) svalue);
 	  break;
 	case DW_OP_const8u:
-	  SAFE_BYTE_GET_AND_INC (uvalue, data, 4, end);
-	  printf ("DW_OP_const8u: %lu ", (unsigned long) uvalue);
-	  SAFE_BYTE_GET_AND_INC (uvalue, data, 4, end);
-	  printf ("%lu", (unsigned long) uvalue);
+	  SAFE_BYTE_GET_AND_INC (uvalue, data, 8, end);
+	  if (ok_to_harvest)
+	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
+	      harvest_formal_param_location_atom(entry, op, uvalue);
+	      harvest_formal_param_location_offset(entry, uvalue);
+	    }
+	  printf ("DW_OP_const8u: %s", dwarf_vmatoa ("u", uvalue));
 	  break;
 	case DW_OP_const8s:
-	  SAFE_SIGNED_BYTE_GET_AND_INC (svalue, data, 4, end);
-	  printf ("DW_OP_const8s: %ld ", (long) svalue);
-	  SAFE_SIGNED_BYTE_GET_AND_INC (svalue, data, 4, end);
-	  printf ("%ld", (long) svalue);
+	  SAFE_SIGNED_BYTE_GET_AND_INC (svalue, data, 8, end);
+	  if (ok_to_harvest)
+	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
+	      harvest_formal_param_location_atom(entry, op, svalue);
+	      harvest_formal_param_location_offset(entry, svalue);
+	    }
+	  printf ("DW_OP_const8s: %s", dwarf_vmatoa ("d", svalue));
 	  break;
 	case DW_OP_constu:
 	  READ_ULEB (uvalue, data, end);
