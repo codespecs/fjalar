@@ -697,9 +697,9 @@ typedef struct _FunctionEntry {
 
   // Bit N is set if the valid location of some formal parameter uses
   // DWARF register N (via DW_OP_regN or DW_OP_bregN, anywhere in its
-  // location expression) and Fjalar can
-  // read that register.  Fjalar saves those registers at function
-  // entrance in FunctionExecutionState.entryRegs.
+  // location expression) and Fjalar can read that register.  Fjalar
+  // saves those registers at function entrance in
+  // FunctionExecutionState.entryRegs.
   UInt entryRegsMask;
 
 } FunctionEntry;
@@ -838,19 +838,19 @@ typedef struct {
 
   // The values at function entrance of the registers, indexed by
   // DWARF register number:  entryRegs[N] holds register N, if bit N
-  // of func->entryRegsMask is set.  A formal parameter whose location is a
-  // register (DW_OP_reg*) is read from here, and the address of one
-  // whose location is relative to a register (DW_OP_breg*) is computed
-  // from here, at both entrance and exit, for the same reason as
-  // virtualStack:  the function body and epilogue may change the
-  // registers.  At function entrance,
-  // Fjalar copies those registers, with their A and V bits and
-  // DynComp tags, to entryRegs.  entryRegs has FJALAR_NUM_DWARF_REGS
-  // elements and lies in the same allocation as virtualStack, just
-  // after it; it is null if func->entryRegsMask is 0.  (An inline
-  // array would add FJALAR_NUM_DWARF_REGS words to every one of the
-  // FN_STACK_SIZE entries of every thread's function stack, even for
-  // functions with no register parameters.)
+  // of func->entryRegsMask is set.  A formal parameter whose location
+  // is a register (DW_OP_reg*) is read from here, and the address of
+  // one whose location is relative to a register (DW_OP_breg*) is
+  // computed from here, at both entrance and exit, for the same
+  // reason as virtualStack:  the function body and epilogue may change
+  // the registers.  At function entrance, Fjalar copies those
+  // registers, with their A and V bits and DynComp tags, to entryRegs.
+  // entryRegs has FJALAR_NUM_DWARF_REGS elements and lies in the same
+  // allocation as virtualStack, just after it; it is null if
+  // func->entryRegsMask is 0.  (An inline array would add
+  // FJALAR_NUM_DWARF_REGS words to every one of the FN_STACK_SIZE
+  // entries of every thread's function stack, even for functions with
+  // no register parameters.)
   Addr* entryRegs;
 
 

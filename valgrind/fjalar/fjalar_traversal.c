@@ -933,10 +933,8 @@ void visitVariableGroup(VariableOrigin varOrigin,
     // Omit a formal parameter whose location Fjalar cannot read.  This
     // test does not depend on stackBaseAddr, so that the .decls file
     // (which is written without a stack) declares exactly the
-    // variables that the .dtrace file contains.  return is an
-    // exception, as we figure it out ourself.
-    if ((varOrigin == FUNCTION_FORMAL_PARAM) &&
-        !var->validLoc && !VG_STREQ("return", var->name)) {
+    // variables that the .dtrace file contains.
+    if ((varOrigin == FUNCTION_FORMAL_PARAM) && !var->validLoc) {
       FJALAR_DPRINTF("\t[visitVariableGroup] invalid loc, punting\n");
       continue;
     }
@@ -1880,9 +1878,9 @@ void visitSingleVar(VisitArgs* args) {
             derivedIsAllocated = 1;
           else if (!pValueGuest)
             /* This has no guest address, as for a return value in a
-               register. No need to check A bits.  (A formal parameter
-               in a register has a non-null pValueGuest: its address
-               in entryRegs, whose A bits are set.) */
+               register.  No need to check A bits.  (A formal
+               parameter in a register has a non-null pValueGuest:
+               its address in entryRegs, whose A bits are set.) */
             derivedIsAllocated = 1;
           else
             derivedIsAllocated = addressIsAllocated(pValue, sizeof(void*));
