@@ -2540,19 +2540,14 @@ int determineFormalParametersLowerStackByteSize(FunctionEntry* f)
 // whose entrance value Fjalar can save and from which Fjalar can read
 // the whole value.  The location must be a single DW_OP_reg operation:
 // Fjalar does not support any other operation (such as DW_OP_lit*)
-// that is not a memory location.
-static Bool isSupportedRegisterLocation(formal_parameter* paramPtr,
-                                        VariableEntry* varPtr)
+// that is not a memory location.  Call this after copying the DWARF
+// location into varPtr->location_expression.
+static Bool isSupportedRegisterLocation(VariableEntry* varPtr)
 {
-  enum dwarf_location_atom atom;
   int byteSize;
 
-  if (paramPtr->dwarf_stack_size != 1) {
-    return False;
-  }
-  atom = paramPtr->dwarf_stack[0].atom;
-  if (atom < DW_OP_reg0 || atom > DW_OP_reg31 ||
-      !dwarf_reg_is_readable(atom - DW_OP_reg0)) {
+  if (varPtr->location_expression_size != 1 || !isInRegister(varPtr) ||
+      !dwarf_reg_is_readable(varPtr->location_expression[0].atom - DW_OP_reg0)) {
     return False;
   }
   // A C++ reference is passed as a pointer.
@@ -2642,8 +2637,8 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     recordEntryRegs(f, paramPtr);
 
     FJALAR_DPRINTF(" location_type: %u, byteOffset: %x\n", varPtr->locationType, (unsigned int)varPtr->byteOffset);
-  } else if (isSupportedRegisterLocation(paramPtr, varPtr)) {
-    UInt regNum = paramPtr->dwarf_stack[0].atom - DW_OP_reg0;
+  } else if (isSupportedRegisterLocation(varPtr)) {
+    UInt regNum = varPtr->location_expression[0].atom - DW_OP_reg0;
     varPtr->validLoc = 1;
     varPtr->locationType = REGISTER_LOCATION;
     recordEntryRegs(f, paramPtr);
