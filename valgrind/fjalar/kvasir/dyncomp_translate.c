@@ -266,8 +266,9 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
 // neither merges in dyncomp_dataflow_only_mode:
 //  * At translation time, every merge in the instrumentation is created
 //    by mkMergeTags_DC, by stmtMergeTagsReturn0_DC, by
-//    mergeTagsReturn0_DC (which expr2tags_Binop_DC does not reach in that
-//    mode), or by handleCCall_DC, which returns early in that mode.
+//    mergeTagsReturn0_DC (which neither expr2tags_Binop_DC nor
+//    approximate_unhandled_op_DC reaches in that mode), or by
+//    handleCCall_DC, which returns early in that mode.
 //  * At run time, a load merges the tags of the bytes it reads.  In
 //    dyncomp_dataflow_only_mode (and dyncomp_dataflow_comparisons_mode),
 //    expr2tags_LDle_DC instead calls MC_(helperc_LOAD_TAG_N), which
@@ -559,24 +560,21 @@ IRAtom* approximate_unhandled_op_DC ( DCEnv* dce, IROp op, Int nargs,
       case 1:
          return data[0];
       case 2:
-         return mkIRExprCCall (Ity_Word,
-                               2 /*Int regparms*/,
-                               "MC_(helperc_MERGE_TAGS)",
-                               &MC_(helperc_MERGE_TAGS),
-                               mkIRExprVec_2( data[0], data[1] ));
+         return mkMergeTags_DC (2 /*Int regparms*/,
+                                "MC_(helperc_MERGE_TAGS)",
+                                &MC_(helperc_MERGE_TAGS),
+                                mkIRExprVec_2( data[0], data[1] ));
       case 3:
-         return mkIRExprCCall (Ity_Word,
-                               3 /*Int regparms*/,
-                               "MC_(helperc_MERGE_3_TAGS)",
-                               &MC_(helperc_MERGE_3_TAGS),
-                               mkIRExprVec_3( data[0], data[1], data[2] ));
+         return mkMergeTags_DC (3 /*Int regparms*/,
+                                "MC_(helperc_MERGE_3_TAGS)",
+                                &MC_(helperc_MERGE_3_TAGS),
+                                mkIRExprVec_3( data[0], data[1], data[2] ));
       default:
-         return mkIRExprCCall (Ity_Word,
-                               3 /*Int regparms*/,
-                               "MC_(helperc_MERGE_4_TAGS)",
-                               &MC_(helperc_MERGE_4_TAGS),
-                               mkIRExprVec_4( data[0], data[1], data[2],
-                                              data[3] ));
+         return mkMergeTags_DC (3 /*Int regparms*/,
+                                "MC_(helperc_MERGE_4_TAGS)",
+                                &MC_(helperc_MERGE_4_TAGS),
+                                mkIRExprVec_4( data[0], data[1], data[2],
+                                               data[3] ));
    }
 }
 
