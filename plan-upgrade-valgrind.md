@@ -4,12 +4,13 @@ Reference procedure: `doc/valgrind-merge.texinfo` (chapters "Getting Started"
 through "Committing").  This plan applies that procedure to the current
 situation and notes where it needs adjusting.
 
-Below, `$INV/fjalar` means the Fjalar tree being upgraded.  Until #133
-lands, it must actually be at `$INV/fjalar`, because
-`generate-patch-files.sh` and `make git-update` hard-code that layout
-(`fjalar/valgrind`, `../coregrind.patch`).  #103 replaces
-`make git-update` with `apply-patch-files.sh`, which also uses
-`$INV/fjalar`.
+Below, `$FJALAR` is the Fjalar clone being upgraded (see step 1).  Some
+scripts that the merge uses read the Fjalar tree from `$INV/fjalar`, so
+step 1 makes `$INV/fjalar` a symbolic link to `$FJALAR` while any of them
+is in use:  `generate-patch-files.sh` and `make git-update` until #133
+lands (they use `fjalar/valgrind` and `../coregrind.patch`), and
+`apply-patch-files.sh`, which #103 adds in place of `make git-update`
+and which uses `$INV/fjalar`.
 
 ## Ordering: do this after the readelf upgrade
 
@@ -117,11 +118,12 @@ Memcheck and DynComp depend tightly on Valgrind core:
    the Binutils/readelf upgrade, which should already have landed).
    - Work in a new clone, because each working directory is dedicated to
      one branch: clone Fjalar into, e.g., `$INV/fjalar-branch-valgrind-3.27.1`
-     and create the branch there.  If every script that the merge uses
-     finds the Fjalar tree itself (#133, and `apply-patch-files.sh` if #103
-     has landed), skip the rest of this item.  Otherwise, while merging,
-     make `$INV/fjalar` a symbolic link to that clone, because the scripts
-     hard-code `$INV/fjalar`.  If `$INV/fjalar` is already a symbolic
+     and create the branch there.  Set `FJALAR` to that clone, e.g.,
+     `FJALAR=$INV/fjalar-branch-valgrind-3.27.1`; the commands below use
+     it.  If none of the scripts that read `$INV/fjalar` is in use (see the
+     paragraph at the top of this plan), skip the rest of this item.
+     Otherwise, while merging, make `$INV/fjalar` a symbolic link to that
+     clone.  If `$INV/fjalar` is already a symbolic
      link, record its target (`readlink $INV/fjalar`) and replace it with
      `ln -sfn fjalar-branch-valgrind-3.27.1 $INV/fjalar`.  If it is a
      directory, first move it aside; otherwise `ln -s` creates the link
@@ -141,7 +143,8 @@ Memcheck and DynComp depend tightly on Valgrind core:
      landed, undo this:  point the link back at its recorded target, or
      `rm $INV/fjalar && mv $INV/fjalar-orig $INV/fjalar && git -C $INV/fjalar worktree repair`.
    - `git pull` both `fjalar` and `daikon`; ensure no local or outgoing changes.
-   - Record baselines on current sources:
+   - Record baselines on current sources, from the new clone
+     (`cd $FJALAR`):
      `(set -o pipefail; make build 2>&1 | tee build-before.log)` (save the
      log, to compare warnings after the merge); `./check-regtest.sh`, which
      needs the build (must report no unexpected failures; if this machine's
@@ -172,10 +175,11 @@ Memcheck and DynComp depend tightly on Valgrind core:
    Step 10 of the previous merge kept that merge's `valgrind-new` as
    `valgrind-old`, so reuse it if it exists; `generate-patch-files.sh`
    (step 4) checks that it is a pristine clone at `$VOLDVER`.
-   Remove from `fjalar/valgrind` the files that `valgrind-new` does not have,
+   Remove from `$FJALAR/valgrind` the files that `valgrind-new` does not have,
    using the commands in section "Remove files that the target Valgrind release
    does not have" of `doc/valgrind-merge.texinfo`.  The second command there
-   handles Fjalar's own copy of memcheck in `valgrind/fjalar/`.
+   handles Fjalar's own copy of memcheck in `valgrind/fjalar/`.  The
+   doc's commands use `$INV/fjalar`; use `$FJALAR` in its place.
 
 3. **Baseline.**  Never build in `valgrind-old` or `valgrind-new` themselves:
    `generate-patch-files.sh` refuses to run if either contains changes or
@@ -191,7 +195,7 @@ Memcheck and DynComp depend tightly on Valgrind core:
    ./autogen.sh && ./configure --prefix=$(pwd)/inst
    make -j"$(nproc)" all install && make -j"$(nproc)" regtest XMLLINT=xmllint-skipped-by-check-regtest > test.log 2>&1
    make -s --no-print-directory post-regtest-checks > test-post.log 2>&1
-   $INV/fjalar/check-regtest.sh --log test.log --expected $INV/regtest-upstream-3.27.1.txt --update
+   $FJALAR/check-regtest.sh --log test.log --expected $INV/regtest-upstream-3.27.1.txt --update
    ```
    These are the options that `check-regtest.sh` itself uses.  Setting
    `XMLLINT` keeps `make check` from validating the manual, which fails
@@ -206,13 +210,13 @@ Memcheck and DynComp depend tightly on Valgrind core:
    directory that this build installs into; Fjalar's tree does not have
    that error.
 
-4. **Create the diffs.** Run `$INV/fjalar/generate-patch-files.sh`, producing
+4. **Create the diffs.** Run `$FJALAR/generate-patch-files.sh`, producing
    `coregrind.patch`, `memcheck.patch`, `coregrind-Fjalar.diff`,
    `memcheck-Fjalar.diff`.  The script checks that `valgrind-old` and
    `valgrind-new` are pristine clones at `$VOLDVER` and `$VNEWVER`.
 
 5. **Coregrind merge.**
-   - `cd $INV/fjalar/valgrind && patch -p1 -lu --dry-run < $INV/coregrind.patch`,
+   - `cd $FJALAR/valgrind && patch -p1 -lu --dry-run < $INV/coregrind.patch`,
      then for real.
    - Fix zero-length `.exp` files and lost execute bits (the two `find`
      commands in the doc).
@@ -240,7 +244,7 @@ Memcheck and DynComp depend tightly on Valgrind core:
      and `mc_machine.c` expect.
 
 6. **Memcheck merge** into `valgrind/fjalar/`.
-   - `cd $INV/fjalar/valgrind/fjalar && patch -p2 -lu --dry-run < $INV/memcheck.patch`,
+   - `cd $FJALAR/valgrind/fjalar && patch -p2 -lu --dry-run < $INV/memcheck.patch`,
      then for real (try `-F3` only if needed, and review its results).
    - Resolve `*.rej`.  Remember part of `mc_translate.c` lives in
      `fjalar/mc_translate.h`.  Preserve the #73 edits to `mc_translate.c`
@@ -252,7 +256,7 @@ Memcheck and DynComp depend tightly on Valgrind core:
      portion of `memcheck.patch` hunk by hunk, checking off each hunk as
      applied, not applicable, or ported to DynComp (step 7).
    - Check `mc_main.c` still has Fjalar's options/version info.
-   - Run `$INV/fjalar/generate-fjalar-makefile.sh`, which regenerates
+   - Run `$FJALAR/generate-fjalar-makefile.sh`, which regenerates
      `valgrind/fjalar/Makefile.am` from `valgrind/memcheck/Makefile.am`, so
      Fjalar builds every new Memcheck source file.  Review the diff of
      `valgrind/fjalar/Makefile.am`, and update `valgrind/fjalar/fjalar.am`,
@@ -261,7 +265,7 @@ Memcheck and DynComp depend tightly on Valgrind core:
 
 7. **DynComp / Fjalar / Kvasir updates.**  Run the commands of this step
    from `$INV` (`cd $INV`; step 6 left the shell in
-   `fjalar/valgrind/fjalar`), so that the relative paths are right and the
+   `$FJALAR/valgrind/fjalar`), so that the relative paths are right and the
    scratch files `all-ops`, `dc-ops`, and `mc-ops` are written outside the
    Fjalar tree.
    - `diff -b valgrind-old/VEX/pub/libvex_ir.h valgrind-new/VEX/pub/libvex_ir.h`
@@ -282,7 +286,7 @@ Memcheck and DynComp depend tightly on Valgrind core:
      ```sh
      cd $INV
      grep -oE '\bIop_[A-Za-z0-9_]+' valgrind-new/VEX/pub/libvex_ir.h | sort -u > all-ops
-     grep -oE '\bIop_[A-Za-z0-9_]+' fjalar/valgrind/fjalar/kvasir/dyncomp_translate.c | sort -u > dc-ops
+     grep -oE '\bIop_[A-Za-z0-9_]+' $FJALAR/valgrind/fjalar/kvasir/dyncomp_translate.c | sort -u > dc-ops
      grep -oE '\bIop_[A-Za-z0-9_]+' valgrind-new/memcheck/mc_translate.c | sort -u > mc-ops
      comm -23 mc-ops dc-ops     # ops Memcheck handles but DynComp does not
      comm -23 all-ops dc-ops    # all ops DynComp does not mention (mostly other architectures)
@@ -307,7 +311,7 @@ Memcheck and DynComp depend tightly on Valgrind core:
    new since step 1's `build-before.log`.  The merge shifts line numbers,
    so the commands remove them before comparing:
    ```sh
-   cd $INV/fjalar
+   cd $FJALAR
    (set -o pipefail; make build 2>&1 | tee build-after.log)
    for f in before after; do
      grep -E ':[0-9]+:[0-9]+: warning' build-$f.log | sed -E 's/:[0-9]+:[0-9]+:/:/' \
@@ -328,7 +332,7 @@ Memcheck and DynComp depend tightly on Valgrind core:
    (`mdernst/daikon-ubuntu-jdk11-plus`, `mdernst/daikon-rockylinux-jdk25-plus`)
    satisfy them.
 
-9. **Test.**  Run these from `$INV/fjalar` (`cd $INV/fjalar`).
+9. **Test.**  Run these from `$FJALAR` (`cd $FJALAR`).
    - `./check-regtest.sh`.  The expected failures will change, because
      3.27.1 adds, removes, and fixes tests.  For each unexpected failure:
      if it is also in step 3's `regtest-upstream-3.27.1.txt`, it is an

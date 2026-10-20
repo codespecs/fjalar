@@ -334,7 +334,17 @@ small.
      `-gdwarf-4`, using both the current gcc and clang, and confirm that the
      `.decls` output is identical between the two DWARF versions.
    - Run with `--fjalar-debug-dump=yes` on a DWARF 5 binary and compare
-     against `readelf --debug-dump` from Binutils 2.47 for sanity.
+     against `readelf --debug-dump` from Binutils 2.47 for sanity.  The
+     system `readelf` is older (2.46 on Ubuntu 26.04, 2.41 on Rocky Linux
+     10), so build 2.47's, outside the extracted tree that step 5 merges
+     from:
+     ```sh
+     mkdir -p ~/tmp/binutils/build-$BUNEW && cd ~/tmp/binutils/build-$BUNEW
+     ../$BUNEW/configure --disable-nls --disable-gdb --disable-gdbserver --disable-sim --disable-gprofng
+     make -j"$(nproc)" all-binutils
+     cd $FJALAR
+     ```
+     It is `~/tmp/binutils/build-$BUNEW/binutils/readelf`.
    - Before committing, count the calls of each hook (step 6) in the old
      and new `dwarf.c` and `readelf.c`, and explain each difference.  The
      old files are those of the commit where this branch started, even if
@@ -357,8 +367,11 @@ small.
                valgrind/fjalar/{typedata.h,fjalar_dwarf.h,fjalar_include.h} | sort -u)
      for file in dwarf.c readelf.c; do
        git show "$base:valgrind/fjalar/$file" > ~/tmp/binutils/$file.old
-       live ~/tmp/binutils/$file.old > ~/tmp/binutils/$file.old.live
-       live valgrind/fjalar/$file > ~/tmp/binutils/$file.new.live
+       # Without these checks, a failure of gcc would make every count 0.
+       live ~/tmp/binutils/$file.old > ~/tmp/binutils/$file.old.live \
+         || echo "error: cannot process the old $file" >&2
+       live valgrind/fjalar/$file > ~/tmp/binutils/$file.new.live \
+         || echo "error: cannot process the new $file" >&2
        for f in $hooks; do
          echo "$file $f $(grep -cw "$f" ~/tmp/binutils/$file.old.live) $(grep -cw "$f" ~/tmp/binutils/$file.new.live)"
        done
@@ -395,7 +408,10 @@ small.
      - the checklist of upgrade-sensitive areas (step 6);
      - the DWARF 4 versus DWARF 5 comparison, `--fjalar-debug-dump=yes`, the
        hook-count check, and the `nm` check for zstd, SFrame, and
-       debuginfod code (step 8);
+       debuginfod code (step 8).  Rather than copying step 8's hook-count
+       commands into the doc, make them a script, such as
+       `check-hook-counts.sh`, that the doc runs, so that later merges
+       reuse it and it can be tested;
      - an example `BUNEWVER` that is not 2.34.
      Also remove the stale sentence "(The `lines-notbetween` command is from
      plume-lib.)": the commands now use an `awk` filter.  Update the list of
