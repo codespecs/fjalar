@@ -755,6 +755,8 @@ traversals within data structures and arrays
 #define DWARF_FP_REG 5
 #endif
 
+// FJALAR_NUM_DWARF_REGS is defined in fjalar_dwarf.h.
+
 // If atom is DW_OP_regN or DW_OP_bregN, sets *regNum to N and returns
 // True.  Otherwise, returns False.
 Bool dwarf_op_reg_num(UInt atom, UInt* regNum);
