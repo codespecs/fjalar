@@ -32,3 +32,16 @@ void stack_value(long v) {
 void kept(long y) {
   sink = y;
 }
+
+// w__ and p__ are in the stack frame (DW_OP_fbreg).
+// register-params-test.sh renames them to w and p, and it appends
+// "DW_OP_piece 8" to w's location and "DW_OP_piece 4" to p's location.
+// Fjalar supports a location that is one piece covering the whole parameter,
+// so w is not omitted, but p is omitted.
+void whole_piece(long w__) {
+  sink = w__;
+}
+
+void part_piece(long p__) {
+  sink = p__;
+}
