@@ -107,6 +107,22 @@ static void setHelperAnns_DC ( DCEnv* dce, IRDirty* di ) {
    di->fxState[1].repeatLen = 0;
 }
 
+// Merge the tags vatom1 and vatom2, for an operation whose result
+// gets tag 0 (such as a comparison).  The merge is a dirty call
+// rather than a clean one.  VEX would remove a clean call as dead
+// code whenever the operations that use the result discard its tag
+// (for example, a shift discards the tag of its shift amount), and
+// the merge would be lost.
+static void mergeTagsReturn0_DC ( DCEnv* dce,
+                                  IRAtom* vatom1, IRAtom* vatom2 ) {
+   IRDirty* di = unsafeIRDirty_0_N(2,
+                                   "MC_(helperc_MERGE_TAGS_RETURN_0)",
+                                   &MC_(helperc_MERGE_TAGS_RETURN_0),
+                                   mkIRExprVec_2( vatom1, vatom2 ));
+   setHelperAnns_DC( dce, di );
+   stmt_DC('V', dce, IRStmt_Dirty(di));
+}
+
 // A PUT stores a value into the guest state
 void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
                      IRAtom* atom, IRAtom* vatom )
@@ -234,32 +250,54 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
 
 // Handling of clean helper function calls in the target program's
 // translated IR: Treat all arguments (exprvec) as 'interacting' with
-// one another and merge all of their respective tags and return the
-// value of one of the tags as the result of the helper call.  This is
-// because helpers probably implement weird x86 instructions which are
-// too difficult to handle purely in IR so these n-ary operations are
-// probably interactions.  E.g. if the args are (a, b, c, d, e), then
-// you should merge tag(a) with tag(b), tag(c), tag(d), and tag(e)
-// then return tag(a)
+// one another and merge all of their respective tags.  Helpers
+// probably implement weird x86 instructions which are too difficult to
+// handle purely in IR, so these n-ary operations are probably
+// interactions.  E.g. if the args are (a, b, c, d, e), then you should
+// merge tag(a), tag(b), tag(c), tag(d), and tag(e).  Comparisons such as
+// '>' and '>=' are often translated into clean calls.
+//
+// The result of the helper call has a tag of 0, so that the merged
+// tags do not propagate to the result.
+//
+// Arguments that the callee's mc-exclusion mask (mcx_mask) excludes
+// do not take part in any merge.  For example, the arguments of
+// amd64g_calculate_condition are (cond, cc_op, cc_dep1, cc_dep2,
+// cc_ndep), and its mask excludes cond, cc_op, and cc_ndep, so only
+// cc_dep1 and cc_dep2 (the operands of the comparison) are merged.
+//
+// Constant arguments do not take part in any merge either, just as
+// expr2tags_Binop_DC does not merge a constant operand.
+//
+// The merges are chained: each argument is merged with the result of
+// the previous merges, using MC_(helperc_MERGE_TAGS), which returns
+// the other tag when one tag is 0 or WEAK_FRESH_TAG.  An argument
+// whose tag is WEAK_FRESH_TAG (such as the stack pointer) therefore
+// does not prevent the other arguments from being merged with one
+// another.  Merging every argument with a fixed argument would not
+// work:  if the fixed argument's tag were WEAK_FRESH_TAG, no merge
+// would have any effect.
 
-// By some informal observation, it seems like '>' and '>='
-// comparisons are translated into clean C calls.  The correct
-// behavior is to merge the tags of all arguments but return a new tag
-// of 0 so that the tags do not propagate to the results.  Without
-// further testing on what other operations are translated into IR as
-// clean C calls, I will simply return a tag of 0 for now.
 static
 IRAtom* handleCCall_DC ( DCEnv* dce,
                          IRAtom** exprvec, IRCallee* cee )
 {
-  if (exprvec && exprvec[0]) {
-      IRAtom* first = expr2tags_DC(dce, exprvec[0]);
-      Int i;
-      IRAtom* cur;
-      IRDirty* di;
-      IRTemp   datatag;
+   // The arguments whose tags are merged
+   IRAtom* mergedArgs[32];
+   Int numMergedArgs = 0;
+   Int i;
+   IRAtom* merged;
+   IRDirty* di;
+   IRTemp   datatag;
 
-      for (i = 1; exprvec[i]; i++) {
+   // In this mode, NOTHING is an interaction, so there is nothing to
+   // merge.  Returning early avoids computing the arguments' tags.
+   if (dyncomp_dataflow_only_mode) {
+      return IRExpr_Const(IRConst_UWord(0));
+   }
+
+   if (exprvec) {
+      for (i = 0; exprvec[i]; i++) {
          tl_assert(i < 32);
          tl_assert(isOriginalAtom_DC(dce, exprvec[i]));
          /* Only take notice of this arg if the callee's mc-exclusion
@@ -268,33 +306,31 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
             /* the arg is to be excluded from definedness checking.  Do
                nothing. (I guess we do nothing also just like mkLazyN) */
             if (0) printf("excluding %s(%d)\n", cee->name, i);
-         } else {
-            /* merge the tags of first and current arguments */
-            cur = expr2tags_DC(dce, exprvec[i]);
-
-            // (comment added 2006)
-            // TODO: Why is this dirty rather than clean? - pgbovine
-            //       Because it has side effects? - smcc
-            datatag = newTemp(dce->mce, Ity_Word, DC);
-            di = unsafeIRDirty_1_N(datatag,
-                                   2,
-                                   "MC_(helperc_MERGE_TAGS_RETURN_0)",
-                                   &MC_(helperc_MERGE_TAGS_RETURN_0),
-                                   mkIRExprVec_2( first, cur ));
-
-            setHelperAnns_DC( dce, di );
-            stmt_DC('V', dce, IRStmt_Dirty(di));
+         } else if (exprvec[i]->tag != Iex_Const) {
+            mergedArgs[numMergedArgs++] = exprvec[i];
          }
       }
-      // Return the tag of the first argument, if there is one
-      //      return first;
+   }
 
-      // Or, always return 0
-      return IRExpr_Const(IRConst_UWord(0));
+   if (numMergedArgs >= 2) {
+      merged = expr2tags_DC(dce, mergedArgs[0]);
+      // Each merge is a dirty call because MC_(helperc_MERGE_TAGS) has
+      // side effects.  The result of the last merge is not used, so a
+      // clean call would be removed as dead code.
+      for (i = 1; i < numMergedArgs; i++) {
+         datatag = newTemp(dce->mce, Ity_Word, DC);
+         di = unsafeIRDirty_1_N(datatag,
+                                2,
+                                "MC_(helperc_MERGE_TAGS)",
+                                &MC_(helperc_MERGE_TAGS),
+                                mkIRExprVec_2(merged,
+                                              expr2tags_DC(dce, mergedArgs[i])));
+         setHelperAnns_DC( dce, di );
+         stmt_DC('V', dce, IRStmt_Dirty(di));
+         merged = mkexpr(datatag);
+      }
    }
-   else {
-      return IRExpr_Const(IRConst_UWord(0));
-   }
+   return IRExpr_Const(IRConst_UWord(0));
 }
 
 /*------------------------------------------------------------*/
@@ -1398,7 +1434,7 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_Sar64:
 
       // 64-bit SIMD integer shifts:
-      /* VECTOR x SCALAR SHIFT (shift amt :: Ity_I8) */
+      /* VECTOR x SCALAR and VECTOR x VECTOR SHIFTS */
    case Iop_Sal8x8:                      // only used by arm
    case Iop_Sal16x4:                     // only used by arm
    case Iop_Sal32x2:                     // only used by arm
@@ -1421,6 +1457,26 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_ShrN8x8:                     // only used by arm
    case Iop_ShrN16x4:
    case Iop_ShrN32x2:
+   case Iop_QSal8x8:                     // only used by arm
+   case Iop_QSal16x4:                    // only used by arm
+   case Iop_QSal32x2:                    // only used by arm
+   case Iop_QSal64x1:                    // only used by arm
+   case Iop_QShl8x8:                     // only used by arm
+   case Iop_QShl16x4:                    // only used by arm
+   case Iop_QShl32x2:                    // only used by arm
+   case Iop_QShl64x1:                    // only used by arm
+   case Iop_QShlNsatSU8x8:               // only used by arm
+   case Iop_QShlNsatSU16x4:              // only used by arm
+   case Iop_QShlNsatSU32x2:              // only used by arm
+   case Iop_QShlNsatSU64x1:              // only used by arm
+   case Iop_QShlNsatUU8x8:               // only used by arm
+   case Iop_QShlNsatUU16x4:              // only used by arm
+   case Iop_QShlNsatUU32x2:              // only used by arm
+   case Iop_QShlNsatUU64x1:              // only used by arm
+   case Iop_QShlNsatSS8x8:               // only used by arm
+   case Iop_QShlNsatSS16x4:              // only used by arm
+   case Iop_QShlNsatSS32x2:              // only used by arm
+   case Iop_QShlNsatSS64x1:              // only used by arm
 
    case Iop_Perm8x8:
    case Iop_PermOrZero8x8:
@@ -1438,10 +1494,11 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_ShrN64x4:
 
       /* ------------------ 128-bit SIMD Integer. ------------------ */
-      /* VECTOR x SCALAR SHIFT (shift amt :: Ity_I8) */
+      /* VECTOR x SCALAR and VECTOR x VECTOR SHIFTS */
    case Iop_Rol8x16:                     // only used by ppc s390
    case Iop_Rol16x8:                     // only used by ppc s390
    case Iop_Rol32x4:                     // only used by ppc s390
+   case Iop_Rol64x2:                     // only used by ppc s390
    case Iop_Sal8x16:                     // only used by arm
    case Iop_Sal16x8:                     // only used by arm
    case Iop_Sal32x4:                     // only used by arm
@@ -1477,6 +1534,10 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_ShlD128:                     // only used by ppc s390
    case Iop_ShrV128:                     // only used by mips ppc s390 arm64
    case Iop_ShlV128:                     // only used by mips ppc s390 arm64
+   case Iop_SarV128:                     // only used by s390
+
+      // Not shifts.  BCDAdd and BCDSub are arithmetic and arguably
+      // should merge the tags of their arguments.
    case Iop_I128StoBCD128:               // only used by ppc
    case Iop_BCDAdd:                      // only used by ppc
    case Iop_BCDSub:                      // only used by ppc
@@ -1489,6 +1550,84 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_QShl16x8:                    // only used by arm
    case Iop_QShl32x4:                    // only used by arm
    case Iop_QShl64x2:                    // only used by arm
+   case Iop_QShlNsatSU8x16:              // only used by arm arm64
+   case Iop_QShlNsatSU16x8:              // only used by arm arm64
+   case Iop_QShlNsatSU32x4:              // only used by arm arm64
+   case Iop_QShlNsatSU64x2:              // only used by arm arm64
+   case Iop_QShlNsatUU8x16:              // only used by arm arm64
+   case Iop_QShlNsatUU16x8:              // only used by arm arm64
+   case Iop_QShlNsatUU32x4:              // only used by arm arm64
+   case Iop_QShlNsatUU64x2:              // only used by arm arm64
+   case Iop_QShlNsatSS8x16:              // only used by arm arm64
+   case Iop_QShlNsatSS16x8:              // only used by arm arm64
+   case Iop_QShlNsatSS32x4:              // only used by arm arm64
+   case Iop_QShlNsatSS64x2:              // only used by arm arm64
+
+      // In the following VECTOR x VECTOR shifts, each lane of the
+      // second argument is a signed shift amount:  positive shifts
+      // left and negative shifts right.  The shift amounts are often
+      // computed from program data (for example, by negating a count
+      // vector), but they still play the role of y in z = x << y, so
+      // their tag is dropped as for the other shifts.
+
+      // Each Qand* op returns a V256 whose lower V128 is the shifted
+      // result and whose upper V128 holds the saturation (QC) flags.
+      // DynComp keeps one tag per value, so both halves get the tag
+      // of the first argument.  On arm64, the QC half is ORed into
+      // guest_QCFLAG, which therefore becomes comparable with the
+      // data of every saturating op.  The other arm64 saturating ops
+      // (such as QAdd*) update guest_QCFLAG via XorV128 and OrV128
+      // and have the same imprecision.
+   case Iop_QandUQsh8x16:                // only used by arm64
+   case Iop_QandUQsh16x8:                // only used by arm64
+   case Iop_QandUQsh32x4:                // only used by arm64
+   case Iop_QandUQsh64x2:                // only used by arm64
+   case Iop_QandSQsh8x16:                // only used by arm64
+   case Iop_QandSQsh16x8:                // only used by arm64
+   case Iop_QandSQsh32x4:                // only used by arm64
+   case Iop_QandSQsh64x2:                // only used by arm64
+   case Iop_QandUQRsh8x16:               // only used by arm64
+   case Iop_QandUQRsh16x8:               // only used by arm64
+   case Iop_QandUQRsh32x4:               // only used by arm64
+   case Iop_QandUQRsh64x2:               // only used by arm64
+   case Iop_QandSQRsh8x16:               // only used by arm64
+   case Iop_QandSQRsh16x8:               // only used by arm64
+   case Iop_QandSQRsh32x4:               // only used by arm64
+   case Iop_QandSQRsh64x2:               // only used by arm64
+   case Iop_Sh8Sx16:                     // only used by arm64
+   case Iop_Sh16Sx8:                     // only used by arm64
+   case Iop_Sh32Sx4:                     // only used by arm64
+   case Iop_Sh64Sx2:                     // only used by arm64
+   case Iop_Sh8Ux16:                     // only used by arm64
+   case Iop_Sh16Ux8:                     // only used by arm64
+   case Iop_Sh32Ux4:                     // only used by arm64
+   case Iop_Sh64Ux2:                     // only used by arm64
+   case Iop_Rsh8Sx16:                    // only used by arm64
+   case Iop_Rsh16Sx8:                    // only used by arm64
+   case Iop_Rsh32Sx4:                    // only used by arm64
+   case Iop_Rsh64Sx2:                    // only used by arm64
+   case Iop_Rsh8Ux16:                    // only used by arm64
+   case Iop_Rsh16Ux8:                    // only used by arm64
+   case Iop_Rsh32Ux4:                    // only used by arm64
+   case Iop_Rsh64Ux2:                    // only used by arm64
+   case Iop_QandQShrNnarrow16Uto8Ux8:    // only used by arm64
+   case Iop_QandQShrNnarrow32Uto16Ux4:   // only used by arm64
+   case Iop_QandQShrNnarrow64Uto32Ux2:   // only used by arm64
+   case Iop_QandQSarNnarrow16Sto8Sx8:    // only used by arm64
+   case Iop_QandQSarNnarrow32Sto16Sx4:   // only used by arm64
+   case Iop_QandQSarNnarrow64Sto32Sx2:   // only used by arm64
+   case Iop_QandQSarNnarrow16Sto8Ux8:    // only used by arm64
+   case Iop_QandQSarNnarrow32Sto16Ux4:   // only used by arm64
+   case Iop_QandQSarNnarrow64Sto32Ux2:   // only used by arm64
+   case Iop_QandQRShrNnarrow16Uto8Ux8:   // only used by arm64
+   case Iop_QandQRShrNnarrow32Uto16Ux4:  // only used by arm64
+   case Iop_QandQRShrNnarrow64Uto32Ux2:  // only used by arm64
+   case Iop_QandQRSarNnarrow16Sto8Sx8:   // only used by arm64
+   case Iop_QandQRSarNnarrow32Sto16Sx4:  // only used by arm64
+   case Iop_QandQRSarNnarrow64Sto32Sx2:  // only used by arm64
+   case Iop_QandQRSarNnarrow16Sto8Ux8:   // only used by arm64
+   case Iop_QandQRSarNnarrow32Sto16Ux4:  // only used by arm64
+   case Iop_QandQRSarNnarrow64Sto32Ux2:  // only used by arm64
 
       // From the looks of the spec., we want to return the tag
       // of the first argument
@@ -1706,18 +1845,8 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_QAdd32S:                     // only used by arm
    case Iop_QNarrowBin64Sto32Sx4:        // only used by ppc s390
    case Iop_QNarrowBin64Uto32Ux4:        // only used by ppc s390
-   case Iop_QSal16x4:                    // only used by arm
-   case Iop_QSal32x2:                    // only used by arm
-   case Iop_QSal64x1:                    // only used by arm
-   case Iop_QSal8x8:                     // only used by arm
-   case Iop_QShl16x4:                    // only used by arm
-   case Iop_QShl32x2:                    // only used by arm
-   case Iop_QShl64x1:                    // only used by arm
-   case Iop_QShl8x8:                     // only used by arm
    case Iop_QSub32S:                     // only used by arm
-   case Iop_Rol64x2:                     // only used by ppc s390
    case Iop_Sad8Ux4:                     // only used by arm
-   case Iop_SarV128:                     // only used by s390
    case Iop_SHA256:                      // only used by ppc
    case Iop_SHA512:                      // only used by ppc
    case Iop_RecipStep32Fx2:              // only used by arm arm64
@@ -1791,6 +1920,13 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
          else if (helper == &MC_(helperc_MERGE_TAGS_RETURN_0)) {
             return IRExpr_Const(IRConst_UWord(0));
          }
+      }
+
+      // A comparison:  merge the operands' tags with a dirty call,
+      // which VEX does not remove; the result's tag is 0.
+      if (helper == &MC_(helperc_MERGE_TAGS_RETURN_0)) {
+         mergeTagsReturn0_DC(dce, vatom1, vatom2);
+         return IRExpr_Const(IRConst_UWord(0));
       }
 
       // Let's try a clean call.  It seems to be correct
@@ -2123,8 +2259,11 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
 }
 
 /*
- * The following opcodes are not implemented as they are not used
- * by our supported guests: amd64 and x86.
+ * The following opcodes are not implemented.  They are not used by
+ * our supported guests, amd64 and x86, and the right tag behavior
+ * for them is not obvious.
+ *
+ * Binary ops; cases belong in expr2tags_Binop_DC:
  *
    case Iop_QAddExtSUsatUU16x8:          // only used by arm64
    case Iop_QAddExtSUsatUU32x4:          // only used by arm64
@@ -2134,96 +2273,13 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
    case Iop_QAddExtUSsatSS32x4:          // only used by arm64
    case Iop_QAddExtUSsatSS64x2:          // only used by arm64
    case Iop_QAddExtUSsatSS8x16:          // only used by arm64
-   case Iop_QandQRSarNnarrow16Sto8Sx8:   // only used by arm64
-   case Iop_QandQRSarNnarrow16Sto8Ux8:   // only used by arm64
-   case Iop_QandQRSarNnarrow32Sto16Sx4:  // only used by arm64
-   case Iop_QandQRSarNnarrow32Sto16Ux4:  // only used by arm64
-   case Iop_QandQRSarNnarrow64Sto32Sx2:  // only used by arm64
-   case Iop_QandQRSarNnarrow64Sto32Ux2:  // only used by arm64
-   case Iop_QandQRShrNnarrow16Uto8Ux8:   // only used by arm64
-   case Iop_QandQRShrNnarrow32Uto16Ux4:  // only used by arm64
-   case Iop_QandQRShrNnarrow64Uto32Ux2:  // only used by arm64
-   case Iop_QandQSarNnarrow16Sto8Sx8:    // only used by arm64
-   case Iop_QandQSarNnarrow16Sto8Ux8:    // only used by arm64
-   case Iop_QandQSarNnarrow32Sto16Sx4:   // only used by arm64
-   case Iop_QandQSarNnarrow32Sto16Ux4:   // only used by arm64
-   case Iop_QandQSarNnarrow64Sto32Sx2:   // only used by arm64
-   case Iop_QandQSarNnarrow64Sto32Ux2:   // only used by arm64
-   case Iop_QandQShrNnarrow16Uto8Ux8:    // only used by arm64
-   case Iop_QandQShrNnarrow32Uto16Ux4:   // only used by arm64
-   case Iop_QandQShrNnarrow64Uto32Ux2:   // only used by arm64
-   case Iop_QandSQRsh16x8:               // only used by arm64
-   case Iop_QandSQRsh32x4:               // only used by arm64
-   case Iop_QandSQRsh64x2:               // only used by arm64
-   case Iop_QandSQRsh8x16:               // only used by arm64
-   case Iop_QandSQsh16x8:                // only used by arm64
-   case Iop_QandSQsh32x4:                // only used by arm64
-   case Iop_QandSQsh64x2:                // only used by arm64
-   case Iop_QandSQsh8x16:                // only used by arm64
-   case Iop_QandUQRsh16x8:               // only used by arm64
-   case Iop_QandUQRsh32x4:               // only used by arm64
-   case Iop_QandUQRsh64x2:               // only used by arm64
-   case Iop_QandUQRsh8x16:               // only used by arm64
-   case Iop_QandUQsh16x8:                // only used by arm64
-   case Iop_QandUQsh32x4:                // only used by arm64
-   case Iop_QandUQsh64x2:                // only used by arm64
-   case Iop_QandUQsh8x16:                // only used by arm64
-
-   case Iop_QShlNsatSS16x4:              // only used by arm
-   case Iop_QShlNsatSS16x8:              // only used by arm arm64
-   case Iop_QShlNsatSS32x2:              // only used by arm
-   case Iop_QShlNsatSS32x4:              // only used by arm arm64
-   case Iop_QShlNsatSS64x1:              // only used by arm
-   case Iop_QShlNsatSS64x2:              // only used by arm arm64
-   case Iop_QShlNsatSS8x16:              // only used by arm arm64
-   case Iop_QShlNsatSS8x8:               // only used by arm
-   case Iop_QShlNsatSU16x4:              // only used by arm
-   case Iop_QShlNsatSU16x8:              // only used by arm arm64
-   case Iop_QShlNsatSU32x2:              // only used by arm
-   case Iop_QShlNsatSU32x4:              // only used by arm arm64
-   case Iop_QShlNsatSU64x1:              // only used by arm
-   case Iop_QShlNsatSU64x2:              // only used by arm arm64
-   case Iop_QShlNsatSU8x16:              // only used by arm arm64
-   case Iop_QShlNsatSU8x8:               // only used by arm
-   case Iop_QShlNsatUU16x4:              // only used by arm
-   case Iop_QShlNsatUU16x8:              // only used by arm arm64
-   case Iop_QShlNsatUU32x2:              // only used by arm
-   case Iop_QShlNsatUU32x4:              // only used by arm arm64
-   case Iop_QShlNsatUU64x1:              // only used by arm
-   case Iop_QShlNsatUU64x2:              // only used by arm arm64
-   case Iop_QShlNsatUU8x16:              // only used by arm arm64
-   case Iop_QShlNsatUU8x8:               // only used by arm
-
-   case Iop_Rsh16Sx8:                    // only used by arm64
-   case Iop_Rsh16Ux8:                    // only used by arm64
-   case Iop_Rsh32Sx4:                    // only used by arm64
-   case Iop_Rsh32Ux4:                    // only used by arm64
-   case Iop_Rsh64Sx2:                    // only used by arm64
-   case Iop_Rsh64Ux2:                    // only used by arm64
-   case Iop_Rsh8Sx16:                    // only used by arm64
-   case Iop_Rsh8Ux16:                    // only used by arm64
-
-   case Iop_F64toF16x2_DEP:
-   case Iop_RecipEst64Fx2:              // only used by arm64
    case Iop_RecpExpF32:                 // only used by arm64
    case Iop_RecpExpF64:                 // only used by arm64
-
-   case Iop_Sh16Sx8:                     // only used by arm64
-   case Iop_Sh16Ux8:                     // only used by arm64
-   case Iop_Sh32Sx4:                     // only used by arm64
-   case Iop_Sh32Ux4:                     // only used by arm64
-   case Iop_Sh64Sx2:                     // only used by arm64
-   case Iop_Sh64Ux2:                     // only used by arm64
-   case Iop_Sh8Sx16:                     // only used by arm64
-   case Iop_Sh8Ux16:                     // only used by arm64
-
-   case Iop_VDup16x4:                    // only used by arm
-   case Iop_VDup16x8:                    // only used by arm
-   case Iop_VDup32x2:                    // only used by arm
-   case Iop_VDup32x4:                    // only used by arm
-   case Iop_VDup8x8:                     // only used by arm
-   case Iop_VDup8x16:                    // only used by arm
-
+ *
+ * Unary ops; cases belong in expr2tags_Unop_DC:
+ *
+   case Iop_F64toF16x2_DEP:
+   case Iop_RecipEst64Fx2:              // only used by arm64
    case Iop_ZeroHI112ofV128:             // only used by arm64
    case Iop_ZeroHI120ofV128:             // only used by arm64
    case Iop_ZeroHI64ofV128:              // only used by arm64

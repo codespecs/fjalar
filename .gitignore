@@ -419,7 +419,6 @@ valgrind/memcheck/tests/manuel1
 valgrind/memcheck/tests/manuel2
 valgrind/memcheck/tests/manuel3
 valgrind/memcheck/tests/match-overrun
-valgrind/memcheck/tests/memalign2
 valgrind/memcheck/tests/memalign_test
 valgrind/memcheck/tests/memcmptest
 valgrind/memcheck/tests/mempool
@@ -734,6 +733,9 @@ valgrind/fjalar/rundoxy
 
 # Ignore shell scripts for compiling fjalar
 valgrind/fjalar/*.sh
+
+# Stamp file for the fjalar_core_decls.h consistency check
+valgrind/fjalar/fjalar_core_decls.stamp
 
 # Documentation
 valgrind-merge.aux
