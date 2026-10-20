@@ -2546,33 +2546,34 @@ static int formalParamByteSize(VariableEntry* varPtr)
 }
 
 // Returns true if the formal parameter's location is a register
-// whose entrance value Fjalar can save and from which Fjalar can read
-// the whole value.  The location must be a single DW_OP_reg operation:
-// Fjalar does not support any other operation (such as DW_OP_lit*)
-// that is not a memory location.  Call this after copying the DWARF
-// location into varPtr->location_expression.
+// from which Fjalar can read the whole value.  The location must be a
+// single DW_OP_reg operation:  Fjalar does not support any other
+// operation (such as DW_OP_lit*) that is not a memory location.  The
+// register is readable, because a location that uses an unreadable
+// register is unsupported (see location_op_kind_of).  Call this after
+// copying the DWARF location into varPtr->location_expression.
 static Bool isSupportedRegisterLocation(VariableEntry* varPtr)
 {
   int byteSize;
 
-  if (varPtr->location_expression_size != 1 || !isInRegister(varPtr) ||
-      !dwarf_reg_is_readable(varPtr->location_expression[0].atom - DW_OP_reg0)) {
+  if (varPtr->location_expression_size != 1 || !isInRegister(varPtr)) {
     return False;
   }
   byteSize = formalParamByteSize(varPtr);
   return 0 < byteSize && byteSize <= (int)sizeof(Addr);
 }
 
-// Adds to f->entryRegsMask each readable register that the formal
-// parameter's location uses, so that Fjalar saves the register at
-// function entrance.
+// Adds to f->entryRegsMask each register that the formal parameter's
+// location uses, so that Fjalar saves the register at function
+// entrance.  Every such register is readable, because a location that
+// uses an unreadable register is unsupported (see location_op_kind_of).
 static void recordEntryRegs(FunctionEntry* f, formal_parameter* paramPtr)
 {
   unsigned int i;
   for (i = 0; i < paramPtr->dwarf_stack_size; i++) {
     UInt regNum;
-    if (dwarf_op_reg_num(paramPtr->dwarf_stack[i].atom, &regNum)
-        && dwarf_reg_is_readable(regNum)) {
+    if (dwarf_op_reg_num(paramPtr->dwarf_stack[i].atom, &regNum)) {
+      tl_assert(dwarf_reg_is_readable(regNum));
       f->entryRegsMask |= 1U << regNum;
     }
   }
