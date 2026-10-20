@@ -26,7 +26,7 @@ Remaining, after #96 lands:
    This makes most `gdbserver_tests` meaningful.  Ideally, do this before
    step 2, so that the lists are generated only once.
 2. Push a branch and let the regtest jobs run.  Download the
-   `regtest-results-*` artifacts and copy each `regtest-observed-<os>.txt`
+   `regtest-results-*` artifacts and copy each `regtest-<os>-observed.txt`
    to `regtest-expected/<os>.txt`.
 3. Re-run the jobs at least twice more.  Any test whose result differs
    between runs (timing-dependent tests such as helgrind or `fdleak`, or
@@ -91,7 +91,7 @@ What:
 ## 5. Update `doc/valgrind-merge.texinfo` with what is already known
 
 Done:  #101 has landed.  Describing `check-regtest.sh` remains (item 1).
-#98 (landed), #103, #113, and #127 also update the merge doc.
+#98 and #127 (both landed), #103, and #113 also update the merge doc.
 
 ## 6. Record the `bfd.h` version in each CI container
 

@@ -71,16 +71,19 @@ Memcheck and DynComp depend tightly on Valgrind core:
   - DynComp, so step 7 must keep them (no conflict expected, since
     `kvasir/` is not patched): `b2c735d7` (#79) `Iop_64x4toV256` and
     `125330a0` (#88) vector shifts, in `dyncomp_translate.c`;
-    `8cd25174` (#104, comparison tags merged with a dirty call) and
+    `8cd25174` (#104, comparison tags merged with a dirty call),
     `1ff7ffe4` (#107, no helper-call merges under
-    `--dyncomp-interactions=none`), in `dyncomp_translate.c`;
+    `--dyncomp-interactions=none`), `7c4b6598` (#106, chained helper-call
+    merges), and `54b935a6` (#126, a comment on the dirty-call merge), in
+    `dyncomp_translate.c`;
     `a4d693e1` (#114, instruction address only when tracing) and
     `ab0b6145` (#108, `WEAK_FRESH_TAG` check), in `dyncomp_main.c`.
   - Open PRs to land before this upgrade (as of 2026-10-19):
     - DynComp, `dyncomp_translate.c`:  #85 (`--dyncomp-unhandled-ops`),
-      #86 and #87 (explicit handling of all 283 unary operations), #106,
-      #111, #115, #116, #117, #119, #120, #122, #123, #125, and #126.  With #85 and #87, new IROps in 3.24-3.27 reach the `default`
-      cases of all four `expr2tags_*_DC` functions, and
+      #86 and #87 (explicit handling of all 283 unary operations), #111,
+      #115, #116, #117, #119, #120, #122, #123, and #125.  With #85 and
+      #87, new IROps in 3.24-3.27 reach the `default` cases of all four
+      `expr2tags_*_DC` functions, and
       `--dyncomp-unhandled-ops=warn` lists them all in one run (step 7).
     - Memcheck-derived files, so they can conflict in step 6:  #90 and #95
       change `mc_main.c` and `mc_include.h`; #115, #117, #119, and #120
@@ -88,9 +91,9 @@ Memcheck and DynComp depend tightly on Valgrind core:
     - Other open PRs may have been opened since.  To list the open PRs
       that change files under `valgrind/`:
       `gh pr list -R codespecs/fjalar --json number,files --jq '.[] | select(any(.files[]; .path | startswith("valgrind/"))) | .number'`.
-  - Other changes since then (#76, #80, #89, #94, the rest of #73) touch only
-    Fjalar's own files and Binutils-derived files, which this merge does not
-    patch.
+  - Other changes since then (#76, #80, #89, #91, #94, the rest of #73)
+    touch only Fjalar's own files and Binutils-derived files, which this
+    merge does not patch.
   - The complete checklist of Fjalar changes to upstream files is
     `coregrind-Fjalar.diff` and `memcheck-Fjalar.diff` (step 4).
 
