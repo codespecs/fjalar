@@ -91,13 +91,13 @@ git-update:
 	if [ -n "$$files" ]; then echo git add $$files; fi
 
 	@files=`grep '^Only in valgrind-old' "$(COREGRIND_PATCH)" | perl -p -e 's/: /\//g' | cut -d ' ' --fields=3 | perl -p -e 's/^valgrind-old/valgrind/g'`; \
-	if [ -n "$$files" ]; then echo git rm $$files; fi
+	if [ -n "$$files" ]; then echo git rm -r $$files; fi
 
 	@files=`grep '^\-\-\-.*[[:space:]]\(1969\-12\-31\|1970\-01\-01\) ' "$(MEMCHECK_PATCH)" | cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-old\/memcheck/valgrind\/fjalar/g'`; \
 	if [ -n "$$files" ]; then echo git add $$files; fi
 
 	@files=`grep '^Only in valgrind-old' "$(MEMCHECK_PATCH)" | perl -p -e 's/: /\//g' | cut -d ' ' --fields=3 | perl -p -e 's/^valgrind-old\/memcheck/valgrind\/fjalar/g'`; \
-	if [ -n "$$files" ]; then echo git rm $$files; fi
+	if [ -n "$$files" ]; then echo git rm -r $$files; fi
 
 .PHONY: doc
 doc:

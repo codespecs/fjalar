@@ -95,7 +95,7 @@ cd "$INV"
 inv=$(pwd -P)
 
 # The temporary file that run_diff is writing, if any, and the copy of
-# fjalar/valgrind.  They are removed when the script exits, including when
+# $fjalar/valgrind.  They are removed when the script exits, including when
 # it exits early or is interrupted.
 tmp=
 fjalar_copy=
@@ -129,10 +129,10 @@ run_diff coregrind.patch -ur --unidirectional-new-file -x.git valgrind-old valgr
 # memcheck/Makefile.am, so memcheck.patch omits it.
 run_diff memcheck.patch -ur --unidirectional-new-file -x.git -xdocs -xtests -xMakefile.am valgrind-old/memcheck valgrind-new/memcheck
 
-# fjalar/valgrind is usually built in place.  To keep build products out of
+# $fjalar/valgrind is usually built in place.  To keep build products out of
 # the Fjalar diffs, diff a copy of the files that git does not ignore.  The
 # copy is in a directory that mirrors $INV, so the diffs show the same
-# paths as if they had been run in $INV.
+# paths as if the Fjalar tree were $INV/fjalar.
 fjalar_copy=$(mktemp -d)
 ln -s "$inv/valgrind-old" "$fjalar_copy/valgrind-old"
 mkdir "$fjalar_copy/fjalar"

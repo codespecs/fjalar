@@ -59,7 +59,7 @@ it completely (merged, CI green) before starting this one.  That plan's
    git clone -b $VOLDVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-old
    git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-new
    ```
-   Remove from `fjalar/valgrind` the files that `valgrind-new` does not have,
+   Remove from `$INV/fjalar/valgrind` the files that `valgrind-new` does not have,
    using the commands in section "Remove files that the target Valgrind release
    does not have" of `doc/valgrind-merge.texinfo`.  The second command there
    handles Fjalar's own copy of memcheck in `valgrind/fjalar/`.
@@ -98,7 +98,7 @@ it completely (merged, CI green) before starting this one.  That plan's
    `valgrind-new` are pristine clones at `$VOLDVER` and `$VNEWVER`.
 
 5. **Coregrind merge.**
-   - `cd fjalar/valgrind; patch -p1 -lu --dry-run < $INV/coregrind.patch`,
+   - `cd $INV/fjalar/valgrind; patch -p1 -lu --dry-run < $INV/coregrind.patch`,
      then for real.
    - Fix zero-length `.exp` files and lost execute bits (the two `find`
      commands in the doc).
@@ -119,7 +119,7 @@ it completely (merged, CI green) before starting this one.  That plan's
      size/alignment checks, since Fjalar enlarges the shadow area.
 
 6. **Memcheck merge** into `valgrind/fjalar/`.
-   - `cd fjalar/valgrind/fjalar; patch -p2 -lu --dry-run < $INV/memcheck.patch`,
+   - `cd $INV/fjalar/valgrind/fjalar; patch -p2 -lu --dry-run < $INV/memcheck.patch`,
      then for real (try `-F3` only if needed, and review its results).
    - Resolve `*.rej`.  Remember part of `mc_translate.c` lives in
      `fjalar/mc_translate.h`.  Preserve the #73 edits to `mc_translate.c`

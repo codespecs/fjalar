@@ -362,7 +362,8 @@ Fjalar has two copies of memcheck: an unmodified one in
 modified copy.  The following command lists the files in the modified
 copy that have no counterpart in the target Valgrind's memcheck.  Except
 for @file{mc_translate.h}, which is Fjalar's own, check each one for
-Fjalar changes, then remove it:
+Fjalar changes, then remove it with @command{rm}, not @command{git rm},
+for the reason given above:
 
 @example
 cd $INV/fjalar/valgrind/fjalar
@@ -1316,8 +1317,8 @@ the changes should be committed to the version control repository.
 @section Tell Git about files that were added or removed
 
 The @samp{git-update} target below searches through the two patch files
-looking for files that were added or deleted.  It then does a
-@code{git add} or @code{git remove} as appropriate.
+looking for files that were added or deleted.  It prints the
+@code{git add} and @code{git rm} commands that record them.
 
 @example
 cd $INV/fjalar
