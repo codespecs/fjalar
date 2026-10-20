@@ -223,8 +223,12 @@ Memcheck and DynComp depend tightly on Valgrind core:
      portion of `memcheck.patch` hunk by hunk, checking off each hunk as
      applied, not applicable, or ported to DynComp (step 7).
    - Check `mc_main.c` still has Fjalar's options/version info.
-   - New memcheck source files: decide whether Fjalar needs them; if so,
-     add to `valgrind/fjalar/Makefile.am`.
+   - Run `$INV/fjalar/generate-fjalar-makefile.sh`, which regenerates
+     `valgrind/fjalar/Makefile.am` from `valgrind/memcheck/Makefile.am`, so
+     Fjalar builds every new Memcheck source file.  Review the diff of
+     `valgrind/fjalar/Makefile.am`, and update `valgrind/fjalar/fjalar.am`,
+     which holds Fjalar's changes to the build, if an upstream change
+     conflicts with them.
 
 7. **DynComp / Fjalar / Kvasir updates.**
    - `diff -b valgrind-old/VEX/pub/libvex_ir.h valgrind-new/VEX/pub/libvex_ir.h`
