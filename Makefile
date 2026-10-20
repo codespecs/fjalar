@@ -7,6 +7,7 @@ help:
 	@echo "Targets:"
 	@echo " build         -- build all of valgrind and fjalar (includes kvasir)"
 	@echo " test          -- build and run valgrind regression tests"
+	@echo " check-regtest -- run valgrind regression tests; fail on unexpected failures"
 	@echo " fjalar-test   -- run the Fjalar regression tests in this repository"
 	@echo " daikon-test   -- run Fjalar/Kvasir regression tests from Daikon"
 	@echo " check-options -- check that every command-line option is documented"
@@ -27,6 +28,11 @@ check-options:
 .PHONY: test
 test:
 	cd valgrind && $(MAKE) regtest
+
+# Valgrind tests, compared to the expected failures for this OS
+.PHONY: check-regtest
+check-regtest:
+	./check-regtest.sh
 
 # Fjalar tests that do not depend on Daikon: every *-test.sh script.
 .PHONY: fjalar-test
