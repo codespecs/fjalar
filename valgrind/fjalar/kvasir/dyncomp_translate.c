@@ -2392,6 +2392,8 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 }
 
 // Returns the tag of a load of type ty from addr+bias.
+// For Ity_V256, only the low 16 bytes are read, so the tag ignores the
+// upper 16 bytes.
 static
 IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 {
