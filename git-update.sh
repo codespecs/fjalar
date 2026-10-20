@@ -48,37 +48,76 @@ memcheck_files() {
     | { grep -z -v -E '(^|/)(docs|tests)/|(^|/)Makefile\.am$' || [ $? -eq 1 ]; }
 }
 
-# Usage: print_commands COMMAND DIR < PATHS
-# Prints the command "COMMAND -- DIR/PATH" for each path, quoted for the shell.
-print_commands() {
-  local cmd=$1 dir=$2
-  local f
+
+# Usage: print_command COMMAND < PATHS
+# Prints one command "COMMAND -- PATH..." that names every path, one per
+# line, quoted for the shell.  Prints nothing if there are no paths.
+print_command() {
+  local cmd=$1
+  local f first=true
   while IFS= read -r -d '' f; do
-    printf '%s -- %q\n' "$cmd" "$dir/$f"
+    if $first; then
+      printf '%s --' "$cmd"
+      first=false
+    fi
+    printf ' \\\n  %q' "$f"
   done
+  if ! $first; then
+    echo
+  fi
 }
 
-# Usage: print_fjalar_removals < PATHS
-# Like print_commands "git rm --ignore-unmatch" valgrind/fjalar, but for a
-# file that is still in the work tree, prints a comment instead.  Such a
-# file may contain Fjalar changes, so the user must check it before
-# removing it; see doc/valgrind-merge.texinfo.
-print_fjalar_removals() {
+# Usage: print_additions SRCDIR DIR < PATHS
+# Prints the commands that add DIR/PATH for each path, where SRCDIR/PATH is
+# the file in valgrind-new.  The patch files cannot create an empty file or a
+# binary file, because diff prints nothing for a new empty file and prints only
+# "Binary files ... differ" for a new binary file.  So for each file that is
+# not in the work tree, first prints a command that copies it from SRCDIR.
+# "git add -f" adds a file even if it matches Fjalar's .gitignore, which
+# ignores names such as Makefile that some Valgrind files have.
+print_additions() {
+  local srcdir=$1 dir=$2
   local f
+  : > "$tmpdir/paths"
   while IFS= read -r -d '' f; do
-    if [ -e "$fjalar/valgrind/fjalar/$f" ] || [ -L "$fjalar/valgrind/fjalar/$f" ]; then
-      printf '# Valgrind removed %q.  Check it for Fjalar changes, then run:\n' \
-        "valgrind/fjalar/$f"
-      printf '# git rm -- %q\n' "valgrind/fjalar/$f"
-      echo "$0: Valgrind removed valgrind/fjalar/$f; check it for Fjalar changes." >&2
+    if [ ! -e "$fjalar/$dir/$f" ] && [ ! -L "$fjalar/$dir/$f" ]; then
+      printf 'mkdir -p -- %q && cp -P -- %q %q\n' \
+        "$(dirname "$dir/$f")" "$srcdir/$f" "$dir/$f"
+    fi
+    printf '%s\0' "$dir/$f" >> "$tmpdir/paths"
+  done
+  print_command "git add -f" < "$tmpdir/paths"
+}
+
+# Usage: print_removals OLDDIR DIR < PATHS
+# Prints the commands that remove DIR/PATH for each path, where OLDDIR/PATH is
+# the file in valgrind-old.  The patch files leave removed files alone, so a
+# file that is still in the work tree and differs from OLDDIR/PATH contains
+# Fjalar changes.  For such a file, prints a comment instead, so that the user
+# checks it before removing it.  "git rm --ignore-unmatch" succeeds even if
+# the user already ran "git rm" on a file.
+print_removals() {
+  local olddir=$1 dir=$2
+  local f
+  : > "$tmpdir/paths"
+  while IFS= read -r -d '' f; do
+    if { [ -e "$fjalar/$dir/$f" ] || [ -L "$fjalar/$dir/$f" ]; } \
+       && ! cmp -s -- "$olddir/$f" "$fjalar/$dir/$f"; then
+      printf '# Valgrind removed %q, which has Fjalar changes.  Check it, then run:\n' \
+        "$dir/$f"
+      printf '# git rm -- %q\n' "$dir/$f"
+      echo "$0: Valgrind removed $dir/$f, which has Fjalar changes; check it." >&2
     else
-      printf '%s -- %q\n' "git rm --ignore-unmatch" "valgrind/fjalar/$f"
+      printf '%s\0' "$dir/$f" >> "$tmpdir/paths"
     fi
   done
+  print_command "git rm --ignore-unmatch" < "$tmpdir/paths"
 }
 
-print_commands "git add" valgrind < "$tmpdir/added"
-print_commands "git rm --ignore-unmatch" valgrind < "$tmpdir/removed"
+print_additions "$INV/valgrind-new" valgrind < "$tmpdir/added"
+print_removals "$INV/valgrind-old" valgrind < "$tmpdir/removed"
 # Fjalar's modified copy of Memcheck is in valgrind/fjalar/.
-memcheck_files < "$tmpdir/added" | print_commands "git add" valgrind/fjalar
-memcheck_files < "$tmpdir/removed" | print_fjalar_removals
+memcheck_files < "$tmpdir/added" \
+  | print_additions "$INV/valgrind-new/memcheck" valgrind/fjalar
+memcheck_files < "$tmpdir/removed" \
+  | print_removals "$INV/valgrind-old/memcheck" valgrind/fjalar

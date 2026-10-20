@@ -340,11 +340,10 @@ cd $INV/fjalar
 @noindent
 Review the list, then remove the files by running the same command
 with @code{| xargs -r rm} appended.
-Use @command{rm}, not @command{git rm}: the @file{git.script} generated in
-@ref{Committing} runs @command{git rm} on the files that the Valgrind
-developers removed since the last merge, and fails if they are already
-removed from the index.  @samp{git commit -a} records the removal of the
-others.
+You may use @command{rm} or @command{git rm}.  The @file{git.script}
+generated in @ref{Committing} records the removal of the files that the
+Valgrind developers removed since the last merge, and @samp{git commit -a}
+records the removal of the others.
 Setting @env{LC_ALL} makes @command{sort} and @command{comm} agree on the
 sort order; in other locales, @command{comm} can list files that
 Valgrind still has.
@@ -1314,6 +1313,14 @@ that the Valgrind developers added or removed.  It prints the
 @code{git add} and @code{git rm} commands that record them, both in
 @file{valgrind/} and in Fjalar's copy of Memcheck in
 @file{valgrind/fjalar/}.  It does not stage anything itself.
+
+The patch files cannot create a new empty file or a new binary file, so
+@file{git.script} first copies any such file from
+@file{$INV/valgrind-new}.  For a removed file that is still in the work
+tree and differs from its version in @file{$INV/valgrind-old}, and so
+contains Fjalar changes, @file{git.script} has only a comment, and
+@samp{make git-update} prints a warning.  Check each such file, then
+remove it with @command{git rm}.
 
 @example
 cd $INV/fjalar
