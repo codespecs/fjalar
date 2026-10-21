@@ -112,7 +112,9 @@ it completely (merged, CI green) before starting this one.  That plan's
    (`valgrind/memcheck` and `valgrind/fjalar`) with `git cherry-pick`,
    regenerates `valgrind/fjalar/Makefile.am`, stages the result, and lists
    the conflicts.  `git diff valgrind-merge/base valgrind-merge/new` shows
-   upstream's changes.  To start over, run `git reset --hard`.
+   upstream's changes.  After resolving the conflicts (steps 5 and 6), run
+   `$INV/fjalar/compare-fjalar-changes.sh`, which lists each Fjalar change
+   that the merge lost or altered.  To start over, run `git reset --hard`.
 
 5. **Coregrind conflicts.**
    - Resolve the conflicts outside `valgrind/fjalar` (files with conflict
