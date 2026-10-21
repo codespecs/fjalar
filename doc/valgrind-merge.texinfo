@@ -1071,7 +1071,19 @@ compiler warning options than Binutils.  Currently, this list is:
 @end example
 This can cause a very large number of warnings from Binutils code
 that has been merged into Valgrind.  Most are benign, but you will have to
-inspect them all.  It is a good idea to modify the code to remove as
+inspect them all.  To list the new ones, save the output of the build
+before the merge, and of a build after the merge that recompiles the
+Binutils-derived files, and compare them:
+
+@smallexample
+make -C $INV/fjalar/valgrind/fjalar clean
+(set -o pipefail; make -C $INV/fjalar/valgrind/fjalar 2>&1 | tee $INV/fjalar/build-after.log)
+$INV/fjalar/compare-warnings.sh --binutils $INV/fjalar/build-before.log $INV/fjalar/build-after.log
+@end smallexample
+
+@noindent
+(@ref{Get Current Valgrind Regtest Baseline Results} saves
+@file{build-before.log}.)  It is a good idea to modify the code to remove as
 many of these new warnings as possible to make subsequent merges easier.
 
 Programs written to run under the Valgrind tool must obey certain
