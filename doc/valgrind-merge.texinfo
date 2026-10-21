@@ -1312,14 +1312,16 @@ Any user-visible changes should be documented in
 Additionally, the first line in @file{fjalar/valgrind/REVISION} should be updated
 with the Valgrind version used for this merge.
 
-If new Valgrind tests were added, the names of their compiled test
-programs should be added to @file{.gitignore}, in the per-tool sections
-(such as @samp{# /memcheck/}), along with any other files that building
-the tests generates.  After building and running the tests, this
-command lists the untracked files in test directories:
+Do not edit @file{valgrind/.gitignore}.
+Files that only Fjalar's changes generate should be added to Fjalar's
+own @file{.gitignore}, at the top of the Fjalar tree.
+
+After building and
+running the tests, this command lists the untracked files in test
+directories that neither file matches:
 
 @example
-git -C $INV/fjalar ls-files --others --exclude-standard -- '*tests/*'
+git -C $INV/fjalar ls-files --others --exclude-per-directory=.gitignore -- '*tests/*'
 @end example
 
 @noindent
