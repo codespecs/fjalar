@@ -72,10 +72,13 @@ int print_merge = 1;
 /* WEAK_FRESH_TAG unifies and replaces the previous special
    LITERAL_TAG and ESP_TAG values. When you merge it with a real tag,
    the real tag is the result (that's the weak part). When you store
-   it to memory, a fresh tag is stored instead, and when you load it
-   from memory, you get a fresh tag instead (those are the fresh
-   part). This tag is used for the stack pointer, the frame pointer,
-   the contents of the GOT, and literals when
+   it to memory, a fresh tag is stored instead (that's the fresh
+   part). When you load it from memory, the result depends on
+   --dyncomp-interactions: under all, MC_(helperc_LOAD_TAG_4) gives a
+   fresh tag; under none, comparisons, and units,
+   MC_(helperc_LOAD_TAG_N) gives WEAK_FRESH_TAG itself. This tag is
+   used for the stack pointer, the frame pointer, the contents of the
+   GOT, and literals when
    dyncomp-approximate-literals is enabled. */
 /* The tag valued 0 is also special; if you wanted to give it a
    symbolic name, it would be something like "NO_TAG". It's even
@@ -469,6 +472,29 @@ VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_1: %p => %u\n", (void *)a, get_tag(a));
   return val_uf_union_tags_in_range(a, 1);
+}
+
+// Returns the tag of the value loaded from the range [a, a+len), in
+// dyncomp_dataflow_only_mode, dyncomp_dataflow_comparisons_mode, and
+// dyncomp_units_mode.  In those modes, a load is not an interaction, so
+// unlike the other MC_(helperc_LOAD_TAG_*) functions, this does not merge
+// the tags of the addresses in the range.  It returns the leader of the
+// first non-zero tag in the range, WEAK_FRESH_TAG if that tag is
+// WEAK_FRESH_TAG, or 0 if every tag in the range is 0.
+// Returning WEAK_FRESH_TAG rather than a fresh tag avoids allocating a
+// tag for each load of a GOT entry, such as the one in every PLT call;
+// the MC_(helperc_STORE_TAG_*) functions replace WEAK_FRESH_TAG with a
+// fresh tag if the value is stored.
+VG_REGPARM(2)
+UInt MC_(helperc_LOAD_TAG_N) ( Addr a, UWord len ) {
+  UInt tag;
+
+  DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_N: %p %lu\n", (void *)a, len);
+  tag = first_nonzero_tag_in_range(a, len);
+  if (WEAK_FRESH_TAG == tag) {
+    return WEAK_FRESH_TAG;
+  }
+  return val_uf_find_leader(tag);
 }
 
 // Make this const so gcc can eliminate dead code to improve
