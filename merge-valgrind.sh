@@ -58,7 +58,7 @@ fjalar="$(cd "$(dirname "$0")" && pwd -P)"
 check_toplevel() {
   local dir=$1 toplevel
   toplevel=$(git -C "$dir" rev-parse --show-toplevel 2> /dev/null) || toplevel=
-  if [ "$toplevel" != "$(cd -- "$dir" 2> /dev/null && pwd -P)" ]; then
+  if [ -z "$toplevel" ] || [ "$toplevel" != "$(cd -- "$dir" 2> /dev/null && pwd -P)" ]; then
     echo "$0: $dir is not the top level of a git clone." >&2
     exit 1
   fi
@@ -133,7 +133,8 @@ upstream_commit() {
   GIT_INDEX_FILE=$tmpindex git rm -q -r -f --cached --ignore-unmatch -- \
     valgrind/fjalar/docs valgrind/fjalar/tests valgrind/fjalar/Makefile.am
   tree=$(GIT_INDEX_FILE=$tmpindex git write-tree)
-  git commit-tree "$tree" ${parent:+-p "$parent"} \
+  # The commits are only for the merge, so they need no signature.
+  git commit-tree --no-gpg-sign "$tree" ${parent:+-p "$parent"} \
     -m "Valgrind $(git -C "$dir" describe --tags --always)"
 }
 

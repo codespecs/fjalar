@@ -31,8 +31,14 @@ else
   echo "$0: INV is not set; see doc/valgrind-merge.texinfo." >&2
   exit 1
 fi
-if ! git -C "$valgrind" rev-parse --git-dir > /dev/null 2>&1; then
-  echo "$0: $valgrind is not a git clone." >&2
+# Make "cd" with a relative directory resolve it against the current
+# directory.
+unset CDPATH
+# A subdirectory of a clone would make "git ls-files" print paths relative
+# to that subdirectory.
+toplevel=$(git -C "$valgrind" rev-parse --show-toplevel 2> /dev/null) || toplevel=
+if [ -z "$toplevel" ] || [ "$toplevel" != "$(cd -- "$valgrind" 2> /dev/null && pwd -P)" ]; then
+  echo "$0: $valgrind is not the top level of a git clone." >&2
   exit 1
 fi
 
@@ -45,7 +51,8 @@ export LC_ALL=C
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
 
-git -C "$fjalar" ls-files valgrind | sed 's|^valgrind/||' | sort > "$tmpdir/fjalar-files"
+# Without --deduplicate, "git ls-files" prints an unmerged file once per stage.
+git -C "$fjalar" ls-files --deduplicate valgrind | sed 's|^valgrind/||' | sort > "$tmpdir/fjalar-files"
 sed -n 's|^fjalar/||p' "$tmpdir/fjalar-files" \
   | { grep -E '^(mc_|memcheck)' || true; } > "$tmpdir/fjalar-memcheck-files"
 git -C "$valgrind" ls-files | sort > "$tmpdir/valgrind-files"

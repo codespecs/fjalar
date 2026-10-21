@@ -363,8 +363,8 @@ Write the files that Fjalar should have to a file @file{$INV/missing},
 one per line, and add them:
 
 @example
-cd $INV/valgrind-old
-xargs -r -d '\n' cp -P --parents -t $INV/fjalar/valgrind < $INV/missing
+tar -C $INV/valgrind-old -cf - --verbatim-files-from -T $INV/missing \
+  | tar -C $INV/fjalar/valgrind -xf -
 sed 's|^|valgrind/|' $INV/missing | xargs -r -d '\n' git -C $INV/fjalar add -f --
 @end example
 @end enumerate
@@ -1282,19 +1282,18 @@ Next, we do a final visual verification of the changes and commit them
 to the repository.
 
 @example
-cd $INV/fjalar
 # Double-check the diffs, including those of the commits made during the
 # merge - standard practice before committing.  Comparing with the
 # commit where the merge branched from codespecs/fjalar works even if
 # origin is a fork.
-git fetch https://github.com/codespecs/fjalar.git master
-git diff -b "$(git merge-base FETCH_HEAD HEAD)" | more
+git -C $INV/fjalar fetch https://github.com/codespecs/fjalar.git master
+git -C $INV/fjalar diff -b "$(git -C $INV/fjalar merge-base FETCH_HEAD HEAD)" | more
 # If looks OK, proceed with commit.
-git commit -a -m "Valgrind merge from $@{VOLDTAG@} to $@{VNEWTAG@}"
+git -C $INV/fjalar commit -a -m "Valgrind merge from $@{VOLDTAG@} to $@{VNEWTAG@}"
 @end example
 
-Note: We recommend saving the patch and diff files to further document
-the process.
+Note: We recommend saving @file{$INV/coregrind-Fjalar.diff} and
+@file{$INV/memcheck-Fjalar.diff} to further document the process.
 
 
 @node Valgrind modifications
