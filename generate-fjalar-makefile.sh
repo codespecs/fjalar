@@ -48,8 +48,8 @@ chmod "$(printf '%o' $((0666 & ~0$(umask))))" "$tmp"
 mv "$tmp" "$output"
 
 # An upstream change that the renaming does not handle needs a change to
-# this script.  Conflict markers mean that the Coregrind merge left
-# valgrind/memcheck/Makefile.am unresolved.  Each memcheck.h is removed
+# this script.  Conflict markers mean that the merge by merge-valgrind.sh
+# left valgrind/memcheck/Makefile.am unresolved.  Each memcheck.h is removed
 # before the check, so that the rest of its line is still checked.
 problems=$(awk '/^##/ { next }
   { line = tolower($0); gsub(/memcheck\.h/, "", line) }

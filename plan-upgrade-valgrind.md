@@ -162,9 +162,13 @@ Memcheck and DynComp depend tightly on Valgrind core:
    Fjalar should not have); Memcheck files in `valgrind/fjalar` that
    `valgrind-old` lacks (keep Fjalar's own, such as `mc_translate.h`);
    Memcheck files that `valgrind-old` has but `valgrind/fjalar` lacks (copy
-   them, because Fjalar builds every Memcheck source file); and files that
+   them, because Fjalar builds every Memcheck source file); files that
    `valgrind-old` has but Fjalar does not track, such as empty files and
-   files that match `.gitignore` (add those that Fjalar should have).
+   files that match `.gitignore` (add those that Fjalar should have); and
+   files whose mode differs from that in `valgrind-old`.  Against 3.23.0,
+   that last list has 3 files with an extra execute bit and 4 regular files
+   that are symbolic links in Valgrind (fix those that Fjalar did not
+   change on purpose).
    Commit these corrections before merging, because
    `merge-valgrind.sh` requires a clean work tree.  (The merge handles the
    files that upstream added or removed since `$VOLDTAG`.)
@@ -247,7 +251,7 @@ Memcheck and DynComp depend tightly on Valgrind core:
      conflicts with them.
 
 7. **DynComp / Fjalar / Kvasir updates.**
-   - `diff -b $INV/valgrind-old/VEX/pub/libvex_ir.h $INV/valgrind-new/VEX/pub/libvex_ir.h`
+   - `git -C $INV/fjalar diff -b valgrind-merge/base valgrind-merge/new -- valgrind/VEX/pub/libvex_ir.h`
      and hand-port relevant hunks of
      `git diff valgrind-merge/base valgrind-merge/new -- valgrind/fjalar/mc_translate.c`
      into
@@ -342,8 +346,9 @@ Memcheck and DynComp depend tightly on Valgrind core:
 10. **Finish.**
     - Update first line of `valgrind/REVISION`
       (`# Valgrind version 3.27.1, released ...`).
-    - Add names of new Valgrind test programs to `.gitignore`, in the
-      per-tool sections (such as `# /memcheck/`).
+    - The merge updates `valgrind/.gitignore` (upstream's), including the
+      names of new Valgrind test programs.  Add to the top-level
+      `.gitignore` only the files that Fjalar's changes generate.
     - Check that Fjalar's files match the target release:
       `./list-file-discrepancies.sh $INV/valgrind-new`.  It should list
       only files that you decided to keep or omit (steps 5 and 6).

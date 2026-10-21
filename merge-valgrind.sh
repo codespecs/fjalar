@@ -49,8 +49,8 @@ if ! inv=$(cd "$INV" && pwd -P); then
   exit 1
 fi
 INV=$inv
-# The Fjalar tree that contains this script.
-fjalar="$(cd "$(dirname "$0")" && pwd -P)"
+# The Fjalar tree that contains this script, even if $0 is a symbolic link.
+fjalar=$(dirname -- "$(readlink -f -- "$0")")
 
 # Without this check, the git commands below would operate on an enclosing
 # repository, or would fail.
@@ -58,7 +58,7 @@ fjalar="$(cd "$(dirname "$0")" && pwd -P)"
 check_toplevel() {
   local dir=$1 toplevel
   toplevel=$(git -C "$dir" rev-parse --show-toplevel 2> /dev/null) || toplevel=
-  if [ "$toplevel" != "$(cd -- "$dir" 2> /dev/null && pwd -P)" ]; then
+  if [ -z "$toplevel" ] || [ "$toplevel" != "$(cd -- "$dir" 2> /dev/null && pwd -P)" ]; then
     echo "$0: $dir is not the top level of a git clone." >&2
     exit 1
   fi
@@ -112,7 +112,10 @@ check_unchanged "$fjalar"
 cd "$fjalar"
 
 tmpindex=$(mktemp)
-trap 'rm -f "$tmpindex"' EXIT
+# Temporary files in $INV, so that "mv" can replace the diffs atomically.
+coregrind_diff_tmp=$(mktemp "$INV/coregrind-Fjalar.diff.XXXXXX")
+memcheck_diff_tmp=$(mktemp "$INV/memcheck-Fjalar.diff.XXXXXX")
+trap 'rm -f "$tmpindex" "$coregrind_diff_tmp" "$memcheck_diff_tmp"' EXIT
 
 # Usage: upstream_commit DIR [PARENT]
 # Prints the name of a new commit, with parent PARENT if it is given, whose
@@ -125,15 +128,18 @@ upstream_commit() {
   tree=$(git -C "$dir" rev-parse "HEAD^{tree}")
   # Copy the tree's objects into the Fjalar repository.  "git fetch" would
   # fail for a shallow clone, and would also copy upstream's history.
+  # "git index-pack" stores them as one pack, rather than as thousands of
+  # loose objects, and prints the pack's name.
   git -C "$dir" rev-list --objects "$tree" | cut -d' ' -f1 \
-    | git -C "$dir" pack-objects -q --stdout | git unpack-objects -q
+    | git -C "$dir" pack-objects -q --stdout | git index-pack --stdin > /dev/null
   rm -f "$tmpindex"
   GIT_INDEX_FILE=$tmpindex git read-tree --prefix=valgrind/ "$tree"
   GIT_INDEX_FILE=$tmpindex git read-tree --prefix=valgrind/fjalar/ "$tree:memcheck"
   GIT_INDEX_FILE=$tmpindex git rm -q -r -f --cached --ignore-unmatch -- \
     valgrind/fjalar/docs valgrind/fjalar/tests valgrind/fjalar/Makefile.am
   tree=$(GIT_INDEX_FILE=$tmpindex git write-tree)
-  git commit-tree "$tree" ${parent:+-p "$parent"} \
+  # The commits are only for the merge, so they need no signature.
+  git commit-tree --no-gpg-sign "$tree" ${parent:+-p "$parent"} \
     -m "Valgrind $(git -C "$dir" describe --tags --always)"
 }
 
@@ -145,13 +151,29 @@ git update-ref refs/valgrind-merge/base "$base_commit"
 git update-ref refs/valgrind-merge/new "$new_commit"
 
 # The options make the output independent of the user's Git configuration.
-# Each diff omits the files that Fjalar added.
+# Each diff omits the files that Fjalar added.  The diffs replace those of
+# an earlier merge only if both succeed, so that the two always come from
+# the same merge.
 gitdiff=(git diff --no-renames --no-ext-diff --no-textconv --no-color -U3 --diff-filter=a "$base_commit" HEAD)
-"${gitdiff[@]}" -- valgrind ':(exclude)valgrind/fjalar' > "$INV/coregrind-Fjalar.diff"
-"${gitdiff[@]}" -- valgrind/fjalar > "$INV/memcheck-Fjalar.diff"
+"${gitdiff[@]}" -- valgrind ':(exclude)valgrind/fjalar' > "$coregrind_diff_tmp"
+"${gitdiff[@]}" -- valgrind/fjalar > "$memcheck_diff_tmp"
+chmod "$(printf '%o' $((0666 & ~0$(umask))))" "$coregrind_diff_tmp" "$memcheck_diff_tmp"
+mv "$coregrind_diff_tmp" "$INV/coregrind-Fjalar.diff"
+mv "$memcheck_diff_tmp" "$INV/memcheck-Fjalar.diff"
 
+# The options make rename detection independent of the user's Git
+# configuration, so that the merge moves Fjalar's changes to a file that
+# upstream renamed.  They are Git's defaults, and a CHERRY-PICK-OPTION
+# such as -Xno-renames overrides them.  Unless the user has chosen a
+# conflict style, each conflict also shows the base Valgrind's text, which
+# helps in resolving it.
+options=(-c merge.renames=true -c merge.renameLimit=7000
+  -c merge.directoryRenames=conflict)
+if ! git config --get merge.conflictStyle > /dev/null; then
+  options+=(-c merge.conflictStyle=diff3)
+fi
 status=0
-git cherry-pick --no-commit "$@" "$new_commit" || status=$?
+git "${options[@]}" cherry-pick --no-commit "$@" "$new_commit" || status=$?
 conflicts=$(git diff --name-only --diff-filter=U)
 if [ "$status" -ne 0 ] && [ -z "$conflicts" ]; then
   echo "$0: git cherry-pick failed." >&2
