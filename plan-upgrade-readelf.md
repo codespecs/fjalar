@@ -254,10 +254,11 @@ small.
      `tl_assert`.
    - Make sure Fjalar's hooks in `dwarf.c` and `readelf.c` still run on
      every path.  The hooks are the calls to functions declared in
-     `typedata.h`, `fjalar_dwarf.h`, and `fjalar_include.h`, which build
-     Fjalar's DWARF entries and symbol tables:  the `harvest_*` functions,
-     and others such as `add_comp_unit`, `initialize_dwarf_entry_array`, and
-     `tag_is_formal_parameter` in `dwarf.c`, and
+     `typedata.h`, `fjalar_dwarf.h`, `fjalar_include.h`, `fjalar_main.h`,
+     and `GenericHashtable.h`, which build Fjalar's DWARF entries, symbol
+     tables, and line-number table:  the `harvest_*` functions, and others
+     such as `add_comp_unit`, `initialize_dwarf_entry_array`,
+     `tag_is_formal_parameter`, and `genputtable` in `dwarf.c`, and
      `insertIntoFunctionSymbolTable`, `insertIntoVariableSymbolTable`, and
      `process_elf_binary_data` in `readelf.c`.  (`dwarf.c` also defines
      one, `dwarf_reg_name`.)  Re-check every
@@ -373,8 +374,7 @@ small.
      - merging in several hops (section "Key decision: one jump or
        stepwise?");
      - the checklist of upgrade-sensitive areas (step 6);
-     - the DWARF 4 versus DWARF 5 comparison, `--fjalar-debug-dump=yes`
-       with `build-binutils-readelf.sh`, and the `nm` check for zstd,
+     - the DWARF 4 versus DWARF 5 comparison and the `nm` check for zstd,
        SFrame, and debuginfod code (step 8).
      The doc already uses the scripts of steps 3, 5, 7, and 8.  If the
      `git merge-file` merge of step 5 turned out worse than `patch` in
