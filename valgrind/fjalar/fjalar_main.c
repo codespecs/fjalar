@@ -754,11 +754,14 @@ void enter_function(FunctionEntry* f)
   // (2) The return pointer, which is sizeof(Addr) bytes
   // (3) The saved base pointer, which is sizeof(Addr) bytes
   // (4) All formal parameters passed on the stack, which is
-  //     f->formalParamStackByteSize bytes
+  //     f->formalParamStackByteSize bytes above the higher of the frame
+  //     pointer and the stack pointer.  The frame pointer is below the
+  //     stack pointer when it is a fallback, such as stack_ptr - 4.
 
   // Let's be conservative in how much we copy over to the Virtual stack. Due to the
   // stack alignment operations in main, we may need  as much as 16 bytes over the above.
-  size = local_stack + f->formalParamStackByteSize + sizeof(Addr)*2 + 32;/* plus stuff in caller's*/
+  size = MAX(local_stack, VG_STACK_REDZONE_SZB)
+    + f->formalParamStackByteSize + sizeof(Addr)*2 + 32;/* plus stuff in caller's*/
   FJALAR_DPRINTF("local_stack: %p, arg_size: %d\n", (void *)(frame_ptr - f->formalParamLowerStackByteSize),
                                                     f->formalParamLowerStackByteSize);
   int delta = stack_ptr - (frame_ptr - f->formalParamLowerStackByteSize);
