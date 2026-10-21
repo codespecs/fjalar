@@ -241,7 +241,8 @@ git -C $INV/fjalar ls-files --others --exclude-standard
 Execute the following Git command:
 
 @example
-git ls-remote --tags --refs https://sourceware.org/git/valgrind.git | grep -v svn | sort -k2V
+git ls-remote --tags --refs https://sourceware.org/git/valgrind.git \
+  | grep -v svn | sort -k2V
 @end example
 
 @noindent
