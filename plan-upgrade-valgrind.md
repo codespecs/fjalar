@@ -185,8 +185,9 @@ it completely (merged, CI green) before starting this one.  That plan's
 10. **Finish.**
     - Update first line of `valgrind/REVISION`
       (`# Valgrind version 3.27.1, released ...`).
-    - Add names of new Valgrind test programs to `.gitignore`, in the
-      per-tool sections (such as `# /memcheck/`).
+    - The merge updates `valgrind/.gitignore` (upstream's), including the
+      names of new Valgrind test programs.  Add to the top-level
+      `.gitignore` only the files that Fjalar's changes generate.
     - `make git-update > git.script`, review, run.
     - `git add -u -- valgrind`.  This stages the removal of the files that
       step 2 removed with `rm` and that are in neither `valgrind-old` nor
