@@ -5,15 +5,15 @@
 # Readelf from Binutils" of doc/valgrind-merge.texinfo.
 #
 # Usage: ./build-binutils-readelf.sh VERSION
-#   VERSION is a Binutils version, such as 2.42.  First run
-#   generate-binutils-patch-files.sh, which extracts that version in
-#   $BINUTILS_TMP (default: ~/tmp/binutils).
+#   VERSION is a Binutils version, such as 2.42.
 #
-# The script builds in $BINUTILS_TMP/build-binutils-VERSION, rather than in
-# the extracted tree, which merge-binutils.sh merges from.  It prints the
-# path of the readelf program on standard output, and its progress messages
-# on standard error.  If that program exists already, the script only prints
-# its path.
+# The script prints the path of the readelf program on standard output.  If
+# that program exists already, the script only prints its path.  Otherwise,
+# it downloads and extracts the whole of VERSION with download-binutils.sh,
+# unless that has been done already, and builds it in
+# /tmp/$USER/binutils/build-binutils-VERSION, rather than in the extracted
+# tree, which merge-binutils.sh merges from.  It prints its progress messages
+# on standard error.
 
 # Fail the whole script if any command fails, including within a pipeline.
 set -e
@@ -27,19 +27,20 @@ if [ $# -ne 1 ]; then
   echo "Usage: $0 VERSION" >&2
   exit 2
 fi
+# The Fjalar tree that contains this script, even if $0 is a symbolic link.
+FJALARDIR=$(dirname -- "$(readlink -f -- "$0")")
+source "$FJALARDIR/binutils-common.sh"
+check_version VERSION "$1"
 BU=binutils-$1
 
-BINUTILS_TMP=${BINUTILS_TMP:-$HOME/tmp/binutils}
-# Make the directory absolute, because the script changes directory.
-BINUTILS_TMP=$(realpath -m "$BINUTILS_TMP")
-if [ ! -f "$BINUTILS_TMP/$BU/.extracted" ]; then
-  echo "$0: $BINUTILS_TMP/$BU does not exist; first run generate-binutils-patch-files.sh" >&2
-  exit 1
-fi
-BUILDDIR=$BINUTILS_TMP/build-$BU
+BUILDDIR=$BUTMP/build-$BU
 READELF=$BUILDDIR/binutils/readelf
 
+# The check keeps the script from printing the path of a program that another
+# user planted.
+make_butmp
 if [ ! -x "$READELF" ]; then
+  "$FJALARDIR/download-binutils.sh" --full "$1"
   mkdir -p "$BUILDDIR"
   cd "$BUILDDIR"
   echo "Building $READELF; the output is in $BUILDDIR/build.log" >&2
@@ -47,6 +48,7 @@ if [ ! -x "$READELF" ]; then
            --disable-sim --disable-gprofng \
          && make -j"$(nproc)" all-binutils; } > build.log 2>&1; then
     echo "$0: the build failed; see $BUILDDIR/build.log" >&2
+    echo "Fix the problem, then re-run this script." >&2
     exit 1
   fi
 fi

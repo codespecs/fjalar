@@ -87,7 +87,7 @@ What:
 
 \#134.  Hundreds of lines of Fjalar's `dwarf.c`, and some of `readelf.c`
 and `bucomm.h`, differ from Binutils 2.39 only in whitespace.  The
-readelf upgrade merges these files with `git merge-file`, which cannot
+readelf upgrade merges these files with `git cherry-pick`, which cannot
 ignore whitespace, so each such line near an upstream change would
 become a spurious conflict.  #134 gives those lines Binutils 2.39's
 whitespace.
