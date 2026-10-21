@@ -73,10 +73,13 @@ int print_merge = 1;
 /* WEAK_FRESH_TAG unifies and replaces the previous special
    LITERAL_TAG and ESP_TAG values. When you merge it with a real tag,
    the real tag is the result (that's the weak part). When you store
-   it to memory, a fresh tag is stored instead, and when you load it
-   from memory, you get a fresh tag instead (those are the fresh
-   part). This tag is used for the stack pointer, the frame pointer,
-   the contents of the GOT, and literals when
+   it to memory, a fresh tag is stored instead (that's the fresh
+   part). When you load it from memory, the result depends on
+   --dyncomp-interactions: under all, MC_(helperc_LOAD_TAG_4) gives a
+   fresh tag; under none, comparisons, and units,
+   MC_(helperc_LOAD_TAG_N) gives WEAK_FRESH_TAG itself. This tag is
+   used for the stack pointer, the frame pointer, the contents of the
+   GOT, and literals when
    dyncomp-approximate-literals is enabled. */
 /* The tag valued 0 is also special; if you wanted to give it a
    symbolic name, it would be something like "NO_TAG". It's even
@@ -381,7 +384,7 @@ UInt val_uf_union_tags_in_range(Addr a, SizeT len) {
 /*   if (dyncomp_approximate_literals) { */
 /*     char allLiteralTags = 1; */
 /*     for (curAddr = a; curAddr < (a + len); curAddr++) { */
-/*       if (get_tag(curAddr) != WEAK_FRESH_TAG) { */
+/*       if (WEAK_FRESH_TAG != get_tag(curAddr)) { */
 /*         allLiteralTags = 0; */
 /*         break; */
 /*       } */
@@ -452,7 +455,7 @@ UInt MC_(helperc_LOAD_TAG_8) ( Addr a ) {
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_4) ( Addr a ) {
   UInt first_tag = get_tag(a);
-  if (first_tag == WEAK_FRESH_TAG) {
+  if (WEAK_FRESH_TAG == first_tag) {
     DYNCOMP_TPRINTF("[DynComp] helperx_LOAD_ATG_4: %p =>\n", (void *)a);
     return grab_fresh_tag();
   }
@@ -473,11 +476,12 @@ UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
 }
 
 // Returns the tag of the value loaded from the range [a, a+len), in
-// dyncomp_dataflow_only_mode and dyncomp_dataflow_comparisons_mode.  In
-// those modes, a load is not an interaction, so unlike the other
-// MC_(helperc_LOAD_TAG_*) functions, this does not merge the tags of the
-// addresses in the range.  It returns the leader of the first non-zero
-// tag in the range, or WEAK_FRESH_TAG if that tag is WEAK_FRESH_TAG.
+// dyncomp_dataflow_only_mode, dyncomp_dataflow_comparisons_mode, and
+// dyncomp_units_mode.  In those modes, a load is not an interaction, so
+// unlike the other MC_(helperc_LOAD_TAG_*) functions, this does not merge
+// the tags of the addresses in the range.  It returns the leader of the
+// first non-zero tag in the range, WEAK_FRESH_TAG if that tag is
+// WEAK_FRESH_TAG, or 0 if every tag in the range is 0.
 // Returning WEAK_FRESH_TAG rather than a fresh tag avoids allocating a
 // tag for each load of a GOT entry, such as the one in every PLT call;
 // the MC_(helperc_STORE_TAG_*) functions replace WEAK_FRESH_TAG with a
@@ -669,7 +673,7 @@ void enqueue_tag(TagList* listPtr, UInt tag) {
   tl_assert(tag);
 
   // Special case for no elements
-  if (listPtr->numElts == 0) {
+  if (0 == listPtr->numElts) {
     listPtr->first = listPtr->last =
       (TagNode*)VG_(calloc)("dyncomp_main.c: enqueue_tag", 1, sizeof(TagNode));
   }
@@ -699,7 +703,7 @@ UInt dequeue_tag(TagList* listPtr) {
   listPtr->numElts--;
 
   // Special case for no elements
-  if (listPtr->numElts == 0) {
+  if (0 == listPtr->numElts) {
     listPtr->last = listPtr->first = NULL;
   }
 
@@ -714,13 +718,13 @@ char is_tag_in_list(TagList* listPtr, UInt tag, UInt n) {
 
   tl_assert(tag);
 
-  if (listPtr->numElts == 0) {
+  if (0 == listPtr->numElts) {
     return 0;
   }
   else {
     TagNode* i;
     for (i = listPtr->first;
-         (i != NULL) && (count < n);
+         (NULL != i) && (count < n);
          i = i->next, count++) {
       if (i->tag == tag) {
         return 1;
@@ -735,12 +739,12 @@ void clear_list(TagList* listPtr) {
   if (listPtr->numElts > 0) {
     TagNode* i = listPtr->first;
     TagNode* next = i->next;
-    for (i = listPtr->first; i != NULL; i = next) {
+    for (i = listPtr->first; NULL != i; i = next) {
       next = i->next;
       VG_(free)(i);
       listPtr->numElts--;
     }
   }
 
-  tl_assert(listPtr->numElts == 0);
+  tl_assert(0 == listPtr->numElts);
 }
