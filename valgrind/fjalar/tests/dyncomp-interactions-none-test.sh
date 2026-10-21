@@ -2,7 +2,8 @@
 
 # Tests that, under --dyncomp-interactions=none, DynComp does not make the
 # operands of a comparison comparable when the comparison's result is
-# computed by a condition-code helper such as amd64g_calculate_condition.
+# computed by a condition-code helper such as amd64g_calculate_condition, nor
+# the operand and result of an addition of a constant.
 # In that mode, no operation is an interaction, so DynComp should merge no
 # tags.  The expected comparability is in
 # dyncomp-interactions-none.goal.
