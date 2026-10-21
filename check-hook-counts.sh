@@ -5,17 +5,24 @@
 # dwarf.c and readelf.c.  See chapter "Updating Readelf from Binutils" of
 # doc/valgrind-merge.texinfo.
 #
-# Usage: ./check-hook-counts.sh [BASE]
-#   BASE is the commit whose dwarf.c and readelf.c to compare with.  The
-#   default is the commit where the current branch started from the master
-#   branch of https://github.com/codespecs/fjalar, even if the branch already
-#   has commits, such as earlier steps of a merge.
+# Usage: ./check-hook-counts.sh [BASE_COMMIT]
+#   BASE_COMMIT is the commit whose dwarf.c and readelf.c to compare with.
+#   The default is the commit where the current branch started from the
+#   master branch of https://github.com/codespecs/fjalar, even if the branch
+#   already has commits, such as earlier steps of a merge.
 #
 # The hooks are the functions declared in typedata.h, fjalar_dwarf.h,
 # fjalar_include.h, fjalar_main.h, and GenericHashtable.h, which build
 # Fjalar's DWARF entries, symbol tables, and line-number table.
+# A call of a hook is an ordinary C function call that Fjalar added to the
+# Binutils code, such as
+#   if (entry && tag_is_formal_parameter(entry->tag_name)) {
+#     harvest_formal_param_location_atom(entry, op, uvalue);
+# which contains calls of the hooks tag_is_formal_parameter and
+# harvest_formal_param_location_atom.  The script does not parse calls; it
+# counts every occurrence of a hook's name as a whole word.
 # For each of dwarf.c and readelf.c, the script counts the occurrences of
-# each hook in BASE's version and in the work tree's version, and prints
+# each hook in BASE_COMMIT's version and in the work tree's version, and prints
 #   FILE HOOK OLDCOUNT NEWCOUNT
 # for each hook whose count changed.  Explain each difference.
 #
@@ -31,7 +38,7 @@ set -e
 set -o pipefail
 
 if [ $# -gt 1 ]; then
-  echo "Usage: $0 [BASE]" >&2
+  echo "Usage: $0 [BASE_COMMIT]" >&2
   exit 2
 fi
 
@@ -39,13 +46,13 @@ FJALARDIR="$(cd "$(dirname "$0")" && pwd -P)"
 cd "$FJALARDIR"
 
 if [ $# -eq 1 ]; then
-  base=$1
+  base_commit=$1
 else
   if ! git fetch -q https://github.com/codespecs/fjalar.git master; then
     echo "$0: cannot fetch the master branch of codespecs/fjalar" >&2
     exit 2
   fi
-  base=$(git merge-base FETCH_HEAD HEAD)
+  base_commit=$(git merge-base FETCH_HEAD HEAD)
 fi
 
 tmpdir=$(mktemp -d)
@@ -54,7 +61,7 @@ trap 'rm -rf "$tmpdir"' EXIT
 # Print C file $1 without its comments and "#if 0" regions.  Comments are
 # removed first, so that a directive in a comment does not end or start a
 # region.
-live() {
+without_comments() {
   gcc -fpreprocessed -dD -E -P -x c - < "$1" 2> /dev/null \
     | awk '!skip && /^[ \t]*#[ \t]*if[ \t]+0([^0-9]|$)/ {skip=1; depth=1; next}
            skip && /^[ \t]*#[ \t]*if/ {depth++; next}
@@ -63,6 +70,10 @@ live() {
            !skip'
 }
 
+# A regex for the first line of a C function declaration that starts in
+# column 0:  a return type of identifiers, spaces, and "*", then the function
+# name (group 1), then "(".  It does not match a declaration whose return type
+# is on the previous line.
 decl='^[A-Za-z_][A-Za-z0-9_ *]*[ *]([A-Za-z_][A-Za-z0-9_]*)\(.*'
 hooks=$(sed -nE "s/$decl/\1/p" \
           valgrind/fjalar/{typedata,fjalar_dwarf,fjalar_include,fjalar_main,GenericHashtable}.h \
@@ -73,38 +84,34 @@ if [ -z "$hooks" ]; then
 fi
 
 for file in dwarf.c readelf.c; do
-  if ! git show "$base:valgrind/fjalar/$file" > "$tmpdir/$file.old"; then
-    echo "$0: cannot read valgrind/fjalar/$file at $base" >&2
+  if ! git show "$base_commit:valgrind/fjalar/$file" > "$tmpdir/$file.old"; then
+    echo "$0: cannot read valgrind/fjalar/$file at $base_commit" >&2
     exit 2
   fi
   # Without these checks, a failure of gcc would make every count 0.
-  if ! live "$tmpdir/$file.old" > "$tmpdir/$file.old.live"; then
-    echo "$0: cannot process valgrind/fjalar/$file at $base" >&2
+  if ! without_comments "$tmpdir/$file.old" > "$tmpdir/$file.old.live"; then
+    echo "$0: cannot process valgrind/fjalar/$file at $base_commit" >&2
     exit 2
   fi
-  if ! live valgrind/fjalar/$file > "$tmpdir/$file.new.live"; then
+  if ! without_comments valgrind/fjalar/$file > "$tmpdir/$file.new.live"; then
     echo "$0: cannot process valgrind/fjalar/$file" >&2
     exit 2
   fi
 done
 
 echo "$hooks" > "$tmpdir/hooks"
-# For each file, count the words that are hooks in both versions at once.
-# shellcheck disable=SC2016 # The $0 is awk's, not the shell's.
 changed=$(for file in dwarf.c readelf.c; do
-  awk -v file="$file" \
-    'FILENAME == ARGV[1] {hook[$0]; next}
-     {n = split($0, words, /[^A-Za-z0-9_]+/)
-      for (i = 1; i <= n; i++)
-        if (words[i] in hook) count[FILENAME, words[i]]++}
-     END {for (h in hook)
-            if (count[ARGV[2], h] != count[ARGV[3], h])
-              print file, h, count[ARGV[2], h] + 0, count[ARGV[3], h] + 0}' \
-    "$tmpdir/hooks" "$tmpdir/$file.old.live" "$tmpdir/$file.new.live" | sort
+  python3 compare-hook-counts.py "$tmpdir/hooks" \
+    "$tmpdir/$file.old.live" "$tmpdir/$file.new.live" "$file" || exit 2
 done)
 
 if [ -n "$changed" ]; then
   echo "$changed"
+  echo "For each line above, find out why the count of HOOK in FILE changed from" >&2
+  echo "OLDCOUNT to NEWCOUNT.  If the merge lost or duplicated a call by mistake," >&2
+  echo "fix it, then re-run this script.  Each run reports every difference, even" >&2
+  echo "one that you have already explained.  The check is complete when you can" >&2
+  echo "explain every difference that remains." >&2
   exit 1
 fi
-echo "No hook count changed since $base."
+echo "No hook count changed since $base_commit."

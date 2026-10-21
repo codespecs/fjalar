@@ -36,9 +36,9 @@ panics like #79), do the Valgrind upgrade first.
     `safe-ctype.h`, `elf/*.h`)
   - `libiberty/dwarfnames.c`
 - Fjalar-local edits must survive the merge.  They are already in the Fjalar
-  copy, so applying the upstream 2.39->2.47 diff onto it preserves them; just
-  don't clobber them while resolving conflicts.  The complete checklist is
-  the Fjalar-vs-pristine-2.39 diffs created in step 3; that includes older
+  copy, so merging the upstream 2.39->2.47 changes into it preserves them;
+  just don't clobber them while resolving conflicts.  The complete checklist
+  is the Fjalar-vs-pristine-2.39 diffs created in step 3; that includes older
   edits and the edits made during the Valgrind 3.23 merge (`f15d19e3`, #72).
   Edits since the 2.39 merge include:
   - `55ae3f48` define PTR (#62)
@@ -53,7 +53,7 @@ Eight releases is the largest gap so far (previous merges: 2.35.1 -> 2.36.1 ->
 2.37 -> 2.39).  `dwarf.c` and `readelf.c` are where nearly all conflicts occur.
 
 Recommendation: first try a single 2.39 -> 2.47 dry run.  If `dwarf.c` or
-`readelf.c` shows more rejected hunks than can reasonably be hand-merged, fall
+`readelf.c` shows more conflicts than can reasonably be hand-merged, fall
 back to two steps (2.39 -> 2.43, then 2.43 -> 2.47), building and running the
 Kvasir tests after each step.
 
@@ -81,19 +81,16 @@ Kvasir tests after each step.
      directly, first check `readlink -f $INV/daikon/fjalar`.
 
 3. **Create patch files.**
+
    ```sh
-   export BUOLDVER=2.39 BUNEWVER=2.47
-   export BUOLD=binutils-$BUOLDVER BUNEW=binutils-$BUNEWVER
-   mkdir -p ~/tmp/binutils && cd ~/tmp/binutils
-   wget https://ftp.gnu.org/gnu/binutils/$BUOLD.tar.gz https://ftp.gnu.org/gnu/binutils/$BUNEW.tar.gz
-   tar xzf $BUOLD.tar.gz && tar xzf $BUNEW.tar.gz
-   diff -ur $BUOLD/include $BUNEW/include > include.patch
-   diff -u  $BUOLD/libiberty/dwarfnames.c $BUNEW/libiberty/dwarfnames.c >> include.patch
-   diff -u -x'Makefile*' $BUOLD/binutils $BUNEW/binutils > binutils.patch
+   export BUNEWVER=2.47
+   $INV/fjalar/generate-binutils-patch-files.sh $BUNEWVER
    ```
-   Also create the reference diffs (Fjalar vs. pristine 2.39) for
-   `dwarf.c` and `readelf.c` as described in the doc.  Verify the tarballs'
-   signatures (`.sig` files) while downloading.
+
+   The script downloads 2.39 and 2.47 into `/tmp/$USER/binutils/`, verifies
+   their signatures, and extracts them.  It writes `include.patch` and the
+   reference diffs (Fjalar vs. pristine 2.39, `*-binutils-vs-fjalar.diff`)
+   to `/tmp/$USER/binutils/2.39-2.47/`.
 
 4. **Check for new upstream dependencies.**  Before patching, check whether
    2.47's `readelf.c`/`dwarf.c`/`elfcomm.c` `#include` any header (under
@@ -112,20 +109,24 @@ Kvasir tests after each step.
      `include.patch`, because `diff -ur` without `-N` lists them only as
      "Only in ..."; copy those that 2.47's `readelf.c` includes.
 
-5. **Apply the patches**, one at a time, dry run first, using
-   `--merge=diff3` so conflicts are inline:
+5. **Merge**, dry run first:
+
+   ```sh
+   $INV/fjalar/merge-binutils.sh --dry-run $BUNEWVER
+   $INV/fjalar/merge-binutils.sh $BUNEWVER
+   ```
+
+   The script applies `include.patch` with `patch --merge=diff3` and merges
+   each Binutils-derived file in `valgrind/fjalar/` with
+   `git merge-file --diff3`, so conflicts are inline.  It prints the number
+   of conflicts in each file, and how to undo the merge.  It saves each
+   merged file's previous contents as `FILE.pre-merge`, for a visual merge
+   tool, e.g.:
+
    ```sh
    cd $INV/fjalar/valgrind/fjalar
-   cp -p dwarf.c dwarf.c.pre-merge; cp -p readelf.c readelf.c.pre-merge
-   SKIPFILTER='/can.t find file to patch/ {skip=1} !skip && !/hunks? ignored/ {print} /Skipping patch\./ {skip=0}'
-   patch -p1 -lu -f --dry-run < ~/tmp/binutils/include.patch | awk "$SKIPFILTER"
-   patch -p1 -lu -f --merge=diff3 < ~/tmp/binutils/include.patch | awk "$SKIPFILTER"
-   patch -p2 -lu -f -F3 --dry-run < ~/tmp/binutils/binutils.patch | awk "$SKIPFILTER"
-   patch -p2 -lu -f -F3 --merge=diff3 < ~/tmp/binutils/binutils.patch | awk "$SKIPFILTER"
+   meld /tmp/$USER/binutils/binutils-$BUNEWVER/binutils/dwarf.c dwarf.c dwarf.c.pre-merge
    ```
-   The `awk` filter hides the messages for Binutils files that Fjalar doesn't
-   use.  The `.pre-merge` copies are for a visual merge tool, e.g.
-   `meld ~/tmp/binutils/$BUNEW/binutils/dwarf.c dwarf.c dwarf.c.pre-merge`.
 
 6. **Resolve conflicts** (expected mostly in `dwarf.c` and `readelf.c`),
    following "Hints to modifying dwarf.c and readelf.c":
@@ -142,14 +143,19 @@ Kvasir tests after each step.
      Fjalar's DWARF entries, see `fjalar_dwarf.c`/`typedata.c`) still run on
      every path, especially for DWARF 5 forms and any new `DW_FORM_*`,
      `DW_AT_*`, `DW_OP_*` handling.  Re-check the DWARF 3/4 and Rust
-     changes from #73/#76.
-   - Remove `.rej` files (and any `.orig` files that `patch` creates) as you
-     go.  Delete the `.pre-merge` copies once the merge is complete.
+     changes from #73/#76.  `$INV/fjalar/check-hook-counts.sh` reports each
+     hook whose number of calls in `dwarf.c` or `readelf.c` changed; explain
+     each difference.
+   - Use the `*-binutils-vs-fjalar.diff` files as a checklist: a merge can
+     lose a Fjalar change without reporting a conflict.
+   - Delete the `.pre-merge` copies once the merge is complete.
 
 7. **Build and fix warnings/errors.**  `make -C $INV/fjalar build`, then
    iterate with `make -C valgrind/fjalar`.  Fix "implicit declaration" and
    "undefined reference" errors (missed `VG_()` wrappers).  Reduce new
-   warnings from Valgrind's stricter flags where practical.
+   warnings from Valgrind's stricter flags where practical;
+   `compare-warnings.sh --binutils` lists the warnings that are new since the
+   baseline build (see "Hints to modifying dwarf.c and readelf.c").
    Also check against the system `bfd.h` on both Rocky Linux and Ubuntu
    (the #63 workaround may need to change).
 
@@ -164,7 +170,9 @@ Kvasir tests after each step.
      `kvasir-before.log`.  Superfluous output in `.out` diffs usually means
      an unguarded `printf`.
    - Spot-check `--fjalar-debug-dump` style output on a DWARF 5 binary
-     compiled by the current gcc and clang.
+     compiled by the current gcc and clang, against the output of 2.47's
+     `readelf --debug-dump`.  `$INV/fjalar/build-binutils-readelf.sh 2.47`
+     builds that `readelf` and prints its path.
    - Push the branch and confirm GitHub Actions CI passes (Ubuntu and
      Rocky Linux: build, regtest, and Kvasir jobs).
 
@@ -174,18 +182,18 @@ Kvasir tests after each step.
    - Note the upgrade in `$INV/daikon/doc/CHANGELOG.md` if user-visible.
    - Update `doc/valgrind-merge.texinfo` with anything learned (e.g. stale
      URLs, new hints such as the SFrame handling).
-   - Commit (one PR); keep `include.patch`, `binutils.patch`, and the
-     Fjalar-vs-binutils diffs for reference.  Delete `regtest-<os>.log`,
+   - Commit (one PR).  Delete `regtest-<os>.log`,
      `regtest-<os>-post.log`, and `regtest-<os>-observed.txt` (ignored by git).
 
 ## Risks
 
 - Large upstream refactorings in `dwarf.c` (DWARF 5 / split-DWARF / debuginfod
-  handling) could make the textual patch apply poorly; this is the main reason
-  for the stepwise fallback.
+  handling) could make the merge produce many conflicts; this is the main
+  reason for the stepwise fallback.
 - Silent loss of a Fjalar hook in a conflicted hunk would show up only as
-  missing variables in Kvasir output, so the Kvasir regression tests are the
-  essential check.
+  missing variables in Kvasir output.  `check-hook-counts.sh` catches a lost
+  or duplicated call, but not a call that a merge moved onto the wrong path,
+  so the Kvasir regression tests are the essential check.
 - The later Valgrind upgrade may enable additional warning flags, which will
   hit `readelf.c`/`dwarf.c` again.  Expect a second round of warning fixes
   there; it does not mean this merge was done wrong.

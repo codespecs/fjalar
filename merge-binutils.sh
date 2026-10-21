@@ -44,6 +44,8 @@ FJALARDIR="$(cd "$(dirname "$0")" && pwd -P)"
 BUOLDVER=$(sed -n 's/^export BINUTILS_VERSION=//p' "$FJALARDIR/valgrind/REVISION")
 if [ -z "$BUOLDVER" ]; then
   echo "$0: no BINUTILS_VERSION in $FJALARDIR/valgrind/REVISION" >&2
+  echo "Add a line \"export BINUTILS_VERSION=OLDVER\" to that file, where OLDVER" >&2
+  echo "is the Binutils version of Fjalar's readelf code, then re-run this script." >&2
   exit 1
 fi
 BUOLD=binutils-$BUOLDVER
@@ -52,13 +54,42 @@ BUNEW=binutils-$BUNEWVER
 # Keep this list in sync with generate-binutils-patch-files.sh.
 BINUTILS_FILES="dwarf.c dwarf.h readelf.c elfcomm.c elfcomm.h bucomm.h demanguse.h"
 
-BINUTILS_TMP=${BINUTILS_TMP:-$HOME/tmp/binutils}
-# Make the directory absolute, because the script changes directory.
-BINUTILS_TMP=$(realpath -m "$BINUTILS_TMP")
-PATCHDIR=$BINUTILS_TMP/$BUOLDVER-$BUNEWVER
-for f in "$PATCHDIR/include.patch" "$BINUTILS_TMP/$BUOLD/.extracted" "$BINUTILS_TMP/$BUNEW/.extracted"; do
+# A form of the Fjalar directory that is quoted for the shell, for use in
+# commands that this script prints for the user to run.
+fjalar_q=$(printf %q "$FJALARDIR/valgrind/fjalar")
+undo_merge="git -C $fjalar_q checkout -- $BINUTILS_FILES include libiberty &&
+  find $fjalar_q -name '*.pre-merge' -delete"
+
+# Print message $1, and how to recover from a failure partway through, then
+# exit.
+merge_failed() {
+  echo "$0: $1" >&2
+  if [ "$DRY_RUN" = true ]; then
+    echo "Fix the problem, then re-run this script." >&2
+  else
+    echo "Fix the problem, undo the partial merge with" >&2
+    echo "  $undo_merge" >&2
+    echo "and re-run this script." >&2
+  fi
+  exit 1
+}
+
+BUTMP=/tmp/$USER/binutils
+# Another user could plant a Binutils tree, whose configure script
+# build-binutils-readelf.sh runs, in a directory that they own or can write.
+mkdir -p "$BUTMP"
+for dir in "/tmp/$USER" "$BUTMP"; do
+  if [ ! -O "$dir" ] || [ -n "$(find "$dir" -maxdepth 0 -perm /002)" ]; then
+    echo "$0: $dir must be owned by you and not writable by others." >&2
+    echo "Delete it or fix its ownership and permissions, then re-run this script." >&2
+    exit 1
+  fi
+done
+PATCHDIR=$BUTMP/$BUOLDVER-$BUNEWVER
+for f in "$PATCHDIR/include.patch" "$BUTMP/$BUOLD/.extracted" "$BUTMP/$BUNEW/.extracted"; do
   if [ ! -f "$f" ]; then
-    echo "$0: $f does not exist; first run generate-binutils-patch-files.sh $BUNEWVER" >&2
+    echo "$0: $f does not exist." >&2
+    echo "Run generate-binutils-patch-files.sh $BUNEWVER, then re-run this script." >&2
     exit 1
   fi
 done
@@ -66,15 +97,18 @@ done
 # merge.
 missing=
 for f in $BINUTILS_FILES; do
-  for dir in "$BINUTILS_TMP/$BUOLD/binutils" "$BINUTILS_TMP/$BUNEW/binutils"; do
+  for dir in "$BUTMP/$BUOLD/binutils" "$BUTMP/$BUNEW/binutils"; do
     if [ ! -f "$dir/$f" ]; then
       missing+="  $dir/$f"$'\n'
     fi
   done
 done
 if [ -n "$missing" ]; then
-  echo "$0: these files do not exist; merge them by hand, and update BINUTILS_FILES:" >&2
+  echo "$0: these files do not exist:" >&2
   echo -n "$missing" >&2
+  echo "Remove each one from BINUTILS_FILES in this script and in" >&2
+  echo "generate-binutils-patch-files.sh, then re-run this script." >&2
+  echo "After this script succeeds, merge each one by hand." >&2
   exit 1
 fi
 
@@ -85,15 +119,20 @@ if [ "$DRY_RUN" = false ]; then
   if [ -n "$pre_merge" ]; then
     echo "$0: .pre-merge files exist, so a merge has already been done:" >&2
     echo "$pre_merge" >&2
-    echo "$0: Delete them once the merge is complete, or undo the merge." >&2
+    echo "If the merge is complete, delete them with" >&2
+    echo "  find $fjalar_q -name '*.pre-merge' -delete" >&2
+    echo "To start over instead, undo the merge with" >&2
+    echo "  $undo_merge" >&2
+    echo "and re-run this script." >&2
     exit 1
   fi
   # include.patch changes files in include/ and libiberty/.
   # shellcheck disable=SC2086 # $BINUTILS_FILES is a list of file names
   changed=$(git status --porcelain -- $BINUTILS_FILES include libiberty)
   if [ -n "$changed" ]; then
-    echo "$0: these files have uncommitted changes; commit them first:" >&2
+    echo "$0: these files have uncommitted changes:" >&2
     echo "$changed" >&2
+    echo "Commit the changes, then re-run this script." >&2
     exit 1
   fi
 fi
@@ -117,27 +156,26 @@ patch_status=0
 patch_output=$(patch "${patch_args[@]}" < "$PATCHDIR/include.patch") || patch_status=$?
 awk "$SKIPFILTER" <<< "$patch_output"
 if [ $patch_status -gt 1 ]; then
-  echo "$0: patch failed" >&2
-  exit 1
+  merge_failed "patch failed; see its messages above."
 fi
 
-# "git merge-file" exits with the number of conflicts, truncated to 127, and
-# with a negative status, which the shell reports as 128 or more, on error.
+# If "git merge-file" succeeds, its exit status is the number of conflicts,
+# or 127 if there are more than 127.  If it fails, its exit status is
+# negative, which the shell reports as 128 or more.
 for f in $BINUTILS_FILES; do
   if [ "$DRY_RUN" = true ]; then
     status=0
-    git merge-file -p --diff3 "$f" "$BINUTILS_TMP/$BUOLD/binutils/$f" \
-      "$BINUTILS_TMP/$BUNEW/binutils/$f" > /dev/null || status=$?
+    git merge-file -p --diff3 "$f" "$BUTMP/$BUOLD/binutils/$f" \
+      "$BUTMP/$BUNEW/binutils/$f" > /dev/null || status=$?
   else
     cp -p "$f" "$f.pre-merge"
     status=0
     git merge-file -L fjalar -L "$BUOLD" -L "$BUNEW" --diff3 \
-      "$f" "$BINUTILS_TMP/$BUOLD/binutils/$f" "$BINUTILS_TMP/$BUNEW/binutils/$f" \
+      "$f" "$BUTMP/$BUOLD/binutils/$f" "$BUTMP/$BUNEW/binutils/$f" \
       || status=$?
   fi
   if [ $status -ge 128 ]; then
-    echo "$0: git merge-file failed for $f" >&2
-    exit 1
+    merge_failed "git merge-file failed for $f; see its message above."
   fi
   case $status in
     1) echo "$f: 1 conflict" ;;
@@ -147,7 +185,6 @@ for f in $BINUTILS_FILES; do
 done
 
 if [ "$DRY_RUN" = false ]; then
-  echo "Find the conflicts with:  grep -rln '^<<<<<<<' $FJALARDIR/valgrind/fjalar"
-  echo "To undo the merge:  git -C $FJALARDIR/valgrind/fjalar checkout -- $BINUTILS_FILES include libiberty &&"
-  echo "  find $FJALARDIR/valgrind/fjalar -name '*.pre-merge' -delete"
+  echo "Find the conflicts with:  grep -rln '^<<<<<<<' $fjalar_q"
+  echo "To undo the merge:  $undo_merge"
 fi

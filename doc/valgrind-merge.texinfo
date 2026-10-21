@@ -767,8 +767,8 @@ current Fjalar sources.
 @end example
 
 @noindent
-@file{build-before.log} is for comparing compiler warnings after the
-merge (@pxref{Hints to modifying dwarf.c and readelf.c}).
+@file{build-before.log} is for comparing compiler warnings before and
+after the merge (@pxref{Hints to modifying dwarf.c and readelf.c}).
 
 @noindent
 As noted in @ref{Get New Valgrind Regtest Baseline Results},
@@ -789,20 +789,17 @@ Binutils version to merge; find the latest one at
 @uref{https://ftp.gnu.org/gnu/binutils/?C=M;O=D}.  The old version is the
 one in @file{$INV/fjalar/valgrind/REVISION}.
 
-@c Alternately, could work from the binutils git repository:
-@c   git clone git://sourceware.org/git/binutils-gdb.git
-
 @example
 export BUNEWVER=2.42
 $INV/fjalar/generate-binutils-patch-files.sh $BUNEWVER
 @end example
 
 @noindent
-The script works in @file{~/tmp/binutils/} (or in @env{$BINUTILS_TMP}, if
-it is set).  It downloads the old and new Binutils releases, verifies
-their signatures, and extracts them there.  Then it writes these files to
-@file{~/tmp/binutils/@var{oldver}-@var{newver}/}, such as
-@file{~/tmp/binutils/2.39-2.42/}:
+The script works in @file{/tmp/$USER/binutils/}.  It downloads the old and new
+Binutils releases, verifies their signatures, and extracts them there.
+Then it writes these files to
+@file{/tmp/$USER/binutils/@var{oldver}-@var{newver}/}, such as
+@file{/tmp/$USER/binutils/2.39-2.42/}:
 
 @table @file
 @item include.patch
@@ -810,9 +807,15 @@ What the Binutils maintainers have changed, since the last time the
 readelf code was merged into Fjalar, in the files in @file{include/} and
 in @file{libiberty/dwarfnames.c}.
 @item *-binutils-vs-fjalar.diff
-Fjalar's changes to each Binutils-derived file.  These diffs are not used
-for automated patching, but for visual verification assistance while
-resolving conflicts.
+Fjalar's changes to each Binutils-derived file.  No script uses them.
+They are a checklist for verifying that the merge kept each of Fjalar's
+changes.  A conflict shows Fjalar's side, but a merge can lose a change
+without reporting a conflict:  for example, if upstream moved or rewrote
+the code, the new copy lacks Fjalar's @code{#if 0}, @code{printf} guard, or
+@code{VG_(..)} wrapper.  For each hunk in a diff, find the corresponding
+code in the merged file and check that it still has Fjalar's change.
+@file{include-binutils-vs-fjalar.diff} also lists the headers that only
+Fjalar has.
 @end table
 
 @noindent
@@ -904,7 +907,9 @@ version in the center.  Look at the conflict markers in @file{dwarf.c}
 and note their line numbers.
 
 @example
-meld $@{BINUTILS_TMP:-~/tmp/binutils@}/binutils-$BUNEWVER/binutils/dwarf.c $INV/fjalar/valgrind/fjalar/dwarf.c $INV/fjalar/valgrind/fjalar/dwarf.c.pre-merge
+meld /tmp/$USER/binutils/binutils-$BUNEWVER/binutils/dwarf.c \
+  $INV/fjalar/valgrind/fjalar/dwarf.c \
+  $INV/fjalar/valgrind/fjalar/dwarf.c.pre-merge
 @end example
 
 Using the line numbers noted above, locate the problem areas and modify
@@ -921,7 +926,7 @@ New header files: new @code{#include}s in @file{readelf.c},
 ...'', and @command{merge-binutils.sh} merges only files that Fjalar
 already has.  Copy the ones that are needed, preserving their location
 relative to the new Binutils tree,
-@file{$@{BINUTILS_TMP:-~/tmp/binutils@}/binutils-$BUNEWVER/} (call it
+@file{/tmp/$USER/binutils/binutils-$BUNEWVER/} (call it
 @var{bunew}), except that @file{binutils/} maps to
 @file{$INV/fjalar/valgrind/fjalar/} itself.  For example, a new file in
 @file{@var{bunew}/include/elf/} goes in
@@ -1138,6 +1143,13 @@ that needs to be protected should not be a big problem.  Typically, the
 Fjalar tool will operate as expected but contain superfluous information
 in its output.  This will likely be caught as a diff in a @file{.out}
 file when running the kvasir-tests regressions.
+
+To learn why upstream changed some code, consult the Binutils history.
+Its tags have the form @code{binutils-2_42}.  For example:
+@example
+git clone --filter=blob:none https://sourceware.org/git/binutils-gdb.git
+git -C binutils-gdb log binutils-2_39..binutils-2_42 -- binutils/dwarf.c
+@end example
 
 
 @node Compiling and Testing

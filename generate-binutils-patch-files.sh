@@ -9,16 +9,16 @@
 #   is BINUTILS_VERSION in valgrind/REVISION, which is the version that
 #   Fjalar's copy of the readelf code is from.
 #
-# The script works in $BINUTILS_TMP (default: ~/tmp/binutils).  It downloads
-# binutils-OLDVER.tar.gz and binutils-NEWVER.tar.gz, unless they have been
-# downloaded already, verifies their signatures, and extracts them.  It
-# writes these files to $BINUTILS_TMP/OLDVER-NEWVER/:
+# The script works in /tmp/$USER/binutils.  It downloads binutils-OLDVER.tar.gz
+# and binutils-NEWVER.tar.gz, unless they have been downloaded already,
+# verifies their signatures, and extracts them.  It writes these files to
+# /tmp/$USER/binutils/OLDVER-NEWVER/:
 #   include.patch      the upstream changes to the files in include/ and to
 #                      libiberty/dwarfnames.c, which merge-binutils.sh
 #                      applies
 #   *-binutils-vs-fjalar.diff
-#                      Fjalar's changes to each Binutils-derived file,
-#                      for reference while resolving conflicts
+#                      Fjalar's changes to each Binutils-derived file, a
+#                      checklist for verifying that the merge kept them
 # There is no patch file for Binutils' binutils/ directory:
 # merge-binutils.sh merges each of Fjalar's copies of files from that
 # directory with "git merge-file".
@@ -45,10 +45,13 @@ FJALARDIR="$(cd "$(dirname "$0")" && pwd -P)"
 BUOLDVER=$(sed -n 's/^export BINUTILS_VERSION=//p' "$FJALARDIR/valgrind/REVISION")
 if [ -z "$BUOLDVER" ]; then
   echo "$0: no BINUTILS_VERSION in $FJALARDIR/valgrind/REVISION" >&2
+  echo "Add a line \"export BINUTILS_VERSION=OLDVER\" to that file, where OLDVER" >&2
+  echo "is the Binutils version of Fjalar's readelf code, then re-run this script." >&2
   exit 1
 fi
 if [ "$BUOLDVER" = "$BUNEWVER" ]; then
   echo "$0: Fjalar's readelf code is already from Binutils $BUNEWVER" >&2
+  echo "There is nothing to merge.  To merge a newer version, pass it as NEWVER." >&2
   exit 1
 fi
 BUOLD=binutils-$BUOLDVER
@@ -57,12 +60,20 @@ BUNEW=binutils-$BUNEWVER
 # Keep this list in sync with merge-binutils.sh.
 BINUTILS_FILES="dwarf.c dwarf.h readelf.c elfcomm.c elfcomm.h bucomm.h demanguse.h"
 
-BINUTILS_TMP=${BINUTILS_TMP:-$HOME/tmp/binutils}
-# Make the directory absolute, because the script changes directory.
-BINUTILS_TMP=$(realpath -m "$BINUTILS_TMP")
-OUTDIR=$BINUTILS_TMP/$BUOLDVER-$BUNEWVER
+BUTMP=/tmp/$USER/binutils
+# Another user could plant a Binutils tree, whose configure script
+# build-binutils-readelf.sh runs, in a directory that they own or can write.
+mkdir -p "$BUTMP"
+for dir in "/tmp/$USER" "$BUTMP"; do
+  if [ ! -O "$dir" ] || [ -n "$(find "$dir" -maxdepth 0 -perm /002)" ]; then
+    echo "$0: $dir must be owned by you and not writable by others." >&2
+    echo "Delete it or fix its ownership and permissions, then re-run this script." >&2
+    exit 1
+  fi
+done
+OUTDIR=$BUTMP/$BUOLDVER-$BUNEWVER
 mkdir -p "$OUTDIR"
-cd "$BINUTILS_TMP"
+cd "$BUTMP"
 
 # Usage: download URL
 # Downloads URL into the current directory, unless the file exists already.
@@ -83,8 +94,12 @@ download https://ftp.gnu.org/gnu/gnu-keyring.gpg
 for f in $BUOLD $BUNEW; do
   download https://ftp.gnu.org/gnu/binutils/"$f.tar.gz"
   download https://ftp.gnu.org/gnu/binutils/"$f.tar.gz.sig"
-  if ! gpgv --keyring "$BINUTILS_TMP/gnu-keyring.gpg" "$f.tar.gz.sig" "$f.tar.gz"; then
-    echo "$0: the signature of $BINUTILS_TMP/$f.tar.gz is not valid" >&2
+  if ! gpgv --keyring "$BUTMP/gnu-keyring.gpg" "$f.tar.gz.sig" "$f.tar.gz"; then
+    echo "$0: the signature of $BUTMP/$f.tar.gz is not valid" >&2
+    echo "The download may be corrupt, or the keyring may lack a newer signer's key." >&2
+    echo "Delete $BUTMP/$f.tar.gz, $BUTMP/$f.tar.gz.sig, and" >&2
+    echo "$BUTMP/gnu-keyring.gpg, so that they are downloaded again, then re-run" >&2
+    echo "this script.  If the signature is still not valid, do not use the file." >&2
     exit 1
   fi
   # A tree that an earlier run extracted only partly is not reused.
@@ -102,7 +117,8 @@ run_diff() {
   local status=0
   diff "$@" || status=$?
   if [ $status -gt 1 ]; then
-    echo "$0: diff $* failed" >&2
+    echo "$0: diff $* failed; see its message above" >&2
+    echo "Fix the problem, then re-run this script." >&2
     exit 1
   fi
 }
@@ -116,16 +132,16 @@ run_diff() {
 
 cd "$FJALARDIR/valgrind/fjalar"
 for f in $BINUTILS_FILES; do
-  run_diff -ub "$BINUTILS_TMP/$BUOLD/binutils/$f" "$f" > "$OUTDIR/$f-binutils-vs-fjalar.diff"
+  run_diff -ub "$BUTMP/$BUOLD/binutils/$f" "$f" > "$OUTDIR/$f-binutils-vs-fjalar.diff"
 done
 for f in $(cd include && find . -type f | sed 's|^\./||' | sort); do
-  if [ -f "$BINUTILS_TMP/$BUOLD/include/$f" ]; then
-    run_diff -ub "$BINUTILS_TMP/$BUOLD/include/$f" "include/$f"
+  if [ -f "$BUTMP/$BUOLD/include/$f" ]; then
+    run_diff -ub "$BUTMP/$BUOLD/include/$f" "include/$f"
   else
     echo "Only in Fjalar: include/$f"
   fi
 done > "$OUTDIR/include-binutils-vs-fjalar.diff"
-run_diff -ub "$BINUTILS_TMP/$BUOLD/libiberty/dwarfnames.c" libiberty/dwarfnames.c \
+run_diff -ub "$BUTMP/$BUOLD/libiberty/dwarfnames.c" libiberty/dwarfnames.c \
   > "$OUTDIR/dwarfnames-binutils-vs-fjalar.diff"
 
 echo "Wrote the patch and diff files for $BUOLDVER -> $BUNEWVER in $OUTDIR"

@@ -44,9 +44,9 @@ for f in "$1" "$2"; do
 done
 
 # Print the warnings in build log $1, without line and column numbers.
-warnings() {
+warnings_without_location() {
   { grep -E "^($files_re):[0-9]+:[0-9]+: warning" "$1" || true; } \
     | sed -E 's/:[0-9]+:[0-9]+:/:/' | LC_ALL=C sort
 }
 
-diff <(warnings "$1") <(warnings "$2")
+diff <(warnings_without_location "$1") <(warnings_without_location "$2")
