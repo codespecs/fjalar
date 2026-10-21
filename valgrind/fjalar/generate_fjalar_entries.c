@@ -2375,6 +2375,19 @@ static Bool isInRegister(VariableEntry* var)
   return atom >= DW_OP_reg0 && atom <= DW_OP_reg31;
 }
 
+// Returns true if the recorded DWARF location of var uses the frame base
+// (DW_OP_fbreg).
+static Bool usesFrameBase(VariableEntry* var)
+{
+  UInt i;
+  for (i = 0; i < var->location_expression_size; i++) {
+    if (var->location_expression[i].atom == DW_OP_fbreg) {
+      return True;
+    }
+  }
+  return False;
+}
+
 // MUST BE RUN AFTER the return value for a function has been initialized!!!
 // Otherwise it cannot tell whether the function returns a struct type!!!
 //
@@ -2419,11 +2432,20 @@ static void verifyStackParamWordAlignment(FunctionEntry* f, int replace)
     {
       int cur_byteSize = 0;
       // A parameter in a register occupies no stack slot, even if
-      // Fjalar cannot read the register.
-      if (isInRegister(cur_node->var)) {
+      // Fjalar cannot read the register.  A parameter whose location
+      // Fjalar cannot read occupies a stack slot only if its location
+      // uses the frame base; otherwise, as for
+      // "DW_OP_entry_value(DW_OP_reg5); DW_OP_stack_value", the caller
+      // probably passed it in a register.
+      if (isInRegister(cur_node->var)
+          || (cur_node->var->locationUnsupported
+              && !usesFrameBase(cur_node->var))) {
         continue;
       }
-      if (cur_node->var->locationType == NO_LOCATION || replace) {
+      // A parameter whose location Fjalar cannot read gets no location,
+      // because Fjalar omits it.
+      if ((cur_node->var->locationType == NO_LOCATION || replace)
+          && !cur_node->var->locationUnsupported) {
         FJALAR_DPRINTF("MODIFY VAR LOCATION! was:\n");
         FJALAR_DPRINTF(" decType is: %s, size is: %d\n", DeclaredTypeString[cur_node->var->varType->decType],
                                                          cur_node->var->varType->byteSize);
@@ -2547,8 +2569,7 @@ static int formalParamByteSize(VariableEntry* varPtr)
 
 // Returns true if the formal parameter's location is a register
 // from which Fjalar can read the whole value.  The location must be a
-// single DW_OP_reg operation:  Fjalar does not support any other
-// operation (such as DW_OP_lit*) that is not a memory location.  The
+// single DW_OP_reg operation.  The
 // register is readable, because a location that uses an unreadable
 // register is unsupported (see location_op_kind_of).  Call this after
 // copying the DWARF location into varPtr->location_expression.
