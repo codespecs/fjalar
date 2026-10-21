@@ -74,9 +74,9 @@ Kvasir tests after each step.
    - `./test-kvasir.sh 2>&1 | tee kvasir-before.log`
      (Kvasir baseline; record any pre-existing failures).
    - `make -C valgrind/fjalar clean && (set -o pipefail; make -C valgrind/fjalar 2>&1 | tee build-before.log)`
-     (compiler-warning baseline for step 7).  An incremental build prints no
-     warnings for the files that it does not recompile, so this rebuilds all
-     of Fjalar.
+     (compiler-warning baseline for step "Build and fix warnings/errors").
+     An incremental build prints no warnings for the files that it does not
+     recompile, so this rebuilds all of Fjalar.
    - Run the Kvasir tests via `./test-kvasir.sh`, which points
      `$DAIKONDIR/fjalar` at this tree.  Running
      `$INV/daikon/tests/kvasir-tests` or `make daikon-test` directly builds
@@ -85,7 +85,6 @@ Kvasir tests after each step.
      directly, first check `readlink -f $INV/daikon/fjalar`.
 
 3. **Create patch files.**
-
    ```sh
    export BUOLDVER=2.39 BUNEWVER=2.47
    export BUOLD=binutils-$BUOLDVER BUNEW=binutils-$BUNEWVER
@@ -96,7 +95,6 @@ Kvasir tests after each step.
    diff -u  $BUOLD/libiberty/dwarfnames.c $BUNEW/libiberty/dwarfnames.c >> include.patch
    diff -u -x'Makefile*' $BUOLD/binutils $BUNEW/binutils > binutils.patch
    ```
-
    Also create the reference diffs (Fjalar vs. pristine 2.39) for
    `dwarf.c` and `readelf.c` as described in the doc.  Verify the tarballs'
    signatures (`.sig` files) while downloading.
@@ -120,7 +118,6 @@ Kvasir tests after each step.
 
 5. **Apply the patches**, one at a time, dry run first, using
    `--merge=diff3` so conflicts are inline:
-
    ```sh
    cd $INV/fjalar/valgrind/fjalar
    cp -p dwarf.c dwarf.c.pre-merge; cp -p readelf.c readelf.c.pre-merge
@@ -130,7 +127,6 @@ Kvasir tests after each step.
    patch -p2 -lu -f -F3 --dry-run < ~/tmp/binutils/binutils.patch | awk "$SKIPFILTER"
    patch -p2 -lu -f -F3 --merge=diff3 < ~/tmp/binutils/binutils.patch | awk "$SKIPFILTER"
    ```
-
    The `awk` filter hides the messages for Binutils files that Fjalar doesn't
    use.  The `.pre-merge` copies are for a visual merge tool, e.g.
    `meld ~/tmp/binutils/$BUNEW/binutils/dwarf.c dwarf.c dwarf.c.pre-merge`.
