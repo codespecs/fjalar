@@ -55,9 +55,9 @@ it completely (merged, CI green) before starting this one.  That plan's
 2. **Get the trees.**
 
    ```sh
-   export VOLDVER=VALGRIND_3_23_0 VNEWVER=VALGRIND_3_27_1
-   git clone -b $VOLDVER --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-old
-   git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-new
+   export VOLDTAG=VALGRIND_3_23_0 VNEWTAG=VALGRIND_3_27_1
+   git clone -b $VOLDTAG --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-old
+   git clone -b $VNEWTAG --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-new
    ```
 
    Correct the files of earlier merges, following section "Correct the
@@ -72,7 +72,7 @@ it completely (merged, CI green) before starting this one.  That plan's
    files that match `.gitignore` (add those that Fjalar should have).
    Commit these corrections before merging, because
    `merge-valgrind.sh` requires a clean work tree.  (The merge handles the
-   files that upstream added or removed since `$VOLDVER`.)
+   files that upstream added or removed since `$VOLDTAG`.)
 
 3. **Baseline.**  Build in a copy of `valgrind-new`, so that `valgrind-new`
    stays a clean clone, which becomes `valgrind-old` for the next merge:
@@ -81,9 +81,11 @@ it completely (merged, CI green) before starting this one.  That plan's
    rm -rf $INV/valgrind-new-build
    git clone -q $INV/valgrind-new $INV/valgrind-new-build && cd $INV/valgrind-new-build
    ./autogen.sh && ./configure --prefix=$(pwd)/inst
-   make all install && make regtest XMLLINT=xmllint-skipped-by-check-regtest > test.log 2>&1
+   make all install \
+     && make regtest XMLLINT=xmllint-skipped-by-check-regtest > test.log 2>&1
    make -s --no-print-directory post-regtest-checks > test-post.log 2>&1
-   $INV/fjalar/check-regtest.sh --log test.log --expected $INV/regtest-upstream-3.27.1.txt --update
+   $INV/fjalar/check-regtest.sh --log test.log \
+     --expected $INV/regtest-upstream-3.27.1.txt --update
    ```
 
    These are the options that `check-regtest.sh` itself uses.  Setting
@@ -100,7 +102,7 @@ it completely (merged, CI green) before starting this one.  That plan's
    that error.
 
 4. **Merge.**  Run `$INV/fjalar/merge-valgrind.sh`.  It checks that
-   `valgrind-old` and `valgrind-new` are at `$VOLDVER` and `$VNEWVER`,
+   `valgrind-old` and `valgrind-new` are at `$VOLDTAG` and `$VNEWTAG`,
    writes `coregrind-Fjalar.diff` and `memcheck-Fjalar.diff`, merges
    upstream's changes into Coregrind and into both copies of Memcheck
    (`valgrind/memcheck` and `valgrind/fjalar`) with `git cherry-pick`,
