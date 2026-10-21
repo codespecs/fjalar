@@ -20,7 +20,7 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston, MA
    02110-1301, USA.  */
-
+
 /* readelf.c
 
    This file is part of Fjalar, a dynamic analysis framework for C/C++
@@ -524,7 +524,7 @@ get_dynamic_name (const Filedata *filedata, size_t offset)
 /* Get the correct GNU hash section name.  */
 #define GNU_HASH_SECTION_NAME(filedata)		\
   filedata->dynamic_info_DT_MIPS_XHASH ? ".MIPS.xhash" : ".gnu.hash"
-
+
 // versions of error and warn needed by Fjalar
 
 static void
@@ -5505,7 +5505,7 @@ request_dump_bynumber (struct dump_data *dumpdata,
       dump_type * new_dump_sects;
 
       new_dump_sects = (dump_type *) VG_(calloc) ("readelf.c: request_dump", section + 1,
-                                                  sizeof (* new_dump_sects));
+                                             sizeof (* new_dump_sects));
 
       if (new_dump_sects == NULL)
 	error (_("Out of memory allocating dump request table.\n"));
@@ -7275,12 +7275,12 @@ process_section_headers (Filedata * filedata)
 	FJALAR_DPRINTF (_("In linked file '%s': "), filedata->file_name);
       if (! filedata->is_separate || process_links)
         FJALAR_DPRINTF (ngettext ("There is %u section header, "
-		      "starting at offset 0x%lx:\n",
-		      "There are %u section headers, "
-		      "starting at offset 0x%lx:\n",
-		      filedata->file_header.e_shnum),
-	    filedata->file_header.e_shnum,
-	    (unsigned long) filedata->file_header.e_shoff);
+			  "starting at offset 0x%lx:\n",
+			  "There are %u section headers, "
+			  "starting at offset 0x%lx:\n",
+			  filedata->file_header.e_shnum),
+		filedata->file_header.e_shnum,
+		(unsigned long) filedata->file_header.e_shoff);
     }
 
   if (!get_section_headers (filedata, false))
@@ -8579,7 +8579,7 @@ process_relocs (Filedata * filedata)
 		    filedata->file_name);
 	  else
 	    FJALAR_DPRINTF (_("\nThere are no dynamic relocations in this file.\n"));
-	}   
+	}
     }
   else
     {
@@ -8617,9 +8617,9 @@ process_relocs (Filedata * filedata)
 
 	      num_rela = rel_size / section->sh_entsize;
 	      FJALAR_DPRINTF (ngettext (" at offset 0x%lx contains %lu entry:\n",
-					" at offset 0x%lx contains %lu entries:\n",
-				        num_rela),
-		              rel_offset, num_rela);
+				" at offset 0x%lx contains %lu entries:\n",
+				num_rela),
+		      rel_offset, num_rela);
 
 	      rel_type = section->sh_type == SHT_RELA ? reltype_rela :
 		section->sh_type == SHT_REL ? reltype_rel : reltype_relr;
