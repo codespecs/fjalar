@@ -129,10 +129,12 @@ static void mergeTagsReturn0_DC ( DCEnv* dce,
 // with any tag merges (clean helper calls) that it performs, even
 // though the caller discards vatom.
 static void anchorTag_DC ( DCEnv* dce, IRAtom* vatom ) {
-   IRDirty* di = unsafeIRDirty_0_N(1,
-                                   "MC_(helperc_TAG_NOP)",
-                                   &MC_(helperc_TAG_NOP),
-                                   mkIRExprVec_1( vatom ));
+   IRDirty* di;
+   tl_assert(isShadowAtom_DC(dce, vatom));
+   di = unsafeIRDirty_0_N(1,
+                          "MC_(helperc_TAG_NOP)",
+                          &MC_(helperc_TAG_NOP),
+                          mkIRExprVec_1( vatom ));
    setHelperAnns_DC( dce, di );
    stmt_DC('V', dce, IRStmt_Dirty(di));
 }
