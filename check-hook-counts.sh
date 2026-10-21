@@ -63,10 +63,33 @@ live() {
            !skip'
 }
 
-decl='^[A-Za-z_][A-Za-z0-9_ *]*[ *]([A-Za-z_][A-Za-z0-9_]*)\(.*'
-hooks=$(sed -nE "s/$decl/\1/p" \
-          valgrind/fjalar/{typedata,fjalar_dwarf,fjalar_include,fjalar_main,GenericHashtable}.h \
-          | sort -u)
+# Print the names of the functions that the headers declare or define.
+# The headers' comments and preprocessor directives, including multiline
+# macro definitions, are removed, and the rest is split into statements, so
+# that a declaration may span lines.  Function-like attributes, such as
+# "VG_REGPARM(1)", are removed, so that they are not taken for the function
+# name.  Typedefs and function pointers, such as "int (*f)(void)", are not
+# hooks.
+hook_names() {
+  local h
+  for h in valgrind/fjalar/{typedata,fjalar_dwarf,fjalar_include,fjalar_main,GenericHashtable}.h; do
+    if ! gcc -fpreprocessed -dD -E -P -x c - < "$h" 2> /dev/null; then
+      echo "$0: cannot process $h" >&2
+      return 2
+    fi
+  done \
+    | sed -e :a -e '/\\$/N; s/\\\n//; ta' \
+    | grep -v '^[[:space:]]*#' \
+    | tr '\n' ' ' \
+    | sed -E 's/VG_REGPARM[[:space:]]*\([^()]*\)//g
+              s/__attribute__[[:space:]]*\(\(([^()]|\([^()]*\))*\)\)//g' \
+    | sed 's/[;{}]/\n/g' \
+    | sed -nE '/^[[:space:]]*typedef[[:space:]]/d
+               s/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*[[:space:]*]+)+([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*\([[:space:]]*([^*[:space:]].*)?$/\2/p' \
+    | sort -u
+}
+
+hooks=$(hook_names)
 if [ -z "$hooks" ]; then
   echo "$0: found no hook declarations" >&2
   exit 2

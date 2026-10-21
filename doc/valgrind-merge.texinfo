@@ -750,13 +750,18 @@ to run the tests prior to the source update as we will use the
 current Fjalar sources.
 
 @example
-(set -o pipefail; make -C $INV/fjalar clean build 2>&1 | tee $INV/fjalar/build-before.log) \
+if [ -f $INV/fjalar/valgrind/Makefile ]; then make -C $INV/fjalar clean; fi \
+  && (set -o pipefail; make -C $INV/fjalar build 2>&1 | tee $INV/fjalar/build-before.log) \
   && make -C $INV/fjalar test 2>&1 | tee $INV/fjalar/test.log
 @end example
 
 @noindent
 @file{build-before.log} is for comparing compiler warnings after the
 merge (@pxref{Hints to modifying dwarf.c and readelf.c}).
+The @code{clean} makes the build recompile every file, so that the log
+contains all the warnings.  It is skipped in a tree that has never been
+built, where it would fail because @command{make build} has not yet
+created @file{valgrind/Makefile}.
 
 @noindent
 As noted in @ref{Get New Valgrind Regtest Baseline Results},
