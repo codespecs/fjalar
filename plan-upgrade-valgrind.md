@@ -203,8 +203,9 @@ it completely (merged, CI green) before starting this one.  That plan's
 10. **Finish.**
     - Update first line of `valgrind/REVISION`
       (`# Valgrind version 3.27.1, released ...`).
-    - Add names of new Valgrind test programs to `.gitignore`, in the
-      per-tool sections (such as `# /memcheck/`).
+    - The merge updates `valgrind/.gitignore` (upstream's), including the
+      names of new Valgrind test programs.  Add to the top-level
+      `.gitignore` only the files that Fjalar's changes generate.
     - Check that Fjalar's files match the target release:
       `./list-file-discrepancies.sh $INV/valgrind-new`.  It should list
       only files that you decided to keep or omit (steps 5 and 6).
