@@ -934,7 +934,9 @@ void visitVariableGroup(VariableOrigin varOrigin,
     // test does not depend on stackBaseAddr, so that the .decls file
     // (which is written without a stack) declares exactly the
     // variables that the .dtrace file contains.
-    if ((varOrigin == FUNCTION_FORMAL_PARAM) && !var->validLoc) {
+    // A heuristic may set validLoc even if the location is unsupported.
+    if ((varOrigin == FUNCTION_FORMAL_PARAM)
+        && (!var->validLoc || var->locationUnsupported)) {
       FJALAR_DPRINTF("\t[visitVariableGroup] invalid loc, punting\n");
       continue;
     }
@@ -1015,10 +1017,6 @@ void visitVariableGroup(VariableOrigin varOrigin,
               tl_assert(var_loc);
               var_loc = *(Addr *)var_loc;
 
-            } else if(kind == LOC_OP_CONST) {
-              // DWARF supplied constant
-              var_loc = dloc->atom_offset;
-
             } else if(kind == LOC_OP_PLUS_UCONST) {
               // Add DWARF supplied constant to value to result of last DWARF operation
               var_loc += dloc->atom_offset;
@@ -1033,9 +1031,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
               // have overwritten the register and the epilogue has
               // already restored or popped it.
               Bool isBreg = (kind == LOC_OP_BREG);
-              UInt regNum;
-              Bool isReg = dwarf_op_reg_num(op, &regNum);
-              tl_assert(isReg);
+              UInt regNum = op - (isBreg ? DW_OP_breg0 : DW_OP_reg0);
               if (!entryRegs || !(funcPtr->entryRegsMask & (1U << regNum))) {
                 // extractOneFormalParameterVar() did not accept the
                 // register location, so the register was not saved,
