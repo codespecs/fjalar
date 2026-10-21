@@ -242,10 +242,9 @@ git -C $INV/fjalar ls-files --others --exclude-standard
 
 Execute the following Git command:
 
-@example
-git ls-remote --tags --refs https://sourceware.org/git/valgrind.git \
-  | grep -v svn | sort -k2V
-@end example
+@smallexample
+git ls-remote --tags --refs https://sourceware.org/git/valgrind.git | grep -v svn | sort -k2V
+@end smallexample
 
 @noindent
 The output will list the tags of the most recent releases of Valgrind.  It will
@@ -278,12 +277,11 @@ source tree that was used the last time a Valgrind merge was performed.
 If you performed the last merge and saved the
 @file{valgrind-old} and @file{valgrind-new} directories, then just run:
 
-@example
+@smallexample
 rm -rf $INV/valgrind-old
 mv $INV/valgrind-new $INV/valgrind-old
-git -C $INV/valgrind-old reset --hard \
-  && git -C $INV/valgrind-old clean -fdx
-@end example
+git -C $INV/valgrind-old reset --hard && git -C $INV/valgrind-old clean -fdx
+@end smallexample
 
 @noindent
 The @command{git reset} command discards any changes to files in the
@@ -293,10 +291,9 @@ repository, and the @command{git clean} command removes any build products.
 
 Otherwise, run the following commands.
 
-@example
-git clone -b $VOLDTAG --depth 1 https://sourceware.org/git/valgrind.git \
-  $INV/valgrind-old
-@end example
+@smallexample
+git clone -b $VOLDTAG --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-old
+@end smallexample
 
 
 @node Obtain a copy of the target Valgrind source tree
@@ -305,10 +302,9 @@ git clone -b $VOLDTAG --depth 1 https://sourceware.org/git/valgrind.git \
 Next, make the directory @file{valgrind-new} that contains a copy of the
 latest Valgrind source tree.
 
-@example
-git clone -b $VNEWTAG --depth 1 https://sourceware.org/git/valgrind.git \
-  $INV/valgrind-new
-@end example
+@smallexample
+git clone -b $VNEWTAG --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-new
+@end smallexample
 
 @c For a  full repro of the current Valgrind source:
 @c git clone https://sourceware.org/git/valgrind.git valgrind-git
@@ -368,13 +364,11 @@ Review the list, because Fjalar may omit some Valgrind files on purpose.
 Write the files that Fjalar should have to a file @file{$INV/files-to-add.txt},
 one per line, and add them:
 
-@example
-tar -C $INV/valgrind-old -cf - --verbatim-files-from \
-    -T $INV/files-to-add.txt \
+@smallexample
+tar -C $INV/valgrind-old -cf - --verbatim-files-from -T $INV/files-to-add.txt \
   | tar -C $INV/fjalar/valgrind -xf -
-sed 's|^|valgrind/|' $INV/files-to-add.txt \
-  | xargs -r -d '\n' git -C $INV/fjalar add -f --
-@end example
+sed 's|^|valgrind/|' $INV/files-to-add.txt | xargs -r -d '\n' git -C $INV/fjalar add -f --
+@end smallexample
 @end enumerate
 
 Commit these corrections before you merge, because
@@ -444,12 +438,10 @@ merge.  It stages the result of the merge, but does not commit it.
 These commands show what the Valgrind developers changed, in Coregrind
 and in Memcheck:
 
-@example
-git -C $INV/fjalar diff valgrind-merge/base valgrind-merge/new \
-  -- valgrind ':!valgrind/fjalar'
-git -C $INV/fjalar diff valgrind-merge/base valgrind-merge/new \
-  -- valgrind/fjalar
-@end example
+@smallexample
+git -C $INV/fjalar diff valgrind-merge/base valgrind-merge/new -- valgrind ':!valgrind/fjalar'
+git -C $INV/fjalar diff valgrind-merge/base valgrind-merge/new -- valgrind/fjalar
+@end smallexample
 
 @noindent
 Before it merges, the script writes Fjalar's changes to the base Valgrind
@@ -583,10 +575,9 @@ Instead, you will need to use the changes to @file{mc_translate.c}, which
 this command shows, as a template for
 editing @file{fjalar/kvasir/dyncomp_translate.c} by hand:
 
-@example
-git -C $INV/fjalar diff valgrind-merge/base valgrind-merge/new \
-  -- valgrind/fjalar/mc_translate.c
-@end example
+@smallexample
+git -C $INV/fjalar diff valgrind-merge/base valgrind-merge/new -- valgrind/fjalar/mc_translate.c
+@end smallexample
 
 One bit of confusion is that a portion of the original @file{mc_translate.c}
 has been relocated to @file{fjalar/mc_translate.h} so it can be shared.
@@ -606,10 +597,9 @@ makes heavy use of the VEX IR, so any changes in it need to be
 reflected. Most of the changes to the public VEX IR can be discovered
 by running the following command:
 
-@example
-git -C $INV/fjalar diff -b valgrind-merge/base valgrind-merge/new \
-  -- valgrind/VEX/pub/libvex_ir.h
-@end example
+@smallexample
+git -C $INV/fjalar diff -b valgrind-merge/base valgrind-merge/new -- valgrind/VEX/pub/libvex_ir.h
+@end smallexample
 
 It is also worth noting that almost all the changes will be for machines
 that we do not support.
@@ -1237,10 +1227,9 @@ run the installed Fjalar under @file{valgrind/inst}, so without
 Before we test Fjalar, it is a good idea to verify we haven't
 broken the underlying Valgrind:
 
-@example
-make -C $INV/fjalar --no-print-directory test 2>&1 \
-  | tee $INV/fjalar/test-after.log
-@end example
+@smallexample
+make -C $INV/fjalar --no-print-directory test 2>&1 | tee $INV/fjalar/test-after.log
+@end smallexample
 
 @noindent
 While a few tests may not pass, the results at the end of
@@ -1323,18 +1312,16 @@ the changes should be committed to the version control repository.
 Next, we do a final visual verification of the changes and commit them
 to the repository.
 
-@example
+@smallexample
 # Double-check the diffs, including those of the commits made during the
 # merge - standard practice before committing.  Comparing with the
 # commit where the merge branched from codespecs/fjalar works even if
 # origin is a fork.
 git -C $INV/fjalar fetch https://github.com/codespecs/fjalar.git master
-git -C $INV/fjalar diff -b \
-  "$(git -C $INV/fjalar merge-base FETCH_HEAD HEAD)" | more
+git -C $INV/fjalar diff -b "$(git -C $INV/fjalar merge-base FETCH_HEAD HEAD)" | more
 # If looks OK, proceed with commit.
-git -C $INV/fjalar commit -a \
-  -m "Valgrind merge from $@{VOLDTAG@} to $@{VNEWTAG@}"
-@end example
+git -C $INV/fjalar commit -a -m "Valgrind merge from $@{VOLDTAG@} to $@{VNEWTAG@}"
+@end smallexample
 
 Note: We recommend saving @file{$INV/coregrind-Fjalar.diff} and
 @file{$INV/memcheck-Fjalar.diff} to further document the process.
