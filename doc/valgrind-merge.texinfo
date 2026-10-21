@@ -341,13 +341,17 @@ xargs -r -d '\n' git -C $INV/fjalar rm -- < $INV/files-to-remove.txt
 
 @item
 Memcheck files that Fjalar's copy of Memcheck, in @file{valgrind/fjalar},
-has but that the base Valgrind release does not have.
+has but that the base Valgrind release does not have.  These are the files
+in @file{valgrind/fjalar} whose names start with @file{mc_} or
+@file{memcheck}; the other files there are Fjalar's own.
 Fjalar created some of them, such as @file{mc_translate.h}; keep those.
 Remove the others with @command{git rm}.
 
 @item
 Memcheck files that the base Valgrind release has but that
-@file{valgrind/fjalar} lacks.
+@file{valgrind/fjalar} lacks.  These are the files that
+@file{merge-valgrind.sh} merges into @file{valgrind/fjalar}:  all of
+@file{memcheck} except @file{docs}, @file{tests}, and @file{Makefile.am}.
 Fjalar builds every Memcheck source file, so its copy of Memcheck must
 have every one.
 Copy each of them from @file{$INV/valgrind-old/memcheck} and add it with
