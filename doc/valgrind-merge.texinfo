@@ -920,13 +920,15 @@ New header files: new @code{#include}s in @file{readelf.c},
 @file{include.patch}, because @command{diff} lists them only as ``Only in
 ...'', and @command{merge-binutils.sh} merges only files that Fjalar
 already has.  Copy the ones that are needed, preserving their location
-relative to @file{~/tmp/binutils/binutils-$BUNEWVER/}, except that
-@file{binutils/} maps to @file{$INV/fjalar/valgrind/fjalar/} itself.  For
-example, a new file in @file{~/tmp/binutils/binutils-$BUNEWVER/include/elf/}
-goes in @file{$INV/fjalar/valgrind/fjalar/include/elf/}, one in
-@file{~/tmp/binutils/binutils-$BUNEWVER/libiberty/} goes in
+relative to the new Binutils tree,
+@file{$@{BINUTILS_TMP:-~/tmp/binutils@}/binutils-$BUNEWVER/} (call it
+@var{bunew}), except that @file{binutils/} maps to
+@file{$INV/fjalar/valgrind/fjalar/} itself.  For example, a new file in
+@file{@var{bunew}/include/elf/} goes in
+@file{$INV/fjalar/valgrind/fjalar/include/elf/}, one in
+@file{@var{bunew}/libiberty/} goes in
 @file{$INV/fjalar/valgrind/fjalar/libiberty/}, and one in
-@file{~/tmp/binutils/binutils-$BUNEWVER/binutils/} (like @file{bucomm.h}) goes in
+@file{@var{bunew}/binutils/} (like @file{bucomm.h}) goes in
 @file{$INV/fjalar/valgrind/fjalar/}.
 @item
 Code for features that Fjalar does not use, such as SFrame
@@ -973,8 +975,9 @@ docker run --rm --pull=always $IMAGE:latest \
 
 After you have resolved the conflicts, check that no call of a Fjalar
 hook was lost or duplicated.  The hooks are the functions declared in
-@file{typedata.h}, @file{fjalar_dwarf.h}, and @file{fjalar_include.h},
-which build Fjalar's DWARF entries and symbol tables.  This command
+@file{typedata.h}, @file{fjalar_dwarf.h}, @file{fjalar_include.h},
+@file{fjalar_main.h}, and @file{GenericHashtable.h}, which build Fjalar's
+DWARF entries, symbol tables, and line-number table.  This command
 prints each hook whose number of calls in @file{dwarf.c} or
 @file{readelf.c} changed, outside @code{#if 0} regions and comments:
 
@@ -1223,6 +1226,18 @@ caused code or data to reside at different memory addresses.  Compare the
 address ranges in @file{$DAIKONDIR/tests/kvasir-tests/clean-output.pl}
 with those in the new binaries and see if changes to
 @file{clean-output.pl} are required.
+
+After a Binutils merge, also run Kvasir with @option{--fjalar-debug-dump=yes},
+which mimics @samp{readelf --debug-dump}, on a program compiled with
+@option{-gdwarf-5}, and compare its output with that of the new Binutils'
+@command{readelf}.  The system's @command{readelf} may be older, so build
+the new one; @command{build-binutils-readelf.sh} builds it and prints its
+path:
+
+@example
+READELF=$($INV/fjalar/build-binutils-readelf.sh $BUNEWVER)
+$READELF --debug-dump @var{program}
+@end example
 
 
 @node Documenting Changes

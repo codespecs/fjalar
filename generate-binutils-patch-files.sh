@@ -64,16 +64,25 @@ OUTDIR=$BINUTILS_TMP/$BUOLDVER-$BUNEWVER
 mkdir -p "$OUTDIR"
 cd "$BINUTILS_TMP"
 
+# Usage: download URL
+# Downloads URL into the current directory, unless the file exists already.
+# It downloads to a temporary name, so that an interrupted download leaves no
+# partial file that a later run would reuse.
+download() {
+  local file
+  file=$(basename "$1")
+  if [ ! -f "$file" ]; then
+    wget -nv -O "$file.part" "$1"
+    mv "$file.part" "$file"
+  fi
+}
+
 # gpgv checks the signatures against the GNU keyring, rather than against the
 # user's own keyring, which may lack the signers' keys.
-if [ ! -f gnu-keyring.gpg ]; then
-  wget -nv https://ftp.gnu.org/gnu/gnu-keyring.gpg
-fi
+download https://ftp.gnu.org/gnu/gnu-keyring.gpg
 for f in $BUOLD $BUNEW; do
-  if [ ! -f "$f.tar.gz" ] || [ ! -f "$f.tar.gz.sig" ]; then
-    wget -nv https://ftp.gnu.org/gnu/binutils/"$f.tar.gz" \
-      https://ftp.gnu.org/gnu/binutils/"$f.tar.gz.sig"
-  fi
+  download https://ftp.gnu.org/gnu/binutils/"$f.tar.gz"
+  download https://ftp.gnu.org/gnu/binutils/"$f.tar.gz.sig"
   if ! gpgv --keyring "$BINUTILS_TMP/gnu-keyring.gpg" "$f.tar.gz.sig" "$f.tar.gz"; then
     echo "$0: the signature of $BINUTILS_TMP/$f.tar.gz is not valid" >&2
     exit 1
