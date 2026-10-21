@@ -55,6 +55,12 @@ const char* location_expression_to_string(enum dwarf_location_atom op);
 #error "Fjalar supports only amd64 and x86"
 #endif
 
+// Returns true if Fjalar can read the register with the given DWARF
+// register number.
+static __inline__ Bool dwarf_reg_is_readable(UInt regNum) {
+  return regNum < FJALAR_NUM_DWARF_REGS;
+}
+
 // The kinds of operation that visitVariableGroup evaluates in the
 // location expression of a formal parameter.
 typedef enum {
