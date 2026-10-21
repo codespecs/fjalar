@@ -1263,13 +1263,11 @@ Any user-visible changes should be documented in
 Additionally, the first line in @file{fjalar/valgrind/REVISION} should be updated
 with the Valgrind version used for this merge.
 
-The merge updates @file{valgrind/.gitignore}, which is upstream
-Valgrind's, so it lists the compiled programs of new Valgrind tests.
+Do not edit @file{valgrind/.gitignore}.
 Files that only Fjalar's changes generate should be added to Fjalar's
-own @file{.gitignore}, at the top of the Fjalar tree.  Do not edit
-@file{valgrind/.gitignore}; a Fjalar change to it would make the
-@file{.gitignore} hunk of the next merge's @file{coregrind.patch} fail to
-apply.  After building and
+own @file{.gitignore}, at the top of the Fjalar tree.
+
+After building and
 running the tests, this command lists the untracked files in test
 directories that neither file matches:
 
