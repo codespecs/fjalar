@@ -107,8 +107,7 @@ described in step 9) and commit, with commit message "Upgrade Binutils
 next hop.  Do steps 1, 2, and 9 only once.
 
 The scripts that this plan uses are in the top-level directory of the
-Fjalar tree.  The Binutils ones work in `~/tmp/binutils/` (or
-`$BINUTILS_TMP`, if it is set); each script's header comment documents it.
+Fjalar tree.  The Binutils ones work in `/tmp/$USER/binutils/`.
 
 ## Key decision: no new features
 
@@ -146,9 +145,9 @@ small.
      step 8, in a file outside the tree, so that it is not committed:
 
      ```sh
-     mkdir -p ~/tmp/binutils
+     mkdir -p /tmp/$USER/binutils
      nm valgrind/fjalar/fjalar-amd64-linux | grep -iE 'zstd|sframe|debuginfod' \
-       | awk '{print $3}' > ~/tmp/binutils/nm-before.txt
+       | awk '{print $3}' > /tmp/$USER/binutils/nm-before.txt
      ```
 
      (This lists only Valgrind core's own debuginfod support.)  `ldd` and
@@ -168,8 +167,8 @@ small.
 
 3. **Create patch files.**  `./generate-binutils-patch-files.sh $BUNEWVER`
    downloads and verifies the old and new Binutils releases, extracts
-   them in `~/tmp/binutils/`, and writes these files to
-   `~/tmp/binutils/2.39-$BUNEWVER/`:
+   them in `/tmp/$USER/binutils/`, and writes these files to
+   `/tmp/$USER/binutils/2.39-$BUNEWVER/`:
    - `include.patch`, the upstream changes to the files in `include/` and
      to `libiberty/dwarfnames.c`, which step 5 applies.  There is no patch
      file for Binutils' `binutils/` directory.  Fjalar's copies of files
@@ -188,7 +187,7 @@ small.
    `valgrind/fjalar/fjalar.am`.  (Do not edit `valgrind/fjalar/Makefile.am`,
    which `generate-fjalar-makefile.sh` regenerates at each Valgrind merge.)
    (`demanguse.h` and the CTF headers were added this way in the 2.39 merge.)
-   The extracted new release is in `~/tmp/binutils/binutils-$BUNEWVER/`.
+   The extracted new release is in `/tmp/$USER/binutils/binutils-$BUNEWVER/`.
    If the code that needs a new header is disabled, disable the `#include`
    under `#if 0` instead.  Remove headers that upstream deleted.
    - Known case: Binutils 2.40 added `readelf --sframe`, which includes
@@ -237,7 +236,7 @@ small.
    merge tool, e.g., in `valgrind/fjalar/`:
 
    ```sh
-   meld ${BINUTILS_TMP:-~/tmp/binutils}/binutils-$BUNEWVER/binutils/dwarf.c \
+   meld /tmp/$USER/binutils/binutils-$BUNEWVER/binutils/dwarf.c \
      dwarf.c dwarf.c.pre-merge
    ```
 
@@ -349,9 +348,10 @@ small.
      so a hook's name in a debugging message counts as a call; check any
      difference that involves one.
    - Check that no zstd, SFrame, or debuginfod code was compiled in: run
-     the `nm` command of step 2 again, writing `~/tmp/binutils/nm-after.txt`;
-     `diff ~/tmp/binutils/nm-before.txt ~/tmp/binutils/nm-after.txt` must
-     print nothing.  (A call into
+     the `nm` command of step 2 again, writing
+     `/tmp/$USER/binutils/nm-after.txt`;
+     `diff /tmp/$USER/binutils/nm-before.txt /tmp/$USER/binutils/nm-after.txt`
+     must print nothing.  (A call into
      a system library such as libzstd or libsframe would instead have
      caused an "undefined reference" link error in step 7, because the
      tool is linked with `-nodefaultlibs`.)
