@@ -1453,10 +1453,8 @@ decode_location_expression (unsigned char * data,
 
       /* An op that Fjalar's evaluator cannot apply, such as an unreadable register,
 	 DW_OP_stack_value, or DW_OP_plus (the evaluator has no operand
-	 stack), makes a formal parameter's location unreadable.
-	 Fjalar ignores DW_OP_piece.  */
-      if (ok_to_harvest && op != DW_OP_nop && op != DW_OP_piece
-	  && location_op_kind_of (op) == LOC_OP_UNSUPPORTED)
+	 stack), makes a formal parameter's location unreadable.  */
+      if (ok_to_harvest && location_op_kind_of (op) == LOC_OP_UNSUPPORTED)
 	harvest_formal_param_location_unsupported (entry);
 
       switch (op)
@@ -1596,7 +1594,6 @@ decode_location_expression (unsigned char * data,
 	  READ_ULEB (uvalue, data, end);
 	  if (ok_to_harvest) {
 	    harvest_formal_param_location_atom(entry, op, uvalue);
-	    harvest_formal_param_location_offset(entry, uvalue);
 	    harvest_data_member_location(entry, uvalue);
 	  }
 
