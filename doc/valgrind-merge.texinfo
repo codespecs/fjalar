@@ -245,10 +245,10 @@ git -C $INV/fjalar ls-files --others --exclude-standard
 
 Execute the following Git command:
 
-@example
-git ls-remote --tags --refs https://sourceware.org/git/valgrind.git \
-  | grep -v svn | sort -k2V
-@end example
+@smallexample
+git ls-remote --tags --refs https://sourceware.org/git/valgrind.git | grep -v svn | sort -k2V
+
+@end smallexample
 
 @noindent
 The output will list the tags of the most recent releases of Valgrind.  It will
@@ -281,12 +281,12 @@ source tree that was used the last time a Valgrind merge was performed.
 If you performed the last merge and saved the
 @file{valgrind-old} and @file{valgrind-new} directories, then just run:
 
-@example
+@smallexample
 rm -rf $INV/valgrind-old
 mv $INV/valgrind-new $INV/valgrind-old
-git -C $INV/valgrind-old reset --hard \
-  && git -C $INV/valgrind-old clean -fdx
-@end example
+git -C $INV/valgrind-old reset --hard && git -C $INV/valgrind-old clean -fdx
+
+@end smallexample
 
 @noindent
 The @command{git reset} command discards any changes to files in the
@@ -296,10 +296,10 @@ repository, and the @command{git clean} command removes any build products.
 
 Otherwise, run the following commands.
 
-@example
-git clone -b $VOLDTAG --depth 1 https://sourceware.org/git/valgrind.git \
-  $INV/valgrind-old
-@end example
+@smallexample
+git clone -b $VOLDTAG --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-old
+
+@end smallexample
 
 
 @node Obtain a copy of the target Valgrind source tree
@@ -308,10 +308,10 @@ git clone -b $VOLDTAG --depth 1 https://sourceware.org/git/valgrind.git \
 Next, make the directory @file{valgrind-new} that contains a copy of the
 latest Valgrind source tree.
 
-@example
-git clone -b $VNEWTAG --depth 1 https://sourceware.org/git/valgrind.git \
-  $INV/valgrind-new
-@end example
+@smallexample
+git clone -b $VNEWTAG --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-new
+
+@end smallexample
 
 @c For a  full repro of the current Valgrind source:
 @c git clone https://sourceware.org/git/valgrind.git valgrind-git
@@ -1218,10 +1218,10 @@ run the installed Fjalar under @file{valgrind/inst}, so without
 Before we test Fjalar, it is a good idea to verify we haven't
 broken the underlying Valgrind:
 
-@example
-make -C $INV/fjalar --no-print-directory test 2>&1 \
-  | tee $INV/fjalar/test-after.log
-@end example
+@smallexample
+make -C $INV/fjalar --no-print-directory test 2>&1 | tee $INV/fjalar/test-after.log
+
+@end smallexample
 
 @noindent
 While a few tests may not pass, the results at the end of
