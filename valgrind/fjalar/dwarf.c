@@ -1594,6 +1594,7 @@ decode_location_expression (unsigned char * data,
 	  READ_ULEB (uvalue, data, end);
 	  if (ok_to_harvest) {
 	    harvest_formal_param_location_atom(entry, op, uvalue);
+	    harvest_formal_param_location_offset(entry, uvalue);
 	    harvest_data_member_location(entry, uvalue);
 	  }
 

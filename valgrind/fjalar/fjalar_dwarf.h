@@ -62,6 +62,7 @@ typedef enum {
   LOC_OP_UNSUPPORTED,  // any operation not listed below
   LOC_OP_IGNORED,      // DW_OP_nop and DW_OP_piece, which Fjalar ignores
   LOC_OP_DEREF,        // DW_OP_deref
+  LOC_OP_CONST,        // DW_OP_const*
   LOC_OP_PLUS_UCONST,  // DW_OP_plus_uconst
   LOC_OP_REG,          // DW_OP_reg*, for a register Fjalar can read
   LOC_OP_BREG,         // DW_OP_breg*, for a register Fjalar can read
@@ -72,10 +73,6 @@ typedef enum {
 // parameter's location unsupported if it contains an op of kind
 // LOC_OP_UNSUPPORTED, so visitVariableGroup never evaluates such an op.
 // decode_location_expression does not record an op of kind LOC_OP_IGNORED.
-//
-// DW_OP_const* is unsupported:  the evaluator has no operand stack, so a
-// constant is useful to it only as an absolute address, which Fjalar does not
-// support (just as it does not support DW_OP_addr).
 //
 // A register operation (DW_OP_reg* or DW_OP_breg*) is supported only if
 // Fjalar can read the register; Fjalar saves such a register, with its A and
@@ -92,6 +89,9 @@ static __inline__ location_op_kind location_op_kind_of(enum dwarf_location_atom 
   }
   if (op == DW_OP_deref) {
     return LOC_OP_DEREF;
+  }
+  if ((op >= DW_OP_const1u) && (op <= DW_OP_consts)) {
+    return LOC_OP_CONST;
   }
   if (op == DW_OP_plus_uconst) {
     return LOC_OP_PLUS_UCONST;
