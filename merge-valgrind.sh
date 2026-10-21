@@ -8,8 +8,7 @@
 # the target is the commit checked out in $INV/valgrind-new.  If VOLDTAG or
 # VNEWTAG is set, the script checks that the clone is at that tag.
 #
-# The script records Fjalar's HEAD as ref refs/valgrind-merge/fjalar, and
-# creates two commits, which it records as refs
+# The script creates two commits, which it records as refs
 # refs/valgrind-merge/base and refs/valgrind-merge/new.  Each has upstream's
 # tree at valgrind/ and upstream's Memcheck at valgrind/fjalar/, where Fjalar
 # keeps its modified copy of Memcheck, without Memcheck's docs, tests, and
@@ -30,7 +29,6 @@
 # $INV/memcheck-Fjalar.diff (Memcheck, in valgrind/fjalar).  They are a
 # checklist for verifying that the merge kept each of Fjalar's changes,
 # because a merge can lose a change without reporting a conflict.
-# compare-fjalar-changes.sh does that verification.
 
 set -e
 set -o pipefail
@@ -151,9 +149,6 @@ new_commit=$(upstream_commit "$INV/valgrind-new" "$base_commit")
 # later commands, such as "git diff valgrind-merge/base valgrind-merge/new".
 git update-ref refs/valgrind-merge/base "$base_commit"
 git update-ref refs/valgrind-merge/new "$new_commit"
-# compare-fjalar-changes.sh compares the merge result with Fjalar before the
-# merge, which HEAD no longer is if the merge is committed.
-git update-ref refs/valgrind-merge/fjalar HEAD
 
 # The options make the output independent of the user's Git configuration.
 # Each diff omits the files that Fjalar added.  The diffs replace those of
