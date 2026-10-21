@@ -347,10 +347,6 @@ typedef struct
                  //       way to get the parameter location
   unsigned int valid_loc;
 
-  // True if the formal parameter has a DW_AT_location attribute, which is
-  // either a location expression or a location list.
-  char has_location;
-
   // True if the location expression contains an operation of kind
   // LOC_OP_UNSUPPORTED (see location_op_kind_of), such as a register that
   // Fjalar cannot read or DW_OP_stack_value, or contains more than
@@ -580,7 +576,6 @@ char harvest_mangled_name(dwarf_entry* e, const char* str);
 char harvest_comp_dir(dwarf_entry* e, const char* str);
 char harvest_producer(dwarf_entry* e, const char* str);
 char harvest_formal_param_location_offset(dwarf_entry* e, long value);
-char harvest_formal_param_has_location(dwarf_entry* e);
 char harvest_formal_param_location_unsupported(dwarf_entry* e);
 char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom atom, long value);
 char harvest_data_member_location(dwarf_entry* e, unsigned long value);
