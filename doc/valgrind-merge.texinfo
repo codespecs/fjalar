@@ -843,8 +843,9 @@ code in the merged file and check that it still has Fjalar's change.
 If the conflicts are too many to merge by hand, undo the merge and merge
 an intermediate Binutils release first.  Complete that merge, including
 updating @code{BINUTILS_VERSION} in @file{$INV/fjalar/valgrind/REVISION}
-(see below), before you merge the next release, because the script takes
-the old version from that line.
+(see below), and commit it before you merge the next release.  The script
+takes the old version from that line, and it requires that the tree has no
+uncommitted changes.
 
 Now, handle the conflicts.  @file{merge-binutils.sh} lists the files with
 conflicts, and @command{git status} lists them as unmerged.  Each conflict
@@ -902,8 +903,12 @@ in @var{bunew}, such as @file{bfd/elf-attrs.h}, to @code{BINUTILS_FILES}
 in @file{merge-binutils.sh}.  Add each copy with @command{git add}.
 Then later merges merge it too.
 
-The script separately lists the new headers that are not in the new
-release at all.  They are system headers, such as @file{zstd.h}, or
+The script separately lists the new headers that it does not find in the
+directories that it searches, but that have the same name as files
+elsewhere in the release, such as in @file{@var{bunew}/opcodes/} or
+@file{@var{bunew}/zlib/}; it lists those files.  Copy the ones that are
+needed as described above.  It also lists the new headers that are not in
+the new release at all.  They are system headers, such as @file{zstd.h}, or
 headers that building Binutils generates, such as @file{bfdver.h}.
 Fjalar does not build Binutils, so make sure that it does not need a
 generated header, or define what the new code uses from it.

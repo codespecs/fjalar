@@ -36,23 +36,7 @@ for version in "$@"; do
   check_version VERSION "$version"
 done
 
-# Another user could plant a Binutils tree, whose configure script
-# build-binutils-readelf.sh runs, in a directory that they own or can write.
-# The umask keeps a directory that mkdir creates from being writable by others.
-# A symbolic link is rejected because "-O" and "find" check its target, which
-# need not be the directory that later commands use.  A directory that is not
-# a symbolic link and that only you own and can write cannot be replaced by
-# anyone else, given that /tmp is sticky, so the check need not be repeated.
-(umask 077 && mkdir -p "$BUTMP")
-for dir in "/tmp/$USER" "$BUTMP"; do
-  if [ -L "$dir" ] || [ ! -d "$dir" ] || [ ! -O "$dir" ] \
-       || [ -n "$(find "$dir" -maxdepth 0 -perm /022)" ]; then
-    echo "$0: $dir must be a directory, not a symbolic link," >&2
-    echo "that is owned by you and writable by no one else." >&2
-    echo "Delete it or fix its ownership and permissions, then re-run this script." >&2
-    exit 1
-  fi
-done
+make_butmp
 cd "$BUTMP"
 
 # Usage: download URL

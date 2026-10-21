@@ -30,8 +30,9 @@
 # After merging, the script lists the headers that the new version's copies
 # of the files include but the old version's do not, directly or through
 # another such header, and that Fjalar does not have.  It separately lists
-# such headers that are not in the new version's release, such as system
-# headers and headers that building Binutils generates.
+# such headers that are in the new version's release but not in the
+# directories that it searches, and such headers that are not in the release,
+# such as system headers and headers that building Binutils generates.
 
 set -e
 set -o pipefail
@@ -132,10 +133,13 @@ while IFS=$'\t' read -r _ binutils_path; do
   merged[$binutils_path]=1
 done <<< "$paths"
 
-tmpindex=$(mktemp)
+# The temporary directory is in $BUTMP, which no one else can write, and only
+# you can read it, so no one else can create or change the index file.
+tmpdir=$(mktemp -d "$OUTDIR/tmp.XXXXXX")
+tmpindex=$tmpdir/index
 # A temporary file in $OUTDIR, so that "mv" can replace the diff atomically.
 diff_tmp=$(mktemp "$OUTDIR/binutils-Fjalar.diff.XXXXXX")
-trap 'rm -f "$tmpindex" "$diff_tmp"' EXIT
+trap 'rm -rf "$tmpdir" "$diff_tmp"' EXIT
 
 # Usage: binutils_commit DIR [PARENT]
 # Prints the name of a new commit, with parent PARENT if it is given, that
@@ -248,6 +252,19 @@ binutils_header() {
   done
 }
 
+# The paths, relative to the new Binutils tree, of the files in its release,
+# including those in the directories that download-binutils.sh does not
+# extract.
+release_files=$(tar tzf "$BUTMP/binutils-$BUNEWVER.tar.gz" | sed 's|^[^/]*/||')
+
+# Usage: release_files_named NAME
+# Prints the path, relative to the new Binutils tree, of each file in the
+# release whose path ends with NAME.
+release_files_named() {
+  awk -v name="$1" '$0 == name || substr($0, length($0) - length(name)) == "/" name' \
+    <<< "$release_files"
+}
+
 # Usage: new_includes
 # Copies standard input, lines from "includes", to standard output, except
 # for the lines whose name is in $old_includes.
@@ -269,6 +286,7 @@ pending=$(includes "$BUNEW" "${new_files[@]}" | new_includes)
 declare -A seen=() seen_name=()
 missing=
 not_in_release=
+elsewhere=
 while [ -n "$pending" ]; do
   next=
   while IFS=$'\t' read -r name dir; do
@@ -276,7 +294,13 @@ while [ -n "$pending" ]; do
     if [ -z "$header" ]; then
       if [ -z "${seen_name[$name]}" ]; then
         seen_name[$name]=1
-        not_in_release+="  $name"$'\n'
+        candidates=$(release_files_named "$name")
+        if [ -n "$candidates" ]; then
+          elsewhere+="  $name, included from $dir/, may be"$'\n'
+          elsewhere+="    ${candidates//$'\n'/$'\n'    }"$'\n'
+        else
+          not_in_release+="  $name"$'\n'
+        fi
       fi
       continue
     fi
@@ -300,6 +324,15 @@ if [ -n "$missing" ]; then
   echo "Copy those that Fjalar needs, or disable the code that includes them."
   echo "Add each copy of a header from outside include/ and libiberty/ to"
   echo "BINUTILS_FILES in $0."
+  echo
+fi
+if [ -n "$elsewhere" ]; then
+  echo "$0: Binutils $BUNEWVER's files also include these headers, which are in"
+  echo "its release but not in the directories that the script searches.  For"
+  echo "each, the script lists the files in the release with that name.  Copy"
+  echo "those that Fjalar needs, as described above, or disable the code that"
+  echo "includes them:"
+  echo -n "$elsewhere"
   echo
 fi
 if [ -n "$not_in_release" ]; then

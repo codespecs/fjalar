@@ -7,13 +7,13 @@
 # Usage: ./build-binutils-readelf.sh VERSION
 #   VERSION is a Binutils version, such as 2.42.
 #
-# The script downloads and extracts the whole of VERSION with
-# download-binutils.sh, unless that has been done already.  It builds in
+# The script prints the path of the readelf program on standard output.  If
+# that program exists already, the script only prints its path.  Otherwise,
+# it downloads and extracts the whole of VERSION with download-binutils.sh,
+# unless that has been done already, and builds it in
 # /tmp/$USER/binutils/build-binutils-VERSION, rather than in the extracted
-# tree, which merge-binutils.sh merges from.  It prints the
-# path of the readelf program on standard output, and its progress messages
-# on standard error.  If that program exists already, the script only prints
-# its path.
+# tree, which merge-binutils.sh merges from.  It prints its progress messages
+# on standard error.
 
 # Fail the whole script if any command fails, including within a pipeline.
 set -e
@@ -33,11 +33,14 @@ source "$FJALARDIR/binutils-common.sh"
 check_version VERSION "$1"
 BU=binutils-$1
 
-"$FJALARDIR/download-binutils.sh" --full "$1"
 BUILDDIR=$BUTMP/build-$BU
 READELF=$BUILDDIR/binutils/readelf
 
+# The check keeps the script from printing the path of a program that another
+# user planted.
+make_butmp
 if [ ! -x "$READELF" ]; then
+  "$FJALARDIR/download-binutils.sh" --full "$1"
   mkdir -p "$BUILDDIR"
   cd "$BUILDDIR"
   echo "Building $READELF; the output is in $BUILDDIR/build.log" >&2
