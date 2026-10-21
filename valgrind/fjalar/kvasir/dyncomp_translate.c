@@ -142,11 +142,11 @@ static void anchorTag_DC ( DCEnv* dce, IRAtom* vatom ) {
 // Returns true if computing a tag may merge tags with a clean call whose
 // result can be discarded, so that a discarded tag needs anchorTag_DC to
 // preserve the merges.  Under --dyncomp-interactions=none and
-// comparisons, the only such clean call is the merge in a load of more
-// than 64 bits, which expr2tags_LDle_DC anchors itself.  (Comparisons
-// merge with a dirty call; see mergeTagsReturn0_DC.  The intermediate
-// merges in handleCCall_DC feed a dirty call.)  So in those modes, an
-// anchor is not worth the cost of a helper call.
+// comparisons, no such clean call exists:  comparisons merge with a dirty
+// call (see mergeTagsReturn0_DC), the intermediate merges in
+// handleCCall_DC feed a dirty call, and a load merges no tags (see
+// loadIsInteraction_DC).  So in those modes, an anchor is not worth the
+// cost of a helper call.
 static Bool cleanCallsMergeTags_DC ( void ) {
    return !dyncomp_dataflow_only_mode && !dyncomp_dataflow_comparisons_mode;
 }
@@ -2469,7 +2469,7 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 static
 IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 {
-   IRAtom *v64hi, *v64lo, *merged;
+   IRAtom *v64hi, *v64lo;
    //   IRDirty* di;
    //   IRTemp   datatag;
 
@@ -2524,18 +2524,11 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
          // On second thought, let's just go ahead and do it for now:
 
          // Clean call version:
-         merged = assignNew_DC(dce, Ity_Word,
-                               mkIRExprCCall (Ity_Word,
-                                              2 /*Int regparms*/,
-                                              "MC_(helperc_MERGE_TAGS)",
-                                              &MC_(helperc_MERGE_TAGS),
-                                              mkIRExprVec_2( v64lo, v64hi )));
-         // When cleanCallsMergeTags_DC() is false, callers do not anchor
-         // a tag that they discard, so anchor the merge here.
-         if (!cleanCallsMergeTags_DC()) {
-            anchorTag_DC(dce, merged);
-         }
-         return merged;
+         return mkIRExprCCall (Ity_Word,
+                               2 /*Int regparms*/,
+                               "MC_(helperc_MERGE_TAGS)",
+                               &MC_(helperc_MERGE_TAGS),
+                               mkIRExprVec_2( v64lo, v64hi ));
 
 
       default:
