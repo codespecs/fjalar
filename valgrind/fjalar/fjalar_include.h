@@ -699,6 +699,10 @@ typedef struct _FunctionEntry {
 
 } FunctionEntry;
 
+// entryRegsMask needs one bit per readable DWARF register.
+STATIC_ASSERT(FJALAR_NUM_DWARF_REGS
+              <= 8 * sizeof(((FunctionEntry*)0)->entryRegsMask));
+
 
 // Returns a FunctionEntry* given its starting address (startPC)
 // [Fast hashtable lookup]
@@ -746,14 +750,6 @@ void deleteFuncIterator(FuncIterator* funcIt);
 These data structures and functions provide mechanisms for runtime
 traversals within data structures and arrays
 **********************************************************************/
-
-#if defined(VGA_amd64)
-// The DWARF register number of the frame pointer
-#define DWARF_FP_REG 6
-#else
-// The DWARF register number of the frame pointer
-#define DWARF_FP_REG 5
-#endif
 
 // If atom is DW_OP_regN or DW_OP_bregN, sets *regNum to N and returns
 // True.  Otherwise, returns False.
