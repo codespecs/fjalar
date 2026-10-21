@@ -1,8 +1,8 @@
-// Test input for dyncomp-copy-none-test.sh and
-// dyncomp-copy-comparisons-test.sh.
+// Test input for dyncomp-copy-none-test.sh,
+// dyncomp-copy-comparisons-test.sh, and dyncomp-copy-units-test.sh.
 
-// Under --dyncomp-interactions=none and comparisons, a load is not an
-// interaction, so copying a struct with one wide load and one wide store
+// Under --dyncomp-interactions=none, comparisons, and units, a load is not
+// an interaction, so copying a struct with one wide load and one wide store
 // should not make its fields comparable.
 
 struct pair {

@@ -130,12 +130,35 @@ static void mergeTagsReturn0_DC ( DCEnv* dce,
 // with any tag merges (clean helper calls) that it performs, even
 // though the caller discards vatom.
 static void anchorTag_DC ( DCEnv* dce, IRAtom* vatom ) {
-   IRDirty* di = unsafeIRDirty_0_N(1,
-                                   "MC_(helperc_TAG_NOP)",
-                                   &MC_(helperc_TAG_NOP),
-                                   mkIRExprVec_1( vatom ));
+   IRDirty* di;
+   tl_assert(isShadowAtom_DC(dce, vatom));
+   di = unsafeIRDirty_0_N(1,
+                          "MC_(helperc_TAG_NOP)",
+                          &MC_(helperc_TAG_NOP),
+                          mkIRExprVec_1( vatom ));
    setHelperAnns_DC( dce, di );
    stmt_DC('V', dce, IRStmt_Dirty(di));
+}
+
+// Returns true if computing a tag may merge tags with a clean call whose
+// result can be discarded, so that a discarded tag needs anchorTag_DC to
+// preserve the merges.  Under --dyncomp-interactions=none and
+// comparisons, no such clean call exists:  comparisons merge with a dirty
+// call (see mergeTagsReturn0_DC), the intermediate merges in
+// handleCCall_DC feed a dirty call, and a load merges no tags (see
+// loadIsInteraction_DC).  So in those modes, an anchor is not worth the
+// cost of a helper call.
+static Bool cleanCallsMergeTags_DC ( void ) {
+   return !dyncomp_dataflow_only_mode && !dyncomp_dataflow_comparisons_mode;
+}
+
+// Anchors the tag of atom, when that might preserve a tag merge.  A
+// constant involves no tag merges, so it needs no anchor.
+static void anchorAtomTag_DC ( DCEnv* dce, IRAtom* atom ) {
+   tl_assert(isOriginalAtom_DC(dce, atom));
+   if (atom->tag != Iex_Const && cleanCallsMergeTags_DC()) {
+      anchorTag_DC(dce, expr2tags_DC(dce, atom));
+   }
 }
 
 // A PUT stores a value into the guest state
@@ -270,11 +293,12 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
 //    mergeTagsReturn0_DC (which neither expr2tags_Binop_DC nor
 //    approximate_unhandled_op_DC reaches in that mode).
 //  * At run time, a load merges the tags of the bytes it reads.  In
-//    dyncomp_dataflow_only_mode (and dyncomp_dataflow_comparisons_mode),
+//    dyncomp_dataflow_only_mode (and dyncomp_dataflow_comparisons_mode
+//    and dyncomp_units_mode; see loadIsInteraction_DC),
 //    expr2tags_LDle_DC instead calls MC_(helperc_LOAD_TAG_N), which
 //    merges nothing.
 // expr2tags_Binop_DC and expr2tags_LDle_DC also test
-// dyncomp_dataflow_only_mode.  expr2tags_Binop_DC must give every
+// dyncomp_dataflow_only_mode, the latter through loadIsInteraction_DC.  expr2tags_Binop_DC must give every
 // result tag 0, even where its constant-operand shortcut, which
 // bypasses mkMergeTags_DC, would pass an operand's tag through.
 // expr2tags_LDle_DC must give a wide load the tag of one of its bytes,
@@ -2495,17 +2519,8 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
    case Iop_PopCount64:                // only used by ppc
       // The result discards vatom, so anchor it to preserve the tag
       // merges that computed it, such as the merge of a and b in
-      // 'ctz(a + b)'.  In dyncomp_dataflow_only_mode and
-      // dyncomp_dataflow_comparisons_mode, no binary operation merges
-      // with a clean call (comparisons merge with a dirty call; see
-      // mergeTagsReturn0_DC), so the anchor is not worth the cost of
-      // a helper call.  A constant operand involves no tag merges, so
-      // it needs no anchor.
-      if (atom->tag != Iex_Const
-          && !dyncomp_dataflow_only_mode
-          && !dyncomp_dataflow_comparisons_mode) {
-         anchorTag_DC(dce, vatom);
-      }
+      // 'ctz(a + b)'.
+      anchorAtomTag_DC(dce, atom);
       return IRExpr_Const(IRConst_UWord(0));
 
    // ----------------------------------------------------------
@@ -2803,6 +2818,16 @@ IRAtom* mkAddrPlusBias_DC ( DCEnv* dce, IRAtom* addr, UInt bias )
    return assignNew_DC(dce, tyAddr, binop(mkAdd, addr, eBias) );
 }
 
+// Returns true if a load is an interaction, which merges the tags of
+// the bytes it reads.  It is one only under --dyncomp-interactions=all.
+static
+Bool loadIsInteraction_DC ( void )
+{
+   return !(dyncomp_dataflow_only_mode
+            || dyncomp_dataflow_comparisons_mode
+            || dyncomp_units_mode);
+}
+
 /* Worker function; do not call directly. */
 static
 IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
@@ -2812,39 +2837,49 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
    IRDirty* di;
    IRTemp   datatag;
    IRAtom*  addrAct;
+   IRExpr** args;
+   Int      regparms;
 
    tl_assert(isOriginalAtom_DC(dce,addr));
 
-   /* Now cook up a call to the relevant helper function, to read the
-      tag for the given address. */
-   ty = shadowTypeV(ty);
-   switch (ty) {
-      case Ity_I64: helper = &MC_(helperc_LOAD_TAG_8);
-                    hname = "MC_(helperc_LOAD_TAG_8)";
-                    break;
-      case Ity_I32: helper = &MC_(helperc_LOAD_TAG_4);
-                    hname = "MC_(helperc_LOAD_TAG_4)";
-                    break;
-      case Ity_I16: helper = &MC_(helperc_LOAD_TAG_2);
-                    hname = "MC_(helperc_LOAD_TAG_2)";
-                    break;
-      case Ity_I8:  helper = &MC_(helperc_LOAD_TAG_1);
-                    hname = "MC_(helperc_LOAD_TAG_1)";
-                    break;
-      default:      ppIRType(ty);
-                    VG_(tool_panic)("dyncomp:do_shadow_LDle_DC");
-   }
-
    /* Generate the actual address into addrAct. */
    addrAct = mkAddrPlusBias_DC(dce, addr, bias);
+
+   /* Now cook up a call to the relevant helper function, to read the
+      tag for the given address. */
+   if (!loadIsInteraction_DC()) {
+      helper   = &MC_(helperc_LOAD_TAG_N);
+      hname    = "MC_(helperc_LOAD_TAG_N)";
+      regparms = 2;
+      args     = mkIRExprVec_2( addrAct, mkIRExpr_HWord(sizeofIRType(ty)) );
+   } else {
+      regparms = 1;
+      args     = mkIRExprVec_1( addrAct );
+      ty = shadowTypeV(ty);
+      switch (ty) {
+         case Ity_I64: helper = &MC_(helperc_LOAD_TAG_8);
+                       hname = "MC_(helperc_LOAD_TAG_8)";
+                       break;
+         case Ity_I32: helper = &MC_(helperc_LOAD_TAG_4);
+                       hname = "MC_(helperc_LOAD_TAG_4)";
+                       break;
+         case Ity_I16: helper = &MC_(helperc_LOAD_TAG_2);
+                       hname = "MC_(helperc_LOAD_TAG_2)";
+                       break;
+         case Ity_I8:  helper = &MC_(helperc_LOAD_TAG_1);
+                       hname = "MC_(helperc_LOAD_TAG_1)";
+                       break;
+         default:      ppIRType(ty);
+                       VG_(tool_panic)("dyncomp:do_shadow_LDle_DC");
+      }
+   }
 
    /* We need to have a place to park the tag we're just about to
       read. */
    //   datatag = newIRTemp(dce->bb->tyenv, tyS);
    datatag = newTemp(dce->mce, Ity_Word, DC); // PG - tags are word-sized
    di = unsafeIRDirty_1_N( datatag,
-                           1/*regparms*/, hname, helper,
-                           mkIRExprVec_1( addrAct ));
+                           regparms, hname, helper, args );
    setHelperAnns_DC( dce, di );
    stmt_DC('V',  dce, IRStmt_Dirty(di) );
 
@@ -2852,49 +2887,28 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 }
 
 // Returns the tag of a load of type ty from addr+bias.
-// For Ity_V256, except in dyncomp_dataflow_only_mode and
-// dyncomp_dataflow_comparisons_mode, only the low 16 bytes are read, so
-// the tag ignores the upper 16 bytes.
+// For Ity_V256, if a load is an interaction, only the low 16 bytes are
+// read, so the tag ignores the upper 16 bytes.
 static
 IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 {
    IRAtom *v64hi, *v64lo;
    //   IRDirty* di;
    //   IRTemp   datatag;
-   IRAtom   *vaddr;
-   IRTemp   addrTag;
-   IRDirty  *diAddr;
 
    tl_assert(addr);
    tl_assert(isOriginalAtom_DC(dce, addr));
 
-   // In these modes, a load is not an interaction, so a load of any size
-   // does not merge the tags of the bytes it reads.  Returning before
-   // the code below avoids computing the address's tag, which has no
-   // merges to anchor.
-   if (dyncomp_dataflow_only_mode || dyncomp_dataflow_comparisons_mode) {
-      IRTemp   datatag = newTemp(dce->mce, Ity_Word, DC);
-      IRDirty* di = unsafeIRDirty_1_N( datatag,
-                                       2/*regparms*/,
-                                       "MC_(helperc_LOAD_TAG_N)",
-                                       &MC_(helperc_LOAD_TAG_N),
-                                       mkIRExprVec_2( mkAddrPlusBias_DC(dce, addr, bias),
-                                                      mkIRExpr_HWord(sizeofIRType(ty)) ));
-      setHelperAnns_DC( dce, di );
-      stmt_DC('V',  dce, IRStmt_Dirty(di) );
-      return mkexpr(datatag);
-   }
-
    /* Compute the tag for the effective address, and throw the result
-      away, but anchor it to a dirty call so that Valgrind doesn't
-      optimize the merges away. */
-   vaddr = expr2tags_DC(dce, addr);
-   tl_assert(isShadowAtom_DC(dce, vaddr));
-   addrTag = newTemp(dce->mce, Ity_Word, DC);
-   diAddr = unsafeIRDirty_1_N(addrTag, 1, "MC_(helperc_TAG_NOP)",
-			      &MC_(helperc_TAG_NOP), mkIRExprVec_1(vaddr));
-   setHelperAnns_DC(dce, diAddr);
-   stmt_DC('V', dce, IRStmt_Dirty(diAddr));
+      away, but anchor it so that Valgrind doesn't optimize the merges
+      away. */
+   anchorAtomTag_DC(dce, addr);
+
+   // If a load is not an interaction, a load of any size does not merge
+   // the tags of the bytes it reads.
+   if (!loadIsInteraction_DC()) {
+      return expr2tags_LDle_WRK_DC(dce, ty, addr, bias);
+   }
 
    switch (shadowTypeV(ty)) {
       case Ity_I8:
@@ -2948,29 +2962,15 @@ static
 IRAtom* expr2tags_ITE_DC ( DCEnv* dce,
                            IRAtom* cond, IRAtom* iftrue, IRAtom* iffalse )
 {
-   IRAtom *vbitsC, *vbits0, *vbits1;
-   IRDirty* di;
-   IRTemp   datatag;
+   IRAtom *vbits0, *vbits1;
 
    tl_assert(isOriginalAtom_DC(dce, cond));
    tl_assert(isOriginalAtom_DC(dce, iftrue));
    tl_assert(isOriginalAtom_DC(dce, iffalse));
 
-   // Generate a temp. 'datatag', which is the result of a NOP dirty
-   // call on vbitsC, in order to 'anchor' any possible tag merge
-   // clean helper calls in the expression which produced 'cond'.
-   // This prevents the IR optimizer from deleting all of these
-   // interactions from the parallel tag IR tree (or so we hope)
-   vbitsC = expr2tags_DC(dce, cond);
-   datatag = newTemp(dce->mce, Ity_Word, DC);
-   di = unsafeIRDirty_1_N(datatag,
-                          1,
-                          "MC_(helperc_TAG_NOP)",
-                          &MC_(helperc_TAG_NOP),
-                          mkIRExprVec_1( vbitsC ));
-
-   setHelperAnns_DC( dce, di );
-   stmt_DC('V', dce, IRStmt_Dirty(di) );
+   // The result discards the tag of 'cond', so anchor it to preserve
+   // the tag merges in the expression that produced 'cond'.
+   anchorAtomTag_DC(dce, cond);
 
    // Do the real work of generating tag IR trees for expr0 and exprX
    // and then making a parallel Mux which contains these two trees
@@ -2984,30 +2984,11 @@ IRAtom* expr2tags_ITE_DC ( DCEnv* dce,
    return assignNew_DC(dce, Ity_Word, IRExpr_ITE(cond, vbits1, vbits0));
 }
 
-// (Very similar to expr2tags_ITE_DC)
-// Generate and return temp 'datatag', which is the result of a NOP
-// dirty call on the tag of 'guard', in order to 'anchor' any possible
-// tag merge clean helper calls in the expression which produced
-// 'guard'.  This prevents the IR optimizer from deleting all of these
-// interactions from the parallel tag IR tree (or so we hope)
-IRAtom* do_shadow_cond_exit_DC (DCEnv* dce, IRExpr* guard)
+// Anchor the tag of 'guard', to preserve the tag merges in the
+// expression that produced 'guard'.
+void do_shadow_cond_exit_DC (DCEnv* dce, IRExpr* guard)
 {
-   IRAtom *guardtag;
-   IRDirty* di;
-   IRTemp   datatag;
-
-   guardtag = expr2tags_DC(dce, guard);
-   datatag = newTemp(dce->mce, Ity_Word, DC);
-   di = unsafeIRDirty_1_N(datatag,
-                          1,
-                          "MC_(helperc_TAG_NOP)",
-                          &MC_(helperc_TAG_NOP),
-                          mkIRExprVec_1( guardtag ));
-
-   setHelperAnns_DC( dce, di );
-   stmt_DC('V', dce, IRStmt_Dirty(di) );
-
-   return mkexpr(datatag);
+   anchorAtomTag_DC(dce, guard);
 }
 
 /* --------- This is the main expression-handling function. --------- */
@@ -3138,11 +3119,9 @@ void do_shadow_STle_DC ( DCEnv* dce,
 {
    IROp     mkAdd;
    IRType   ty, tyAddr;
-   IRDirty  *di, *diLo64, *diHi64, *diAddr;
+   IRDirty  *di, *diLo64, *diHi64;
    IRAtom   *addrHi64;
    IRAtom   *vdata;
-   IRAtom   *vaddr;
-   IRTemp   addrTag;
    void*    helper = NULL;
    const HChar* hname = NULL;
    Int      pcOffset = -1;
@@ -3178,17 +3157,10 @@ void do_shadow_STle_DC ( DCEnv* dce,
    tl_assert(isShadowAtom_DC(dce,vdata));
 
    /* Compute the tag for the effective address, and throw the result
-      away, but anchor it to a dirty call so that Valgrind doesn't
-      optimize the merges away. */
+      away, but anchor it so that Valgrind doesn't optimize the merges
+      away. */
    tl_assert(addr);
-   tl_assert(isOriginalAtom_DC(dce, addr));
-   vaddr = expr2tags_DC(dce, addr);
-   tl_assert(isShadowAtom_DC(dce, vaddr));
-   addrTag = newTemp(dce->mce, Ity_Word, DC);
-   diAddr = unsafeIRDirty_1_N(addrTag, 1, "MC_(helperc_TAG_NOP)",
-			      &MC_(helperc_TAG_NOP), mkIRExprVec_1(vaddr));
-   setHelperAnns_DC(dce, diAddr);
-   stmt_DC('V', dce, IRStmt_Dirty(diAddr));
+   anchorAtomTag_DC(dce, addr);
 
    // Get the byte size of the REAL data (and not our tag vdata, which
    // is ALWAYS word-sized).  This is very different from Memcheck's
