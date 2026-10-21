@@ -247,7 +247,6 @@ Execute the following Git command:
 
 @smallexample
 git ls-remote --tags --refs https://sourceware.org/git/valgrind.git | grep -v svn | sort -k2V
-
 @end smallexample
 
 @noindent
@@ -285,7 +284,6 @@ If you performed the last merge and saved the
 rm -rf $INV/valgrind-old
 mv $INV/valgrind-new $INV/valgrind-old
 git -C $INV/valgrind-old reset --hard && git -C $INV/valgrind-old clean -fdx
-
 @end smallexample
 
 @noindent
@@ -298,7 +296,6 @@ Otherwise, run the following commands.
 
 @smallexample
 git clone -b $VOLDTAG --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-old
-
 @end smallexample
 
 
@@ -310,7 +307,6 @@ latest Valgrind source tree.
 
 @smallexample
 git clone -b $VNEWTAG --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-new
-
 @end smallexample
 
 @c For a  full repro of the current Valgrind source:
@@ -1220,7 +1216,6 @@ broken the underlying Valgrind:
 
 @smallexample
 make -C $INV/fjalar --no-print-directory test 2>&1 | tee $INV/fjalar/test-after.log
-
 @end smallexample
 
 @noindent
