@@ -55,9 +55,9 @@ it completely (merged, CI green) before starting this one.  That plan's
 2. **Get the trees.**
 
    ```sh
-   export VOLDVER=VALGRIND_3_23_0 VNEWVER=VALGRIND_3_27_1
-   git clone -b $VOLDVER --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-old
-   git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-new
+   export VOLDTAG=VALGRIND_3_23_0 VNEWTAG=VALGRIND_3_27_1
+   git clone -b $VOLDTAG --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-old
+   git clone -b $VNEWTAG --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-new
    ```
 
    Remove from `fjalar/valgrind` the files that `valgrind-new` does not have,
@@ -98,7 +98,7 @@ it completely (merged, CI green) before starting this one.  That plan's
 4. **Create the diffs.** Run `$INV/fjalar/generate-patch-files.sh`, producing
    `coregrind.patch`, `memcheck.patch`, `coregrind-Fjalar.diff`,
    `memcheck-Fjalar.diff`.  The script checks that `valgrind-old` and
-   `valgrind-new` are pristine clones at `$VOLDVER` and `$VNEWVER`.
+   `valgrind-new` are pristine clones at `$VOLDTAG` and `$VNEWTAG`.
 
 5. **Coregrind merge.**
    - `cd $INV/fjalar/valgrind; patch -p1 -lu --dry-run < $INV/coregrind.patch`,
