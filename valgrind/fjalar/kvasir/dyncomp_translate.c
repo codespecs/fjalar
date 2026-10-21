@@ -2361,6 +2361,26 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
    case Iop_RecpExpF64:                 // only used by arm64
  */
 
+/* Returns an atom for the address addr+bias.  If bias is nonzero,
+   this emits into dce->bb a statement that computes the sum into a new
+   temporary, so callers should not call it repeatedly for the same
+   address and bias. */
+static
+IRAtom* mkAddrPlusBias_DC ( DCEnv* dce, IRAtom* addr, UInt bias )
+{
+   IROp    mkAdd;
+   IRAtom* eBias;
+   IRType  tyAddr  = dce->hWordTy;
+
+   tl_assert( tyAddr == Ity_I32 || tyAddr == Ity_I64 );
+   if (bias == 0) {
+      return addr;
+   }
+   mkAdd   = tyAddr==Ity_I32 ? Iop_Add32 : Iop_Add64;
+   eBias   = tyAddr==Ity_I32 ? mkU32(bias) : mkU64(bias);
+   return assignNew_DC(dce, tyAddr, binop(mkAdd, addr, eBias) );
+}
+
 /* Worker function; do not call directly. */
 static
 IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
@@ -2394,17 +2414,7 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
    }
 
    /* Generate the actual address into addrAct. */
-   if (bias == 0) {
-      addrAct = addr;
-   } else {
-      IROp    mkAdd;
-      IRAtom* eBias;
-      IRType  tyAddr  = dce->hWordTy;
-      tl_assert( tyAddr == Ity_I32 || tyAddr == Ity_I64 );
-      mkAdd   = tyAddr==Ity_I32 ? Iop_Add32 : Iop_Add64;
-      eBias   = tyAddr==Ity_I32 ? mkU32(bias) : mkU64(bias);
-      addrAct = assignNew_DC(dce, tyAddr, binop(mkAdd, addr, eBias) );
-   }
+   addrAct = mkAddrPlusBias_DC(dce, addr, bias);
 
    /* We need to have a place to park the tag we're just about to
       read. */
@@ -2419,6 +2429,9 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
    return mkexpr(datatag);
 }
 
+// Returns the tag of a load of type ty from addr+bias.
+// For Ity_V256, only the low 16 bytes are read, so the tag ignores the
+// upper 16 bytes.
 static
 IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 {
@@ -2429,11 +2442,12 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
    IRTemp   addrTag;
    IRDirty  *diAddr;
 
+   tl_assert(addr);
+   tl_assert(isOriginalAtom_DC(dce, addr));
+
    /* Compute the tag for the effective address, and throw the result
       away, but anchor it to a dirty call so that Valgrind doesn't
       optimize the merges away. */
-   tl_assert(addr);
-   tl_assert(isOriginalAtom_DC(dce, addr));
    vaddr = expr2tags_DC(dce, addr);
    tl_assert(isShadowAtom_DC(dce, vaddr));
    addrTag = newTemp(dce->mce, Ity_Word, DC);

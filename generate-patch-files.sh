@@ -55,26 +55,27 @@ done
 
 # At the next merge, it is easy to forget to move valgrind-new to
 # valgrind-old, or to clone the wrong tag.
-# Usage: check_version DIR VARNAME
-# If variable VARNAME is set, checks that DIR is at the tag it names.
-check_version() {
+# Usage: check_tag DIR TAG_VARIABLE
+# If variable TAG_VARIABLE is set, checks that DIR is at the tag that is the
+# variable's value.
+check_tag() {
   local dir=$1 var=$2
-  local ver=${!var}
+  local tag=${!var}
   local commit
-  if [ -z "$ver" ]; then
+  if [ -z "$tag" ]; then
     return
   fi
-  if ! commit=$(git -C "$dir" rev-parse --verify -q "refs/tags/$ver^{commit}"); then
-    echo "$0: $dir has no tag $ver (the value of $var)." >&2
+  if ! commit=$(git -C "$dir" rev-parse --verify -q "refs/tags/$tag^{commit}"); then
+    echo "$0: $dir has no tag $tag (the value of $var)." >&2
     exit 1
   fi
   if [ "$(git -C "$dir" rev-parse HEAD)" != "$commit" ]; then
-    echo "$0: $dir is not at tag $ver (the value of $var)." >&2
+    echo "$0: $dir is not at tag $tag (the value of $var)." >&2
     exit 1
   fi
 }
-check_version "$INV/valgrind-old" VOLDVER
-check_version "$INV/valgrind-new" VNEWVER
+check_tag "$INV/valgrind-old" VOLDTAG
+check_tag "$INV/valgrind-new" VNEWTAG
 
 cd "$INV"
 inv=$(pwd -P)

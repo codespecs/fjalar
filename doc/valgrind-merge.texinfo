@@ -16,7 +16,9 @@
 
 @titlepage
 @sp 10
-@center @titlefont{Merging newer versions of Valgrind into Fjalar}
+@center @titlefont{Merging newer versions}
+@sp 1
+@center @titlefont{of Valgrind into Fjalar}
 @sp 4
 @center @today{}
 @end titlepage
@@ -150,19 +152,15 @@ sudo apt -yqq install binutils-dev
 Update your enlistment to the latest versions:
 
 @example
-cd $DAIKONDIR
-git pull
-cd $INV/fjalar
-git pull
+git -C $DAIKONDIR pull
+git -C $INV/fjalar pull
 @end example
 
 Ensure there are no local changes:
 
 @example
-cd $DAIKONDIR
-git diff
-cd $INV/fjalar
-git diff
+git -C $DAIKONDIR diff
+git -C $INV/fjalar diff
 @end example
 
 The diff commands should produce no output. If there are any differences,
@@ -171,10 +169,8 @@ commit and push them, then start over from the beginning.
 Ensure there are no outgoing changes:
 
 @example
-cd $DAIKONDIR
-git log --branches --not --remotes
-cd $INV/fjalar
-git log --branches --not --remotes
+git -C $DAIKONDIR log --branches --not --remotes
+git -C $INV/fjalar log --branches --not --remotes
 @end example
 
 The log commands should produce no output. If there are outgoing changes,
@@ -191,7 +187,8 @@ Re-compile Fjalar, then run Daikon's Kvasir tests. (The tests take about 20 minu
 make -C $DAIKONDIR compile test
 
 make -C $INV/fjalar build
-make -C $DAIKONDIR/tests/kvasir-tests clean-all regression-tests
+make -C $DAIKONDIR/tests/kvasir-tests clean-all
+make -C $DAIKONDIR/tests/kvasir-tests regression-tests
 @end example
 
 The Kvasir tests use the Fjalar installed under
@@ -229,8 +226,7 @@ need to be omitted to
 simplify the output of the diff commands below.
 
 @example
-cd $INV/fjalar
-make very-clean
+make -C $INV/fjalar very-clean
 @end example
 
 In a later step, we will add any new files found to the Git repository.
@@ -240,8 +236,7 @@ all unknown (not tracked) files.  Review the list and in most cases
 you will want to delete the file(s).
 
 @example
-cd $INV/fjalar
-git ls-files --others --exclude-standard
+git -C $INV/fjalar ls-files --others --exclude-standard
 @end example
 
 
@@ -250,9 +245,9 @@ git ls-files --others --exclude-standard
 
 Execute the following Git command:
 
-@example
+@smallexample
 git ls-remote --tags --refs https://sourceware.org/git/valgrind.git | grep -v svn | sort -k2V
-@end example
+@end smallexample
 
 @noindent
 The output will list the tags of the most recent releases of Valgrind.  It will
@@ -264,15 +259,15 @@ look something like:
 @end example
 
 Assuming that the Valgrind merge process has been done on a regular basis,
-the last @samp{tags} line will show the next (target) version number and the
-second to last @samp{tags} line will show the current version number.  You should
-verify this by comparing with version number from the file @file{valgrind/REVISION}.
-Using this information, set two environment variables to be used in the
-steps below.
+the last @samp{tags} line will show the tag of the next (target) version and
+the second to last @samp{tags} line will show the tag of the current
+version.  You should verify the current one by comparing it with the
+version number in the file @file{valgrind/REVISION}.  Set two environment
+variables to these tags, for use in the steps below.
 
 @example
-export VOLDVER=VALGRIND_3_14_0
-export VNEWVER=VALGRIND_3_15_0
+export VOLDTAG=VALGRIND_3_14_0
+export VNEWTAG=VALGRIND_3_15_0
 @end example
 
 
@@ -285,12 +280,11 @@ source tree that was used the last time a Valgrind merge was performed.
 If you performed the last merge and saved the
 @file{valgrind-old} and @file{valgrind-new} directories, then just run:
 
-@example
-cd $INV
-rm -rf valgrind-old
-mv valgrind-new valgrind-old
-git -C valgrind-old reset --hard && git -C valgrind-old clean -fdx
-@end example
+@smallexample
+rm -rf $INV/valgrind-old
+mv $INV/valgrind-new $INV/valgrind-old
+git -C $INV/valgrind-old reset --hard && git -C $INV/valgrind-old clean -fdx
+@end smallexample
 
 @noindent
 The @command{git reset} command discards any changes to files in the
@@ -300,10 +294,9 @@ repository, and the @command{git clean} command removes any build products.
 
 Otherwise, run the following commands.
 
-@example
-cd $INV
-git clone -b $VOLDVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-old
-@end example
+@smallexample
+git clone -b $VOLDTAG --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-old
+@end smallexample
 
 
 @node Obtain a copy of the target Valgrind source tree
@@ -312,10 +305,9 @@ git clone -b $VOLDVER --depth 1 https://sourceware.org/git/valgrind.git valgrind
 Next, make the directory @file{valgrind-new} that contains a copy of the
 latest Valgrind source tree.
 
-@example
-cd $INV
-git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git valgrind-new
-@end example
+@smallexample
+git clone -b $VNEWTAG --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-new
+@end smallexample
 
 @c For a  full repro of the current Valgrind source:
 @c git clone https://sourceware.org/git/valgrind.git valgrind-git
@@ -459,7 +451,7 @@ Handle any conflicts. They are listed in the patch output, or run this
 command:
 
 @example
-find -name '*.rej'
+find $INV/fjalar/valgrind -name '*.rej'
 @end example
 
 For every change in the file you will need to examine both the changed
@@ -532,7 +524,7 @@ Handle any conflicts. They are listed in the patch output, or run this
 command:
 
 @example
-find -name '*.rej'
+find $INV/fjalar/valgrind/fjalar -name '*.rej'
 @end example
 
 For every change in the file you will need to examine both the changed
@@ -589,10 +581,9 @@ makes heavy use of the VEX IR, so any changes in it need to be
 reflected. Most of the changes to the public VEX IR can be discovered
 by running the following command:
 
-@example
-cd $INV
-diff -b valgrind-old/VEX/pub/libvex_ir.h valgrind-new/VEX/pub/libvex_ir.h
-@end example
+@smallexample
+diff -b $INV/valgrind-old/VEX/pub/libvex_ir.h $INV/valgrind-new/VEX/pub/libvex_ir.h
+@end smallexample
 
 It is also worth noting that almost all the changes will be for machines
 that we do not support.
@@ -635,10 +626,9 @@ must stay a pristine clone: @command{generate-patch-files.sh} diffs it
 in the patch files, and from there in Fjalar.
 
 @example
-cd $INV
-rm -rf valgrind-new-build
-git clone -q valgrind-new valgrind-new-build
-cd valgrind-new-build
+rm -rf $INV/valgrind-new-build
+git clone -q $INV/valgrind-new $INV/valgrind-new-build
+cd $INV/valgrind-new-build
 ./autogen.sh
 ./configure --prefix=`pwd`/inst
 make all install
@@ -658,7 +648,7 @@ results will be at the end of the log file.  We will use these results in
 Here is a copy of the last few lines from the latest run of these tests (01/21/2026)
 running Valgrind 3.23 on a UW/CSE Rocky Linux (9.7) based system:
 
-@example
+@smallexample
 == 809 tests, 0 stderr failures, 0 stdout failures, 2 stderrB failures, 16 stdoutB failures, 0 post failures ==
 gdbserver_tests/hginfo                   (stdoutB)
 gdbserver_tests/hgtls                    (stdoutB)
@@ -683,7 +673,7 @@ gdbserver_tests/nlvgdbsigqueue           (stdoutB)
 ...checking header files and include directives
 Unknown directory 'inst'. Please update check_headers_and_includes
 make: *** [Makefile:1440: regtest] Error 1
-@end example
+@end smallexample
 
 (Note that the failure of all the gdbserver tests indicates that the system does not
 have the proper glibc-debuginfo installed.)
@@ -693,7 +683,7 @@ have the proper glibc-debuginfo installed.)
 Here is another example from the latest run of these tests (01/21/2026)
 running Valgrind 3.23 on a Ubuntu Linux (25.10) based system:
 
-@example
+@smallexample
 == 895 tests, 9 stderr failures, 2 stdout failures, 1 stderrB failure, 2 stdoutB failures, 0 post failures ==
 gdbserver_tests/mcinfcallWSRU            (stderrB)
 gdbserver_tests/nlcontrolc               (stdoutB)
@@ -714,7 +704,7 @@ none/tests/socket_close                  (stderr)
 ...checking header files and include directives
 Unknown directory 'inst'. Please update check_headers_and_includes
 make: *** [Makefile:1445: regtest] Error 1
-@end example
+@end smallexample
 
 As you can see, the results vary depending on the host system.  The important thing to verify
 is that the results are the same before and after the merge.
@@ -761,10 +751,10 @@ establish a baseline set of results for partial verification of the
 to run the tests prior to the source update as we will use the
 current Fjalar sources.
 
-@example
-cd $INV/fjalar
-make clean build && make test 2>&1 | tee test.log
-@end example
+@smallexample
+make -C $INV/fjalar --no-print-directory clean build && \
+  make -C $INV/fjalar --no-print-directory test 2>&1 | tee $INV/fjalar/test.log
+@end smallexample
 
 @noindent
 As noted in @ref{Get New Valgrind Regtest Baseline Results},
@@ -790,7 +780,7 @@ to find the correct value.
 @c Alternately, could work from the binutils git repository:
 @c   git clone git://sourceware.org/git/binutils-gdb.git
 
-@example
+@smallexample
 # Get new version number from @uref{https://ftp.gnu.org/gnu/binutils/?C=M;O=D}
 export BUNEWVER=2.34
 
@@ -809,7 +799,7 @@ diff -ur $BUOLD/include $BUNEW/include > include.patch
 diff -u  $BUOLD/libiberty/dwarfnames.c \
          $BUNEW/libiberty/dwarfnames.c >> include.patch
 diff -u -xMakefile* $BUOLD/binutils $BUNEW/binutils > binutils.patch
-@end example
+@end smallexample
 
 Next, create diff files comparing the old Binutils to the current
 versions in Fjalar.  These diffs will not be used for automated
@@ -817,11 +807,11 @@ patching, but for visual verification assistance.  As the majority of
 the files should patch quite well, we prepare diffs for only the two
 largest and most complicated files.
 
-@example
+@smallexample
 cd $INV/fjalar/valgrind/fjalar
 diff -ub ~/tmp/$BUOLD/binutils/dwarf.c dwarf.c > dwarf-binutils-vs-fjalar.diff
 diff -ub ~/tmp/$BUOLD/binutils/readelf.c readelf.c > readelf-binutils-vs-fjalar.diff
-@end example
+@end smallexample
 
 
 @node Merging the binutils changes
@@ -830,7 +820,8 @@ diff -ub ~/tmp/$BUOLD/binutils/readelf.c readelf.c > readelf-binutils-vs-fjalar.
 Before applying any patches, run Daikon's Kvasir tests:
 
 @example
-  make -C $DAIKONDIR/tests/kvasir-tests clean-all regression-tests
+  make -C $DAIKONDIR/tests/kvasir-tests clean-all
+  make -C $DAIKONDIR/tests/kvasir-tests regression-tests
 @end example
 
 @noindent
@@ -927,7 +918,7 @@ puts conflicts in @file{.rej} files.  The conflicts are listed in the patch
 output, or run this command to find them:
 
 @example
-find -name '*.rej'
+find $INV/fjalar/valgrind/fjalar -name '*.rej'
 @end example
 
 @item
@@ -1216,8 +1207,7 @@ the regression test suite.
 The first step is to build Fjalar/Kvasir.
 
 @example
-cd $INV/fjalar
-make build
+make -C $INV/fjalar build
 @end example
 
 The build target should @command{autogen} the @file{config} and @file{Makefiles}
@@ -1237,10 +1227,9 @@ run the installed Fjalar under @file{valgrind/inst}, so without
 Before we test Fjalar, it is a good idea to verify we haven't
 broken the underlying Valgrind:
 
-@example
-cd $INV/fjalar
-make test 2>&1 | tee test-after.log
-@end example
+@smallexample
+make -C $INV/fjalar --no-print-directory test 2>&1 | tee $INV/fjalar/test-after.log
+@end smallexample
 
 @noindent
 While a few tests may not pass, the results at the end of
@@ -1262,9 +1251,8 @@ of the Daikon tree.
 It can be run using the following commands (takes about 20 minutes):
 
 @example
-cd $DAIKONDIR/tests/kvasir-tests
-make clean-all
-make regression-tests
+make -C $DAIKONDIR/tests/kvasir-tests clean-all
+make -C $DAIKONDIR/tests/kvasir-tests regression-tests
 @end example
 
 @noindent
@@ -1299,8 +1287,7 @@ the tests generates.  After building and running the tests, this
 command lists the untracked files in test directories:
 
 @example
-cd $INV/fjalar
-git ls-files --others --exclude-standard -- '*tests/*'
+git -C $INV/fjalar ls-files --others --exclude-standard -- '*tests/*'
 @end example
 
 @noindent
@@ -1346,7 +1333,7 @@ cd $INV/fjalar
 # Double-check the diffs - standard practice before committing
 git diff -b | more
 # If looks OK, proceed with commit.
-git commit -a -m "Valgrind merge from $@{VOLDVER@} to $@{VNEWVER@}"
+git commit -a -m "Valgrind merge from $@{VOLDTAG@} to $@{VNEWTAG@}"
 @end example
 
 Note: We recommend saving the patch and diff files to further document
