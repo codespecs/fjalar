@@ -27,15 +27,13 @@ if [ $# -ne 1 ]; then
   echo "Usage: $0 VERSION" >&2
   exit 2
 fi
-if ! [[ "$1" =~ ^[0-9]+(\.[0-9]+)+$ ]]; then
-  echo "$0: VERSION must be a version number such as 2.42, not $1" >&2
-  exit 2
-fi
+# The Fjalar tree that contains this script, even if $0 is a symbolic link.
+FJALARDIR=$(dirname -- "$(readlink -f -- "$0")")
+source "$FJALARDIR/binutils-common.sh"
+check_version VERSION "$1"
 BU=binutils-$1
 
-FJALARDIR="$(cd "$(dirname "$0")" && pwd -P)"
 "$FJALARDIR/download-binutils.sh" --full "$1"
-BUTMP=/tmp/$USER/binutils
 BUILDDIR=$BUTMP/build-$BU
 READELF=$BUILDDIR/binutils/readelf
 

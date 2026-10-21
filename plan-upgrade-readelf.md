@@ -106,9 +106,13 @@ that file.
    or through another such header, and that Fjalar does not have.  For 2.47,
    it lists `bfd/elf-attrs.h`, `bfd/hidden.h`, `include/elf/kvx.h`,
    `include/elf/kvx_elfids.h`, `include/sframe-api.h`, `include/sframe.h`,
-   and `include/ansidecl.h`.  Also check whether 2.47's files call into new
-   helper files (e.g. new code split out of `dwarf.c`).  Copy any new needed
-   headers into `valgrind/fjalar/include/` and add any new needed `.c` files
+   and `include/ansidecl.h`, and, separately, `inttypes.h`, `zstd.h`, and
+   `stdbool.h`, which are not in the release.  Also check whether 2.47's
+   files call into new helper files (e.g. new code split out of `dwarf.c`).
+   Copy any new needed headers from `include/` into
+   `valgrind/fjalar/include/`; copy any from `bfd/` (such as
+   `bfd/elf-attrs.h`) into `valgrind/fjalar/` and add them to
+   `BINUTILS_FILES` in `merge-binutils.sh`.  Add any new needed `.c` files
    to `FJALAR_SOURCES_COMMON` in `valgrind/fjalar/fjalar.am`.  (Do not edit
    `valgrind/fjalar/Makefile.am`, which `generate-fjalar-makefile.sh`
    regenerates at each Valgrind merge.)  (`demanguse.h` and the CTF headers

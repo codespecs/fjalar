@@ -884,19 +884,35 @@ The new Binutils code may need things that Fjalar does not have:
 New header files.  @file{merge-binutils.sh} lists the headers that the new
 release's copies of Fjalar's files include but the old release's do not,
 directly or through another such header, and that Fjalar does not have.
-The merge does not add them, because it merges only files that Fjalar
-already has.  Copy the ones that are needed, preserving their location
-relative to the new Binutils tree,
-@file{/tmp/$USER/binutils/binutils-$BUNEWVER/} (call it
-@var{bunew}), except that @file{binutils/} maps to
-@file{$INV/fjalar/valgrind/fjalar/} itself.  For example, a new file in
+The new release's copies include the headers in
+@file{valgrind/fjalar/include/} and @file{valgrind/fjalar/libiberty/},
+so the script scans those too.  The merge does not add the missing
+headers, because it merges only files that Fjalar already has.  Copy the
+ones that are needed from the new Binutils tree,
+@file{/tmp/$USER/binutils/binutils-$BUNEWVER/} (call it @var{bunew}).
+A header from @file{@var{bunew}/include/} or
+@file{@var{bunew}/libiberty/} keeps its location relative to
+@var{bunew}:  for example, a new file in
 @file{@var{bunew}/include/elf/} goes in
-@file{$INV/fjalar/valgrind/fjalar/include/elf/}, one in
-@file{@var{bunew}/libiberty/} goes in
-@file{$INV/fjalar/valgrind/fjalar/libiberty/}, and one in
-@file{@var{bunew}/binutils/} (like @file{bucomm.h}) goes in
-@file{$INV/fjalar/valgrind/fjalar/}.  Add each one with @command{git
-add}; the next merge then merges it too.
+@file{$INV/fjalar/valgrind/fjalar/include/elf/}.  A header from any
+other directory, such as @file{@var{bunew}/binutils/} (like
+@file{bucomm.h}) or @file{@var{bunew}/bfd/} (like @file{elf-attrs.h}),
+goes in @file{$INV/fjalar/valgrind/fjalar/} itself; also add its path
+in @var{bunew}, such as @file{bfd/elf-attrs.h}, to @code{BINUTILS_FILES}
+in @file{merge-binutils.sh}.  Add each copy with @command{git add}.
+Then later merges merge it too.
+
+The script separately lists the new headers that are not in the new
+release at all.  They are system headers, such as @file{zstd.h}, or
+headers that building Binutils generates, such as @file{bfdver.h}.
+Fjalar does not build Binutils, so make sure that it does not need a
+generated header, or define what the new code uses from it.
+@item
+Deleted files.  The script lists the files that Fjalar has a copy of but
+that the new release lacks.  The merge deletes Fjalar's copy, or reports
+a modify/delete conflict if Fjalar changed it.  Make sure that no Fjalar
+code still includes or uses such a file, and remove it from
+@code{BINUTILS_FILES} if it is listed there.
 @item
 Code for features that Fjalar does not use, such as SFrame
 (@samp{readelf --sframe}, added in Binutils 2.40, which needs
