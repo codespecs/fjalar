@@ -78,6 +78,10 @@ that file.
      `./check-regtest.sh --log regtest-<os>.log --update` and don't commit it.
    - `./test-kvasir.sh 2>&1 | tee kvasir-before.log`
      (Kvasir baseline; record any pre-existing failures).
+   - `make -C valgrind/fjalar clean && (set -o pipefail; make -C valgrind/fjalar 2>&1 | tee build-before.log)`
+     (compiler-warning baseline for step "Build and fix warnings/errors").
+     An incremental build prints no warnings for the files that it does not
+     recompile, so this rebuilds all of Fjalar.
    - Run the Kvasir tests via `./test-kvasir.sh`, which points
      `$DAIKONDIR/fjalar` at this tree.  Running
      `$INV/daikon/tests/kvasir-tests` or `make daikon-test` directly builds
@@ -147,7 +151,16 @@ that file.
 6. **Build and fix warnings/errors.**  `make -C $INV/fjalar build`, then
    iterate with `make -C valgrind/fjalar`.  Fix "implicit declaration" and
    "undefined reference" errors (missed `VG_()` wrappers).  Reduce new
-   warnings from Valgrind's stricter flags where practical.
+   warnings from Valgrind's stricter flags where practical.  To list the
+   warnings that are new since the baseline (see "Hints to modifying dwarf.c
+   and readelf.c" in `doc/valgrind-merge.texinfo`), run from `$INV/fjalar`:
+
+   ```sh
+   make -C valgrind/fjalar clean
+   (set -o pipefail; make -C valgrind/fjalar 2>&1 | tee build-after.log)
+   ./compare-warnings.sh --binutils build-before.log build-after.log
+   ```
+
    Also check against the system `bfd.h` on both Rocky Linux and Ubuntu
    (the #63 workaround may need to change).
 
