@@ -107,11 +107,9 @@ SKIPFILTER='/can.t find file to patch/ {skip=1}
   /^(checking|patching) file / {file=$0; next}
   !skip && !/hunks? ignored/ {if (file != "") print file; file=""; print}
   /Skipping patch\./ {skip=0; file=""}'
-patch_args=(-p1 -lu -f --no-backup-if-mismatch)
+patch_args=(-p1 -lu -f --no-backup-if-mismatch --merge=diff3)
 if [ "$DRY_RUN" = true ]; then
   patch_args+=(--dry-run)
-else
-  patch_args+=(--merge=diff3)
 fi
 # patch exits with status 1 if a hunk failed, including for files that
 # Fjalar does not have, and with status 2 if there was trouble.

@@ -11,8 +11,9 @@
 #   branch of https://github.com/codespecs/fjalar, even if the branch already
 #   has commits, such as earlier steps of a merge.
 #
-# The hooks are the functions declared in typedata.h, fjalar_dwarf.h, and
-# fjalar_include.h, which build Fjalar's DWARF entries and symbol tables.
+# The hooks are the functions declared in typedata.h, fjalar_dwarf.h,
+# fjalar_include.h, fjalar_main.h, and GenericHashtable.h, which build
+# Fjalar's DWARF entries, symbol tables, and line-number table.
 # For each of dwarf.c and readelf.c, the script counts the occurrences of
 # each hook in BASE's version and in the work tree's version, and prints
 #   FILE HOOK OLDCOUNT NEWCOUNT
@@ -64,7 +65,7 @@ live() {
 
 decl='^[A-Za-z_][A-Za-z0-9_ *]*[ *]([A-Za-z_][A-Za-z0-9_]*)\(.*'
 hooks=$(sed -nE "s/$decl/\1/p" \
-          valgrind/fjalar/{typedata,fjalar_dwarf,fjalar_include}.h \
+          valgrind/fjalar/{typedata,fjalar_dwarf,fjalar_include,fjalar_main,GenericHashtable}.h \
           | sort -u)
 if [ -z "$hooks" ]; then
   echo "$0: found no hook declarations" >&2
