@@ -69,13 +69,17 @@ trap 'rm -rf "$tmpdir"' EXIT
 
 # Print C file $1 without its comments and "#if 0" regions.  Comments are
 # removed first, so that a directive in a comment does not end or start a
-# region.  gcc warns about text in "#if 0" regions, such as an unmatched
-# quote, so its messages are printed only if it fails.
+# region.  Only a condition that is exactly "0" is known to be false:  a
+# region ends at its "#else" or at an "#elif" whose condition is not "0",
+# and the code after that is kept even if it might be disabled.
+# gcc warns about text in "#if 0" regions, such as an unmatched quote, so its
+# messages are printed only if it fails.
 without_comments() {
   gcc -fpreprocessed -dD -E -P -x c - < "$1" 2> "$tmpdir/gcc-messages" \
-    | awk '!skip && /^[ \t]*#[ \t]*if[ \t]+0([^0-9]|$)/ {skip=1; depth=1; next}
+    | awk '!skip && /^[ \t]*#[ \t]*if[ \t]+0[ \t]*$/ {skip=1; depth=1; next}
            skip && /^[ \t]*#[ \t]*if/ {depth++; next}
            skip && /^[ \t]*#[ \t]*endif/ {if (--depth == 0) skip=0; next}
+           skip && depth == 1 && /^[ \t]*#[ \t]*elif[ \t]+0[ \t]*$/ {next}
            skip && depth == 1 && /^[ \t]*#[ \t]*(else|elif)/ {skip=0; next}
            !skip' \
     || { cat "$tmpdir/gcc-messages" >&2; return 1; }
