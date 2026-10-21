@@ -472,11 +472,12 @@ UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
 }
 
 // Returns the tag of the value loaded from the range [a, a+len), in
-// dyncomp_dataflow_only_mode and dyncomp_dataflow_comparisons_mode.  In
-// those modes, a load is not an interaction, so unlike the other
-// MC_(helperc_LOAD_TAG_*) functions, this does not merge the tags of the
-// addresses in the range.  It returns the leader of the first non-zero
-// tag in the range, or WEAK_FRESH_TAG if that tag is WEAK_FRESH_TAG.
+// dyncomp_dataflow_only_mode, dyncomp_dataflow_comparisons_mode, and
+// dyncomp_units_mode.  In those modes, a load is not an interaction, so
+// unlike the other MC_(helperc_LOAD_TAG_*) functions, this does not merge
+// the tags of the addresses in the range.  It returns the leader of the
+// first non-zero tag in the range, WEAK_FRESH_TAG if that tag is
+// WEAK_FRESH_TAG, or 0 if every tag in the range is 0.
 // Returning WEAK_FRESH_TAG rather than a fresh tag avoids allocating a
 // tag for each load of a GOT entry, such as the one in every PLT call;
 // the MC_(helperc_STORE_TAG_*) functions replace WEAK_FRESH_TAG with a
