@@ -1008,6 +1008,21 @@ docker run --rm --pull=always $IMAGE:latest \
 @end example
 @end itemize
 
+After you have resolved the conflicts, check that no call of a Fjalar
+hook was lost or duplicated.  The hooks are the functions declared in
+@file{typedata.h}, @file{fjalar_dwarf.h}, @file{fjalar_include.h},
+@file{fjalar_main.h}, and @file{GenericHashtable.h}, which build Fjalar's
+DWARF entries, symbol tables, and line-number table.  This command
+prints each hook whose number of calls in @file{dwarf.c} or
+@file{readelf.c} changed, outside @code{#if 0} regions and comments:
+
+@example
+$INV/fjalar/check-hook-counts.sh
+@end example
+
+@noindent
+Explain each difference.  The script's header comment gives the details.
+
 After you have completed the source merge,
 update the ``@code{export BINUTILS_VERSION=}'' line in @file{fjalar/valgrind/REVISION}.
 Then proceed to @ref{Compiling and Testing}.

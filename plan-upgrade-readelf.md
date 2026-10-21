@@ -382,8 +382,9 @@ small.
   older system `bfd.h` on the CI distros lacks (see step 4).  This may show
   up only on one distro, so CI on both Ubuntu and Rocky Linux matters.
 - Silent loss of a Fjalar hook in a conflicted hunk would show up only as
-  missing variables in Kvasir output, so the Kvasir regression tests are the
-  essential check, together with the hook-count check (step 7).
+  missing variables in Kvasir output.  `check-hook-counts.sh` (step 7)
+  catches a lost or duplicated call, but not a call that a merge moved onto
+  the wrong path, so the Kvasir regression tests are the essential check.
 - An unguarded side-effecting expression inside a guarded `printf` changes
   parsing only when debugging is off.  Mitigation: review every new guard
   (step 5).
