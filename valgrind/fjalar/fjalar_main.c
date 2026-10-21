@@ -156,11 +156,6 @@ static const Int dwarf_reg_guest_offsets[] = {
 STATIC_ASSERT(sizeof(dwarf_reg_guest_offsets) / sizeof(dwarf_reg_guest_offsets[0])
               == FJALAR_NUM_DWARF_REGS);
 
-Bool dwarf_reg_is_readable(UInt regNum)
-{
-  return regNum < FJALAR_NUM_DWARF_REGS;
-}
-
 Int dwarf_reg_guest_offset(UInt regNum)
 {
   tl_assert(dwarf_reg_is_readable(regNum));

@@ -1920,17 +1920,21 @@ static void process_abstract_origin_items(void)
           tl_assert(tag_is_formal_parameter(aliased_entry->tag_name));
           aliased_formal_param = (formal_parameter*) (aliased_entry->entry_ptr);
 
-          aliased_formal_param->location_type = cur_param->location_type;
-          aliased_formal_param->loc_atom = cur_param->loc_atom;
-          aliased_formal_param->valid_loc = cur_param->valid_loc;
-          // Several concrete instances can share one abstract origin.
-          // If any of them has an unsupported location, so does the
-          // abstract origin, regardless of the order of the instances.
-          aliased_formal_param->location_has_unsupported_op |= cur_param->location_has_unsupported_op;
-          aliased_formal_param->dwarf_stack_size = cur_param->dwarf_stack_size;
+          // Copy the location only if the abstract origin has none of its
+          // own.  The abstract origin may be a concrete function (such as
+          // foo) whose clones (such as foo.constprop.0) refer to it; the
+          // location of a clone's parameter is not the location of foo's.
+          if (aliased_formal_param->dwarf_stack_size == 0
+              && !aliased_formal_param->location_has_unsupported_op) {
+            aliased_formal_param->location_type = cur_param->location_type;
+            aliased_formal_param->loc_atom = cur_param->loc_atom;
+            aliased_formal_param->valid_loc = cur_param->valid_loc;
+            aliased_formal_param->location_has_unsupported_op = cur_param->location_has_unsupported_op;
+            aliased_formal_param->dwarf_stack_size = cur_param->dwarf_stack_size;
 
-          VG_(memcpy)(aliased_formal_param->dwarf_stack, cur_param->dwarf_stack,
-                      sizeof(dwarf_location)*cur_param->dwarf_stack_size);
+            VG_(memcpy)(aliased_formal_param->dwarf_stack, cur_param->dwarf_stack,
+                        sizeof(dwarf_location)*cur_param->dwarf_stack_size);
+          }
 
           if(!cur_param->name) {
             cur_param->name = aliased_formal_param->name;

@@ -2419,8 +2419,10 @@ static void verifyStackParamWordAlignment(FunctionEntry* f, int replace)
     {
       int cur_byteSize = 0;
       // A parameter in a register occupies no stack slot, even if
-      // Fjalar cannot read the register.
-      if (isInRegister(cur_node->var)) {
+      // Fjalar cannot read the register.  A parameter whose location
+      // Fjalar cannot read gets no stack slot either, because Fjalar
+      // omits it.
+      if (isInRegister(cur_node->var) || cur_node->var->locationUnsupported) {
         continue;
       }
       if (cur_node->var->locationType == NO_LOCATION || replace) {
@@ -2547,8 +2549,7 @@ static int formalParamByteSize(VariableEntry* varPtr)
 
 // Returns true if the formal parameter's location is a register
 // from which Fjalar can read the whole value.  The location must be a
-// single DW_OP_reg operation:  Fjalar does not support any other
-// operation (such as DW_OP_lit*) that is not a memory location.  The
+// single DW_OP_reg operation.  The
 // register is readable, because a location that uses an unreadable
 // register is unsupported (see location_op_kind_of).  Call this after
 // copying the DWARF location into varPtr->location_expression.
@@ -3224,6 +3225,7 @@ static void processFunctions() {
       if ((f->formalParameters.numVars > 0) &&
           (f->formalParameters.first->var) &&
           !(f->formalParameters.first->var->validLoc) &&
+          !(f->formalParameters.first->var->locationUnsupported) &&
           (f->formalParameters.first->var->varType->decType == D_INT)){
         VariableEntry* var = f->formalParameters.first->var;
         printf("Found invalid argc, varByteOffset is: %d\n", var->byteOffset);
@@ -3235,6 +3237,7 @@ static void processFunctions() {
       if ((f->formalParameters.numVars > 1) &&
           (f->formalParameters.first->next->var) &&
           !(f->formalParameters.first->next->var->validLoc) &&
+          !(f->formalParameters.first->next->var->locationUnsupported) &&
           (f->formalParameters.first->next->var->varType->decType == D_CHAR)) {
         VariableEntry* var = f->formalParameters.first->next->var;
         printf("Found invalid argv, varByteOffset is: %d\n", var->byteOffset);
@@ -3286,7 +3289,10 @@ static void initConstructorsAndDestructors(void) {
 
       // (comment added 2009)  
       // RUDD - Dirty dirty hack. Force the location of this to be valid
-      f->formalParameters.first->var->validLoc = 1;
+      // unless Fjalar cannot read it, in which case Fjalar omits this.
+      if (!f->formalParameters.first->var->locationUnsupported) {
+        f->formalParameters.first->var->validLoc = 1;
+      }
 
 
       // Use the regular (not mangled or demangled) name for matching

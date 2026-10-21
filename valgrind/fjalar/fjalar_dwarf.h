@@ -55,12 +55,18 @@ const char* location_expression_to_string(enum dwarf_location_atom op);
 #error "Fjalar supports only amd64 and x86"
 #endif
 
+// Returns true if Fjalar can read the register with the given DWARF
+// register number.
+static __inline__ Bool dwarf_reg_is_readable(UInt regNum) {
+  return regNum < FJALAR_NUM_DWARF_REGS;
+}
+
 // The kinds of operation in the location expression of a formal
 // parameter.  visitVariableGroup evaluates every kind except
 // LOC_OP_UNSUPPORTED and LOC_OP_IGNORED.
 typedef enum {
   LOC_OP_UNSUPPORTED,  // any operation not listed below
-  LOC_OP_IGNORED,      // DW_OP_nop and DW_OP_piece, which Fjalar ignores
+  LOC_OP_IGNORED,      // DW_OP_nop, which Fjalar ignores
   LOC_OP_DEREF,        // DW_OP_deref
   LOC_OP_CONST,        // DW_OP_const*
   LOC_OP_PLUS_UCONST,  // DW_OP_plus_uconst
@@ -80,16 +86,19 @@ typedef enum {
 // further restricts which locations that use DW_OP_reg* it accepts.
 //
 // For LOC_OP_REG and LOC_OP_BREG, callers compute the register number as
-// op - DW_OP_reg0 or op - DW_OP_breg0, which is less than
-// FJALAR_NUM_DWARF_REGS because DW_OP_regx and DW_OP_bregx are excluded and
-// because of the checks below.
+// op - DW_OP_reg0 or op - DW_OP_breg0, which is readable because
+// DW_OP_regx and DW_OP_bregx are excluded and because of the checks below.
+//
+// DW_OP_piece is unsupported, because the evaluator cannot compose a value
+// from pieces.  Treating a piece as the whole value would read a wrong value
+// when some pieces are elsewhere or optimized out.
 static __inline__ location_op_kind location_op_kind_of(enum dwarf_location_atom op) {
   if ((op >= DW_OP_reg0) && (op <= DW_OP_reg31)) {
-    return ((op - DW_OP_reg0) < FJALAR_NUM_DWARF_REGS
+    return (dwarf_reg_is_readable(op - DW_OP_reg0)
             ? LOC_OP_REG : LOC_OP_UNSUPPORTED);
   }
   if ((op >= DW_OP_breg0) && (op <= DW_OP_breg31)) {
-    return ((op - DW_OP_breg0) < FJALAR_NUM_DWARF_REGS
+    return (dwarf_reg_is_readable(op - DW_OP_breg0)
             ? LOC_OP_BREG : LOC_OP_UNSUPPORTED);
   }
   if (op == DW_OP_deref) {
@@ -104,7 +113,7 @@ static __inline__ location_op_kind location_op_kind_of(enum dwarf_location_atom 
   if (op == DW_OP_fbreg) {
     return LOC_OP_FBREG;
   }
-  if ((op == DW_OP_nop) || (op == DW_OP_piece)) {
+  if (op == DW_OP_nop) {
     return LOC_OP_IGNORED;
   }
   return LOC_OP_UNSUPPORTED;
