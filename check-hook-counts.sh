@@ -92,14 +92,34 @@ hook_counts() {
   { grep -owF "$hooks" "$1" || [ $? -eq 1 ]; } | sort | uniq -c | awk '{print $2, $1}'
 }
 
-# A regex for the first line of a C function declaration that starts in
-# column 0:  a return type of identifiers, spaces, and "*", then the function
-# name (group 1), then "(".  It does not match a declaration whose return type
-# is on the previous line.
-decl='^[A-Za-z_][A-Za-z0-9_ *]*[ *]([A-Za-z_][A-Za-z0-9_]*)\(.*'
-# One hook per line, which is the form of a list of patterns for "grep -F".
-hooks=$(sed -nE "s/$decl/\1/p" \
-          valgrind/fjalar/{typedata,fjalar_dwarf,fjalar_include,fjalar_main,GenericHashtable}.h)
+# Print the names of the functions that the headers declare or define, one
+# per line, which is the form of a list of patterns for "grep -F".
+# The headers' comments and preprocessor directives, including multiline
+# macro definitions, are removed, and the rest is split into statements, so
+# that a declaration may span lines.  Function-like attributes, such as
+# "VG_REGPARM(1)", are removed, so that they are not taken for the function
+# name.  Typedefs and function pointers, such as "int (*f)(void)", are not
+# hooks.
+hook_names() {
+  local h
+  for h in valgrind/fjalar/{typedata,fjalar_dwarf,fjalar_include,fjalar_main,GenericHashtable}.h; do
+    if ! gcc -fpreprocessed -dD -E -P -x c - < "$h" 2> /dev/null; then
+      echo "$0: cannot process $h" >&2
+      return 2
+    fi
+  done \
+    | sed -e :a -e '/\\$/N; s/\\\n//; ta' \
+    | grep -v '^[[:space:]]*#' \
+    | tr '\n' ' ' \
+    | sed -E 's/VG_REGPARM[[:space:]]*\([^()]*\)//g
+              s/__attribute__[[:space:]]*\(\(([^()]|\([^()]*\))*\)\)//g' \
+    | sed 's/[;{}]/\n/g' \
+    | sed -nE '/^[[:space:]]*typedef[[:space:]]/d
+               s/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*[[:space:]*]+)+([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*\([[:space:]]*([^*[:space:]].*)?$/\2/p' \
+    | sort -u
+}
+
+hooks=$(hook_names)
 if [ -z "$hooks" ]; then
   echo "$0: found no hook declarations" >&2
   exit 2
