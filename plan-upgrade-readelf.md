@@ -149,7 +149,9 @@ Kvasir tests after each step.
 7. **Build and fix warnings/errors.**  `make -C $INV/fjalar build`, then
    iterate with `make -C valgrind/fjalar`.  Fix "implicit declaration" and
    "undefined reference" errors (missed `VG_()` wrappers).  Reduce new
-   warnings from Valgrind's stricter flags where practical.
+   warnings from Valgrind's stricter flags where practical;
+   `compare-warnings.sh --binutils` lists the warnings that are new since the
+   baseline build (see "Hints to modifying dwarf.c and readelf.c").
    Also check against the system `bfd.h` on both Rocky Linux and Ubuntu
    (the #63 workaround may need to change).
 
