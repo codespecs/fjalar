@@ -285,7 +285,7 @@ git -C $INV/valgrind-old reset --hard && git -C $INV/valgrind-old clean -fdx
 The @command{git reset} command discards any changes to files in the
 repository, and the @command{git clean} command removes any build products.
 @file{merge-valgrind.sh} refuses to run if @file{valgrind-old} or
-@file{valgrind-new} has changes to its files, because it would ignore them.
+@file{valgrind-new} has changes to its files.
 
 Otherwise, run the following commands.
 
