@@ -713,7 +713,6 @@ is that the results are the same before and after the merge.
 @menu
 * Overview::
 * Get Current Valgrind Regtest Baseline Results::
-* Creating the binutils patch and diff files::
 * Merging the binutils changes::
 * Hints to modifying dwarf.c and readelf.c::
 @end menu
@@ -749,10 +748,10 @@ establish a baseline set of results for partial verification of the
 to run the tests prior to the source update as we will use the
 current Fjalar sources.
 
-@example
+@smallexample
 make -C $INV/fjalar --no-print-directory clean build && \
   make -C $INV/fjalar --no-print-directory test 2>&1 | tee $INV/fjalar/test.log
-@end example
+@end smallexample
 
 @noindent
 As noted in @ref{Get New Valgrind Regtest Baseline Results},
@@ -765,54 +764,10 @@ the results to be identical to the ones obtained the last time a
 full Valgrind update was done.
 
 
-@node Creating the binutils patch and diff files
-@section Creating the binutils patch and diff files
-
-First, create the patch and diff files.  Set @env{BUNEWVER} to the
-Binutils version to merge; find the latest one at
-@uref{https://ftp.gnu.org/gnu/binutils/?C=M;O=D}.  The old version is the
-one in @file{$INV/fjalar/valgrind/REVISION}.
-
-@example
-export BUNEWVER=2.42
-$INV/fjalar/generate-binutils-patch-files.sh $BUNEWVER
-@end example
-
-@noindent
-The script works in @file{/tmp/$USER/binutils/}.  It downloads the old and new
-Binutils releases, verifies their signatures, and extracts them there.
-Then it writes these files to
-@file{/tmp/$USER/binutils/@var{oldver}-@var{newver}/}, such as
-@file{/tmp/$USER/binutils/2.39-2.42/}:
-
-@table @file
-@item include.patch
-What the Binutils maintainers have changed, since the last time the
-readelf code was merged into Fjalar, in the files in @file{include/} and
-in @file{libiberty/dwarfnames.c}.
-@item *-binutils-vs-fjalar.diff
-Fjalar's changes to each Binutils-derived file.  No script uses them.
-They are a checklist for verifying that the merge kept each of Fjalar's
-changes.  A conflict shows Fjalar's side, but a merge can lose a change
-without reporting a conflict:  for example, if upstream moved or rewrote
-the code, the new copy lacks Fjalar's @code{#if 0}, @code{printf} guard, or
-@code{VG_(..)} wrapper.  For each hunk in a diff, find the corresponding
-code in the merged file and check that it still has Fjalar's change.
-@file{include-binutils-vs-fjalar.diff} also lists the headers that only
-Fjalar has.
-@end table
-
-@noindent
-There is no patch file for Binutils' @file{binutils/} directory.
-Fjalar's copies of files from that directory carry many Fjalar edits, so
-the next section merges each of them with @command{git merge-file}, a
-3-way merge, instead.
-
-
 @node Merging the binutils changes
 @section Merging the binutils changes
 
-Before applying any patches, run Daikon's Kvasir tests:
+Before merging, run Daikon's Kvasir tests:
 
 @example
   make -C $DAIKONDIR/tests/kvasir-tests clean-all
@@ -828,93 +783,106 @@ Before applying any patches, run Daikon's Kvasir tests:
 results of running these tests (but don't follow any of the other
 instructions in that section).
 
-Now merge the changes.  It can be difficult to undo a merge, so first do
-a dry run, which changes no file:
+Set @env{BUNEWVER} to the Binutils version to merge; find the latest one
+at @uref{https://ftp.gnu.org/gnu/binutils/?C=M;O=D}.  The old version is
+the one in @file{$INV/fjalar/valgrind/REVISION}.  Then merge:
 
 @example
-$INV/fjalar/merge-binutils.sh --dry-run $BUNEWVER
-@end example
-
-@noindent
-It prints what applying @file{include.patch} would print, and the number
-of conflicts that merging each file would have.  @file{include.patch}
-should apply with few, if any, conflicts; @file{dwarf.c} and
-@file{readelf.c} will probably have many.  If there are massive numbers of
-conflicts or some other indication of failure, there might have been a
-problem in the previous step.  If the conflicts are too many to merge by
-hand, merge an intermediate Binutils release first.  Complete that merge,
-including updating @code{BINUTILS_VERSION} in
-@file{$INV/fjalar/valgrind/REVISION} (see below), before you create the
-patch files for the next release, because the scripts take the old version
-from that line.
-
-When you are satisfied with the results of the dry run, do the merge:
-
-@example
+export BUNEWVER=2.42
 $INV/fjalar/merge-binutils.sh $BUNEWVER
 @end example
 
 @noindent
-The script applies @file{include.patch} with @command{patch
---merge=diff3}, and merges each of Fjalar's copies of files from Binutils'
-@file{binutils/} directory with @command{git merge-file --diff3}.  Both
-put conflicts inline in the file, as
-@samp{<<<<<<<}/@samp{|||||||}/@samp{=======}/@samp{>>>>>>>} markers, and
-do not create @file{.rej} files.  Unlike @command{patch},
-@command{git merge-file} uses no fuzz, so it is less likely to apply a
-change at the wrong location.  It still can, for example among repeated
-lines such as the cases of a @code{switch} statement.
-@command{git status} lists the changed files, and this command finds the
-conflicts:
+The script merges into the Fjalar tree that contains it, so run the copy
+in the tree that you are merging into.  It requires that the tree has no
+uncommitted changes, so that this command undoes the merge:
 
 @example
-grep -rnE '^(<@{7@}|[|]@{7@}|=@{7@}|>@{7@})( |$)' $INV/fjalar/valgrind/fjalar
+git -C $INV/fjalar reset --hard
+@end example
+
+The script works in @file{/tmp/$USER/binutils/}.  It downloads the old and
+new Binutils releases, verifies their signatures, and extracts the parts
+that it needs.  Then it creates two commits, which contain only the files
+of each release that Fjalar has a copy of, at the paths of Fjalar's
+copies:  @code{binutils-merge/base} for the old release, and
+@code{binutils-merge/new} for the new one.  Fjalar's copies of files from
+Binutils' @file{binutils/} directory, such as @file{dwarf.c} and
+@file{readelf.c}, are in @file{valgrind/fjalar/}, and its copies of files
+from @file{include/} and @file{libiberty/} are in
+@file{valgrind/fjalar/include/} and @file{valgrind/fjalar/libiberty/}.
+Then the script runs @command{git cherry-pick} of
+@code{binutils-merge/new}.  That is a 3-way merge:  it compares the Fjalar
+version of each file, the old Binutils version, and the new Binutils
+version.  It applies a change even if Fjalar has changed the lines around
+it, and it leaves conflict markers in a file where both Binutils and
+Fjalar changed the same lines.  Unlike @command{patch}, it uses no fuzz,
+so it is less likely to apply a change at the wrong location.  It still
+can, for example among repeated lines such as the cases of a
+@code{switch} statement.  The script stages the result of the merge, but
+does not commit it.
+
+This command shows what the Binutils developers changed:
+
+@example
+git -C $INV/fjalar diff binutils-merge/base binutils-merge/new
+@end example
+
+Before it merges, the script writes Fjalar's changes to the old release to
+@file{/tmp/$USER/binutils/@var{oldver}-@var{newver}/binutils-Fjalar.diff},
+such as @file{/tmp/$USER/binutils/2.39-2.42/binutils-Fjalar.diff}.  It is a
+checklist for verifying that the merge kept each of Fjalar's changes.  A
+conflict shows Fjalar's side, but a merge can lose a change without
+reporting a conflict:  for example, if upstream moved or rewrote the code,
+the new copy lacks Fjalar's @code{#if 0}, @code{printf} guard, or
+@code{VG_(..)} wrapper.  For each hunk in the diff, find the corresponding
+code in the merged file and check that it still has Fjalar's change.
+
+If the conflicts are too many to merge by hand, undo the merge and merge
+an intermediate Binutils release first.  Complete that merge, including
+updating @code{BINUTILS_VERSION} in @file{$INV/fjalar/valgrind/REVISION}
+(see below), before you merge the next release, because the script takes
+the old version from that line.
+
+Now, handle the conflicts.  @file{merge-binutils.sh} lists the files with
+conflicts, and @command{git status} lists them as unmerged.  Each conflict
+in a file is marked by @samp{<<<<<<<}, @samp{|||||||}, @samp{=======}, and
+@samp{>>>>>>>} lines, which surround Fjalar's version, the old Binutils
+version, and the new Binutils version.  (The old Binutils version is
+omitted if your Git configuration sets @code{merge.conflictStyle} to
+@samp{merge}.)  Mark each file as resolved with @command{git add}.  When
+you are done, this command produces no output:
+
+@example
+git -C $INV/fjalar diff --name-only --diff-filter=U
 @end example
 
 @noindent
 Before compiling, make sure that no conflict markers remain.
 
-The script first copies each file that it merges with @command{git
-merge-file} to a file whose name ends in @file{.pre-merge}, for use with a
-visual merge tool (see below).  It refuses to run if any of those files
-has uncommitted changes or a @file{.pre-merge} copy, because it would then
-merge the same changes twice, and it prints how to undo the merge.  When
-you have finished the merge, remove the @file{.pre-merge} files.
-Because @file{.gitignore} lists @file{*.pre-merge}, @command{git status}
-does not show them; find them with @code{find -name '*.pre-merge'}.
+The include files merge with few, if any, conflicts; @file{dwarf.c} and
+@file{readelf.c} will probably have many.  As you edit the new files, you
+may wish to review the diffs in the previous versions as the new diffs
+should be similar.  @xref{Hints to modifying dwarf.c and readelf.c} for
+more source details that may help you with the merge process.
 
-Now, handle the conflicts.
-
-As noted above, @file{dwarf.c} and @file{readelf.c} will probably
-have several conflicts.  As you edit the new files, you may wish to
-review the diffs in the previous versions as the new diffs should be similar.
-@xref{Hints to modifying dwarf.c and readelf.c} for more source details
-that may help you with the merge process.
-
-A visual merge tool can make this process easier.  Here is one method for
-doing so.  We will do a 3-way merge with the new Binutils file on the
-left, the original Fjalar version on the right, and our new Fjalar
-version in the center.  Look at the conflict markers in @file{dwarf.c}
-and note their line numbers.
+A visual merge tool can make this process easier.  @command{git mergetool}
+starts one on each file that has conflicts, with Fjalar's version, the old
+Binutils version, and the new Binutils version.  For example, to use
+@command{meld}:
 
 @example
-meld /tmp/$USER/binutils/binutils-$BUNEWVER/binutils/dwarf.c \
-  $INV/fjalar/valgrind/fjalar/dwarf.c \
-  $INV/fjalar/valgrind/fjalar/dwarf.c.pre-merge
+git -C $INV/fjalar mergetool --tool=meld valgrind/fjalar/dwarf.c
 @end example
-
-Using the line numbers noted above, locate the problem areas and modify
-the target (center) version of dwarf.c as needed to correct the merge
-issues.  Repeat this process for @file{readelf.c}.
 
 The new Binutils code may need things that Fjalar does not have:
 
 @itemize
 @item
-New header files: new @code{#include}s in @file{readelf.c},
-@file{dwarf.c}, or @file{elfcomm.c}.  New files are not in
-@file{include.patch}, because @command{diff} lists them only as ``Only in
-...'', and @command{merge-binutils.sh} merges only files that Fjalar
+New header files.  @file{merge-binutils.sh} lists the headers that the new
+release's copies of Fjalar's files include but the old release's do not,
+directly or through another such header, and that Fjalar does not have.
+The merge does not add them, because it merges only files that Fjalar
 already has.  Copy the ones that are needed, preserving their location
 relative to the new Binutils tree,
 @file{/tmp/$USER/binutils/binutils-$BUNEWVER/} (call it
@@ -925,7 +893,8 @@ relative to the new Binutils tree,
 @file{@var{bunew}/libiberty/} goes in
 @file{$INV/fjalar/valgrind/fjalar/libiberty/}, and one in
 @file{@var{bunew}/binutils/} (like @file{bucomm.h}) goes in
-@file{$INV/fjalar/valgrind/fjalar/}.
+@file{$INV/fjalar/valgrind/fjalar/}.  Add each one with @command{git
+add}; the next merge then merges it too.
 @item
 Code for features that Fjalar does not use, such as SFrame
 (@samp{readelf --sframe}, added in Binutils 2.40, which needs
@@ -992,7 +961,7 @@ disabled with C preprocessor commands.  The general format is:
 
 @noindent
 Keeping the unused code instead of deleting it makes the
-@command{diff/patch} process go much smoother with fewer
+merge process go much smoother with fewer
 conflicts.  It is unnecessary (and inadvisable) to make any
 modifications to these disabled sections of code.
 

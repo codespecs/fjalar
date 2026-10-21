@@ -5,12 +5,12 @@
 # Readelf from Binutils" of doc/valgrind-merge.texinfo.
 #
 # Usage: ./build-binutils-readelf.sh VERSION
-#   VERSION is a Binutils version, such as 2.42.  First run
-#   generate-binutils-patch-files.sh, which extracts that version in
-#   /tmp/$USER/binutils.
+#   VERSION is a Binutils version, such as 2.42.
 #
-# The script builds in /tmp/$USER/binutils/build-binutils-VERSION, rather than in
-# the extracted tree, which merge-binutils.sh merges from.  It prints the
+# The script downloads and extracts the whole of VERSION with
+# download-binutils.sh, unless that has been done already.  It builds in
+# /tmp/$USER/binutils/build-binutils-VERSION, rather than in the extracted
+# tree, which merge-binutils.sh merges from.  It prints the
 # path of the readelf program on standard output, and its progress messages
 # on standard error.  If that program exists already, the script only prints
 # its path.
@@ -33,28 +33,9 @@ if ! [[ "$1" =~ ^[0-9]+(\.[0-9]+)+$ ]]; then
 fi
 BU=binutils-$1
 
+FJALARDIR="$(cd "$(dirname "$0")" && pwd -P)"
+"$FJALARDIR/download-binutils.sh" --full "$1"
 BUTMP=/tmp/$USER/binutils
-# Another user could plant a Binutils tree, whose configure script
-# build-binutils-readelf.sh runs, in a directory that they own or can write.
-mkdir -p "$BUTMP"
-for dir in "/tmp/$USER" "$BUTMP"; do
-  if [ ! -O "$dir" ] || [ -n "$(find "$dir" -maxdepth 0 -perm /022)" ]; then
-    echo "$0: $dir must be owned by you and writable by no one else." >&2
-    echo "Delete it or fix its ownership and permissions, then re-run this script." >&2
-    exit 1
-  fi
-done
-if [ ! -f "$BUTMP/$BU/.extracted" ]; then
-  echo "$0: $BUTMP/$BU does not exist." >&2
-  echo "Run generate-binutils-patch-files.sh NEWVER, where NEWVER is the Binutils" >&2
-  echo "version being merged; it extracts both that version and the version" >&2
-  echo "in valgrind/REVISION.  Then re-run this script." >&2
-  echo "To build any other version, download $BU.tar.gz and its signature from" >&2
-  echo "https://ftp.gnu.org/gnu/binutils/, verify the signature, extract the" >&2
-  echo "tarball in $BUTMP, create file $BUTMP/$BU/.extracted, and" >&2
-  echo "re-run this script." >&2
-  exit 1
-fi
 BUILDDIR=$BUTMP/build-$BU
 READELF=$BUILDDIR/binutils/readelf
 
