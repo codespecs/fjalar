@@ -79,8 +79,8 @@ BUTMP=/tmp/$USER/binutils
 # build-binutils-readelf.sh runs, in a directory that they own or can write.
 mkdir -p "$BUTMP"
 for dir in "/tmp/$USER" "$BUTMP"; do
-  if [ ! -O "$dir" ] || [ -n "$(find "$dir" -maxdepth 0 -perm /002)" ]; then
-    echo "$0: $dir must be owned by you and not writable by others." >&2
+  if [ ! -O "$dir" ] || [ -n "$(find "$dir" -maxdepth 0 -perm /022)" ]; then
+    echo "$0: $dir must be owned by you and writable by no one else." >&2
     echo "Delete it or fix its ownership and permissions, then re-run this script." >&2
     exit 1
   fi
