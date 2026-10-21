@@ -72,10 +72,13 @@ int print_merge = 1;
 /* WEAK_FRESH_TAG unifies and replaces the previous special
    LITERAL_TAG and ESP_TAG values. When you merge it with a real tag,
    the real tag is the result (that's the weak part). When you store
-   it to memory, a fresh tag is stored instead, and when you load it
-   from memory, you get a fresh tag instead (those are the fresh
-   part). This tag is used for the stack pointer, the frame pointer,
-   the contents of the GOT, and literals when
+   it to memory, a fresh tag is stored instead (that's the fresh
+   part). When you load it from memory, the result depends on
+   --dyncomp-interactions: under all, MC_(helperc_LOAD_TAG_4) gives a
+   fresh tag; under none, comparisons, and units,
+   MC_(helperc_LOAD_TAG_N) gives WEAK_FRESH_TAG itself. This tag is
+   used for the stack pointer, the frame pointer, the contents of the
+   GOT, and literals when
    dyncomp-approximate-literals is enabled. */
 /* The tag valued 0 is also special; if you wanted to give it a
    symbolic name, it would be something like "NO_TAG". It's even
