@@ -371,7 +371,14 @@ sed 's|^|valgrind/|' $INV/missing | xargs -r -d '\n' git -C $INV/fjalar add -f -
 
 Commit these corrections before you merge, because
 @file{merge-valgrind.sh} requires that Fjalar has no uncommitted
-changes.
+changes.  First check that @command{git status} lists no untracked file
+that you meant to add, then review and commit the corrections:
+
+@example
+git -C $INV/fjalar status
+git -C $INV/fjalar diff --cached --stat
+git -C $INV/fjalar commit -m "Correct the files of earlier Valgrind merges"
+@end example
 
 After the merge, the same command with @file{valgrind-new} in place of
 @file{valgrind-old} lists the files that Fjalar tracks but the target

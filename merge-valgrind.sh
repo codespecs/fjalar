@@ -49,8 +49,8 @@ if ! inv=$(cd "$INV" && pwd -P); then
   exit 1
 fi
 INV=$inv
-# The Fjalar tree that contains this script.
-fjalar="$(cd "$(dirname "$0")" && pwd -P)"
+# The Fjalar tree that contains this script, even if $0 is a symbolic link.
+fjalar=$(dirname -- "$(readlink -f -- "$0")")
 
 # Without this check, the git commands below would operate on an enclosing
 # repository, or would fail.
@@ -112,7 +112,10 @@ check_unchanged "$fjalar"
 cd "$fjalar"
 
 tmpindex=$(mktemp)
-trap 'rm -f "$tmpindex"' EXIT
+# Temporary files in $INV, so that "mv" can replace the diffs atomically.
+coregrind_diff_tmp=$(mktemp "$INV/coregrind-Fjalar.diff.XXXXXX")
+memcheck_diff_tmp=$(mktemp "$INV/memcheck-Fjalar.diff.XXXXXX")
+trap 'rm -f "$tmpindex" "$coregrind_diff_tmp" "$memcheck_diff_tmp"' EXIT
 
 # Usage: upstream_commit DIR [PARENT]
 # Prints the name of a new commit, with parent PARENT if it is given, whose
@@ -146,13 +149,24 @@ git update-ref refs/valgrind-merge/base "$base_commit"
 git update-ref refs/valgrind-merge/new "$new_commit"
 
 # The options make the output independent of the user's Git configuration.
-# Each diff omits the files that Fjalar added.
+# Each diff omits the files that Fjalar added.  The diffs replace those of
+# an earlier merge only if both succeed, so that the two always come from
+# the same merge.
 gitdiff=(git diff --no-renames --no-ext-diff --no-textconv --no-color -U3 --diff-filter=a "$base_commit" HEAD)
-"${gitdiff[@]}" -- valgrind ':(exclude)valgrind/fjalar' > "$INV/coregrind-Fjalar.diff"
-"${gitdiff[@]}" -- valgrind/fjalar > "$INV/memcheck-Fjalar.diff"
+"${gitdiff[@]}" -- valgrind ':(exclude)valgrind/fjalar' > "$coregrind_diff_tmp"
+"${gitdiff[@]}" -- valgrind/fjalar > "$memcheck_diff_tmp"
+chmod "$(printf '%o' $((0666 & ~0$(umask))))" "$coregrind_diff_tmp" "$memcheck_diff_tmp"
+mv "$coregrind_diff_tmp" "$INV/coregrind-Fjalar.diff"
+mv "$memcheck_diff_tmp" "$INV/memcheck-Fjalar.diff"
 
+# The options make rename detection independent of the user's Git
+# configuration, so that the merge moves Fjalar's changes to a file that
+# upstream renamed.  They are Git's defaults, and a CHERRY-PICK-OPTION
+# such as -Xno-renames overrides them.
 status=0
-git cherry-pick --no-commit "$@" "$new_commit" || status=$?
+git -c merge.renames=true -c merge.renameLimit=7000 \
+  -c merge.directoryRenames=conflict \
+  cherry-pick --no-commit "$@" "$new_commit" || status=$?
 conflicts=$(git diff --name-only --diff-filter=U)
 if [ "$status" -ne 0 ] && [ -z "$conflicts" ]; then
   echo "$0: git cherry-pick failed." >&2
