@@ -137,6 +137,15 @@ static void anchorTag_DC ( DCEnv* dce, IRAtom* vatom ) {
    stmt_DC('V', dce, IRStmt_Dirty(di));
 }
 
+// Returns true if computing a tag may merge tags with a clean call, so
+// that a discarded tag needs anchorTag_DC to preserve the merges.  Under
+// --dyncomp-interactions=none and comparisons, no clean call merges tags
+// (comparisons merge with a dirty call; see mergeTagsReturn0_DC), so an
+// anchor is not worth the cost of a helper call.
+static Bool cleanCallsMergeTags_DC ( void ) {
+   return !dyncomp_dataflow_only_mode && !dyncomp_dataflow_comparisons_mode;
+}
+
 // A PUT stores a value into the guest state
 void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
                      IRAtom* atom, IRAtom* vatom )
@@ -2073,15 +2082,9 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
    case Iop_PopCount64:                // only used by ppc
       // The result discards vatom, so anchor it to preserve the tag
       // merges that computed it, such as the merge of a and b in
-      // 'ctz(a + b)'.  In dyncomp_dataflow_only_mode and
-      // dyncomp_dataflow_comparisons_mode, no binary operation merges
-      // with a clean call (comparisons merge with a dirty call; see
-      // mergeTagsReturn0_DC), so the anchor is not worth the cost of
-      // a helper call.  A constant operand involves no tag merges, so
+      // 'ctz(a + b)'.  A constant operand involves no tag merges, so
       // it needs no anchor.
-      if (atom->tag != Iex_Const
-          && !dyncomp_dataflow_only_mode
-          && !dyncomp_dataflow_comparisons_mode) {
+      if (atom->tag != Iex_Const && cleanCallsMergeTags_DC()) {
          anchorTag_DC(dce, vatom);
       }
       return IRExpr_Const(IRConst_UWord(0));
@@ -2438,23 +2441,17 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
    IRAtom *v64hi, *v64lo;
    //   IRDirty* di;
    //   IRTemp   datatag;
-   IRAtom   *vaddr;
-   IRTemp   addrTag;
-   IRDirty  *diAddr;
 
    tl_assert(addr);
    tl_assert(isOriginalAtom_DC(dce, addr));
 
    /* Compute the tag for the effective address, and throw the result
-      away, but anchor it to a dirty call so that Valgrind doesn't
-      optimize the merges away. */
-   vaddr = expr2tags_DC(dce, addr);
-   tl_assert(isShadowAtom_DC(dce, vaddr));
-   addrTag = newTemp(dce->mce, Ity_Word, DC);
-   diAddr = unsafeIRDirty_1_N(addrTag, 1, "MC_(helperc_TAG_NOP)",
-			      &MC_(helperc_TAG_NOP), mkIRExprVec_1(vaddr));
-   setHelperAnns_DC(dce, diAddr);
-   stmt_DC('V', dce, IRStmt_Dirty(diAddr));
+      away, but anchor it so that Valgrind doesn't optimize the merges
+      away.  A constant address involves no tag merges, so it needs no
+      anchor. */
+   if (addr->tag != Iex_Const && cleanCallsMergeTags_DC()) {
+      anchorTag_DC(dce, expr2tags_DC(dce, addr));
+   }
 
    switch (shadowTypeV(ty)) {
       case Ity_I8:
