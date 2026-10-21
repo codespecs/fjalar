@@ -27,6 +27,10 @@ if [ $# -ne 1 ]; then
   echo "Usage: $0 VERSION" >&2
   exit 2
 fi
+if ! [[ "$1" =~ ^[0-9]+(\.[0-9]+)+$ ]]; then
+  echo "$0: VERSION must be a version number such as 2.42, not $1" >&2
+  exit 2
+fi
 BU=binutils-$1
 
 BUTMP=/tmp/$USER/binutils

@@ -55,7 +55,9 @@ Eight releases is the largest gap so far (previous merges: 2.35.1 -> 2.36.1 ->
 Recommendation: first try a single 2.39 -> 2.47 dry run.  If `dwarf.c` or
 `readelf.c` shows more conflicts than can reasonably be hand-merged, fall
 back to two steps (2.39 -> 2.43, then 2.43 -> 2.47), building and running the
-Kvasir tests after each step.
+Kvasir tests after each step.  At the end of the first step, update
+`valgrind/REVISION` as in step 9 and commit, because the scripts take the old
+version from `BINUTILS_VERSION` in that file.
 
 ## Steps
 

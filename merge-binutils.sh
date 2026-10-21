@@ -39,6 +39,10 @@ if [ $# -ne 1 ]; then
   exit 2
 fi
 BUNEWVER=$1
+if ! [[ "$BUNEWVER" =~ ^[0-9]+(\.[0-9]+)+$ ]]; then
+  echo "$0: NEWVER must be a version number such as 2.42, not $BUNEWVER" >&2
+  exit 2
+fi
 
 FJALARDIR="$(cd "$(dirname "$0")" && pwd -P)"
 BUOLDVER=$(sed -n 's/^export BINUTILS_VERSION=//p' "$FJALARDIR/valgrind/REVISION")
@@ -46,6 +50,11 @@ if [ -z "$BUOLDVER" ]; then
   echo "$0: no BINUTILS_VERSION in $FJALARDIR/valgrind/REVISION" >&2
   echo "Add a line \"export BINUTILS_VERSION=OLDVER\" to that file, where OLDVER" >&2
   echo "is the Binutils version of Fjalar's readelf code, then re-run this script." >&2
+  exit 1
+fi
+if [ "$BUOLDVER" = "$BUNEWVER" ]; then
+  echo "$0: Fjalar's readelf code is already from Binutils $BUNEWVER" >&2
+  echo "There is nothing to merge.  To merge a newer version, pass it as NEWVER." >&2
   exit 1
 fi
 BUOLD=binutils-$BUOLDVER
@@ -60,16 +69,25 @@ fjalar_q=$(printf %q "$FJALARDIR/valgrind/fjalar")
 undo_merge="git -C $fjalar_q checkout -- $BINUTILS_FILES include libiberty &&
   find $fjalar_q -name '*.pre-merge' -delete"
 
-# Print message $1, and how to recover from a failure partway through, then
-# exit.
-merge_failed() {
-  echo "$0: $1" >&2
-  if [ "$DRY_RUN" = true ]; then
-    echo "Fix the problem, then re-run this script." >&2
-  else
+# Whether this script may have changed a file.  If so, and the script fails
+# for any reason, print_recovery prints how to undo the partial merge.
+merge_started=false
+print_recovery() {
+  if [ $? -ne 0 ] && [ "$merge_started" = true ]; then
     echo "Fix the problem, undo the partial merge with" >&2
     echo "  $undo_merge" >&2
     echo "and re-run this script." >&2
+  fi
+}
+trap print_recovery EXIT
+# Run the EXIT trap on an interrupt, too.
+trap "exit 130" INT TERM
+
+# Print message $1, and how to recover from a failure, then exit.
+merge_failed() {
+  echo "$0: $1" >&2
+  if [ "$merge_started" = false ]; then
+    echo "Fix the problem, then re-run this script." >&2
   fi
   exit 1
 }
@@ -153,6 +171,9 @@ fi
 # patch exits with status 1 if a hunk failed, including for files that
 # Fjalar does not have, and with status 2 if there was trouble.
 patch_status=0
+if [ "$DRY_RUN" = false ]; then
+  merge_started=true
+fi
 patch_output=$(patch "${patch_args[@]}" < "$PATCHDIR/include.patch") || patch_status=$?
 awk "$SKIPFILTER" <<< "$patch_output"
 if [ $patch_status -gt 1 ]; then
@@ -187,4 +208,6 @@ done
 if [ "$DRY_RUN" = false ]; then
   echo "Find the conflicts with:  grep -rln '^<<<<<<<' $fjalar_q"
   echo "To undo the merge:  $undo_merge"
+  echo "After you resolve the conflicts, set BINUTILS_VERSION=$BUNEWVER in"
+  echo "$(printf %q "$FJALARDIR/valgrind/REVISION")."
 fi

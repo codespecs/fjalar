@@ -853,7 +853,11 @@ should apply with few, if any, conflicts; @file{dwarf.c} and
 @file{readelf.c} will probably have many.  If there are massive numbers of
 conflicts or some other indication of failure, there might have been a
 problem in the previous step.  If the conflicts are too many to merge by
-hand, merge an intermediate Binutils release first.
+hand, merge an intermediate Binutils release first.  Complete that merge,
+including updating @code{BINUTILS_VERSION} in
+@file{$INV/fjalar/valgrind/REVISION} (see below), before you create the
+patch files for the next release, because the scripts take the old version
+from that line.
 
 When you are satisfied with the results of the dry run, do the merge:
 
@@ -867,8 +871,10 @@ The script applies @file{include.patch} with @command{patch
 @file{binutils/} directory with @command{git merge-file --diff3}.  Both
 put conflicts inline in the file, as
 @samp{<<<<<<<}/@samp{|||||||}/@samp{=======}/@samp{>>>>>>>} markers, and
-do not create @file{.rej} files.  Unlike @command{patch} with fuzz,
-@command{git merge-file} never applies a hunk at the wrong location.
+do not create @file{.rej} files.  Unlike @command{patch},
+@command{git merge-file} uses no fuzz, so it is less likely to apply a
+change at the wrong location.  It still can, for example among repeated
+lines such as the cases of a @code{switch} statement.
 @command{git status} lists the changed files, and this command finds the
 conflicts:
 
