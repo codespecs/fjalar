@@ -486,8 +486,12 @@ numbers of conflicts or some other indication of failure, check that
 merged into Fjalar.
 
 @file{merge-valgrind.sh} lists the files with conflicts, and
-@command{git status} lists them as unmerged.  Files with conflicting
-changes contain conflict markers.  For a binary file, the Fjalar version
+@command{git status} lists them as unmerged.  Each conflict in a file is
+marked by @samp{<<<<<<<}, @samp{|||||||}, @samp{=======}, and
+@samp{>>>>>>>} lines, which surround Fjalar's version, the base Valgrind
+version, and the target Valgrind version.  (The base Valgrind version is
+omitted if your Git configuration sets @code{merge.conflictStyle} to
+@samp{merge}.)  For a binary file, the Fjalar version
 is left in place.  A file that the Valgrind developers removed but that
 Fjalar has changed, or that Fjalar removed but the Valgrind developers
 have changed, is a ``modify/delete'' conflict, and the merge leaves the

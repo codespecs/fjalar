@@ -167,11 +167,16 @@ mv "$memcheck_diff_tmp" "$INV/memcheck-Fjalar.diff"
 # The options make rename detection independent of the user's Git
 # configuration, so that the merge moves Fjalar's changes to a file that
 # upstream renamed.  They are Git's defaults, and a CHERRY-PICK-OPTION
-# such as -Xno-renames overrides them.
+# such as -Xno-renames overrides them.  Unless the user has chosen a
+# conflict style, each conflict also shows the base Valgrind's text, which
+# helps in resolving it.
+options=(-c merge.renames=true -c merge.renameLimit=7000
+  -c merge.directoryRenames=conflict)
+if ! git config --get merge.conflictStyle > /dev/null; then
+  options+=(-c merge.conflictStyle=diff3)
+fi
 status=0
-git -c merge.renames=true -c merge.renameLimit=7000 \
-  -c merge.directoryRenames=conflict \
-  cherry-pick --no-commit "$@" "$new_commit" || status=$?
+git "${options[@]}" cherry-pick --no-commit "$@" "$new_commit" || status=$?
 conflicts=$(git diff --name-only --diff-filter=U)
 if [ "$status" -ne 0 ] && [ -z "$conflicts" ]; then
   echo "$0: git cherry-pick failed." >&2
