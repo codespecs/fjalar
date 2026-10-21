@@ -10,9 +10,9 @@ more about Valgrind by visiting its home page at:
 The document valgrind-merge.texinfo, located in the doc sub-directory of
 the Fjalar repository, describes how to obtain the latest version of
 Valgrind and merge it into our Fjalar system.  You can format it with
-either of the following commands (run in the doc sub-directory):
-  make html
-  make pdf
+either of the following commands, run from the repository root:
+  make -C doc html
+  make -C doc pdf
 
 The valgrind directory contains a sub-directory named fjalar. This directory
 contains two related projects, Fjalar and Kvasir.
