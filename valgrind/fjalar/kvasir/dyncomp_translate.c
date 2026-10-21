@@ -278,11 +278,12 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
 //    mergeTagsReturn0_DC (which neither expr2tags_Binop_DC nor
 //    approximate_unhandled_op_DC reaches in that mode).
 //  * At run time, a load merges the tags of the bytes it reads.  In
-//    dyncomp_dataflow_only_mode (and dyncomp_dataflow_comparisons_mode),
+//    dyncomp_dataflow_only_mode (and dyncomp_dataflow_comparisons_mode
+//    and dyncomp_units_mode; see loadIsInteraction_DC),
 //    expr2tags_LDle_DC instead calls MC_(helperc_LOAD_TAG_N), which
 //    merges nothing.
 // expr2tags_Binop_DC and expr2tags_LDle_DC also test
-// dyncomp_dataflow_only_mode.  expr2tags_Binop_DC must give every
+// dyncomp_dataflow_only_mode, the latter through loadIsInteraction_DC.  expr2tags_Binop_DC must give every
 // result tag 0, even where its constant-operand shortcut, which
 // bypasses mkMergeTags_DC, would pass an operand's tag through.
 // expr2tags_LDle_DC must give a wide load the tag of one of its bytes,
