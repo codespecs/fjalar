@@ -8,8 +8,8 @@ requires; neither requires all of them.
 
 Below, `$INV/fjalar` means the Fjalar tree being changed.
 
-Item 2 is done (#103).  Item 4 is an open pull request; its description
-gives the details.  Items 1 and 3 are described here.
+Items 2 (#103) and 4 (#134, which has landed) are done.  Items 1 and 3
+are described here.
 Other open PRs that both
 upgrades should wait for, because they change files that the upgrades
 merge into, are listed in the "Current state" section of each upgrade
@@ -83,11 +83,11 @@ What:
   AVX2 IROps.  GitHub's runners support AVX2; check that before relying on it
   (the Kvasir CI jobs log the CPU flags).
 
-## 4. Make the whitespace of the Binutils-derived files match Binutils 2.39
+## 4. Make the whitespace of the Binutils-derived files match Binutils 2.39 (done)
 
 \#134.  Hundreds of lines of Fjalar's `dwarf.c`, and some of `readelf.c`
 and `bucomm.h`, differ from Binutils 2.39 only in whitespace.  The
 readelf upgrade merges these files with `git cherry-pick`, which does
-not ignore whitespace by default, so each such line near an upstream change would
-become a spurious conflict.  #134 gives those lines Binutils 2.39's
-whitespace.
+not ignore whitespace by default, so each such line near an upstream
+change would become a spurious conflict.  #134 gave those lines Binutils
+2.39's whitespace.
