@@ -130,8 +130,10 @@ upstream_commit() {
   tree=$(git -C "$dir" rev-parse "HEAD^{tree}")
   # Copy the tree's objects into the Fjalar repository.  "git fetch" would
   # fail for a shallow clone, and would also copy upstream's history.
+  # "git index-pack" stores them as one pack, rather than as thousands of
+  # loose objects, and prints the pack's name.
   git -C "$dir" rev-list --objects "$tree" | cut -d' ' -f1 \
-    | git -C "$dir" pack-objects -q --stdout | git unpack-objects -q
+    | git -C "$dir" pack-objects -q --stdout | git index-pack --stdin > /dev/null
   rm -f "$tmpindex"
   GIT_INDEX_FILE=$tmpindex git read-tree --prefix=valgrind/ "$tree"
   GIT_INDEX_FILE=$tmpindex git read-tree --prefix=valgrind/fjalar/ "$tree:memcheck"
