@@ -2578,6 +2578,22 @@ static void recordEntryRegs(FunctionEntry* f, formal_parameter* paramPtr)
   }
 }
 
+// Returns true if the formal parameter's location is a memory location,
+// whose address visitVariableGroup computes:  the location contains
+// DW_OP_fbreg, DW_OP_breg*, or DW_OP_plus_uconst.
+static Bool isMemoryLocation(formal_parameter* paramPtr)
+{
+  unsigned int i;
+  for (i = 0; i < paramPtr->dwarf_stack_size; i++) {
+    location_op_kind kind = location_op_kind_of(paramPtr->dwarf_stack[i].atom);
+    if ((kind == LOC_OP_FBREG) || (kind == LOC_OP_BREG)
+        || (kind == LOC_OP_PLUS_UCONST)) {
+      return True;
+    }
+  }
+  return False;
+}
+
 // dwarfParamEntry->tag_name == DW_TAG_formal_parameter
 static void extractOneFormalParameterVar(FunctionEntry* f,
                                          dwarf_entry* dwarfParamEntry)
@@ -2635,11 +2651,15 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     varPtr->location_expression_size = paramPtr->dwarf_stack_size;
   }
 
-  if (paramPtr->location_type == LT_FP_OFFSET) {
+  if (isMemoryLocation(paramPtr)) {
     varPtr->validLoc = paramPtr->valid_loc;
     varPtr->locationType = FP_OFFSET_LOCATION;
-    varPtr->byteOffset = paramPtr->location;
-    //    varPtr->atom = paramPtr->loc_atom;
+    // For any other location, visitVariableGroup computes byteOffset
+    // when it evaluates the location.
+    if (paramPtr->dwarf_stack_size == 1
+        && paramPtr->dwarf_stack[0].atom == DW_OP_fbreg) {
+      varPtr->byteOffset = paramPtr->dwarf_stack[0].atom_offset;
+    }
     recordEntryRegs(f, paramPtr);
 
     FJALAR_DPRINTF(" location_type: %u, byteOffset: %x\n", varPtr->locationType, (unsigned int)varPtr->byteOffset);

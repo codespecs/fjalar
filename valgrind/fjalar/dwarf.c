@@ -1745,7 +1745,6 @@ decode_location_expression (unsigned char * data,
 	      ll->atom_offset = svalue;
 	    harvest_local_var_offset(entry, svalue, (op - DW_OP_breg0));
 	    harvest_formal_param_location_atom(entry, op, svalue);
-	    harvest_formal_param_location_offset(entry, svalue);
 	  }
 	  printf ("DW_OP_breg%u (%s): %s", op - DW_OP_breg0,
 		  regname (op - DW_OP_breg0, 1), dwarf_vmatoa ("d", svalue));
@@ -1764,7 +1763,6 @@ decode_location_expression (unsigned char * data,
 	      ll->atom_offset = svalue;
 	    harvest_local_var_offset(entry, svalue, -1);
 	    harvest_formal_param_location_atom(entry, op, svalue);
-	    harvest_formal_param_location_offset(entry, svalue);
 	  }
 	  printf ("DW_OP_fbreg: %s", dwarf_vmatoa ("d", svalue));
 	  break;

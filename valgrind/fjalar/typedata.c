@@ -1214,18 +1214,6 @@ char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom
   return 1;
 }
 
-char harvest_formal_param_location_offset(dwarf_entry* e, long value)
-{
-  formal_parameter* paramPtr = formal_parameter_of(e);
-  if (paramPtr == 0)
-    return 0;
-
-  paramPtr->location_type = LT_FP_OFFSET;
-  paramPtr->location = value;
-  paramPtr->valid_loc = 1;
-  return 1;
-}
-
 char harvest_data_member_location(dwarf_entry* e, unsigned long value)
 {
   unsigned long tag;
@@ -1903,7 +1891,6 @@ static void process_abstract_origin_items(void)
           tl_assert(tag_is_formal_parameter(aliased_entry->tag_name));
           aliased_formal_param = (formal_parameter*) (aliased_entry->entry_ptr);
 
-          aliased_formal_param->location_type = cur_param->location_type;
           aliased_formal_param->loc_atom = cur_param->loc_atom;
           aliased_formal_param->valid_loc = cur_param->valid_loc;
           aliased_formal_param->dwarf_stack_size = cur_param->dwarf_stack_size;
@@ -2826,13 +2813,11 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
     case DW_TAG_formal_parameter:
       {
         formal_parameter* formal_param_ptr = (formal_parameter*)(e->entry_ptr);
-        FJALAR_DPRINTF("  Name: %s, Type ID: 0x%lx, num-ops: %u, atom: %x, loc_type: %u, offset: %ld\n",
+        FJALAR_DPRINTF("  Name: %s, Type ID: 0x%lx, num-ops: %u, atom: %x\n",
                formal_param_ptr->name,
                formal_param_ptr->type_ID,
                formal_param_ptr->dwarf_stack_size,
-               formal_param_ptr->loc_atom,
-               formal_param_ptr->location_type,
-               formal_param_ptr->location);
+               formal_param_ptr->loc_atom);
         break;
       }
     case DW_TAG_template_type_param:
