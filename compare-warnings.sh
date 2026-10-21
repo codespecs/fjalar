@@ -18,11 +18,9 @@
 #
 # Exit status: 0 if the warnings are the same, 1 if they differ, 2 on error.
 
-# Exit with status 2 if any command fails, including within a pipeline or a
-# function.
-set -eE
+# Fail the whole script if any command fails, including within a pipeline.
+set -e
 set -o pipefail
-trap 'exit 2' ERR
 
 # The compiler names Fjalar's files relative to valgrind/fjalar, so anchoring
 # the pattern at the start of the line excludes fjalar_dwarf.c and Valgrind
@@ -47,19 +45,22 @@ for f in "$1" "$2"; do
   fi
 done
 
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+
 # Print the warnings in build log $1, without line and column numbers.
 warnings_without_location() {
-  # grep exits with status 1 if there are no warnings, and 2 on error.
+  # grep exits with status 1 if the log has no warnings, and with status 2
+  # if it cannot read the log.
   { grep -E "^($files_re):[0-9]+:[0-9]+: warning" "$1" || [ $? -eq 1 ]; } \
     | sed -E 's/:[0-9]+:[0-9]+:/:/' | LC_ALL=C sort
 }
 
-# Errors in a process substitution do not affect the script's exit status, so
-# use temporary files.
-tmpdir=$(mktemp -d)
-trap 'rm -rf "$tmpdir"' EXIT
-warnings_without_location "$1" > "$tmpdir/before"
-warnings_without_location "$2" > "$tmpdir/after"
-status=0
-diff "$tmpdir/before" "$tmpdir/after" || status=$?
-exit "$status"
+# The lists are written to files, rather than passed to diff by process
+# substitution, so that a failure to read a log stops the script.
+if ! warnings_without_location "$1" > "$tmpdir/before" \
+    || ! warnings_without_location "$2" > "$tmpdir/after"; then
+  echo "$0: cannot read the build logs" >&2
+  exit 2
+fi
+diff "$tmpdir/before" "$tmpdir/after"
