@@ -243,8 +243,9 @@ order to debug it:
 
       <li>In a second bash shell, with the CWD set to the valgrind/fjalar
       subdirectory of the version of Fjalar you wish to debug, start <tt>gdb</tt> with
-      the '-p process-id' option to attach it to your test case
-      that is stuck in the infinite loop.  You can see its
+      the '-p process-id' option to attach it to the process that is
+      stuck in the infinite loop.  Valgrind runs Fjalar, your tool, and
+      your test case in that single process.  You can see its
       process ID enclosed in "<tt>==</tt>" next to the start-up banner
       (e.g., <tt>==3839== ...</tt>), or simply <tt>ps</tt> for it.
 
