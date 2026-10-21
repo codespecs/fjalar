@@ -16,7 +16,9 @@
 
 @titlepage
 @sp 10
-@center @titlefont{Merging newer versions of Valgrind into Fjalar}
+@center @titlefont{Merging newer versions}
+@sp 1
+@center @titlefont{of Valgrind into Fjalar}
 @sp 4
 @center @today{}
 @end titlepage
@@ -244,7 +246,8 @@ git -C $INV/fjalar ls-files --others --exclude-standard
 Execute the following Git command:
 
 @example
-git ls-remote --tags --refs https://sourceware.org/git/valgrind.git | grep -v svn | sort -k2V
+git ls-remote --tags --refs https://sourceware.org/git/valgrind.git \
+  | grep -v svn | sort -k2V
 @end example
 
 @noindent
@@ -281,7 +284,8 @@ If you performed the last merge and saved the
 @example
 rm -rf $INV/valgrind-old
 mv $INV/valgrind-new $INV/valgrind-old
-git -C $INV/valgrind-old reset --hard && git -C $INV/valgrind-old clean -fdx
+git -C $INV/valgrind-old reset --hard \
+  && git -C $INV/valgrind-old clean -fdx
 @end example
 
 @noindent
@@ -293,7 +297,8 @@ repository, and the @command{git clean} command removes any build products.
 Otherwise, run the following commands.
 
 @example
-git clone -b $VOLDTAG --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-old
+git clone -b $VOLDTAG --depth 1 https://sourceware.org/git/valgrind.git \
+  $INV/valgrind-old
 @end example
 
 
@@ -304,7 +309,8 @@ Next, make the directory @file{valgrind-new} that contains a copy of the
 latest Valgrind source tree.
 
 @example
-git clone -b $VNEWTAG --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-new
+git clone -b $VNEWTAG --depth 1 https://sourceware.org/git/valgrind.git \
+  $INV/valgrind-new
 @end example
 
 @c For a  full repro of the current Valgrind source:
@@ -647,7 +653,8 @@ Here is a copy of the last few lines from the latest run of these tests (01/21/2
 running Valgrind 3.23 on a UW/CSE Rocky Linux (9.7) based system:
 
 @example
-== 809 tests, 0 stderr failures, 0 stdout failures, 2 stderrB failures, 16 stdoutB failures, 0 post failures ==
+== 809 tests, 0 stderr failures, 0 stdout failures, 2 stderrB failures,
+   16 stdoutB failures, 0 post failures ==
 gdbserver_tests/hginfo                   (stdoutB)
 gdbserver_tests/hgtls                    (stdoutB)
 gdbserver_tests/mcblocklistsearch        (stderrB)
@@ -682,7 +689,8 @@ Here is another example from the latest run of these tests (01/21/2026)
 running Valgrind 3.23 on a Ubuntu Linux (25.10) based system:
 
 @example
-== 895 tests, 9 stderr failures, 2 stdout failures, 1 stderrB failure, 2 stdoutB failures, 0 post failures ==
+== 895 tests, 9 stderr failures, 2 stdout failures, 1 stderrB failure,
+   2 stdoutB failures, 0 post failures ==
 gdbserver_tests/mcinfcallWSRU            (stderrB)
 gdbserver_tests/nlcontrolc               (stdoutB)
 gdbserver_tests/nlvgdbsigqueue           (stdoutB)
@@ -1211,7 +1219,8 @@ Before we test Fjalar, it is a good idea to verify we haven't
 broken the underlying Valgrind:
 
 @example
-make -C $INV/fjalar --no-print-directory test 2>&1 | tee $INV/fjalar/test-after.log
+make -C $INV/fjalar --no-print-directory test 2>&1 \
+  | tee $INV/fjalar/test-after.log
 @end example
 
 @noindent
