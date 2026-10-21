@@ -62,12 +62,14 @@ typedef enum {
   LOC_OP_DEREF,        // DW_OP_deref
   LOC_OP_CONST,        // DW_OP_const*
   LOC_OP_PLUS_UCONST,  // DW_OP_plus_uconst
-  LOC_OP_REG,          // DW_OP_reg*
-  LOC_OP_BREG,         // DW_OP_breg*
+  LOC_OP_REG,          // DW_OP_reg0..DW_OP_reg31, but not DW_OP_regx
+  LOC_OP_BREG,         // DW_OP_breg0..DW_OP_breg31, but not DW_OP_bregx
   LOC_OP_FBREG         // DW_OP_fbreg
 } location_op_kind;
 
-// Returns the kind of op.
+// Returns the kind of op.  For LOC_OP_REG and LOC_OP_BREG, callers compute
+// the register number as op - DW_OP_reg0 or op - DW_OP_breg0, which is in
+// 0..31 only because DW_OP_regx and DW_OP_bregx are excluded.
 static __inline__ location_op_kind location_op_kind_of(enum dwarf_location_atom op) {
   if ((op >= DW_OP_reg0) && (op <= DW_OP_reg31)) {
     return LOC_OP_REG;
