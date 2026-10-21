@@ -53,6 +53,8 @@ BUNEW=binutils-$BUNEWVER
 BINUTILS_FILES="dwarf.c dwarf.h readelf.c elfcomm.c elfcomm.h bucomm.h demanguse.h"
 
 BINUTILS_TMP=${BINUTILS_TMP:-$HOME/tmp/binutils}
+# Make the directory absolute, because the script changes directory.
+BINUTILS_TMP=$(realpath -m "$BINUTILS_TMP")
 PATCHDIR=$BINUTILS_TMP/$BUOLDVER-$BUNEWVER
 for f in "$PATCHDIR/include.patch" "$BINUTILS_TMP/$BUOLD/.extracted" "$BINUTILS_TMP/$BUNEW/.extracted"; do
   if [ ! -f "$f" ]; then
@@ -60,6 +62,21 @@ for f in "$PATCHDIR/include.patch" "$BINUTILS_TMP/$BUOLD/.extracted" "$BINUTILS_
     exit 1
   fi
 done
+# Check before changing any file, so that a failure does not leave a partial
+# merge.
+missing=
+for f in $BINUTILS_FILES; do
+  for dir in "$BINUTILS_TMP/$BUOLD/binutils" "$BINUTILS_TMP/$BUNEW/binutils"; do
+    if [ ! -f "$dir/$f" ]; then
+      missing+="  $dir/$f"$'\n'
+    fi
+  done
+done
+if [ -n "$missing" ]; then
+  echo "$0: these files do not exist; merge them by hand, and update BINUTILS_FILES:" >&2
+  echo -n "$missing" >&2
+  exit 1
+fi
 
 cd "$FJALARDIR/valgrind/fjalar"
 
@@ -90,7 +107,7 @@ SKIPFILTER='/can.t find file to patch/ {skip=1}
   /^(checking|patching) file / {file=$0; next}
   !skip && !/hunks? ignored/ {if (file != "") print file; file=""; print}
   /Skipping patch\./ {skip=0; file=""}'
-patch_args=(-p1 -lu -f)
+patch_args=(-p1 -lu -f --no-backup-if-mismatch)
 if [ "$DRY_RUN" = true ]; then
   patch_args+=(--dry-run)
 else
@@ -133,6 +150,6 @@ done
 
 if [ "$DRY_RUN" = false ]; then
   echo "Find the conflicts with:  grep -rln '^<<<<<<<' $FJALARDIR/valgrind/fjalar"
-  echo "To undo the merge:  git -C $FJALARDIR checkout -- valgrind/fjalar &&"
+  echo "To undo the merge:  git -C $FJALARDIR/valgrind/fjalar checkout -- $BINUTILS_FILES include libiberty &&"
   echo "  find $FJALARDIR/valgrind/fjalar -name '*.pre-merge' -delete"
 fi
