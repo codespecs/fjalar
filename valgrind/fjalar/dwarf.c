@@ -3741,6 +3741,10 @@ read_and_display_attr_value (unsigned long           attribute,
     case DW_AT_GNU_call_site_target:
     case DW_AT_call_target_clobbered:
     case DW_AT_GNU_call_site_target_clobbered:
+      // start of Fjalar code
+      if (ok_to_harvest && attribute == DW_AT_location)
+	harvest_formal_param_has_location (entry);
+      // end of Fjalar code
       if (is_location_list_form (attribute, form, dwarf_version))  // Fjalar
 	{
 	  if (attribute != DW_AT_rnglists_base
