@@ -17,6 +17,8 @@ and C++.  This document serves as a guide to building tools on top of
       the Fjalar framework.
 
 This version of the manual describes Fjalar version 1.3.
+(It should be noted that as of 10/1/2026 the current version of Fjalar is 5.9.0 and we have
+not kept this document completely up to date.)
 
 <h2><a name="getting-started">Getting Started</a></h2>
 
@@ -53,16 +55,12 @@ have un-tarred the Fjalar package (executables shown in bold):
 		    <ul>
 		      <li><b>valgrind</b>
 		    </ul>
-		  <li>lib/
+		  <li>libexec/
 		    <ul>
 		      <li>valgrind/
 			<ul>
-			  <li>amd64-linux/
-			  <ul>
-			    <li>fjalar
-			    <li>vgpreload_fjalar.so
-			    <li>vgpreload_core.so
-			  </ul>
+			  <li><b>fjalar-amd64-linux</b>
+			  <li>vgpreload_fjalar-amd64-linux.so
 			</ul>
 		    </ul>
 		</ul>
@@ -200,7 +198,7 @@ program to analyze).  Use <tt>--help</tt> as one of your arguments to
 view a list of command-line options.
 
 <p>In order for Fjalar to work, the target program must be compiled
-with DWARF2 debugging information (on an x86-64/Linux system).  Look at
+with DWARF2 (or DWARF3 or DWARF4) debugging information (on an x86-64/Linux system).  Look at
 <tt>basic-tool-test.c</tt> for a simple target program that exercises
 Fjalar's function entrance/exit tracking and array bounds checking
 features.  First, compile it:</p>
@@ -244,13 +242,10 @@ order to debug it:
 
 <ol>
 
-      <li>First start <tt>gdb</tt> with
-	<tt>valgrind-3/valgrind/inst/lib/valgrind/amd64-linux/fjalar</tt> as the
-	target program (this is a bit counter-intuitive, but you need to run
-	<tt>gdb</tt> on <tt>fjalar</tt> and NOT on <tt>valgrind</tt>).
-
-      <li>Now use the <tt>at</tt> command to attach <tt>gdb</tt> to
-      the process that's stuck in the infinite loop.  You can see its
+      <li>In a second bash shell, with the CWD set to the valgrind/fjalar
+      subdirectory of the version of Fjalar you wish to debug, start <tt>gdb</tt> with
+      the '-p process-id' option to attach it to your test case
+      that is stuck in the infinite loop.  You can see its
       process ID enclosed in "<tt>==</tt>" next to the start-up banner
       (e.g., <tt>==3839== ...</tt>), or simply <tt>ps</tt> for it.
 
@@ -453,9 +448,8 @@ Ignore static variables but still trace global variables.
      <br><dt><span class="option">--with-gdb</span><dd>
        This pauses the program's execution in an infinite loop during
        initialization.  You can attach a debugger such as
-       <code>gdb</code> to the running process by running gdb on <span
-       class="file">inst/lib/valgrind/amd64-linux/fjalar</span> and
-       using the <code>attach</code> command (See <a
+       <code>gdb</code> to the running process by running gdb with the
+       '-p' option to attach it to your test program. (See <a
        href="#debugging">Debugging Fjalar tools</a> for more details.)
 
      <br><dt><span class="option">--fjalar-debug</span><dd> Enable
