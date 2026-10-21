@@ -124,13 +124,12 @@ directory and place all of your tool's source files in there.
 <li>If you've configured everything properly, you should be able to do
 <tt>make</tt> and <tt>make install</tt> in the
 <tt>valgrind-3/valgrind/fjalar</tt> directory to compile Fjalar and
-your tool.  Running <tt>make</tt> creates two shared libraries
-  			    <tt>vgpreload_fjalar.so</tt> and
-			    <tt>vgpreload_core.so</tt>, as well as a
-special <tt>fjalar</tt> file, which are
-dynamically-loaded by Valgrind during execution.  Running <tt>make
-install</tt> moves those shared libraries into
-<tt>valgrind-3/valgrind/inst/lib/valgrind</tt>.
+your tool.  Running <tt>make</tt> creates the executable
+<tt>fjalar-amd64-linux</tt>, which Valgrind runs as the tool, and the
+shared library <tt>vgpreload_fjalar-amd64-linux.so</tt>, which Valgrind
+preloads into the program being analyzed.  Running <tt>make
+install</tt> copies them into
+<tt>valgrind-3/valgrind/inst/libexec/valgrind</tt>.
 
 </ol>
 
