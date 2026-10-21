@@ -1272,7 +1272,7 @@ running the tests, this command lists the untracked files in test
 directories that neither file matches:
 
 @example
-git -C $INV/fjalar ls-files --others --exclude-standard -- '*tests/*'
+git -C $INV/fjalar ls-files --others --exclude-per-directory=.gitignore -- '*tests/*'
 @end example
 
 @noindent
