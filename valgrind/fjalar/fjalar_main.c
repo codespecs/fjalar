@@ -120,12 +120,9 @@ const HChar* executable_filename = 0;
 */
 
 #if defined(VGA_amd64)
-// One more than the largest DWARF register number that Fjalar can
-// read.
-#define FJALAR_NUM_DWARF_REGS 16
 // AMD64 Dwarf to Architecture mapping is (thankfully) specified
 // in the AMD64 ABI (http://x86-64.org/documentation/abi.pdf)
-static const Int dwarf_reg_guest_offsets[FJALAR_NUM_DWARF_REGS] = {
+static const Int dwarf_reg_guest_offsets[] = {
   offsetof(VexGuestArchState, guest_RAX),
   offsetof(VexGuestArchState, guest_RDX),
   offsetof(VexGuestArchState, guest_RCX),
@@ -144,8 +141,7 @@ static const Int dwarf_reg_guest_offsets[FJALAR_NUM_DWARF_REGS] = {
   offsetof(VexGuestArchState, guest_R15),
 };
 #else
-#define FJALAR_NUM_DWARF_REGS 9
-static const Int dwarf_reg_guest_offsets[FJALAR_NUM_DWARF_REGS] = {
+static const Int dwarf_reg_guest_offsets[] = {
   offsetof(VexGuestArchState, guest_EAX),
   offsetof(VexGuestArchState, guest_ECX),
   offsetof(VexGuestArchState, guest_EDX),
@@ -157,6 +153,8 @@ static const Int dwarf_reg_guest_offsets[FJALAR_NUM_DWARF_REGS] = {
   offsetof(VexGuestArchState, guest_EIP),
 };
 #endif
+STATIC_ASSERT(sizeof(dwarf_reg_guest_offsets) / sizeof(dwarf_reg_guest_offsets[0])
+              == FJALAR_NUM_DWARF_REGS);
 
 Bool dwarf_reg_is_readable(UInt regNum)
 {
@@ -853,13 +851,11 @@ void exit_function(FunctionEntry* f)
   // now have shadow V-bits for the FPU stack.
 
 #if defined(VGA_amd64)
-  // XMM registers are represented as a 128-bit integer
-  // (Actually an array of 4 32-bit integers), so reinterpret
-  // cast it as a double.
-  // TODO: FPUshadow holds only the low 32 bits of XMM0's shadow, so
-  // the V bits of bytes 4-7 of a double return value are always
-  // "defined".  Also use element [1] of the shadow.
-  FPUshadow = (VG_(get_shadow_XMM_N)(currentTID, 0))[0];
+  // VG_(get_XMM_N) and VG_(get_shadow_XMM_N) return the whole 256-bit
+  // YMM register, as an array of 8 32-bit integers.  A double occupies
+  // the low 2 of them, so reinterpret cast the register as a double
+  // and its shadow as a 64-bit integer.
+  FPUshadow = *(ULong *)VG_(get_shadow_XMM_N)(currentTID, 0);
   fpuReturnVal = *(double *)VG_(get_XMM_N)(currentTID, 0);
   //RUDD DEBUG
   /* for(i=0 ; i < 4; i++) { */
