@@ -139,13 +139,25 @@ static void anchorTag_DC ( DCEnv* dce, IRAtom* vatom ) {
    stmt_DC('V', dce, IRStmt_Dirty(di));
 }
 
-// Returns true if computing a tag may merge tags with a clean call, so
-// that a discarded tag needs anchorTag_DC to preserve the merges.  Under
-// --dyncomp-interactions=none and comparisons, no clean call merges tags
-// (comparisons merge with a dirty call; see mergeTagsReturn0_DC), so an
+// Returns true if computing a tag may merge tags with a clean call whose
+// result can be discarded, so that a discarded tag needs anchorTag_DC to
+// preserve the merges.  Under --dyncomp-interactions=none and
+// comparisons, the only such clean call is the merge in a load of more
+// than 64 bits, which expr2tags_LDle_DC anchors itself.  (Comparisons
+// merge with a dirty call; see mergeTagsReturn0_DC.  The intermediate
+// merges in handleCCall_DC feed a dirty call.)  So in those modes, an
 // anchor is not worth the cost of a helper call.
 static Bool cleanCallsMergeTags_DC ( void ) {
    return !dyncomp_dataflow_only_mode && !dyncomp_dataflow_comparisons_mode;
+}
+
+// Anchors the tag of atom, when that might preserve a tag merge.  A
+// constant involves no tag merges, so it needs no anchor.
+static void anchorAtomTag_DC ( DCEnv* dce, IRAtom* atom ) {
+   tl_assert(isOriginalAtom_DC(dce, atom));
+   if (atom->tag != Iex_Const && cleanCallsMergeTags_DC()) {
+      anchorTag_DC(dce, expr2tags_DC(dce, atom));
+   }
 }
 
 // A PUT stores a value into the guest state
@@ -2084,11 +2096,8 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
    case Iop_PopCount64:                // only used by ppc
       // The result discards vatom, so anchor it to preserve the tag
       // merges that computed it, such as the merge of a and b in
-      // 'ctz(a + b)'.  A constant operand involves no tag merges, so
-      // it needs no anchor.
-      if (atom->tag != Iex_Const && cleanCallsMergeTags_DC()) {
-         anchorTag_DC(dce, vatom);
-      }
+      // 'ctz(a + b)'.
+      anchorAtomTag_DC(dce, atom);
       return IRExpr_Const(IRConst_UWord(0));
 
    // ----------------------------------------------------------
@@ -2440,7 +2449,7 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 static
 IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 {
-   IRAtom *v64hi, *v64lo;
+   IRAtom *v64hi, *v64lo, *merged;
    //   IRDirty* di;
    //   IRTemp   datatag;
 
@@ -2449,11 +2458,8 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 
    /* Compute the tag for the effective address, and throw the result
       away, but anchor it so that Valgrind doesn't optimize the merges
-      away.  A constant address involves no tag merges, so it needs no
-      anchor. */
-   if (addr->tag != Iex_Const && cleanCallsMergeTags_DC()) {
-      anchorTag_DC(dce, expr2tags_DC(dce, addr));
-   }
+      away. */
+   anchorAtomTag_DC(dce, addr);
 
    switch (shadowTypeV(ty)) {
       case Ity_I8:
@@ -2492,11 +2498,18 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
          // On second thought, let's just go ahead and do it for now:
 
          // Clean call version:
-         return mkIRExprCCall (Ity_Word,
-                               2 /*Int regparms*/,
-                               "MC_(helperc_MERGE_TAGS)",
-                               &MC_(helperc_MERGE_TAGS),
-                               mkIRExprVec_2( v64lo, v64hi ));
+         merged = assignNew_DC(dce, Ity_Word,
+                               mkIRExprCCall (Ity_Word,
+                                              2 /*Int regparms*/,
+                                              "MC_(helperc_MERGE_TAGS)",
+                                              &MC_(helperc_MERGE_TAGS),
+                                              mkIRExprVec_2( v64lo, v64hi )));
+         // When cleanCallsMergeTags_DC() is false, callers do not anchor
+         // a tag that they discard, so anchor the merge here.
+         if (!cleanCallsMergeTags_DC()) {
+            anchorTag_DC(dce, merged);
+         }
+         return merged;
 
 
       default:
@@ -2508,29 +2521,15 @@ static
 IRAtom* expr2tags_ITE_DC ( DCEnv* dce,
                            IRAtom* cond, IRAtom* iftrue, IRAtom* iffalse )
 {
-   IRAtom *vbitsC, *vbits0, *vbits1;
-   IRDirty* di;
-   IRTemp   datatag;
+   IRAtom *vbits0, *vbits1;
 
    tl_assert(isOriginalAtom_DC(dce, cond));
    tl_assert(isOriginalAtom_DC(dce, iftrue));
    tl_assert(isOriginalAtom_DC(dce, iffalse));
 
-   // Generate a temp. 'datatag', which is the result of a NOP dirty
-   // call on vbitsC, in order to 'anchor' any possible tag merge
-   // clean helper calls in the expression which produced 'cond'.
-   // This prevents the IR optimizer from deleting all of these
-   // interactions from the parallel tag IR tree (or so we hope)
-   vbitsC = expr2tags_DC(dce, cond);
-   datatag = newTemp(dce->mce, Ity_Word, DC);
-   di = unsafeIRDirty_1_N(datatag,
-                          1,
-                          "MC_(helperc_TAG_NOP)",
-                          &MC_(helperc_TAG_NOP),
-                          mkIRExprVec_1( vbitsC ));
-
-   setHelperAnns_DC( dce, di );
-   stmt_DC('V', dce, IRStmt_Dirty(di) );
+   // The result discards the tag of 'cond', so anchor it to preserve
+   // the tag merges in the expression that produced 'cond'.
+   anchorAtomTag_DC(dce, cond);
 
    // Do the real work of generating tag IR trees for expr0 and exprX
    // and then making a parallel Mux which contains these two trees
@@ -2544,30 +2543,11 @@ IRAtom* expr2tags_ITE_DC ( DCEnv* dce,
    return assignNew_DC(dce, Ity_Word, IRExpr_ITE(cond, vbits1, vbits0));
 }
 
-// (Very similar to expr2tags_ITE_DC)
-// Generate and return temp 'datatag', which is the result of a NOP
-// dirty call on the tag of 'guard', in order to 'anchor' any possible
-// tag merge clean helper calls in the expression which produced
-// 'guard'.  This prevents the IR optimizer from deleting all of these
-// interactions from the parallel tag IR tree (or so we hope)
-IRAtom* do_shadow_cond_exit_DC (DCEnv* dce, IRExpr* guard)
+// Anchor the tag of 'guard', to preserve the tag merges in the
+// expression that produced 'guard'.
+void do_shadow_cond_exit_DC (DCEnv* dce, IRExpr* guard)
 {
-   IRAtom *guardtag;
-   IRDirty* di;
-   IRTemp   datatag;
-
-   guardtag = expr2tags_DC(dce, guard);
-   datatag = newTemp(dce->mce, Ity_Word, DC);
-   di = unsafeIRDirty_1_N(datatag,
-                          1,
-                          "MC_(helperc_TAG_NOP)",
-                          &MC_(helperc_TAG_NOP),
-                          mkIRExprVec_1( guardtag ));
-
-   setHelperAnns_DC( dce, di );
-   stmt_DC('V', dce, IRStmt_Dirty(di) );
-
-   return mkexpr(datatag);
+   anchorAtomTag_DC(dce, guard);
 }
 
 /* --------- This is the main expression-handling function. --------- */
@@ -2698,11 +2678,9 @@ void do_shadow_STle_DC ( DCEnv* dce,
 {
    IROp     mkAdd;
    IRType   ty, tyAddr;
-   IRDirty  *di, *diLo64, *diHi64, *diAddr;
+   IRDirty  *di, *diLo64, *diHi64;
    IRAtom   *addrHi64;
    IRAtom   *vdata;
-   IRAtom   *vaddr;
-   IRTemp   addrTag;
    void*    helper = NULL;
    const HChar* hname = NULL;
    Int      pcOffset = -1;
@@ -2738,17 +2716,10 @@ void do_shadow_STle_DC ( DCEnv* dce,
    tl_assert(isShadowAtom_DC(dce,vdata));
 
    /* Compute the tag for the effective address, and throw the result
-      away, but anchor it to a dirty call so that Valgrind doesn't
-      optimize the merges away. */
+      away, but anchor it so that Valgrind doesn't optimize the merges
+      away. */
    tl_assert(addr);
-   tl_assert(isOriginalAtom_DC(dce, addr));
-   vaddr = expr2tags_DC(dce, addr);
-   tl_assert(isShadowAtom_DC(dce, vaddr));
-   addrTag = newTemp(dce->mce, Ity_Word, DC);
-   diAddr = unsafeIRDirty_1_N(addrTag, 1, "MC_(helperc_TAG_NOP)",
-			      &MC_(helperc_TAG_NOP), mkIRExprVec_1(vaddr));
-   setHelperAnns_DC(dce, diAddr);
-   stmt_DC('V', dce, IRStmt_Dirty(diAddr));
+   anchorAtomTag_DC(dce, addr);
 
    // Get the byte size of the REAL data (and not our tag vdata, which
    // is ALWAYS word-sized).  This is very different from Memcheck's
