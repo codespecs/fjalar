@@ -3,7 +3,9 @@
 # This script checks that a merge by merge-valgrind.sh kept each of Fjalar's
 # changes to upstream Valgrind; see doc/valgrind-merge.texinfo.  A merge can
 # lose a change without reporting a conflict.
+#
 # Usage: compare-fjalar-changes.sh
+#
 # Run it after resolving the conflicts, in the Fjalar tree that contains this
 # script.  It compares Fjalar's changes to the base Valgrind before the merge
 # (from refs/valgrind-merge/base to refs/valgrind-merge/fjalar) with Fjalar's
