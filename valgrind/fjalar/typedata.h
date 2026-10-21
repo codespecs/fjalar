@@ -325,8 +325,6 @@ typedef struct
   unsigned long type_ID;
   dwarf_entry* type_ptr;
 
-  enum dwarf_location_atom loc_atom; //Location Expression.
-
   dwarf_location dwarf_stack[MAX_DWARF_OPS];
   unsigned int dwarf_stack_size;
 

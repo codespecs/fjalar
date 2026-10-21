@@ -2503,8 +2503,19 @@ int determineFormalParametersStackByteSize(FunctionEntry* f)
        cur_node != NULL;
        cur_node = cur_node->next)
     {
-      int this_end = cur_node->var->byteOffset +
-        determineVariableByteSize(cur_node->var);
+      VariableEntry* var = cur_node->var;
+      int offset = var->byteOffset;
+      int this_end;
+      // A formal parameter whose location is DW_OP_breg k of the stack
+      // pointer has a byteOffset of 0 until visitVariableGroup evaluates
+      // the location.  It is at most k bytes above the frame base,
+      // because the stack pointer is at or below the frame base at
+      // function entrance.
+      if (var->location_expression_size == 1
+          && var->location_expression[0].atom == DW_OP_breg0 + DWARF_SP_REG) {
+        offset = MAX(offset, (int)var->location_expression[0].atom_offset);
+      }
+      this_end = offset + determineVariableByteSize(var);
       totalByteSize = MAX(totalByteSize, this_end);
     }
   // PG comment said "Just to be safe, round UP to the next multiple
@@ -2578,10 +2589,13 @@ static void recordEntryRegs(FunctionEntry* f, formal_parameter* paramPtr)
   }
 }
 
-// Returns true if the formal parameter's location is a memory location,
-// whose address visitVariableGroup computes:  the location contains
-// DW_OP_fbreg, DW_OP_breg*, or DW_OP_plus_uconst.
-static Bool isMemoryLocation(formal_parameter* paramPtr)
+// Returns true if the formal parameter's location contains DW_OP_fbreg,
+// DW_OP_breg*, or DW_OP_plus_uconst.  Fjalar treats such a location as
+// the address of the formal parameter, which visitVariableGroup
+// computes.  The location might not be an address, because
+// decode_location_expression does not record some operations, such as
+// DW_OP_stack_value.
+static Bool locationHasAddressOp(formal_parameter* paramPtr)
 {
   unsigned int i;
   for (i = 0; i < paramPtr->dwarf_stack_size; i++) {
@@ -2651,15 +2665,17 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     varPtr->location_expression_size = paramPtr->dwarf_stack_size;
   }
 
-  if (isMemoryLocation(paramPtr)) {
+  if (locationHasAddressOp(paramPtr)) {
     varPtr->validLoc = paramPtr->valid_loc;
     varPtr->locationType = FP_OFFSET_LOCATION;
-    // For any other location, visitVariableGroup computes byteOffset
-    // when it evaluates the location.
     if (paramPtr->dwarf_stack_size == 1
-        && paramPtr->dwarf_stack[0].atom == DW_OP_fbreg) {
+        && location_op_kind_of(paramPtr->dwarf_stack[0].atom) == LOC_OP_FBREG) {
       varPtr->byteOffset = paramPtr->dwarf_stack[0].atom_offset;
     }
+    // Otherwise, byteOffset is 0 until visitVariableGroup evaluates the
+    // location and finds the formal parameter in the copied stack.  The
+    // XML output and determineFormalParametersStackByteSize, which run
+    // earlier, see 0.
     recordEntryRegs(f, paramPtr);
 
     FJALAR_DPRINTF(" location_type: %u, byteOffset: %x\n", varPtr->locationType, (unsigned int)varPtr->byteOffset);
