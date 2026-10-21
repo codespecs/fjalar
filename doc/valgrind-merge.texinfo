@@ -16,7 +16,9 @@
 
 @titlepage
 @sp 10
-@center @titlefont{Merging newer versions of Valgrind into Fjalar}
+@center @titlefont{Merging newer versions}
+@sp 1
+@center @titlefont{of Valgrind into Fjalar}
 @sp 4
 @center @today{}
 @end titlepage
@@ -279,7 +281,8 @@ If you performed the last merge and saved the
 @example
 rm -rf $INV/valgrind-old
 mv $INV/valgrind-new $INV/valgrind-old
-git -C $INV/valgrind-old reset --hard && git -C $INV/valgrind-old clean -fdx
+git -C $INV/valgrind-old reset --hard \
+  && git -C $INV/valgrind-old clean -fdx
 @end example
 
 @noindent
@@ -291,7 +294,8 @@ repository, and the @command{git clean} command removes any build products.
 Otherwise, run the following commands.
 
 @example
-git clone -b $VOLDTAG --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-old
+git clone -b $VOLDTAG --depth 1 https://sourceware.org/git/valgrind.git \
+  $INV/valgrind-old
 @end example
 
 
@@ -302,7 +306,8 @@ Next, make the directory @file{valgrind-new} that contains a copy of the
 latest Valgrind source tree.
 
 @example
-git clone -b $VNEWTAG --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-new
+git clone -b $VNEWTAG --depth 1 https://sourceware.org/git/valgrind.git \
+  $INV/valgrind-new
 @end example
 
 @c For a  full repro of the current Valgrind source:
@@ -364,9 +369,11 @@ Write the files that Fjalar should have to a file @file{$INV/files-to-add.txt},
 one per line, and add them:
 
 @example
-tar -C $INV/valgrind-old -cf - --verbatim-files-from -T $INV/files-to-add.txt \
+tar -C $INV/valgrind-old -cf - --verbatim-files-from \
+    -T $INV/files-to-add.txt \
   | tar -C $INV/fjalar/valgrind -xf -
-sed 's|^|valgrind/|' $INV/files-to-add.txt | xargs -r -d '\n' git -C $INV/fjalar add -f --
+sed 's|^|valgrind/|' $INV/files-to-add.txt \
+  | xargs -r -d '\n' git -C $INV/fjalar add -f --
 @end example
 @end enumerate
 
@@ -438,8 +445,10 @@ These commands show what the Valgrind developers changed, in Coregrind
 and in Memcheck:
 
 @example
-git -C $INV/fjalar diff valgrind-merge/base valgrind-merge/new -- valgrind ':!valgrind/fjalar'
-git -C $INV/fjalar diff valgrind-merge/base valgrind-merge/new -- valgrind/fjalar
+git -C $INV/fjalar diff valgrind-merge/base valgrind-merge/new \
+  -- valgrind ':!valgrind/fjalar'
+git -C $INV/fjalar diff valgrind-merge/base valgrind-merge/new \
+  -- valgrind/fjalar
 @end example
 
 @noindent
@@ -575,7 +584,8 @@ this command shows, as a template for
 editing @file{fjalar/kvasir/dyncomp_translate.c} by hand:
 
 @example
-git -C $INV/fjalar diff valgrind-merge/base valgrind-merge/new -- valgrind/fjalar/mc_translate.c
+git -C $INV/fjalar diff valgrind-merge/base valgrind-merge/new \
+  -- valgrind/fjalar/mc_translate.c
 @end example
 
 One bit of confusion is that a portion of the original @file{mc_translate.c}
@@ -597,7 +607,8 @@ reflected. Most of the changes to the public VEX IR can be discovered
 by running the following command:
 
 @example
-git -C $INV/fjalar diff -b valgrind-merge/base valgrind-merge/new -- valgrind/VEX/pub/libvex_ir.h
+git -C $INV/fjalar diff -b valgrind-merge/base valgrind-merge/new \
+  -- valgrind/VEX/pub/libvex_ir.h
 @end example
 
 It is also worth noting that almost all the changes will be for machines
@@ -661,7 +672,8 @@ Here is a copy of the last few lines from the latest run of these tests (01/21/2
 running Valgrind 3.23 on a UW/CSE Rocky Linux (9.7) based system:
 
 @example
-== 809 tests, 0 stderr failures, 0 stdout failures, 2 stderrB failures, 16 stdoutB failures, 0 post failures ==
+== 809 tests, 0 stderr failures, 0 stdout failures, 2 stderrB failures,
+   16 stdoutB failures, 0 post failures ==
 gdbserver_tests/hginfo                   (stdoutB)
 gdbserver_tests/hgtls                    (stdoutB)
 gdbserver_tests/mcblocklistsearch        (stderrB)
@@ -696,7 +708,8 @@ Here is another example from the latest run of these tests (01/21/2026)
 running Valgrind 3.23 on a Ubuntu Linux (25.10) based system:
 
 @example
-== 895 tests, 9 stderr failures, 2 stdout failures, 1 stderrB failure, 2 stdoutB failures, 0 post failures ==
+== 895 tests, 9 stderr failures, 2 stdout failures, 1 stderrB failure,
+   2 stdoutB failures, 0 post failures ==
 gdbserver_tests/mcinfcallWSRU            (stderrB)
 gdbserver_tests/nlcontrolc               (stdoutB)
 gdbserver_tests/nlvgdbsigqueue           (stdoutB)
@@ -1225,7 +1238,8 @@ Before we test Fjalar, it is a good idea to verify we haven't
 broken the underlying Valgrind:
 
 @example
-make -C $INV/fjalar --no-print-directory test 2>&1 | tee $INV/fjalar/test-after.log
+make -C $INV/fjalar --no-print-directory test 2>&1 \
+  | tee $INV/fjalar/test-after.log
 @end example
 
 @noindent
@@ -1315,9 +1329,11 @@ to the repository.
 # commit where the merge branched from codespecs/fjalar works even if
 # origin is a fork.
 git -C $INV/fjalar fetch https://github.com/codespecs/fjalar.git master
-git -C $INV/fjalar diff -b "$(git -C $INV/fjalar merge-base FETCH_HEAD HEAD)" | more
+git -C $INV/fjalar diff -b \
+  "$(git -C $INV/fjalar merge-base FETCH_HEAD HEAD)" | more
 # If looks OK, proceed with commit.
-git -C $INV/fjalar commit -a -m "Valgrind merge from $@{VOLDTAG@} to $@{VNEWTAG@}"
+git -C $INV/fjalar commit -a \
+  -m "Valgrind merge from $@{VOLDTAG@} to $@{VNEWTAG@}"
 @end example
 
 Note: We recommend saving @file{$INV/coregrind-Fjalar.diff} and
