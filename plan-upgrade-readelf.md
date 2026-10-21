@@ -234,9 +234,12 @@ small.
    `grep -rln '^<<<<<<<' valgrind/fjalar`.  Unlike `patch` with fuzz,
    `git merge-file` never applies a hunk at the wrong location.  The
    script copies each merged file to a `.pre-merge` file, for a visual
-   merge tool, e.g.
-   `meld ~/tmp/binutils/binutils-$BUNEWVER/binutils/dwarf.c dwarf.c dwarf.c.pre-merge`
-   (in `valgrind/fjalar/`).
+   merge tool, e.g., in `valgrind/fjalar/`:
+
+   ```sh
+   meld ${BINUTILS_TMP:-~/tmp/binutils}/binutils-$BUNEWVER/binutils/dwarf.c \
+     dwarf.c dwarf.c.pre-merge
+   ```
 
 6. **Resolve conflicts** (expected mostly in `dwarf.c` and `readelf.c`),
    following "Hints to modifying dwarf.c and readelf.c":
@@ -285,8 +288,9 @@ small.
      expression left inside it.
    - Before building, confirm that no conflict markers remain
      (`grep -rn '^\(<<<<<<<\|=======\|>>>>>>>\|||||||\)' .` prints nothing).
-     Remove any `.rej` or `.orig` files that `patch` created, and delete
-     the `.pre-merge` copies once the merge is complete.
+     Delete the `.pre-merge` copies once the merge is complete.
+     `.gitignore` hides them from `git status`; find them with
+     `find -name '*.pre-merge'`.
 
 7. **Build and fix warnings/errors.**  `make -C $FJALAR build`, then
    iterate with `make -C $FJALAR/valgrind/fjalar`.  Fix "implicit
