@@ -22,7 +22,7 @@ valgrind/conftest.err
 valgrind/include/vgversion_dist.h
 
 # Ignore files generated during document generation
-valgrind/fjalar/notes/design-doc/fjalar.log
+valgrind/fjalar/notes/design-doc/fjalar.aux
 valgrind/fjalar/notes/design-doc/fjalar.pdf
 
 # Ignore generated assembly, object and shared library files
@@ -67,7 +67,6 @@ valgrind-merge.fns
 valgrind-merge.html
 valgrind-merge.info
 valgrind-merge.ky
-valgrind-merge.log
 valgrind-merge.pdf
 valgrind-merge.pg
 valgrind-merge.toc
