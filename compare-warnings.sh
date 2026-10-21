@@ -43,10 +43,22 @@ for f in "$1" "$2"; do
   fi
 done
 
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+
 # Print the warnings in build log $1, without line and column numbers.
 warnings_without_location() {
-  { grep -E "^($files_re):[0-9]+:[0-9]+: warning" "$1" || true; } \
+  # grep exits with status 1 if the log has no warnings, and with status 2
+  # if it cannot read the log.
+  { grep -E "^($files_re):[0-9]+:[0-9]+: warning" "$1" || [ $? -eq 1 ]; } \
     | sed -E 's/:[0-9]+:[0-9]+:/:/' | LC_ALL=C sort
 }
 
-diff <(warnings_without_location "$1") <(warnings_without_location "$2")
+# The lists are written to files, rather than passed to diff by process
+# substitution, so that a failure to read a log stops the script.
+if ! warnings_without_location "$1" > "$tmpdir/before" \
+    || ! warnings_without_location "$2" > "$tmpdir/after"; then
+  echo "$0: cannot read the build logs" >&2
+  exit 2
+fi
+diff "$tmpdir/before" "$tmpdir/after"
