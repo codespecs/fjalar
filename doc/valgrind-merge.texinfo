@@ -444,7 +444,7 @@ git -C $INV/fjalar diff valgrind-merge/base valgrind-merge/new -- valgrind/fjala
 @noindent
 Before it merges, the script writes Fjalar's changes to the base Valgrind
 to @file{$INV/coregrind-Fjalar.diff} and @file{$INV/memcheck-Fjalar.diff}.
-You can use them to check that the merge kept each of Fjalar's changes.
+They are a reference while you resolve the conflicts.
 
 The merge does not change Fjalar's build file
 @file{valgrind/fjalar/Makefile.am}, because @code{valgrind-merge/base}
@@ -498,6 +498,26 @@ command produces no output:
 @example
 git -C $INV/fjalar diff --name-only --diff-filter=U
 @end example
+
+A merge can lose one of Fjalar's changes without reporting a conflict, and
+so can a conflict resolution.  This command checks that the merge kept
+each of Fjalar's changes:
+
+@example
+$INV/fjalar/compare-fjalar-changes.sh
+@end example
+
+@noindent
+It compares Fjalar's changes to the base Valgrind release before the merge
+with Fjalar's staged changes to the target Valgrind release, and prints
+the differences between them as a diff of the two diffs.  A line that
+starts with @samp{-} followed by @samp{+} or @samp{-} is part of a change
+that was lost or altered, and a line that starts with @samp{+} followed by
+@samp{+} or @samp{-} is part of a change that was added.  Review each
+difference.  Some are expected:  a change that the Valgrind developers
+also made is no longer one of Fjalar's changes, and a change that you
+adapted to the Valgrind developers' changes differs.  Run the command again
+after you change a file and stage it.
 
 A file that was removed upstream but that has Fjalar changes is not
 removed; decide whether to remove it with @command{git rm}.  The Valgrind
@@ -576,7 +596,7 @@ reflected. Most of the changes to the public VEX IR can be discovered
 by running the following command:
 
 @example
-diff -b $INV/valgrind-old/VEX/pub/libvex_ir.h $INV/valgrind-new/VEX/pub/libvex_ir.h
+git -C $INV/fjalar diff -b valgrind-merge/base valgrind-merge/new -- valgrind/VEX/pub/libvex_ir.h
 @end example
 
 It is also worth noting that almost all the changes will be for machines
