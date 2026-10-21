@@ -16,7 +16,9 @@
 
 @titlepage
 @sp 10
-@center @titlefont{Merging newer versions of Valgrind into Fjalar}
+@center @titlefont{Merging newer versions}
+@sp 1
+@center @titlefont{of Valgrind into Fjalar}
 @sp 4
 @center @today{}
 @end titlepage
@@ -243,9 +245,9 @@ git -C $INV/fjalar ls-files --others --exclude-standard
 
 Execute the following Git command:
 
-@example
+@smallexample
 git ls-remote --tags --refs https://sourceware.org/git/valgrind.git | grep -v svn | sort -k2V
-@end example
+@end smallexample
 
 @noindent
 The output will list the tags of the most recent releases of Valgrind.  It will
@@ -278,11 +280,11 @@ source tree that was used the last time a Valgrind merge was performed.
 If you performed the last merge and saved the
 @file{valgrind-old} and @file{valgrind-new} directories, then just run:
 
-@example
+@smallexample
 rm -rf $INV/valgrind-old
 mv $INV/valgrind-new $INV/valgrind-old
 git -C $INV/valgrind-old reset --hard && git -C $INV/valgrind-old clean -fdx
-@end example
+@end smallexample
 
 @noindent
 The @command{git reset} command discards any changes to files in the
@@ -292,9 +294,9 @@ repository, and the @command{git clean} command removes any build products.
 
 Otherwise, run the following commands.
 
-@example
+@smallexample
 git clone -b $VOLDTAG --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-old
-@end example
+@end smallexample
 
 
 @node Obtain a copy of the target Valgrind source tree
@@ -303,9 +305,9 @@ git clone -b $VOLDTAG --depth 1 https://sourceware.org/git/valgrind.git $INV/val
 Next, make the directory @file{valgrind-new} that contains a copy of the
 latest Valgrind source tree.
 
-@example
+@smallexample
 git clone -b $VNEWTAG --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-new
-@end example
+@end smallexample
 
 @c For a  full repro of the current Valgrind source:
 @c git clone https://sourceware.org/git/valgrind.git valgrind-git
@@ -579,9 +581,9 @@ makes heavy use of the VEX IR, so any changes in it need to be
 reflected. Most of the changes to the public VEX IR can be discovered
 by running the following command:
 
-@example
+@smallexample
 diff -b $INV/valgrind-old/VEX/pub/libvex_ir.h $INV/valgrind-new/VEX/pub/libvex_ir.h
-@end example
+@end smallexample
 
 It is also worth noting that almost all the changes will be for machines
 that we do not support.
@@ -646,7 +648,7 @@ results will be at the end of the log file.  We will use these results in
 Here is a copy of the last few lines from the latest run of these tests (01/21/2026)
 running Valgrind 3.23 on a UW/CSE Rocky Linux (9.7) based system:
 
-@example
+@smallexample
 == 809 tests, 0 stderr failures, 0 stdout failures, 2 stderrB failures, 16 stdoutB failures, 0 post failures ==
 gdbserver_tests/hginfo                   (stdoutB)
 gdbserver_tests/hgtls                    (stdoutB)
@@ -671,7 +673,7 @@ gdbserver_tests/nlvgdbsigqueue           (stdoutB)
 ...checking header files and include directives
 Unknown directory 'inst'. Please update check_headers_and_includes
 make: *** [Makefile:1440: regtest] Error 1
-@end example
+@end smallexample
 
 (Note that the failure of all the gdbserver tests indicates that the system does not
 have the proper glibc-debuginfo installed.)
@@ -681,7 +683,7 @@ have the proper glibc-debuginfo installed.)
 Here is another example from the latest run of these tests (01/21/2026)
 running Valgrind 3.23 on a Ubuntu Linux (25.10) based system:
 
-@example
+@smallexample
 == 895 tests, 9 stderr failures, 2 stdout failures, 1 stderrB failure, 2 stdoutB failures, 0 post failures ==
 gdbserver_tests/mcinfcallWSRU            (stderrB)
 gdbserver_tests/nlcontrolc               (stdoutB)
@@ -702,7 +704,7 @@ none/tests/socket_close                  (stderr)
 ...checking header files and include directives
 Unknown directory 'inst'. Please update check_headers_and_includes
 make: *** [Makefile:1445: regtest] Error 1
-@end example
+@end smallexample
 
 As you can see, the results vary depending on the host system.  The important thing to verify
 is that the results are the same before and after the merge.
@@ -1125,9 +1127,9 @@ run the installed Fjalar under @file{valgrind/inst}, so without
 Before we test Fjalar, it is a good idea to verify we haven't
 broken the underlying Valgrind:
 
-@example
+@smallexample
 make -C $INV/fjalar --no-print-directory test 2>&1 | tee $INV/fjalar/test-after.log
-@end example
+@end smallexample
 
 @noindent
 While a few tests may not pass, the results at the end of
