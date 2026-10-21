@@ -762,13 +762,17 @@ to run the tests prior to the source update as we will use the
 current Fjalar sources.
 
 @example
-(set -o pipefail; make -C $INV/fjalar clean build 2>&1 | tee $INV/fjalar/build-before.log) \
+make -C $INV/fjalar build \
+  && make -C $INV/fjalar/valgrind/fjalar clean \
+  && (set -o pipefail; make -C $INV/fjalar/valgrind/fjalar 2>&1 | tee $INV/fjalar/build-before.log) \
   && make -C $INV/fjalar test 2>&1 | tee $INV/fjalar/test.log
 @end example
 
 @noindent
 @file{build-before.log} is for comparing compiler warnings before and
 after the merge (@pxref{Hints to modifying dwarf.c and readelf.c}).
+An incremental build prints no warnings for the files that it does not
+recompile, so the commands rebuild all of Fjalar.
 
 @noindent
 As noted in @ref{Get New Valgrind Regtest Baseline Results},

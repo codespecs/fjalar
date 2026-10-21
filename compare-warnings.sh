@@ -18,14 +18,18 @@
 #
 # Exit status: 0 if the warnings are the same, 1 if they differ, 2 on error.
 
-# Fail the whole script if any command fails, including within a pipeline.
-set -e
+# Exit with status 2 if any command fails, including within a pipeline or a
+# function.
+set -eE
 set -o pipefail
+trap 'exit 2' ERR
 
 # The compiler names Fjalar's files relative to valgrind/fjalar, so anchoring
 # the pattern at the start of the line excludes fjalar_dwarf.c and Valgrind
-# core's m_debuginfo/readelf.c.
-BINUTILS_FILES_RE='(readelf|dwarf|elfcomm|bucomm|demanguse)\.[ch]|include/[^:]*\.h|libiberty/dwarfnames\.c'
+# core's m_debuginfo/readelf.c.  Every file in include/ and libiberty/ comes
+# from Binutils.  A new Binutils-derived file at the top level of
+# valgrind/fjalar must be added both here and in valgrind/fjalar/fjalar.am.
+BINUTILS_FILES_RE='(readelf|dwarf|elfcomm|bucomm|demanguse)\.[ch]|include/[^:]*|libiberty/[^:]*'
 
 files_re='[^:]+'
 if [ "${1-}" = --binutils ]; then
@@ -45,8 +49,17 @@ done
 
 # Print the warnings in build log $1, without line and column numbers.
 warnings_without_location() {
-  { grep -E "^($files_re):[0-9]+:[0-9]+: warning" "$1" || true; } \
+  # grep exits with status 1 if there are no warnings, and 2 on error.
+  { grep -E "^($files_re):[0-9]+:[0-9]+: warning" "$1" || [ $? -eq 1 ]; } \
     | sed -E 's/:[0-9]+:[0-9]+:/:/' | LC_ALL=C sort
 }
 
-diff <(warnings_without_location "$1") <(warnings_without_location "$2")
+# Errors in a process substitution do not affect the script's exit status, so
+# use temporary files.
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+warnings_without_location "$1" > "$tmpdir/before"
+warnings_without_location "$2" > "$tmpdir/after"
+status=0
+diff "$tmpdir/before" "$tmpdir/after" || status=$?
+exit "$status"
