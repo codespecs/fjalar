@@ -762,13 +762,9 @@ to run the tests prior to the source update as we will use the
 current Fjalar sources.
 
 @example
-(set -o pipefail; make -C $INV/fjalar clean build 2>&1 | tee $INV/fjalar/build-before.log) \
-  && make -C $INV/fjalar test 2>&1 | tee $INV/fjalar/test.log
+cd $INV/fjalar
+make clean build && make test 2>&1 | tee test.log
 @end example
-
-@noindent
-@file{build-before.log} is for comparing compiler warnings before and
-after the merge (@pxref{Hints to modifying dwarf.c and readelf.c}).
 
 @noindent
 As noted in @ref{Get New Valgrind Regtest Baseline Results},
@@ -978,21 +974,6 @@ docker run --rm --pull=always $IMAGE:latest \
 @end example
 @end itemize
 
-After you have resolved the conflicts, check that no call of a Fjalar
-hook was lost or duplicated.  The hooks are the functions declared in
-@file{typedata.h}, @file{fjalar_dwarf.h}, @file{fjalar_include.h},
-@file{fjalar_main.h}, and @file{GenericHashtable.h}, which build Fjalar's
-DWARF entries, symbol tables, and line-number table.  This command
-prints each hook whose number of calls in @file{dwarf.c} or
-@file{readelf.c} changed, outside @code{#if 0} regions and comments:
-
-@example
-$INV/fjalar/check-hook-counts.sh
-@end example
-
-@noindent
-Explain each difference.  The script's header comment gives the details.
-
 After you have completed the source merge,
 update the ``@code{export BINUTILS_VERSION=}'' line in @file{fjalar/valgrind/REVISION}.
 Then proceed to @ref{Compiling and Testing}.
@@ -1041,19 +1022,7 @@ compiler warning options than Binutils.  Currently, this list is:
 @end example
 This can cause a very large number of warnings from Binutils code
 that has been merged into Valgrind.  Most are benign, but you will have to
-inspect them all.  To list the new ones, save the output of the build
-before the merge, and of a build after the merge that recompiles the
-Binutils-derived files, and compare them:
-
-@example
-make -C $INV/fjalar/valgrind/fjalar clean
-(set -o pipefail; make -C $INV/fjalar/valgrind/fjalar 2>&1 | tee $INV/fjalar/build-after.log)
-$INV/fjalar/compare-warnings.sh --binutils $INV/fjalar/build-before.log $INV/fjalar/build-after.log
-@end example
-
-@noindent
-(@ref{Get Current Valgrind Regtest Baseline Results} saves
-@file{build-before.log}.)  It is a good idea to modify the code to remove as
+inspect them all.  It is a good idea to modify the code to remove as
 many of these new warnings as possible to make subsequent merges easier.
 
 Programs written to run under the Valgrind tool must obey certain

@@ -143,9 +143,7 @@ Kvasir tests after each step.
      Fjalar's DWARF entries, see `fjalar_dwarf.c`/`typedata.c`) still run on
      every path, especially for DWARF 5 forms and any new `DW_FORM_*`,
      `DW_AT_*`, `DW_OP_*` handling.  Re-check the DWARF 3/4 and Rust
-     changes from #73/#76.  `$INV/fjalar/check-hook-counts.sh` reports each
-     hook whose number of calls in `dwarf.c` or `readelf.c` changed; explain
-     each difference.
+     changes from #73/#76.
    - Use the `*-binutils-vs-fjalar.diff` files as a checklist: a merge can
      lose a Fjalar change without reporting a conflict.
    - Delete the `.pre-merge` copies once the merge is complete.
@@ -153,9 +151,7 @@ Kvasir tests after each step.
 7. **Build and fix warnings/errors.**  `make -C $INV/fjalar build`, then
    iterate with `make -C valgrind/fjalar`.  Fix "implicit declaration" and
    "undefined reference" errors (missed `VG_()` wrappers).  Reduce new
-   warnings from Valgrind's stricter flags where practical;
-   `compare-warnings.sh --binutils` lists the warnings that are new since the
-   baseline build (see "Hints to modifying dwarf.c and readelf.c").
+   warnings from Valgrind's stricter flags where practical.
    Also check against the system `bfd.h` on both Rocky Linux and Ubuntu
    (the #63 workaround may need to change).
 
@@ -191,9 +187,8 @@ Kvasir tests after each step.
   handling) could make the merge produce many conflicts; this is the main
   reason for the stepwise fallback.
 - Silent loss of a Fjalar hook in a conflicted hunk would show up only as
-  missing variables in Kvasir output.  `check-hook-counts.sh` catches a lost
-  or duplicated call, but not a call that a merge moved onto the wrong path,
-  so the Kvasir regression tests are the essential check.
+  missing variables in Kvasir output, so the Kvasir regression tests are the
+  essential check.
 - The later Valgrind upgrade may enable additional warning flags, which will
   hit `readelf.c`/`dwarf.c` again.  Expect a second round of warning fixes
   there; it does not mean this merge was done wrong.
