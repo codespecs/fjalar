@@ -142,11 +142,11 @@ static void anchorTag_DC ( DCEnv* dce, IRAtom* vatom ) {
 // Returns true if computing a tag may merge tags with a clean call whose
 // result can be discarded, so that a discarded tag needs anchorTag_DC to
 // preserve the merges.  Under --dyncomp-interactions=none and
-// comparisons, the only such clean call is the merge in a load of more
-// than 64 bits, which expr2tags_LDle_DC anchors itself.  (Comparisons
-// merge with a dirty call; see mergeTagsReturn0_DC.  The intermediate
-// merges in handleCCall_DC feed a dirty call.)  So in those modes, an
-// anchor is not worth the cost of a helper call.
+// comparisons, no such clean call exists:  comparisons merge with a dirty
+// call (see mergeTagsReturn0_DC), the intermediate merges in
+// handleCCall_DC feed a dirty call, and a load merges no tags (see
+// loadIsInteraction_DC).  So in those modes, an anchor is not worth the
+// cost of a helper call.
 static Bool cleanCallsMergeTags_DC ( void ) {
    return !dyncomp_dataflow_only_mode && !dyncomp_dataflow_comparisons_mode;
 }
@@ -2395,6 +2395,16 @@ IRAtom* mkAddrPlusBias_DC ( DCEnv* dce, IRAtom* addr, UInt bias )
    return assignNew_DC(dce, tyAddr, binop(mkAdd, addr, eBias) );
 }
 
+// Returns true if a load is an interaction, which merges the tags of
+// the bytes it reads.  It is one only under --dyncomp-interactions=all.
+static
+Bool loadIsInteraction_DC ( void )
+{
+   return !(dyncomp_dataflow_only_mode
+            || dyncomp_dataflow_comparisons_mode
+            || dyncomp_units_mode);
+}
+
 /* Worker function; do not call directly. */
 static
 IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
@@ -2404,39 +2414,49 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
    IRDirty* di;
    IRTemp   datatag;
    IRAtom*  addrAct;
+   IRExpr** args;
+   Int      regparms;
 
    tl_assert(isOriginalAtom_DC(dce,addr));
 
-   /* Now cook up a call to the relevant helper function, to read the
-      tag for the given address. */
-   ty = shadowTypeV(ty);
-   switch (ty) {
-      case Ity_I64: helper = &MC_(helperc_LOAD_TAG_8);
-                    hname = "MC_(helperc_LOAD_TAG_8)";
-                    break;
-      case Ity_I32: helper = &MC_(helperc_LOAD_TAG_4);
-                    hname = "MC_(helperc_LOAD_TAG_4)";
-                    break;
-      case Ity_I16: helper = &MC_(helperc_LOAD_TAG_2);
-                    hname = "MC_(helperc_LOAD_TAG_2)";
-                    break;
-      case Ity_I8:  helper = &MC_(helperc_LOAD_TAG_1);
-                    hname = "MC_(helperc_LOAD_TAG_1)";
-                    break;
-      default:      ppIRType(ty);
-                    VG_(tool_panic)("dyncomp:do_shadow_LDle_DC");
-   }
-
    /* Generate the actual address into addrAct. */
    addrAct = mkAddrPlusBias_DC(dce, addr, bias);
+
+   /* Now cook up a call to the relevant helper function, to read the
+      tag for the given address. */
+   if (!loadIsInteraction_DC()) {
+      helper   = &MC_(helperc_LOAD_TAG_N);
+      hname    = "MC_(helperc_LOAD_TAG_N)";
+      regparms = 2;
+      args     = mkIRExprVec_2( addrAct, mkIRExpr_HWord(sizeofIRType(ty)) );
+   } else {
+      regparms = 1;
+      args     = mkIRExprVec_1( addrAct );
+      ty = shadowTypeV(ty);
+      switch (ty) {
+         case Ity_I64: helper = &MC_(helperc_LOAD_TAG_8);
+                       hname = "MC_(helperc_LOAD_TAG_8)";
+                       break;
+         case Ity_I32: helper = &MC_(helperc_LOAD_TAG_4);
+                       hname = "MC_(helperc_LOAD_TAG_4)";
+                       break;
+         case Ity_I16: helper = &MC_(helperc_LOAD_TAG_2);
+                       hname = "MC_(helperc_LOAD_TAG_2)";
+                       break;
+         case Ity_I8:  helper = &MC_(helperc_LOAD_TAG_1);
+                       hname = "MC_(helperc_LOAD_TAG_1)";
+                       break;
+         default:      ppIRType(ty);
+                       VG_(tool_panic)("dyncomp:do_shadow_LDle_DC");
+      }
+   }
 
    /* We need to have a place to park the tag we're just about to
       read. */
    //   datatag = newIRTemp(dce->bb->tyenv, tyS);
    datatag = newTemp(dce->mce, Ity_Word, DC); // PG - tags are word-sized
    di = unsafeIRDirty_1_N( datatag,
-                           1/*regparms*/, hname, helper,
-                           mkIRExprVec_1( addrAct ));
+                           regparms, hname, helper, args );
    setHelperAnns_DC( dce, di );
    stmt_DC('V',  dce, IRStmt_Dirty(di) );
 
@@ -2444,12 +2464,12 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 }
 
 // Returns the tag of a load of type ty from addr+bias.
-// For Ity_V256, only the low 16 bytes are read, so the tag ignores the
-// upper 16 bytes.
+// For Ity_V256, if a load is an interaction, only the low 16 bytes are
+// read, so the tag ignores the upper 16 bytes.
 static
 IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 {
-   IRAtom *v64hi, *v64lo, *merged;
+   IRAtom *v64hi, *v64lo;
    //   IRDirty* di;
    //   IRTemp   datatag;
 
@@ -2460,6 +2480,12 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
       away, but anchor it so that Valgrind doesn't optimize the merges
       away. */
    anchorAtomTag_DC(dce, addr);
+
+   // If a load is not an interaction, a load of any size does not merge
+   // the tags of the bytes it reads.
+   if (!loadIsInteraction_DC()) {
+      return expr2tags_LDle_WRK_DC(dce, ty, addr, bias);
+   }
 
    switch (shadowTypeV(ty)) {
       case Ity_I8:
@@ -2498,18 +2524,11 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
          // On second thought, let's just go ahead and do it for now:
 
          // Clean call version:
-         merged = assignNew_DC(dce, Ity_Word,
-                               mkIRExprCCall (Ity_Word,
-                                              2 /*Int regparms*/,
-                                              "MC_(helperc_MERGE_TAGS)",
-                                              &MC_(helperc_MERGE_TAGS),
-                                              mkIRExprVec_2( v64lo, v64hi )));
-         // When cleanCallsMergeTags_DC() is false, callers do not anchor
-         // a tag that they discard, so anchor the merge here.
-         if (!cleanCallsMergeTags_DC()) {
-            anchorTag_DC(dce, merged);
-         }
-         return merged;
+         return mkIRExprCCall (Ity_Word,
+                               2 /*Int regparms*/,
+                               "MC_(helperc_MERGE_TAGS)",
+                               &MC_(helperc_MERGE_TAGS),
+                               mkIRExprVec_2( v64lo, v64hi ));
 
 
       default:

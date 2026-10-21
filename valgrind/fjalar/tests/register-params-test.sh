@@ -69,7 +69,7 @@ if ! awk '/DW_AT_name/ && /"v\\0"/ && !done { state = 1 }
 then
   unsuitable_compiler "could not rewrite the location of stack_value's v"
 fi
-gcc -gdwarf-4 -no-pie -o "${output_dir}/register-params" \
+gcc -no-pie -o "${output_dir}/register-params" \
     "${output_dir}/register-params.o" "${output_dir}/stack-params-patched.s"
 
 # register-params.goal assumes that the location of every formal parameter of
@@ -98,8 +98,9 @@ fi
 # A formal parameter in a register occupies no stack slot, even if Fjalar
 # cannot read the register (split's p and identity's d).  Otherwise, Fjalar
 # would compute a wrong stack offset for each later formal parameter that
-# needs one.  The XML output gives each formal parameter's stack offset, if
-# any.
+# needs one.  A formal parameter whose location Fjalar cannot read
+# (stack_value's v) gets no stack offset, because Fjalar omits it.  The XML
+# output gives each formal parameter's stack offset, if any.
 xml="${output_dir}/register-params.xml"
 status=0
 "${valgrind}" --tool=fjalar --xml-output-file="${xml}" \
@@ -115,10 +116,10 @@ stack_slots=$(awk '/^<function>/ { getline; fname = $0 }
                    /^<\/formal-parameters>/ { inparams = 0 }
                    inparams && /^<name>/ { pname = $0 }
                    inparams && /^<stack-byte-offset>/ \
-                     && fname ~ /\[(add|scale|split|identity)\]/ {
+                     && fname ~ /\[(add|scale|split|identity|stack_value)\]/ {
                      print fname, pname, $0 }' "${xml}")
 if [ -n "${stack_slots}" ]; then
-  echo "$0: FAILED: a formal parameter in a register has a stack offset:" >&2
+  echo "$0: FAILED: a formal parameter in a register or with an unsupported location has a stack offset:" >&2
   echo "${stack_slots}" >&2
   exit 1
 fi
@@ -134,6 +135,14 @@ status=0
 if [ "${status}" -ne 0 ]; then
   echo "$0: FAILED: Fjalar exited with status ${status}" >&2
   cat "${output_dir}/register-params.out" >&2
+  exit 1
+fi
+
+# Omitting stack_value's v must not omit stack_value itself, or the check below
+# that v is omitted would pass vacuously.
+if ! grep -qxF "ppt ..stack_value():::ENTER" "${decls}" \
+    || ! grep -qxF "..stack_value():::ENTER" "${dtrace}"; then
+  echo "$0: FAILED: stack_value's program point is missing" >&2
   exit 1
 fi
 

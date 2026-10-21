@@ -399,7 +399,9 @@ typedef struct _VariableEntry {
   // Occasionally the DWARF information will name a variable but not
   // provide a location for it. This means there is no way to obtain
   // a value for this variable. Variables which do not have valid
-  // location information will have validLoc = False
+  // location information will have validLoc = False.  A formal
+  // parameter is readable only if validLoc is true and
+  // locationUnsupported is false.
   Bool validLoc;
 
   // True if the DWARF information gives a location that Fjalar cannot
@@ -759,10 +761,6 @@ traversals within data structures and arrays
 // If atom is DW_OP_regN or DW_OP_bregN, sets *regNum to N and returns
 // True.  Otherwise, returns False.
 Bool dwarf_op_reg_num(UInt atom, UInt* regNum);
-
-// Returns true if Fjalar can read the register with the given DWARF
-// register number.
-Bool dwarf_reg_is_readable(UInt regNum);
 
 // Returns the guest-state offset of the register with the given DWARF
 // register number, which must be readable.

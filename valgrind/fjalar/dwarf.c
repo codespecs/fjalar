@@ -1671,8 +1671,6 @@ decode_location_expression (unsigned char * data,
 	case DW_OP_lit29:
 	case DW_OP_lit30:
 	case DW_OP_lit31:
-	  if (ok_to_harvest)
-	    harvest_formal_param_location_atom(entry, op, 0);
 	  printf ("DW_OP_lit%u", op - DW_OP_lit0);
 	  break;
 
