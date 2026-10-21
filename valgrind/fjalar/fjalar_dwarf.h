@@ -66,7 +66,7 @@ static __inline__ Bool dwarf_reg_is_readable(UInt regNum) {
 // LOC_OP_UNSUPPORTED and LOC_OP_IGNORED.
 typedef enum {
   LOC_OP_UNSUPPORTED,  // any operation not listed below
-  LOC_OP_IGNORED,      // DW_OP_nop, which Fjalar ignores
+  LOC_OP_IGNORED,      // DW_OP_nop and DW_OP_piece, which Fjalar ignores
   LOC_OP_DEREF,        // DW_OP_deref
   LOC_OP_CONST,        // DW_OP_const*
   LOC_OP_PLUS_UCONST,  // DW_OP_plus_uconst
@@ -88,10 +88,6 @@ typedef enum {
 // For LOC_OP_REG and LOC_OP_BREG, callers compute the register number as
 // op - DW_OP_reg0 or op - DW_OP_breg0, which is readable because
 // DW_OP_regx and DW_OP_bregx are excluded and because of the checks below.
-//
-// DW_OP_piece is unsupported, because the evaluator cannot compose a value
-// from pieces.  Treating a piece as the whole value would read a wrong value
-// when some pieces are elsewhere or optimized out.
 static __inline__ location_op_kind location_op_kind_of(enum dwarf_location_atom op) {
   if ((op >= DW_OP_reg0) && (op <= DW_OP_reg31)) {
     return (dwarf_reg_is_readable(op - DW_OP_reg0)
@@ -113,7 +109,7 @@ static __inline__ location_op_kind location_op_kind_of(enum dwarf_location_atom 
   if (op == DW_OP_fbreg) {
     return LOC_OP_FBREG;
   }
-  if (op == DW_OP_nop) {
+  if ((op == DW_OP_nop) || (op == DW_OP_piece)) {
     return LOC_OP_IGNORED;
   }
   return LOC_OP_UNSUPPORTED;
