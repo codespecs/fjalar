@@ -324,7 +324,7 @@ $INV/fjalar/list-file-discrepancies.sh $INV/valgrind-old
 @end example
 
 @noindent
-It prints four lists, each preceded by a heading line that starts with
+It prints five lists, each preceded by a heading line that starts with
 @samp{#}:
 
 @enumerate
@@ -368,6 +368,29 @@ one per line, and add them:
 tar -C $INV/valgrind-old -cf - --verbatim-files-from -T $INV/files-to-add.txt \
   | tar -C $INV/fjalar/valgrind -xf -
 sed 's|^|valgrind/|' $INV/files-to-add.txt | xargs -r -d '\n' git -C $INV/fjalar add -f --
+@end smallexample
+
+@item
+Files whose mode in Fjalar differs from their mode in the base Valgrind
+release, such as a test filter script that lacks its execute bit, or a
+regular file that is a symbolic link in Valgrind.  Each line starts with
+the file's mode in the base Valgrind release:  @samp{100644} for a
+regular file, @samp{100755} for an executable file, or @samp{120000} for
+a symbolic link.  The merge treats such a difference as a Fjalar change
+and keeps it.  Review the list, because Fjalar may have changed some modes
+on purpose.  Write the lines for the files whose mode should match the base
+Valgrind release to a file @file{$INV/modes-to-fix.txt}, and change the
+modes:
+
+@smallexample
+while read -r mode f; do
+  case $mode in
+    100644) chmod -x "$INV/fjalar/$f" ;;
+    100755) chmod +x "$INV/fjalar/$f" ;;
+    120000) ln -sfn "$(readlink "$INV/valgrind-old/$@{f#valgrind/@}")" "$INV/fjalar/$f" ;;
+  esac
+  git -C $INV/fjalar add -- "$f"
+done < $INV/modes-to-fix.txt
 @end smallexample
 @end enumerate
 
