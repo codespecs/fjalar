@@ -11,7 +11,8 @@
 #  * a test fails that is not listed in the expected-failures file,
 #  * the tests did not run (no summary line in the output, or no output from
 #    the post-test checks), or
-#  * the expected-failures file does not exist (unless --update is given).
+#  * the expected-failures file does not exist (unless --update is given;
+#    but see --expected for when --update does not create it).
 # A test that is listed as an expected failure but passes produces a warning,
 # not a failure; remove it from the expected-failures file.
 #
@@ -25,7 +26,13 @@
 #                    directory, where <os> is computed from /etc/os-release,
 #                    for example "ubuntu-26.04" or "rocky-10".
 #   --expected FILE  Use FILE as the expected-failures file.  The default is
-#                    regtest-expected/<os>.txt.
+#                    regtest-expected/<os>.txt.  With --log, <os> comes from
+#                    the log's name, because the log may come from another
+#                    machine (such as a CI job).  So without --expected, the
+#                    --log file must be named regtest-<os>.log.  If that <os>
+#                    is not this machine's, --update does not create
+#                    regtest-expected/<os>.txt (a renamed log would give a
+#                    bogus <os>); to create it, give --expected.
 #   --update         Rewrite the expected-failures file to match this run:
 #                    remove entries that did not fail and append new failures.
 #                    Blank lines and "?" lines are kept in place.  Comment
@@ -90,8 +97,10 @@ if [ -n "$LOG_FILE" ] && [ "${LOG_FILE%.log}" = "$LOG_FILE" ]; then
   echo "$0: --log file name must end in .log: $LOG_FILE" >&2
   exit 2
 fi
-# Make file arguments absolute before changing directory.
-[ -n "$LOG_FILE" ] && LOG_FILE="$(realpath -m "$LOG_FILE")"
+# Make file arguments absolute before changing directory.  Do not resolve
+# symbolic links in the --log file name, because <os> comes from that name and
+# FILE-post.log and FILE-observed.txt are next to it.
+[ -n "$LOG_FILE" ] && LOG_FILE="$(realpath -ms "$LOG_FILE")"
 [ -n "$EXPECTED_FILE" ] && EXPECTED_FILE="$(realpath -m "$EXPECTED_FILE")"
 # A missing log means a mistyped --log or a run that never happened.
 if [ -n "$LOG_FILE" ]; then
@@ -125,13 +134,33 @@ os_name() {
     *) echo "$ID-$VERSION_ID" ;;
   esac
 }
-OS="$(os_name)"
-EXPECTED_FILE="${EXPECTED_FILE:-$FJALARDIR/regtest-expected/$OS.txt}"
-
 RUN_TESTS=false
+# The operating system that produced the log, or empty if it is unknown.
+OS=
 if [ -z "$LOG_FILE" ]; then
   RUN_TESTS=true
+  OS="$(os_name)"
   LOG_FILE="$FJALARDIR/regtest-$OS.log"
+else
+  LOG_BASE="$(basename "$LOG_FILE" .log)"
+  case "$LOG_BASE" in
+    regtest-?*) OS="${LOG_BASE#regtest-}" ;;
+  esac
+fi
+# True if $EXPECTED_FILE is regtest-expected/<os>.txt, with <os> from the name
+# of the --log file, and that <os> is not this machine's.  Then <os> may be
+# bogus, because a log that was renamed (such as
+# regtest-ubuntu-26.04-before.log) gives a bogus <os>.
+LOG_OS_UNVERIFIED=false
+if [ -z "$EXPECTED_FILE" ]; then
+  if [ -z "$OS" ]; then
+    echo "$0: give --expected, or rename $LOG_FILE and ${LOG_FILE%.log}-post.log to regtest-<os>.log and regtest-<os>-post.log." >&2
+    exit 2
+  fi
+  EXPECTED_FILE="$FJALARDIR/regtest-expected/$OS.txt"
+  if [ "$RUN_TESTS" = false ] && [ "$OS" != "$(os_name 2> /dev/null || true)" ]; then
+    LOG_OS_UNVERIFIED=true
+  fi
 fi
 POSTLOG_FILE="${LOG_FILE%.log}-post.log"
 OBSERVED_FILE="${LOG_FILE%.log}-observed.txt"
@@ -229,7 +258,26 @@ ALLOWED="$(printf '%s\n%s\n' "$REQUIRED" "$OPTIONAL" | grep -v '^$' | LC_ALL=C s
 UNEXPECTED="$(LC_ALL=C comm -23 "$OBSERVED_FILE" <(echo "$ALLOWED") | grep -v '^$' || true)"
 NEWLY_PASSING="$(LC_ALL=C comm -13 "$OBSERVED_FILE" <(echo "$REQUIRED") | grep -v '^$' || true)"
 
+# Print, to standard error, how to create the missing $EXPECTED_FILE.  If
+# <os> may be bogus, also say so.
+print_how_to_create_expected() {
+  local command
+  command="$(printf '%q --log %q --expected %q --update' "$0" "$LOG_FILE" "$EXPECTED_FILE")"
+  if [ "$LOG_OS_UNVERIFIED" = true ]; then
+    echo "OS \"$OS\" comes from the --log file name and is not this machine's.  If the log was renamed, rename $LOG_FILE and $POSTLOG_FILE to regtest-<os>.log and regtest-<os>-post.log." >&2
+    echo "If \"$OS\" is the right OS, then to create $EXPECTED_FILE, run: $command" >&2
+  else
+    echo "To create it, run: $command" >&2
+  fi
+}
+
 if [ "$UPDATE" = true ]; then
+  # Do not create an expected-failures file for a bogus <os>.
+  if [ "$LOG_OS_UNVERIFIED" = true ] && [ ! -f "$EXPECTED_FILE" ]; then
+    echo "$0: without --expected, --update does not create $EXPECTED_FILE." >&2
+    print_how_to_create_expected
+    exit 2
+  fi
   mkdir -p "$(dirname "$EXPECTED_FILE")"
   TMP_FILE="$(mktemp)"
   trap 'rm -f "$TMP_FILE"' EXIT
@@ -262,11 +310,13 @@ if [ "$UPDATE" = true ]; then
       "$OBSERVED_FILE" - > "$TMP_FILE"
   else
     {
-      echo "# Expected failures of Valgrind's regression tests (\"make regtest\") on $OS."
-      echo "# See check-regtest.sh for the format.  Regenerate with:"
       if [ "$EXPECTED_FILE" = "$FJALARDIR/regtest-expected/$OS.txt" ]; then
+        echo "# Expected failures of Valgrind's regression tests (\"make regtest\") on $OS."
+        echo "# See check-regtest.sh for the format.  Regenerate on $OS with:"
         echo "#   ./check-regtest.sh --update"
       else
+        echo "# Expected failures of Valgrind's regression tests (\"make regtest\")."
+        echo "# See check-regtest.sh for the format.  Regenerate with:"
         echo "#   check-regtest.sh --log <output of \"make regtest\"> --expected <this file> --update"
       fi
       # Separate the header from the entries, so that removing every entry
@@ -295,8 +345,7 @@ if [ ! -f "$EXPECTED_FILE" ]; then
   echo "$0: no expected-failures file $EXPECTED_FILE." >&2
   echo "The observed failures (also in $OBSERVED_FILE) are:" >&2
   cat "$OBSERVED_FILE" >&2
-  printf 'To create it, run: %q --log %q --expected %q --update\n' \
-    "$0" "$LOG_FILE" "$EXPECTED_FILE" >&2
+  print_how_to_create_expected
   [ "$REPORT_ONLY" = true ] && exit 0
   exit 1
 fi
