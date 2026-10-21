@@ -934,7 +934,9 @@ void visitVariableGroup(VariableOrigin varOrigin,
     // test does not depend on stackBaseAddr, so that the .decls file
     // (which is written without a stack) declares exactly the
     // variables that the .dtrace file contains.
-    if ((varOrigin == FUNCTION_FORMAL_PARAM) && !var->validLoc) {
+    // A heuristic may set validLoc even if the location is unsupported.
+    if ((varOrigin == FUNCTION_FORMAL_PARAM)
+        && (!var->validLoc || var->locationUnsupported)) {
       FJALAR_DPRINTF("\t[visitVariableGroup] invalid loc, punting\n");
       continue;
     }

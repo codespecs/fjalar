@@ -1229,6 +1229,19 @@ char harvest_formal_param_location_offset(dwarf_entry* e, long value)
   return 1;
 }
 
+// If e is a formal parameter, records that it has a DW_AT_location
+// attribute (sets has_location).  Returns 1 if e is a formal parameter, 0
+// otherwise.
+char harvest_formal_param_has_location(dwarf_entry* e)
+{
+  formal_parameter* paramPtr = formal_parameter_of(e);
+  if (paramPtr == 0)
+    return 0;
+
+  paramPtr->has_location = 1;
+  return 1;
+}
+
 // If e is a formal parameter, records that Fjalar cannot read its location
 // (sets location_has_unsupported_op), so Fjalar omits the parameter from the
 // .decls and .dtrace files.  Returns 1 if e is a formal parameter, 0
@@ -1921,15 +1934,17 @@ static void process_abstract_origin_items(void)
           aliased_formal_param = (formal_parameter*) (aliased_entry->entry_ptr);
 
           // Copy the location only if the abstract origin has none of its
-          // own.  The abstract origin may be a concrete function (such as
-          // foo) whose clones (such as foo.constprop.0) refer to it; the
-          // location of a clone's parameter is not the location of foo's.
-          if (aliased_formal_param->dwarf_stack_size == 0
-              && !aliased_formal_param->location_has_unsupported_op) {
+          // own (neither a location expression nor a location list).  The
+          // abstract origin may be a concrete function (such as foo) whose
+          // clones (such as foo.constprop.0) refer to it; the location of a
+          // clone's parameter is not the location of foo's.  Do not copy a
+          // location that Fjalar cannot read, so that heuristics may still
+          // supply a location for the abstract origin's parameter.
+          if (!aliased_formal_param->has_location
+              && !cur_param->location_has_unsupported_op) {
             aliased_formal_param->location_type = cur_param->location_type;
             aliased_formal_param->loc_atom = cur_param->loc_atom;
             aliased_formal_param->valid_loc = cur_param->valid_loc;
-            aliased_formal_param->location_has_unsupported_op = cur_param->location_has_unsupported_op;
             aliased_formal_param->dwarf_stack_size = cur_param->dwarf_stack_size;
 
             VG_(memcpy)(aliased_formal_param->dwarf_stack, cur_param->dwarf_stack,

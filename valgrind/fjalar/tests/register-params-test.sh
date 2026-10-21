@@ -98,9 +98,9 @@ fi
 # A formal parameter in a register occupies no stack slot, even if Fjalar
 # cannot read the register (split's p and identity's d).  Otherwise, Fjalar
 # would compute a wrong stack offset for each later formal parameter that
-# needs one.  Likewise, a formal parameter whose location Fjalar cannot read
-# (stack_value's v) gets no stack slot.  The XML output gives each formal
-# parameter's stack offset, if any.
+# needs one.  A formal parameter whose location Fjalar cannot read
+# (stack_value's v) gets no stack offset, because Fjalar omits it.  The XML
+# output gives each formal parameter's stack offset, if any.
 xml="${output_dir}/register-params.xml"
 status=0
 "${valgrind}" --tool=fjalar --xml-output-file="${xml}" \
