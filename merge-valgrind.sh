@@ -25,12 +25,8 @@
 # problem.  It lists the files with conflicts, and exits with status 1 if
 # there are conflicts or other problems.
 #
-# Before merging, the script writes Fjalar's changes to the base Valgrind to
-# $INV/coregrind-Fjalar.diff (outside valgrind/fjalar) and
-# $INV/memcheck-Fjalar.diff (Memcheck, in valgrind/fjalar).  They are a
-# checklist for verifying that the merge kept each of Fjalar's changes,
-# because a merge can lose a change without reporting a conflict.
-# compare-fjalar-changes.sh does that verification.
+# A merge can lose one of Fjalar's changes without reporting a conflict.
+# compare-fjalar-changes.sh checks that the merge kept each of them.
 
 set -e
 set -o pipefail
@@ -114,10 +110,7 @@ check_unchanged "$fjalar"
 cd "$fjalar"
 
 tmpindex=$(mktemp)
-# Temporary files in $INV, so that "mv" can replace the diffs atomically.
-coregrind_diff_tmp=$(mktemp "$INV/coregrind-Fjalar.diff.XXXXXX")
-memcheck_diff_tmp=$(mktemp "$INV/memcheck-Fjalar.diff.XXXXXX")
-trap 'rm -f "$tmpindex" "$coregrind_diff_tmp" "$memcheck_diff_tmp"' EXIT
+trap 'rm -f "$tmpindex"' EXIT
 
 # Usage: upstream_commit DIR [PARENT]
 # Prints the name of a new commit, with parent PARENT if it is given, whose
@@ -154,17 +147,6 @@ git update-ref refs/valgrind-merge/new "$new_commit"
 # compare-fjalar-changes.sh compares the merge result with Fjalar before the
 # merge, which HEAD no longer is if the merge is committed.
 git update-ref refs/valgrind-merge/fjalar HEAD
-
-# The options make the output independent of the user's Git configuration.
-# Each diff omits the files that Fjalar added.  The diffs replace those of
-# an earlier merge only if both succeed, so that the two always come from
-# the same merge.
-gitdiff=(git diff --no-renames --no-ext-diff --no-textconv --no-color -U3 --diff-filter=a "$base_commit" HEAD)
-"${gitdiff[@]}" -- valgrind ':(exclude)valgrind/fjalar' > "$coregrind_diff_tmp"
-"${gitdiff[@]}" -- valgrind/fjalar > "$memcheck_diff_tmp"
-chmod "$(printf '%o' $((0666 & ~0$(umask))))" "$coregrind_diff_tmp" "$memcheck_diff_tmp"
-mv "$coregrind_diff_tmp" "$INV/coregrind-Fjalar.diff"
-mv "$memcheck_diff_tmp" "$INV/memcheck-Fjalar.diff"
 
 # The options make rename detection independent of the user's Git
 # configuration, so that the merge moves Fjalar's changes to a file that
