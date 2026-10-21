@@ -5,8 +5,8 @@
 # doc/valgrind-merge.texinfo.
 # Usage: merge-valgrind.sh [CHERRY-PICK-OPTION...]
 # The base of the merge is the commit checked out in $INV/valgrind-old, and
-# the target is the commit checked out in $INV/valgrind-new.  If VOLDVER or
-# VNEWVER is set, the script checks that the clone is at that tag.
+# the target is the commit checked out in $INV/valgrind-new.  If VOLDTAG or
+# VNEWTAG is set, the script checks that the clone is at that tag.
 #
 # The script creates two commits, which it records as refs
 # refs/valgrind-merge/base and refs/valgrind-merge/new.  Each has upstream's
@@ -26,7 +26,9 @@
 #
 # Before merging, the script writes Fjalar's changes to the base Valgrind to
 # $INV/coregrind-Fjalar.diff (outside valgrind/fjalar) and
-# $INV/memcheck-Fjalar.diff (Memcheck, in valgrind/fjalar).
+# $INV/memcheck-Fjalar.diff (Memcheck, in valgrind/fjalar).  They are a
+# checklist for verifying that the merge kept each of Fjalar's changes,
+# because a merge can lose a change without reporting a conflict.
 
 set -e
 set -o pipefail
@@ -67,26 +69,27 @@ check_toplevel "$INV/valgrind-new"
 
 # At the next merge, it is easy to forget to move valgrind-new to
 # valgrind-old, or to clone the wrong tag.
-# Usage: check_version DIR VARNAME
-# If variable VARNAME is set, checks that DIR is at the tag it names.
-check_version() {
+# Usage: check_tag DIR TAG_VARIABLE
+# If variable TAG_VARIABLE is set, checks that DIR is at the tag that is the
+# variable's value.
+check_tag() {
   local dir=$1 var=$2
-  local ver=${!var}
+  local tag=${!var}
   local commit
-  if [ -z "$ver" ]; then
+  if [ -z "$tag" ]; then
     return
   fi
-  if ! commit=$(git -C "$dir" rev-parse --verify -q "refs/tags/$ver^{commit}"); then
-    echo "$0: $dir has no tag $ver (the value of $var)." >&2
+  if ! commit=$(git -C "$dir" rev-parse --verify -q "refs/tags/$tag^{commit}"); then
+    echo "$0: $dir has no tag $tag (the value of $var)." >&2
     exit 1
   fi
   if [ "$(git -C "$dir" rev-parse HEAD)" != "$commit" ]; then
-    echo "$0: $dir is not at tag $ver (the value of $var)." >&2
+    echo "$0: $dir is not at tag $tag (the value of $var)." >&2
     exit 1
   fi
 }
-check_version "$INV/valgrind-old" VOLDVER
-check_version "$INV/valgrind-new" VNEWVER
+check_tag "$INV/valgrind-old" VOLDTAG
+check_tag "$INV/valgrind-new" VNEWTAG
 
 # The merge uses the committed trees of the upstream clones, so build
 # products in them do no harm, but a change to a tracked file would be
@@ -134,21 +137,21 @@ upstream_commit() {
     -m "Valgrind $(git -C "$dir" describe --tags --always)"
 }
 
-base=$(upstream_commit "$INV/valgrind-old")
-new=$(upstream_commit "$INV/valgrind-new" "$base")
+base_commit=$(upstream_commit "$INV/valgrind-old")
+new_commit=$(upstream_commit "$INV/valgrind-new" "$base_commit")
 # The refs keep the commits from being garbage-collected, and name them in
 # later commands, such as "git diff valgrind-merge/base valgrind-merge/new".
-git update-ref refs/valgrind-merge/base "$base"
-git update-ref refs/valgrind-merge/new "$new"
+git update-ref refs/valgrind-merge/base "$base_commit"
+git update-ref refs/valgrind-merge/new "$new_commit"
 
 # The options make the output independent of the user's Git configuration.
 # Each diff omits the files that Fjalar added.
-gitdiff=(git diff --no-renames --no-ext-diff --no-textconv --no-color -U3 --diff-filter=a "$base" HEAD)
+gitdiff=(git diff --no-renames --no-ext-diff --no-textconv --no-color -U3 --diff-filter=a "$base_commit" HEAD)
 "${gitdiff[@]}" -- valgrind ':(exclude)valgrind/fjalar' > "$INV/coregrind-Fjalar.diff"
 "${gitdiff[@]}" -- valgrind/fjalar > "$INV/memcheck-Fjalar.diff"
 
 status=0
-git cherry-pick --no-commit "$@" "$new" || status=$?
+git cherry-pick --no-commit "$@" "$new_commit" || status=$?
 conflicts=$(git diff --name-only --diff-filter=U)
 if [ "$status" -ne 0 ] && [ -z "$conflicts" ]; then
   echo "$0: git cherry-pick failed." >&2

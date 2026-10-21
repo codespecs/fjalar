@@ -143,17 +143,17 @@ Memcheck and DynComp depend tightly on Valgrind core:
 2. **Get the trees.**
 
    ```sh
-   export VOLDVER=VALGRIND_3_23_0 VNEWVER=VALGRIND_3_27_1
+   export VOLDTAG=VALGRIND_3_23_0 VNEWTAG=VALGRIND_3_27_1
    VALGRIND_GIT=https://sourceware.org/git/valgrind.git
    [ -d $INV/valgrind-old ] \
-     || git clone -b $VOLDVER --depth 1 $VALGRIND_GIT $INV/valgrind-old
+     || git clone -b $VOLDTAG --depth 1 $VALGRIND_GIT $INV/valgrind-old
    rm -rf $INV/valgrind-new
-   git clone -b $VNEWVER --depth 1 $VALGRIND_GIT $INV/valgrind-new
+   git clone -b $VNEWTAG --depth 1 $VALGRIND_GIT $INV/valgrind-new
    ```
 
    Step 10 of the previous merge kept that merge's `valgrind-new` as
    `valgrind-old`, so reuse it if it exists; `merge-valgrind.sh` (step 4)
-   checks that it is at `$VOLDVER`.
+   checks that it is at `$VOLDTAG`.
 
    Correct the files of earlier merges, following section "Correct the
    files of earlier merges" of `doc/valgrind-merge.texinfo`.
@@ -167,7 +167,7 @@ Memcheck and DynComp depend tightly on Valgrind core:
    files that match `.gitignore` (add those that Fjalar should have).
    Commit these corrections before merging, because
    `merge-valgrind.sh` requires a clean work tree.  (The merge handles the
-   files that upstream added or removed since `$VOLDVER`.)
+   files that upstream added or removed since `$VOLDTAG`.)
 
 3. **Baseline.**  First install `gdb` and the glibc debuginfo package;
    without them, most `gdbserver_tests` fail.  Then run
@@ -187,7 +187,7 @@ Memcheck and DynComp depend tightly on Valgrind core:
    `valgrind-old` for the next merge.
 
 4. **Merge.**  Run `$FJALAR/merge-valgrind.sh`.  It checks that
-   `valgrind-old` and `valgrind-new` are at `$VOLDVER` and `$VNEWVER`,
+   `valgrind-old` and `valgrind-new` are at `$VOLDTAG` and `$VNEWTAG`,
    writes `coregrind-Fjalar.diff` and `memcheck-Fjalar.diff`, merges
    upstream's changes into Coregrind and into both copies of Memcheck
    (`valgrind/memcheck` and `valgrind/fjalar`) with `git cherry-pick`,

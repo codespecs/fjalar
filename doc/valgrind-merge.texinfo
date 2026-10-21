@@ -254,15 +254,15 @@ look something like:
 @end example
 
 Assuming that the Valgrind merge process has been done on a regular basis,
-the last @samp{tags} line will show the next (target) version number and the
-second to last @samp{tags} line will show the current version number.  You should
-verify this by comparing with version number from the file @file{valgrind/REVISION}.
-Using this information, set two environment variables to be used in the
-steps below.
+the last @samp{tags} line will show the tag of the next (target) version and
+the second to last @samp{tags} line will show the tag of the current
+version.  You should verify the current one by comparing it with the
+version number in the file @file{valgrind/REVISION}.  Set two environment
+variables to these tags, for use in the steps below.
 
 @example
-export VOLDVER=VALGRIND_3_14_0
-export VNEWVER=VALGRIND_3_15_0
+export VOLDTAG=VALGRIND_3_14_0
+export VNEWTAG=VALGRIND_3_15_0
 @end example
 
 
@@ -290,7 +290,7 @@ repository, and the @command{git clean} command removes any build products.
 Otherwise, run the following commands.
 
 @example
-git clone -b $VOLDVER --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-old
+git clone -b $VOLDTAG --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-old
 @end example
 
 
@@ -301,7 +301,7 @@ Next, make the directory @file{valgrind-new} that contains a copy of the
 latest Valgrind source tree.
 
 @example
-git clone -b $VNEWVER --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-new
+git clone -b $VNEWTAG --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-new
 @end example
 
 @c For a  full repro of the current Valgrind source:
@@ -1280,7 +1280,7 @@ cd $INV/fjalar
 git fetch https://github.com/codespecs/fjalar.git master
 git diff -b "$(git merge-base FETCH_HEAD HEAD)" | more
 # If looks OK, proceed with commit.
-git commit -a -m "Valgrind merge from $@{VOLDVER@} to $@{VNEWVER@}"
+git commit -a -m "Valgrind merge from $@{VOLDTAG@} to $@{VNEWTAG@}"
 @end example
 
 Note: We recommend saving the patch and diff files to further document

@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# This script lists the files on which the Fjalar tree that contains this
-# script and an upstream Valgrind tree disagree.  Use it while merging a newer
+# This script lists the disagreements between the Fjalar tree that contains
+# this script and an upstream Valgrind tree.  Use it while merging a newer
 # version of upstream Valgrind into Fjalar; see doc/valgrind-merge.texinfo.
 # Usage: list-file-discrepancies.sh [VALGRIND-DIR]
 # VALGRIND-DIR is a git clone of upstream Valgrind; the default is
@@ -45,23 +45,25 @@ export LC_ALL=C
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
 
-git -C "$fjalar" ls-files valgrind | sed 's|^valgrind/||' | sort > "$tmpdir/fjalar"
-sed -n 's|^fjalar/||p' "$tmpdir/fjalar" | { grep -E '^(mc_|memcheck)' || true; } > "$tmpdir/fjalar-memcheck"
-git -C "$valgrind" ls-files | sort > "$tmpdir/valgrind"
-sed -n 's|^memcheck/||p' "$tmpdir/valgrind" > "$tmpdir/valgrind-memcheck"
+git -C "$fjalar" ls-files valgrind | sed 's|^valgrind/||' | sort > "$tmpdir/fjalar-files"
+sed -n 's|^fjalar/||p' "$tmpdir/fjalar-files" \
+  | { grep -E '^(mc_|memcheck)' || true; } > "$tmpdir/fjalar-memcheck-files"
+git -C "$valgrind" ls-files | sort > "$tmpdir/valgrind-files"
+sed -n 's|^memcheck/||p' "$tmpdir/valgrind-files" > "$tmpdir/valgrind-memcheck-files"
 
 echo "# Files that Fjalar tracks but $valgrind does not have:"
-comm -23 <(grep -v -e '^fjalar/' -e '^REVISION$' "$tmpdir/fjalar" || true) "$tmpdir/valgrind" \
+comm -23 <(grep -v -e '^fjalar/' -e '^REVISION$' "$tmpdir/fjalar-files" || true) \
+         "$tmpdir/valgrind-files" \
   | sed 's|^|valgrind/|'
 
 echo "# Memcheck files that valgrind/fjalar has but $valgrind does not have:"
-comm -23 "$tmpdir/fjalar-memcheck" "$tmpdir/valgrind-memcheck" \
+comm -23 "$tmpdir/fjalar-memcheck-files" "$tmpdir/valgrind-memcheck-files" \
   | sed 's|^|valgrind/fjalar/|'
 
 echo "# Memcheck files that $valgrind has but valgrind/fjalar lacks:"
-comm -13 "$tmpdir/fjalar-memcheck" \
-         <(grep -E '^(mc_|memcheck)' "$tmpdir/valgrind-memcheck" || true) \
+comm -13 "$tmpdir/fjalar-memcheck-files" \
+         <(grep -E '^(mc_|memcheck)' "$tmpdir/valgrind-memcheck-files" || true) \
   | sed 's|^|valgrind/fjalar/|'
 
 echo "# Files that $valgrind has but Fjalar does not track:"
-comm -13 "$tmpdir/fjalar" "$tmpdir/valgrind"
+comm -13 "$tmpdir/fjalar-files" "$tmpdir/valgrind-files"
