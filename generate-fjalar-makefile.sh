@@ -3,8 +3,8 @@
 # This script generates Fjalar's build file valgrind/fjalar/Makefile.am from
 # Memcheck's, valgrind/memcheck/Makefile.am, by renaming Memcheck to Fjalar.
 # Fjalar's changes to the build are in valgrind/fjalar/fjalar.am, which the
-# generated file includes.  Run this script after the Memcheck merge (see
-# doc/valgrind-merge.texinfo), and after changing this script.  A change to
+# generated file includes.  merge-valgrind.sh runs this script during the
+# Valgrind merge; run it by itself after changing this script.  A change to
 # fjalar.am needs only a rerun of automake, such as by auto-everything.sh,
 # because the generated file includes fjalar.am.
 # Usage: generate-fjalar-makefile.sh [OUTPUT]
@@ -48,8 +48,8 @@ chmod "$(printf '%o' $((0666 & ~0$(umask))))" "$tmp"
 mv "$tmp" "$output"
 
 # An upstream change that the renaming does not handle needs a change to
-# this script.  Conflict markers mean that the Coregrind merge left
-# valgrind/memcheck/Makefile.am unresolved.  Each memcheck.h is removed
+# this script.  Conflict markers mean that the merge by merge-valgrind.sh
+# left valgrind/memcheck/Makefile.am unresolved.  Each memcheck.h is removed
 # before the check, so that the rest of its line is still checked.
 problems=$(awk '/^##/ { next }
   { line = tolower($0); gsub(/memcheck\.h/, "", line) }
