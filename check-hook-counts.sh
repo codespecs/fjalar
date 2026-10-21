@@ -34,8 +34,13 @@
 # Exit status: 0 if no count changed, 1 if some count changed, 2 on error.
 
 # Fail the whole script if any command fails, including within a pipeline.
+# Exit with status 2, because status 1 means that some count changed.
 set -e
 set -o pipefail
+trap 'echo "$0: command failed at line $LINENO" >&2; exit 2' ERR
+
+# Make sort and join use the same collating order.
+export LC_ALL=C
 
 if [ $# -gt 1 ]; then
   echo "Usage: $0 [BASE_COMMIT]" >&2
@@ -52,7 +57,11 @@ else
     echo "$0: cannot fetch the master branch of codespecs/fjalar" >&2
     exit 2
   fi
-  base_commit=$(git merge-base FETCH_HEAD HEAD)
+  if ! base_commit=$(git merge-base FETCH_HEAD HEAD); then
+    echo "$0: cannot find where HEAD started from codespecs/fjalar master;" >&2
+    echo "pass BASE_COMMIT, or run \"git fetch --unshallow\" in a shallow clone" >&2
+    exit 2
+  fi
 fi
 
 tmpdir=$(mktemp -d)
@@ -60,14 +69,23 @@ trap 'rm -rf "$tmpdir"' EXIT
 
 # Print C file $1 without its comments and "#if 0" regions.  Comments are
 # removed first, so that a directive in a comment does not end or start a
-# region.
+# region.  gcc warns about text in "#if 0" regions, such as an unmatched
+# quote, so its messages are printed only if it fails.
 without_comments() {
-  gcc -fpreprocessed -dD -E -P -x c - < "$1" 2> /dev/null \
+  gcc -fpreprocessed -dD -E -P -x c - < "$1" 2> "$tmpdir/gcc-messages" \
     | awk '!skip && /^[ \t]*#[ \t]*if[ \t]+0([^0-9]|$)/ {skip=1; depth=1; next}
            skip && /^[ \t]*#[ \t]*if/ {depth++; next}
            skip && /^[ \t]*#[ \t]*endif/ {if (--depth == 0) skip=0; next}
            skip && depth == 1 && /^[ \t]*#[ \t]*(else|elif)/ {skip=0; next}
-           !skip'
+           !skip' \
+    || { cat "$tmpdir/gcc-messages" >&2; return 1; }
+}
+
+# Print "HOOK COUNT" for each hook that occurs in file $1, sorted by hook.
+# An occurrence is a whole word, so "foo" does not occur in "foo_bar".
+hook_counts() {
+  # grep exits with status 1 if no hook occurs.
+  { grep -owF "$hooks" "$1" || [ $? -eq 1 ]; } | sort | uniq -c | awk '{print $2, $1}'
 }
 
 # A regex for the first line of a C function declaration that starts in
@@ -75,9 +93,9 @@ without_comments() {
 # name (group 1), then "(".  It does not match a declaration whose return type
 # is on the previous line.
 decl='^[A-Za-z_][A-Za-z0-9_ *]*[ *]([A-Za-z_][A-Za-z0-9_]*)\(.*'
+# One hook per line, which is the form of a list of patterns for "grep -F".
 hooks=$(sed -nE "s/$decl/\1/p" \
-          valgrind/fjalar/{typedata,fjalar_dwarf,fjalar_include,fjalar_main,GenericHashtable}.h \
-          | sort -u)
+          valgrind/fjalar/{typedata,fjalar_dwarf,fjalar_include,fjalar_main,GenericHashtable}.h)
 if [ -z "$hooks" ]; then
   echo "$0: found no hook declarations" >&2
   exit 2
@@ -99,14 +117,16 @@ for file in dwarf.c readelf.c; do
   fi
 done
 
-echo "$hooks" > "$tmpdir/hooks"
-changed=$(for file in dwarf.c readelf.c; do
-  python3 compare-hook-counts.py "$tmpdir/hooks" \
-    "$tmpdir/$file.old.live" "$tmpdir/$file.new.live" "$file" || exit 2
-done)
+for file in dwarf.c readelf.c; do
+  hook_counts "$tmpdir/$file.old.live" > "$tmpdir/$file.old.counts"
+  hook_counts "$tmpdir/$file.new.live" > "$tmpdir/$file.new.counts"
+  # A hook that is missing from one version has count 0 there.
+  join -a 1 -a 2 -e 0 -o 0,1.2,2.2 "$tmpdir/$file.old.counts" "$tmpdir/$file.new.counts" \
+    | awk -v file="$file" '$2 != $3 {print file, $0}'
+done > "$tmpdir/changed"
 
-if [ -n "$changed" ]; then
-  echo "$changed"
+if [ -s "$tmpdir/changed" ]; then
+  cat "$tmpdir/changed"
   echo "For each line above, find out why the count of HOOK in FILE changed from" >&2
   echo "OLDCOUNT to NEWCOUNT.  If the merge lost or duplicated a call by mistake," >&2
   echo "fix it, then re-run this script.  Each run reports every difference, even" >&2
