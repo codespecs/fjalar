@@ -50,13 +50,16 @@ fi
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
 
-# Print C file $1 without its "#if 0" regions and comments.
+# Print C file $1 without its comments and "#if 0" regions.  Comments are
+# removed first, so that a directive in a comment does not end or start a
+# region.
 live() {
-  awk '!skip && /^[ \t]*#[ \t]*if[ \t]+0([^0-9]|$)/ {skip=1; depth=1; next}
-       skip && /^[ \t]*#[ \t]*if/ {depth++; next}
-       skip && /^[ \t]*#[ \t]*endif/ {if (--depth == 0) skip=0; next}
-       skip && depth == 1 && /^[ \t]*#[ \t]*(else|elif)/ {skip=0; next}
-       !skip' "$1" | gcc -fpreprocessed -dD -E -P -x c - 2> /dev/null
+  gcc -fpreprocessed -dD -E -P -x c - < "$1" 2> /dev/null \
+    | awk '!skip && /^[ \t]*#[ \t]*if[ \t]+0([^0-9]|$)/ {skip=1; depth=1; next}
+           skip && /^[ \t]*#[ \t]*if/ {depth++; next}
+           skip && /^[ \t]*#[ \t]*endif/ {if (--depth == 0) skip=0; next}
+           skip && depth == 1 && /^[ \t]*#[ \t]*(else|elif)/ {skip=0; next}
+           !skip'
 }
 
 decl='^[A-Za-z_][A-Za-z0-9_ *]*[ *]([A-Za-z_][A-Za-z0-9_]*)\(.*'
@@ -84,14 +87,20 @@ for file in dwarf.c readelf.c; do
   fi
 done
 
-# grep exits with status 1 if a hook does not occur, which is not an error.
+echo "$hooks" > "$tmpdir/hooks"
+# For each file, count the words that are hooks in both versions at once.
+# shellcheck disable=SC2016 # The $0 is awk's, not the shell's.
 changed=$(for file in dwarf.c readelf.c; do
-  for f in $hooks; do
-    old=$({ grep -ow "$f" "$tmpdir/$file.old.live" || true; } | wc -l)
-    new=$({ grep -ow "$f" "$tmpdir/$file.new.live" || true; } | wc -l)
-    echo "$file $f $old $new"
-  done
-done | awk '$3 != $4')
+  awk -v file="$file" \
+    'FILENAME == ARGV[1] {hook[$0]; next}
+     {n = split($0, words, /[^A-Za-z0-9_]+/)
+      for (i = 1; i <= n; i++)
+        if (words[i] in hook) count[FILENAME, words[i]]++}
+     END {for (h in hook)
+            if (count[ARGV[2], h] != count[ARGV[3], h])
+              print file, h, count[ARGV[2], h] + 0, count[ARGV[3], h] + 0}' \
+    "$tmpdir/hooks" "$tmpdir/$file.old.live" "$tmpdir/$file.new.live" | sort
+done)
 
 if [ -n "$changed" ]; then
   echo "$changed"

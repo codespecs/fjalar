@@ -886,6 +886,8 @@ visual merge tool (see below).  It refuses to run if any of those files
 has uncommitted changes or a @file{.pre-merge} copy, because it would then
 merge the same changes twice, and it prints how to undo the merge.  When
 you have finished the merge, remove the @file{.pre-merge} files.
+Because @file{.gitignore} lists @file{*.pre-merge}, @command{git status}
+does not show them; find them with @code{find -name '*.pre-merge'}.
 
 Now, handle the conflicts.
 
@@ -902,7 +904,7 @@ version in the center.  Look at the conflict markers in @file{dwarf.c}
 and note their line numbers.
 
 @example
-meld ~/tmp/binutils/binutils-$BUNEWVER/binutils/dwarf.c $INV/fjalar/valgrind/fjalar/dwarf.c $INV/fjalar/valgrind/fjalar/dwarf.c.pre-merge
+meld $@{BINUTILS_TMP:-~/tmp/binutils@}/binutils-$BUNEWVER/binutils/dwarf.c $INV/fjalar/valgrind/fjalar/dwarf.c $INV/fjalar/valgrind/fjalar/dwarf.c.pre-merge
 @end example
 
 Using the line numbers noted above, locate the problem areas and modify

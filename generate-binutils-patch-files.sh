@@ -58,6 +58,8 @@ BUNEW=binutils-$BUNEWVER
 BINUTILS_FILES="dwarf.c dwarf.h readelf.c elfcomm.c elfcomm.h bucomm.h demanguse.h"
 
 BINUTILS_TMP=${BINUTILS_TMP:-$HOME/tmp/binutils}
+# Make the directory absolute, because the script changes directory.
+BINUTILS_TMP=$(realpath -m "$BINUTILS_TMP")
 OUTDIR=$BINUTILS_TMP/$BUOLDVER-$BUNEWVER
 mkdir -p "$OUTDIR"
 cd "$BINUTILS_TMP"
