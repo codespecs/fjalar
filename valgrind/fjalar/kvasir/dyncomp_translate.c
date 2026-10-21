@@ -2772,9 +2772,9 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
 
 // Returns the tag of data, which the original temp tmp is assigned.
 //
-// If a load is not an interaction (see loadIsInteraction_DC), a load of more than one byte into tmp
-// also saves the tag of each byte it reads, and a store of tmp in the
-// same superblock writes those tags back one byte at a time (see
+// If a load is not an interaction (see loadIsInteraction_DC), a load of
+// more than one byte into tmp also saves the tag of each byte it reads,
+// and a store of tmp in the same superblock writes those tags back one byte at a time (see
 // do_shadow_STle_DC).  A copy of a struct or an array may move several
 // fields or elements with one load and one store; this gives each
 // copied byte the tag of its source byte, rather than giving every
