@@ -141,10 +141,10 @@ Kvasir tests after each step.
    - Make sure Fjalar's harvesting hooks in `dwarf.c` (the calls that build
      Fjalar's DWARF entries, see `fjalar_dwarf.c`/`typedata.c`) still run on
      every path, especially for DWARF 5 forms and any new `DW_FORM_*`,
-     `DW_AT_*`, `DW_OP_*` handling.  Re-check the DWARF 3/4 and Rust
-     changes from #73/#76.  `$INV/fjalar/check-hook-counts.sh` reports each
-     hook whose number of calls in `dwarf.c` or `readelf.c` changed; explain
-     each difference.
+     `DW_AT_*`, `DW_OP_*` handling.  `$INV/fjalar/check-hook-counts.sh`
+     reports each hook whose number of calls in `dwarf.c` or `readelf.c`
+     changed; explain each difference.  Re-check the DWARF 3/4 and Rust
+     changes from #73/#76.
    - Remove `.rej` files (and any `.orig` files that `patch` creates) as you
      go.  Delete the `.pre-merge` copies once the merge is complete.
 
