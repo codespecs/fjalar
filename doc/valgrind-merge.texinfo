@@ -331,10 +331,10 @@ Files that Fjalar tracks but the base Valgrind release does not have,
 which earlier merges failed to remove.
 Review the list, because Fjalar may have added some of the files
 on purpose.  Write the files that Fjalar should not have to a file
-@file{$INV/extra}, one per line, and remove them:
+@file{$INV/files-to-remove.txt}, one per line, and remove them:
 
 @example
-xargs -r -d '\n' git -C $INV/fjalar rm -- < $INV/extra
+xargs -r -d '\n' git -C $INV/fjalar rm -- < $INV/files-to-remove.txt
 @end example
 
 @item
@@ -359,13 +359,13 @@ as @file{Makefile} or @file{*.log} files.
 Unlike the other lists, these file names are relative to
 @file{valgrind-old}, not to @file{$INV/fjalar}.
 Review the list, because Fjalar may omit some Valgrind files on purpose.
-Write the files that Fjalar should have to a file @file{$INV/missing},
+Write the files that Fjalar should have to a file @file{$INV/files-to-add.txt},
 one per line, and add them:
 
 @example
-tar -C $INV/valgrind-old -cf - --verbatim-files-from -T $INV/missing \
+tar -C $INV/valgrind-old -cf - --verbatim-files-from -T $INV/files-to-add.txt \
   | tar -C $INV/fjalar/valgrind -xf -
-sed 's|^|valgrind/|' $INV/missing | xargs -r -d '\n' git -C $INV/fjalar add -f --
+sed 's|^|valgrind/|' $INV/files-to-add.txt | xargs -r -d '\n' git -C $INV/fjalar add -f --
 @end example
 @end enumerate
 
