@@ -1455,8 +1455,7 @@ decode_location_expression (unsigned char * data,
 	 DW_OP_stack_value, or DW_OP_plus (the evaluator has no operand
 	 stack), makes a formal parameter's location unreadable.
 	 DW_OP_piece is handled below.  */
-      if (ok_to_harvest && op != DW_OP_nop && op != DW_OP_piece
-	  && location_op_kind_of (op) == LOC_OP_UNSUPPORTED)
+      if (ok_to_harvest && location_op_kind_of (op) == LOC_OP_UNSUPPORTED)
 	harvest_formal_param_location_unsupported (entry);
 
       switch (op)
@@ -1596,7 +1595,6 @@ decode_location_expression (unsigned char * data,
 	  READ_ULEB (uvalue, data, end);
 	  if (ok_to_harvest) {
 	    harvest_formal_param_location_atom(entry, op, uvalue);
-	    harvest_formal_param_location_offset(entry, uvalue);
 	    harvest_data_member_location(entry, uvalue);
 	  }
 

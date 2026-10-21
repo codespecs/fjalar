@@ -23,6 +23,19 @@ fi
 output_dir="$(mktemp -d)"
 trap 'rm -rf "${output_dir}"' EXIT
 
+# Fails in continuous integration (GitHub Actions sets CI, and Azure Pipelines
+# sets TF_BUILD), and otherwise skips this test, because this compiler cannot
+# run it.  Failing in continuous integration ensures that a compiler change
+# that makes this test vacuous does not go unnoticed.  $1 is the reason.
+unsuitable_compiler() {
+  if [ -n "${CI:-}" ] || [ -n "${TF_BUILD:-}" ]; then
+    echo "$0: FAILED: $1" >&2
+    exit 1
+  fi
+  echo "$0: SKIPPED: $1" >&2
+  exit 0
+}
+
 # Fjalar does not read DWARF 5, and it recognizes a function's entry point
 # only at the address in the debugging information, so the executable must not
 # be position-independent.  -gno-variable-location-views keeps location view
@@ -40,7 +53,7 @@ gcc -gdwarf-4 -gno-variable-location-views -no-pie -O0 -S -dA \
 # "DW_OP_fbreg N", where N needs 2 bytes, to "DW_OP_fbreg -8;
 # DW_OP_stack_value".  The size of the debugging information is unchanged, so
 # the offsets that refer to it remain correct.
-awk '/DW_AT_name/ && /"v\\0"/ && !done { state = 1 }
+if ! awk '/DW_AT_name/ && /"v\\0"/ && !done { state = 1 }
      state == 1 && /# DW_OP_fbreg/ { state = 2; print; next }
      state == 2 {
        if ($1 != ".sleb128" || $2 >= -64 || $2 < -8192) {
@@ -53,6 +66,9 @@ awk '/DW_AT_name/ && /"v\\0"/ && !done { state = 1 }
      { print }
      END { if (!done) { print "did not find v" > "/dev/stderr"; exit 1 } }' \
     "${output_dir}/stack-params.s" > "${output_dir}/stack-params-v.s"
+then
+  unsuitable_compiler "could not rewrite the location of stack_value's v"
+fi
 
 # Renames formal parameter $1, which has 3 characters, to $2, which has 1
 # character, and appends "DW_OP_piece $3" to its location, which is
@@ -78,16 +94,21 @@ append_piece() {
      { print }
      END { if (!done) { print "did not find " name > "/dev/stderr"; exit 1 } }'
 }
-append_piece w__ w 8 < "${output_dir}/stack-params-v.s" \
-    | append_piece p__ p 4 > "${output_dir}/stack-params-patched.s"
+if ! append_piece w__ w 8 < "${output_dir}/stack-params-v.s" \
+       > "${output_dir}/stack-params-w.s" \
+    || ! append_piece p__ p 4 < "${output_dir}/stack-params-w.s" \
+       > "${output_dir}/stack-params-patched.s"; then
+  unsuitable_compiler "could not append DW_OP_piece to the locations of w and p"
+fi
 gcc -gdwarf-4 -no-pie -o "${output_dir}/register-params" \
     "${output_dir}/register-params.o" "${output_dir}/stack-params-patched.s"
 
 # register-params.goal assumes that the location of every formal parameter of
-# an optimized function is a register throughout its function.  Another compiler version might instead
-# use a location list, DW_OP_entry_value, or a constant, or might omit the
-# location, for which Fjalar omits the formal parameter.  A line that starts
-# with "<depth><offset>:" begins a new debugging information entry.
+# an optimized function is a register throughout its function.  Another
+# compiler version might instead use a location list, DW_OP_entry_value, or a
+# constant, or might omit the location, for which Fjalar omits the formal
+# parameter.  A line that starts with "<depth><offset>:" begins a new
+# debugging information entry.
 if readelf --debug-dump=info "${output_dir}/register-params" \
     | awk 'function end_param() { if (inparam && !hasloc) bad = 1; inparam = 0 }
            /^ *<[0-9]+><[0-9a-f]+>:/ { end_param() }
@@ -102,15 +123,7 @@ if readelf --debug-dump=info "${output_dir}/register-params" \
            END { end_param(); exit !bad }'; then
   readelf --debug-dump=info "${output_dir}/register-params" \
     | grep -A8 DW_TAG_formal_parameter >&2
-  # In continuous integration (GitHub Actions sets CI, and Azure Pipelines
-  # sets TF_BUILD), fail rather than skip, so that a compiler change that
-  # makes this test vacuous does not go unnoticed.
-  if [ -n "${CI:-}" ] || [ -n "${TF_BUILD:-}" ]; then
-    echo "$0: FAILED: gcc did not put every formal parameter in a register" >&2
-    exit 1
-  fi
-  echo "$0: SKIPPED: gcc did not put every formal parameter in a register" >&2
-  exit 0
+  unsuitable_compiler "gcc did not put every formal parameter in a register"
 fi
 
 # A formal parameter in a register occupies no stack slot, even if Fjalar

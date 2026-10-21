@@ -3228,7 +3228,6 @@ static void processFunctions() {
       if ((f->formalParameters.numVars > 0) &&
           (f->formalParameters.first->var) &&
           !(f->formalParameters.first->var->validLoc) &&
-          !(f->formalParameters.first->var->locationUnsupported) &&
           (f->formalParameters.first->var->varType->decType == D_INT)){
         VariableEntry* var = f->formalParameters.first->var;
         printf("Found invalid argc, varByteOffset is: %d\n", var->byteOffset);
@@ -3240,7 +3239,6 @@ static void processFunctions() {
       if ((f->formalParameters.numVars > 1) &&
           (f->formalParameters.first->next->var) &&
           !(f->formalParameters.first->next->var->validLoc) &&
-          !(f->formalParameters.first->next->var->locationUnsupported) &&
           (f->formalParameters.first->next->var->varType->decType == D_CHAR)) {
         VariableEntry* var = f->formalParameters.first->next->var;
         printf("Found invalid argv, varByteOffset is: %d\n", var->byteOffset);
@@ -3292,9 +3290,7 @@ static void initConstructorsAndDestructors(void) {
 
       // (comment added 2009)  
       // RUDD - Dirty dirty hack. Force the location of this to be valid
-      if (!f->formalParameters.first->var->locationUnsupported) {
-        f->formalParameters.first->var->validLoc = 1;
-      }
+      f->formalParameters.first->var->validLoc = 1;
 
 
       // Use the regular (not mangled or demangled) name for matching
