@@ -71,11 +71,13 @@ typedef enum {
 // Returns the kind of op.  decode_location_expression marks a formal
 // parameter's location unsupported if it contains an op of kind
 // LOC_OP_UNSUPPORTED, so visitVariableGroup never evaluates such an op.
-// decode_location_expression does not record an op of kind LOC_OP_IGNORED.
+// decode_location_expression records, in a formal parameter's location, only
+// the ops that visitVariableGroup can evaluate and the register operations
+// (DW_OP_reg* and DW_OP_breg*) for a register that Fjalar cannot read.
 //
-// DW_OP_const* is unsupported:  the evaluator has no operand stack, so a
-// constant is useful to it only as an absolute address, which Fjalar does not
-// support (just as it does not support DW_OP_addr).
+// DW_OP_const* and DW_OP_lit* are unsupported:  the evaluator has no operand
+// stack, so a constant is useful to it only as an absolute address, which
+// Fjalar does not support (just as it does not support DW_OP_addr).
 //
 // A register operation (DW_OP_reg* or DW_OP_breg*) is supported only if
 // Fjalar can read the register; Fjalar saves such a register, with its A and

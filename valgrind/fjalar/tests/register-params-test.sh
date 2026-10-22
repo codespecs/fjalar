@@ -48,26 +48,44 @@ gcc -gdwarf-4 -gno-variable-location-views -no-pie -O1 -c \
 gcc -gdwarf-4 -gno-variable-location-views -no-pie -O0 -S -dA \
     -o "${output_dir}/stack-params.s" "${test_dir}/stack-params.c"
 
-# gcc does not emit DW_OP_stack_value after DW_OP_fbreg for a formal parameter
-# of an out-of-line function, so rewrite the location of stack_value's v from
-# "DW_OP_fbreg N", where N needs 2 bytes, to "DW_OP_fbreg -8;
-# DW_OP_stack_value".  The size of the debugging information is unchanged, so
-# the offsets that refer to it remain correct.
-if ! awk '/DW_AT_name/ && /"v\\0"/ && !done { state = 1 }
-     state == 1 && /# DW_OP_fbreg/ { state = 2; print; next }
+# Rewrites the location of formal parameter $1 from "DW_OP_fbreg N", where N
+# needs $2 bytes, to the assembly lines $3, which must have the same size as
+# "DW_OP_fbreg N".  The size of the debugging information is unchanged, so the
+# offsets that refer to it remain correct.
+rewrite_location() {
+  awk -v name="$1" -v bytes="$2" -v ops="$3" '
+     /DW_AT_name/ && index($0, "\"" name "\\0\"") && !done { state = 1 }
+     state == 1 && /# DW_OP_fbreg/ { state = 2; next }
      state == 2 {
-       if ($1 != ".sleb128" || $2 >= -64 || $2 < -8192) {
-         print "unexpected location for v: " $0 > "/dev/stderr"; exit 1
+       # N needs more than bytes - 1 bytes, but at most bytes bytes.
+       max = 2 ^ (7 * bytes - 1); min = 2 ^ (7 * bytes - 8)
+       if ($1 != ".sleb128" || $2 < -max || $2 >= max \
+           || (bytes > 1 && $2 >= -min && $2 < min)) {
+         print "unexpected location for " name ": " $0 > "/dev/stderr"; exit 1
        }
-       print "\t.sleb128 -8"
-       print "\t.byte\t0x9f\t# DW_OP_stack_value"
+       print ops
        state = 0; done = 1; next
      }
      { print }
-     END { if (!done) { print "did not find v" > "/dev/stderr"; exit 1 } }' \
-    "${output_dir}/stack-params.s" > "${output_dir}/stack-params-patched.s"
+     END { if (!done) { print "did not find " name > "/dev/stderr"; exit 1 } }'
+}
+# gcc does not emit DW_OP_stack_value after DW_OP_fbreg for a formal parameter
+# of an out-of-line function, nor a constant location for a formal parameter
+# of an unoptimized function, so rewrite these locations:
+#  * stack_value's v to "DW_OP_fbreg -8; DW_OP_stack_value"
+#  * constant_value's c to "DW_OP_const1u 17; DW_OP_stack_value"
+#  * literal_value's l to "DW_OP_lit5; DW_OP_stack_value"
+if ! rewrite_location v 2 \
+       "\t.byte\t0x91\t# DW_OP_fbreg\n\t.sleb128 -8\n\t.byte\t0x9f\t# DW_OP_stack_value" \
+       < "${output_dir}/stack-params.s" > "${output_dir}/stack-params-v.s" \
+    || ! rewrite_location c 2 \
+       "\t.byte\t0x8\t# DW_OP_const1u\n\t.byte\t0x11\n\t.byte\t0x9f\t# DW_OP_stack_value" \
+       < "${output_dir}/stack-params-v.s" > "${output_dir}/stack-params-c.s" \
+    || ! rewrite_location l 1 \
+       "\t.byte\t0x35\t# DW_OP_lit5\n\t.byte\t0x9f\t# DW_OP_stack_value" \
+       < "${output_dir}/stack-params-c.s" > "${output_dir}/stack-params-patched.s"
 then
-  unsuitable_compiler "could not rewrite the location of stack_value's v"
+  unsuitable_compiler "could not rewrite the locations of v, c, and l"
 fi
 gcc -gdwarf-4 -no-pie -o "${output_dir}/register-params" \
     "${output_dir}/register-params.o" "${output_dir}/stack-params-patched.s"
@@ -84,7 +102,7 @@ if readelf --debug-dump=info "${output_dir}/register-params" \
            /DW_TAG_subprogram/ { insub = 1; next }
            insub && /DW_AT_name/ { fname = $NF; insub = 0 }
            # These functions are in stack-params.c, which is not optimized.
-           fname ~ /^(stack_value|kept)$/ { next }
+           fname ~ /^(stack_value|kept|constant_value|literal_value)$/ { next }
            /DW_TAG_formal_parameter/ { inparam = 1; hasloc = 0; next }
            inparam && /DW_AT_location/ { hasloc = 1 }
            inparam && /DW_AT_location/ && !/: [0-9]+ byte block: .*\(DW_OP_reg/ { bad = 1 }
