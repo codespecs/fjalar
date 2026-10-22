@@ -755,16 +755,14 @@ traversals within data structures and arrays
 // True.  Otherwise, returns False.
 Bool dwarf_op_reg_num(UInt atom, UInt* regNum);
 
-// Returns true if Fjalar can read the register with the given DWARF
-// register number.
-Bool dwarf_reg_is_readable(UInt regNum);
-
 // Returns the guest-state offset of the register with the given DWARF
-// register number, which must be readable.
+// register number, which must be readable (see
+// dwarf_reg_is_readable in fjalar_dwarf.h).
 Int dwarf_reg_guest_offset(UInt regNum);
 
 // Returns the current value of the register with the given DWARF
-// register number, which must be readable.
+// register number, which must be readable (see
+// dwarf_reg_is_readable in fjalar_dwarf.h).
 Addr read_dwarf_reg(ThreadId tid, UInt regNum);
 
 // Returns the name of the register with the given DWARF register

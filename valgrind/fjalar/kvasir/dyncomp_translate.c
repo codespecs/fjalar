@@ -133,6 +133,14 @@ static void pendingCarryTags_DC ( DCEnv* dce, IRAtom* atom,
    }
 }
 
+// Returns True if tag is the constant 0, which merging has no effect on.
+static
+Bool isZeroTag_DC ( IRAtom* tag )
+{
+   return tag->tag == Iex_Const && tag->Iex.Const.con->tag == Ico_U64
+          && tag->Iex.Const.con->Ico.U64 == 0;
+}
+
 // Merge the tags vatom1 and vatom2, for an operation whose result
 // gets tag 0 (such as a comparison).  The merge is a dirty call
 // rather than a clean one.  VEX would remove a clean call as dead
@@ -142,10 +150,20 @@ static void pendingCarryTags_DC ( DCEnv* dce, IRAtom* atom,
 // and the merge would be lost.
 static void mergeTagsReturn0_DC ( DCEnv* dce,
                                   IRAtom* vatom1, IRAtom* vatom2 ) {
-   IRDirty* di = unsafeIRDirty_0_N(2,
-                                   "MC_(helperc_MERGE_TAGS_RETURN_0)",
-                                   &MC_(helperc_MERGE_TAGS_RETURN_0),
-                                   mkIRExprVec_2( vatom1, vatom2 ));
+   IRDirty* di;
+
+   // In this mode, NOTHING is an interaction:
+   if (dyncomp_dataflow_only_mode) {
+      return;
+   }
+   if (isZeroTag_DC(vatom1) || isZeroTag_DC(vatom2)) {
+      return;
+   }
+
+   di = unsafeIRDirty_0_N(2,
+                          "MC_(helperc_MERGE_TAGS_RETURN_0)",
+                          &MC_(helperc_MERGE_TAGS_RETURN_0),
+                          mkIRExprVec_2( vatom1, vatom2 ));
    setHelperAnns_DC( dce, di );
    stmt_DC('V', dce, IRStmt_Dirty(di));
 }
@@ -327,30 +345,36 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
 // Tags are merged (that is, an interaction is recorded) in two ways, and
 // neither merges in dyncomp_dataflow_only_mode:
 //  * At translation time, every merge in the instrumentation is created
-//    by mkMergeTags_DC, by stmtMergeTagsReturn0_DC, or by
-//    mergeTagsReturn0_DC (which neither expr2tags_Binop_DC nor
-//    approximate_unhandled_op_DC reaches in that mode).
+//    by mkMergeTags_DC (a clean call, whose result is used) or by
+//    mergeTagsReturn0_DC (a dirty call, whose result is discarded).  In
+//    dyncomp_dataflow_only_mode, mkMergeTags_DC returns tag 0 and
+//    mergeTagsReturn0_DC emits nothing.
 //  * At run time, a load merges the tags of the bytes it reads.  In
 //    dyncomp_dataflow_only_mode (and dyncomp_dataflow_comparisons_mode
 //    and dyncomp_units_mode; see loadIsInteraction_DC),
 //    expr2tags_LDle_DC instead calls MC_(helperc_LOAD_TAG_N), which
 //    merges nothing.
-// expr2tags_Binop_DC and expr2tags_LDle_DC also test
-// dyncomp_dataflow_only_mode, the latter through loadIsInteraction_DC.  expr2tags_Binop_DC must give every
-// result tag 0, even where its constant-operand shortcut, which
-// bypasses mkMergeTags_DC, would pass an operand's tag through.
-// expr2tags_LDle_DC must give a wide load the tag of one of its bytes,
-// not the tag 0 that mkMergeTags_DC returns in that mode.
-// expr2tags_Qop_DC and expr2tags_Triop_DC return 0 early in that mode
+// Every current caller of mkMergeTags_DC and mergeTagsReturn0_DC also
+// tests dyncomp_dataflow_only_mode and does not call them in that mode,
+// so their own tests are a backstop for future callers.  A caller must
+// test the mode itself if relying on those tests would give it the wrong
+// result in that mode:
+//  * expr2tags_Binop_DC must give every result tag 0, even where its
+//    constant-operand shortcut, which bypasses mkMergeTags_DC, would pass
+//    an operand's tag through.
+//  * expr2tags_LDle_DC (through loadIsInteraction_DC) must give a wide
+//    load the tag of one of its bytes, not tag 0.
+// In that mode, approximate_unhandled_op_DC treats no operation as an
+// interaction.  expr2tags_Qop_DC and expr2tags_Triop_DC return 0 early
 // rather than reaching mkMergeTags_DC, so that an unhandled operator does
-// not panic.  handleCCall_DC returns 0 early in that mode rather than
-// reaching stmtMergeTagsReturn0_DC, so that it does not compute the
-// arguments' tags.
+// not panic.  handleCCall_DC returns 0 early, so that it does not compute
+// the arguments' tags.
 //
 // Outside the instrumentation, dtrace-output.c merges tags in every mode:
-// at each program point, it merges the tags of the elements of each array
-// or sequence that it outputs (see val_uf_union_tags_at_addr and
-// val_uf_union_tags_in_range).
+// at each program point, it merges the tags of the bytes of each value
+// that it outputs (see val_uf_union_tags_in_range), and the tags of the
+// elements of each array or sequence that it outputs (see
+// val_uf_union_tags_at_addr).
 
 // Returns a clean call to helper, one of the MC_(helperc_MERGE_*TAGS)
 // functions, that merges the tags in args.
@@ -363,41 +387,6 @@ IRAtom* mkMergeTags_DC ( Int regparms, const HChar* hname, void* helper,
       return IRExpr_Const(IRConst_UWord(0));
    }
    return mkIRExprCCall(Ity_Word, regparms, hname, helper, args);
-}
-
-// Returns True if tag is the constant 0, which merging has no effect on.
-static
-Bool isZeroTag_DC ( IRAtom* tag )
-{
-   return tag->tag == Iex_Const && tag->Iex.Const.con->tag == Ico_U64
-          && tag->Iex.Const.con->Ico.U64 == 0;
-}
-
-// Emits a dirty call that merges tag1 and tag2.  The call is dirty so
-// that it is not optimized away, though its result is unused.
-static
-void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2 )
-{
-   IRTemp   datatag;
-   IRDirty* di;
-
-   // In this mode, NOTHING is an interaction:
-   if (dyncomp_dataflow_only_mode) {
-      return;
-   }
-   if (isZeroTag_DC(tag1) || isZeroTag_DC(tag2)) {
-      return;
-   }
-
-   datatag = newTemp(dce->mce, Ity_Word, DC);
-   di = unsafeIRDirty_1_N(datatag,
-                          2,
-                          "MC_(helperc_MERGE_TAGS_RETURN_0)",
-                          &MC_(helperc_MERGE_TAGS_RETURN_0),
-                          mkIRExprVec_2( tag1, tag2 ));
-
-   setHelperAnns_DC( dce, di );
-   stmt_DC('V', dce, IRStmt_Dirty(di));
 }
 
 // Handling of clean helper function calls in the target program's
@@ -422,13 +411,15 @@ void stmtMergeTagsReturn0_DC ( DCEnv* dce, IRAtom* tag1, IRAtom* tag2 )
 // expr2tags_Binop_DC does not merge a constant operand.
 //
 // The merges are chained: each argument is merged with the result of
-// the previous merges, using MC_(helperc_MERGE_TAGS), which returns
-// the other tag when one tag is 0 or WEAK_FRESH_TAG.  An argument
-// whose tag is WEAK_FRESH_TAG (such as the stack pointer) therefore
-// does not prevent the other arguments from being merged with one
-// another.  Merging every argument with a fixed argument would not
-// work:  if the fixed argument's tag were WEAK_FRESH_TAG, no merge
-// would have any effect.
+// the previous merges.  Each intermediate merge uses
+// MC_(helperc_MERGE_TAGS), which returns the other tag when one tag is 0
+// or WEAK_FRESH_TAG.  The last merge, whose result is unused, uses
+// MC_(helperc_MERGE_TAGS_RETURN_0); it merges nothing when one tag is 0
+// or WEAK_FRESH_TAG (see val_uf_tag_union).  An argument whose tag is
+// WEAK_FRESH_TAG (such as the stack pointer) therefore does not prevent
+// the other arguments from being merged with one another.  Merging every
+// argument with a fixed argument would not work:  if the fixed
+// argument's tag were WEAK_FRESH_TAG, no merge would have any effect.
 //
 // Under --dyncomp-interactions=comparisons, a helper call is an
 // interaction only if it is a comparison:  that is, if it uses flags that
@@ -816,11 +807,11 @@ void handleFlagsCCall_DC ( DCEnv* dce, IRAtom** exprvec, IRCallee* cee )
       pendingCarryTags_DC(dce, exprvec[ccOpIndex + 3],
                           &pendingTag1, &pendingTag2);
    }
-   stmtMergeTagsReturn0_DC(dce,
-                           subOperandTag_DC(dce, ccOp, exprvec[ccOpIndex + 1],
-                                            pendingTag1),
-                           subOperandTag_DC(dce, ccOp, exprvec[ccOpIndex + 2],
-                                            pendingTag2));
+   mergeTagsReturn0_DC(dce,
+                       subOperandTag_DC(dce, ccOp, exprvec[ccOpIndex + 1],
+                                        pendingTag1),
+                       subOperandTag_DC(dce, ccOp, exprvec[ccOpIndex + 2],
+                                        pendingTag2));
 }
 
 // Returns the expression that the statements of the superblock before the
@@ -990,10 +981,10 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
                                               mkIRExprVec_2(merged,
                                                             expr2tags_DC(dce, mergedArgs[i]))));
       }
-      // The last merge's result is not used, so stmtMergeTagsReturn0_DC
+      // The last merge's result is not used, so mergeTagsReturn0_DC
       // makes it a dirty call, which is not removed as dead code.
-      stmtMergeTagsReturn0_DC(dce, merged,
-                              expr2tags_DC(dce, mergedArgs[numMergedArgs - 1]));
+      mergeTagsReturn0_DC(dce, merged,
+                          expr2tags_DC(dce, mergedArgs[numMergedArgs - 1]));
    }
    return IRExpr_Const(IRConst_UWord(0));
 }
