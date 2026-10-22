@@ -222,7 +222,8 @@ static __inline__ UInt grab_fresh_tag(void) {
   if ((!dyncomp_no_gc) &&
       totalNumTagsAssigned && // Don't garbage collect when it's zero
       (totalNumTagsAssigned % dyncomp_gc_after_n_tags == 0)) {
-    // Tags may be live in IR temporaries now, so wait for a safe point.
+    // This may run in the middle of a superblock, where tags can be
+    // live in IR temporaries, so defer the collection to a safe point.
     dyncomp_gc_pending = True;
   }
 
