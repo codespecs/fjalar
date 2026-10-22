@@ -2571,10 +2571,10 @@ static int formalParamByteSize(VariableEntry* varPtr)
 // from which Fjalar can read the whole value.  The location must be a
 // single DW_OP_reg operation:  Fjalar does not support a register
 // location that has other operations, such as a struct that is split
-// across two registers (DW_OP_reg*; DW_OP_piece; DW_OP_reg*; DW_OP_piece,
-// of which decode_location_expression records only the DW_OP_reg*).  The
-// register is readable, because a location that uses an unreadable
-// register is unsupported (see location_op_kind_of).  Call this after
+// across two registers (DW_OP_reg*; DW_OP_piece; DW_OP_reg*; DW_OP_piece).
+// The register is readable, and the location has no DW_OP_piece, because
+// a location that uses an unreadable register or DW_OP_piece is
+// unsupported (see location_op_kind_of).  Call this after
 // copying the DWARF location into varPtr->location_expression.
 static Bool isSupportedRegisterLocation(VariableEntry* varPtr)
 {

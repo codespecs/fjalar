@@ -66,7 +66,7 @@ static __inline__ Bool dwarf_reg_is_readable(UInt regNum) {
 // LOC_OP_UNSUPPORTED and LOC_OP_IGNORED.
 typedef enum {
   LOC_OP_UNSUPPORTED,  // any operation not listed below
-  LOC_OP_IGNORED,      // DW_OP_nop and DW_OP_piece, which Fjalar ignores
+  LOC_OP_IGNORED,      // DW_OP_nop, which Fjalar ignores
   LOC_OP_DEREF,        // DW_OP_deref
   LOC_OP_PLUS_UCONST,  // DW_OP_plus_uconst
   LOC_OP_REG,          // DW_OP_reg0..DW_OP_reg31 (not DW_OP_regx), for a register Fjalar can read
@@ -84,6 +84,12 @@ typedef enum {
 // DW_OP_const* and DW_OP_lit* are unsupported:  the evaluator has no operand
 // stack, so a constant is useful to it only as an absolute address, which
 // Fjalar does not support (just as it does not support DW_OP_addr).
+//
+// DW_OP_piece is unsupported:  the evaluator cannot assemble a value from
+// pieces, and decode_location_expression does not record a piece's size.
+// If it ignored DW_OP_piece, then a location such as "DW_OP_reg0;
+// DW_OP_piece 4" for an 8-byte parameter, which says that only 4 bytes are
+// in the register, would look like a register that holds all 8 bytes.
 //
 // A register operation (DW_OP_reg* or DW_OP_breg*) is supported only if
 // Fjalar can read the register; Fjalar saves such a register, with its A and
@@ -111,7 +117,7 @@ static __inline__ location_op_kind location_op_kind_of(enum dwarf_location_atom 
   if (op == DW_OP_fbreg) {
     return LOC_OP_FBREG;
   }
-  if ((op == DW_OP_nop) || (op == DW_OP_piece)) {
+  if (op == DW_OP_nop) {
     return LOC_OP_IGNORED;
   }
   return LOC_OP_UNSUPPORTED;
