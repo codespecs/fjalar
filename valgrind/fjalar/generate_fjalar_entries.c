@@ -2591,9 +2591,6 @@ int determineFormalParametersStackByteSize(FunctionEntry* f)
       formalParamFrameOffsetRange(cur_node->var, &lo, &hi);
       totalByteSize = MAX(totalByteSize, hi);
     }
-  // PG comment said "Just to be safe, round UP to the next multiple
-  // of 4". For the moment, live dangerously and see if anything
-  // breaks. -SMcC
   return totalByteSize;
 }
 
