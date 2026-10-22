@@ -2491,11 +2491,19 @@ int determineVariableByteSize(VariableEntry* var)
 // highest byte of the stack memory that a formal parameter occupies or
 // that its location reads, relative to the frame base.  This is
 // computed before visitVariableGroup evaluates the location at run
-// time, so it uses the byteOffset and the location's operations.  It
-// treats DW_OP_breg* as if the register held the frame base.  For the
-// stack pointer, that gives an upper bound relative to the higher of
-// the frame base and the stack pointer, and enter_function copies the stack
-// up to that bound.  For other registers, it is an estimate.
+// time, so it uses the location's operations.  It treats DW_OP_breg*
+// as if the register held the frame base.  For the stack pointer, that
+// gives an upper bound relative to the higher of the frame base and the
+// stack pointer, and enter_function copies the stack up to that bound.
+// For other registers, it is an estimate.
+//
+// It uses the byteOffset only for a formal parameter with no location,
+// which visitVariableGroup reads at the byteOffset.  For a location
+// other than a lone DW_OP_fbreg, the byteOffset is a placeholder, and
+// using it would extend the range past the stack memory that the
+// location reads.  Then enter_function would copy more of the caller's
+// stack, and visitVariableGroup could read an object in the caller's
+// frame from the end of the copy instead of from the caller's frame.
 static void formalParamFrameOffsetRange(VariableEntry* var, int* lo, int* hi)
 {
   int byteSize = determineVariableByteSize(var);
@@ -2505,8 +2513,13 @@ static void formalParamFrameOffsetRange(VariableEntry* var, int* lo, int* hi)
   Bool offsetKnown = False;
   unsigned int i;
 
-  *lo = var->byteOffset;
-  *hi = var->byteOffset + byteSize;
+  if (var->location_expression_size == 0) {
+    *lo = var->byteOffset;
+    *hi = var->byteOffset + byteSize;
+  } else {
+    *lo = 0;
+    *hi = 0;
+  }
   for (i = 0; i < var->location_expression_size; i++) {
     dwarf_location* dloc = &(var->location_expression[i]);
     switch (location_op_kind_of(dloc->atom)) {
@@ -2717,7 +2730,8 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     // replaces it) until visitVariableGroup evaluates the location and
     // finds the formal parameter in the copied stack.  The XML output,
     // which runs earlier, shows that byteOffset.  The stack sizes come
-    // from formalParamFrameOffsetRange, which also uses the location.
+    // from formalParamFrameOffsetRange, which uses the location, not
+    // that byteOffset.
     recordEntryRegs(f, varPtr);
 
     FJALAR_DPRINTF(" location_type: %u, byteOffset: %x\n", varPtr->locationType, (unsigned int)varPtr->byteOffset);
