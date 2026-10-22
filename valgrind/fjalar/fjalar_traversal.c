@@ -1075,7 +1075,8 @@ void visitVariableGroup(VariableOrigin varOrigin,
           // guestStackEnd).  The virtual stack holds nothing for the
           // bytes at or past guestStackEnd.
           if((var_loc >= funcPtr->guestStackStart) &&
-              (var_loc + (Addr)determineVariableByteSize(var)
+              (var_loc < funcPtr->guestStackEnd) &&
+              (var_loc + (Addr)formalParamByteSize(var)
                <= funcPtr->guestStackEnd)) {
 
 #if defined(VGA_amd64)

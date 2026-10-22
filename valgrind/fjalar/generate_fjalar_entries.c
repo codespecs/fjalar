@@ -47,6 +47,7 @@ static void processFunctions(void);
 
 int determineFormalParametersStackByteSize(FunctionEntry* f);
 int determineFormalParametersLowerStackByteSize(FunctionEntry* f);
+int determineVariableByteSize(VariableEntry* var);
 
 static void extractFormalParameterVars(FunctionEntry* f, function* dwarfFunctionEntry);
 static void extractLocalArrayAndStructVariables(FunctionEntry* f, function* dwarfFunctionEntry);
@@ -2559,7 +2560,7 @@ int determineFormalParametersLowerStackByteSize(FunctionEntry* f)
 
 // Returns the number of bytes that the formal parameter's location
 // holds.  A C++ reference is passed as a pointer.
-static int formalParamByteSize(VariableEntry* varPtr)
+int formalParamByteSize(VariableEntry* varPtr)
 {
   return (varPtr->referenceLevels > 0
           ? (int)sizeof(Addr)

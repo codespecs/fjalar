@@ -1126,8 +1126,9 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation);
 // var->varType->byteSize if ptrLevels == 0, sizeof(void*) otherwise
 int getBytesBetweenElts(VariableEntry* var);
 
-// Returns the byte size of the given VariableEntry
-int determineVariableByteSize(VariableEntry* var);
+// Returns the number of bytes that the formal parameter's location
+// holds.  A C++ reference is passed as a pointer.
+int formalParamByteSize(VariableEntry* varPtr);
 
 // Returns True if all numBytes bytes starting at addressInQuestion
 // have been allocated, False otherwise
