@@ -1,9 +1,10 @@
 #!/bin/bash
 
 # A positive control for dyncomp-interactions-none-test.sh:  in the default
-# mode, the condition-code helper call in less() makes a and b comparable.
+# mode, the condition-code helper call in less() makes a and b comparable,
+# and the addition in add_const() makes x comparable to the return value.
 # Without this test, dyncomp-interactions-none-test.sh would pass even if
-# helper calls never merged tags in any mode.  The expected comparability is
+# DynComp never merged those tags in any mode.  The expected comparability is
 # in dyncomp-interactions-default.goal.
 
 exec "$(dirname "$0")/dyncomp-comparability-driver.sh" \

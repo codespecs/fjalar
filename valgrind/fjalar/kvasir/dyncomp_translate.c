@@ -36,6 +36,7 @@
 #include "dyncomp_main.h"
 #include "../fjalar_include.h"
 #include "vex_common.h"
+#include "../../VEX/priv/guest_amd64_defs.h"  // amd64g_calculate_*
 
 extern char dyncomp_profile_tags;
 static
@@ -107,6 +108,14 @@ static void setHelperAnns_DC ( DCEnv* dce, IRDirty* di ) {
    di->fxState[1].repeatLen = 0;
 }
 
+// Returns True if tag is the constant 0, which merging has no effect on.
+static
+Bool isZeroTag_DC ( IRAtom* tag )
+{
+   return tag->tag == Iex_Const && tag->Iex.Const.con->tag == Ico_U64
+          && tag->Iex.Const.con->Ico.U64 == 0;
+}
+
 // Merge the tags vatom1 and vatom2, for an operation whose result
 // gets tag 0 (such as a comparison).  The merge is a dirty call
 // rather than a clean one.  VEX would remove a clean call as dead
@@ -116,10 +125,20 @@ static void setHelperAnns_DC ( DCEnv* dce, IRDirty* di ) {
 // and the merge would be lost.
 static void mergeTagsReturn0_DC ( DCEnv* dce,
                                   IRAtom* vatom1, IRAtom* vatom2 ) {
-   IRDirty* di = unsafeIRDirty_0_N(2,
-                                   "MC_(helperc_MERGE_TAGS_RETURN_0)",
-                                   &MC_(helperc_MERGE_TAGS_RETURN_0),
-                                   mkIRExprVec_2( vatom1, vatom2 ));
+   IRDirty* di;
+
+   // In this mode, NOTHING is an interaction:
+   if (dyncomp_dataflow_only_mode) {
+      return;
+   }
+   if (isZeroTag_DC(vatom1) || isZeroTag_DC(vatom2)) {
+      return;
+   }
+
+   di = unsafeIRDirty_0_N(2,
+                          "MC_(helperc_MERGE_TAGS_RETURN_0)",
+                          &MC_(helperc_MERGE_TAGS_RETURN_0),
+                          mkIRExprVec_2( vatom1, vatom2 ));
    setHelperAnns_DC( dce, di );
    stmt_DC('V', dce, IRStmt_Dirty(di));
 }
@@ -285,6 +304,53 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
    return IRExpr_GetI( new_descr, ix, bias );
 }
 
+// Tags are merged (that is, an interaction is recorded) in two ways, and
+// neither merges in dyncomp_dataflow_only_mode:
+//  * At translation time, every merge in the instrumentation is created
+//    by mkMergeTags_DC (a clean call, whose result is used) or by
+//    mergeTagsReturn0_DC (a dirty call, whose result is discarded).  In
+//    dyncomp_dataflow_only_mode, mkMergeTags_DC returns tag 0 and
+//    mergeTagsReturn0_DC emits nothing.
+//  * At run time, a load merges the tags of the bytes it reads.  In
+//    dyncomp_dataflow_only_mode (and dyncomp_dataflow_comparisons_mode
+//    and dyncomp_units_mode; see loadIsInteraction_DC),
+//    expr2tags_LDle_DC instead calls MC_(helperc_LOAD_TAG_N), which
+//    merges nothing.
+// Every current caller of mkMergeTags_DC and mergeTagsReturn0_DC also
+// tests dyncomp_dataflow_only_mode and does not call them in that mode,
+// so their own tests are a backstop for future callers.  A caller must
+// test the mode itself if relying on those tests would give it the wrong
+// result in that mode:
+//  * expr2tags_Binop_DC must give every result tag 0, even where its
+//    constant-operand shortcut, which bypasses mkMergeTags_DC, would pass
+//    an operand's tag through.
+//  * expr2tags_LDle_DC (through loadIsInteraction_DC) must give a wide
+//    load the tag of one of its bytes, not tag 0.
+// In that mode, approximate_unhandled_op_DC treats no operation as an
+// interaction.  expr2tags_Qop_DC and expr2tags_Triop_DC return 0 early
+// rather than reaching mkMergeTags_DC, so that an unhandled operator does
+// not panic.  handleCCall_DC returns 0 early, so that it does not compute
+// the arguments' tags.
+//
+// Outside the instrumentation, dtrace-output.c merges tags in every mode:
+// at each program point, it merges the tags of the bytes of each value
+// that it outputs (see val_uf_union_tags_in_range), and the tags of the
+// elements of each array or sequence that it outputs (see
+// val_uf_union_tags_at_addr).
+
+// Returns a clean call to helper, one of the MC_(helperc_MERGE_*TAGS)
+// functions, that merges the tags in args.
+static
+IRAtom* mkMergeTags_DC ( Int regparms, const HChar* hname, void* helper,
+                         IRExpr** args )
+{
+   // In this mode, NOTHING is an interaction:
+   if (dyncomp_dataflow_only_mode) {
+      return IRExpr_Const(IRConst_UWord(0));
+   }
+   return mkIRExprCCall(Ity_Word, regparms, hname, helper, args);
+}
+
 // Handling of clean helper function calls in the target program's
 // translated IR: Treat all arguments (exprvec) as 'interacting' with
 // one another and merge all of their respective tags.  Helpers
@@ -307,13 +373,108 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
 // expr2tags_Binop_DC does not merge a constant operand.
 //
 // The merges are chained: each argument is merged with the result of
-// the previous merges, using MC_(helperc_MERGE_TAGS), which returns
-// the other tag when one tag is 0 or WEAK_FRESH_TAG.  An argument
-// whose tag is WEAK_FRESH_TAG (such as the stack pointer) therefore
-// does not prevent the other arguments from being merged with one
-// another.  Merging every argument with a fixed argument would not
-// work:  if the fixed argument's tag were WEAK_FRESH_TAG, no merge
-// would have any effect.
+// the previous merges.  Each intermediate merge uses
+// MC_(helperc_MERGE_TAGS), which returns the other tag when one tag is 0
+// or WEAK_FRESH_TAG.  The last merge, whose result is unused, uses
+// MC_(helperc_MERGE_TAGS_RETURN_0); it merges nothing when one tag is 0
+// or WEAK_FRESH_TAG (see val_uf_tag_union).  An argument whose tag is
+// WEAK_FRESH_TAG (such as the stack pointer) therefore does not prevent
+// the other arguments from being merged with one another.  Merging every
+// argument with a fixed argument would not work:  if the fixed
+// argument's tag were WEAK_FRESH_TAG, no merge would have any effect.
+//
+// Under --dyncomp-interactions=comparisons, a helper call is an
+// interaction only if it is a comparison:  that is, if it uses flags that
+// a subtraction (a cmp or sub instruction) set.  The helpers that read
+// flags (amd64g_calculate_condition, amd64g_calculate_rflags_c, and
+// amd64g_calculate_rflags_all) compute them from a flags thunk whose CC_OP
+// field says which operation set them.  CC_OP is often known only at run
+// time, for example when the flags are read in a different superblock
+// than the one that set them, so the merge checks it at run time; see
+// handleFlagsCCall_DC.  For example, the operands of a cmp are merged when
+// its flags are read by a setl (via amd64g_calculate_condition) or by an
+// sbb (via amd64g_calculate_rflags_c), but the operands of an add are not
+// merged when its carry is read by an adc.
+//
+// An inc or dec instruction reads the carry flag (via
+// amd64g_calculate_rflags_c) and stores it in the CC_NDEP field of its own
+// flags thunk, because it does not change the carry flag.  That read is
+// treated like any other, so a sub followed by an inc makes the operands of
+// the sub comparable, although nothing compares them.  (When the sub and the
+// inc are in the same superblock, VEX replaces the read by a comparison of
+// the operands of the sub, which expr2tags_Binop_DC merges, with the same
+// result.)
+//
+// amd64g_calculate_rflags_all is used mostly by instructions that preserve
+// or copy flags, such as shifts, bt, and pushf.  These calls merge no tags;
+// if the flags are later used, then the instruction that uses them reads
+// them from the new thunk.  Under --dyncomp-interactions=comparisons, other
+// helpers merge no tags either.
+
+// Returns the tag of arg, an argument of a helper that reads flags, or 0 if
+// arg is a constant, just as expr2tags_Binop_DC does not merge a constant
+// operand.
+static
+IRAtom* flagsArgTag_DC ( DCEnv* dce, IRAtom* arg )
+{
+   if (arg->tag == Iex_Const) {
+      return IRExpr_Const(IRConst_UWord(0));
+   }
+   return expr2tags_DC(dce, arg);
+}
+
+// Returns an atom for the tag of an operand of the subtraction whose result
+// a flags thunk holds, or for 0 if it does not hold the result of a
+// subtraction; see MC_(helperc_SUB_OPERAND_TAG).  ccOp and dep are the
+// thunk's CC_OP field and its CC_DEP1 or CC_DEP2 field.
+static
+IRAtom* subOperandTag_DC ( DCEnv* dce, IRAtom* ccOp, IRAtom* dep )
+{
+   IRAtom* depTag = flagsArgTag_DC(dce, dep);
+
+   // If CC_OP is known at translation time, decide now.
+   if (ccOp->tag == Iex_Const) {
+      tl_assert(ccOp->Iex.Const.con->tag == Ico_U64);
+      if (dyncomp_cc_op_is_sub(ccOp->Iex.Const.con->Ico.U64)) {
+         return depTag;
+      }
+      return IRExpr_Const(IRConst_UWord(0));
+   }
+   if (isZeroTag_DC(depTag)) {
+      return depTag;
+   }
+   return assignNew_DC(dce, Ity_Word,
+                       mkIRExprCCall(Ity_Word, 2,
+                                     "MC_(helperc_SUB_OPERAND_TAG)",
+                                     &MC_(helperc_SUB_OPERAND_TAG),
+                                     mkIRExprVec_2(ccOp, depTag)));
+}
+
+// Handles a call to cee, a helper that reads flags, with arguments exprvec,
+// under --dyncomp-interactions=comparisons.  If the call reads the
+// flags as the result of a comparison, which is the case if they are the
+// result of a subtraction, then it merges the tags of the thunk's CC_DEP1
+// and CC_DEP2 arguments, which are the operands of the subtraction.
+static
+void handleFlagsCCall_DC ( DCEnv* dce, IRAtom** exprvec, IRCallee* cee )
+{
+   // The index of the CC_OP argument, which CC_DEP1 and CC_DEP2 follow
+   Int ccOpIndex;
+   IRAtom* ccOp;
+
+   if (cee->addr == (void*)&amd64g_calculate_condition) {
+      ccOpIndex = 1;
+   } else if (cee->addr == (void*)&amd64g_calculate_rflags_c) {
+      ccOpIndex = 0;
+   } else {
+      return;
+   }
+
+   ccOp = exprvec[ccOpIndex];
+   mergeTagsReturn0_DC(dce,
+                       subOperandTag_DC(dce, ccOp, exprvec[ccOpIndex + 1]),
+                       subOperandTag_DC(dce, ccOp, exprvec[ccOpIndex + 2]));
+}
 
 static
 IRAtom* handleCCall_DC ( DCEnv* dce,
@@ -324,11 +485,15 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
    Int numMergedArgs = 0;
    Int i;
    IRAtom* merged;
-   IRDirty* di;
 
    // In this mode, NOTHING is an interaction, so there is nothing to
    // merge.  Returning early avoids computing the arguments' tags.
    if (dyncomp_dataflow_only_mode) {
+      return IRExpr_Const(IRConst_UWord(0));
+   }
+
+   if (dyncomp_dataflow_comparisons_mode) {
+      handleFlagsCCall_DC(dce, exprvec, cee);
       return IRExpr_Const(IRConst_UWord(0));
    }
 
@@ -360,23 +525,16 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
       // merges still happen in order, just before the final dirty call.
       for (i = 1; i < numMergedArgs - 1; i++) {
          merged = assignNew_DC(dce, Ity_Word,
-                               mkIRExprCCall(Ity_Word,
-                                             2 /*Int regparms*/,
-                                             "MC_(helperc_MERGE_TAGS)",
-                                             &MC_(helperc_MERGE_TAGS),
-                                             mkIRExprVec_2(merged,
-                                                           expr2tags_DC(dce, mergedArgs[i]))));
+                               mkMergeTags_DC(2 /*Int regparms*/,
+                                              "MC_(helperc_MERGE_TAGS)",
+                                              &MC_(helperc_MERGE_TAGS),
+                                              mkIRExprVec_2(merged,
+                                                            expr2tags_DC(dce, mergedArgs[i]))));
       }
-      // The last merge must be a dirty call rather than a clean call:
-      // its result is not used, so a clean call would be removed as
-      // dead code.
-      di = unsafeIRDirty_0_N(2,
-                             "MC_(helperc_MERGE_TAGS)",
-                             &MC_(helperc_MERGE_TAGS),
-                             mkIRExprVec_2(merged,
-                                           expr2tags_DC(dce, mergedArgs[numMergedArgs - 1])));
-      setHelperAnns_DC( dce, di );
-      stmt_DC('V', dce, IRStmt_Dirty(di));
+      // The last merge's result is not used, so mergeTagsReturn0_DC
+      // makes it a dirty call, which is not removed as dead code.
+      mergeTagsReturn0_DC(dce, merged,
+                          expr2tags_DC(dce, mergedArgs[numMergedArgs - 1]));
    }
    return IRExpr_Const(IRConst_UWord(0));
 }
@@ -551,24 +709,21 @@ IRAtom* approximate_unhandled_op_DC ( DCEnv* dce, IROp op, Int nargs,
       case 1:
          return data[0];
       case 2:
-         return mkIRExprCCall (Ity_Word,
-                               2 /*Int regparms*/,
-                               "MC_(helperc_MERGE_TAGS)",
-                               &MC_(helperc_MERGE_TAGS),
-                               mkIRExprVec_2( data[0], data[1] ));
+         return mkMergeTags_DC (2 /*Int regparms*/,
+                                "MC_(helperc_MERGE_TAGS)",
+                                &MC_(helperc_MERGE_TAGS),
+                                mkIRExprVec_2( data[0], data[1] ));
       case 3:
-         return mkIRExprCCall (Ity_Word,
-                               3 /*Int regparms*/,
-                               "MC_(helperc_MERGE_3_TAGS)",
-                               &MC_(helperc_MERGE_3_TAGS),
-                               mkIRExprVec_3( data[0], data[1], data[2] ));
+         return mkMergeTags_DC (3 /*Int regparms*/,
+                                "MC_(helperc_MERGE_3_TAGS)",
+                                &MC_(helperc_MERGE_3_TAGS),
+                                mkIRExprVec_3( data[0], data[1], data[2] ));
       default:
-         return mkIRExprCCall (Ity_Word,
-                               3 /*Int regparms*/,
-                               "MC_(helperc_MERGE_4_TAGS)",
-                               &MC_(helperc_MERGE_4_TAGS),
-                               mkIRExprVec_4( data[0], data[1], data[2],
-                                              data[3] ));
+         return mkMergeTags_DC (3 /*Int regparms*/,
+                                "MC_(helperc_MERGE_4_TAGS)",
+                                &MC_(helperc_MERGE_4_TAGS),
+                                mkIRExprVec_4( data[0], data[1], data[2],
+                                               data[3] ));
    }
 }
 
@@ -629,30 +784,27 @@ IRAtom* expr2tags_Qop_DC ( DCEnv* dce,
          // If we are running in units mode, then we should merge the
          // tags of the 3rd and 4th operands:
          if (dyncomp_units_mode) {
-            return mkIRExprCCall (Ity_Word,
-                                  2 /*Int regparms*/,
-                                  "MC_(helperc_MERGE_TAGS)",
-                                  &MC_(helperc_MERGE_TAGS),
-                                  mkIRExprVec_2( vatom3, vatom4 ));
+            return mkMergeTags_DC (2 /*Int regparms*/,
+                                   "MC_(helperc_MERGE_TAGS)",
+                                   &MC_(helperc_MERGE_TAGS),
+                                   mkIRExprVec_2( vatom3, vatom4 ));
          }
          // Ok, if we are running in the default mode, then we should
          // merge the tags of the 2nd, 3rd, and 4th operands:
          else {
-            return mkIRExprCCall (Ity_Word,
-                                  3 /*Int regparms*/,
-                                  "MC_(helperc_MERGE_3_TAGS)",
-                                  &MC_(helperc_MERGE_3_TAGS),
-                                  mkIRExprVec_3( vatom2, vatom3, vatom4 ));
+            return mkMergeTags_DC (3 /*Int regparms*/,
+                                   "MC_(helperc_MERGE_3_TAGS)",
+                                   &MC_(helperc_MERGE_3_TAGS),
+                                   mkIRExprVec_3( vatom2, vatom3, vatom4 ));
          }
          break;
 
       // Concatenation, like the binary Iop_V128HLtoV256, is an interaction.
       case Iop_64x4toV256:
-         return mkIRExprCCall (Ity_Word,
-                               3 /*Int regparms*/,
-                               "MC_(helperc_MERGE_4_TAGS)",
-                               &MC_(helperc_MERGE_4_TAGS),
-                               mkIRExprVec_4( vatom1, vatom2, vatom3, vatom4 ));
+         return mkMergeTags_DC (3 /*Int regparms*/,
+                                "MC_(helperc_MERGE_4_TAGS)",
+                                &MC_(helperc_MERGE_4_TAGS),
+                                mkIRExprVec_4( vatom1, vatom2, vatom3, vatom4 ));
 
 // Unimplemented
       case Iop_Rotx32:                      // only used by mips
@@ -734,16 +886,15 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
       case Iop_Sub64Fx2:
       case Iop_Sub64Fx4:
 
-         return mkIRExprCCall (Ity_Word,
-                               2 /*Int regparms*/,
-                               "MC_(helperc_MERGE_TAGS)",
-                               &MC_(helperc_MERGE_TAGS),
-                               // VERY IMPORTANT!!!  We want to merge the
-                               // tags of the 2nd and 3rd operands!!!
-                               // Because the first one is a rounding
-                               // mode (I think)
-                               /* I32(rm) x F64 x F64 -> F64 */
-                               mkIRExprVec_2( vatom2, vatom3 ));
+         return mkMergeTags_DC (2 /*Int regparms*/,
+                                "MC_(helperc_MERGE_TAGS)",
+                                &MC_(helperc_MERGE_TAGS),
+                                // VERY IMPORTANT!!!  We want to merge the
+                                // tags of the 2nd and 3rd operands!!!
+                                // Because the first one is a rounding
+                                // mode (I think)
+                                /* I32(rm) x F64 x F64 -> F64 */
+                                mkIRExprVec_2( vatom2, vatom3 ));
 
       case Iop_MulF32:                      // only used by arm mips s390 arm64
       case Iop_DivF32:                      // only used by arm mips s390 arm64
@@ -767,16 +918,15 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
       case Iop_Mul64Fx4:
 
          if (!dyncomp_units_mode) {
-            return mkIRExprCCall (Ity_Word,
-                                  2 /*Int regparms*/,
-                                  "MC_(helperc_MERGE_TAGS)",
-                                  &MC_(helperc_MERGE_TAGS),
-                                  // VERY IMPORTANT!!!  We want to merge the
-                                  // tags of the 2nd and 3rd operands!!!
-                                  // Because the first one is a rounding
-                                  // mode (I think)
-                                  /* I32(rm) x F64 x F64 -> F64 */
-                                  mkIRExprVec_2( vatom2, vatom3 ));
+            return mkMergeTags_DC (2 /*Int regparms*/,
+                                   "MC_(helperc_MERGE_TAGS)",
+                                   &MC_(helperc_MERGE_TAGS),
+                                   // VERY IMPORTANT!!!  We want to merge the
+                                   // tags of the 2nd and 3rd operands!!!
+                                   // Because the first one is a rounding
+                                   // mode (I think)
+                                   /* I32(rm) x F64 x F64 -> F64 */
+                                   mkIRExprVec_2( vatom2, vatom3 ));
          }
          // Else fall through ...
          break;
@@ -1933,7 +2083,8 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       }
    }
 
-   // In this mode, NOTHING is an interaction:
+   // In this mode, NOTHING is an interaction.  This must precede the
+   // constant-operand shortcut below, which bypasses mkMergeTags_DC.
    if (dyncomp_dataflow_only_mode) {
       helper = 0;
       hname = 0;
@@ -2003,11 +2154,10 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       // DO NOT use clean call unless it has NO side effects and
       // is (nearly) purely functional like an IRExpr
       // (from the point-of-view of IR, at least)
-      return mkIRExprCCall (Ity_Word,
-                            2 /*Int regparms*/,
-                            hname,
-                            helper,
-                            mkIRExprVec_2( vatom1, vatom2 ));
+      return mkMergeTags_DC (2 /*Int regparms*/,
+                             hname,
+                             helper,
+                             mkIRExprVec_2( vatom1, vatom2 ));
 
    }
    // Hmmm, is this the desired behavior for a non-interaction?
@@ -2524,11 +2674,10 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
          // On second thought, let's just go ahead and do it for now:
 
          // Clean call version:
-         return mkIRExprCCall (Ity_Word,
-                               2 /*Int regparms*/,
-                               "MC_(helperc_MERGE_TAGS)",
-                               &MC_(helperc_MERGE_TAGS),
-                               mkIRExprVec_2( v64lo, v64hi ));
+         return mkMergeTags_DC (2 /*Int regparms*/,
+                                "MC_(helperc_MERGE_TAGS)",
+                                &MC_(helperc_MERGE_TAGS),
+                                mkIRExprVec_2( v64lo, v64hi ));
 
 
       default:
