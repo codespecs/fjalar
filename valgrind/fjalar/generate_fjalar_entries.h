@@ -88,7 +88,4 @@ void outputAllXMLDeclarations(void);
 char* getRawCppFunctionName(char* cppFnName);
 int entry_is_valid_function(dwarf_entry *entry, Bool quiet);
 
-// Returns the byte size of the given VariableEntry
-int determineVariableByteSize(VariableEntry* var);
-
 #endif
