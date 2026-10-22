@@ -855,12 +855,14 @@ void visitClassMemberVariables(VisitArgs* args) {
 // Returns true if all of the size bytes at guest address guestAddr are
 // within the guest stack that enter_function copied to funcPtr's
 // virtual stack, [guestStackStart, guestStackEnd).  The virtual stack
-// holds nothing for the bytes at or past guestStackEnd.
+// holds nothing for the bytes at or past guestStackEnd.  The size is
+// compared with the bytes that remain after guestAddr, rather than added to
+// guestAddr, so that the check cannot overflow.
 static Bool isInCopiedStack(FunctionEntry* funcPtr, Addr guestAddr, int size)
 {
   return ((guestAddr >= funcPtr->guestStackStart) &&
           (guestAddr < funcPtr->guestStackEnd) &&
-          (guestAddr + (Addr)size <= funcPtr->guestStackEnd));
+          ((Addr)size <= funcPtr->guestStackEnd - guestAddr));
 }
 
 // Returns the address in funcPtr's virtual stack that corresponds to
