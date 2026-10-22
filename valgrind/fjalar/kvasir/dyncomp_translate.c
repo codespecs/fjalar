@@ -36,6 +36,7 @@
 #include "dyncomp_main.h"
 #include "../fjalar_include.h"
 #include "vex_common.h"
+#include "../../VEX/priv/guest_amd64_defs.h"  // amd64g_calculate_*
 
 extern char dyncomp_profile_tags;
 static
@@ -107,6 +108,14 @@ static void setHelperAnns_DC ( DCEnv* dce, IRDirty* di ) {
    di->fxState[1].repeatLen = 0;
 }
 
+// Returns True if tag is the constant 0, which merging has no effect on.
+static
+Bool isZeroTag_DC ( IRAtom* tag )
+{
+   return tag->tag == Iex_Const && tag->Iex.Const.con->tag == Ico_U64
+          && tag->Iex.Const.con->Ico.U64 == 0;
+}
+
 // Merge the tags vatom1 and vatom2, for an operation whose result
 // gets tag 0 (such as a comparison).  The merge is a dirty call
 // rather than a clean one.  VEX would remove a clean call as dead
@@ -120,6 +129,9 @@ static void mergeTagsReturn0_DC ( DCEnv* dce,
 
    // In this mode, NOTHING is an interaction:
    if (dyncomp_dataflow_only_mode) {
+      return;
+   }
+   if (isZeroTag_DC(vatom1) || isZeroTag_DC(vatom2)) {
       return;
    }
 
@@ -370,6 +382,99 @@ IRAtom* mkMergeTags_DC ( Int regparms, const HChar* hname, void* helper,
 // the other arguments from being merged with one another.  Merging every
 // argument with a fixed argument would not work:  if the fixed
 // argument's tag were WEAK_FRESH_TAG, no merge would have any effect.
+//
+// Under --dyncomp-interactions=comparisons, a helper call is an
+// interaction only if it is a comparison:  that is, if it uses flags that
+// a subtraction (a cmp or sub instruction) set.  The helpers that read
+// flags (amd64g_calculate_condition, amd64g_calculate_rflags_c, and
+// amd64g_calculate_rflags_all) compute them from a flags thunk whose CC_OP
+// field says which operation set them.  CC_OP is often known only at run
+// time, for example when the flags are read in a different superblock
+// than the one that set them, so the merge checks it at run time; see
+// handleFlagsCCall_DC.  For example, the operands of a cmp are merged when
+// its flags are read by a setl (via amd64g_calculate_condition) or by an
+// sbb (via amd64g_calculate_rflags_c), but the operands of an add are not
+// merged when its carry is read by an adc.
+//
+// An inc or dec instruction reads the carry flag (via
+// amd64g_calculate_rflags_c) and stores it in the CC_NDEP field of its own
+// flags thunk, because it does not change the carry flag.  That read is
+// treated like any other, so a sub followed by an inc makes the operands of
+// the sub comparable, although nothing compares them.  (When the sub and the
+// inc are in the same superblock, VEX replaces the read by a comparison of
+// the operands of the sub, which expr2tags_Binop_DC merges, with the same
+// result.)
+//
+// amd64g_calculate_rflags_all is used mostly by instructions that preserve
+// or copy flags, such as shifts, bt, and pushf.  These calls merge no tags;
+// if the flags are later used, then the instruction that uses them reads
+// them from the new thunk.  Under --dyncomp-interactions=comparisons, other
+// helpers merge no tags either.
+
+// Returns the tag of arg, an argument of a helper that reads flags, or 0 if
+// arg is a constant, just as expr2tags_Binop_DC does not merge a constant
+// operand.
+static
+IRAtom* flagsArgTag_DC ( DCEnv* dce, IRAtom* arg )
+{
+   if (arg->tag == Iex_Const) {
+      return IRExpr_Const(IRConst_UWord(0));
+   }
+   return expr2tags_DC(dce, arg);
+}
+
+// Returns an atom for the tag of an operand of the subtraction whose result
+// a flags thunk holds, or for 0 if it does not hold the result of a
+// subtraction; see MC_(helperc_SUB_OPERAND_TAG).  ccOp and dep are the
+// thunk's CC_OP field and its CC_DEP1 or CC_DEP2 field.
+static
+IRAtom* subOperandTag_DC ( DCEnv* dce, IRAtom* ccOp, IRAtom* dep )
+{
+   IRAtom* depTag = flagsArgTag_DC(dce, dep);
+
+   // If CC_OP is known at translation time, decide now.
+   if (ccOp->tag == Iex_Const) {
+      tl_assert(ccOp->Iex.Const.con->tag == Ico_U64);
+      if (dyncomp_cc_op_is_sub(ccOp->Iex.Const.con->Ico.U64)) {
+         return depTag;
+      }
+      return IRExpr_Const(IRConst_UWord(0));
+   }
+   if (isZeroTag_DC(depTag)) {
+      return depTag;
+   }
+   return assignNew_DC(dce, Ity_Word,
+                       mkIRExprCCall(Ity_Word, 2,
+                                     "MC_(helperc_SUB_OPERAND_TAG)",
+                                     &MC_(helperc_SUB_OPERAND_TAG),
+                                     mkIRExprVec_2(ccOp, depTag)));
+}
+
+// Handles a call to cee, a helper that reads flags, with arguments exprvec,
+// under --dyncomp-interactions=comparisons.  If the call reads the
+// flags as the result of a comparison, which is the case if they are the
+// result of a subtraction, then it merges the tags of the thunk's CC_DEP1
+// and CC_DEP2 arguments, which are the operands of the subtraction.
+static
+void handleFlagsCCall_DC ( DCEnv* dce, IRAtom** exprvec, IRCallee* cee )
+{
+   // The index of the CC_OP argument, which CC_DEP1 and CC_DEP2 follow
+   Int ccOpIndex;
+   IRAtom* ccOp;
+
+   if (cee->addr == (void*)&amd64g_calculate_condition) {
+      ccOpIndex = 1;
+   } else if (cee->addr == (void*)&amd64g_calculate_rflags_c) {
+      ccOpIndex = 0;
+   } else {
+      return;
+   }
+
+   ccOp = exprvec[ccOpIndex];
+   mergeTagsReturn0_DC(dce,
+                       subOperandTag_DC(dce, ccOp, exprvec[ccOpIndex + 1]),
+                       subOperandTag_DC(dce, ccOp, exprvec[ccOpIndex + 2]));
+}
 
 static
 IRAtom* handleCCall_DC ( DCEnv* dce,
@@ -384,6 +489,11 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
    // In this mode, NOTHING is an interaction, so there is nothing to
    // merge.  Returning early avoids computing the arguments' tags.
    if (dyncomp_dataflow_only_mode) {
+      return IRExpr_Const(IRConst_UWord(0));
+   }
+
+   if (dyncomp_dataflow_comparisons_mode) {
+      handleFlagsCCall_DC(dce, exprvec, cee);
       return IRExpr_Const(IRConst_UWord(0));
    }
 
