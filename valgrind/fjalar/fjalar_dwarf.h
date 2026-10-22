@@ -23,6 +23,8 @@
 #ifndef FJALAR_DWARF_H
 #define FJALAR_DWARF_H
 
+#include "pub_tool_basics.h"
+
 #include "elfcomm.h"
 #include "dwarf.h"
 #include "dwarf2.h"
@@ -55,7 +57,7 @@ const char* location_expression_to_string(enum dwarf_location_atom op);
 #error "Fjalar supports only amd64 and x86"
 #endif
 
-// Returns true if Fjalar can read the register with the given DWARF
+// Returns True if Fjalar can read the register with the given DWARF
 // register number.
 static __inline__ Bool dwarf_reg_is_readable(UInt regNum) {
   return regNum < FJALAR_NUM_DWARF_REGS;
