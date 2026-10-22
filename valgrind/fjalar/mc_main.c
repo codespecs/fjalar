@@ -8894,6 +8894,8 @@ static void mc_pre_clo_init(void)
 
    VG_(track_new_mem_startup)     ( mc_new_mem_startup );
 
+   VG_(track_start_client_code)   ( dyncomp_gc_at_safe_point );
+
    // Handling of mmap and mprotect isn't simple (well, it is simple,
    // but the justification isn't.)  See comments above, just prior to
    // mc_new_mem_mmap.

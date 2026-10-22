@@ -73,6 +73,9 @@ UInt nextTag;
 // duration of the program
 UInt totalNumTagsAssigned;
 
+// True if the tag garbage collector should run at the next safe point.
+extern Bool dyncomp_gc_pending;
+
 UInt* primary_tag_map[PRIMARY_SIZE];
 
 // The number of entries in primary_tag_map that are initialized
@@ -219,7 +222,8 @@ static __inline__ UInt grab_fresh_tag(void) {
   if ((!dyncomp_no_gc) &&
       totalNumTagsAssigned && // Don't garbage collect when it's zero
       (totalNumTagsAssigned % dyncomp_gc_after_n_tags == 0)) {
-    garbage_collect_tags();
+    // Tags may be live in IR temporaries now, so wait for a safe point.
+    dyncomp_gc_pending = True;
   }
 
   tag = nextTag;
