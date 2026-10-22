@@ -17,7 +17,16 @@ int less(int a, int b) {
   return result;
 }
 
+// add_const() adds a constant to its parameter.  Under
+// --dyncomp-interactions=none, an addition is not an interaction even when one
+// operand is a constant, so the return value should not be comparable to x.
+int add_const(int x) {
+  int y = x + 1;
+  return y;
+}
+
 int main(void) {
+  add_const(1);
   less(1, 2);
   return 0;
 }
