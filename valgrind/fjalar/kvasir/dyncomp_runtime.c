@@ -1194,19 +1194,6 @@ void garbage_collect_tags() {
     }
   }
 
-  // The pending carry tags of the CC_NDEP field, which are not the tags of
-  // any register; see notePendingCarryTags_DC.
-  addr = VG_(get_tag_ptr_for_guest_offset)(currentTID,
-                                           PENDING_CARRY_TAG1_OFFSET);
-  if ((*addr) > 0) {
-    reassign_tag(addr, val_uf_find_leader(*addr), &newTagNumber);
-  }
-  addr = VG_(get_tag_ptr_for_guest_offset)(currentTID,
-                                           PENDING_CARRY_TAG2_OFFSET);
-  if ((*addr) > 0) {
-    reassign_tag(addr, val_uf_find_leader(*addr), &newTagNumber);
-  }
-
   // Now that all tags in use have been re-assigned to newer
   // (hopefully smaller) values as denoted by the running counter
   // newTagNumber, we need to initialize all uf_object entries in the
