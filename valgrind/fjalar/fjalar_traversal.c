@@ -1070,8 +1070,13 @@ void visitVariableGroup(VariableOrigin varOrigin,
             FJALAR_DPRINTF("\tApplying DWARF Stack Operation %s - %p\n",location_expression_to_string(op), (void *)var_loc);
           }
 
+          // Read the variable from the virtual stack only if all of it
+          // is within the copied guest stack, [guestStackStart,
+          // guestStackEnd).  The virtual stack holds nothing for the
+          // bytes at or past guestStackEnd.
           if((var_loc >= funcPtr->guestStackStart) &&
-              (var_loc <= funcPtr->guestStackEnd)) {
+              (var_loc + (Addr)determineVariableByteSize(var)
+               <= funcPtr->guestStackEnd)) {
 
 #if defined(VGA_amd64)
           if(!isEnter) {
@@ -1093,13 +1098,14 @@ void visitVariableGroup(VariableOrigin varOrigin,
             var->entryLocGuest = var_loc;
             basePtrValueGuest = var_loc; }
           else {
-            // The location is not on the stack, so Fjalar reads the
-            // variable where it is.  For a register location, that is
-            // entryRegs, which has no guest address.  Its address
-            // serves as the guest address, so a static array within
-            // the variable has a non-null hashcode.  That hashcode is
-            // the same at entrance and exit of an invocation, because
-            // entryRegs lives as long as the FunctionExecutionState.
+            // The variable is not within the copied stack, so Fjalar
+            // reads the variable where it is.  For a register location,
+            // that is entryRegs, which has no guest address.  Its
+            // address serves as the guest address, so a static array
+            // within the variable has a non-null hashcode.  That
+            // hashcode is the same at entrance and exit of an
+            // invocation, because entryRegs lives as long as the
+            // FunctionExecutionState.
             basePtrValue = var_loc;
             var->entryLoc = var_loc;
             basePtrValueGuest = var_loc;

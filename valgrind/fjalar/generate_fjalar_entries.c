@@ -47,7 +47,6 @@ static void processFunctions(void);
 
 int determineFormalParametersStackByteSize(FunctionEntry* f);
 int determineFormalParametersLowerStackByteSize(FunctionEntry* f);
-int determineVariableByteSize(VariableEntry* var);
 
 static void extractFormalParameterVars(FunctionEntry* f, function* dwarfFunctionEntry);
 static void extractLocalArrayAndStructVariables(FunctionEntry* f, function* dwarfFunctionEntry);
