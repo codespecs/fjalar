@@ -447,7 +447,9 @@ Valgrind's files:  @code{valgrind-merge/base} from
 @file{$INV/valgrind-old}, and @code{valgrind-merge/new} from
 @file{$INV/valgrind-new}.  In each, Valgrind is in @file{valgrind}, as in
 Fjalar, and Valgrind's Memcheck is also in @file{valgrind/fjalar}, without
-its @file{docs} and @file{tests} directories.  Then the script runs
+its @file{docs} and @file{tests} directories.  The script also records
+Fjalar before the merge as @code{valgrind-merge/fjalar}, which stays the
+same even if you commit during the merge.  Then the script runs
 @command{git cherry-pick} of @code{valgrind-merge/new}.  That is a
 3-way merge:  it compares the Fjalar version of each file, the base
 Valgrind version, and the target Valgrind version.  It applies a change
@@ -471,9 +473,13 @@ git -C $INV/fjalar diff valgrind-merge/base valgrind-merge/new -- valgrind/fjala
 @end smallexample
 
 @noindent
-Before it merges, the script writes Fjalar's changes to the base Valgrind
-to @file{$INV/coregrind-Fjalar.diff} and @file{$INV/memcheck-Fjalar.diff}.
-You can use them to check that the merge kept each of Fjalar's changes.
+These commands show Fjalar's changes to the base Valgrind, in Coregrind
+and in Memcheck, before the merge:
+
+@smallexample
+git -C $INV/fjalar diff --diff-filter=a valgrind-merge/base valgrind-merge/fjalar -- valgrind ':!valgrind/fjalar'
+git -C $INV/fjalar diff --diff-filter=a valgrind-merge/base valgrind-merge/fjalar -- valgrind/fjalar
+@end smallexample
 
 The merge does not change Fjalar's build file
 @file{valgrind/fjalar/Makefile.am}, because @code{valgrind-merge/base}
@@ -522,9 +528,8 @@ omitted if your Git configuration sets @code{merge.conflictStyle} to
 is left in place.  A file that the Valgrind developers removed but that
 Fjalar has changed, or that Fjalar removed but the Valgrind developers
 have changed, is a ``modify/delete'' conflict, and the merge leaves the
-existing version in place.  It may help to refer to
-@file{coregrind-Fjalar.diff} and @file{memcheck-Fjalar.diff} during this
-process.  Mark each file as resolved with @command{git add} or
+existing version in place.  It may help to refer to Fjalar's changes
+to the base Valgrind during this process.  Mark each file as resolved with @command{git add} or
 @command{git rm}, or use @command{git mergetool}.  When you are done, this
 command produces no output:
 
@@ -532,16 +537,41 @@ command produces no output:
 git -C $INV/fjalar diff --name-only --diff-filter=U
 @end example
 
+A merge can lose one of Fjalar's changes without reporting a conflict, and
+so can a conflict resolution.  This command checks that the merge kept
+each of Fjalar's changes:
+
+@example
+$INV/fjalar/compare-fjalar-changes.sh
+@end example
+
+@noindent
+It compares Fjalar's changes to the base Valgrind release before the merge
+with Fjalar's staged changes to the target Valgrind release, and prints
+the differences between them as a diff of the two diffs, in which each
+line is indented by four spaces.  After the indentation, a line that
+starts with @samp{-} followed by @samp{+} or @samp{-} is part of a change
+that was lost or altered, and a line that starts with @samp{+} followed by
+@samp{+} or @samp{-} is part of a change that was added.  Review each
+difference.  Some are expected:  a change that the Valgrind developers
+also made is no longer one of Fjalar's changes, and a change that you
+adapted to the Valgrind developers' changes differs.  For a file that the
+Valgrind developers removed but that you kept, the command compares with
+the base Valgrind's version of the file.  Run the command again after you
+change a file and stage it.  The command exits with status 0 if there are
+no differences, 1 if there are differences, and 2 if an error occurs.
+
 A file that was removed upstream but that has Fjalar changes is not
 removed; decide whether to remove it with @command{git rm}.  The Valgrind
 developers probably moved the code of such a file to another file.
 Before you remove the file, save Fjalar's changes to it, and then make
-them in that other file.  These commands show Fjalar's changes; set
+them in that other file.  These commands show Fjalar's changes from
+before the merge; set
 @env{f} to the name of the file, such as @file{valgrind/fjalar/mc_main.c}:
 
 @example
 f=valgrind/fjalar/mc_main.c
-git -C $INV/fjalar diff valgrind-merge/base HEAD -- $f
+git -C $INV/fjalar diff valgrind-merge/base valgrind-merge/fjalar -- $f
 @end example
 
 Then check that Fjalar tracks no other file that the target Valgrind
@@ -1304,8 +1334,8 @@ git -C $INV/fjalar diff -b "$(git -C $INV/fjalar merge-base FETCH_HEAD HEAD)" | 
 git -C $INV/fjalar commit -a -m "Valgrind merge from $@{VOLDTAG@} to $@{VNEWTAG@}"
 @end smallexample
 
-Note: We recommend saving @file{$INV/coregrind-Fjalar.diff} and
-@file{$INV/memcheck-Fjalar.diff} to further document the process.
+Note: We recommend saving Fjalar's changes to the base Valgrind
+(@pxref{Merging Valgrind}) to further document the process.
 
 
 @node Valgrind modifications
