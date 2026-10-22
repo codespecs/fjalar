@@ -991,17 +991,29 @@ static void reassign_tag(UInt* addr,
   //printf("tag: %u now: %u\n", leaderTag, *addr);
 }
 
+// Reassigns the value tag at addr to the new tag for its leader.
+// Leaves 0 and WEAK_FRESH_TAG unchanged, because they have no
+// uf_object and are not real tags.
+static void reassign_val_tag(UInt* addr, UInt* p_newTagNumber) {
+  if ((*addr != 0) && (*addr != WEAK_FRESH_TAG)) {
+    reassign_tag(addr, val_uf_find_leader(*addr), p_newTagNumber);
+  }
+}
 
-Bool dyncomp_gc_pending = False;
 
-// Runs the tag garbage collector if it is pending.  Called when a
-// thread is about to run client code, which is between superblocks,
-// so no tag is live in an IR temporary.
+// The value of totalNumTagsAssigned when the tag garbage collector
+// last ran.
+static UInt totalNumTagsAssignedAtLastGC = 0;
+
+// Runs the tag garbage collector if at least dyncomp_gc_after_n_tags
+// tags have been assigned since it last ran.  Called when a thread is
+// about to run client code, which is between superblocks, so no tag is
+// live in an IR temporary.
 void dyncomp_gc_at_safe_point(ThreadId tid, ULong blocks_dispatched) {
-  (void)tid;
-  (void)blocks_dispatched;
-  if (dyncomp_gc_pending) {
-    dyncomp_gc_pending = False;
+  if ((!dyncomp_no_gc) &&
+      (totalNumTagsAssigned - totalNumTagsAssignedAtLastGC
+       >= (UInt)dyncomp_gc_after_n_tags)) {
+    totalNumTagsAssignedAtLastGC = totalNumTagsAssigned;
     garbage_collect_tags();
   }
 }
@@ -1010,9 +1022,9 @@ void dyncomp_gc_at_safe_point(ThreadId tid, ULong blocks_dispatched) {
 void garbage_collect_tags() {
   UInt primaryIndex, secondaryIndex;
   FuncIterator* funcIt;
-  ThreadId currentTID;
+  ThreadId tid;
+  Addr stack_min, stack_max;
   UInt curTag, i;
-  UInt* addr;
 
   Bool dyncomp_trace = dyncomp_print_trace_info;
   dyncomp_print_trace_info = False;
@@ -1066,7 +1078,8 @@ void garbage_collect_tags() {
   //  global val_uf union-find.)
   //
   // 3.) Guest state - There is a tag associated with each byte of
-  // each register (i.e., RAX, RBX, floating-point stack)
+  // each register (i.e., RAX, RBX, floating-point stack) of each
+  // thread
   //
   // Tags can also be live in IR temporaries in the middle of a
   // superblock.  Those are not scanned, so this must run only when no
@@ -1078,13 +1091,8 @@ void garbage_collect_tags() {
     if (primary_tag_map[primaryIndex]) {
       //printf("  primary address: %lx\n", ((Addr)primaryIndex) << SECONDARY_SHIFT);
       for (secondaryIndex = 0; secondaryIndex < SECONDARY_SIZE; secondaryIndex++) {
-        addr = &primary_tag_map[primaryIndex][secondaryIndex];
-
-        if (*addr) { // Remember to ignore 0 tags
-          reassign_tag(addr,
-                       val_uf_find_leader(*addr),
-                       &newTagNumber);
-        }
+        reassign_val_tag(&primary_tag_map[primaryIndex][secondaryIndex],
+                         &newTagNumber);
       }
     }
   }
@@ -1172,20 +1180,17 @@ void garbage_collect_tags() {
 
   // 3.) Guest state:
 
-  // Scan through all of the guest state and see which tags are being
-  // used - these cannot be garbage collected
+  // Scan through the guest state of every thread and see which tags
+  // are being used - these cannot be garbage collected
 
   // (Remember the offset * 4 hack thing (see do_shadow_PUT_DC() in
   // dyncomp_translate.c) - eek!)  Every byte of the guest state has a
   // tag (see VG_(get_tag_ptr_for_guest_offset)), so scan all of them.
-  currentTID = VG_(get_running_tid)();
-
-  for (i = 0; i < sizeof(VexGuestArchState); i++) {
-    addr = VG_(get_tag_ptr_for_guest_offset)(currentTID, i);
-    if ((*addr) > 0) {
-      reassign_tag(addr,
-                   val_uf_find_leader(*addr),
-                   &newTagNumber);
+  VG_(thread_stack_reset_iter)(&tid);
+  while (VG_(thread_stack_next)(&tid, &stack_min, &stack_max)) {
+    for (i = 0; i < sizeof(VexGuestArchState); i++) {
+      reassign_val_tag(VG_(get_tag_ptr_for_guest_offset)(tid, i),
+                       &newTagNumber);
     }
   }
 

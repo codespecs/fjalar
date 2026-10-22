@@ -73,9 +73,6 @@ UInt nextTag;
 // duration of the program
 UInt totalNumTagsAssigned;
 
-// True if the tag garbage collector should run at the next safe point.
-extern Bool dyncomp_gc_pending;
-
 UInt* primary_tag_map[PRIMARY_SIZE];
 
 // The number of entries in primary_tag_map that are initialized
@@ -214,20 +211,7 @@ static __inline__ void clear_all_tags_in_range( Addr a, SizeT len ) {
 // Return a fresh tag and create a singleton set
 // for the uf_object associated with that tag
 static __inline__ UInt grab_fresh_tag(void) {
-  UInt tag;
-
-  // Let's try garbage collecting here.  Remember to assign
-  // tag = nextTag AFTER garbage collection (if it occurs) because
-  // nextTag may decrease due to the garbage collection step
-  if ((!dyncomp_no_gc) &&
-      totalNumTagsAssigned && // Don't garbage collect when it's zero
-      (totalNumTagsAssigned % dyncomp_gc_after_n_tags == 0)) {
-    // This may run in the middle of a superblock, where tags can be
-    // live in IR temporaries, so defer the collection to a safe point.
-    dyncomp_gc_pending = True;
-  }
-
-  tag = nextTag;
+  UInt tag = nextTag;
 
   // Remember to make a new singleton set for the
   // uf_object associated with that tag
