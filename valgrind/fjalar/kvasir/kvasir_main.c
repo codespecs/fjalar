@@ -525,6 +525,7 @@ static void finishDtraceFile(void)
 void fjalar_tool_pre_clo_init(void)
 {
   VG_(track_start_client_code)(dyncomp_gc_at_safe_point);
+  VG_(track_pre_thread_ll_create)(dyncomp_clear_thread_tags);
 }
 
 // Initialize kvasir after processing command-line options

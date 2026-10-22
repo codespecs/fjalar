@@ -993,33 +993,27 @@ static void reassign_tag(UInt* addr,
 
 // Reassigns the value tag at addr to the new tag for its leader.
 // Leaves 0 and WEAK_FRESH_TAG unchanged, because they have no
-// uf_object and are not real tags.
+// uf_object and are not real tags.  Sets any other tag that has no
+// uf_object to 0, because no set contains it.
 static void reassign_val_tag(UInt* addr, UInt* p_newTagNumber) {
-  if ((*addr != 0) && (*addr != WEAK_FRESH_TAG)) {
-    reassign_tag(addr, val_uf_find_leader(*addr), p_newTagNumber);
+  UInt leaderTag;
+
+  if ((*addr == 0) || (*addr == WEAK_FRESH_TAG)) {
+    return;
+  }
+  leaderTag = val_uf_find_leader(*addr);
+  if (leaderTag == 0) {
+    *addr = 0;
+  }
+  else {
+    reassign_tag(addr, leaderTag, p_newTagNumber);
   }
 }
 
 
-// The value of totalNumTagsAssigned when the tag garbage collector
-// last ran.
-static UInt totalNumTagsAssignedAtLastGC = 0;
-
-// Runs the tag garbage collector if at least dyncomp_gc_after_n_tags
-// tags have been assigned since it last ran.  Called when a thread is
-// about to run client code, which is between superblocks, so no tag is
-// live in an IR temporary.
-void dyncomp_gc_at_safe_point(ThreadId tid, ULong blocks_dispatched) {
-  if ((!dyncomp_no_gc) &&
-      (totalNumTagsAssigned - totalNumTagsAssignedAtLastGC
-       >= (UInt)dyncomp_gc_after_n_tags)) {
-    totalNumTagsAssignedAtLastGC = totalNumTagsAssigned;
-    garbage_collect_tags();
-  }
-}
-
-// Runs the tag garbage collector
-void garbage_collect_tags() {
+// Runs the tag garbage collector.  It must run only at a safe point;
+// see dyncomp_gc_at_safe_point().
+static void garbage_collect_tags(void) {
   UInt primaryIndex, secondaryIndex;
   FuncIterator* funcIt;
   ThreadId tid;
@@ -1057,10 +1051,11 @@ void garbage_collect_tags() {
 
   // There are 3 places where tags can be kept ... we need to scan
   // through all of these places looking for tags that are in use and
-  // run reassign_tag() on every non-zero tag encountered in order to
-  // canonicalize every tag to its leader and, more importantly, to
-  // 'compress' the range of leader tags to a range from [1, nextTag)
-  // to a smaller range of [1, newTagNumber).
+  // run reassign_tag() on every tag encountered (other than 0 and
+  // WEAK_FRESH_TAG, which are not real tags) in order to canonicalize
+  // every tag to its leader and, more importantly, to 'compress' the
+  // range of leader tags to a range from [1, nextTag) to a smaller
+  // range of [1, newTagNumber).
   //
   // 1.) Shadow memory - for each byte of memory in the address space,
   // there is a corresponding 32-bit tag (0 for no tag assigned to
@@ -1184,8 +1179,11 @@ void garbage_collect_tags() {
   // are being used - these cannot be garbage collected
 
   // (Remember the offset * 4 hack thing (see do_shadow_PUT_DC() in
-  // dyncomp_translate.c) - eek!)  Every byte of the guest state has a
-  // tag (see VG_(get_tag_ptr_for_guest_offset)), so scan all of them.
+  // dyncomp_translate.c) - eek!)  Each byte offset of the guest state
+  // has a 4-byte slot (see VG_(get_tag_ptr_for_guest_offset)), which
+  // holds a tag or 0, so scan all of them.  (On AMD64 a tag is stored
+  // as a 64-bit word, and the slot after it holds the upper half of
+  // that word, which is 0.)
   VG_(thread_stack_reset_iter)(&tid);
   while (VG_(thread_stack_next)(&tid, &stack_min, &stack_max)) {
     for (i = 0; i < sizeof(VexGuestArchState); i++) {
@@ -1215,6 +1213,35 @@ void garbage_collect_tags() {
 
   //debug_print_decls();
   //dump_all_function_exit_var_map();
+}
+
+// The value of totalNumTagsAssigned when the tag garbage collector
+// last ran.
+static UInt totalNumTagsAssignedAtLastGC = 0;
+
+// Runs the tag garbage collector if at least dyncomp_gc_after_n_tags
+// tags have been assigned since it last ran.  Called when a thread is
+// about to run client code, which is between superblocks, so no tag is
+// live in an IR temporary.
+void dyncomp_gc_at_safe_point(ThreadId tid, ULong blocks_dispatched) {
+  if ((!dyncomp_no_gc) &&
+      (totalNumTagsAssigned - totalNumTagsAssignedAtLastGC
+       >= (UInt)dyncomp_gc_after_n_tags)) {
+    totalNumTagsAssignedAtLastGC = totalNumTagsAssigned;
+    garbage_collect_tags();
+  }
+}
+
+// Clears the guest-state tags of a new thread.  Valgrind reuses the
+// slot of a thread that has exited, and the tag garbage collector does
+// not scan an empty slot, so without this the new thread would start
+// with stale tags of the slot's previous thread.
+void dyncomp_clear_thread_tags(ThreadId parent, ThreadId child) {
+  UInt i;
+
+  for (i = 0; i < sizeof(VexGuestArchState); i++) {
+    *VG_(get_tag_ptr_for_guest_offset)(child, i) = 0;
+  }
 }
 
 
