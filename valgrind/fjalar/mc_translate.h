@@ -207,6 +207,17 @@ typedef
       /* MODIFIED: Original address of guest instruction whose IR
          we're now processing, as taken from the last IMark we saw. */
       Addr origAddr;
+
+      /* READONLY: the bb being instrumented. */
+      const IRSB* sb_in;
+      /* MODIFIED: the index in sb_in of the statement being
+         instrumented. */
+      Int stmtIndex;
+      /* READONLY: a table [0 .. #temps_in_original_bb-1] whose
+         entries are True for the temporaries that only carry flags
+         forward; see findFlagsCarryingTmps_DC.  NULL unless
+         --dyncomp-interactions is comparisons. */
+      Bool* tmpCarriesFlags;
    }
    DCEnv;
 
