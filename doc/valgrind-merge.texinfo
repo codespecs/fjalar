@@ -1029,7 +1029,8 @@ After you have resolved the conflicts, check that no call of a Fjalar
 hook was lost or duplicated.  The hooks are the functions declared in
 @file{typedata.h}, @file{fjalar_dwarf.h}, @file{fjalar_include.h},
 @file{fjalar_main.h}, and @file{GenericHashtable.h}, which build Fjalar's
-DWARF entries, symbol tables, and line-number table.  This command
+DWARF entries, symbol tables, and line-number table, either before the merge
+or now.  This command
 prints each hook whose number of calls in @file{dwarf.c} or
 @file{readelf.c} changed, outside @code{#if 0} regions and comments:
 
