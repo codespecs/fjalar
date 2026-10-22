@@ -13,7 +13,10 @@
 #
 # The hooks are the functions declared in typedata.h, fjalar_dwarf.h,
 # fjalar_include.h, fjalar_main.h, and GenericHashtable.h, which build
-# Fjalar's DWARF entries, symbol tables, and line-number table.
+# Fjalar's DWARF entries, symbol tables, and line-number table.  A function
+# declared in either BASE_COMMIT's or the work tree's version of a header is
+# a hook, so that the script reports the loss of a hook's last call even if
+# its declaration was removed too.
 # A call of a hook is an ordinary C function call that Fjalar added to the
 # Binutils code, such as
 #   if (entry && tag_is_formal_parameter(entry->tag_name)) {
@@ -92,8 +95,9 @@ hook_counts() {
   { grep -owF "$hooks" "$1" || [ $? -eq 1 ]; } | sort | uniq -c | awk '{print $2, $1}'
 }
 
-# Print the names of the functions that the headers declare or define, one
-# per line, which is the form of a list of patterns for "grep -F".
+# Print the names of the functions that the headers, in BASE_COMMIT and in
+# the work tree, declare or define, one per line, which is the form of a
+# list of patterns for "grep -F".
 # The headers' comments and preprocessor directives, including multiline
 # macro definitions, are removed, and the rest is split into statements, so
 # that a declaration may span lines.  Function-like attributes, such as
@@ -101,12 +105,20 @@ hook_counts() {
 # name.  Typedefs and function pointers, such as "int (*f)(void)", are not
 # hooks.
 hook_names() {
-  local h
+  local h f
   for h in valgrind/fjalar/{typedata,fjalar_dwarf,fjalar_include,fjalar_main,GenericHashtable}.h; do
-    if ! gcc -fpreprocessed -dD -E -P -x c - < "$h" 2> /dev/null; then
-      echo "$0: cannot process $h" >&2
+    if ! git show "$base_commit:$h" > "$tmpdir/base-header.h"; then
+      echo "$0: cannot read $h at $base_commit" >&2
       return 2
     fi
+    for f in "$tmpdir/base-header.h" "$h"; do
+      if ! gcc -fpreprocessed -dD -E -P -x c - < "$f" 2> /dev/null; then
+        echo "$0: cannot process $h" >&2
+        return 2
+      fi
+      # Ends the last statement, in case the file does not.
+      echo ';'
+    done
   done \
     | sed -e :a -e '/\\$/N; s/\\\n//; ta' \
     | grep -v '^[[:space:]]*#' \
