@@ -1073,11 +1073,13 @@ void visitVariableGroup(VariableOrigin varOrigin,
           // Read the variable from the virtual stack only if all of it
           // is within the copied guest stack, [guestStackStart,
           // guestStackEnd).  The virtual stack holds nothing for the
-          // bytes at or past guestStackEnd.
+          // bytes at or past guestStackEnd.  The size is compared with
+          // the bytes that remain after var_loc, rather than added to
+          // var_loc, so that the check cannot overflow.
           if((var_loc >= funcPtr->guestStackStart) &&
               (var_loc < funcPtr->guestStackEnd) &&
-              (var_loc + (Addr)formalParamByteSize(var)
-               <= funcPtr->guestStackEnd)) {
+              ((Addr)formalParamByteSize(var)
+               <= funcPtr->guestStackEnd - var_loc)) {
 
 #if defined(VGA_amd64)
           if(!isEnter) {
