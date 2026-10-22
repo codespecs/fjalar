@@ -852,6 +852,24 @@ void visitClassMemberVariables(VisitArgs* args) {
   FJALAR_DPRINTF("Exit  visitClassMemberVariables\n");
 }
 
+// Returns true if all of the size bytes at guest address guestAddr are
+// within the guest stack that enter_function copied to funcPtr's
+// virtual stack, [guestStackStart, guestStackEnd).  The virtual stack
+// holds nothing for the bytes at or past guestStackEnd.
+static Bool isInCopiedStack(FunctionEntry* funcPtr, Addr guestAddr, int size)
+{
+  return ((guestAddr >= funcPtr->guestStackStart) &&
+          (guestAddr < funcPtr->guestStackEnd) &&
+          (guestAddr + (Addr)size <= funcPtr->guestStackEnd));
+}
+
+// Returns the address in funcPtr's virtual stack that corresponds to
+// guest address guestAddr, which must be within the copied guest stack.
+static Addr virtualStackAddr(FunctionEntry* funcPtr, Addr guestAddr)
+{
+  return funcPtr->lowestVirtSP + (guestAddr - funcPtr->guestStackStart);
+}
+
 // Visits an entire group of variables, depending on the value of varOrigin:
 // If varOrigin == GLOBAL_VAR, then visit all global variables
 // If varOrigin == FUNCTION_FORMAL_PARAM, then visit all formal parameters
@@ -1013,8 +1031,16 @@ void visitVariableGroup(VariableOrigin varOrigin,
             location_op_kind kind = location_op_kind_of(op);
 
             if(kind == LOC_OP_DEREF) {
-              // Dereference result of last DWARF operation
+              // Dereference result of last DWARF operation.  If the
+              // address is within the copied stack, read it from the
+              // virtual stack, which holds its value at function
+              // entrance, for the same reason that Fjalar reads a
+              // variable from there:  at function exit, the function
+              // body may have overwritten the address.
               tl_assert(var_loc);
+              if (isInCopiedStack(funcPtr, var_loc, sizeof(Addr))) {
+                var_loc = virtualStackAddr(funcPtr, var_loc);
+              }
               var_loc = *(Addr *)var_loc;
 
             } else if(kind == LOC_OP_CONST) {
@@ -1071,13 +1097,8 @@ void visitVariableGroup(VariableOrigin varOrigin,
           }
 
           // Read the variable from the virtual stack only if all of it
-          // is within the copied guest stack, [guestStackStart,
-          // guestStackEnd).  The virtual stack holds nothing for the
-          // bytes at or past guestStackEnd.
-          if((var_loc >= funcPtr->guestStackStart) &&
-              (var_loc < funcPtr->guestStackEnd) &&
-              (var_loc + (Addr)formalParamByteSize(var)
-               <= funcPtr->guestStackEnd)) {
+          // is within the copied guest stack.
+          if(isInCopiedStack(funcPtr, var_loc, formalParamByteSize(var))) {
 
 #if defined(VGA_amd64)
           if(!isEnter) {
