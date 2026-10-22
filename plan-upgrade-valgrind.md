@@ -105,7 +105,8 @@ Memcheck and DynComp depend tightly on Valgrind core:
     touch only Fjalar's own files and Binutils-derived files, which this
     merge does not change.
   - The complete checklist of Fjalar changes to upstream files is
-    `coregrind-Fjalar.diff` and `memcheck-Fjalar.diff` (step 4).
+    `git diff --diff-filter=a valgrind-merge/base valgrind-merge/fjalar`
+    (step 4).
 
 ## Steps
 
@@ -192,19 +193,21 @@ Memcheck and DynComp depend tightly on Valgrind core:
 
 4. **Merge.**  Run `$FJALAR/merge-valgrind.sh`.  It checks that
    `valgrind-old` and `valgrind-new` are at `$VOLDTAG` and `$VNEWTAG`,
-   writes `coregrind-Fjalar.diff` and `memcheck-Fjalar.diff`, merges
+   records Fjalar before the merge as `valgrind-merge/fjalar`, merges
    upstream's changes into Coregrind and into both copies of Memcheck
    (`valgrind/memcheck` and `valgrind/fjalar`) with `git cherry-pick`,
    regenerates `valgrind/fjalar/Makefile.am`, stages the result, and lists
    the conflicts.  `git diff valgrind-merge/base valgrind-merge/new` shows
-   upstream's changes.  To start over, run `git reset --hard`.
+   upstream's changes.  After resolving the conflicts (steps 5 and 6), run
+   `$FJALAR/compare-fjalar-changes.sh`, which lists each Fjalar change
+   that the merge lost or altered.  To start over, run `git reset --hard`.
 
 5. **Coregrind conflicts.**
    - Resolve the conflicts outside `valgrind/fjalar` (files with conflict
      markers, and modify/delete conflicts, all of which
      `git diff --name-only --diff-filter=U` lists), then `git add` or
-     `git rm` each file, using `coregrind-Fjalar.diff` and the "Valgrind
-     modifications" appendix as a checklist.  In particular, verify each
+     `git rm` each file, using Fjalar's changes outside `valgrind/fjalar`
+     and the "Valgrind modifications" appendix as a checklist.  In particular, verify each
      Fjalar change still exists after the merge:
      `configure.ac`, top-level `Makefile.am`, `m_libcbase.c`/`pub_tool_libcbase.h`
      (`strnlen`), `m_libcfile.c`/`pub_tool_libcfile.h` (`mkdir`, `fcntl`),
@@ -228,7 +231,7 @@ Memcheck and DynComp depend tightly on Valgrind core:
 
 6. **Memcheck conflicts** in `valgrind/fjalar/`.
    - Resolve the conflicts (as for Coregrind), using
-     `memcheck-Fjalar.diff`, including files that upstream removed but
+     Fjalar's changes in `valgrind/fjalar`, including files that upstream removed but
      Fjalar modified; `git rm`
      any that Fjalar does not need.  Remember part of `mc_translate.c`
      lives in `fjalar/mc_translate.h`.  Preserve the #73 edits to `mc_translate.c`
@@ -367,8 +370,8 @@ Memcheck and DynComp depend tightly on Valgrind core:
       - the list of Coregrind files that need special attention (step 5),
         especially the shadow-state layout and `host_generic_reg_alloc3.c`;
         and, in appendix "Valgrind modifications", add
-        `host_generic_reg_alloc3.c` and make the entries match
-        `coregrind-Fjalar.diff` from this merge;
+        `host_generic_reg_alloc3.c` and make the entries match Fjalar's
+        changes outside `valgrind/fjalar` after this merge;
       - the mechanical `Iop_` coverage check (step 7), in appendix
         "Supporting new VEX IR Instruction" (section "Updating
         Fjalar/Kvasir" already runs `list-dyncomp-missing-iops.sh`);
@@ -376,9 +379,8 @@ Memcheck and DynComp depend tightly on Valgrind core:
       - `make fjalar-test` and the plain Memcheck run (step 9).
       Rebuild with `make doc` (which `test.sh` runs in CI) to confirm that
       the document still formats.
-    - Use the commit message "Upgrade Valgrind from 3.23.0 to 3.27.1".  The
-      diff files can also be attached to the PR.
-    - Commit as one PR, and save the diff files.
+    - Use the commit message "Upgrade Valgrind from 3.23.0 to 3.27.1".
+    - Commit as one PR.
     - After the PR has landed, keep `valgrind-new` as the next merge's
       `valgrind-old` (step 2 reuses it), and delete `valgrind-new-build`.
       Do not do this earlier:  review may require redoing the merge,
