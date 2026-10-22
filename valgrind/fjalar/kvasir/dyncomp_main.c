@@ -60,6 +60,7 @@
 #include "pub_tool_libcbase.h"
 #include "pub_tool_libcprint.h"
 #include "mc_include.h"
+#include "../../VEX/priv/guest_amd64_defs.h"  // AMD64G_CC_OP_*
 #include "memcheck.h"
 
 // Special reserved tags
@@ -72,10 +73,13 @@ int print_merge = 1;
 /* WEAK_FRESH_TAG unifies and replaces the previous special
    LITERAL_TAG and ESP_TAG values. When you merge it with a real tag,
    the real tag is the result (that's the weak part). When you store
-   it to memory, a fresh tag is stored instead, and when you load it
-   from memory, you get a fresh tag instead (those are the fresh
-   part). This tag is used for the stack pointer, the frame pointer,
-   the contents of the GOT, and literals when
+   it to memory, a fresh tag is stored instead (that's the fresh
+   part). When you load it from memory, the result depends on
+   --dyncomp-interactions: under all, MC_(helperc_LOAD_TAG_4) gives a
+   fresh tag; under none, comparisons, and units,
+   MC_(helperc_LOAD_TAG_N) gives WEAK_FRESH_TAG itself. This tag is
+   used for the stack pointer, the frame pointer, the contents of the
+   GOT, and literals when
    dyncomp-approximate-literals is enabled. */
 /* The tag valued 0 is also special; if you wanted to give it a
    symbolic name, it would be something like "NO_TAG". It's even
@@ -471,6 +475,29 @@ UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
   return val_uf_union_tags_in_range(a, 1);
 }
 
+// Returns the tag of the value loaded from the range [a, a+len), in
+// dyncomp_dataflow_only_mode, dyncomp_dataflow_comparisons_mode, and
+// dyncomp_units_mode.  In those modes, a load is not an interaction, so
+// unlike the other MC_(helperc_LOAD_TAG_*) functions, this does not merge
+// the tags of the addresses in the range.  It returns the leader of the
+// first non-zero tag in the range, WEAK_FRESH_TAG if that tag is
+// WEAK_FRESH_TAG, or 0 if every tag in the range is 0.
+// Returning WEAK_FRESH_TAG rather than a fresh tag avoids allocating a
+// tag for each load of a GOT entry, such as the one in every PLT call;
+// the MC_(helperc_STORE_TAG_*) functions replace WEAK_FRESH_TAG with a
+// fresh tag if the value is stored.
+VG_REGPARM(2)
+UInt MC_(helperc_LOAD_TAG_N) ( Addr a, UWord len ) {
+  UInt tag;
+
+  DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_N: %p %lu\n", (void *)a, len);
+  tag = first_nonzero_tag_in_range(a, len);
+  if (WEAK_FRESH_TAG == tag) {
+    return WEAK_FRESH_TAG;
+  }
+  return val_uf_find_leader(tag);
+}
+
 // Make this const so gcc can eliminate dead code to improve
 // performance:
 const int dyncomp_profile_tags = 0;
@@ -578,6 +605,36 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
     val_uf_tag_union(tag1, tag2);
     return 0;
   }
+}
+
+// Returns True if cc_op, the CC_OP field of the flags thunk, says that the
+// flags are the result of a subtraction (a cmp or sub instruction), which
+// is how amd64 compares values.
+//
+// A comparison of values wider than a register, such as two __int128
+// values, compares the low halves with a cmp and the high halves with an
+// sbb, and the flags that are read are those of the sbb.  Accepting
+// AMD64G_CC_OP_SBB* here would have no effect under
+// --dyncomp-interactions=comparisons:  the CC_DEP2 field of an sbb's thunk
+// is the xor of its second operand and the old carry, and that xor gets
+// tag 0 because it is not an interaction.  So in that mode, the high halves
+// are not comparable.  (Under --dyncomp-interactions=units, the sbb's
+// subtraction makes them comparable.)  See lessWide() in
+// tests/dyncomp-interactions-comparisons.c.
+Bool dyncomp_cc_op_is_sub(UWord cc_op) {
+  return AMD64G_CC_OP_SUBB <= cc_op && cc_op <= AMD64G_CC_OP_SUBQ;
+}
+
+// Returns the tag of an operand of the subtraction whose result the flags
+// thunk holds, or 0 if the thunk does not hold the result of a subtraction.
+// cc_op is the thunk's CC_OP field, and dep_tag is the tag of its CC_DEP1 or
+// CC_DEP2 field, which for a subtraction is an operand.
+VG_REGPARM(2)
+UWord MC_(helperc_SUB_OPERAND_TAG) ( UWord cc_op, UWord dep_tag ) {
+  if (dyncomp_cc_op_is_sub(cc_op)) {
+    return dep_tag;
+  }
+  return 0;
 }
 
 /*------------------------------------------------------------------*/

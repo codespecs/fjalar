@@ -934,7 +934,9 @@ void visitVariableGroup(VariableOrigin varOrigin,
     // test does not depend on stackBaseAddr, so that the .decls file
     // (which is written without a stack) declares exactly the
     // variables that the .dtrace file contains.
-    if ((varOrigin == FUNCTION_FORMAL_PARAM) && !var->validLoc) {
+    // A heuristic may set validLoc even if the location is unsupported.
+    if ((varOrigin == FUNCTION_FORMAL_PARAM)
+        && (!var->validLoc || var->locationUnsupported)) {
       FJALAR_DPRINTF("\t[visitVariableGroup] invalid loc, punting\n");
       continue;
     }
@@ -1033,9 +1035,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
               // have overwritten the register and the epilogue has
               // already restored or popped it.
               Bool isBreg = (kind == LOC_OP_BREG);
-              UInt regNum;
-              Bool isReg = dwarf_op_reg_num(op, &regNum);
-              tl_assert(isReg);
+              UInt regNum = op - (isBreg ? DW_OP_breg0 : DW_OP_reg0);
               if (!entryRegs || !(funcPtr->entryRegsMask & (1U << regNum))) {
                 // extractOneFormalParameterVar() did not accept the
                 // register location, so the register was not saved,
@@ -1063,8 +1063,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
               var_loc = stackBaseAddrGuest + dloc->atom_offset;
 
             } else {
-              // There's a fair number of DWARF operations still unsupported. There is a full list
-              // in fjalar_debug.h
+              // decode_location_expression marked the location unsupported.
               FJALAR_DPRINTF("\tUnsupported DWARF stack OP: %s\n", location_expression_to_string(op));
               tl_assert(0);
             }

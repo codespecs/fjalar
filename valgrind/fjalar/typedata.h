@@ -330,6 +330,14 @@ typedef struct
 
   unsigned int valid_loc;
 
+  // True if the location expression contains an operation of kind
+  // LOC_OP_UNSUPPORTED (see location_op_kind_of), such as a register that
+  // Fjalar cannot read or DW_OP_stack_value, or contains more than
+  // MAX_DWARF_OPS operations.  Fjalar cannot read such a location.  A
+  // location list does not set this flag:  like a missing location, it
+  // leaves the location unknown, so heuristics may supply it.
+  char location_has_unsupported_op;
+
   unsigned long abstract_origin_ID; // See comment in the function struct definition
                                     // for the uses of this.
 
@@ -550,6 +558,7 @@ char harvest_name(dwarf_entry* e, const char* str);
 char harvest_mangled_name(dwarf_entry* e, const char* str);
 char harvest_comp_dir(dwarf_entry* e, const char* str);
 char harvest_producer(dwarf_entry* e, const char* str);
+char harvest_formal_param_location_unsupported(dwarf_entry* e);
 char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom atom, long value);
 char harvest_data_member_location(dwarf_entry* e, unsigned long value);
 char harvest_string(dwarf_entry* e, unsigned long attr, const char* str);
