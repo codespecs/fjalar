@@ -63,27 +63,41 @@ static __inline__ Bool dwarf_reg_is_readable(UInt regNum) {
   return regNum < FJALAR_NUM_DWARF_REGS;
 }
 
-// The kinds of operation that visitVariableGroup evaluates in the
-// location expression of a formal parameter.
+// The kinds of operation in the location expression of a formal
+// parameter.  visitVariableGroup evaluates every kind except
+// LOC_OP_UNSUPPORTED and LOC_OP_IGNORED.
 typedef enum {
   LOC_OP_UNSUPPORTED,  // any operation not listed below
+  LOC_OP_IGNORED,      // DW_OP_nop and DW_OP_piece, which Fjalar ignores
   LOC_OP_DEREF,        // DW_OP_deref
   LOC_OP_CONST,        // DW_OP_const*
   LOC_OP_PLUS_UCONST,  // DW_OP_plus_uconst
-  LOC_OP_REG,          // DW_OP_reg0..DW_OP_reg31, but not DW_OP_regx
-  LOC_OP_BREG,         // DW_OP_breg0..DW_OP_breg31, but not DW_OP_bregx
+  LOC_OP_REG,          // DW_OP_reg0..DW_OP_reg31 (not DW_OP_regx), for a register Fjalar can read
+  LOC_OP_BREG,         // DW_OP_breg0..DW_OP_breg31 (not DW_OP_bregx), for a register Fjalar can read
   LOC_OP_FBREG         // DW_OP_fbreg
 } location_op_kind;
 
-// Returns the kind of op.  For LOC_OP_REG and LOC_OP_BREG, callers compute
-// the register number as op - DW_OP_reg0 or op - DW_OP_breg0, which is in
-// 0..31 only because DW_OP_regx and DW_OP_bregx are excluded.
+// Returns the kind of op.  decode_location_expression marks a formal
+// parameter's location unsupported if it contains an op of kind
+// LOC_OP_UNSUPPORTED, so visitVariableGroup never evaluates such an op.
+// decode_location_expression does not record an op of kind LOC_OP_IGNORED.
+//
+// A register operation (DW_OP_reg* or DW_OP_breg*) is supported only if
+// Fjalar can read the register; Fjalar saves such a register, with its A and
+// V bits and DynComp tags, at function entrance.  extractOneFormalParameterVar
+// further restricts which locations that use DW_OP_reg* it accepts.
+//
+// For LOC_OP_REG and LOC_OP_BREG, callers compute the register number as
+// op - DW_OP_reg0 or op - DW_OP_breg0, which is readable because
+// DW_OP_regx and DW_OP_bregx are excluded and because of the checks below.
 static __inline__ location_op_kind location_op_kind_of(enum dwarf_location_atom op) {
   if ((op >= DW_OP_reg0) && (op <= DW_OP_reg31)) {
-    return LOC_OP_REG;
+    return (dwarf_reg_is_readable(op - DW_OP_reg0)
+            ? LOC_OP_REG : LOC_OP_UNSUPPORTED);
   }
   if ((op >= DW_OP_breg0) && (op <= DW_OP_breg31)) {
-    return LOC_OP_BREG;
+    return (dwarf_reg_is_readable(op - DW_OP_breg0)
+            ? LOC_OP_BREG : LOC_OP_UNSUPPORTED);
   }
   if (op == DW_OP_deref) {
     return LOC_OP_DEREF;
@@ -96,6 +110,9 @@ static __inline__ location_op_kind location_op_kind_of(enum dwarf_location_atom 
   }
   if (op == DW_OP_fbreg) {
     return LOC_OP_FBREG;
+  }
+  if ((op == DW_OP_nop) || (op == DW_OP_piece)) {
+    return LOC_OP_IGNORED;
   }
   return LOC_OP_UNSUPPORTED;
 }

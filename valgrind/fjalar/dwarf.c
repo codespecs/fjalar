@@ -1451,6 +1451,12 @@ decode_location_expression (unsigned char * data,
 
       if(ll) {ll->atom = op;}
 
+      /* An op that Fjalar's evaluator cannot apply, such as an unreadable register,
+	 DW_OP_stack_value, or DW_OP_plus (the evaluator has no operand
+	 stack), makes a formal parameter's location unreadable.  */
+      if (ok_to_harvest && location_op_kind_of (op) == LOC_OP_UNSUPPORTED)
+	harvest_formal_param_location_unsupported (entry);
+
       switch (op)
 	{
 	case DW_OP_addr:
@@ -1588,7 +1594,6 @@ decode_location_expression (unsigned char * data,
 	  READ_ULEB (uvalue, data, end);
 	  if (ok_to_harvest) {
 	    harvest_formal_param_location_atom(entry, op, uvalue);
-	    harvest_formal_param_location_offset(entry, uvalue);
 	    harvest_data_member_location(entry, uvalue);
 	  }
 
@@ -1665,8 +1670,6 @@ decode_location_expression (unsigned char * data,
 	case DW_OP_lit29:
 	case DW_OP_lit30:
 	case DW_OP_lit31:
-	  if (ok_to_harvest)
-	    harvest_formal_param_location_atom(entry, op, 0);
 	  printf ("DW_OP_lit%u", op - DW_OP_lit0);
 	  break;
 
@@ -1746,7 +1749,6 @@ decode_location_expression (unsigned char * data,
 	      ll->atom_offset = svalue;
 	    harvest_local_var_offset(entry, svalue, (op - DW_OP_breg0));
 	    harvest_formal_param_location_atom(entry, op, svalue);
-	    harvest_formal_param_location_offset(entry, svalue);
 	  }
 	  printf ("DW_OP_breg%u (%s): %s", op - DW_OP_breg0,
 		  regname (op - DW_OP_breg0, 1), dwarf_vmatoa ("d", svalue));
@@ -1765,7 +1767,6 @@ decode_location_expression (unsigned char * data,
 	      ll->atom_offset = svalue;
 	    harvest_local_var_offset(entry, svalue, -1);
 	    harvest_formal_param_location_atom(entry, op, svalue);
-	    harvest_formal_param_location_offset(entry, svalue);
 	  }
 	  printf ("DW_OP_fbreg: %s", dwarf_vmatoa ("d", svalue));
 	  break;
