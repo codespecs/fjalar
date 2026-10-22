@@ -31,6 +31,7 @@
 #include "pub_tool_libcproc.h"
 #include "pub_tool_threadstate.h"
 #include "pub_tool_debuginfo.h"
+#include "pub_tool_tooliface.h"
 
 #include "kvasir_main.h"
 #include "decls-output.h"
@@ -523,7 +524,7 @@ static void finishDtraceFile(void)
 
 void fjalar_tool_pre_clo_init(void)
 {
-  // Nothing to do here
+  VG_(track_start_client_code)(dyncomp_gc_at_safe_point);
 }
 
 // Initialize kvasir after processing command-line options
@@ -674,9 +675,9 @@ void fjalar_tool_print_usage()
 "\n  DynComp dynamic comparability analysis\n"
 "    --dyncomp                Enables DynComp comparability analysis\n"
 "                             [default on; turn off with --no-dyncomp]\n"
-"    --dyncomp-gc-num-tags=<number>  The number of tags that get assigned between successive runs\n"
-"                             of the garbage collector (between 0 and INT_MAX)\n"
-"                             (The default is to garbage collect every 10,000,000 tags created)\n"
+"    --dyncomp-gc-num-tags=<number>  The minimum number of tags that get assigned between successive\n"
+"                             runs of the garbage collector (between 0 and INT_MAX)\n"
+"                             (The default is 10,000,000)\n"
 "                             0 is a special case that turns off the garbage collector.\n"
 "                             (Faster but may run out of memory for long-running programs)\n"
 "    --dyncomp-approximate-literals  Approximates the handling of literals for comparability.\n"
