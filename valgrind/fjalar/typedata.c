@@ -1206,7 +1206,10 @@ char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom
 
   paramPtr->loc_atom = atom;
 
-  tl_assert(paramPtr->dwarf_stack_size < MAX_DWARF_OPS);
+  if (paramPtr->dwarf_stack_size == MAX_DWARF_OPS) {
+    paramPtr->location_has_unsupported_op = 1;
+    return 1;
+  }
   paramPtr->dwarf_stack[paramPtr->dwarf_stack_size].atom = atom;
   paramPtr->dwarf_stack[paramPtr->dwarf_stack_size].atom_offset = value;
   paramPtr->dwarf_stack_size++;
@@ -1223,6 +1226,20 @@ char harvest_formal_param_location_offset(dwarf_entry* e, long value)
   paramPtr->location_type = LT_FP_OFFSET;
   paramPtr->location = value;
   paramPtr->valid_loc = 1;
+  return 1;
+}
+
+// If e is a formal parameter, records that Fjalar cannot read its location
+// (sets location_has_unsupported_op), so Fjalar omits the parameter from the
+// .decls and .dtrace files.  Returns 1 if e is a formal parameter, 0
+// otherwise.
+char harvest_formal_param_location_unsupported(dwarf_entry* e)
+{
+  formal_parameter* paramPtr = formal_parameter_of(e);
+  if (paramPtr == 0)
+    return 0;
+
+  paramPtr->location_has_unsupported_op = 1;
   return 1;
 }
 
@@ -2823,13 +2840,14 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
     case DW_TAG_formal_parameter:
       {
         formal_parameter* formal_param_ptr = (formal_parameter*)(e->entry_ptr);
-        FJALAR_DPRINTF("  Name: %s, Type ID: 0x%lx, num-ops: %u, atom: %x, loc_type: %u, offset: %ld\n",
+        FJALAR_DPRINTF("  Name: %s, Type ID: 0x%lx, num-ops: %u, atom: %x, loc_type: %u, offset: %ld, unsupported op: %u\n",
                formal_param_ptr->name,
                formal_param_ptr->type_ID,
                formal_param_ptr->dwarf_stack_size,
                formal_param_ptr->loc_atom,
                formal_param_ptr->location_type,
-               formal_param_ptr->location);
+               formal_param_ptr->location,
+               (UInt)formal_param_ptr->location_has_unsupported_op);
         break;
       }
     case DW_TAG_template_type_param:
