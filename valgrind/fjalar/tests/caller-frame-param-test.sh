@@ -78,12 +78,14 @@ if ! grep -q "^Extending the virtual stack of .*mutate" \
   exit 1
 fi
 
-# One line per occurrence of a.count or b.count at mutate's program points:
+# One line per occurrence of a.count, a.last, b.count, or b.last at mutate's
+# program points:
 # "<ppt> <variable> <value>".  In a program point name, "\_" encodes a space.
 actual="${output_dir}/caller-frame-param.actual"
 awk '/^\.\.mutate\(Counted,\\_Counted\):::/ { ppt = $0; next }
      /^$/ { ppt = ""; next }
-     ppt != "" && ($0 == "a.count" || $0 == "b.count") {
+     ppt != "" && ($0 == "a.count" || $0 == "a.last" \
+                   || $0 == "b.count" || $0 == "b.last") {
        var = $0; getline; print ppt, var, $0
      }' \
     "${dtrace}" > "${actual}"

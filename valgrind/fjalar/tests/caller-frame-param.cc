@@ -19,18 +19,23 @@
 // A class with a user-provided copy constructor is passed by invisible
 // reference:  the caller passes a pointer to a temporary copy in its own
 // frame.  The padding makes the copies large, so that they extend beyond
-// the part of the stack that Fjalar copies by default.
+// the part of the stack that Fjalar copies by default.  last is the last
+// word of an object, so that the test checks that Fjalar copies all of it,
+// not only its first word.
 struct Counted {
   long count;
-  long padding[15];
-  Counted(long c) : count(c) {}
-  Counted(const Counted& other) : count(other.count) {}
+  long padding[14];
+  long last;
+  Counted(long c) : count(c), last(10 * c) {}
+  Counted(const Counted& other) : count(other.count), last(other.last) {}
 };
 
 // Changes the callee's copies, which the caller cannot observe.
 __attribute__((noinline)) void mutate(Counted a, Counted b) {
   a.count = 5;
   b.count = 6;
+  a.last = 50;
+  b.last = 60;
 }
 
 int main() {
