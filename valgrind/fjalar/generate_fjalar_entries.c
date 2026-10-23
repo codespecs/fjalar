@@ -2526,7 +2526,7 @@ int determineFormalParametersStackByteSize(FunctionEntry* f)
        cur_node = cur_node->next)
     {
       int this_end = cur_node->var->byteOffset +
-        determineVariableByteSize(cur_node->var);
+        formalParamByteSize(cur_node->var);
       totalByteSize = MAX(totalByteSize, this_end);
     }
   // PG comment said "Just to be safe, round UP to the next multiple
