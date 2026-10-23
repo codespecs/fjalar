@@ -88,4 +88,12 @@ void outputAllXMLDeclarations(void);
 char* getRawCppFunctionName(char* cppFnName);
 int entry_is_valid_function(dwarf_entry *entry, Bool quiet);
 
+// fjalar_include.h defines VariableEntry, but it includes this file
+// first.
+struct _VariableEntry;
+
+// Returns the number of bytes that the formal parameter's location
+// holds.  A C++ reference is passed as a pointer.
+int formalParamByteSize(struct _VariableEntry* varPtr);
+
 #endif
