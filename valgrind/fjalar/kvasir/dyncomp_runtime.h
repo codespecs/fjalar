@@ -75,6 +75,7 @@ void debugPrintTagsInRange(Addr low, Addr high);
 void check_whether_to_garbage_collect(void);
 
 void garbage_collect_tags(void);
+void dyncomp_gc_at_safe_point(ThreadId tid, ULong blocks_dispatched);
 
 // DynComp detailed mode (--dyncomp-detailed-mode):
 UInt bitarraySize(UInt n);

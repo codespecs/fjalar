@@ -318,34 +318,25 @@ typedef struct {
   dwarf_entry* return_type;
 } function_type;
 
-enum location_type {
-  LT_NONE = 0,       // unused
-  LT_FP_OFFSET,      // frame pointer plus offset
-  LT_REGISTER        // unused
-};
-
 // function formal parameter
 typedef struct
 {
   char* name;
   unsigned long type_ID;
   dwarf_entry* type_ptr;
-  enum location_type location_type;
-
-  enum dwarf_location_atom loc_atom; //Location Expression.
 
   dwarf_location dwarf_stack[MAX_DWARF_OPS];
   unsigned int dwarf_stack_size;
 
-  long location; // Offset from location
-
-                 // This is stored as: (DW_OP_fbreg: x),
-                 // where x is location offset
-                 // (comment added 2005)
-                 // TODO: DW_OP_fbreg: seems unreliable - gives flaky
-                 //       values sometimes - look into finding a better
-                 //       way to get the parameter location
   unsigned int valid_loc;
+
+  // True if the location expression contains an operation of kind
+  // LOC_OP_UNSUPPORTED (see location_op_kind_of), such as a register that
+  // Fjalar cannot read or DW_OP_stack_value, or contains more than
+  // MAX_DWARF_OPS operations.  Fjalar cannot read such a location.  A
+  // location list does not set this flag:  like a missing location, it
+  // leaves the location unknown, so heuristics may supply it.
+  char location_has_unsupported_op;
 
   unsigned long abstract_origin_ID; // See comment in the function struct definition
                                     // for the uses of this.
@@ -567,7 +558,7 @@ char harvest_name(dwarf_entry* e, const char* str);
 char harvest_mangled_name(dwarf_entry* e, const char* str);
 char harvest_comp_dir(dwarf_entry* e, const char* str);
 char harvest_producer(dwarf_entry* e, const char* str);
-char harvest_formal_param_location_offset(dwarf_entry* e, long value);
+char harvest_formal_param_location_unsupported(dwarf_entry* e);
 char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom atom, long value);
 char harvest_data_member_location(dwarf_entry* e, unsigned long value);
 char harvest_string(dwarf_entry* e, unsigned long attr, const char* str);

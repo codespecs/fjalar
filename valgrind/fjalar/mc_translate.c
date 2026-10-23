@@ -8753,6 +8753,11 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
       dce.layout         = layout;
       dce.n_originalTmps = sb_out->tyenv->types_used;
       dce.hWordTy        = hWordTy;
+      dce.sb_in          = sb_in;
+      // Only this mode uses the flags-carrying analysis.
+      dce.tmpCarriesFlags =
+         dyncomp_dataflow_comparisons_mode
+         ? findFlagsCarryingTmps_DC(sb_in) : NULL;
       dce.tmpMap         = VG_(malloc)("mc_translate.c.2", dce.n_originalTmps * sizeof(IRTemp));
       //dce.tmpMap         = LibVEX_Alloc(dce.n_originalTmps * sizeof(IRTemp));
       for (i = 0; i < (Int)dce.n_originalTmps; i++)
@@ -8837,6 +8842,10 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
 
       st = sb_in->stmts[i];
       first_stmt = sb_out->stmts_used;
+#ifndef _NO_DYNCOMP
+      if (do_dyncomp)
+         dce.stmtIndex = i;
+#endif /* _NO_DYNCOMP */
 
       if (verboze) {
          printf("\n");
@@ -9072,6 +9081,11 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
    if (do_dyncomp && dce.loadTagSnapshots) {
       VG_(free)( dce.loadTagSnapshots );
    }
+
+#ifndef _NO_DYNCOMP
+   if (do_dyncomp)
+      VG_(free)( dce.tmpCarriesFlags );
+#endif /* _NO_DYNCOMP */
 
     tl_assert(mce.sb == sb_out);
     return sb_out;

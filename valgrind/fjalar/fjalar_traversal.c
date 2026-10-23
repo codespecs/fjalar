@@ -934,7 +934,9 @@ void visitVariableGroup(VariableOrigin varOrigin,
     // test does not depend on stackBaseAddr, so that the .decls file
     // (which is written without a stack) declares exactly the
     // variables that the .dtrace file contains.
-    if ((varOrigin == FUNCTION_FORMAL_PARAM) && !var->validLoc) {
+    // A heuristic may set validLoc even if the location is unsupported.
+    if ((varOrigin == FUNCTION_FORMAL_PARAM)
+        && (!var->validLoc || var->locationUnsupported)) {
       FJALAR_DPRINTF("\t[visitVariableGroup] invalid loc, punting\n");
       continue;
     }
@@ -1061,16 +1063,23 @@ void visitVariableGroup(VariableOrigin varOrigin,
               var_loc = stackBaseAddrGuest + dloc->atom_offset;
 
             } else {
-              // There's a fair number of DWARF operations still unsupported. There is a full list
-              // in fjalar_debug.h
+              // decode_location_expression marked the location unsupported.
               FJALAR_DPRINTF("\tUnsupported DWARF stack OP: %s\n", location_expression_to_string(op));
               tl_assert(0);
             }
             FJALAR_DPRINTF("\tApplying DWARF Stack Operation %s - %p\n",location_expression_to_string(op), (void *)var_loc);
           }
 
+          // Read the variable from the virtual stack only if all of it
+          // is within the copied guest stack, [guestStackStart,
+          // guestStackEnd).  The virtual stack holds nothing for the
+          // bytes at or past guestStackEnd.  The size is compared with
+          // the bytes that remain after var_loc, rather than added to
+          // var_loc, so that the check cannot overflow.
           if((var_loc >= funcPtr->guestStackStart) &&
-              (var_loc <= funcPtr->guestStackEnd)) {
+              (var_loc < funcPtr->guestStackEnd) &&
+              ((Addr)formalParamByteSize(var)
+               <= funcPtr->guestStackEnd - var_loc)) {
 
 #if defined(VGA_amd64)
           if(!isEnter) {
@@ -1092,13 +1101,14 @@ void visitVariableGroup(VariableOrigin varOrigin,
             var->entryLocGuest = var_loc;
             basePtrValueGuest = var_loc; }
           else {
-            // The location is not on the stack, so Fjalar reads the
-            // variable where it is.  For a register location, that is
-            // entryRegs, which has no guest address.  Its address
-            // serves as the guest address, so a static array within
-            // the variable has a non-null hashcode.  That hashcode is
-            // the same at entrance and exit of an invocation, because
-            // entryRegs lives as long as the FunctionExecutionState.
+            // The variable is not entirely within the copied stack, so
+            // Fjalar reads the variable where it is.  For a register location,
+            // that is entryRegs, which has no guest address.  Its
+            // address serves as the guest address, so a static array
+            // within the variable has a non-null hashcode.  That
+            // hashcode is the same at entrance and exit of an
+            // invocation, because entryRegs lives as long as the
+            // FunctionExecutionState.
             basePtrValue = var_loc;
             var->entryLoc = var_loc;
             basePtrValueGuest = var_loc;

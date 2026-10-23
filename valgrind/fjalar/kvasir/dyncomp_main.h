@@ -211,18 +211,7 @@ static __inline__ void clear_all_tags_in_range( Addr a, SizeT len ) {
 // Return a fresh tag and create a singleton set
 // for the uf_object associated with that tag
 static __inline__ UInt grab_fresh_tag(void) {
-  UInt tag;
-
-  // Let's try garbage collecting here.  Remember to assign
-  // tag = nextTag AFTER garbage collection (if it occurs) because
-  // nextTag may decrease due to the garbage collection step
-  if ((!dyncomp_no_gc) &&
-      totalNumTagsAssigned && // Don't garbage collect when it's zero
-      (totalNumTagsAssigned % dyncomp_gc_after_n_tags == 0)) {
-    garbage_collect_tags();
-  }
-
-  tag = nextTag;
+  UInt tag = nextTag;
 
   // Remember to make a new singleton set for the
   // uf_object associated with that tag
