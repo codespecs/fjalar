@@ -1207,12 +1207,7 @@ void garbage_collect_tags() {
   for (i = 0; i < DC_N_LOAD_TAG_SNAPSHOTS; i++) {
     UInt j;
     for (j = 0; j < DC_LOAD_TAG_SNAPSHOT_BYTES; j++) {
-      addr = &load_tag_snapshots[i][j];
-      if (*addr && *addr != WEAK_FRESH_TAG) {
-        reassign_tag(addr,
-                     val_uf_find_leader(*addr),
-                     &newTagNumber);
-      }
+      reassign_val_tag(&load_tag_snapshots[i][j], &newTagNumber);
     }
   }
 
