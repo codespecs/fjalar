@@ -48,6 +48,7 @@ static void processFunctions(void);
 int determineFormalParametersStackByteSize(FunctionEntry* f);
 int determineFormalParametersLowerStackByteSize(FunctionEntry* f);
 int determineVariableByteSize(VariableEntry* var);
+int formalParamByteSize(VariableEntry* varPtr);
 
 static void extractFormalParameterVars(FunctionEntry* f, function* dwarfFunctionEntry);
 static void extractLocalArrayAndStructVariables(FunctionEntry* f, function* dwarfFunctionEntry);
@@ -2528,7 +2529,7 @@ int determineVariableByteSize(VariableEntry* var)
 // frame from the end of the copy instead of from the caller's frame.
 static void formalParamFrameOffsetRange(VariableEntry* var, int* lo, int* hi)
 {
-  int byteSize = determineVariableByteSize(var);
+  int byteSize = formalParamByteSize(var);
   // The offset of the address that the operations so far compute, if
   // offsetKnown is true.
   int offset = 0;
@@ -2621,7 +2622,7 @@ int determineFormalParametersLowerStackByteSize(FunctionEntry* f)
 
 // Returns the number of bytes that the formal parameter's location
 // holds.  A C++ reference is passed as a pointer.
-static int formalParamByteSize(VariableEntry* varPtr)
+int formalParamByteSize(VariableEntry* varPtr)
 {
   return (varPtr->referenceLevels > 0
           ? (int)sizeof(Addr)
