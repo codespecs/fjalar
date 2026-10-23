@@ -906,10 +906,19 @@ Addr formalParamLocation(VariableEntry* var, FunctionEntry* funcPtr,
       // virtual stack, which holds its value at function
       // entrance, for the same reason that Fjalar reads a
       // variable from there:  at function exit, the function
-      // body may have overwritten the address.
+      // body may have overwritten the memory that holds the
+      // address.
       tl_assert(var_loc);
       if (isInCopiedStack(funcPtr, var_loc, sizeof(Addr))) {
         var_loc = virtualStackAddr(funcPtr, var_loc);
+      } else if (!addressIsAllocated(var_loc, sizeof(Addr))) {
+        // The address is not allocated, so dereferencing it
+        // could crash Fjalar.  This can happen if some
+        // heuristic marked the location valid.
+        FJALAR_DPRINTF("\tDW_OP_deref of unallocated address %p; value is nonsensical\n",
+                       (void *)var_loc);
+        var_loc = 0;
+        break;
       }
       var_loc = *(Addr *)var_loc;
 
