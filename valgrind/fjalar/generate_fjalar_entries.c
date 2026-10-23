@@ -2456,7 +2456,7 @@ static void verifyStackParamWordAlignment(FunctionEntry* f, int replace)
         FJALAR_DPRINTF("MODIFY VAR LOCATION! now:\n");
         FJALAR_DPRINTF(" location_type: %u, byteOffset: %x\n", cur_node->var->locationType, (unsigned int)cur_node->var->byteOffset);
       }
-      cur_byteSize = determineVariableByteSize(cur_node->var);
+      cur_byteSize = formalParamByteSize(cur_node->var);
       // WORD ALIGNED!!!
       if (cur_byteSize > 0)
         {
