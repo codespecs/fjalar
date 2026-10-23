@@ -43,7 +43,8 @@ g++ -gdwarf-4 -gno-variable-location-views -no-pie -O0 \
 
 # observe's c must have the location "DW_OP_fbreg N; DW_OP_deref".
 if ! readelf --debug-dump=info "${output_dir}/deref-param" \
-    | awk '/DW_TAG_subprogram/ { insub = 1; next }
+    | awk '/DW_TAG_subprogram/ { insub = 1; fname = ""; next }
+           /DW_TAG_/ { insub = 0 }
            insub && /DW_AT_name/ { fname = $NF; insub = 0 }
            fname == "observe" && /DW_TAG_formal_parameter/ { inparam = 1; next }
            inparam && /DW_AT_location/ { found = /\(DW_OP_fbreg: -?[0-9]+; DW_OP_deref\)/; exit }
