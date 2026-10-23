@@ -399,8 +399,15 @@ typedef struct _VariableEntry {
   // Occasionally the DWARF information will name a variable but not
   // provide a location for it. This means there is no way to obtain
   // a value for this variable. Variables which do not have valid
-  // location information will have validLoc = False
+  // location information will have validLoc = False.  A formal
+  // parameter is readable only if validLoc is true and
+  // locationUnsupported is false.
   Bool validLoc;
+
+  // True if the DWARF information gives a location that Fjalar cannot
+  // read (see location_has_unsupported_op in typedata.h).  Then Fjalar
+  // omits the formal parameter, even if a heuristic sets validLoc.
+  Bool locationUnsupported;
 
   // In some situations (The primary one being dealing with the
   // formal parameters to main - see the MAIN STACK LAYOUT comment
