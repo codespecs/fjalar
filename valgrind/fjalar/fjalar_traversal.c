@@ -872,11 +872,19 @@ static Addr virtualStackAddr(FunctionEntry* funcPtr, Addr guestAddr)
   return funcPtr->lowestVirtSP + (guestAddr - funcPtr->guestStackStart);
 }
 
+// Returns true if Fjalar cannot read formal parameter var's location,
+// so visitVariableGroup omits var.
+Bool formalParamIsOmitted(VariableEntry* var)
+{
+  // A heuristic may set validLoc even if the location is unsupported.
+  return !var->validLoc || var->locationUnsupported;
+}
+
 // Returns the guest address of formal parameter var of an invocation
 // of funcPtr, computed from var's DWARF location expression.
 // stackBaseAddrGuest is the invocation's frame base, and entryRegs
-// holds the registers' values at function entrance
-// (FunctionExecutionState.FP and .entryRegs).  For a register
+// holds the registers' values at function entrance (such as
+// FunctionExecutionState.FP and .entryRegs).  For a register
 // location, the result is the address of the register's entrance value
 // in entryRegs, which has no guest address.  Returns 0 if the location
 // uses a register that was not saved at function entrance.
@@ -1039,13 +1047,10 @@ void visitVariableGroup(VariableOrigin varOrigin,
       continue;
     }
 
-    // Omit a formal parameter whose location Fjalar cannot read.  This
-    // test does not depend on stackBaseAddr, so that the .decls file
-    // (which is written without a stack) declares exactly the
+    // This test does not depend on stackBaseAddr, so that the .decls
+    // file (which is written without a stack) declares exactly the
     // variables that the .dtrace file contains.
-    // A heuristic may set validLoc even if the location is unsupported.
-    if ((varOrigin == FUNCTION_FORMAL_PARAM)
-        && (!var->validLoc || var->locationUnsupported)) {
+    if ((varOrigin == FUNCTION_FORMAL_PARAM) && formalParamIsOmitted(var)) {
       FJALAR_DPRINTF("\t[visitVariableGroup] invalid loc, punting\n");
       continue;
     }

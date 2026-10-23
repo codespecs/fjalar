@@ -44,7 +44,8 @@ g++ -gdwarf-4 -gno-variable-location-views -no-pie -O0 \
 
 # mutate's a and b must have the location "DW_OP_fbreg N; DW_OP_deref".
 if ! readelf --debug-dump=info "${output_dir}/caller-frame-param" \
-    | awk '/DW_TAG_subprogram/ { insub = 1; next }
+    | awk '/DW_TAG_subprogram/ { insub = 1; fname = ""; next }
+           /DW_TAG_/ { insub = 0 }
            insub && /DW_AT_name/ { fname = $NF; insub = 0 }
            fname == "mutate" && /DW_TAG_formal_parameter/ { inparam = 1; next }
            inparam && /DW_AT_location/ {
@@ -58,7 +59,7 @@ fi
 decls="${output_dir}/caller-frame-param.decls"
 dtrace="${output_dir}/caller-frame-param.dtrace"
 status=0
-"${valgrind}" --tool=fjalar --dyncomp \
+"${valgrind}" --tool=fjalar --dyncomp --fjalar-debug \
               --decls-file="${decls}" --dtrace-file="${dtrace}" \
               "${output_dir}/caller-frame-param" \
               > "${output_dir}/caller-frame-param.out" 2>&1 || status=$?
@@ -66,6 +67,14 @@ status=0
 if [ "${status}" -ne 0 ]; then
   echo "$0: FAILED: Fjalar exited with status ${status}" >&2
   cat "${output_dir}/caller-frame-param.out" >&2
+  exit 1
+fi
+
+# The debug output shows whether a and b lie beyond the part of the stack that
+# Fjalar copies by default, so that this test is not vacuous.
+if ! grep -q "^Extending the virtual stack of .*mutate" \
+    "${output_dir}/caller-frame-param.out"; then
+  echo "$0: FAILED: Fjalar did not extend the virtual stack of mutate" >&2
   exit 1
 fi
 

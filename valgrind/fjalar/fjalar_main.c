@@ -26,6 +26,7 @@
 
 
 #include "pub_tool_basics.h"
+#include "pub_tool_vki.h"            // For VKI_PROT_READ
 #include "pub_tool_aspacemgr.h"
 #include "pub_tool_hashtable.h"     // For mc_include.h
 #include "pub_tool_xarray.h" //for clientstate
@@ -205,89 +206,67 @@ static void save_param_regs(FunctionExecutionState* f_state, ThreadId tid)
   }
 }
 
-// Copies the size bytes of the guest stack that start at stackStart,
-// with their A and V bits and DynComp tags, to a new virtual stack for
-// f_state, and saves the registers in f_state->func->entryRegsMask in
-// f_state->entryRegs.
-static void copy_to_virtual_stack(FunctionExecutionState* f_state,
-                                  ThreadId tid, Addr stackStart, int size)
+// The most bytes past the part of the guest stack that enter_function
+// copies by default that it also copies to cover formal parameters.
+#define MAX_VIRTUAL_STACK_EXTENSION (64 * 1024)
+
+// Returns the guest address just past the formal parameters of an
+// invocation of f that lie on the guest stack at or above stackStart,
+// or copyEnd if that is greater.  frameBase is the invocation's frame
+// base.  The result is at most copyEnd + MAX_VIRTUAL_STACK_EXTENSION,
+// and all the guest memory between copyEnd and the result is readable
+// client memory.  Call this at function entrance, before copying the
+// guest stack to the virtual stack.
+static Addr formal_params_stack_end(FunctionEntry* f, ThreadId tid,
+                                    Addr frameBase, Addr stackStart,
+                                    Addr copyEnd)
 {
-  FunctionEntry* f = f_state->func;
-  // entryRegs follows the virtual stack in the same allocation.
-  Int entryRegsOffset = VG_ROUNDUP(size, sizeof(Addr));
-  Int entryRegsSize = (f->entryRegsMask != 0
-                       ? FJALAR_NUM_DWARF_REGS * sizeof(Addr)
-                       : 0);
-  f_state->allocByteSize = entryRegsOffset + entryRegsSize;
-  f_state->virtualStack = VG_(calloc)("fjalar_main.c: enter_func",
-                                      f_state->allocByteSize,
-                                      sizeof(char));
-  f_state->entryRegs = (f->entryRegsMask != 0
-                        ? (Addr*)(f_state->virtualStack + entryRegsOffset)
-                        : NULL);
-  f_state->virtualStackByteSize = size;
-
-  VG_(memcpy)(f_state->virtualStack, (char*)stackStart, size);
-
-  // VERY IMPORTANT!!! Copy all the A & V bits over the real stack to
-  // virtualStack!!!  (As a consequence, this copies over the tags
-  // as well - look in mc_main.c). Note that the way do this means
-  // that the copy is now guest-accessible, if they guessed the
-  // VG_(calloc)ed address, which is a bit weird. It would be more
-  // elegant to copy the metadata to an inaccessible place, but that
-  // would be more work.
-  FJALAR_DPRINTF("Copying over stack [%p] -> [%p] %d bytes\n",(void *)stackStart,  (void *)f_state->virtualStack, size);
-  mc_copy_address_range_state(stackStart, (Addr)(f_state->virtualStack), size);
-
-  f->guestStackStart = stackStart;
-  f->guestStackEnd = f->guestStackStart + size;
-  f->lowestVirtSP = (Addr)f_state->virtualStack;
-
-  if (f->entryRegsMask != 0) {
-    save_param_regs(f_state, tid);
-  }
-}
-
-// Frees f_state's virtual stack and the entryRegs that follow it.
-static void free_virtual_stack(FunctionExecutionState* f_state)
-{
-  /* We were previously using the V bits associated with the area to
-     store guest V bits, but Memcheck doesn't normally expect
-     VG_(malloc)'ed memory to be client accessible, so we have to
-     make it inaccessible again before allowing Valgrind's malloc to
-     use it, lest assertions fail later. */
-  mc_make_noaccess((Addr)f_state->virtualStack, f_state->allocByteSize);
-  VG_(free)(f_state->virtualStack);
-  f_state->virtualStack = NULL;
-  f_state->entryRegs = NULL;
-}
-
-// Returns the guest address just past the formal parameters of
-// f_state's invocation that lie on the guest stack at or above
-// f_state->func->guestStackStart, or 0 if there are none.  Call this
-// after copy_to_virtual_stack.
-static Addr formal_params_stack_end(FunctionExecutionState* f_state,
-                                    ThreadId tid)
-{
-  FunctionEntry* f = f_state->func;
-  // The highest byte of the guest stack
-  Addr stackMax = VG_(thread_get_stack_max)(tid);
-  Addr end = 0;
+  Addr limit = copyEnd + MAX_VIRTUAL_STACK_EXTENSION;
+  Addr end = copyEnd;
+  Addr regs[FJALAR_NUM_DWARF_REGS];
+  UInt regNum;
   VarNode* node;
+
+  for (regNum = 0; regNum < FJALAR_NUM_DWARF_REGS; regNum++) {
+    if (f->entryRegsMask & (1U << regNum)) {
+      regs[regNum] = read_dwarf_reg(tid, regNum);
+    }
+  }
+  // At function entrance, the guest stack holds what the virtual stack
+  // will hold, so formalParamLocation can read the guest stack.  An
+  // empty copied stack makes it do so.
+  f->guestStackStart = 0;
+  f->guestStackEnd = 0;
 
   for (node = f->formalParameters.first; node != NULL; node = node->next) {
     VariableEntry* var = node->var;
     Addr paramLoc;
+    Addr paramSize;
     // visitVariableGroup does not read these formal parameters, or
-    // reads them from the virtual stack at a fixed offset.
-    if (!var->validLoc || var->locationUnsupported
-        || var->location_expression_size == 0) {
+    // reads them from the virtual stack at a fixed offset, or reads them
+    // from a register.
+    if (formalParamIsOmitted(var)
+        || var->location_expression_size == 0
+        || (location_op_kind_of(var->location_expression[0].atom)
+            == LOC_OP_REG)) {
       continue;
     }
-    paramLoc = formalParamLocation(var, f, f_state->FP, f_state->entryRegs);
-    if (paramLoc >= f->guestStackStart && paramLoc <= stackMax) {
-      end = MAX(end, MIN(paramLoc + formalParamByteSize(var), stackMax + 1));
+    paramLoc = formalParamLocation(var, f, frameBase,
+                                   f->entryRegsMask != 0 ? regs : NULL);
+    paramSize = formalParamByteSize(var);
+    // The subtraction, rather than an addition, cannot overflow.
+    if (paramLoc < stackStart || paramLoc > limit
+        || paramSize > limit - paramLoc
+        || paramLoc + paramSize <= end) {
+      continue;
     }
+    // The parameter might not be on the guest stack, if a program uses
+    // an alternate stack or a location is bogus.
+    if (!VG_(am_is_valid_for_client)(copyEnd, paramLoc + paramSize - copyEnd,
+                                     VKI_PROT_READ)) {
+      continue;
+    }
+    end = paramLoc + paramSize;
   }
   return end;
 }
@@ -849,30 +828,65 @@ void enter_function(FunctionEntry* f)
 
   tl_assert(size >= 0);
   if (size != 0) {
-    Addr stackStart = stack_ptr - VG_STACK_REDZONE_SZB;
-    Addr paramsEnd;
+    Int entryRegsOffset;
+    Int entryRegsSize;
 
+    // A formal parameter can lie on the stack beyond the part that the
+    // above size covers.  An example is a C++ object passed by
+    // invisible reference, which is in the caller's frame.  Copy the
+    // stack through the end of every such formal parameter, so that at
+    // function exit Fjalar reads it from the virtual stack too, and so
+    // visits its value at function entrance.  Fjalar does not visit
+    // the formal parameters of a function that it does not print.
+    if (!f->doNotPrint) {
+      Addr stackStart = stack_ptr - VG_STACK_REDZONE_SZB;
+      Addr paramsEnd = formal_params_stack_end(f, tid, frame_ptr, stackStart,
+                                               stackStart + size);
+      if (paramsEnd > stackStart + size) {
+        FJALAR_DPRINTF("Extending the virtual stack of %s from %d to %d bytes\n",
+                       f->fjalar_name, size, (int)(paramsEnd - stackStart));
+        size = (int)(paramsEnd - stackStart);
+      }
+    }
+
+    // entryRegs follows the virtual stack in the same allocation.
+    entryRegsOffset = VG_ROUNDUP(size, sizeof(Addr));
+    entryRegsSize = (f->entryRegsMask != 0
+                     ? FJALAR_NUM_DWARF_REGS * sizeof(Addr)
+                     : 0);
+    newEntry->allocByteSize = entryRegsOffset + entryRegsSize;
+    newEntry->virtualStack = VG_(calloc)("fjalar_main.c: enter_func",
+                                         newEntry->allocByteSize,
+                                         sizeof(char));
+    newEntry->entryRegs = (f->entryRegsMask != 0
+                           ? (Addr*)(newEntry->virtualStack + entryRegsOffset)
+                           : NULL);
+    newEntry->virtualStackByteSize = size;
     newEntry->virtualStackFPOffset = local_stack;
 
     clear_all_tags_in_range(stack_ptr - VG_STACK_REDZONE_SZB, VG_STACK_REDZONE_SZB - delta);
 
-    copy_to_virtual_stack(newEntry, tid, stackStart, size);
+    VG_(memcpy)(newEntry->virtualStack,
+		(char*)stack_ptr - VG_STACK_REDZONE_SZB, size);
 
-    // A formal parameter can lie on the stack beyond the copied stack.
-    // An example is a C++ object passed by invisible reference, which
-    // is in the caller's frame.  Copy the stack again, through the end
-    // of every such formal parameter, so that at function exit Fjalar
-    // reads it from the virtual stack too, and so visits its value at
-    // function entrance.  The formal parameters' locations may depend
-    // on the virtual stack, so they can be computed only after the
-    // first copy.
-    paramsEnd = formal_params_stack_end(newEntry, tid);
-    if (paramsEnd > newEntry->func->guestStackEnd) {
-      FJALAR_DPRINTF("Extending the virtual stack from %d to %d bytes\n",
-                     size, (int)(paramsEnd - stackStart));
-      free_virtual_stack(newEntry);
-      copy_to_virtual_stack(newEntry, tid, stackStart,
-                            (int)(paramsEnd - stackStart));
+    // VERY IMPORTANT!!! Copy all the A & V bits over the real stack to
+    // virtualStack!!!  (As a consequence, this copies over the tags
+    // as well - look in mc_main.c). Note that the way do this means
+    // that the copy is now guest-accessible, if they guessed the
+    // VG_(calloc)ed address, which is a bit weird. It would be more
+    // elegant to copy the metadata to an inaccessible place, but that
+    // would be more work.
+    FJALAR_DPRINTF("Copying over stack [%p] -> [%p] %d bytes\n",(void *)(stack_ptr - VG_STACK_REDZONE_SZB),  (void *)newEntry->virtualStack, size);
+    mc_copy_address_range_state(stack_ptr - VG_STACK_REDZONE_SZB,
+				(Addr)(newEntry->virtualStack), size);
+
+
+    newEntry->func->guestStackStart = stack_ptr - VG_STACK_REDZONE_SZB;
+    newEntry->func->guestStackEnd = newEntry->func->guestStackStart + size;
+    newEntry->func->lowestVirtSP = (Addr)newEntry->virtualStack;
+
+    if (f->entryRegsMask != 0) {
+      save_param_regs(newEntry, tid);
     }
   }
   else {
@@ -1034,7 +1048,13 @@ void exit_function(FunctionEntry* f)
   // Destroy the memory allocated by virtualStack
   // AFTER the tool has handled the exit
   if (top->virtualStack) {
-    free_virtual_stack(top);
+    /* We were previously using the V bits associated with the area to
+       store guest V bits, but Memcheck doesn't normally expect
+       VG_(malloc)'ed memory to be client accessible, so we have to
+       make it inaccessible again before allowing Valgrind's malloc to
+       use it, lest assertions fail later. */
+    mc_make_noaccess((Addr)top->virtualStack, top->allocByteSize);
+    VG_(free)(top->virtualStack);
   }
 
   // Pop at the VERY end after the tool is done handling the exit.
