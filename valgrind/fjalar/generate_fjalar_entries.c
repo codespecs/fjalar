@@ -48,6 +48,7 @@ static void processFunctions(void);
 int determineFormalParametersStackByteSize(FunctionEntry* f);
 int determineFormalParametersLowerStackByteSize(FunctionEntry* f);
 int determineVariableByteSize(VariableEntry* var);
+int formalParamByteSize(VariableEntry* varPtr);
 
 static void extractFormalParameterVars(FunctionEntry* f, function* dwarfFunctionEntry);
 static void extractLocalArrayAndStructVariables(FunctionEntry* f, function* dwarfFunctionEntry);
@@ -2509,6 +2510,68 @@ int determineVariableByteSize(VariableEntry* var)
 }
 
 
+// Sets *lo and *hi to the offsets of the lowest byte and one past the
+// highest byte of the stack memory that a formal parameter occupies or
+// that its location reads, relative to the frame base.  This is
+// computed before visitVariableGroup evaluates the location at run
+// time, so it uses the location's operations.  It treats DW_OP_breg*
+// as if the register held the frame base.  For the stack pointer, that
+// gives an upper bound relative to the higher of the frame base and the
+// stack pointer, and enter_function copies the stack up to that bound.
+// For other registers, it is an estimate.
+//
+// It uses the byteOffset only for a formal parameter with no location,
+// which visitVariableGroup reads at the byteOffset.  For a location
+// other than a lone DW_OP_fbreg, the byteOffset is a placeholder, and
+// using it would extend the range past the stack memory that the
+// location reads.  Then enter_function would copy more of the caller's
+// stack, and visitVariableGroup could read an object in the caller's
+// frame from the end of the copy instead of from the caller's frame.
+static void formalParamFrameOffsetRange(VariableEntry* var, int* lo, int* hi)
+{
+  int byteSize = formalParamByteSize(var);
+  // The offset of the address that the operations so far compute, if
+  // offsetKnown is true.
+  int offset = 0;
+  Bool offsetKnown = False;
+  unsigned int i;
+
+  if (var->location_expression_size == 0) {
+    *lo = var->byteOffset;
+    *hi = var->byteOffset + byteSize;
+  } else {
+    *lo = 0;
+    *hi = 0;
+  }
+  for (i = 0; i < var->location_expression_size; i++) {
+    dwarf_location* dloc = &(var->location_expression[i]);
+    switch (location_op_kind_of(dloc->atom)) {
+    case LOC_OP_FBREG:
+    case LOC_OP_BREG:
+      offset = dloc->atom_offset;
+      offsetKnown = True;
+      break;
+    case LOC_OP_PLUS_UCONST:
+      offset += dloc->atom_offset;
+      break;
+    case LOC_OP_DEREF:
+      if (offsetKnown) {
+        *lo = MIN(*lo, offset);
+        *hi = MAX(*hi, offset + (int)sizeof(Addr));
+      }
+      offsetKnown = False;
+      break;
+    default:
+      offsetKnown = False;
+      break;
+    }
+  }
+  if (offsetKnown) {
+    *lo = MIN(*lo, offset);
+    *hi = MAX(*hi, offset + byteSize);
+  }
+}
+
 // Determines the number of bytes needed above the frame pointer in
 // the stack to hold the values of all function formal parameters for
 // a particular function
@@ -2525,13 +2588,10 @@ int determineFormalParametersStackByteSize(FunctionEntry* f)
        cur_node != NULL;
        cur_node = cur_node->next)
     {
-      int this_end = cur_node->var->byteOffset +
-        determineVariableByteSize(cur_node->var);
-      totalByteSize = MAX(totalByteSize, this_end);
+      int lo, hi;
+      formalParamFrameOffsetRange(cur_node->var, &lo, &hi);
+      totalByteSize = MAX(totalByteSize, hi);
     }
-  // PG comment said "Just to be safe, round UP to the next multiple
-  // of 4". For the moment, live dangerously and see if anything
-  // breaks. -SMcC
   return totalByteSize;
 }
 
@@ -2552,7 +2612,9 @@ int determineFormalParametersLowerStackByteSize(FunctionEntry* f)
        cur_node != NULL;
        cur_node = cur_node->next)
     {
-      totalByteSize = MIN(totalByteSize, cur_node->var->byteOffset);
+      int lo, hi;
+      formalParamFrameOffsetRange(cur_node->var, &lo, &hi);
+      totalByteSize = MIN(totalByteSize, lo);
     }
   return -totalByteSize;
 }
@@ -2560,7 +2622,7 @@ int determineFormalParametersLowerStackByteSize(FunctionEntry* f)
 
 // Returns the number of bytes that the formal parameter's location
 // holds.  A C++ reference is passed as a pointer.
-static int formalParamByteSize(VariableEntry* varPtr)
+int formalParamByteSize(VariableEntry* varPtr)
 {
   return (varPtr->referenceLevels > 0
           ? (int)sizeof(Addr)
@@ -2589,18 +2651,37 @@ static Bool isSupportedRegisterLocation(VariableEntry* varPtr)
 // by DWARF register number.  Every such register is readable, because a
 // location that uses an unreadable register is unsupported (see
 // location_op_kind_of).
-static UInt locationRegisterMask(formal_parameter* paramPtr)
+static UInt locationRegisterMask(VariableEntry* varPtr)
 {
   unsigned int i;
   UInt mask = 0;
-  for (i = 0; i < paramPtr->dwarf_stack_size; i++) {
+  for (i = 0; i < varPtr->location_expression_size; i++) {
     UInt regNum;
-    if (dwarf_op_reg_num(paramPtr->dwarf_stack[i].atom, &regNum)) {
+    if (dwarf_op_reg_num(varPtr->location_expression[i].atom, &regNum)) {
       tl_assert(dwarf_reg_is_readable(regNum));
       mask |= 1U << regNum;
     }
   }
   return mask;
+}
+
+// Returns true if the formal parameter's location contains DW_OP_fbreg,
+// DW_OP_breg*, or DW_OP_plus_uconst.  Fjalar treats such a location as
+// the address of the formal parameter, which visitVariableGroup
+// computes.  Call this only for a location with no unsupported
+// operation (see location_op_kind_of), such as DW_OP_stack_value, and
+// after copying the DWARF location into varPtr->location_expression.
+static Bool locationHasAddressOp(VariableEntry* varPtr)
+{
+  unsigned int i;
+  for (i = 0; i < varPtr->location_expression_size; i++) {
+    location_op_kind kind = location_op_kind_of(varPtr->location_expression[i].atom);
+    if ((kind == LOC_OP_FBREG) || (kind == LOC_OP_BREG)
+        || (kind == LOC_OP_PLUS_UCONST)) {
+      return True;
+    }
+  }
+  return False;
 }
 
 // dwarfParamEntry->tag_name == DW_TAG_formal_parameter
@@ -2666,13 +2747,21 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     // varPtr->validLoc remains 0, so Fjalar omits the formal parameter.
     FJALAR_DPRINTF(" location contains an unsupported operation\n");
     varPtr->locationUnsupported = 1;
-  } else if (paramPtr->location_type == LT_FP_OFFSET) {
+  } else if (locationHasAddressOp(varPtr)) {
     varPtr->validLoc = paramPtr->valid_loc;
     varPtr->locationType = FP_OFFSET_LOCATION;
-    varPtr->byteOffset = paramPtr->location;
-    //    varPtr->atom = paramPtr->loc_atom;
+    if (varPtr->location_expression_size == 1
+        && location_op_kind_of(varPtr->location_expression[0].atom) == LOC_OP_FBREG) {
+      varPtr->byteOffset = varPtr->location_expression[0].atom_offset;
+    }
+    // Otherwise, byteOffset is 0 (unless verifyStackParamWordAlignment
+    // replaces it) until visitVariableGroup evaluates the location and
+    // finds the formal parameter in the copied stack.  The XML output,
+    // which runs earlier, shows that byteOffset.  The stack sizes come
+    // from formalParamFrameOffsetRange, which uses the location, not
+    // that byteOffset.
     // Save at function entrance each register that the location uses.
-    f->entryRegsMask |= locationRegisterMask(paramPtr);
+    f->entryRegsMask |= locationRegisterMask(varPtr);
 
     FJALAR_DPRINTF(" location_type: %u, byteOffset: %x\n", varPtr->locationType, (unsigned int)varPtr->byteOffset);
   } else if (isSupportedRegisterLocation(varPtr)) {
@@ -2681,7 +2770,7 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     varPtr->locationType = REGISTER_LOCATION;
     f->entryRegsMask |= 1U << regNum;
     FJALAR_DPRINTF(" location is register %s\n", dwarf_reg_name(regNum));
-  } else if (locationRegisterMask(paramPtr) != 0) {
+  } else if (locationRegisterMask(varPtr) != 0) {
     // A register location that Fjalar cannot read, such as a register
     // combined with other operations or a value larger than a register.
     // Fjalar did not save the register at entrance, so the location must
