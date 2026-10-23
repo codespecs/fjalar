@@ -872,6 +872,103 @@ static Addr virtualStackAddr(FunctionEntry* funcPtr, Addr guestAddr)
   return funcPtr->lowestVirtSP + (guestAddr - funcPtr->guestStackStart);
 }
 
+// Returns true if Fjalar cannot read formal parameter var's location,
+// so visitVariableGroup omits var.
+Bool formalParamIsOmitted(VariableEntry* var)
+{
+  // A heuristic may set validLoc even if the location is unsupported.
+  return !var->validLoc || var->locationUnsupported;
+}
+
+// Returns the guest address of formal parameter var of an invocation
+// of funcPtr, computed from var's DWARF location expression.
+// stackBaseAddrGuest is the invocation's frame base, and entryRegs
+// holds the registers' values at function entrance (such as
+// FunctionExecutionState.FP and .entryRegs).  For a register
+// location, the result is the address of the register's entrance value
+// in entryRegs, which has no guest address.  Returns 0 if the location
+// uses a register that was not saved at function entrance.
+Addr formalParamLocation(VariableEntry* var, FunctionEntry* funcPtr,
+                         Addr stackBaseAddrGuest, Addr* entryRegs)
+{
+  Addr var_loc = (Addr) NULL;
+  unsigned int i = 0;
+
+  // Dwarf Locations are implemented as a sequence of operations to be performed.
+  for(i = 0; i < var->location_expression_size; i++ ) {
+    dwarf_location *dloc  = &(var->location_expression[i]);
+    unsigned int  op = dloc->atom;
+    location_op_kind kind = location_op_kind_of(op);
+
+    if(kind == LOC_OP_DEREF) {
+      // Dereference result of last DWARF operation.  If the
+      // address is within the copied stack, read it from the
+      // virtual stack, which holds its value at function
+      // entrance, for the same reason that Fjalar reads a
+      // variable from there:  at function exit, the function
+      // body may have overwritten the address.
+      tl_assert(var_loc);
+      if (isInCopiedStack(funcPtr, var_loc, sizeof(Addr))) {
+        var_loc = virtualStackAddr(funcPtr, var_loc);
+      }
+      var_loc = *(Addr *)var_loc;
+
+    } else if(kind == LOC_OP_CONST) {
+      // DWARF supplied constant
+      var_loc = dloc->atom_offset;
+
+    } else if(kind == LOC_OP_PLUS_UCONST) {
+      // Add DWARF supplied constant to value to result of last DWARF operation
+      var_loc += dloc->atom_offset;
+
+    } else if((kind == LOC_OP_REG) || (kind == LOC_OP_BREG)) {
+      // DW_OP_regN: the value is in register N.
+      // DW_OP_bregN: the value is at an offset from register N's value.
+      // Either way, use the value that the register held at
+      // function entrance (after the prologue), which is saved
+      // (with its A and V bits and tags) in the
+      // FunctionExecutionState.  At function exit, the body may
+      // have overwritten the register and the epilogue has
+      // already restored or popped it.
+      Bool isBreg = (kind == LOC_OP_BREG);
+      UInt regNum = op - (isBreg ? DW_OP_breg0 : DW_OP_reg0);
+      if (!entryRegs || !(funcPtr->entryRegsMask & (1U << regNum))) {
+        // extractOneFormalParameterVar() did not accept the
+        // register location, so the register was not saved,
+        // but some heuristic marked the location valid anyway.
+        FJALAR_DPRINTF("\tRegister %s was not saved at entrance; value is nonsensical\n",
+                       dwarf_reg_name(regNum));
+        var_loc = 0;
+        break;
+      }
+      if (isBreg) {
+        Addr reg_val = entryRegs[regNum];
+        FJALAR_DPRINTF("\tObtaining entrance register value: [%%%s]: %p\n", dwarf_reg_name(regNum),
+                       (void *)reg_val);
+        var_loc = reg_val + dloc->atom_offset;
+        FJALAR_DPRINTF("\tAdding %lld to the register value for %p\n", dloc->atom_offset, (void *)var_loc);
+        tl_assert(var_loc);
+      } else {
+        FJALAR_DPRINTF("\tObtaining entrance value of register: [%%%s]\n", dwarf_reg_name(regNum));
+        var_loc = (Addr)&entryRegs[regNum];
+      }
+
+    } else if(kind == LOC_OP_FBREG) {
+      // Get value located at an offset from the FRAME_BASE.
+      FJALAR_DPRINTF("atom offset: %lld vs. byteOffset: %d\n", dloc->atom_offset, var->byteOffset);
+      var_loc = stackBaseAddrGuest + dloc->atom_offset;
+
+    } else {
+      // decode_location_expression marked the location unsupported.
+      FJALAR_DPRINTF("\tUnsupported DWARF stack OP: %s\n", location_expression_to_string(op));
+      tl_assert(0);
+    }
+    FJALAR_DPRINTF("\tApplying DWARF Stack Operation %s - %p\n",location_expression_to_string(op), (void *)var_loc);
+  }
+
+  return var_loc;
+}
+
 // Visits an entire group of variables, depending on the value of varOrigin:
 // If varOrigin == GLOBAL_VAR, then visit all global variables
 // If varOrigin == FUNCTION_FORMAL_PARAM, then visit all formal parameters
@@ -950,13 +1047,10 @@ void visitVariableGroup(VariableOrigin varOrigin,
       continue;
     }
 
-    // Omit a formal parameter whose location Fjalar cannot read.  This
-    // test does not depend on stackBaseAddr, so that the .decls file
-    // (which is written without a stack) declares exactly the
+    // This test does not depend on stackBaseAddr, so that the .decls
+    // file (which is written without a stack) declares exactly the
     // variables that the .dtrace file contains.
-    // A heuristic may set validLoc even if the location is unsupported.
-    if ((varOrigin == FUNCTION_FORMAL_PARAM)
-        && (!var->validLoc || var->locationUnsupported)) {
+    if ((varOrigin == FUNCTION_FORMAL_PARAM) && formalParamIsOmitted(var)) {
       FJALAR_DPRINTF("\t[visitVariableGroup] invalid loc, punting\n");
       continue;
     }
@@ -970,7 +1064,6 @@ void visitVariableGroup(VariableOrigin varOrigin,
 
       if(var->location_expression_size) {
         Addr var_loc = (Addr) NULL;
-        unsigned int i = 0;
 
         // MAIN STACK LAYOUT
         // (comment added 2009)  
@@ -1026,77 +1119,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
         }
         else {
 
-          // Dwarf Locations are implemented as a sequence of operations to be performed.
-          for(i = 0; i < var->location_expression_size; i++ ) {
-            dwarf_location *dloc  = &(var->location_expression[i]);
-            unsigned int  op = dloc->atom;
-            location_op_kind kind = location_op_kind_of(op);
-
-            if(kind == LOC_OP_DEREF) {
-              // Dereference result of last DWARF operation.  If the
-              // address is within the copied stack, read it from the
-              // virtual stack, which holds its value at function
-              // entrance, for the same reason that Fjalar reads a
-              // variable from there:  at function exit, the function
-              // body may have overwritten the address.
-              tl_assert(var_loc);
-              if (isInCopiedStack(funcPtr, var_loc, sizeof(Addr))) {
-                var_loc = virtualStackAddr(funcPtr, var_loc);
-              }
-              var_loc = *(Addr *)var_loc;
-
-            } else if(kind == LOC_OP_CONST) {
-              // DWARF supplied constant
-              var_loc = dloc->atom_offset;
-
-            } else if(kind == LOC_OP_PLUS_UCONST) {
-              // Add DWARF supplied constant to value to result of last DWARF operation
-              var_loc += dloc->atom_offset;
-
-            } else if((kind == LOC_OP_REG) || (kind == LOC_OP_BREG)) {
-              // DW_OP_regN: the value is in register N.
-              // DW_OP_bregN: the value is at an offset from register N's value.
-              // Either way, use the value that the register held at
-              // function entrance (after the prologue), which is saved
-              // (with its A and V bits and tags) in the
-              // FunctionExecutionState.  At function exit, the body may
-              // have overwritten the register and the epilogue has
-              // already restored or popped it.
-              Bool isBreg = (kind == LOC_OP_BREG);
-              UInt regNum = op - (isBreg ? DW_OP_breg0 : DW_OP_reg0);
-              if (!entryRegs || !(funcPtr->entryRegsMask & (1U << regNum))) {
-                // extractOneFormalParameterVar() did not accept the
-                // register location, so the register was not saved,
-                // but some heuristic marked the location valid anyway.
-                FJALAR_DPRINTF("\tRegister %s was not saved at entrance; value is nonsensical\n",
-                               dwarf_reg_name(regNum));
-                var_loc = 0;
-                break;
-              }
-              if (isBreg) {
-                Addr reg_val = entryRegs[regNum];
-                FJALAR_DPRINTF("\tObtaining entrance register value: [%%%s]: %p\n", dwarf_reg_name(regNum),
-                               (void *)reg_val);
-                var_loc = reg_val + dloc->atom_offset;
-                FJALAR_DPRINTF("\tAdding %lld to the register value for %p\n", dloc->atom_offset, (void *)var_loc);
-                tl_assert(var_loc);
-              } else {
-                FJALAR_DPRINTF("\tObtaining entrance value of register: [%%%s]\n", dwarf_reg_name(regNum));
-                var_loc = (Addr)&entryRegs[regNum];
-              }
-
-            } else if(kind == LOC_OP_FBREG) {
-              // Get value located at an offset from the FRAME_BASE.
-              FJALAR_DPRINTF("atom offset: %lld vs. byteOffset: %d\n", dloc->atom_offset, var->byteOffset);
-              var_loc = stackBaseAddrGuest + dloc->atom_offset;
-
-            } else {
-              // decode_location_expression marked the location unsupported.
-              FJALAR_DPRINTF("\tUnsupported DWARF stack OP: %s\n", location_expression_to_string(op));
-              tl_assert(0);
-            }
-            FJALAR_DPRINTF("\tApplying DWARF Stack Operation %s - %p\n",location_expression_to_string(op), (void *)var_loc);
-          }
+          var_loc = formalParamLocation(var, funcPtr, stackBaseAddrGuest, entryRegs);
 
           // Read the variable from the virtual stack only if all of it
           // is within the copied guest stack.
