@@ -46,6 +46,7 @@
 #include "fjalar_runtime.h"
 #include "fjalar_tool.h"
 #include "fjalar_select.h"
+#include "fjalar_traversal.h"
 #include "disambig.h"
 #include "mc_include.h"
 #include "typedata.h"

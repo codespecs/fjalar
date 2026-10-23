@@ -1021,21 +1021,6 @@ void visitVariableGroup(VariableOrigin varOrigin,
                         // variable visited:
                         TraversalAction *performAction);
 
-// Returns true if Fjalar cannot read formal parameter var's location,
-// so visitVariableGroup omits var.
-Bool formalParamIsOmitted(VariableEntry* var);
-
-// Returns the guest address of formal parameter var of an invocation
-// of funcPtr, computed from var's DWARF location expression.
-// stackBaseAddrGuest is the invocation's frame base, and entryRegs
-// holds the registers' values at function entrance (such as
-// FunctionExecutionState.FP and .entryRegs).  For a register
-// location, the result is the address of the register's entrance value
-// in entryRegs, which has no guest address.  Returns 0 if the location
-// uses a register that was not saved at function entrance.
-Addr formalParamLocation(VariableEntry* var, FunctionEntry* funcPtr,
-                         Addr stackBaseAddrGuest, Addr* entryRegs);
-
 // Grabs the appropriate return value of the function denoted by the
 // execution state 'e' from Valgrind simulated registers and visits
 // the derived variables to perform some action.  This differs from
