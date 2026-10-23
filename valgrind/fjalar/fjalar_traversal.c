@@ -1145,8 +1145,8 @@ void visitVariableGroup(VariableOrigin varOrigin,
             var->entryLocGuest = var_loc;
             basePtrValueGuest = var_loc; }
           else {
-            // The variable is not within the copied stack, so Fjalar
-            // reads the variable where it is.  For a register location,
+            // The variable is not entirely within the copied stack, so
+            // Fjalar reads the variable where it is.  For a register location,
             // that is entryRegs, which has no guest address.  Its
             // address serves as the guest address, so a static array
             // within the variable has a non-null hashcode.  That
