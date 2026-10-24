@@ -83,9 +83,8 @@ jobs:
           rpm -q binutils-devel 2>/dev/null || dpkg-query -W binutils-dev 2>/dev/null || echo "binutils-dev(el) version unknown"
       - name: Build
         run: make build
-      # TODO: Remove --report-only once regtest-expected/<os>.txt is committed.
       - name: check-regtest.sh
-        run: ./check-regtest.sh --report-only
+        run: ./check-regtest.sh
       - name: Upload regtest results
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
@@ -119,9 +118,8 @@ jobs:
           rpm -q binutils-devel 2>/dev/null || dpkg-query -W binutils-dev 2>/dev/null || echo "binutils-dev(el) version unknown"
       - name: Build
         run: make build
-      # TODO: Remove --report-only once regtest-expected/<os>.txt is committed.
       - name: check-regtest.sh
-        run: ./check-regtest.sh --report-only
+        run: ./check-regtest.sh
       - name: Upload regtest results
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
