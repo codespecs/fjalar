@@ -37,7 +37,7 @@ check-regtest:
 # Fjalar tests that do not depend on Daikon: every *-test.sh script.
 .PHONY: fjalar-test
 fjalar-test:
-	for t in valgrind/fjalar/tests/*-test.sh; do echo "Running $$t"; $$t || exit 1; done
+	./run-fjalar-tests.sh
 
 # Kvasir tests
 .PHONY: daikon-test

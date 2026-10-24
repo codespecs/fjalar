@@ -40,7 +40,8 @@
 
 extern char dyncomp_profile_tags;
 static
-IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias );
+IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
+                            Int slot );
 
 /* Find the tmp currently shadowing the given original tmp.  If none
    so far exists, allocate one.  */
@@ -407,6 +408,14 @@ IRAtom* mkMergeTags_DC ( Int regparms, const HChar* hname, void* helper,
 // if the flags are later used, then the instruction that uses them reads
 // them from the new thunk.  Under --dyncomp-interactions=comparisons, other
 // helpers merge no tags either.
+//
+// Under --dyncomp-interactions=units, the operands of a subtraction are
+// interactions, and the operands of a multiplication are not, so a helper
+// call that reads flags merges tags in the same cases.  If the flags are set
+// by an add, its operands were already merged when its result was computed.
+// A helper call that does not read flags, such as one that computes a sum of
+// absolute differences (psadbw) or a CRC, merges all of its arguments, as in
+// the default mode.
 
 // The flags-carrying analysis finds the temporaries whose values only carry
 // flags forward, from one flags thunk to the next.  For example, an inc or
@@ -699,7 +708,7 @@ IRAtom* subOperandTag_DC ( DCEnv* dce, IRAtom* ccOp, IRAtom* dep )
 }
 
 // Handles a call to cee, a helper that reads flags, with arguments exprvec,
-// under --dyncomp-interactions=comparisons.  If the call reads the
+// under --dyncomp-interactions=comparisons or units.  If the call reads the
 // flags as the result of a comparison, which is the case if they are the
 // result of a subtraction, then it merges the tags of the thunk's CC_DEP1
 // and CC_DEP2 arguments, which are the operands of the subtraction.
@@ -729,6 +738,15 @@ void handleFlagsCCall_DC ( DCEnv* dce, IRAtom** exprvec, IRCallee* cee )
                        subOperandTag_DC(dce, ccOp, exprvec[ccOpIndex + 2]));
 }
 
+// Returns True if cee is a helper that computes flags from a flags thunk.
+static
+Bool readsFlags_DC ( IRCallee* cee )
+{
+   return cee->addr == (void*)&amd64g_calculate_condition
+          || cee->addr == (void*)&amd64g_calculate_rflags_c
+          || cee->addr == (void*)&amd64g_calculate_rflags_all;
+}
+
 static
 IRAtom* handleCCall_DC ( DCEnv* dce,
                          IRAtom** exprvec, IRCallee* cee )
@@ -745,7 +763,8 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
       return IRExpr_Const(IRConst_UWord(0));
    }
 
-   if (dyncomp_dataflow_comparisons_mode) {
+   if (dyncomp_dataflow_comparisons_mode
+       || (dyncomp_units_mode && readsFlags_DC(cee))) {
       handleFlagsCCall_DC(dce, exprvec, cee);
       return IRExpr_Const(IRConst_UWord(0));
    }
@@ -2811,7 +2830,6 @@ IRAtom* mkAddrPlusBias_DC ( DCEnv* dce, IRAtom* addr, UInt bias )
 
 // Returns true if a load is an interaction, which merges the tags of
 // the bytes it reads.  It is one only under --dyncomp-interactions=all.
-static
 Bool loadIsInteraction_DC ( void )
 {
    return !(dyncomp_dataflow_only_mode
@@ -2819,9 +2837,11 @@ Bool loadIsInteraction_DC ( void )
             || dyncomp_units_mode);
 }
 
-/* Worker function; do not call directly. */
+/* Worker function; do not call directly.  slot is as for
+   expr2tags_LDle_DC, and must be negative if a load is an interaction. */
 static
-IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
+IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
+                                Int slot )
 {
    void*    helper;
    const HChar* hname;
@@ -2841,9 +2861,11 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
    if (!loadIsInteraction_DC()) {
       helper   = &MC_(helperc_LOAD_TAG_N);
       hname    = "MC_(helperc_LOAD_TAG_N)";
-      regparms = 2;
-      args     = mkIRExprVec_2( addrAct, mkIRExpr_HWord(sizeofIRType(ty)) );
+      regparms = 3;
+      args     = mkIRExprVec_3( addrAct, mkIRExpr_HWord(sizeofIRType(ty)),
+                                mkIRExpr_HWord(slot) );
    } else {
+      tl_assert(slot < 0);
       regparms = 1;
       args     = mkIRExprVec_1( addrAct );
       ty = shadowTypeV(ty);
@@ -2877,11 +2899,14 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
    return mkexpr(datatag);
 }
 
-// Returns the tag of a load of type ty from addr+bias.
+// Returns the tag of a load of type ty from addr+bias.  If slot is
+// non-negative, the load also saves the tags of the bytes it reads in
+// that slot of MC_(helperc_LOAD_TAG_N); see expr2tags_WrTmp_DC.
 // For Ity_V256, if a load is an interaction, only the low 16 bytes are
 // read, so the tag ignores the upper 16 bytes.
 static
-IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
+IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
+                            Int slot )
 {
    IRAtom *v64hi, *v64lo;
    //   IRDirty* di;
@@ -2898,20 +2923,21 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
    // If a load is not an interaction, a load of any size does not merge
    // the tags of the bytes it reads.
    if (!loadIsInteraction_DC()) {
-      return expr2tags_LDle_WRK_DC(dce, ty, addr, bias);
+      return expr2tags_LDle_WRK_DC(dce, ty, addr, bias, slot);
    }
+   tl_assert(slot < 0);
 
    switch (shadowTypeV(ty)) {
       case Ity_I8:
       case Ity_I16:
       case Ity_I32:
       case Ity_I64:
-         return expr2tags_LDle_WRK_DC(dce, ty, addr, bias);
+         return expr2tags_LDle_WRK_DC(dce, ty, addr, bias, -1);
       case Ity_I128:
       case Ity_V128:
       case Ity_V256:  // not right, should do 4 times?
-         v64lo = expr2tags_LDle_WRK_DC(dce, Ity_I64, addr, bias);
-         v64hi = expr2tags_LDle_WRK_DC(dce, Ity_I64, addr, bias+8);
+         v64lo = expr2tags_LDle_WRK_DC(dce, Ity_I64, addr, bias, -1);
+         v64hi = expr2tags_LDle_WRK_DC(dce, Ity_I64, addr, bias+8, -1);
 
          // Merge the tags of the results of the
          // lower and upper 64-bit loads:
@@ -3082,7 +3108,8 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
 
       case Iex_Load:
          return expr2tags_LDle_DC( dce, e->Iex.Load.ty,
-                                      e->Iex.Load.addr, 0/*addr bias*/ );
+                                      e->Iex.Load.addr, 0/*addr bias*/,
+                                      -1/*no snapshot*/ );
 
       case Iex_CCall:
          return handleCCall_DC( dce,
@@ -3099,6 +3126,33 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
          printf("\n");
          VG_(tool_panic)("dyncomp: expr2tags_DC");
    }
+}
+
+// Returns the tag of data, which the original temp tmp is assigned.
+//
+// If a load is not an interaction (see loadIsInteraction_DC), a load of
+// more than one byte into tmp also saves the tag of each byte it reads,
+// and a store of tmp in the same superblock writes those tags back one byte at a time (see
+// do_shadow_STle_DC).  A copy of a struct or an array may move several
+// fields or elements with one load and one store; this gives each
+// copied byte the tag of its source byte, rather than giving every
+// copied byte the single tag of the loaded value.
+IRExpr* expr2tags_WrTmp_DC ( DCEnv* dce, IRTemp tmp, IRExpr* data )
+{
+   Int slot;
+
+   if (!loadIsInteraction_DC()
+       && data->tag == Iex_Load
+       && sizeofIRType(data->Iex.Load.ty) > 1
+       && sizeofIRType(data->Iex.Load.ty) <= DC_LOAD_TAG_SNAPSHOT_BYTES
+       && dce->n_loadTagSnapshots < DC_N_LOAD_TAG_SNAPSHOTS) {
+      tl_assert(tmp < dce->n_originalTmps);
+      slot = dce->n_loadTagSnapshots++;
+      dce->loadTagSnapshots[tmp] = slot;
+      return expr2tags_LDle_DC( dce, data->Iex.Load.ty,
+                                data->Iex.Load.addr, 0/*addr bias*/, slot );
+   }
+   return expr2tags_DC( dce, data );
 }
 
 /* PG says we might need to resync this with Memcheck's
@@ -3159,6 +3213,24 @@ void do_shadow_STle_DC ( DCEnv* dce,
    // Also, we must use shadowType to translate all type sizes
    // to integral sizes
    ty = shadowTypeV(typeOfIRExpr(dce->bb->tyenv, data));
+
+   // If data was loaded in this superblock, write the tags of the
+   // loaded bytes; see expr2tags_WrTmp_DC.
+   if (dce->loadTagSnapshots
+       && data->tag == Iex_RdTmp
+       && data->Iex.RdTmp.tmp < dce->n_originalTmps
+       && dce->loadTagSnapshots[data->Iex.RdTmp.tmp] >= 0) {
+      di = unsafeIRDirty_0_N(
+              3/*regparms*/,
+              "MC_(helperc_STORE_TAG_SNAPSHOT)",
+              &MC_(helperc_STORE_TAG_SNAPSHOT),
+              mkIRExprVec_3( addr,
+                             mkIRExpr_HWord(sizeofIRType(ty)),
+                             mkIRExpr_HWord(dce->loadTagSnapshots[data->Iex.RdTmp.tmp]) ));
+      setHelperAnns_DC( dce, di );
+      stmt_DC('V',  dce, IRStmt_Dirty(di) );
+      return;
+   }
 
    /* Now decide which helper function to call to write the data tag
       into shadow memory. */
@@ -3302,7 +3374,8 @@ static void do_shadow_CAS_single_DC ( DCEnv* dce, IRCAS* cas ) {
 
    voldLo
      = assignNew_DC(dce, elemTy,
-                    expr2tags_LDle_DC(dce,elemTy, cas->addr, 0/*Addr bias*/));
+                    expr2tags_LDle_DC(dce,elemTy, cas->addr, 0/*Addr bias*/,
+                                      -1/*no snapshot*/));
 
    orig = mkexpr(cas->oldLo);
 
@@ -3474,11 +3547,13 @@ static void do_shadow_CAS_double_DC ( DCEnv* dce, IRCAS* cas )
    voldHi
       = assignNew_DC(
            dce, elemTy,
-           expr2tags_LDle_DC(dce, elemTy, cas->addr, memOffsHi/*Addr bias*/ ));
+           expr2tags_LDle_DC(dce, elemTy, cas->addr, memOffsHi/*Addr bias*/,
+                             -1/*no snapshot*/ ));
    voldLo
       = assignNew_DC(
            dce, elemTy,
-           expr2tags_LDle_DC(dce, elemTy, cas->addr, memOffsLo/*Addr bias*/));
+           expr2tags_LDle_DC(dce, elemTy, cas->addr, memOffsLo/*Addr bias*/,
+                             -1/*no snapshot*/));
 
    origLo = mkexpr(cas->oldLo);
    origHi = mkexpr(cas->oldHi);
