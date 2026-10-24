@@ -112,6 +112,8 @@ const int DecTypeByteSizes[] = {
   sizeof(float),                  // D_FLOAT,
   sizeof(double),                 // D_DOUBLE,
   sizeof(long double),            // D_LONG_DOUBLE,
+  2,                              // D_FLOAT16,
+  2,                              // D_BFLOAT16,
 
   sizeof(int),                    // D_ENUMERATION,
 
@@ -147,6 +149,8 @@ TypeEntry Int128Type = {D_I128, 0, 16, 0};          // Rust
 TypeEntry FloatType = {D_FLOAT, 0, sizeof(float), 0};
 TypeEntry DoubleType = {D_DOUBLE, 0, sizeof(double), 0};
 TypeEntry LongDoubleType = {D_LONG_DOUBLE, 0, sizeof(long double), 0};
+TypeEntry Float16Type = {D_FLOAT16, 0, 2, 0};
+TypeEntry BFloat16Type = {D_BFLOAT16, 0, 2, 0};
 TypeEntry FunctionType = {D_FUNCTION, 0, sizeof(void*), 0};
 TypeEntry VoidType = {D_VOID, 0, sizeof(void*), 0};
 TypeEntry Char8Type = {D_CHAR8, 0, 1, 0};
@@ -177,6 +181,8 @@ TypeEntry* BasicTypesArray[] = {
   &FloatType,               //  D_FLOAT,
   &DoubleType,              //  D_DOUBLE,
   &LongDoubleType,          //  D_LONG_DOUBLE,
+  &Float16Type,             //  D_FLOAT16,
+  &BFloat16Type,            //  D_BFLOAT16,
 
   0,                        //  D_ENUMERATION,
 
@@ -214,6 +220,8 @@ const char* DeclaredTypeString[] = {
   "float",                  // D_FLOAT,
   "double",                 // D_DOUBLE,
   "long double",            // D_LONG_DOUBLE,
+  "_Float16",               // D_FLOAT16,
+  "__bf16",                 // D_BFLOAT16,
 
   // This should NOT be used unless you created an unnamed struct/union!
   // Use TypeEntry::typeName instead
@@ -285,6 +293,8 @@ const char* DeclaredTypeNames[] = {"D_NO_TYPE", // Create padding
                              "D_FLOAT",
                              "D_DOUBLE",
                              "D_LONG_DOUBLE",
+                             "D_FLOAT16",
+                             "D_BFLOAT16",
                              "D_ENUMERATION",
                              "D_STRUCT_CLASS",
                              "D_UNION",
@@ -1878,6 +1888,16 @@ static void extractBaseType(VariableEntry* var, base_type* basePtr)
     else if (basePtr->byte_size == sizeof(long double)) {
       var->varType = BasicTypesArray[D_LONG_DOUBLE];
     }
+    // _Float16 and __bf16 have the same size and encoding, so only their
+    // names distinguish them.
+    else if (basePtr->byte_size == 2) {
+      if ((basePtr->name != NULL) && VG_STREQ(basePtr->name, "__bf16")) {
+        var->varType = BasicTypesArray[D_BFLOAT16];
+      }
+      else {
+        var->varType = BasicTypesArray[D_FLOAT16];
+      }
+    }
     break;
 
   case DW_ATE_signed:
@@ -2646,20 +2666,23 @@ static Bool isSupportedRegisterLocation(VariableEntry* varPtr)
   return 0 < byteSize && byteSize <= (int)sizeof(Addr);
 }
 
-// Adds to f->entryRegsMask each register that the formal parameter's
-// location uses, so that Fjalar saves the register at function
-// entrance.  Every such register is readable, because a location that
-// uses an unreadable register is unsupported (see location_op_kind_of).
-static void recordEntryRegs(FunctionEntry* f, VariableEntry* varPtr)
+// Returns the set of the registers that the formal parameter's location uses
+// (in DW_OP_reg* or DW_OP_breg*).  The set is represented as a bit mask indexed
+// by DWARF register number.  Every such register is readable, because a
+// location that uses an unreadable register is unsupported (see
+// location_op_kind_of).
+static UInt locationRegisterMask(VariableEntry* varPtr)
 {
   unsigned int i;
+  UInt mask = 0;
   for (i = 0; i < varPtr->location_expression_size; i++) {
     UInt regNum;
     if (dwarf_op_reg_num(varPtr->location_expression[i].atom, &regNum)) {
       tl_assert(dwarf_reg_is_readable(regNum));
-      f->entryRegsMask |= 1U << regNum;
+      mask |= 1U << regNum;
     }
   }
+  return mask;
 }
 
 // Returns true if the formal parameter's location contains DW_OP_fbreg,
@@ -2740,7 +2763,11 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     varPtr->location_expression_size = paramPtr->dwarf_stack_size;
   }
 
-  if (paramPtr->location_has_unsupported_op) {
+  if (paramPtr->location_has_unsupported_op
+      || ((paramPtr->location_piece_size != 0)
+          && ((paramPtr->dwarf_stack_size == 0)
+              || (paramPtr->location_piece_size
+                  != (unsigned long)formalParamByteSize(varPtr))))) {
     // varPtr->validLoc remains 0, so Fjalar omits the formal parameter.
     FJALAR_DPRINTF(" location contains an unsupported operation\n");
     varPtr->locationUnsupported = 1;
@@ -2757,15 +2784,25 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     // which runs earlier, shows that byteOffset.  The stack sizes come
     // from formalParamFrameOffsetRange, which uses the location, not
     // that byteOffset.
-    recordEntryRegs(f, varPtr);
+    // Save at function entrance each register that the location uses.
+    f->entryRegsMask |= locationRegisterMask(varPtr);
 
     FJALAR_DPRINTF(" location_type: %u, byteOffset: %x\n", varPtr->locationType, (unsigned int)varPtr->byteOffset);
   } else if (isSupportedRegisterLocation(varPtr)) {
     UInt regNum = varPtr->location_expression[0].atom - DW_OP_reg0;
     varPtr->validLoc = 1;
     varPtr->locationType = REGISTER_LOCATION;
-    recordEntryRegs(f, varPtr);
+    f->entryRegsMask |= 1U << regNum;
     FJALAR_DPRINTF(" location is register %s\n", dwarf_reg_name(regNum));
+  } else if (locationRegisterMask(varPtr) != 0) {
+    // A register location that Fjalar cannot read, such as a register
+    // combined with other operations or a value larger than a register.
+    // Fjalar did not save the register at entrance, so the location must
+    // not become valid; locationUnsupported prevents the heuristics in
+    // processFunctions and initConstructorsAndDestructors from making it
+    // valid.
+    FJALAR_DPRINTF(" location is a register that Fjalar cannot read\n");
+    varPtr->locationUnsupported = 1;
   }
 
   FJALAR_DPRINTF("EXIT  extractOneFormalParameterVar\n");

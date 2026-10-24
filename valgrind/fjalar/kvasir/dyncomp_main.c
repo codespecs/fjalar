@@ -475,6 +475,13 @@ UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
   return val_uf_union_tags_in_range(a, 1);
 }
 
+// The tags of the bytes read by loads; see expr2tags_WrTmp_DC.  A slot
+// is written and read during one execution of a superblock, and
+// Valgrind switches threads only between superblocks.  Tags can be
+// garbage-collected between the write and the read, so
+// garbage_collect_tags() renumbers these tags too.
+UInt load_tag_snapshots[DC_N_LOAD_TAG_SNAPSHOTS][DC_LOAD_TAG_SNAPSHOT_BYTES];
+
 // Returns the tag of the value loaded from the range [a, a+len), in
 // dyncomp_dataflow_only_mode, dyncomp_dataflow_comparisons_mode, and
 // dyncomp_units_mode.  In those modes, a load is not an interaction, so
@@ -484,18 +491,52 @@ UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
 // WEAK_FRESH_TAG, or 0 if every tag in the range is 0.
 // Returning WEAK_FRESH_TAG rather than a fresh tag avoids allocating a
 // tag for each load of a GOT entry, such as the one in every PLT call;
-// the MC_(helperc_STORE_TAG_*) functions replace WEAK_FRESH_TAG with a
-// fresh tag if the value is stored.
-VG_REGPARM(2)
-UInt MC_(helperc_LOAD_TAG_N) ( Addr a, UWord len ) {
+// the MC_(helperc_STORE_TAG_*) functions, and
+// MC_(helperc_STORE_TAG_SNAPSHOT), replace WEAK_FRESH_TAG with a fresh
+// tag if the value is stored.  If slot is non-negative, it also saves
+// the tag of each byte in the range in that slot of load_tag_snapshots.
+VG_REGPARM(3)
+UInt MC_(helperc_LOAD_TAG_N) ( Addr a, UWord len, Word slot ) {
+  UWord i;
   UInt tag;
 
-  DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_N: %p %lu\n", (void *)a, len);
+  DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_N: %p %lu %ld\n", (void *)a, len, slot);
+  if (slot >= 0) {
+    tl_assert(slot < DC_N_LOAD_TAG_SNAPSHOTS);
+    tl_assert(len <= DC_LOAD_TAG_SNAPSHOT_BYTES);
+    for (i = 0; i < len; i++) {
+      load_tag_snapshots[slot][i] = get_tag(a + i);
+    }
+  }
   tag = first_nonzero_tag_in_range(a, len);
   if (WEAK_FRESH_TAG == tag) {
     return WEAK_FRESH_TAG;
   }
   return val_uf_find_leader(tag);
+}
+
+// Writes the tags saved in the given slot of load_tag_snapshots to the
+// range [a, a+len), one byte at a time.
+VG_REGPARM(3)
+void MC_(helperc_STORE_TAG_SNAPSHOT) ( Addr a, UWord len, UWord slot ) {
+  UWord i;
+  UInt tag;
+  UInt freshTag = 0;
+
+  DYNCOMP_TPRINTF("[DynComp] STORE_TAG_SNAPSHOT: %p %lu %lu\n", (void *)a, len, slot);
+  tl_assert(slot < DC_N_LOAD_TAG_SNAPSHOTS);
+  tl_assert(len <= DC_LOAD_TAG_SNAPSHOT_BYTES);
+  for (i = 0; i < len; i++) {
+    tag = load_tag_snapshots[slot][i];
+    // Like MC_(helperc_STORE_TAG_*), replace WEAK_FRESH_TAG by a fresh tag.
+    if (WEAK_FRESH_TAG == tag) {
+      if (0 == freshTag) {
+        freshTag = grab_fresh_tag();
+      }
+      tag = freshTag;
+    }
+    set_tag(a + i, val_uf_find_leader(tag));
+  }
 }
 
 // Make this const so gcc can eliminate dead code to improve
@@ -607,32 +648,56 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
   }
 }
 
-// Returns True if cc_op, the CC_OP field of the flags thunk, says that the
-// flags are the result of a subtraction (a cmp or sub instruction), which
-// is how amd64 compares values.
+// Returns True if `cc_op`, the CC_OP field of the flags thunk, says that the
+// flags are the result of a subtraction, which is how amd64 compares
+// values:  a cmp or sub instruction, or, under
+// --dyncomp-interactions=comparisons, an sbb instruction.
 //
 // A comparison of values wider than a register, such as two __int128
 // values, compares the low halves with a cmp and the high halves with an
-// sbb, and the flags that are read are those of the sbb.  Accepting
-// AMD64G_CC_OP_SBB* here would have no effect under
-// --dyncomp-interactions=comparisons:  the CC_DEP2 field of an sbb's thunk
-// is the xor of its second operand and the old carry, and that xor gets
-// tag 0 because it is not an interaction.  So in that mode, the high halves
-// are not comparable.  (Under --dyncomp-interactions=units, the sbb's
-// subtraction makes them comparable.)  See lessWide() in
-// tests/dyncomp-interactions-comparisons.c.
+// sbb, and the flags that are read are those of the sbb.  The CC_DEP2 field
+// of an sbb's thunk is the xor of its second operand and the old carry.
+// Under --dyncomp-interactions=comparisons, do_shadow_PUT_DC and
+// handleFlagsCCall_DC give that field the tag of the second operand; see
+// sbbSecondOperand_DC.  Other modes need not accept an sbb here:  under
+// --dyncomp-interactions=units, the sbb's subtraction has already merged
+// its operands.  Every caller of this function runs only under
+// --dyncomp-interactions=comparisons, so the test of the mode matters only
+// if a helper call that reads flags is handled this way in another mode.
 Bool dyncomp_cc_op_is_sub(UWord cc_op) {
-  return AMD64G_CC_OP_SUBB <= cc_op && cc_op <= AMD64G_CC_OP_SUBQ;
+  return (AMD64G_CC_OP_SUBB <= cc_op && cc_op <= AMD64G_CC_OP_SUBQ)
+         || (dyncomp_dataflow_comparisons_mode && dyncomp_cc_op_is_sbb(cc_op));
+}
+
+// Returns True if `cc_op`, the CC_OP field of the flags thunk, says that the
+// flags are the result of an sbb instruction.
+Bool dyncomp_cc_op_is_sbb(UWord cc_op) {
+  return AMD64G_CC_OP_SBBB <= cc_op && cc_op <= AMD64G_CC_OP_SBBQ;
+}
+
+// Returns True if cc_op, the CC_OP field of the flags thunk, says that the
+// flags are the result of an inc or dec instruction.  Such an instruction
+// does not change the carry flag:  its thunk's CC_NDEP field holds the carry
+// flag of the previous thunk.
+Bool dyncomp_cc_op_preserves_carry(UWord cc_op) {
+  return AMD64G_CC_OP_INCB <= cc_op && cc_op <= AMD64G_CC_OP_DECQ;
 }
 
 // Returns the tag of an operand of the subtraction whose result the flags
 // thunk holds, or 0 if the thunk does not hold the result of a subtraction.
 // cc_op is the thunk's CC_OP field, and dep_tag is the tag of its CC_DEP1 or
-// CC_DEP2 field, which for a subtraction is an operand.
-VG_REGPARM(2)
-UWord MC_(helperc_SUB_OPERAND_TAG) ( UWord cc_op, UWord dep_tag ) {
+// CC_DEP2 field, which for a subtraction is an operand.  If the thunk is that
+// of an inc or dec instruction, its carry flag is preserved from an earlier
+// thunk, and pending_tag is the corresponding pending carry tag of its
+// CC_NDEP field; see notePendingCarryTags_DC.
+VG_REGPARM(3)
+UWord MC_(helperc_SUB_OPERAND_TAG) ( UWord cc_op, UWord dep_tag,
+                                     UWord pending_tag ) {
   if (dyncomp_cc_op_is_sub(cc_op)) {
     return dep_tag;
+  }
+  if (dyncomp_cc_op_preserves_carry(cc_op)) {
+    return pending_tag;
   }
   return 0;
 }

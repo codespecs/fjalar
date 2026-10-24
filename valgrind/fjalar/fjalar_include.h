@@ -60,6 +60,8 @@ typedef enum _DeclaredType {
   D_FLOAT,
   D_DOUBLE,
   D_LONG_DOUBLE,
+  D_FLOAT16,          // _Float16, an IEEE 754 binary16 value
+  D_BFLOAT16,         // __bf16, a bfloat16 value
 
   D_ENUMERATION,
 

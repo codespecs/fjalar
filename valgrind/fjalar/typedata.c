@@ -438,7 +438,8 @@ char entry_is_listening_for_attribute(dwarf_entry* e, unsigned long attr)
       return (tag_is_function(tag) ||
               tag_is_variable(tag));
     case DW_AT_name:
-      return (tag_is_collection_type(tag) ||
+      return (tag_is_base_type(tag) ||
+              tag_is_collection_type(tag) ||
               tag_is_compile_unit(tag) ||
               tag_is_enumerator(tag) ||
               tag_is_formal_parameter(tag) ||
@@ -907,7 +908,12 @@ char harvest_name(dwarf_entry* e, const char* str1)
 
   tag = e->tag_name;
 
-  if (tag_is_enumerator(tag))
+  if (tag_is_base_type(tag))
+    {
+      ((base_type*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.10", str1);
+      return 1;
+    }
+  else if (tag_is_enumerator(tag))
     {
       ((enumerator*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.1", str1);
       return 1;
@@ -1226,6 +1232,21 @@ char harvest_formal_param_location_unsupported(dwarf_entry* e)
     return 0;
 
   paramPtr->location_has_unsupported_op = 1;
+  return 1;
+}
+
+// If e is a formal parameter, records that its location expression ends
+// with "DW_OP_piece size" (sets location_piece_size).
+// extractOneFormalParameterVar omits the parameter unless the piece is the
+// whole parameter and some operation precedes it.  Returns 1 if e is a
+// formal parameter, 0 otherwise.
+char harvest_formal_param_location_piece(dwarf_entry* e, unsigned long size)
+{
+  formal_parameter* paramPtr = formal_parameter_of(e);
+  if (paramPtr == 0)
+    return 0;
+
+  paramPtr->location_piece_size = size;
   return 1;
 }
 
