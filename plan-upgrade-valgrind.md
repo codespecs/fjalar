@@ -231,7 +231,7 @@ Memcheck and DynComp depend tightly on Valgrind core:
      #79 `Iop_64x4toV256` fix for the pattern).  With #87, that includes
      new unary operations, which reach `expr2tags_Unop_DC`'s `default`
      case, and for which `make fjalar-test` (step 9) fails.  Running the Kvasir tests and the programs of
-     `plan-pre-upgrade.md` item 3 with
+     `plan-pre-upgrade.md` item 2 with
      `--dyncomp-unhandled-ops=warn` (#85) lists the unhandled ones that
      they hit.  Search for panics/`default:`
      cases that would now be hit.  Most changes for other architectures can
@@ -393,7 +393,7 @@ Memcheck and DynComp depend tightly on Valgrind core:
   checkoff in step 6.
 - **New IROps** used by modern compilers (AVX/AVX2 and others on amd64) can
   make DynComp panic at run time.  Re-run the vectorized programs from
-  `plan-pre-upgrade.md` item 3 (which all work on 3.23 by then); a panic
+  `plan-pre-upgrade.md` item 2 (which all work on 3.23 by then); a panic
   there after the merge is due to the upgrade.
 - **Build-system changes** (`Makefile.all.am`, `Makefile.tool.am`,
   `configure.ac`) can silently drop Fjalar from the build or change flags.
