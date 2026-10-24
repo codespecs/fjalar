@@ -166,7 +166,9 @@ it completely (merged, CI green) before starting this one.  That plan's
      amd64/x86, add handling in the `expr2tags_*_DC` functions (see the
      #79 `Iop_64x4toV256` fix for the pattern).  Search for panics/`default:`
      cases that would now be hit.  Most changes for other architectures can
-     be ignored.
+     be ignored.  `valgrind/fjalar/tests/dyncomp-op-coverage-test.sh` (from
+     #173; `make fjalar-test` runs it) lists each new IROp that has no case,
+     and each IROp listed as unimplemented that amd64 or x86 now uses.
    - Check NEWS for 3.24–3.27 for tool-API changes (e.g. changes to
      `VG_(needs_*)`, debuginfo, `pub_tool_*.h` signatures, client-request
      numbering) and update Fjalar callers.

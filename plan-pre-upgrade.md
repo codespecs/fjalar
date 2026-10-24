@@ -37,58 +37,55 @@ Done when:  CI enforces the lists on both distributions and is green.
 
 ## 2. Look for DynComp panics on unhandled IROps, now, on Valgrind 3.23
 
-\#87 made `expr2tags_Unop_DC` switch on the operation and cover all 283
-unary operations, so unary operations no longer silently pass their
-operand's tag through.
-
 Why: the main runtime risk of the Valgrind upgrade is IROps that
 `fjalar/kvasir/dyncomp_translate.c` does not handle; #79 was one, found by
 accident.  Finding them on 3.23 means they can be fixed separately, and any
 panic after the upgrade can then be blamed on the upgrade.
 
-What:
+Status:  done, except that #172 and then #173 must land.
 
-- Write a few small C programs whose hot loops vectorize (array sums,
-  `memcpy`/`memset`/string functions, float and integer arithmetic), compile
-  them with `-O2 -march=x86-64-v3` (AVX2) and also `-O3 -march=x86-64-v3`,
-  and run them under Kvasir with DynComp
-  (`$INV/fjalar/valgrind/inst/bin/valgrind --tool=fjalar --dyncomp --dyncomp-unhandled-ops=warn ./prog`).
-  Do not use `$DAIKONDIR/scripts/kvasir-dtrace`:  it runs the Kvasir in
-  `$DAIKONDIR/fjalar`, which may be a different tree than the one being
-  changed.  After changing `dyncomp_translate.c`, run
-  `make -C $INV/fjalar/valgrind/fjalar install`, because
-  `valgrind/inst/bin/valgrind` runs the installed tool.
-  `warn` reports each unhandled operation once and continues, so one run
-  lists every unhandled operation a program hits, instead of stopping at
-  the first.
-  Do not use `-march=native` or `-march=x86-64-v4`:  on a machine with
-  AVX-512, they emit AVX-512 instructions, which Valgrind 3.23 cannot
-  decode, so the program dies with SIGILL before DynComp sees its IROps.
-- Fix each panic in its own PR, following #79's pattern.
-- Running programs finds only the operations those programs use.  So, in
-  its own PR, extend `valgrind/fjalar/tests/dyncomp-unop-coverage-test.sh`
-  (which `make fjalar-test` runs) to binary, ternary, and quaternary
-  operations.  It takes each operation's arity from `typeOfPrimop` in
-  VEX's `ir_defs.c` and checks that `expr2tags_Unop_DC` has a case for
-  exactly the unary operations; check `expr2tags_Binop_DC`,
-  `expr2tags_Triop_DC`, and `expr2tags_Qop_DC` too.  The test's parser
-  needs two changes.  First, it finds `expr2tags_Unop_DC` by its return
-  type, `IRExpr*`, but the other three functions return `IRAtom*`.
-  Second, `expr2tags_Binop_DC`, `expr2tags_Triop_DC`, and
-  `expr2tags_Qop_DC` each have a section
-  headed `// Unimplemented` whose case labels (such as `Iop_Rotx32`) fall
-  through to the `default` case, which by default panics; the test must
-  not count those as handled.  Move them to the comment of
-  `dyncomp_translate.c` that lists the operations that DynComp does not
-  implement.  Many operations of other architectures have no case, on
-  purpose; the test must accept those that are listed, as case labels, in
-  that comment.  Fix the operations relevant to amd64/x86 that the test
-  reports, and add the others to that comment (on 3.23, these include
-  `Iop_MulHi8Sx16` and `Iop_MulHi8Ux16`, which only s390 uses).  After the Valgrind upgrade, the test
-  then lists each new operation that DynComp does not handle.  Describe
-  the test in appendix "Supporting new VEX IR Instruction" of
-  `doc/valgrind-merge.texinfo`.
-- Add one such program to Daikon's Kvasir tests (`tests/kvasir-tests`, in the
-  Daikon repository), compiled with `-march=x86-64-v3`, so CI exercises
-  AVX2 IROps.  GitHub's runners support AVX2; check that before relying on it
-  (the Kvasir CI jobs log the CPU flags).
+- #172 fixes the one panic found.  amd64 translates `PMADDUBSW` (SSSE3)
+  and `VPMADDUBSW` (AVX and AVX2) to `Iop_PwExtUSMulQAdd8x16`, which
+  `expr2tags_Binop_DC` listed as unimplemented.  #172 also adds
+  `dyncomp-vector-ops-test.sh`, which runs DynComp on a program that
+  executes AVX2, FMA, and F16C instructions and checks that the program's
+  IR contains the expected IROps; GitHub's runners have those features.
+  This test replaces the program that this step planned to add to
+  Daikon's Kvasir tests:  it runs in Fjalar's CI with the code that it
+  tests, needs no goal files, and checks the IR so that it is not vacuous.
+- #173 renames `dyncomp-unop-coverage-test.sh` to
+  `dyncomp-op-coverage-test.sh` and makes it check all four arities.  An
+  IROp that DynComp does not implement is now listed in the comment after
+  `expr2tags_Unop_DC` rather than as a case label in an `// Unimplemented`
+  section.  The test also checks that the amd64 and x86 front ends use
+  none of the listed IROps; that check would have found #172's bug.
+  `Iop_MulHi8Sx16` and `Iop_MulHi8Ux16`, which had neither a case nor a
+  listing, are handled as multiplications rather than listed, because
+  their tag behavior is obvious.  #173 also describes the test in appendix
+  "Supporting new VEX IR Instruction" of `doc/valgrind-merge.texinfo`.
+  After the Valgrind upgrade, the test reports each new IROp, and each
+  listed IROp that amd64 or x86 starts to use.
+- Running vectorized programs under DynComp found no other unhandled
+  IROp.  The programs were five small ones (sums, integer arithmetic,
+  floating-point arithmetic, string functions, and bit manipulation), each
+  compiled with `-O2 -march=x86-64-v3`, `-O3 -march=x86-64-v3`,
+  `-O3 -march=x86-64-v2`, and `-O3`, plus Daikon's `md5` and `bzip2` tests
+  compiled with `-O3 -march=x86-64-v3`.  They exercised 258 distinct
+  IROps, 84 of them on 256-bit vectors.
+- Found along the way:  Fjalar crashed on any program with a `_Float16`
+  or `__bf16` variable; #174 fixes that.  `long double`, `_Float128`, and
+  `_Complex double` variables still crash Fjalar.
+
+To repeat the exploration (for example, after the Valgrind upgrade),
+compile each program with `-gdwarf-4 -no-pie`, because Fjalar does not read
+DWARF 5 and recognizes a function's entry point only at the address in the
+debugging information.  Do not use `-march=native` or `-march=x86-64-v4`
+unless Valgrind decodes AVX-512:  on a machine with AVX-512, they emit
+AVX-512 instructions, and Valgrind 3.23 cannot decode them, so the program
+dies with SIGILL before DynComp sees its IROps.  Run each program with
+`$INV/fjalar/valgrind/inst/bin/valgrind --tool=fjalar --dyncomp --dyncomp-unhandled-ops=warn`,
+which reports each unhandled operation once and continues, instead of
+stopping at the first; add `--trace-flags=01000000 --trace-notbelow=0` to
+see which IROps a run exercised.  Do not use
+`$DAIKONDIR/scripts/kvasir-dtrace`:  it runs the Kvasir in
+`$DAIKONDIR/fjalar`, which may be a different tree.
