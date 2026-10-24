@@ -8758,6 +8758,13 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
       dce.tmpCarriesFlags =
          dyncomp_dataflow_comparisons_mode
          ? findFlagsCarryingTmps_DC(sb_in) : NULL;
+      // VG_(calloc) asserts that the size is non-zero, and a superblock
+      // may have no temporaries.
+      dce.tmpPendingCarryTags =
+         dce.tmpCarriesFlags
+         ? VG_(calloc)("mc_translate.c.tmpPendingCarryTags",
+                       2 * dce.n_originalTmps + 1, sizeof(IRExpr*))
+         : NULL;
       dce.tmpMap         = VG_(malloc)("mc_translate.c.2", dce.n_originalTmps * sizeof(IRTemp));
       //dce.tmpMap         = LibVEX_Alloc(dce.n_originalTmps * sizeof(IRTemp));
       for (i = 0; i < (Int)dce.n_originalTmps; i++)
@@ -8871,10 +8878,13 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
             assign( 'V', &mce, findShadowTmpV(&mce, st->Ist.WrTmp.tmp),
                                expr2vbits( &mce, st->Ist.WrTmp.data, hu ));
 #ifndef _NO_DYNCOMP
-            if (do_dyncomp)
+            if (do_dyncomp) {
                assign_DC( 'V', &dce, findShadowTmp_DC(&dce, st->Ist.WrTmp.tmp),
                                expr2tags_WrTmp_DC( &dce, st->Ist.WrTmp.tmp,
                                                    st->Ist.WrTmp.data) );
+               notePendingCarryTags_DC( &dce, st->Ist.WrTmp.tmp,
+                                        st->Ist.WrTmp.data );
+            }
 #endif /* _NO_DYNCOMP */
             break;
          }
@@ -9083,8 +9093,10 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
    }
 
 #ifndef _NO_DYNCOMP
-   if (do_dyncomp)
+   if (do_dyncomp) {
       VG_(free)( dce.tmpCarriesFlags );
+      VG_(free)( dce.tmpPendingCarryTags );
+   }
 #endif /* _NO_DYNCOMP */
 
     tl_assert(mce.sb == sb_out);
