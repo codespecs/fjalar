@@ -237,12 +237,11 @@ Memcheck and DynComp depend tightly on Valgrind core:
      cases that would now be hit.  Most changes for other architectures can
      be ignored.
    - Running programs finds only the operations those programs use.
-     `make fjalar-test` runs `valgrind/fjalar/tests/dyncomp-unop-coverage-test.sh`,
-     which lists every unary operation that has no case in
-     `expr2tags_Unop_DC`, and, after `plan-pre-upgrade.md` item 3, the
-     corresponding tests for binary, ternary, and quaternary operations.
-     Handle each operation that they list, as item 3 describes.  Also
-     compare `Iex_*` and `Ist_*` kinds.
+     `make fjalar-test` runs `valgrind/fjalar/tests/dyncomp-op-coverage-test.sh`
+     (from #173), which lists each new IROp that has no case, and each IROp
+     listed as unimplemented that amd64 or x86 now uses.  Handle each
+     operation that it lists, as `plan-pre-upgrade.md` item 2 describes.
+     Also compare `Iex_*` and `Ist_*` kinds.
    - Read NEWS for 3.24.0 through 3.27.1 and note: new platforms (each adds
      `VEX/priv/*` and `coregrind/m_*` files and `configure.ac` cases);
      tool-API changes (e.g. changes to `VG_(needs_*)`, `VG_(track_*)`,

@@ -100,6 +100,7 @@ typedef struct
 {
   unsigned long byte_size; // DW_AT_byte_size
   unsigned long encoding;
+  char* name; // DW_AT_name, such as "_Float16" or "__bf16"
 
   // (comment added 2005)
   // TODO: support for bit fields not yet implemented

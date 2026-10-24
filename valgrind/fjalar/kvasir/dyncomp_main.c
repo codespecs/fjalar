@@ -666,14 +666,29 @@ Bool dyncomp_cc_op_is_sub(UWord cc_op) {
   return AMD64G_CC_OP_SUBB <= cc_op && cc_op <= AMD64G_CC_OP_SUBQ;
 }
 
+// Returns True if cc_op, the CC_OP field of the flags thunk, says that the
+// flags are the result of an inc or dec instruction.  Such an instruction
+// does not change the carry flag:  its thunk's CC_NDEP field holds the carry
+// flag of the previous thunk.
+Bool dyncomp_cc_op_preserves_carry(UWord cc_op) {
+  return AMD64G_CC_OP_INCB <= cc_op && cc_op <= AMD64G_CC_OP_DECQ;
+}
+
 // Returns the tag of an operand of the subtraction whose result the flags
 // thunk holds, or 0 if the thunk does not hold the result of a subtraction.
 // cc_op is the thunk's CC_OP field, and dep_tag is the tag of its CC_DEP1 or
-// CC_DEP2 field, which for a subtraction is an operand.
-VG_REGPARM(2)
-UWord MC_(helperc_SUB_OPERAND_TAG) ( UWord cc_op, UWord dep_tag ) {
+// CC_DEP2 field, which for a subtraction is an operand.  If the thunk is that
+// of an inc or dec instruction, its carry flag is preserved from an earlier
+// thunk, and pending_tag is the corresponding pending carry tag of its
+// CC_NDEP field; see notePendingCarryTags_DC.
+VG_REGPARM(3)
+UWord MC_(helperc_SUB_OPERAND_TAG) ( UWord cc_op, UWord dep_tag,
+                                     UWord pending_tag ) {
   if (dyncomp_cc_op_is_sub(cc_op)) {
     return dep_tag;
+  }
+  if (dyncomp_cc_op_preserves_carry(cc_op)) {
+    return pending_tag;
   }
   return 0;
 }
