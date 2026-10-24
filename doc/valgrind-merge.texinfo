@@ -723,7 +723,7 @@ compares the failures after the merge with the failures in Fjalar's tree
 before the merge, which you saved in
 @ref{Verify current sources pass the regression tests}.
 
-Here is a copy of the last few lines from the latest run of these tests (01/21/2026)
+Here is a copy of the last few lines from the latest run of these tests (2026-01-21)
 running Valgrind 3.23 on a UW/CSE Rocky Linux (9.7) based system:
 
 @smallexample
@@ -760,7 +760,7 @@ have the proper glibc-debuginfo installed.)
 know.  @command{upstream-regtest.sh} does not install, so it does not
 have that failure.)
 
-Here is another example from the latest run of these tests (01/21/2026)
+Here is another example from the latest run of these tests (2026-01-21)
 running Valgrind 3.23 on a Ubuntu Linux (25.10) based system:
 
 @smallexample

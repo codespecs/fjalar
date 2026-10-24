@@ -93,7 +93,8 @@ if ! { ./autogen.sh && ./configure && make -j"$(nproc)" all; } \
   exit 1
 fi
 
-# These are the options that check-regtest.sh uses.  Setting XMLLINT keeps
+# Run the tests with the same parallelism, XMLLINT setting, and standard
+# input as check-regtest.sh.  Setting XMLLINT keeps
 # "make check" from validating the manual, which fails without the DocBook
 # DTD.  "make regtest" exits with non-zero status whenever any test fails,
 # which is the usual case, so its status is ignored.  Some tests read
