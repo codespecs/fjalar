@@ -58,7 +58,12 @@ What:
   `memcpy`/`memset`/string functions, float and integer arithmetic), compile
   them with `-O2 -march=x86-64-v3` (AVX2) and also `-O3 -march=x86-64-v3`,
   and run them under Kvasir with DynComp
-  (`$DAIKONDIR/scripts/kvasir-dtrace --dyncomp --dyncomp-unhandled-ops=warn ./prog`).
+  (`$INV/fjalar/valgrind/inst/bin/valgrind --tool=fjalar --dyncomp --dyncomp-unhandled-ops=warn ./prog`).
+  Do not use `$DAIKONDIR/scripts/kvasir-dtrace`:  it runs the Kvasir in
+  `$DAIKONDIR/fjalar`, which may be a different tree than the one being
+  changed.  After changing `dyncomp_translate.c`, run
+  `make -C $INV/fjalar/valgrind/fjalar install`, because
+  `valgrind/inst/bin/valgrind` runs the installed tool.
   `warn` reports each unhandled operation once and continues, so one run
   lists every unhandled operation a program hits, instead of stopping at
   the first.
@@ -75,7 +80,8 @@ What:
   `expr2tags_Triop_DC`, and `expr2tags_Qop_DC` too.  The test's parser
   needs two changes.  First, it finds `expr2tags_Unop_DC` by its return
   type, `IRExpr*`, but the other three functions return `IRAtom*`.
-  Second, `expr2tags_Binop_DC` and `expr2tags_Qop_DC` each have a section
+  Second, `expr2tags_Binop_DC`, `expr2tags_Triop_DC`, and
+  `expr2tags_Qop_DC` each have a section
   headed `// Unimplemented` whose case labels (such as `Iop_Rotx32`) fall
   through to the `default` case, which by default panics; the test must
   not count those as handled.  Move them to the comment of

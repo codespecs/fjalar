@@ -49,9 +49,18 @@ new ones than to fix them.)
   - `include/` (`dwarf2.def`, `dwarf2.h`, `demangle.h`, `ctf.h`, `ctf-api.h`,
     `safe-ctype.h`, `elf/*.h`)
   - `libiberty/dwarfnames.c`
-- Fjalar code that consumes these files and may need adjustment if upstream
-  data structures change: `fjalar_dwarf.c`, `typedata.c`,
-  `generate_fjalar_entries.c`, `fjalar_main.c`, `kvasir/decls-output.c`.
+- Fjalar code outside these files uses them only through a few functions:
+  it calls `process_elf_binary_data` (defined in `readelf.c`, called from
+  `fjalar_main.c`) and `dwarf_reg_name` (defined in `dwarf.c`, called from
+  `fjalar_main.c`, `fjalar_traversal.c`, and `generate_fjalar_entries.c`),
+  and the Fjalar code in `dwarf.c` and `readelf.c` calls Fjalar's hooks
+  (step 5), whose parameter types are Fjalar's own.  `fjalar_dwarf.h`
+  includes `dwarf.h`, but no file outside the Binutils-derived ones uses
+  `dwarf.h`'s data structures (such as `debug_info`, `dwarf_section`, and
+  `separate_info`) or its `dwarf_vma` type.  So if upstream changes those
+  structures or types, only the Fjalar edits inside `dwarf.c` and
+  `readelf.c` need adjusting, plus the signatures of those functions if
+  they use the changed types.
 - Fjalar-local edits must survive the merge.  They are already in the Fjalar
   copy, so merging the upstream 2.39->2.47 changes into it preserves them;
   just don't clobber them while resolving conflicts.  The complete checklist
@@ -81,22 +90,26 @@ Eight releases is the largest gap so far (previous merges: 2.35.1 -> 2.36.1 ->
 Decision: do not make a single 2.39 -> 2.47 jump.  A trial merge of 2.47 on
 2026-10-21 had 133 conflicts in `dwarf.c`, 59 in `readelf.c`, and 1 each in
 `bucomm.h`, `dwarf.h`, `elfcomm.c`, and `elfcomm.h`; the include files merged
-without conflicts.  Upgrade in three hops: 2.39 -> 2.42, 2.42 -> 2.45, and
-2.45 -> 2.47.  If the merge (step 3) of `dwarf.c` or `readelf.c` in some hop
-has more conflicts than can reasonably be hand-merged, undo it with
-`git -C $FJALAR reset --hard` and split that hop further (for example,
-2.39 -> 2.40 -> 2.42), down to one release per hop if necessary.
+without conflicts.  Upgrade one release per hop, in eight hops: 2.39 ->
+2.40 -> 2.41 -> 2.42 -> 2.43 -> 2.44 -> 2.45 -> 2.46.0 -> 2.47.  (The
+2.46 release is named 2.46.0.)  Skip the point releases 2.43.1, 2.45.1,
+and 2.46.1:  they are bug-fix releases from release branches, and the
+next release includes their fixes.  If the merge (step 3) of a hop has
+many conflicts, try undoing it with `git -C $FJALAR reset --hard` and
+redoing it with `$FJALAR/merge-binutils.sh $BUNEWVER -Xpatience`, which
+may group the changes into fewer or smaller conflicts.
 
 Do steps 3-7 once per hop, on the same branch.  In those steps, "2.39" and
 "2.47" stand for the hop's old and new versions, and `$BUNEWVER` is the
-hop's new version (set it with, e.g., `BUNEWVER=2.42`).  The scripts take
+hop's new version (set it with, e.g., `BUNEWVER=2.40`).  The scripts take
 the old version from `BINUTILS_VERSION` in `valgrind/REVISION`.  So at the
-end of each hop, update `valgrind/REVISION` to the hop's new version (as
-described in step 8) and commit, with commit message "Upgrade Binutils
-(readelf) from 2.39 to 2.42" (for the first hop), before starting the
-next hop.  If step 2 created a local `regtest-expected/<os>.txt`, do not
-commit it:  git does not ignore it, so `git add -A` would commit it.  Do
-steps 1, 2, and 8 only once.
+end of each hop, update `valgrind/REVISION` to the hop's new version (the
+`# Binutils version 2.40, released ...` comment and
+`export BINUTILS_VERSION=2.40`, for the first hop) and commit, with commit
+message "Upgrade Binutils (readelf) from 2.39 to 2.40" (for the first hop),
+before starting the next hop.  If step 2 created a local
+`regtest-expected/<os>.txt`, do not commit it:  git does not ignore it, so
+`git add -A` would commit it.  Do steps 1, 2, and 8 only once.
 
 The scripts that this plan uses are in the top-level directory of the
 Fjalar tree.  The Binutils ones work in `/tmp/$USER/binutils/`.
@@ -129,6 +142,11 @@ small.
      success hiding it.  If this machine's OS has no
      `regtest-expected/<os>.txt`, create a local one with
      `./check-regtest.sh --log regtest-<os>.log --update` and don't commit it.
+     Then run `./check-regtest.sh` at least twice more, and give a `?`
+     prefix to each test whose result differs between runs (such as
+     timing-dependent helgrind or `fdleak` tests), as item 1 of
+     `plan-pre-upgrade.md` does.  Otherwise step 7 would report such a test
+     as an unexpected failure, which is not a bug in the merge.
    - Keep `build-before.log` (ignored by git, as is every `*.log` file),
      whose compiler warnings step 6 compares with those of the merged
      code.
@@ -156,6 +174,20 @@ small.
      different clone than `$FJALAR`).  Running
      `$INV/daikon/tests/kvasir-tests` directly has the same problem; if you
      do that, first check `readlink -f $INV/daikon/fjalar`.
+   - Create the DWARF 4 and DWARF 5 baseline for step 7.  Write a small C
+     program, outside the tree, with structs, arrays, pointers, and
+     function parameters and locals.  Compile it with each of the current
+     gcc and clang, with each of `-gdwarf-4` and `-gdwarf-5`, giving four
+     binaries.  Run Kvasir on each, writing each `.decls` file into
+     `/tmp/$USER/binutils/decls-before/`:
+
+     ```sh
+     valgrind/inst/bin/valgrind --tool=fjalar --decls-only \
+       --decls-file=/tmp/$USER/binutils/decls-before/prog-gcc-dwarf5.decls ./prog-gcc-dwarf5
+     ```
+
+     Note any differences between the DWARF 4 and DWARF 5 `.decls` files of
+     the same compiler; Fjalar's DWARF 5 support may be incomplete.
 
 3. **Merge.**
 
@@ -174,8 +206,8 @@ small.
 
 4. **Check for new upstream dependencies.**  The script lists the headers
    that 2.47's copies of Fjalar's files include but 2.39's do not, directly
-   or through another such header, and that Fjalar does not have.  For 2.47,
-   it lists `bfd/elf-attrs.h`, `bfd/hidden.h`, `include/elf/kvx.h`,
+   or through another such header, and that Fjalar does not have.  The
+   trial merge from 2.39 straight to 2.47 listed `bfd/elf-attrs.h`, `bfd/hidden.h`, `include/elf/kvx.h`,
    `include/elf/kvx_elfids.h`, `include/sframe-api.h`, `include/sframe.h`,
    and `include/ansidecl.h`, and, separately, `inttypes.h`, `zstd.h`, and
    `stdbool.h`, which are not in the release.  Also check whether 2.47's
@@ -183,7 +215,8 @@ small.
    Copy any new needed headers from `include/` into
    `valgrind/fjalar/include/`; copy any from `bfd/` (such as
    `bfd/elf-attrs.h`) into `valgrind/fjalar/` and add them to
-   `BINUTILS_FILES` in `merge-binutils.sh`.  Add any new needed `.c` files
+   `BINUTILS_FILES` in `merge-binutils.sh` and to `BINUTILS_FILES_RE` in
+   `compare-warnings.sh`.  Add any new needed `.c` files
    to `FJALAR_SOURCES_COMMON` in `valgrind/fjalar/fjalar.am`.  (Do not edit
    `valgrind/fjalar/Makefile.am`, which `generate-fjalar-makefile.sh`
    regenerates at each Valgrind merge.)  (`demanguse.h` and the CTF headers
@@ -230,12 +263,13 @@ small.
      every path.  The hooks are the calls to functions declared in
      `typedata.h`, `fjalar_dwarf.h`, `fjalar_include.h`, `fjalar_main.h`,
      and `GenericHashtable.h`, which build Fjalar's DWARF entries, symbol
-     tables, and line-number table:  the `harvest_*` functions, and others
-     such as `add_comp_unit`, `initialize_dwarf_entry_array`,
-     `tag_is_formal_parameter`, and `genputtable` in `dwarf.c`, and
-     `insertIntoFunctionSymbolTable`, `insertIntoVariableSymbolTable`, and
-     `process_elf_binary_data` in `readelf.c`.  (`dwarf.c` also defines
-     one, `dwarf_reg_name`.)  Re-check every
+     tables, and line-number table, such as the `harvest_*` functions,
+     `add_comp_unit`, and `insertIntoFunctionSymbolTable`.
+     `check-hook-counts.sh` (step 7) derives the hooks from those headers,
+     so this plan does not list them.  Also keep the
+     Fjalar functions that `dwarf.c` and `readelf.c` define for the rest of
+     Fjalar:  `dwarf_reg_name` in `dwarf.c` and `process_elf_binary_data`
+     in `readelf.c` (see "Current state").  Re-check every
      call site (`harvest_formal_param_location_atom`,
      `harvest_location_list_entry`, `harvest_frame_base`,
      `harvest_debug_frame_entry`, etc.) against the restructured upstream
@@ -256,11 +290,13 @@ small.
      - debuginfod (`HAVE_LIBDEBUGINFOD`): already conditionally compiled;
        ensure it stays undefined.
      - New `readelf` command-line options or global flags: Fjalar sets
-       `do_debug_*` and related globals itself; check `fjalar_main.c` and
-       the top of `readelf.c` for renamed or newly required globals.
+       `do_debug_*` and related globals itself, in
+       `process_elf_binary_data` at the end of `readelf.c`; check it for
+       renamed or newly required globals.
      - Changed data structures in `dwarf.h` (for example `debug_info`,
-       `dwarf_section`, `separate_info`): update the Fjalar consumers listed
-       in "Current state" if fields were renamed.
+       `dwarf_section`, `separate_info`) and types (upstream replaced `dwarf_vma`
+       by `uint64_t` before 2.47): update the Fjalar edits inside `dwarf.c`
+       and `readelf.c` that use them (see "Current state").
    - Review every new `if (fjalar_debug...)` guard for a side-effecting
      expression left inside it.
    - Confirm that no conflict markers remain
@@ -303,14 +339,17 @@ small.
      Superfluous output in `.out` diffs, or in a Kvasir `.decls` or
      `.dtrace` file, usually means an unguarded `printf`.
    - The regression tests may not exercise the newer DWARF paths, so also
-     run Kvasir on a small C program compiled with `-gdwarf-5` and with
-     `-gdwarf-4`, using both the current gcc and clang, and confirm that the
-     `.decls` output is identical between the two DWARF versions.
+     run Kvasir on the four binaries of step 2, as step 2 does, but writing
+     into `/tmp/$USER/binutils/decls-after/`.
+     `diff -r /tmp/$USER/binutils/decls-before /tmp/$USER/binutils/decls-after`
+     must print nothing.  Also, any difference between the DWARF 4 and
+     DWARF 5 `.decls` files of the same compiler must be one that step 2
+     noted.
    - Run with `--fjalar-debug-dump=yes` on a DWARF 5 binary and compare
      against `readelf --debug-dump` from Binutils 2.47 for sanity.  The
-     system `readelf` is older (2.46 on Ubuntu 26.04, 2.41 on Rocky Linux
-     10), so build 2.47's:  `./build-binutils-readelf.sh $BUNEWVER` builds
-     it and prints its path.
+     system `readelf` is from a different version (2.46 on Ubuntu 26.04,
+     2.41 on Rocky Linux 10), so build 2.47's:
+     `./build-binutils-readelf.sh $BUNEWVER` builds it and prints its path.
    - Before committing, run `./check-hook-counts.sh`.  It counts the calls
      of each hook (step 5) in the old and new `dwarf.c` and `readelf.c`,
      and prints each hook whose count changed, with the file and the old
@@ -332,9 +371,8 @@ small.
    - Push the branch and confirm GitHub Actions CI passes (Ubuntu and
      Rocky Linux: build, regtest, and Kvasir jobs).
 
-8. **Finish.**
-   - Update `valgrind/REVISION`: the `# Binutils version 2.47, released ...`
-     comment and `export BINUTILS_VERSION=2.47`.
+8. **Finish.**  (The last hop has already updated `valgrind/REVISION` to
+   2.47.)
    - Update copyright-year header lines in the Binutils-derived files if
      upstream changed them (previous Binutils merges did).
    - Note the upgrade in `$INV/daikon/doc/CHANGELOG.md` if user-visible (for
