@@ -7,14 +7,16 @@
 # See doc/valgrind-merge.texinfo.
 #
 # Usage: ./upstream-regtest.sh OUTFILE
-#   OUTFILE is the file to write the list of failing tests to, in the format
-#   of regtest-expected/*.txt.
+#   OUTFILE is the file to write the list of failing tests to, in the
+#   expected-failures format that check-regtest.sh describes.  The script
+#   replaces any earlier OUTFILE.
 #
 # The script builds and tests a fresh copy of $INV/valgrind-new, in
 # $INV/valgrind-new-build, replacing any earlier copy.  It never builds in
 # $INV/valgrind-new itself, so that $INV/valgrind-new stays a clean clone,
-# which becomes valgrind-old for the next merge.  The test output is in $INV/valgrind-new-build/test.log and
-# test-post.log.  The tests take about 15 minutes.
+# which becomes valgrind-old for the next merge.  The test output is in
+# $INV/valgrind-new-build/test.log and test-post.log.  The tests take about
+# 15 minutes.
 #
 # Many of the gdbserver tests fail unless gdb and the glibc debuginfo
 # package are installed.
@@ -49,10 +51,11 @@ rm -rf valgrind-new-build
 git -c advice.detachedHead=false clone -q valgrind-new valgrind-new-build
 cd valgrind-new-build
 echo "Building Valgrind in $INV/valgrind-new-build; the output is in build.log"
-# "make -j all install" would build the goals "all" and "install" in
-# parallel, so that two compilations of each file could collide.
-if ! { ./autogen.sh && ./configure --prefix="$(pwd)/inst" \
-         && make -j"$(nproc)" all && make install; } > build.log 2>&1; then
+# "make regtest" uses the build in place, so there is no "make install".
+# Installing into the source tree would also make upstream's post-test
+# header check fail, because it does not know the installation directory.
+if ! { ./autogen.sh && ./configure && make -j"$(nproc)" all; } \
+       > build.log 2>&1; then
   echo "$0: the build failed; see $INV/valgrind-new-build/build.log" >&2
   exit 1
 fi
@@ -72,4 +75,7 @@ make -j"$(nproc)" regtest XMLLINT=xmllint-skipped-by-check-regtest \
 make -s --no-print-directory post-regtest-checks > test-post.log 2>&1 || true
 
 # check-regtest.sh also writes the observed failures to test-observed.txt.
+# With --update, check-regtest.sh would keep the "?" lines and comments of
+# an existing OUTFILE, such as one from an earlier Valgrind release.
+rm -f "$OUTFILE"
 "$FJALARDIR/check-regtest.sh" --log test.log --expected "$OUTFILE" --update

@@ -73,8 +73,9 @@ What:
   decode, so the program dies with SIGILL before DynComp sees its IROps.
 - Fix each panic in its own PR, following #79's pattern.
 - Running programs finds only the operations those programs use.  Also
-  compare the `Iop_*` values relevant to amd64/x86 in `VEX/pub/libvex_ir.h`
-  against the cases the four `expr2tags_*_DC` functions handle.  After
+  run `$INV/fjalar/list-dyncomp-missing-iops.sh $INV/fjalar/valgrind`,
+  which compares the `Iop_*` values in `VEX/pub/libvex_ir.h` against the
+  cases that DynComp handles, and fix the ones relevant to amd64/x86.  After
   #87, `expr2tags_Unop_DC` handles each unary operation explicitly, so
   this comparison is mainly for binary, ternary, and quaternary
   operations.

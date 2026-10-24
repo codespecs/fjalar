@@ -57,26 +57,18 @@ new ones than to fix them.)
   just don't clobber them while resolving conflicts.  The complete checklist
   is the Fjalar-vs-pristine-2.39 diff created in step 3; that includes older
   edits and the edits made during the Valgrind 3.23 merge (`f15d19e3`, #72).
-  Edits since the 2.39 merge include:
-  - `55ae3f48` define PTR (#62)
-  - `be9be5f0` fix for newer versions of bfd.h (#63)
-  - `1ca71b1c` Support DWARF 3 (#73)
-  - `d8723ef7` spelling corrections (#75)
-  - `95516533` Support Rust and DWARF 3 & 4 (#76)
-  - `a620e75a` Fix Fjalar hang on optimized code with location views (#89)
-  - `89754787` Read DWARF registers through their guest-state offsets (#91)
-  - `a6948b30` and `0d7bdabd` use `true`/`false`, not `TRUE`/`FALSE`, in
-    `fjalar_process_file` in `readelf.c`
-- Open PRs that change `dwarf.c` (as of 2026-10-21):  the formal-parameter
-  location PRs #95 (unsupported DWARF location operations), #159
-  (`DW_OP_plus_uconst` does not set a formal parameter's frame offset), and
-  #146 (`DW_OP_piece`), #147 (register locations that Fjalar cannot read),
-  and #161 (`DW_OP_const*` is unsupported), which contain #95.  Land them
-  before starting this upgrade, so that their changes are part of the
-  Fjalar copy being merged into (and of the Fjalar-vs-2.39 diffs) rather
-  than conflicting with the upgrade later.  Re-check the location PRs'
-  `dwarf.c` changes while resolving conflicts, as for #73/#76.
-  No line that a location PR adds or changes may differ from Binutils 2.39
+- Land the open PRs that change the Binutils-derived files before starting
+  this upgrade, so that their changes are part of the Fjalar copy being
+  merged into (and of the Fjalar-vs-2.39 diffs) rather than conflicting
+  with the upgrade later.  To list them:
+
+  ```sh
+  gh pr list -R codespecs/fjalar --json number,files --jq \
+    '.[] | select(any(.files[]; .path | test("^valgrind/fjalar/(readelf\\.c|dwarf\\.[ch]|elfcomm\\.[ch]|bucomm\\.h|demanguse\\.h|include/|libiberty/)")))
+         | .number'
+  ```
+
+  No line that such a PR adds or changes may differ from Binutils 2.39
   only in whitespace, which the landed #134 made Fjalar's copies match;
   after all of them have landed, redo #134's procedure (in its
   description), which then changes nothing if all is well.
@@ -143,7 +135,7 @@ small.
      step 7, in a file outside the tree, so that it is not committed:
 
      ```sh
-     mkdir -p /tmp/$USER/binutils
+     (umask 077 && mkdir -p /tmp/$USER/binutils)
      nm valgrind/fjalar/fjalar-amd64-linux | grep -iE 'zstd|sframe|debuginfod' \
        | awk '{print $3}' > /tmp/$USER/binutils/nm-before.txt
      ```

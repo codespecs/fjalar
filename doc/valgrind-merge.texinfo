@@ -662,15 +662,16 @@ use.  To find all the operations of the new Valgrind that DynComp does not
 handle, run
 
 @example
-$INV/fjalar/list-dyncomp-missing-iops.sh
+$INV/fjalar/list-dyncomp-missing-iops.sh $INV/valgrind-new
 @end example
 
 @noindent
-It lists the operations that Memcheck handles but DynComp does not
-mention, and all operations that DynComp does not mention (mostly for
-other architectures).  Add each relevant one to the appropriate
-@code{expr2tags_*_DC} switch, or leave it to the @code{default} case
-deliberately, with a comment.
+It lists the operations that Memcheck handles but DynComp does not, and
+all operations that DynComp does not handle (mostly for other
+architectures).  Add each relevant one to the appropriate
+@code{expr2tags_*_DC} switch, or add it, as a case label, to the comment
+in @file{dyncomp_translate.c} that lists the operations that DynComp does
+not implement.
 
 
 @node Get New Valgrind Regtest Baseline Results
@@ -708,10 +709,10 @@ clone, which becomes @file{valgrind-old} for the next merge.
 This will take about 10-15 minutes.  The test output is in
 @file{$INV/valgrind-new-build/test.log}; a summary of the @command{regtest}
 results is at the end of it.  @file{$INV/regtest-upstream.txt} lists the
-failing tests, in the format of the expected-failures files in
-@file{regtest-expected/}.  We will use these results in
-@ref{Testing Valgrind}.  Do not delete @file{valgrind-new-build} until you
-have compared its results there.
+failing tests, in the expected-failures format that
+@command{check-regtest.sh} describes.  We will use these results in
+@ref{Testing Valgrind}.  Keep @file{valgrind-new-build} until the merge
+has landed (@pxref{Testing Valgrind}).
 
 Here is a copy of the last few lines from the latest run of these tests (01/21/2026)
 running Valgrind 3.23 on a UW/CSE Rocky Linux (9.7) based system:
@@ -745,8 +746,10 @@ make: *** [Makefile:1440: regtest] Error 1
 
 (Note that the failure of all the gdbserver tests indicates that the system does not
 have the proper glibc-debuginfo installed.)
-(Note the final include file failure - this is expected behavior.)
-(Note that the unknown directory failure is expected behavior.)
+(The unknown directory failure is from a build that installed into
+@file{inst} in the source tree, which upstream's header check does not
+know.  @command{upstream-regtest.sh} does not install, so it does not
+have that failure.)
 
 Here is another example from the latest run of these tests (01/21/2026)
 running Valgrind 3.23 on a Ubuntu Linux (25.10) based system:
@@ -841,16 +844,6 @@ we do not expect all the tests to pass.  We will use the results in
 Note: If there have been no operating system updates, we would expect
 the results to be identical to the ones obtained the last time a
 full Valgrind update was done.
-
-To compare compiler warnings before and after the merge
-(@pxref{Hints to modifying dwarf.c and readelf.c}), save the output of a
-build of Fjalar.  An incremental build prints no warnings for the files
-that it does not recompile, so these commands rebuild all of Fjalar:
-
-@smallexample
-make -C $INV/fjalar/valgrind/fjalar clean
-(set -o pipefail; make -C $INV/fjalar/valgrind/fjalar 2>&1 | tee $INV/fjalar/build-before.log)
-@end smallexample
 
 
 @node Merging the binutils changes
@@ -1275,7 +1268,9 @@ as described in @ref{Get New Valgrind Regtest Baseline Results}
 (for a Valgrind update, in @file{$INV/valgrind-new-build/test.log})
 or @ref{Get Current Valgrind Regtest Baseline Results}
 (for a Binutils update, in @file{$INV/fjalar/test.log}).
-For a Valgrind update, once the comparison is done, delete the build copy:
+For a Valgrind update, keep the build copy until the merge has landed,
+because a failure that appears only in CI may need to be compared with
+upstream's results; then delete it:
 @code{rm -rf $INV/valgrind-new-build}.
 
 

@@ -54,59 +54,26 @@ Memcheck and DynComp depend tightly on Valgrind core:
   because `mc_translate.c` and `dyncomp_translate.c` would have to be
   revisited five times.  Fall back to a hop at 3.25.1 only if the Memcheck
   conflicts are unmanageable.
-- Fjalar-local changes made since the 3.23 merge, by where they matter:
-  - Memcheck-derived files, so they can conflict in step 6:
-    `1ca71b1c` (#73) changed `mc_translate.c` and `memcheck.h`,
-    `2377944a` (#97) changed `mc_main.c`, and `a671ce4c` (#90, register
-    parameters) changed `mc_main.c` and `mc_include.h`.
-  - Coregrind/upstream files, so they can conflict in step 5: `42632185`
-    (#84) backported an upstream fix for `$(nproc)` in
-    `auxprogs/Makefile.am`.  3.27.1 has the same line, so take upstream's
-    version; after the merge, that file no longer differs from upstream.
-    Likewise, `f57698c1` (#102) backported upstream fixes to
+- The checklist of Fjalar changes to upstream files is
+  `git diff --diff-filter=a valgrind-merge/base valgrind-merge/fjalar`
+  (step 4).  By where they matter:
+  - Memcheck-derived files, such as `mc_translate.c`, `mc_main.c`, and
+    `memcheck.h`, can conflict in step 6.
+  - Coregrind and other upstream files can conflict in step 5.  Where
+    Fjalar backported an upstream fix (such as `$(nproc)` in
+    `auxprogs/Makefile.am`, and the GCC 15 fixes to
     `drd/tests/swapcontext.c`, `helgrind/tests/tc17_sembar.c`, and
-    `none/tests/bug234814.c`, so that they build with GCC 15; take
-    upstream's versions.
-  - DynComp, so step 7 must keep them (no conflict expected, since
-    upstream has no `kvasir/`): `b2c735d7` (#79) `Iop_64x4toV256` and
-    `125330a0` (#88) vector shifts, `d3b71509` (#85,
-    `--dyncomp-unhandled-ops`), and `225fae19` (#86, tag 0 for unary
-    operations whose result is a mask or count), in `dyncomp_translate.c`;
-    `8cd25174` (#104, comparison tags merged with a dirty call),
-    `1ff7ffe4` (#107, no helper-call merges under
-    `--dyncomp-interactions=none`), `7c4b6598` (#106, chained helper-call
-    merges), `54b935a6` (#126, a comment on the dirty-call merge),
-    `ea8a7103` (#116, clean intermediate helper-call merges), and
-    `65f721f0` (#87, explicit handling of every unary operation), in
-    `dyncomp_translate.c`;
-    `a4d693e1` (#114, instruction address only when tracing) and
-    `ab0b6145` (#108, `WEAK_FRESH_TAG` check), in `dyncomp_main.c`.
-  - Open PRs to land before this upgrade (as of 2026-10-20):
-    - DynComp, `dyncomp_translate.c`:  #111, #115, #117, #119, #120,
-      #122, #123, and #125.  Because #87 handles every unary operation
-      explicitly, new IROps in 3.24-3.27 reach the `default` cases of all
-      four `expr2tags_*_DC` functions, and
-      `--dyncomp-unhandled-ops=warn` lists them all in one run (step 7).
-    - Memcheck-derived files, so they can conflict in step 6:  #115,
-      #117, #119, #120, and #122 change `mc_translate.c` and
-      `mc_translate.h`.
-    - A script that this plan uses:  #132 (`check-regtest.sh --log` takes
-      the operating system from the log's name).
-    - Other open PRs may have been opened since.  To list the open PRs
-      that change files under `valgrind/`:
+    `none/tests/bug234814.c`), take upstream's version.
+  - DynComp changes, in `kvasir/`, cause no conflict, because upstream has
+    no `kvasir/`, but step 7 must keep them.
+- Land the open PRs that change files under `valgrind/` before this
+  upgrade.  To list them:
 
-      ```sh
-      gh pr list -R codespecs/fjalar --json number,files --jq \
-        '.[] | select(any(.files[]; .path | startswith("valgrind/")))
-             | .number'
-      ```
-
-  - Other changes since then (#76, #80, #89, #91, #94, the rest of #73)
-    touch only Fjalar's own files and Binutils-derived files, which this
-    merge does not change.
-  - The complete checklist of Fjalar changes to upstream files is
-    `git diff --diff-filter=a valgrind-merge/base valgrind-merge/fjalar`
-    (step 4).
+  ```sh
+  gh pr list -R codespecs/fjalar --json number,files --jq \
+    '.[] | select(any(.files[]; .path | startswith("valgrind/")))
+         | .number'
+  ```
 
 ## Steps
 
@@ -181,11 +148,7 @@ Memcheck and DynComp depend tightly on Valgrind core:
    `valgrind-new-build`, runs the regression tests there with the options
    that `check-regtest.sh` uses, and writes the tests that fail to
    `regtest-upstream-3.27.1.txt`, the list of tests that fail in upstream
-   3.27.1 on this machine; step 9 uses it.  The list contains an entry
-   `post_regtest_checks: Unknown directory 'inst'. ...`, because the
-   post-test header check in upstream's tree does not know the `inst`
-   directory that this build installs into; Fjalar's tree does not have
-   that error.
+   3.27.1 on this machine; step 9 uses it.
 
    The script never builds in `valgrind-old` or `valgrind-new`
    themselves, so that `valgrind-new` stays a clean clone, which becomes
@@ -254,7 +217,7 @@ Memcheck and DynComp depend tightly on Valgrind core:
      conflicts with them.
 
 7. **DynComp / Fjalar / Kvasir updates.**
-   - `git -C $INV/fjalar diff -b valgrind-merge/base valgrind-merge/new -- valgrind/VEX/pub/libvex_ir.h`
+   - `git diff -b valgrind-merge/base valgrind-merge/new -- valgrind/VEX/pub/libvex_ir.h`
      and hand-port relevant hunks of
      `git diff valgrind-merge/base valgrind-merge/new -- valgrind/fjalar/mc_translate.c`
      into
@@ -270,11 +233,13 @@ Memcheck and DynComp depend tightly on Valgrind core:
      cases that would now be hit.  Most changes for other architectures can
      be ignored.
    - Running programs finds only the operations those programs use, so also
-     run `$FJALAR/list-dyncomp-missing-iops.sh`.  It lists the operations
-     that Memcheck handles but DynComp does not mention, and all operations
-     that DynComp does not mention (mostly for other architectures).
-     Add each relevant one to the appropriate `expr2tags_*_DC` switch, or
-     leave it to the `default` case deliberately, with a comment.  Also
+     run `$FJALAR/list-dyncomp-missing-iops.sh $INV/valgrind-new`.  It
+     lists the operations that Memcheck handles but DynComp does not, and
+     all operations that DynComp does not handle (mostly for other
+     architectures).  Add each relevant one to the appropriate
+     `expr2tags_*_DC` switch, or add it, as a case label, to the comment in
+     `dyncomp_translate.c` that lists the operations that DynComp does not
+     implement.  Also
      compare `Iex_*` and `Ist_*` kinds.
    - Read NEWS for 3.24.0 through 3.27.1 and note: new platforms (each adds
      `VEX/priv/*` and `coregrind/m_*` files and `configure.ac` cases);
