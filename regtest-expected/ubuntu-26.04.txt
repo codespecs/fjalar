@@ -4,8 +4,8 @@
 # image (for example, with a new gdb or glibc) can change which tests fail.
 # See check-regtest.sh for the format.  To regenerate, download the job's
 # artifact (gh run download <run-id> -n regtest-results-regtest_ubuntu_26_04)
-# and, in that directory, run:
-#   $FJALAR/check-regtest.sh --log regtest-ubuntu-26.04.log --expected $FJALAR/regtest-expected/ubuntu-26.04.txt --update
+# and, in that directory, run this file's check-regtest.sh:
+#   <fjalar>/check-regtest.sh --log regtest-ubuntu-26.04.log --update
 
 drd/tests/pth_detached3 (stderr)
 drd/tests/std_thread2 (stderr)
