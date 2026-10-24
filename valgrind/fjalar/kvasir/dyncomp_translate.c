@@ -42,6 +42,8 @@ extern char dyncomp_profile_tags;
 static
 IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
                             Int slot );
+static
+IRExpr* tmpDefinition_DC ( DCEnv* dce, IRTemp tmp );
 
 /* Find the tmp currently shadowing the given original tmp.  If none
    so far exists, allocate one.  */
@@ -132,6 +134,56 @@ static void pendingCarryTags_DC ( DCEnv* dce, IRAtom* atom,
       *tag1 = dce->tmpPendingCarryTags[2 * atom->Iex.RdTmp.tmp];
       *tag2 = dce->tmpPendingCarryTags[2 * atom->Iex.RdTmp.tmp + 1];
    }
+}
+
+// `atom` is the value of the CC_DEP2 field of the flags thunk of an sbb
+// instruction.  If `atom` is `argR ^ oldCarry` (possibly zero-extended), as
+// an sbb instruction stores there, returns `argR`.  Otherwise, returns
+// `atom`.
+// Under --dyncomp-interactions=comparisons, an xor is not an interaction,
+// and its tag is 0, but a comparison by sbb merges the tag of CC_DEP2 with
+// the tag of CC_DEP1; see dyncomp_cc_op_is_sub.
+//
+// The caller must ensure that the thunk is that of an sbb (by checking
+// CC_OP), because CC_DEP2 of another thunk, such as that of a cmp, may be
+// the result of an xor instruction, whose first operand was not compared.
+static
+IRAtom* sbbSecondOperand_DC ( DCEnv* dce, IRAtom* atom )
+{
+   IRExpr* def;
+
+   if (atom->tag != Iex_RdTmp) {
+      return atom;
+   }
+   def = tmpDefinition_DC(dce, atom->Iex.RdTmp.tmp);
+   if (def && def->tag == Iex_Unop
+       && (def->Iex.Unop.op == Iop_8Uto64
+           || def->Iex.Unop.op == Iop_16Uto64
+           || def->Iex.Unop.op == Iop_32Uto64)
+       && def->Iex.Unop.arg->tag == Iex_RdTmp) {
+      def = tmpDefinition_DC(dce, def->Iex.Unop.arg->Iex.RdTmp.tmp);
+   }
+   if (def && def->tag == Iex_Binop
+       && (def->Iex.Binop.op == Iop_Xor8
+           || def->Iex.Binop.op == Iop_Xor16
+           || def->Iex.Binop.op == Iop_Xor32
+           || def->Iex.Binop.op == Iop_Xor64)) {
+      return def->Iex.Binop.arg1;
+   }
+   return atom;
+}
+
+// Returns `dep2`, the CC_DEP2 argument of a helper that reads flags, or, if
+// `ccOp`, its CC_OP argument, is known at translation time to be that of an
+// sbb, the sbb's second operand; see sbbSecondOperand_DC.
+static
+IRAtom* flagsDep2Operand_DC ( DCEnv* dce, IRAtom* ccOp, IRAtom* dep2 )
+{
+   if (ccOp->tag == Iex_Const && ccOp->Iex.Const.con->tag == Ico_U64
+       && dyncomp_cc_op_is_sbb(ccOp->Iex.Const.con->Ico.U64)) {
+      return sbbSecondOperand_DC(dce, dep2);
+   }
+   return dep2;
 }
 
 // Returns True if tag is the constant 0, which merging has no effect on.
@@ -226,6 +278,16 @@ void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
    if (atom) {
       tl_assert(!vatom);
       tl_assert(isOriginalAtom_DC(dce, atom));
+      // An instruction that sets the flags PUTs CC_OP before CC_DEP2.
+      if (offset == offsetof(VexGuestAMD64State, guest_CC_OP)) {
+         dce->sbbThunk = atom->tag == Iex_Const
+                         && atom->Iex.Const.con->tag == Ico_U64
+                         && dyncomp_cc_op_is_sbb(atom->Iex.Const.con->Ico.U64);
+      }
+      if (offset == offsetof(VexGuestAMD64State, guest_CC_DEP2)
+          && dce->sbbThunk && dyncomp_dataflow_comparisons_mode) {
+         atom = sbbSecondOperand_DC(dce, atom);
+      }
       vatom = expr2tags_DC( dce, atom );
    } else {
       tl_assert(vatom);
@@ -424,8 +486,9 @@ IRAtom* mkMergeTags_DC ( Int regparms, const HChar* hname, void* helper,
 //
 // Under --dyncomp-interactions=comparisons, a helper call is an
 // interaction only if it is a comparison:  that is, if it uses flags that
-// a subtraction (a cmp or sub instruction) set.  The helpers that read
-// flags (amd64g_calculate_condition, amd64g_calculate_rflags_c, and
+// a subtraction (a cmp, sub, or sbb instruction) set; see
+// dyncomp_cc_op_is_sub.  The helpers that read flags
+// (amd64g_calculate_condition, amd64g_calculate_rflags_c, and
 // amd64g_calculate_rflags_all) compute them from a flags thunk whose CC_OP
 // field says which operation set them.  CC_OP is often known only at run
 // time, for example when the flags are read in a different superblock
@@ -434,6 +497,14 @@ IRAtom* mkMergeTags_DC ( Int regparms, const HChar* hname, void* helper,
 // its flags are read by a setl (via amd64g_calculate_condition) or by an
 // sbb (via amd64g_calculate_rflags_c), but the operands of an add are not
 // merged when its carry is read by an adc.
+//
+// The CC_DEP2 field of an sbb's thunk is the xor of its second operand and
+// the old carry, so its tag is 0.  When CC_OP is known at translation time
+// to be that of an sbb, which is the case when the sbb is in the same
+// superblock as the call, VEX passes that xor as the `cc_dep2` argument,
+// and the merge uses the tag of the sbb's second operand instead; see
+// sbbSecondOperand_DC.  Otherwise, the `cc_dep2` argument is read from the
+// guest state, to which do_shadow_PUT_DC gave the tag of that operand.
 //
 // Some instructions read flags without using them as the result of a
 // comparison.  An inc or dec instruction reads the carry flag (via
@@ -782,6 +853,7 @@ void handleFlagsCCall_DC ( DCEnv* dce, IRAtom** exprvec, IRCallee* cee )
    // follow
    Int ccOpIndex;
    IRAtom* ccOp;
+   IRAtom* dep2;
    Bool readsCarry;
    IRAtom* pendingTag1 = IRExpr_Const(IRConst_UWord(0));
    IRAtom* pendingTag2 = IRExpr_Const(IRConst_UWord(0));
@@ -812,6 +884,7 @@ void handleFlagsCCall_DC ( DCEnv* dce, IRAtom** exprvec, IRCallee* cee )
    }
 
    ccOp = exprvec[ccOpIndex];
+   dep2 = flagsDep2Operand_DC(dce, ccOp, exprvec[ccOpIndex + 2]);
    if (readsCarry) {
       pendingCarryTags_DC(dce, exprvec[ccOpIndex + 3],
                           &pendingTag1, &pendingTag2);
@@ -819,8 +892,7 @@ void handleFlagsCCall_DC ( DCEnv* dce, IRAtom** exprvec, IRCallee* cee )
    mergeTagsReturn0_DC(dce,
                        subOperandTag_DC(dce, ccOp, exprvec[ccOpIndex + 1],
                                         pendingTag1),
-                       subOperandTag_DC(dce, ccOp, exprvec[ccOpIndex + 2],
-                                        pendingTag2));
+                       subOperandTag_DC(dce, ccOp, dep2, pendingTag2));
 }
 
 // Returns the expression that the statements of the superblock before the
@@ -923,7 +995,9 @@ void notePendingCarryTags_DC ( DCEnv* dce, IRTemp tmp, IRExpr* data )
             IRAtom* pendingTag2;
             pendingCarryTags_DC(dce, args[3], &pendingTag1, &pendingTag2);
             tag1 = subOperandTag_DC(dce, args[0], args[1], pendingTag1);
-            tag2 = subOperandTag_DC(dce, args[0], args[2], pendingTag2);
+            tag2 = subOperandTag_DC(dce, args[0],
+                                    flagsDep2Operand_DC(dce, args[0], args[2]),
+                                    pendingTag2);
          }
          break;
       default:
