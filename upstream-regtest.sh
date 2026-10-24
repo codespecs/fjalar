@@ -10,7 +10,8 @@
 # VNEWTAG must be set, and $INV/valgrind-new must be at that tag.
 #   OUTFILE is the file to write the list of failing tests to, in the
 #   expected-failures format that check-regtest.sh describes.  The script
-#   replaces any earlier OUTFILE.
+#   replaces any earlier OUTFILE, unless the tests did not run.  OUTFILE
+#   may not be in $INV/valgrind-new or $INV/valgrind-new-build.
 #
 # The script builds and tests a fresh copy of $INV/valgrind-new, in
 # $INV/valgrind-new-build, replacing any earlier copy.  It never builds in
@@ -37,29 +38,45 @@ fi
 OUTFILE=$(realpath -m "$1")
 
 FJALARDIR="$(cd "$(dirname "$0")" && pwd -P)"
+source "$FJALARDIR/valgrind-common.sh"
 
 if [ -z "$INV" ]; then
   echo "$0: INV is not set; see doc/valgrind-merge.texinfo." >&2
   exit 1
 fi
-if [ ! -d "$INV/valgrind-new/.git" ]; then
-  echo "$0: $INV/valgrind-new is not a git clone." >&2
+# Make INV absolute and free of symbolic links, like OUTFILE, so that the
+# two can be compared.
+if ! inv=$(cd "$INV" && pwd -P); then
+  echo "$0: cannot change to directory $INV." >&2
   exit 1
 fi
+INV=$inv
+check_toplevel "$INV/valgrind-new"
 # At the next merge, it is easy to forget to clone the new release into
-# valgrind-new, or to clone the wrong tag.  So check that valgrind-new is
-# at tag VNEWTAG, as merge-valgrind.sh does.
+# valgrind-new, or to clone the wrong tag.  So require VNEWTAG, which
+# merge-valgrind.sh checks only if it is set.
 if [ -z "${VNEWTAG-}" ]; then
   echo "$0: VNEWTAG is not set; see doc/valgrind-merge.texinfo." >&2
   exit 1
 fi
-if ! commit=$(git -C "$INV/valgrind-new" rev-parse --verify -q "refs/tags/$VNEWTAG^{commit}"); then
-  echo "$0: $INV/valgrind-new has no tag $VNEWTAG (the value of VNEWTAG)." >&2
-  exit 1
+check_tag "$INV/valgrind-new" VNEWTAG
+
+# Check OUTFILE now rather than after the tests, which take 15 minutes.  The
+# script deletes valgrind-new-build, and valgrind-new must stay a clean
+# clone, so OUTFILE may be in neither.
+case "$OUTFILE/" in
+  "$INV"/valgrind-new/* | "$INV"/valgrind-new-build/*)
+    echo "$0: OUTFILE must not be in $INV/valgrind-new or $INV/valgrind-new-build: $OUTFILE" >&2
+    exit 2
+    ;;
+esac
+if [ -d "$OUTFILE" ]; then
+  echo "$0: OUTFILE is a directory: $OUTFILE" >&2
+  exit 2
 fi
-if [ "$(git -C "$INV/valgrind-new" rev-parse HEAD)" != "$commit" ]; then
-  echo "$0: $INV/valgrind-new is not at tag $VNEWTAG (the value of VNEWTAG)." >&2
-  exit 1
+if [ ! -d "$(dirname "$OUTFILE")" ] || [ ! -w "$(dirname "$OUTFILE")" ]; then
+  echo "$0: $(dirname "$OUTFILE") is not a writable directory." >&2
+  exit 2
 fi
 
 cd "$INV"
@@ -90,16 +107,21 @@ make -j"$(nproc)" regtest XMLLINT=xmllint-skipped-by-check-regtest \
 # as the post-test checks' error messages.
 make -s --no-print-directory post-regtest-checks > test-post.log 2>&1 || true
 
-# Start OUTFILE with only a header, which says which release and operating
+# Start the list with only a header, which says which release and operating
 # system the list is for.  With --update, check-regtest.sh keeps the header
 # and appends this run's failures; it keeps nothing of an earlier OUTFILE,
 # such as one from an earlier Valgrind release.  check-regtest.sh also
-# writes the observed failures to test-observed.txt.
+# writes the observed failures to test-observed.txt.  The list is written
+# in valgrind-new-build and copied to OUTFILE only if check-regtest.sh
+# succeeds, because a list with no failures, from tests that did not run,
+# would wrongly say that every failure in Fjalar's tree is not upstream's.
 # shellcheck disable=SC1091
 OS_NAME=$(. /etc/os-release && echo "$PRETTY_NAME")
 {
   echo "# Tests that fail in upstream Valgrind $VNEWTAG on $OS_NAME."
   echo "# See check-regtest.sh for the format.  Regenerate with upstream-regtest.sh."
   echo
-} > "$OUTFILE"
-"$FJALARDIR/check-regtest.sh" --log test.log --expected "$OUTFILE" --update
+} > upstream-failures.txt
+"$FJALARDIR/check-regtest.sh" --log test.log --expected upstream-failures.txt --update
+cp upstream-failures.txt "$OUTFILE"
+echo "Wrote $OUTFILE"
