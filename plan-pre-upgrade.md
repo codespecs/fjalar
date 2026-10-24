@@ -8,12 +8,9 @@ requires; neither requires all of them.
 
 Below, `$INV/fjalar` means the Fjalar tree being changed.
 
-Items 2 (#103) and 4 (#134, which has landed) are done.  Items 1 and 3
-are described here.
-Other open PRs that both
-upgrades should wait for, because they change files that the upgrades
-merge into, are listed in the "Current state" section of each upgrade
-plan.
+Items 2 (#103) and 4 (#134) are done.  Both upgrades should also wait
+for the open PRs that change files that the upgrades merge into; the
+"Current state" section of each upgrade plan says how to list them.
 
 ## 1. Enforce the expected regtest failures in CI
 
@@ -26,19 +23,16 @@ the failures.
    This makes most `gdbserver_tests` meaningful.  Ideally, do this before
    step 2, so that the lists are generated only once.
 2. Push a branch and let the regtest jobs run.  Download the
-   `regtest-results-*` artifacts and copy each `regtest-<os>-observed.txt`
-   to `regtest-expected/<os>.txt`.
+   `regtest-results-*` artifacts.  In each artifact's directory, run
+   `$INV/fjalar/check-regtest.sh --log regtest-<os>.log --expected $INV/fjalar/regtest-expected/<os>.txt --update`,
+   which writes the observed failures to the list, after a header that
+   explains the format and how to regenerate the list.
 3. Re-run the jobs at least twice more.  Any test whose result differs
    between runs (timing-dependent tests such as helgrind or `fdleak`, or
    CPU-dependent tests such as AVX-512 ones; the job logs the CPU) gets a
    `?` prefix.
 4. Remove `--report-only` from both CI jobs (the TODO comments in
    `.github/workflows/ci.yml`) and commit the lists.
-5. Describe `check-regtest.sh` in section "Testing Valgrind" of
-   `doc/valgrind-merge.texinfo`, replacing the comparison of logs by eye:
-   a failure that is not expected is an upstream failure if it is in the
-   list that `upstream-regtest.sh` wrote (section "Get New Valgrind
-   Regtest Baseline Results"), and otherwise probably a bug in the merge.
 
 Done when:  CI enforces the lists on both distributions and is green.
 
@@ -72,13 +66,22 @@ What:
   AVX-512, they emit AVX-512 instructions, which Valgrind 3.23 cannot
   decode, so the program dies with SIGILL before DynComp sees its IROps.
 - Fix each panic in its own PR, following #79's pattern.
-- Running programs finds only the operations those programs use.  Also
-  run `$INV/fjalar/list-dyncomp-missing-iops.sh $INV/fjalar/valgrind`,
-  which compares the `Iop_*` values in `VEX/pub/libvex_ir.h` against the
-  cases that DynComp handles, and fix the ones relevant to amd64/x86.  After
-  #87, `expr2tags_Unop_DC` handles each unary operation explicitly, so
-  this comparison is mainly for binary, ternary, and quaternary
-  operations.
+- Running programs finds only the operations those programs use.  So, in
+  its own PR, extend `valgrind/fjalar/tests/dyncomp-unop-coverage-test.sh`
+  (which `make fjalar-test` runs) to binary, ternary, and quaternary
+  operations.  It takes each operation's arity from `typeOfPrimop` in
+  VEX's `ir_defs.c` and checks that `expr2tags_Unop_DC` has a case for
+  exactly the unary operations; check `expr2tags_Binop_DC`,
+  `expr2tags_Triop_DC`, and `expr2tags_Qop_DC` the same way.  Many
+  operations of other architectures have no case, on purpose; the test
+  must accept those that are listed, as case labels, in the comment of
+  `dyncomp_translate.c` that lists the operations that DynComp does not
+  implement.  Fix the operations relevant to amd64/x86 that the test
+  reports (on 3.23, at least `Iop_MulHi8Sx16` and `Iop_MulHi8Ux16`), and
+  add the others to that comment.  After the Valgrind upgrade, the test
+  then lists each new operation that DynComp does not handle.  Describe
+  the test in appendix "Supporting new VEX IR Instruction" of
+  `doc/valgrind-merge.texinfo`.
 - Add one such program to Daikon's Kvasir tests (`tests/kvasir-tests`, in the
   Daikon repository), compiled with `-march=x86-64-v3`, so CI exercises
   AVX2 IROps.  GitHub's runners support AVX2; check that before relying on it

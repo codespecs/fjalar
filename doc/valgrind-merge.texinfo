@@ -658,20 +658,10 @@ to be explicitly supported by DynComp.
 guidelines on supporting new VEX instructions.
 
 Running programs finds only the unhandled operations that those programs
-use.  To find all the operations of the new Valgrind that DynComp does not
-handle, run
-
-@example
-$INV/fjalar/list-dyncomp-missing-iops.sh $INV/valgrind-new
-@end example
-
-@noindent
-It lists the operations that Memcheck handles but DynComp does not, and
-all operations that DynComp does not handle (mostly for other
-architectures).  Add each relevant one to the appropriate
-@code{expr2tags_*_DC} switch, or add it, as a case label, to the comment
-in @file{dyncomp_translate.c} that lists the operations that DynComp does
-not implement.
+use.  @code{make fjalar-test} runs
+@file{valgrind/fjalar/tests/dyncomp-unop-coverage-test.sh}, which fails
+for each unary operation that has no case in @code{expr2tags_Unop_DC}, so
+it lists every unary operation that the merge added.
 
 
 @node Get New Valgrind Regtest Baseline Results
@@ -696,11 +686,12 @@ To run the @command{regtest} verification tests, run
 failing tests to:
 
 @example
-$INV/fjalar/upstream-regtest.sh $INV/regtest-upstream.txt
+$INV/fjalar/upstream-regtest.sh $INV/regtest-upstream-$VNEWTAG.txt
 @end example
 
 @noindent
-The script builds a copy of @file{valgrind-new}, in
+The script checks that @file{valgrind-new} is at @code{$VNEWTAG}, if that
+variable is set.  It builds a copy of @file{valgrind-new}, in
 @file{$INV/valgrind-new-build}, and runs the tests there.  It never builds
 in @file{valgrind-new} itself, so that @file{valgrind-new} stays a clean
 clone, which becomes @file{valgrind-old} for the next merge.
@@ -708,7 +699,7 @@ clone, which becomes @file{valgrind-old} for the next merge.
 @noindent
 This will take about 10-15 minutes.  The test output is in
 @file{$INV/valgrind-new-build/test.log}; a summary of the @command{regtest}
-results is at the end of it.  @file{$INV/regtest-upstream.txt} lists the
+results is at the end of it.  @file{$INV/regtest-upstream-$VNEWTAG.txt} lists the
 failing tests, in the expected-failures format that
 @command{check-regtest.sh} describes.  We will use these results in
 @ref{Testing Valgrind}.  Keep @file{valgrind-new-build} until the merge
@@ -824,7 +815,7 @@ current Fjalar sources.
 @smallexample
 if [ -f $INV/fjalar/valgrind/Makefile ]; then make -C $INV/fjalar clean; fi \
   && (set -o pipefail; make -C $INV/fjalar build 2>&1 | tee $INV/fjalar/build-before.log) \
-  && make -C $INV/fjalar test 2>&1 | tee $INV/fjalar/test.log
+  && $INV/fjalar/check-regtest.sh
 @end smallexample
 
 @noindent
@@ -837,13 +828,18 @@ created @file{valgrind/Makefile}.
 
 @noindent
 As noted in @ref{Get New Valgrind Regtest Baseline Results},
-we do not expect all the tests to pass.  We will use the results in
-@ref{Testing Valgrind}.
+we do not expect all the tests to pass.  @command{check-regtest.sh}
+compares the failures with the expected failures for this operating
+system, in @file{regtest-expected/<os>.txt}, and must report no
+unexpected failures.  If this operating system has no such file, create
+a local one, which you should not commit:
+
+@smallexample
+$INV/fjalar/check-regtest.sh --log $INV/fjalar/regtest-<os>.log --update
+@end smallexample
 
 @noindent
-Note: If there have been no operating system updates, we would expect
-the results to be identical to the ones obtained the last time a
-full Valgrind update was done.
+@ref{Testing Valgrind} compares against it.
 
 
 @node Merging the binutils changes
@@ -1254,20 +1250,37 @@ run the installed Fjalar under @file{valgrind/inst}, so without
 @section Testing Valgrind
 
 Before we test Fjalar, it is a good idea to verify we haven't
-broken the underlying Valgrind:
+broken the underlying Valgrind.  @command{check-regtest.sh} runs
+Valgrind's @command{regtest} tests and compares the failures with the
+expected failures for this operating system, in
+@file{regtest-expected/<os>.txt}:
 
 @smallexample
-make -C $INV/fjalar --no-print-directory test 2>&1 | tee $INV/fjalar/test-after.log
+$INV/fjalar/check-regtest.sh
 @end smallexample
 
 @noindent
-While a few tests may not pass, the results at the end of
-@file{test-after.log} should be identical to
-the results obtained when running these tests
-as described in @ref{Get New Valgrind Regtest Baseline Results}
-(for a Valgrind update, in @file{$INV/valgrind-new-build/test.log})
-or @ref{Get Current Valgrind Regtest Baseline Results}
-(for a Binutils update, in @file{$INV/fjalar/test.log}).
+For a Binutils update, which does not change Valgrind, it must report no
+unexpected failures.  A new failure is a bug in the merge, or the result
+of an operating system or compiler update; to tell which, run the tests
+on the old sources.
+
+For a Valgrind update, the expected failures change, because the new
+release adds, removes, and fixes tests.  For each unexpected failure: if
+it is also in the list that @command{upstream-regtest.sh} wrote
+(@pxref{Get New Valgrind Regtest Baseline Results}), it is an upstream
+failure, so add it to the expected failures; otherwise it was probably
+caused by the merge, so fix it.  Remove expected failures that now pass.
+This command rewrites the expected failures; review its diff:
+
+@smallexample
+$INV/fjalar/check-regtest.sh --log $INV/fjalar/regtest-<os>.log --update
+@end smallexample
+
+@noindent
+Commit the diff only if the list is committed, not if you created it
+locally.
+
 For a Valgrind update, keep the build copy until the merge has landed,
 because a failure that appears only in CI may need to be compared with
 upstream's results; then delete it:

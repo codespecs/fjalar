@@ -94,7 +94,9 @@ the old version from `BINUTILS_VERSION` in `valgrind/REVISION`.  So at the
 end of each hop, update `valgrind/REVISION` to the hop's new version (as
 described in step 8) and commit, with commit message "Upgrade Binutils
 (readelf) from 2.39 to 2.42" (for the first hop), before starting the
-next hop.  Do steps 1, 2, and 8 only once.
+next hop.  If step 2 created a local `regtest-expected/<os>.txt`, do not
+commit it:  git does not ignore it, so `git add -A` would commit it.  Do
+steps 1, 2, and 8 only once.
 
 The scripts that this plan uses are in the top-level directory of the
 Fjalar tree.  The Binutils ones work in `/tmp/$USER/binutils/`.
@@ -355,8 +357,7 @@ small.
      with `make doc` (which `test.sh` runs in CI) to confirm that the
      document still formats.
    - If step 2 created a local `regtest-expected/<os>.txt`, delete it
-     before committing:  git does not ignore it, so `git add -A` would
-     commit it.
+     before the last commit (see the note about hops above).
    - Commit the doc and changelog updates (the whole branch is one PR, whose
      title is "Upgrade Binutils (readelf) from 2.39 to 2.47").
      Delete `regtest-<os>.log`, `regtest-<os>-post.log`, and

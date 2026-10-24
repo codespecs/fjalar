@@ -7,6 +7,7 @@
 # See doc/valgrind-merge.texinfo.
 #
 # Usage: ./upstream-regtest.sh OUTFILE
+# If VNEWTAG is set, $INV/valgrind-new must be at that tag.
 #   OUTFILE is the file to write the list of failing tests to, in the
 #   expected-failures format that check-regtest.sh describes.  The script
 #   replaces any earlier OUTFILE.
@@ -45,6 +46,20 @@ if [ ! -d "$INV/valgrind-new/.git" ]; then
   echo "$0: $INV/valgrind-new is not a git clone." >&2
   exit 1
 fi
+# At the next merge, it is easy to forget to clone the new release into
+# valgrind-new, or to clone the wrong tag.  If VNEWTAG is set, check that
+# valgrind-new is at that tag, as merge-valgrind.sh does.
+if [ -n "${VNEWTAG-}" ]; then
+  if ! commit=$(git -C "$INV/valgrind-new" rev-parse --verify -q "refs/tags/$VNEWTAG^{commit}"); then
+    echo "$0: $INV/valgrind-new has no tag $VNEWTAG (the value of VNEWTAG)." >&2
+    exit 1
+  fi
+  if [ "$(git -C "$INV/valgrind-new" rev-parse HEAD)" != "$commit" ]; then
+    echo "$0: $INV/valgrind-new is not at tag $VNEWTAG (the value of VNEWTAG)." >&2
+    exit 1
+  fi
+fi
+RELEASE=$(git -C "$INV/valgrind-new" describe --tags --always)
 
 cd "$INV"
 rm -rf valgrind-new-build
@@ -79,3 +94,7 @@ make -s --no-print-directory post-regtest-checks > test-post.log 2>&1 || true
 # an existing OUTFILE, such as one from an earlier Valgrind release.
 rm -f "$OUTFILE"
 "$FJALARDIR/check-regtest.sh" --log test.log --expected "$OUTFILE" --update
+# Record which release and operating system the list is for.
+# shellcheck disable=SC1091
+OS_NAME=$(. /etc/os-release && echo "$PRETTY_NAME")
+sed -i "1i # Failing tests of upstream Valgrind $RELEASE on $OS_NAME." "$OUTFILE"

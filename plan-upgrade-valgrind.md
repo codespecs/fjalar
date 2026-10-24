@@ -143,12 +143,13 @@ Memcheck and DynComp depend tightly on Valgrind core:
 
 3. **Baseline.**  First install `gdb` and the glibc debuginfo package;
    without them, most `gdbserver_tests` fail.  Then run
-   `$FJALAR/upstream-regtest.sh $INV/regtest-upstream-3.27.1.txt`, which
-   takes about 15 minutes.  It builds a fresh copy of `valgrind-new`, in
-   `valgrind-new-build`, runs the regression tests there with the options
-   that `check-regtest.sh` uses, and writes the tests that fail to
-   `regtest-upstream-3.27.1.txt`, the list of tests that fail in upstream
-   3.27.1 on this machine; step 9 uses it.
+   `$FJALAR/upstream-regtest.sh $INV/regtest-upstream-$VNEWTAG.txt`, which
+   takes about 15 minutes.  It checks that `valgrind-new` is at
+   `$VNEWTAG`, builds a fresh copy of it, in `valgrind-new-build`, runs
+   the regression tests there with the options that `check-regtest.sh`
+   uses, and writes the tests that fail to
+   `regtest-upstream-$VNEWTAG.txt`, the list of tests that fail in
+   upstream 3.27.1 on this machine; step 9 uses it.
 
    The script never builds in `valgrind-old` or `valgrind-new`
    themselves, so that `valgrind-new` stays a clean clone, which becomes
@@ -226,20 +227,18 @@ Memcheck and DynComp depend tightly on Valgrind core:
      amd64/x86, add handling in the `expr2tags_*_DC` functions (see the
      #79 `Iop_64x4toV256` fix for the pattern).  With #87, that includes
      new unary operations, which reach `expr2tags_Unop_DC`'s `default`
-     case.  Running the Kvasir tests and the programs of
+     case, and for which `make fjalar-test` (step 9) fails.  Running the Kvasir tests and the programs of
      `plan-pre-upgrade.md` item 3 with
      `--dyncomp-unhandled-ops=warn` (#85) lists the unhandled ones that
      they hit.  Search for panics/`default:`
      cases that would now be hit.  Most changes for other architectures can
      be ignored.
-   - Running programs finds only the operations those programs use, so also
-     run `$FJALAR/list-dyncomp-missing-iops.sh $INV/valgrind-new`.  It
-     lists the operations that Memcheck handles but DynComp does not, and
-     all operations that DynComp does not handle (mostly for other
-     architectures).  Add each relevant one to the appropriate
-     `expr2tags_*_DC` switch, or add it, as a case label, to the comment in
-     `dyncomp_translate.c` that lists the operations that DynComp does not
-     implement.  Also
+   - Running programs finds only the operations those programs use.
+     `make fjalar-test` runs `valgrind/fjalar/tests/dyncomp-unop-coverage-test.sh`,
+     which lists every unary operation that has no case in
+     `expr2tags_Unop_DC`, and, after `plan-pre-upgrade.md` item 3, the
+     corresponding tests for binary, ternary, and quaternary operations.
+     Handle each operation that they list, as item 3 describes.  Also
      compare `Iex_*` and `Ist_*` kinds.
    - Read NEWS for 3.24.0 through 3.27.1 and note: new platforms (each adds
      `VEX/priv/*` and `coregrind/m_*` files and `configure.ac` cases);
@@ -281,11 +280,12 @@ Memcheck and DynComp depend tightly on Valgrind core:
 9. **Test.**  Run these from `$FJALAR` (`cd $FJALAR`).
    - `./check-regtest.sh`.  The expected failures will change, because
      3.27.1 adds, removes, and fixes tests.  For each unexpected failure:
-     if it is also in step 3's `regtest-upstream-3.27.1.txt`, it is an
+     if it is also in step 3's `regtest-upstream-$VNEWTAG.txt`, it is an
      upstream failure, so add it to the expected list; otherwise it was
      probably caused by the merge, so fix it.  Remove expected failures
      that now pass.  `./check-regtest.sh --log regtest-<os>.log --update`
-     rewrites the list; review its diff, which goes in the PR.
+     rewrites the list; review its diff.  If the list is committed, its
+     diff goes in the PR; if step 1 created it locally, do not commit it.
    - `make fjalar-test`.
    - `./test-kvasir.sh 2>&1 | tee kvasir-after.log` — compare with
      `kvasir-before.log` from step 1; the tests must pass with no goal-file
@@ -306,10 +306,20 @@ Memcheck and DynComp depend tightly on Valgrind core:
      upstream-or-merge-bug test as above, and commit the updated
      `regtest-expected/<os>.txt`.  Step 3's upstream list comes from your
      machine; a failure that appears only in CI may be an upstream failure
-     specific to that container or CPU.  To check, build upstream 3.27.1 in
-     that container (e.g., `docker run` the CI image, clone
-     `VALGRIND_3_27_1`, and run `upstream-regtest.sh` as in step 3) and
-     compare.
+     specific to that container or CPU.  To check, run
+     `upstream-regtest.sh` in the failing job's image (the regtest jobs of
+     `.github/workflows/ci.yml` name the images), and compare.  The script
+     needs `INV`, the upstream clone at `$INV/valgrind-new`, and a Fjalar
+     tree that contains it and `check-regtest.sh`.  For example, for the
+     Ubuntu job (writing the list to `$INV` on the host):
+
+     ```sh
+     docker run --rm -v "$INV:/host" mdernst/daikon-ubuntu-jdk11-plus:latest bash -c '
+       export INV=/tmp/inv VNEWTAG=VALGRIND_3_27_1
+       git clone -q -b $VNEWTAG --depth 1 https://sourceware.org/git/valgrind.git $INV/valgrind-new
+       git clone -q --depth 1 https://github.com/codespecs/fjalar.git $INV/fjalar
+       $INV/fjalar/upstream-regtest.sh /host/regtest-upstream-$VNEWTAG-ubuntu.txt'
+     ```
 
 10. **Finish.**
     - Update first line of `valgrind/REVISION`
@@ -337,13 +347,15 @@ Memcheck and DynComp depend tightly on Valgrind core:
         and, in appendix "Valgrind modifications", add
         `host_generic_reg_alloc3.c` and make the entries match Fjalar's
         changes outside `valgrind/fjalar` after this merge;
-      - the mechanical `Iop_` coverage check (step 7), in appendix
-        "Supporting new VEX IR Instruction" (section "Updating
-        Fjalar/Kvasir" already runs `list-dyncomp-missing-iops.sh`);
+      - the `Iop_` coverage tests that `make fjalar-test` runs (step 7),
+        in appendix "Supporting new VEX IR Instruction";
       - the hunk-by-hunk checkoff of `mc_translate.c` (step 6);
       - `make fjalar-test` and the plain Memcheck run (step 9).
       Rebuild with `make doc` (which `test.sh` runs in CI) to confirm that
       the document still formats.
+    - If step 1 created a local `regtest-expected/<os>.txt`, delete it
+      before committing:  git does not ignore it, so `git add -A` would
+      commit it.
     - Use the commit message "Upgrade Valgrind from 3.23.0 to 3.27.1".
     - Commit as one PR.
     - After the PR has landed, keep `valgrind-new` as the next merge's
