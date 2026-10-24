@@ -398,6 +398,7 @@ DaikonRepType decTypeToDaikonRepType(DeclaredType decType,
   case D_LONG_DOUBLE:
   case D_FLOAT16:
   case D_BFLOAT16:
+  case D_FLOAT128:
     return R_DOUBLE;
 
   case D_STRUCT_CLASS:
