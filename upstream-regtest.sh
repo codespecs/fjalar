@@ -93,15 +93,17 @@ if ! { ./autogen.sh && ./configure && make -j"$(nproc)" all; } \
   exit 1
 fi
 
-# Run the tests with the same parallelism, XMLLINT setting, and standard
-# input as check-regtest.sh.  Setting XMLLINT keeps
+# Run the tests with the same parallelism, XMLLINT setting, standard input,
+# and TERM (unset) as check-regtest.sh.  Setting XMLLINT keeps
 # "make check" from validating the manual, which fails without the DocBook
 # DTD.  "make regtest" exits with non-zero status whenever any test fails,
 # which is the usual case, so its status is ignored.  Some tests read
 # standard input:  memcheck/tests/null_socket calls recvfrom() on it, which
-# waits forever if standard input is a socket, so it is /dev/null.
+# waits forever if standard input is a socket, so it is /dev/null.  Unless
+# TERM is unset or "dumb", gdb 17 prefixes its error and warning messages
+# with an emoji, which the gdbserver tests' filters do not remove.
 echo "Running the regression tests; the output is in test.log and test-post.log"
-make -j"$(nproc)" regtest XMLLINT=xmllint-skipped-by-check-regtest \
+(unset TERM; make -j"$(nproc)" regtest XMLLINT=xmllint-skipped-by-check-regtest) \
   < /dev/null > test.log 2>&1 || true
 # -s and --no-print-directory keep make's own messages out of test-post.log,
 # which check-regtest.sh reads (because its name is derived from test.log)
