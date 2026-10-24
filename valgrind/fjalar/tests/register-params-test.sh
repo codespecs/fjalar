@@ -83,9 +83,40 @@ if ! rewrite_location v 2 \
        < "${output_dir}/stack-params-v.s" > "${output_dir}/stack-params-c.s" \
     || ! rewrite_location l 1 \
        "\t.byte\t0x35\t# DW_OP_lit5\n\t.byte\t0x9f\t# DW_OP_stack_value" \
-       < "${output_dir}/stack-params-c.s" > "${output_dir}/stack-params-patched.s"
+       < "${output_dir}/stack-params-c.s" > "${output_dir}/stack-params-l.s"
 then
   unsuitable_compiler "could not rewrite the locations of v, c, and l"
+fi
+
+# Renames formal parameter $1, which has 3 characters, to $2, which has 1
+# character, and appends "DW_OP_piece $3" to its location, which is
+# "DW_OP_fbreg N" where N needs 1 byte.  The size of the debugging information
+# is unchanged.
+append_piece() {
+  awk -v name="$1" -v newname="$2" -v size="$3" '
+     /DW_AT_name/ && index($0, "\"" name "\\0\"") && !done {
+       sub(name, newname); state = 1; print; next }
+     state == 1 && /# DW_AT_location/ {
+       if ($2 != "0x2") {
+         print "unexpected location for " name ": " $0 > "/dev/stderr"; exit 1
+       }
+       print "\t.uleb128 0x4\t# DW_AT_location"; state = 2; next
+     }
+     state == 2 && /# DW_OP_fbreg/ { state = 3; print; next }
+     state == 3 {
+       print
+       print "\t.byte\t0x93\t# DW_OP_piece"
+       print "\t.uleb128 " size
+       state = 0; done = 1; next
+     }
+     { print }
+     END { if (!done) { print "did not find " name > "/dev/stderr"; exit 1 } }'
+}
+if ! append_piece w__ w 8 < "${output_dir}/stack-params-l.s" \
+       > "${output_dir}/stack-params-w.s" \
+    || ! append_piece p__ p 4 < "${output_dir}/stack-params-w.s" \
+       > "${output_dir}/stack-params-patched.s"; then
+  unsuitable_compiler "could not append DW_OP_piece to the locations of w and p"
 fi
 gcc -no-pie -o "${output_dir}/register-params" \
     "${output_dir}/register-params.o" "${output_dir}/stack-params-patched.s"
@@ -102,7 +133,7 @@ if readelf --debug-dump=info "${output_dir}/register-params" \
            /DW_TAG_subprogram/ { insub = 1; next }
            insub && /DW_AT_name/ { fname = $NF; insub = 0 }
            # These functions are in stack-params.c, which is not optimized.
-           fname ~ /^(stack_value|kept|constant_value|literal_value)$/ { next }
+           fname ~ /^(stack_value|kept|whole_piece|part_piece|constant_value|literal_value)$/ { next }
            /DW_TAG_formal_parameter/ { inparam = 1; hasloc = 0; next }
            inparam && /DW_AT_location/ { hasloc = 1 }
            inparam && /DW_AT_location/ && !/: [0-9]+ byte block: .*\(DW_OP_reg/ { bad = 1 }

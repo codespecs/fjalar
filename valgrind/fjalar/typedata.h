@@ -100,6 +100,7 @@ typedef struct
 {
   unsigned long byte_size; // DW_AT_byte_size
   unsigned long encoding;
+  char* name; // DW_AT_name, such as "_Float16" or "__bf16"
 
   // (comment added 2005)
   // TODO: support for bit fields not yet implemented
@@ -332,11 +333,17 @@ typedef struct
 
   // True if the location expression contains an operation of kind
   // LOC_OP_UNSUPPORTED (see location_op_kind_of), such as a register that
-  // Fjalar cannot read or DW_OP_stack_value, or contains more than
+  // Fjalar cannot read or DW_OP_stack_value, or contains a DW_OP_piece that
+  // is not the last operation or that has size 0, or contains more than
   // MAX_DWARF_OPS operations.  Fjalar cannot read such a location.  A
   // location list does not set this flag:  like a missing location, it
   // leaves the location unknown, so heuristics may supply it.
   char location_has_unsupported_op;
+
+  // If the location expression ends with DW_OP_piece, the size of that
+  // piece; otherwise 0.  Fjalar can read the location only if the piece is
+  // the whole parameter and some operation precedes it.
+  unsigned long location_piece_size;
 
   unsigned long abstract_origin_ID; // See comment in the function struct definition
                                     // for the uses of this.
@@ -559,6 +566,7 @@ char harvest_mangled_name(dwarf_entry* e, const char* str);
 char harvest_comp_dir(dwarf_entry* e, const char* str);
 char harvest_producer(dwarf_entry* e, const char* str);
 char harvest_formal_param_location_unsupported(dwarf_entry* e);
+char harvest_formal_param_location_piece(dwarf_entry* e, unsigned long size);
 char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom atom, long value);
 char harvest_data_member_location(dwarf_entry* e, unsigned long value);
 char harvest_string(dwarf_entry* e, unsigned long attr, const char* str);
