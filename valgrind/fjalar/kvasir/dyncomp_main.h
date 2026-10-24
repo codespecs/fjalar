@@ -290,7 +290,15 @@ extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_4) ( Addr );
 extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_2) ( Addr );
 extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_1) ( Addr );
 
-extern VG_REGPARM(2) UInt MC_(helperc_LOAD_TAG_N) ( Addr, UWord );
+// The number of slots of MC_(helperc_LOAD_TAG_N), and the size in
+// bytes of the largest load whose tags a slot can hold.
+#define DC_N_LOAD_TAG_SNAPSHOTS 128
+#define DC_LOAD_TAG_SNAPSHOT_BYTES 32
+
+extern UInt load_tag_snapshots[DC_N_LOAD_TAG_SNAPSHOTS][DC_LOAD_TAG_SNAPSHOT_BYTES];
+
+extern VG_REGPARM(3) UInt MC_(helperc_LOAD_TAG_N) ( Addr, UWord, Word );
+extern VG_REGPARM(3) void MC_(helperc_STORE_TAG_SNAPSHOT) ( Addr, UWord, UWord );
 
 extern VG_REGPARM(1) UInt MC_(helperc_CREATE_TAG) ( Addr static_id );
 

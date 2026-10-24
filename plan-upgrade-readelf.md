@@ -142,7 +142,9 @@ that file.
    - Make sure Fjalar's harvesting hooks in `dwarf.c` (the calls that build
      Fjalar's DWARF entries, see `fjalar_dwarf.c`/`typedata.c`) still run on
      every path, especially for DWARF 5 forms and any new `DW_FORM_*`,
-     `DW_AT_*`, `DW_OP_*` handling.  Re-check the DWARF 3/4 and Rust
+     `DW_AT_*`, `DW_OP_*` handling.  `$INV/fjalar/check-hook-counts.sh`
+     reports each hook whose number of calls in `dwarf.c` or `readelf.c`
+     changed; explain each difference.  Re-check the DWARF 3/4 and Rust
      changes from #73/#76.
    - Use `binutils-Fjalar.diff` as a checklist: a merge can lose a Fjalar
      change without reporting a conflict.
@@ -195,8 +197,9 @@ that file.
   handling) could make the merge produce many conflicts; this is the main
   reason for the stepwise fallback.
 - Silent loss of a Fjalar hook in a conflicted hunk would show up only as
-  missing variables in Kvasir output, so the Kvasir regression tests are the
-  essential check.
+  missing variables in Kvasir output.  `check-hook-counts.sh` catches a lost
+  or duplicated call, but not a call that a merge moved onto the wrong path,
+  so the Kvasir regression tests are the essential check.
 - The later Valgrind upgrade may enable additional warning flags, which will
   hit `readelf.c`/`dwarf.c` again.  Expect a second round of warning fixes
   there; it does not mean this merge was done wrong.

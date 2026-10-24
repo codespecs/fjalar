@@ -1,0 +1,2 @@
+..observe(Counted):::ENTER c.count 1
+..observe(Counted):::EXIT0 c.count 1
