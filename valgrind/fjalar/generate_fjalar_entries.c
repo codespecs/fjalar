@@ -111,7 +111,7 @@ const int DecTypeByteSizes[] = {
 
   sizeof(float),                  // D_FLOAT,
   sizeof(double),                 // D_DOUBLE,
-  sizeof(long double),            // D_LONG_DOUBLE,
+  10,                             // D_LONG_DOUBLE, // the x87 value; the rest is padding
   2,                              // D_FLOAT16,
   2,                              // D_BFLOAT16,
 
@@ -2939,6 +2939,17 @@ static void extractReturnVar(FunctionEntry* f,
                      0,
                      0,
                      0,0,0,0,0,0,0,0,0);
+
+  // Fjalar reads a floating-point return value from xmm0, but a long
+  // double is returned in the x87 register st(0), so Fjalar cannot read
+  // it.  Omit such a return value, as for a void function.
+  if (f->returnValue.first) {
+    VariableEntry* returnVar = f->returnValue.first->var;
+    if ((returnVar->ptrLevels == 0) && (returnVar->referenceLevels == 0) &&
+        (returnVar->varType->decType == D_LONG_DOUBLE)) {
+      deleteTailNode(&(f->returnValue));
+    }
+  }
 
   FJALAR_DPRINTF("EXIT  extractReturnVar - %s\n", dwarfFunctionEntry->name);
 }
