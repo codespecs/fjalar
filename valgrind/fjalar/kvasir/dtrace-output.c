@@ -384,6 +384,9 @@ switch (decType) \
  case D_DOUBLE: \
    OPERATION(*((double*)(PTR))) \
    break; \
+ case D_LONG_DOUBLE: \
+   OPERATION((double)*((long double*)(PTR))) \
+   break; \
  case D_FLOAT16: \
    OPERATION(float16ToDouble(*((UShort*)(PTR)))) \
    break; \
