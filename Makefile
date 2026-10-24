@@ -37,8 +37,7 @@ check-regtest:
 # Fjalar tests that do not depend on Daikon: every *-test.sh script.
 .PHONY: fjalar-test
 fjalar-test:
-	failed=; for t in valgrind/fjalar/tests/*-test.sh; do echo "Running $$t"; $$t || failed="$$failed $$t"; done; \
-	if [ -n "$$failed" ]; then echo "Failed tests:$$failed" >&2; exit 1; fi
+	for t in valgrind/fjalar/tests/*-test.sh; do echo "Running $$t"; $$t || exit 1; done
 
 # Kvasir tests
 .PHONY: daikon-test

@@ -66,8 +66,8 @@
 set -e
 set -o pipefail
 # sort and comm run with LC_ALL=C, so that they order lines the same way on
-# every machine.  The tests themselves run in the caller's locale, as
-# upstream-regtest.sh does for the upstream baseline.
+# every machine.  The tests themselves run in the caller's locale, as the
+# upstream baseline in plan-upgrade-valgrind.md does.
 
 # Resolve symbolic links, so that paths that are compared with each other
 # (such as $EXPECTED_FILE, which goes through realpath) are in the same form.
