@@ -48,7 +48,7 @@
 # Expected-failures file format: one failure per line, as vg_regtest prints
 # it, such as "gdbserver_tests/mcleak (stdoutB)".  Blank lines and lines
 # starting with "#" are ignored.  A line starting with "?" (such as
-# "? helgrind/tests/tc22_exit_w_lock (stderr)") is a test that may or may not
+# "? drd/tests/tls_threads (stderr)") is a test that may or may not
 # fail, for example because it is timing-dependent or CPU-dependent.
 # Two other kinds of entry record failures that are not tied to one test:
 #  * "post_regtest_checks: MESSAGE" is one error message from the checks that
