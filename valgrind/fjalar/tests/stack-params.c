@@ -45,3 +45,18 @@ void whole_piece(long w__) {
 void part_piece(long p__) {
   sink = p__;
 }
+
+// c and l are in the stack frame (DW_OP_fbreg).  register-params-test.sh
+// rewrites c's location to "DW_OP_const1u 17; DW_OP_stack_value" and l's
+// location to "DW_OP_lit5; DW_OP_stack_value", which Fjalar does not support,
+// so c and l are omitted.
+void constant_value(long c) {
+  // buf makes c's frame offset large enough to need 2 bytes.
+  volatile char buf[200];
+  buf[0] = 1;
+  sink = c + buf[0];
+}
+
+void literal_value(long l) {
+  sink = l;
+}
