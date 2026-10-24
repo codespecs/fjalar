@@ -85,6 +85,8 @@ static const char* TYPE_FORMAT_STRINGS[] = {
   "%.17g",                         // D_LONG_DOUBLE,
   "%.5g",                          // D_FLOAT16,
   "%.4g",                          // D_BFLOAT16,
+  "%.17g",                         // D_FLOAT128,
+  "%d - ERROR - D_COMPLEX",        // D_COMPLEX  // never printed
 
   "%d",                            // D_ENUMERATION,
 
@@ -327,6 +329,81 @@ static double bfloat16ToDouble(UShort bits) {
   return result.value;
 }
 
+// Returns high:low (a 128-bit number) shifted right by shift bits, rounded
+// to the nearest integer, ties to even.  Requires 60 <= shift <= 113 and
+// high < 2^49.
+static ULong shiftRightRounded(ULong high, ULong low, Int shift) {
+  ULong kept, droppedHigh, droppedLow, halfHigh, halfLow;
+
+  if (shift < 64) {
+    kept = (high << (64 - shift)) | (low >> shift);
+    droppedHigh = 0;
+    droppedLow = low & ((1ULL << shift) - 1);
+    halfHigh = 0;
+    halfLow = 1ULL << (shift - 1);
+  } else if (shift == 64) {
+    kept = high;
+    droppedHigh = 0;
+    droppedLow = low;
+    halfHigh = 0;
+    halfLow = 1ULL << 63;
+  } else {
+    kept = high >> (shift - 64);
+    droppedHigh = high & ((1ULL << (shift - 64)) - 1);
+    droppedLow = low;
+    halfHigh = 1ULL << (shift - 65);
+    halfLow = 0;
+  }
+  if ((droppedHigh > halfHigh)
+      || ((droppedHigh == halfHigh) && (droppedLow > halfLow))
+      || ((droppedHigh == halfHigh) && (droppedLow == halfLow)
+          && (kept & 1))) {
+    kept++;
+  }
+  return kept;
+}
+
+// Returns the value of an IEEE 754 binary128 number (a _Float128), given
+// its bits, rounded to the nearest double.
+static double float128ToDouble(ULong low, ULong high) {
+  ULong sign = high & 0x8000000000000000ULL;
+  Int exponent = (high >> 48) & 0x7fff;
+  ULong fractionHigh = high & 0xffffffffffffULL;  // the high 48 of 112 bits
+  ULong significand;
+  Int unbiased = exponent - 16383;
+  union { ULong bits; double value; } result;
+
+  if (exponent == 0x7fff) {
+    // Infinity or NaN
+    result.bits = sign | (0x7ffULL << 52)
+                  | (((fractionHigh | low) != 0) ? (1ULL << 51) : 0);
+  } else if ((exponent == 0) || (unbiased < -1075)) {
+    // Zero, or too small to round to the smallest positive double
+    result.bits = sign;
+  } else if (unbiased > 1023) {
+    result.bits = sign | (0x7ffULL << 52);
+  } else if (unbiased >= -1022) {
+    // A normal double:  round the 113-bit significand to 53 bits.
+    significand = shiftRightRounded(fractionHigh | (1ULL << 48), low, 60);
+    if (significand == (1ULL << 53)) {
+      significand >>= 1;
+      unbiased++;
+    }
+    if (unbiased > 1023) {
+      result.bits = sign | (0x7ffULL << 52);
+    } else {
+      result.bits = sign | ((ULong)(unbiased + 1023) << 52)
+                    | (significand & ((1ULL << 52) - 1));
+    }
+  } else {
+    // A subnormal double, which is a multiple of 2^-1074.  Rounding up to
+    // 2^52 yields the bits of the smallest normal double.
+    result.bits = sign | shiftRightRounded(fractionHigh | (1ULL << 48), low,
+                                           112 - (unbiased + 1074));
+  }
+  return result.value;
+}
+
 // Macro for dispatching on different print statements depending on
 // the declared type of the variable (decType) - creates a switch
 // statement parameterized by the OPERATION macro, which is applied to
@@ -384,11 +461,17 @@ switch (decType) \
  case D_DOUBLE: \
    OPERATION(*((double*)(PTR))) \
    break; \
+ case D_LONG_DOUBLE: \
+   OPERATION((double)*((long double*)(PTR))) \
+   break; \
  case D_FLOAT16: \
    OPERATION(float16ToDouble(*((UShort*)(PTR)))) \
    break; \
  case D_BFLOAT16: \
    OPERATION(bfloat16ToDouble(*((UShort*)(PTR)))) \
+   break; \
+ case D_FLOAT128: \
+   OPERATION(float128ToDouble(((ULong*)(PTR))[0], ((ULong*)(PTR))[1])) \
    break; \
  case D_ZST: \
    /* A ZST has no storage to read: its address is a fabricated dangling */ \
@@ -396,6 +479,11 @@ switch (decType) \
    /* varHasReportableValue), and a pointer is printed as a hashcode, so */ \
    /* a ZST never reaches this switch. */ \
    tl_assert(0 && "TYPES_SWITCH() - D_ZST"); \
+   break; \
+ case D_COMPLEX: \
+   /* The traversal reports a complex number only through a pointer (see */ \
+   /* varHasReportableValue), so a complex number never reaches here. */ \
+   tl_assert(0 && "TYPES_SWITCH() - D_COMPLEX"); \
    break; \
  default: \
    DTRACE_PRINTF( "TYPES_SWITCH() - unknown type"); \

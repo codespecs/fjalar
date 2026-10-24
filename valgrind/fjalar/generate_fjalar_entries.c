@@ -111,9 +111,11 @@ const int DecTypeByteSizes[] = {
 
   sizeof(float),                  // D_FLOAT,
   sizeof(double),                 // D_DOUBLE,
-  sizeof(long double),            // D_LONG_DOUBLE,
+  10,                             // D_LONG_DOUBLE, // the x87 value; the rest is padding
   2,                              // D_FLOAT16,
   2,                              // D_BFLOAT16,
+  16,                             // D_FLOAT128,
+  16,                             // D_COMPLEX, // never read; size varies
 
   sizeof(int),                    // D_ENUMERATION,
 
@@ -151,6 +153,14 @@ TypeEntry DoubleType = {D_DOUBLE, 0, sizeof(double), 0};
 TypeEntry LongDoubleType = {D_LONG_DOUBLE, 0, sizeof(long double), 0};
 TypeEntry Float16Type = {D_FLOAT16, 0, 2, 0};
 TypeEntry BFloat16Type = {D_BFLOAT16, 0, 2, 0};
+TypeEntry Float128Type = {D_FLOAT128, 0, 16, 0};
+// A _Complex type has twice the size of its real type.  The types share a
+// DeclaredType, D_COMPLEX, but each size has its own TypeEntry, because
+// Fjalar uses a type's size to lay out the stack and structs.
+TypeEntry Complex4Type = {D_COMPLEX, 0, 4, 0};    // _Complex _Float16
+TypeEntry Complex8Type = {D_COMPLEX, 0, 8, 0};    // _Complex float
+TypeEntry Complex16Type = {D_COMPLEX, 0, 16, 0};  // _Complex double
+TypeEntry Complex32Type = {D_COMPLEX, 0, 32, 0};  // _Complex long double, _Complex _Float128
 TypeEntry FunctionType = {D_FUNCTION, 0, sizeof(void*), 0};
 TypeEntry VoidType = {D_VOID, 0, sizeof(void*), 0};
 TypeEntry Char8Type = {D_CHAR8, 0, 1, 0};
@@ -183,6 +193,8 @@ TypeEntry* BasicTypesArray[] = {
   &LongDoubleType,          //  D_LONG_DOUBLE,
   &Float16Type,             //  D_FLOAT16,
   &BFloat16Type,            //  D_BFLOAT16,
+  &Float128Type,            //  D_FLOAT128,
+  &Complex16Type,           //  D_COMPLEX, // one of the Complex*Type entries
 
   0,                        //  D_ENUMERATION,
 
@@ -222,6 +234,8 @@ const char* DeclaredTypeString[] = {
   "long double",            // D_LONG_DOUBLE,
   "_Float16",               // D_FLOAT16,
   "__bf16",                 // D_BFLOAT16,
+  "_Float128",              // D_FLOAT128,
+  "_Complex",               // D_COMPLEX,
 
   // This should NOT be used unless you created an unnamed struct/union!
   // Use TypeEntry::typeName instead
@@ -295,6 +309,8 @@ const char* DeclaredTypeNames[] = {"D_NO_TYPE", // Create padding
                              "D_LONG_DOUBLE",
                              "D_FLOAT16",
                              "D_BFLOAT16",
+                             "D_FLOAT128",
+                             "D_COMPLEX",
                              "D_ENUMERATION",
                              "D_STRUCT_CLASS",
                              "D_UNION",
@@ -1885,6 +1901,13 @@ static void extractBaseType(VariableEntry* var, base_type* basePtr)
     else if (basePtr->byte_size == sizeof(double)) {
       var->varType = BasicTypesArray[D_DOUBLE];
     }
+    // _Float128 (named __float128 in C++) has the size of a long double
+    // on amd64, so only its name distinguishes it.
+    else if ((basePtr->byte_size == 16) && (basePtr->name != NULL) &&
+             (VG_STREQ(basePtr->name, "_Float128") ||
+              VG_STREQ(basePtr->name, "__float128"))) {
+      var->varType = BasicTypesArray[D_FLOAT128];
+    }
     else if (basePtr->byte_size == sizeof(long double)) {
       var->varType = BasicTypesArray[D_LONG_DOUBLE];
     }
@@ -1897,6 +1920,22 @@ static void extractBaseType(VariableEntry* var, base_type* basePtr)
       else {
         var->varType = BasicTypesArray[D_FLOAT16];
       }
+    }
+    break;
+
+  // Fjalar never reads a _Complex value; see varHasReportableValue.
+  case DW_ATE_complex_float:
+    if (basePtr->byte_size == 4) {
+      var->varType = &Complex4Type;
+    }
+    else if (basePtr->byte_size == 8) {
+      var->varType = &Complex8Type;
+    }
+    else if (basePtr->byte_size == 16) {
+      var->varType = &Complex16Type;
+    }
+    else if (basePtr->byte_size == 32) {
+      var->varType = &Complex32Type;
     }
     break;
 
@@ -2939,6 +2978,19 @@ static void extractReturnVar(FunctionEntry* f,
                      0,
                      0,
                      0,0,0,0,0,0,0,0,0);
+
+  // Fjalar reads a floating-point return value from the low 8 bytes of
+  // xmm0, but a long double is returned in the x87 register st(0), and a
+  // _Float128 in all 16 bytes of xmm0, so Fjalar cannot read it.  Omit such
+  // a return value, as for a void function.
+  if (f->returnValue.first) {
+    VariableEntry* returnVar = f->returnValue.first->var;
+    if ((returnVar->ptrLevels == 0) && (returnVar->referenceLevels == 0) &&
+        ((returnVar->varType->decType == D_LONG_DOUBLE) ||
+         (returnVar->varType->decType == D_FLOAT128))) {
+      deleteTailNode(&(f->returnValue));
+    }
+  }
 
   FJALAR_DPRINTF("EXIT  extractReturnVar - %s\n", dwarfFunctionEntry->name);
 }

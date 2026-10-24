@@ -1337,7 +1337,6 @@ void visitReturnValue(FunctionExecutionState* e,
   else if ((cur_node->var->ptrLevels == 0) &&
            ((cur_node->var->varType->decType == D_FLOAT) ||
             (cur_node->var->varType->decType == D_DOUBLE) ||
-            (cur_node->var->varType->decType == D_LONG_DOUBLE) ||
             (cur_node->var->varType->decType == D_FLOAT16) ||
             (cur_node->var->varType->decType == D_BFLOAT16))) {
     // SPECIAL CASE: The value in FPU must be interpreted as a double
@@ -1477,7 +1476,10 @@ static char interestedInVar(const HChar* fullFjalarName, char* trace_vars_tree) 
 // invariants from, which is worse than omitting the variable, so suppress
 // these until 128-bit printing is implemented.
 //
-// Both of those reasons concern printing a value *of* the type, so they apply
+// A _Complex number has no Daikon representation, so Fjalar does not report
+// its value.
+//
+// Those reasons concern printing a value *of* the type, so they apply
 // only when every pointer layer has been dereferenced, which is what
 // layersBeforeBase == 0 means.  A `*const u128` or `*const ()` is printed as a
 // hashcode, which Fjalar handles like any other pointer, so report it.
@@ -1511,6 +1513,11 @@ static char varHasReportableValue(VariableEntry* var, UInt layersBeforeBase) {
 
   // A 128-bit integer, which Fjalar cannot yet print.
   if ((D_U128 == t->decType) || (D_I128 == t->decType)) {
+    return 0;
+  }
+
+  // A _Complex number, which Daikon cannot represent.
+  if (D_COMPLEX == t->decType) {
     return 0;
   }
 
