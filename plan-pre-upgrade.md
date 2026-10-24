@@ -72,13 +72,19 @@ What:
   operations.  It takes each operation's arity from `typeOfPrimop` in
   VEX's `ir_defs.c` and checks that `expr2tags_Unop_DC` has a case for
   exactly the unary operations; check `expr2tags_Binop_DC`,
-  `expr2tags_Triop_DC`, and `expr2tags_Qop_DC` the same way.  Many
-  operations of other architectures have no case, on purpose; the test
-  must accept those that are listed, as case labels, in the comment of
+  `expr2tags_Triop_DC`, and `expr2tags_Qop_DC` too.  The test's parser
+  needs two changes.  First, it finds `expr2tags_Unop_DC` by its return
+  type, `IRExpr*`, but the other three functions return `IRAtom*`.
+  Second, `expr2tags_Binop_DC` and `expr2tags_Qop_DC` each have a section
+  headed `// Unimplemented` whose case labels (such as `Iop_Rotx32`) fall
+  through to the `default` case, which by default panics; the test must
+  not count those as handled.  Move them to the comment of
   `dyncomp_translate.c` that lists the operations that DynComp does not
-  implement.  Fix the operations relevant to amd64/x86 that the test
-  reports (on 3.23, at least `Iop_MulHi8Sx16` and `Iop_MulHi8Ux16`), and
-  add the others to that comment.  After the Valgrind upgrade, the test
+  implement.  Many operations of other architectures have no case, on
+  purpose; the test must accept those that are listed, as case labels, in
+  that comment.  Fix the operations relevant to amd64/x86 that the test
+  reports, and add the others to that comment (on 3.23, these include
+  `Iop_MulHi8Sx16` and `Iop_MulHi8Ux16`, which only s390 uses).  After the Valgrind upgrade, the test
   then lists each new operation that DynComp does not handle.  Describe
   the test in appendix "Supporting new VEX IR Instruction" of
   `doc/valgrind-merge.texinfo`.

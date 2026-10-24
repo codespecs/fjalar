@@ -279,14 +279,18 @@ Memcheck and DynComp depend tightly on Valgrind core:
 
 9. **Test.**  Run these from `$FJALAR` (`cd $FJALAR`).
    - `./check-regtest.sh`.  The expected failures will change, because
-     3.27.1 adds, removes, and fixes tests.  For each unexpected failure:
-     if it is also in step 3's `regtest-upstream-$VNEWTAG.txt`, it is an
-     upstream failure, so add it to the expected list; otherwise it was
-     probably caused by the merge, so fix it.  Remove expected failures
-     that now pass.  `./check-regtest.sh --log regtest-<os>.log --update`
-     rewrites the list; review its diff.  If the list is committed, its
-     diff goes in the PR; if step 1 created it locally, do not commit it.
-   - `make fjalar-test`.
+     3.27.1 adds, removes, and fixes tests.  Then
+     `./check-regtest.sh --log regtest-<os>.log --expected $INV/regtest-upstream-$VNEWTAG.txt --report-only`
+     lists the failures that are not in step 3's upstream list.  Each one
+     that is in `regtest-expected/<os>.txt` failed before the merge too,
+     and is specific to Fjalar; each other one was probably caused by the
+     merge, so fix it.  Only when none of those remains,
+     `./check-regtest.sh --log regtest-<os>.log --update` rewrites the
+     list, adding the new upstream failures and removing the tests that
+     now pass; review its diff.  If the list is committed, its diff goes
+     in the PR; if step 1 created it locally, do not commit it.
+   - `make fjalar-test`.  It runs every test, even after one fails, and
+     then lists the tests that failed.
    - `./test-kvasir.sh 2>&1 | tee kvasir-after.log` — compare with
      `kvasir-before.log` from step 1; the tests must pass with no goal-file
      changes.  Address-related diffs (`<STACK_ADDR>`, `<STATIC_ADDR>`, or

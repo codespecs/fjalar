@@ -690,8 +690,8 @@ $INV/fjalar/upstream-regtest.sh $INV/regtest-upstream-$VNEWTAG.txt
 @end example
 
 @noindent
-The script checks that @file{valgrind-new} is at @code{$VNEWTAG}, if that
-variable is set.  It builds a copy of @file{valgrind-new}, in
+The script checks that @file{valgrind-new} is at @code{$VNEWTAG}, which
+must be set.  It builds a copy of @file{valgrind-new}, in
 @file{$INV/valgrind-new-build}, and runs the tests there.  It never builds
 in @file{valgrind-new} itself, so that @file{valgrind-new} stays a clean
 clone, which becomes @file{valgrind-old} for the next merge.
@@ -704,6 +704,12 @@ failing tests, in the expected-failures format that
 @command{check-regtest.sh} describes.  We will use these results in
 @ref{Testing Valgrind}.  Keep @file{valgrind-new-build} until the merge
 has landed (@pxref{Testing Valgrind}).
+
+Before you merge, also run the tests on Fjalar's current tree, as
+described in @ref{Get Current Valgrind Regtest Baseline Results}, so that
+@file{regtest-expected/<os>.txt} lists the failures before the merge.
+@ref{Testing Valgrind} compares the failures after the merge with both
+lists.
 
 Here is a copy of the last few lines from the latest run of these tests (01/21/2026)
 running Valgrind 3.23 on a UW/CSE Rocky Linux (9.7) based system:
@@ -1266,12 +1272,22 @@ of an operating system or compiler update; to tell which, run the tests
 on the old sources.
 
 For a Valgrind update, the expected failures change, because the new
-release adds, removes, and fixes tests.  For each unexpected failure: if
-it is also in the list that @command{upstream-regtest.sh} wrote
-(@pxref{Get New Valgrind Regtest Baseline Results}), it is an upstream
-failure, so add it to the expected failures; otherwise it was probably
-caused by the merge, so fix it.  Remove expected failures that now pass.
-This command rewrites the expected failures; review its diff:
+release adds, removes, and fixes tests.  First compare the failures with
+the list that @command{upstream-regtest.sh} wrote
+(@pxref{Get New Valgrind Regtest Baseline Results}):
+
+@smallexample
+$INV/fjalar/check-regtest.sh --log $INV/fjalar/regtest-<os>.log \
+  --expected $INV/regtest-upstream-$VNEWTAG.txt --report-only
+@end smallexample
+
+@noindent
+Each failure that it reports is not an upstream failure.  If it is in
+@file{regtest-expected/<os>.txt}, it failed before the merge too, and is
+specific to Fjalar; otherwise it was probably caused by the merge, so fix
+it.  Only when no failure of the second kind remains, rewrite the
+expected failures, which adds the new upstream failures and removes the
+tests that now pass, and review the diff:
 
 @smallexample
 $INV/fjalar/check-regtest.sh --log $INV/fjalar/regtest-<os>.log --update
