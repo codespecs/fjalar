@@ -520,6 +520,14 @@ IRAtom* mkMergeTags_DC ( Int regparms, const HChar* hname, void* helper,
 // if the flags are later used, then the instruction that uses them reads
 // them from the new thunk.  Under --dyncomp-interactions=comparisons, other
 // helpers merge no tags either.
+//
+// Under --dyncomp-interactions=units, the operands of a subtraction are
+// interactions, and the operands of a multiplication are not, so a helper
+// call that reads flags merges tags in the same cases.  If the flags are set
+// by an add, its operands were already merged when its result was computed.
+// A helper call that does not read flags, such as one that computes a sum of
+// absolute differences (psadbw) or a CRC, merges all of its arguments, as in
+// the default mode.
 
 // The flags-carrying analysis finds the temporaries whose values only carry
 // flags forward, from one flags thunk to the next.  For example, an inc or
@@ -831,12 +839,12 @@ IRAtom* subOperandTag_DC ( DCEnv* dce, IRAtom* ccOp, IRAtom* dep,
 }
 
 // Handles a call to cee, a helper that reads flags, with arguments exprvec,
-// under --dyncomp-interactions=comparisons.  If the call reads the flags as
-// the result of a comparison, then it merges the tags of the operands of
-// the subtraction that set them:  the tags of the thunk's CC_DEP1 and
-// CC_DEP2 arguments if the flags are the result of a subtraction, or the
-// pending carry tags if the call reads the carry flag that an inc or dec
-// preserved.
+// under --dyncomp-interactions=comparisons or units.  If the call reads the
+// flags as the result of a comparison, then it merges the tags of the
+// operands of the subtraction that set them:  the tags of the thunk's
+// CC_DEP1 and CC_DEP2 arguments if the flags are the result of a
+// subtraction, or the pending carry tags if the call reads the carry flag
+// that an inc or dec preserved.
 static
 void handleFlagsCCall_DC ( DCEnv* dce, IRAtom** exprvec, IRCallee* cee )
 {
@@ -1000,6 +1008,15 @@ void notePendingCarryTags_DC ( DCEnv* dce, IRTemp tmp, IRExpr* data )
    dce->tmpPendingCarryTags[2 * tmp + 1] = tag2;
 }
 
+// Returns True if cee is a helper that computes flags from a flags thunk.
+static
+Bool readsFlags_DC ( IRCallee* cee )
+{
+   return cee->addr == (void*)&amd64g_calculate_condition
+          || cee->addr == (void*)&amd64g_calculate_rflags_c
+          || cee->addr == (void*)&amd64g_calculate_rflags_all;
+}
+
 static
 IRAtom* handleCCall_DC ( DCEnv* dce,
                          IRAtom** exprvec, IRCallee* cee )
@@ -1016,7 +1033,8 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
       return IRExpr_Const(IRConst_UWord(0));
    }
 
-   if (dyncomp_dataflow_comparisons_mode) {
+   if (dyncomp_dataflow_comparisons_mode
+       || (dyncomp_units_mode && readsFlags_DC(cee))) {
       handleFlagsCCall_DC(dce, exprvec, cee);
       return IRExpr_Const(IRConst_UWord(0));
    }
