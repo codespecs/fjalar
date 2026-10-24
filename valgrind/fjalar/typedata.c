@@ -1229,6 +1229,21 @@ char harvest_formal_param_location_unsupported(dwarf_entry* e)
   return 1;
 }
 
+// If e is a formal parameter, records that its location expression ends
+// with "DW_OP_piece size" (sets location_piece_size).
+// extractOneFormalParameterVar omits the parameter unless the piece is the
+// whole parameter and some operation precedes it.  Returns 1 if e is a
+// formal parameter, 0 otherwise.
+char harvest_formal_param_location_piece(dwarf_entry* e, unsigned long size)
+{
+  formal_parameter* paramPtr = formal_parameter_of(e);
+  if (paramPtr == 0)
+    return 0;
+
+  paramPtr->location_piece_size = size;
+  return 1;
+}
+
 char harvest_data_member_location(dwarf_entry* e, unsigned long value)
 {
   unsigned long tag;
