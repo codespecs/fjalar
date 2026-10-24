@@ -1,0 +1,28 @@
+# Expected failures of Valgrind's regression tests ("make regtest") in CI
+# job regtest_ubuntu_26_04 (see .github/workflows/ci.yml), which runs in
+# container image mdernst/daikon-ubuntu-jdk11-plus:latest.  Rebuilding that
+# image (for example, with a new gdb or glibc) can change which tests fail.
+# See check-regtest.sh for the format.  To regenerate, download the job's
+# artifact (gh run download <run-id> -n regtest-results-regtest_ubuntu_26_04)
+# and, in that directory, run:
+#   $FJALAR/check-regtest.sh --log regtest-ubuntu-26.04.log --expected $FJALAR/regtest-expected/ubuntu-26.04.txt --update
+
+drd/tests/pth_detached3 (stderr)
+drd/tests/std_thread2 (stderr)
+gdbserver_tests/hgtls (stdoutB)
+gdbserver_tests/mcinfcallWSRU (stderrB)
+gdbserver_tests/nlcontrolc (stdoutB)
+gdbserver_tests/nlvgdbsigqueue (stdoutB)
+helgrind/tests/tc22_exit_w_lock (stderr)
+memcheck/tests/descr_belowsp (stderr)
+memcheck/tests/sendmsg (stderr)
+none/tests/fdleak_ipv4 (stderr)
+none/tests/file_dclose (stderr)
+none/tests/libvex_test (stderr)
+none/tests/libvexmultiarch_test (stderr)
+none/tests/scripts/bug231357 (stderr)
+none/tests/scripts/bug231357 (stdout)
+none/tests/socket_close (stderr)
+
+# Fails in about half of all runs, on every CPU type.
+? drd/tests/tls_threads (stderr)
