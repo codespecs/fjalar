@@ -38,8 +38,8 @@ int lessMask(unsigned a, unsigned b) {
 // carry of the cmp via amd64g_calculate_rflags_c, and the setl reads the
 // flags of the sbb via amd64g_calculate_condition, whose arguments include
 // the high halves.  Under --dyncomp-interactions=comparisons, DynComp
-// should make aLo and bLo comparable, and aHi and bHi comparable.  (The
-// sbb's thunk holds bHi xor the old carry rather than bHi; see
+// should make `aLo` and `bLo` comparable, and `aHi` and `bHi` comparable.
+// (The sbb's thunk holds `bHi` xor the old carry rather than `bHi`; see
 // sbbSecondOperand_DC in kvasir/dyncomp_translate.c.)
 int lessWide(long aLo, long aHi, long bLo, long bHi) {
   unsigned char result;
@@ -58,7 +58,8 @@ int lessWide(long aLo, long aHi, long bLo, long bHi) {
 // are in the same basic block, as they are in compiled code.  VEX passes the
 // xor in the sbb's thunk directly to amd64g_calculate_condition, rather than
 // reading it from the guest state.  Under --dyncomp-interactions=comparisons,
-// DynComp should make aLo and bLo comparable, and aHi and bHi comparable.
+// DynComp should make `aLo` and `bLo` comparable, and `aHi` and `bHi`
+// comparable.
 int lessWideSameBlock(long aLo, long aHi, long bLo, long bHi) {
   unsigned char result;
   long hi = aHi;
@@ -71,13 +72,13 @@ int lessWideSameBlock(long aLo, long aHi, long bLo, long bHi) {
   return result;
 }
 
-// xorThenLess() compares c with a ^ b with a cmp instruction whose
+// xorThenLess() compares `c` with `a ^ b` with a cmp instruction whose
 // condition code is read by a setl instruction in a different basic block.
 // The CC_DEP2 field of the cmp's thunk is the result of the xor, but the cmp
-// is not an sbb, so DynComp should not treat a as an operand of the
+// is not an sbb, so DynComp should not treat `a` as an operand of the
 // comparison.  An xor is not an interaction, so under
-// --dyncomp-interactions=comparisons, DynComp should not make a, b, and c
-// comparable.
+// --dyncomp-interactions=comparisons, DynComp should not make `a`, `b`, and
+// `c` comparable.
 int xorThenLess(long a, long b, long c) {
   unsigned char result;
   long x = a;

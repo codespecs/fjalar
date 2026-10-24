@@ -648,7 +648,7 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
   }
 }
 
-// Returns True if cc_op, the CC_OP field of the flags thunk, says that the
+// Returns True if `cc_op`, the CC_OP field of the flags thunk, says that the
 // flags are the result of a subtraction, which is how amd64 compares
 // values:  a cmp or sub instruction, or, under
 // --dyncomp-interactions=comparisons, an sbb instruction.
@@ -669,7 +669,7 @@ Bool dyncomp_cc_op_is_sub(UWord cc_op) {
          || (dyncomp_dataflow_comparisons_mode && dyncomp_cc_op_is_sbb(cc_op));
 }
 
-// Returns True if cc_op, the CC_OP field of the flags thunk, says that the
+// Returns True if `cc_op`, the CC_OP field of the flags thunk, says that the
 // flags are the result of an sbb instruction.
 Bool dyncomp_cc_op_is_sbb(UWord cc_op) {
   return AMD64G_CC_OP_SBBB <= cc_op && cc_op <= AMD64G_CC_OP_SBBQ;

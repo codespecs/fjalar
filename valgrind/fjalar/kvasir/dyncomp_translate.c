@@ -136,9 +136,10 @@ static void pendingCarryTags_DC ( DCEnv* dce, IRAtom* atom,
    }
 }
 
-// atom is the value of the CC_DEP2 field of the flags thunk of an sbb
-// instruction.  If atom is argR ^ oldCarry (possibly zero-extended), as an
-// sbb instruction stores there, returns argR.  Otherwise, returns atom.
+// `atom` is the value of the CC_DEP2 field of the flags thunk of an sbb
+// instruction.  If `atom` is `argR ^ oldCarry` (possibly zero-extended), as
+// an sbb instruction stores there, returns `argR`.  Otherwise, returns
+// `atom`.
 // Under --dyncomp-interactions=comparisons, an xor is not an interaction,
 // and its tag is 0, but a comparison by sbb merges the tag of CC_DEP2 with
 // the tag of CC_DEP1; see dyncomp_cc_op_is_sub.
@@ -172,8 +173,8 @@ IRAtom* sbbSecondOperand_DC ( DCEnv* dce, IRAtom* atom )
    return atom;
 }
 
-// Returns dep2, the CC_DEP2 argument of a helper that reads flags, or, if
-// ccOp, its CC_OP argument, is known at translation time to be that of an
+// Returns `dep2`, the CC_DEP2 argument of a helper that reads flags, or, if
+// `ccOp`, its CC_OP argument, is known at translation time to be that of an
 // sbb, the sbb's second operand; see sbbSecondOperand_DC.
 static
 IRAtom* flagsDep2Operand_DC ( DCEnv* dce, IRAtom* ccOp, IRAtom* dep2 )
@@ -500,9 +501,9 @@ IRAtom* mkMergeTags_DC ( Int regparms, const HChar* hname, void* helper,
 // The CC_DEP2 field of an sbb's thunk is the xor of its second operand and
 // the old carry, so its tag is 0.  When CC_OP is known at translation time
 // to be that of an sbb, which is the case when the sbb is in the same
-// superblock as the call, VEX passes that xor as the cc_dep2 argument, and
-// the merge uses the tag of the sbb's second operand instead; see
-// sbbSecondOperand_DC.  Otherwise, the cc_dep2 argument is read from the
+// superblock as the call, VEX passes that xor as the `cc_dep2` argument,
+// and the merge uses the tag of the sbb's second operand instead; see
+// sbbSecondOperand_DC.  Otherwise, the `cc_dep2` argument is read from the
 // guest state, to which do_shadow_PUT_DC gave the tag of that operand.
 //
 // Some instructions read flags without using them as the result of a
