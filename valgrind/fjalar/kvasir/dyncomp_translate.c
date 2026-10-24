@@ -1638,6 +1638,7 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_QDMulHi32Sx4:                // only used by arm mips arm64
    case Iop_QRDMulHi16Sx8:               // only used by arm mips arm64
    case Iop_QRDMulHi32Sx4:               // only used by arm mips arm64
+   case Iop_PwExtUSMulQAdd8x16:          // multiplies, then adds pairs
 
       /* ------------------ 256-bit SIMD Integer. ------------------ */
    case Iop_Mul16x16:
@@ -2289,7 +2290,6 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_PolynomialMulAdd32x4:        // only used by ppc
    case Iop_PolynomialMulAdd64x2:        // only used by ppc
    case Iop_PolynomialMulAdd8x16:        // only used by ppc
-   case Iop_PwExtUSMulQAdd8x16:
    case Iop_PwAdd16x4:                   // only used by arm
    case Iop_PwAdd16x8:                   // only used by arm
    case Iop_PwAdd32Fx2:                  // only used by arm
