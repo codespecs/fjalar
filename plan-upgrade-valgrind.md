@@ -93,7 +93,10 @@ Memcheck and DynComp depend tightly on Valgrind core:
      log, to compare warnings after the merge); `./check-regtest.sh`, which
      needs the build (must report no unexpected failures; if this machine's
      OS has no `regtest-expected/<os>.txt`, create a local, uncommitted one
-     with `--update`); and `make fjalar-test`.
+     with `--update`), then
+     `cp regtest-<os>-observed.txt $INV/regtest-before-merge.txt` (step 9
+     compares with it; `regtest-expected/<os>.txt` cannot serve, because it
+     may list tests that no longer fail); and `make fjalar-test`.
    - Run the Kvasir tests with `./test-kvasir.sh 2>&1 | tee kvasir-before.log`
      (step 9 compares with this log).  `./test-kvasir.sh` temporarily points
      `$DAIKONDIR/fjalar` at this tree (it restores the old link on exit, and
@@ -282,9 +285,12 @@ Memcheck and DynComp depend tightly on Valgrind core:
      3.27.1 adds, removes, and fixes tests.  Then
      `./check-regtest.sh --log regtest-<os>.log --expected $INV/regtest-upstream-$VNEWTAG.txt --report-only`
      lists the failures that are not in step 3's upstream list.  Each one
-     that is in `regtest-expected/<os>.txt` failed before the merge too,
-     and is specific to Fjalar; each other one was probably caused by the
-     merge, so fix it.  Only when none of those remains,
+     that is in `$INV/regtest-before-merge.txt` (step 1) failed before the
+     merge too, and is specific to Fjalar; each other one was probably
+     caused by the merge, so fix it.  A test that `regtest-expected/<os>.txt`
+     marks with `?` may fail only sometimes, so if such a test is not in
+     `regtest-before-merge.txt`, run the tests again before you conclude
+     that the merge broke it.  Only when no merge-caused failure remains,
      `./check-regtest.sh --log regtest-<os>.log --update` rewrites the
      list, adding the new upstream failures and removing the tests that
      now pass; review its diff.  If the list is committed, its diff goes
@@ -363,13 +369,14 @@ Memcheck and DynComp depend tightly on Valgrind core:
     - Use the commit message "Upgrade Valgrind from 3.23.0 to 3.27.1".
     - Commit as one PR.
     - After the PR has landed, keep `valgrind-new` as the next merge's
-      `valgrind-old` (step 2 reuses it), and delete `valgrind-new-build`.
+      `valgrind-old` (step 2 reuses it), and delete `valgrind-new-build`
+      and `regtest-before-merge.txt`.
       Do not do this earlier:  review may require redoing the merge,
       which needs `valgrind-old`, or comparing a failure that
       appears only in CI with upstream's build (step 9).
 
       ```sh
-      rm -rf $INV/valgrind-old $INV/valgrind-new-build
+      rm -rf $INV/valgrind-old $INV/valgrind-new-build $INV/regtest-before-merge.txt
       mv $INV/valgrind-new $INV/valgrind-old
       ```
 
