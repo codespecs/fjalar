@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# Runs a floating-point type test; the *-test.sh scripts call it.  Its name
-# does not end in "-test.sh", so that it is not run as a test itself.
+# Runs a test of how Fjalar handles variables of a kind of base type, such
+# as a floating-point type; the *-test.sh scripts call it.  Its name does not
+# end in "-test.sh", so that it is not run as a test itself.
 # Usage: float-types-driver.sh <test>
 #
 # Compiles <test>.c, runs Kvasir with DynComp on it, and compares the values

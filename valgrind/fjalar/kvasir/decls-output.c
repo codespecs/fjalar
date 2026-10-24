@@ -419,9 +419,11 @@ DaikonRepType decTypeToDaikonRepType(DeclaredType decType,
     return R_NO_TYPE;
 
   case D_COMPLEX:
-    // Daikon has no rep type for a complex number.  As for D_ZST, the
-    // traversal reports a complex number only through a pointer.
-    tl_assert(0 && "decTypeToDaikonRepType() - D_COMPLEX");
+  case D_DECIMAL:
+    // Daikon has no rep type for a complex or decimal floating-point
+    // number.  As for D_ZST, the traversal reports one only through a
+    // pointer.
+    tl_assert(0 && "decTypeToDaikonRepType() - D_COMPLEX or D_DECIMAL");
     return R_NO_TYPE;
 
   default:

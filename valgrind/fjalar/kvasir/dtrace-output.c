@@ -87,6 +87,7 @@ static const char* TYPE_FORMAT_STRINGS[] = {
   "%.4g",                          // D_BFLOAT16,
   "%.17g",                         // D_FLOAT128,
   "%d - ERROR - D_COMPLEX",        // D_COMPLEX  // never printed
+  "%d - ERROR - D_DECIMAL",        // D_DECIMAL  // never printed
 
   "%d",                            // D_ENUMERATION,
 
@@ -481,9 +482,11 @@ switch (decType) \
    tl_assert(0 && "TYPES_SWITCH() - D_ZST"); \
    break; \
  case D_COMPLEX: \
-   /* The traversal reports a complex number only through a pointer (see */ \
-   /* varHasReportableValue), so a complex number never reaches here. */ \
-   tl_assert(0 && "TYPES_SWITCH() - D_COMPLEX"); \
+ case D_DECIMAL: \
+   /* The traversal reports a complex or decimal floating-point number */ \
+   /* only through a pointer (see varHasReportableValue), so neither */ \
+   /* reaches here. */ \
+   tl_assert(0 && "TYPES_SWITCH() - D_COMPLEX or D_DECIMAL"); \
    break; \
  default: \
    DTRACE_PRINTF( "TYPES_SWITCH() - unknown type"); \

@@ -1470,14 +1470,16 @@ static char interestedInVar(const HChar* fullFjalarName, char* trace_vars_tree) 
 // nothing to read: Rust gives a ZST a fabricated dangling address rather than
 // real storage, so reporting one yields "nonsensical" at best.
 //
-// A 128-bit integer (Rust's u128 and i128) has no C type wide enough to print
-// it with, so Fjalar cannot yet write its value.  Printing the low 64 bits
-// would emit a plausible-looking wrong number that Daikon would infer
-// invariants from, which is worse than omitting the variable, so suppress
-// these until 128-bit printing is implemented.
+// An integer wider than 64 bits (Rust's u128 and i128, and C's __int128 and
+// _BitInt(N) for N > 64) has no C type that Fjalar can print it with, so
+// Fjalar cannot yet write its value.  Printing the low 64 bits would emit a
+// plausible-looking wrong number that Daikon would infer invariants from,
+// which is worse than omitting the variable, so suppress these until wide
+// integer printing is implemented.
 //
-// A _Complex number has no Daikon representation, so Fjalar does not report
-// its value.
+// A _Complex number and a decimal floating-point number (_Decimal64 and
+// the like) have no Daikon representation, so Fjalar does not report their
+// values.
 //
 // Those reasons concern printing a value *of* the type, so they apply
 // only when every pointer layer has been dereferenced, which is what
@@ -1511,13 +1513,14 @@ static char varHasReportableValue(VariableEntry* var, UInt layersBeforeBase) {
     return 0;
   }
 
-  // A 128-bit integer, which Fjalar cannot yet print.
+  // An integer wider than 64 bits, which Fjalar cannot yet print.
   if ((D_U128 == t->decType) || (D_I128 == t->decType)) {
     return 0;
   }
 
-  // A _Complex number, which Daikon cannot represent.
-  if (D_COMPLEX == t->decType) {
+  // A _Complex or decimal floating-point number, which Daikon cannot
+  // represent.
+  if ((D_COMPLEX == t->decType) || (D_DECIMAL == t->decType)) {
     return 0;
   }
 
