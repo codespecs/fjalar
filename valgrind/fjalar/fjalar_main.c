@@ -26,6 +26,7 @@
 
 
 #include "pub_tool_basics.h"
+#include "pub_tool_vki.h"            // For VKI_PROT_READ
 #include "pub_tool_aspacemgr.h"
 #include "pub_tool_hashtable.h"     // For mc_include.h
 #include "pub_tool_xarray.h" //for clientstate
@@ -45,6 +46,7 @@
 #include "fjalar_runtime.h"
 #include "fjalar_tool.h"
 #include "fjalar_select.h"
+#include "fjalar_traversal.h"
 #include "disambig.h"
 #include "mc_include.h"
 #include "typedata.h"
@@ -203,6 +205,71 @@ static void save_param_regs(FunctionExecutionState* f_state, ThreadId tid)
                               (Addr)&f_state->entryRegs[regNum]);
     }
   }
+}
+
+// The most bytes past the part of the guest stack that enter_function
+// copies by default that it also copies to cover formal parameters.
+#define MAX_VIRTUAL_STACK_EXTENSION (64 * 1024)
+
+// Returns the guest address just past the formal parameters of an
+// invocation of f that lie on the guest stack at or above stackStart,
+// or copyEnd if that is greater.  frameBase is the invocation's frame
+// base.  The result is at most copyEnd + MAX_VIRTUAL_STACK_EXTENSION,
+// and all the guest memory between copyEnd and the result is readable
+// client memory.  Call this at function entrance, before copying the
+// guest stack to the virtual stack.
+static Addr formal_params_stack_end(FunctionEntry* f, ThreadId tid,
+                                    Addr frameBase, Addr stackStart,
+                                    Addr copyEnd)
+{
+  Addr limit = copyEnd + MAX_VIRTUAL_STACK_EXTENSION;
+  Addr end = copyEnd;
+  Addr regs[FJALAR_NUM_DWARF_REGS];
+  UInt regNum;
+  VarNode* node;
+
+  for (regNum = 0; regNum < FJALAR_NUM_DWARF_REGS; regNum++) {
+    if (f->entryRegsMask & (1U << regNum)) {
+      regs[regNum] = read_dwarf_reg(tid, regNum);
+    }
+  }
+  // At function entrance, the guest stack holds what the virtual stack
+  // will hold, so formalParamLocation can read the guest stack.  An
+  // empty copied stack makes it do so.
+  f->guestStackStart = 0;
+  f->guestStackEnd = 0;
+
+  for (node = f->formalParameters.first; node != NULL; node = node->next) {
+    VariableEntry* var = node->var;
+    Addr paramLoc;
+    Addr paramSize;
+    // visitVariableGroup does not read these formal parameters, or
+    // reads them from the virtual stack at a fixed offset, or reads them
+    // from a register.
+    if (formalParamIsOmitted(var)
+        || var->location_expression_size == 0
+        || (location_op_kind_of(var->location_expression[0].atom)
+            == LOC_OP_REG)) {
+      continue;
+    }
+    paramLoc = formalParamLocation(var, f, frameBase,
+                                   f->entryRegsMask != 0 ? regs : NULL);
+    paramSize = formalParamByteSize(var);
+    // The subtraction, rather than an addition, cannot overflow.
+    if (paramLoc < stackStart || paramLoc > limit
+        || paramSize > limit - paramLoc
+        || paramLoc + paramSize <= end) {
+      continue;
+    }
+    // The parameter might not be on the guest stack, if a program uses
+    // an alternate stack or a location is bogus.
+    if (!VG_(am_is_valid_for_client)(copyEnd, paramLoc + paramSize - copyEnd,
+                                     VKI_PROT_READ)) {
+      continue;
+    }
+    end = paramLoc + paramSize;
+  }
+  return end;
 }
 
 // located in VEX/priv/main_util.c
@@ -765,11 +832,32 @@ void enter_function(FunctionEntry* f)
 
   tl_assert(size >= 0);
   if (size != 0) {
+    Int entryRegsOffset;
+    Int entryRegsSize;
+
+    // A formal parameter can lie on the stack beyond the part that the
+    // above size covers.  An example is a C++ object passed by
+    // invisible reference, which is in the caller's frame.  Copy the
+    // stack through the end of every such formal parameter, so that at
+    // function exit Fjalar reads it from the virtual stack too, and so
+    // visits its value at function entrance.  Fjalar does not visit
+    // the formal parameters of a function that it does not print.
+    if (!f->doNotPrint) {
+      Addr stackStart = stack_ptr - VG_STACK_REDZONE_SZB;
+      Addr paramsEnd = formal_params_stack_end(f, tid, frame_ptr, stackStart,
+                                               stackStart + size);
+      if (paramsEnd > stackStart + size) {
+        FJALAR_DPRINTF("Extending the virtual stack of %s from %d to %d bytes\n",
+                       f->fjalar_name, size, (int)(paramsEnd - stackStart));
+        size = (int)(paramsEnd - stackStart);
+      }
+    }
+
     // entryRegs follows the virtual stack in the same allocation.
-    Int entryRegsOffset = VG_ROUNDUP(size, sizeof(Addr));
-    Int entryRegsSize = (f->entryRegsMask != 0
-                         ? FJALAR_NUM_DWARF_REGS * sizeof(Addr)
-                         : 0);
+    entryRegsOffset = VG_ROUNDUP(size, sizeof(Addr));
+    entryRegsSize = (f->entryRegsMask != 0
+                     ? FJALAR_NUM_DWARF_REGS * sizeof(Addr)
+                     : 0);
     newEntry->allocByteSize = entryRegsOffset + entryRegsSize;
     newEntry->virtualStack = VG_(calloc)("fjalar_main.c: enter_func",
                                          newEntry->allocByteSize,
