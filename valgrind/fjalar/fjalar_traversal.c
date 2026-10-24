@@ -1337,7 +1337,9 @@ void visitReturnValue(FunctionExecutionState* e,
   else if ((cur_node->var->ptrLevels == 0) &&
            ((cur_node->var->varType->decType == D_FLOAT) ||
             (cur_node->var->varType->decType == D_DOUBLE) ||
-            (cur_node->var->varType->decType == D_LONG_DOUBLE))) {
+            (cur_node->var->varType->decType == D_LONG_DOUBLE) ||
+            (cur_node->var->varType->decType == D_FLOAT16) ||
+            (cur_node->var->varType->decType == D_BFLOAT16))) {
     // SPECIAL CASE: The value in FPU must be interpreted as a double
     // even if its true type may be a float
     FJALAR_DPRINTF("RETURN - floating point: cur_node=%p, basePtr=%p, value=%.16g\n",

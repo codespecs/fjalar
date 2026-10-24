@@ -112,6 +112,8 @@ const int DecTypeByteSizes[] = {
   sizeof(float),                  // D_FLOAT,
   sizeof(double),                 // D_DOUBLE,
   sizeof(long double),            // D_LONG_DOUBLE,
+  2,                              // D_FLOAT16,
+  2,                              // D_BFLOAT16,
 
   sizeof(int),                    // D_ENUMERATION,
 
@@ -147,6 +149,8 @@ TypeEntry Int128Type = {D_I128, 0, 16, 0};          // Rust
 TypeEntry FloatType = {D_FLOAT, 0, sizeof(float), 0};
 TypeEntry DoubleType = {D_DOUBLE, 0, sizeof(double), 0};
 TypeEntry LongDoubleType = {D_LONG_DOUBLE, 0, sizeof(long double), 0};
+TypeEntry Float16Type = {D_FLOAT16, 0, 2, 0};
+TypeEntry BFloat16Type = {D_BFLOAT16, 0, 2, 0};
 TypeEntry FunctionType = {D_FUNCTION, 0, sizeof(void*), 0};
 TypeEntry VoidType = {D_VOID, 0, sizeof(void*), 0};
 TypeEntry Char8Type = {D_CHAR8, 0, 1, 0};
@@ -177,6 +181,8 @@ TypeEntry* BasicTypesArray[] = {
   &FloatType,               //  D_FLOAT,
   &DoubleType,              //  D_DOUBLE,
   &LongDoubleType,          //  D_LONG_DOUBLE,
+  &Float16Type,             //  D_FLOAT16,
+  &BFloat16Type,            //  D_BFLOAT16,
 
   0,                        //  D_ENUMERATION,
 
@@ -214,6 +220,8 @@ const char* DeclaredTypeString[] = {
   "float",                  // D_FLOAT,
   "double",                 // D_DOUBLE,
   "long double",            // D_LONG_DOUBLE,
+  "_Float16",               // D_FLOAT16,
+  "__bf16",                 // D_BFLOAT16,
 
   // This should NOT be used unless you created an unnamed struct/union!
   // Use TypeEntry::typeName instead
@@ -285,6 +293,8 @@ const char* DeclaredTypeNames[] = {"D_NO_TYPE", // Create padding
                              "D_FLOAT",
                              "D_DOUBLE",
                              "D_LONG_DOUBLE",
+                             "D_FLOAT16",
+                             "D_BFLOAT16",
                              "D_ENUMERATION",
                              "D_STRUCT_CLASS",
                              "D_UNION",
@@ -1877,6 +1887,16 @@ static void extractBaseType(VariableEntry* var, base_type* basePtr)
     }
     else if (basePtr->byte_size == sizeof(long double)) {
       var->varType = BasicTypesArray[D_LONG_DOUBLE];
+    }
+    // _Float16 and __bf16 have the same size and encoding, so only their
+    // names distinguish them.
+    else if (basePtr->byte_size == 2) {
+      if ((basePtr->name != NULL) && VG_STREQ(basePtr->name, "__bf16")) {
+        var->varType = BasicTypesArray[D_BFLOAT16];
+      }
+      else {
+        var->varType = BasicTypesArray[D_FLOAT16];
+      }
     }
     break;
 
