@@ -115,6 +115,7 @@ const int DecTypeByteSizes[] = {
   2,                              // D_FLOAT16,
   2,                              // D_BFLOAT16,
   16,                             // D_FLOAT128,
+  16,                             // D_COMPLEX, // never read; size varies
 
   sizeof(int),                    // D_ENUMERATION,
 
@@ -153,6 +154,13 @@ TypeEntry LongDoubleType = {D_LONG_DOUBLE, 0, sizeof(long double), 0};
 TypeEntry Float16Type = {D_FLOAT16, 0, 2, 0};
 TypeEntry BFloat16Type = {D_BFLOAT16, 0, 2, 0};
 TypeEntry Float128Type = {D_FLOAT128, 0, 16, 0};
+// A _Complex type has twice the size of its real type.  The types share a
+// DeclaredType, D_COMPLEX, but each size has its own TypeEntry, because
+// Fjalar uses a type's size to lay out the stack and structs.
+TypeEntry Complex4Type = {D_COMPLEX, 0, 4, 0};    // _Complex _Float16
+TypeEntry Complex8Type = {D_COMPLEX, 0, 8, 0};    // _Complex float
+TypeEntry Complex16Type = {D_COMPLEX, 0, 16, 0};  // _Complex double
+TypeEntry Complex32Type = {D_COMPLEX, 0, 32, 0};  // _Complex long double, _Complex _Float128
 TypeEntry FunctionType = {D_FUNCTION, 0, sizeof(void*), 0};
 TypeEntry VoidType = {D_VOID, 0, sizeof(void*), 0};
 TypeEntry Char8Type = {D_CHAR8, 0, 1, 0};
@@ -186,6 +194,7 @@ TypeEntry* BasicTypesArray[] = {
   &Float16Type,             //  D_FLOAT16,
   &BFloat16Type,            //  D_BFLOAT16,
   &Float128Type,            //  D_FLOAT128,
+  &Complex16Type,           //  D_COMPLEX, // one of the Complex*Type entries
 
   0,                        //  D_ENUMERATION,
 
@@ -226,6 +235,7 @@ const char* DeclaredTypeString[] = {
   "_Float16",               // D_FLOAT16,
   "__bf16",                 // D_BFLOAT16,
   "_Float128",              // D_FLOAT128,
+  "_Complex",               // D_COMPLEX,
 
   // This should NOT be used unless you created an unnamed struct/union!
   // Use TypeEntry::typeName instead
@@ -300,6 +310,7 @@ const char* DeclaredTypeNames[] = {"D_NO_TYPE", // Create padding
                              "D_FLOAT16",
                              "D_BFLOAT16",
                              "D_FLOAT128",
+                             "D_COMPLEX",
                              "D_ENUMERATION",
                              "D_STRUCT_CLASS",
                              "D_UNION",
@@ -1909,6 +1920,22 @@ static void extractBaseType(VariableEntry* var, base_type* basePtr)
       else {
         var->varType = BasicTypesArray[D_FLOAT16];
       }
+    }
+    break;
+
+  // Fjalar never reads a _Complex value; see varHasReportableValue.
+  case DW_ATE_complex_float:
+    if (basePtr->byte_size == 4) {
+      var->varType = &Complex4Type;
+    }
+    else if (basePtr->byte_size == 8) {
+      var->varType = &Complex8Type;
+    }
+    else if (basePtr->byte_size == 16) {
+      var->varType = &Complex16Type;
+    }
+    else if (basePtr->byte_size == 32) {
+      var->varType = &Complex32Type;
     }
     break;
 

@@ -63,6 +63,7 @@ typedef enum _DeclaredType {
   D_FLOAT16,          // _Float16, an IEEE 754 binary16 value
   D_BFLOAT16,         // __bf16, a bfloat16 value
   D_FLOAT128,         // _Float128, an IEEE 754 binary128 value
+  D_COMPLEX,          // a _Complex floating-point type; never printed
 
   D_ENUMERATION,
 
