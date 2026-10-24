@@ -179,7 +179,11 @@ if [ "$RUN_TESTS" = true ]; then
   # tests read it:  memcheck/tests/null_socket calls recvfrom() on it, which
   # waits forever if standard input is an idle socket.  So run the tests with
   # standard input from /dev/null.
-  make -j"$(nproc)" test XMLLINT=xmllint-skipped-by-check-regtest \
+  # Unless TERM is unset or "dumb", gdb 17 prefixes its error and warning
+  # messages with an emoji (such as "❌️ Remote connection closed"), which the
+  # gdbserver tests' filters do not remove.  CI jobs have no TERM, so unset it,
+  # so that a run from a terminal fails the same tests as a CI job.
+  env -u TERM make -j"$(nproc)" test XMLLINT=xmllint-skipped-by-check-regtest \
     < /dev/null > "$LOG_FILE" 2>&1 || true
   # "make test" ends by running the post-test checks, but in $LOG_FILE their
   # error messages are mixed with make's output.  Run them again by themselves.
