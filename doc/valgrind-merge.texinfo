@@ -1536,11 +1536,37 @@ layout is very similar to Memcheck's, so mirroring functionality should
 be fairly straightforward.
 
 New VEX IR operations (@code{Iop_*} values) are added in many Valgrind
-releases.  @code{expr2tags_Binop_DC}, @code{expr2tags_Triop_DC}, and
-@code{expr2tags_Qop_DC} panic when they encounter an operation that they
-do not handle, and @code{expr2tags_Unop_DC} passes the operand's tag
-through unchanged.  So, every new operation must be considered, even if
-the regression tests do not exercise it.
+releases.  @code{expr2tags_Unop_DC}, @code{expr2tags_Binop_DC},
+@code{expr2tags_Triop_DC}, and @code{expr2tags_Qop_DC} panic when they
+encounter an operation that they do not handle.  So, every new operation
+must be considered, even if the regression tests do not exercise it.
+
+The test @file{valgrind/fjalar/tests/dyncomp-op-coverage-test.sh}, which
+@code{make fjalar-test} runs, finds the operations to consider.  It takes
+each operation's arity from @code{typeOfPrimop} in
+@file{VEX/priv/ir_defs.c}, and it checks that each operation either has a
+case label in the function for its arity or is listed in the comment of
+@file{dyncomp_translate.c} that begins ``The following opcodes are not
+implemented'', in the subsection for that function.  The comment lists the
+operations that the supported guests, amd64 and x86, do not use, so the
+test also checks that the amd64 and x86 front ends
+(@file{VEX/priv/guest_amd64_*.c}, @file{VEX/priv/guest_x86_*.c}, and
+@file{VEX/priv/guest_generic_*.c}) use none of them.  Finally, it checks
+that no listed operation also has a case label, that every listed
+operation still exists and has the arity of its subsection, and that no
+case label falls through to the @code{default} case.
+
+When the test fails after a merge, give each operation that it reports a
+case label in the function for its arity, with the same tag behavior as
+similar operations (Memcheck's treatment in
+@file{memcheck/mc_translate.c} is a good guide).  If no supported guest
+uses the operation, you may instead list it in the comment.  Remove a
+listed operation that VEX no longer has.
+
+To find the unhandled operations that a program reaches without stopping
+at the first one, run it with @option{--dyncomp-unhandled-ops=warn}, which
+prints a warning the first time that DynComp encounters each unhandled
+operation and approximates its tag behavior.
 
 Another type of addition that will need to be supported are added
 "IR Expressions." Most VEX IR instructions are implemented as a set
