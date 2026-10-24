@@ -8,40 +8,34 @@ requires; neither requires all of them.
 
 Below, `$INV/fjalar` means the Fjalar tree being changed.
 
-Items 2 (#103) and 4 (#134) are done.  Both upgrades should also wait
-for the open PRs that change files that the upgrades merge into; the
-"Current state" section of each upgrade plan says how to list them.
+Both upgrades should wait for the open PRs that change files that the
+upgrades merge into; the "Current state" section of each upgrade plan
+says how to list them.
 
 ## 1. Enforce the expected regtest failures in CI
 
 Fjalar's CI runs Valgrind's regression tests, but its jobs only report
 the failures.
 
-1. Rebuild and push the Daikon `-plus` Docker images, which Fjalar's CI
-   uses (`scripts/Dockerfile-README.md` in Daikon), so that they contain
-   `gdb` and glibc debuginfo, which codespecs/daikon#916 added.
-   This makes most `gdbserver_tests` meaningful.  Ideally, do this before
-   step 2, so that the lists are generated only once.
-2. Push a branch and let the regtest jobs run.  Download the
-   `regtest-results-*` artifacts.  In each artifact's directory, run
+1. Push a branch and let the regtest jobs run.  Download the
+   `regtest-results-*` artifacts:  either download each one's `.zip` file
+   from the run's page and unzip it into its own directory, or run
+   `gh run download <run-id>`, which puts each artifact in its own
+   directory.  In each artifact's directory, which contains
+   `regtest-<os>.log` and `regtest-<os>-post.log`, run
    `$INV/fjalar/check-regtest.sh --log regtest-<os>.log --expected $INV/fjalar/regtest-expected/<os>.txt --update`,
    which writes the observed failures to the list, after a header that
    explains the format and how to regenerate the list.
-3. Re-run the jobs at least twice more.  Any test whose result differs
+2. Re-run the jobs at least twice more.  Any test whose result differs
    between runs (timing-dependent tests such as helgrind or `fdleak`, or
    CPU-dependent tests such as AVX-512 ones; the job logs the CPU) gets a
    `?` prefix.
-4. Remove `--report-only` from both CI jobs (the TODO comments in
+3. Remove `--report-only` from both CI jobs (the TODO comments in
    `.github/workflows/ci.yml`) and commit the lists.
 
 Done when:  CI enforces the lists on both distributions and is green.
 
-## 2. Add and remove files during the merge without `make git-update` (done)
-
-\#103 merges upstream with `git cherry-pick`, a 3-way merge that adds and
-removes files itself.
-
-## 3. Look for DynComp panics on unhandled IROps, now, on Valgrind 3.23
+## 2. Look for DynComp panics on unhandled IROps, now, on Valgrind 3.23
 
 \#87 made `expr2tags_Unop_DC` switch on the operation and cover all 283
 unary operations, so unary operations no longer silently pass their
@@ -98,12 +92,3 @@ What:
   Daikon repository), compiled with `-march=x86-64-v3`, so CI exercises
   AVX2 IROps.  GitHub's runners support AVX2; check that before relying on it
   (the Kvasir CI jobs log the CPU flags).
-
-## 4. Make the whitespace of the Binutils-derived files match Binutils 2.39 (done)
-
-\#134.  Hundreds of lines of Fjalar's `dwarf.c`, and some of `readelf.c`
-and `bucomm.h`, differ from Binutils 2.39 only in whitespace.  The
-readelf upgrade merges these files with `git cherry-pick`, which does
-not ignore whitespace by default, so each such line near an upstream
-change would become a spurious conflict.  #134 gave those lines Binutils
-2.39's whitespace.

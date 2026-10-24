@@ -8,10 +8,11 @@ Below, `$FJALAR` is the Fjalar tree being upgraded (see step 1).
 
 ## Ordering: do this before the Valgrind upgrade
 
-Item 4 of the preparation in `plan-pre-upgrade.md` (whitespace that
-matches Binutils 2.39, so that step 3's `git cherry-pick` reports no
-whitespace-only conflicts) is done (#134); this plan assumes it.  Item 1
-(enforcing the expected regtest failures in CI) need not be done first.
+This plan assumes that the whitespace of Fjalar's Binutils-derived files
+matches Binutils 2.39 (#134), so that step 3's `git cherry-pick` reports
+no whitespace-only conflicts.  Item 1 of the preparation in
+`plan-pre-upgrade.md` (enforcing the expected regtest failures in CI)
+need not be done first.
 Step 2 creates a local expected-failures list if this machine's OS has
 none, and step 7 compares against it.  Until CI enforces the lists, that
 local comparison is the only regtest check, because the CI regtest jobs
