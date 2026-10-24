@@ -1,0 +1,13 @@
+# Expected failures of Valgrind's regression tests ("make regtest") in CI
+# job regtest_rocky_10 (see .github/workflows/ci.yml), which runs in
+# container image mdernst/daikon-rockylinux-jdk25-plus:latest.  Rebuilding that
+# image (for example, with a new gdb or glibc) can change which tests fail.
+# See check-regtest.sh for the format.  To regenerate, download the job's
+# artifact (gh run download <run-id> -n regtest-results-regtest_rocky_10)
+# and, in that directory, run this file's check-regtest.sh:
+#   <fjalar>/check-regtest.sh --log regtest-rocky-10.log --update
+
+memcheck/tests/origin6-fp (stderr)
+none/tests/libvex_test (stderr)
+none/tests/libvexmultiarch_test (stderr)
+none/tests/scripts/bug231357 (stdout)

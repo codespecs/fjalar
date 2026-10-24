@@ -8765,6 +8765,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
          ? VG_(calloc)("mc_translate.c.tmpPendingCarryTags",
                        2 * dce.n_originalTmps + 1, sizeof(IRExpr*))
          : NULL;
+      dce.sbbThunk       = False;
       dce.tmpMap         = VG_(malloc)("mc_translate.c.2", dce.n_originalTmps * sizeof(IRTemp));
       //dce.tmpMap         = LibVEX_Alloc(dce.n_originalTmps * sizeof(IRTemp));
       for (i = 0; i < (Int)dce.n_originalTmps; i++)

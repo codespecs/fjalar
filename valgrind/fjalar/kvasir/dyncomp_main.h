@@ -306,6 +306,7 @@ extern VG_REGPARM(2) UInt MC_(helperc_MERGE_TAGS) ( UInt, UInt );
 extern VG_REGPARM(2) UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt, UInt );
 extern VG_REGPARM(3) UWord MC_(helperc_SUB_OPERAND_TAG) ( UWord, UWord, UWord );
 Bool dyncomp_cc_op_is_sub(UWord cc_op);
+Bool dyncomp_cc_op_is_sbb(UWord cc_op);
 Bool dyncomp_cc_op_preserves_carry(UWord cc_op);
 
 // The guest state offsets whose tags are the pending carry tags of the
