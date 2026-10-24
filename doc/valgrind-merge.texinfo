@@ -217,6 +217,27 @@ Continuous integration (GitHub Actions, configured in
 @file{.github/workflows/ci.yml}) runs these tests on Ubuntu and Rocky Linux;
 see that file for the exact operating system versions.
 
+For a Valgrind update, also run Valgrind's @command{regtest} tests on the
+current sources, and save the failures that they observe, outside the
+Fjalar tree:
+
+@example
+$INV/fjalar/check-regtest.sh
+cp $INV/fjalar/regtest-<os>-observed.txt $INV/regtest-before-merge.txt
+@end example
+
+@noindent
+where @file{regtest-<os>.log} is the log that @command{check-regtest.sh}
+names when it starts, such as @file{regtest-ubuntu-26.04.log}.
+@command{check-regtest.sh} must report no
+unexpected failures; see
+@ref{Get Current Valgrind Regtest Baseline Results}, which also says what
+to do if this operating system has no expected-failures file.
+@ref{Testing Valgrind} compares the failures after the merge with
+@file{regtest-before-merge.txt}.  It cannot use
+@file{regtest-expected/<os>.txt} for that, because that file may list
+tests that no longer fail.
+
 At this point, the source trees are ready for the merge.
 Remove the build products, including the files that
 @command{automake} and @command{autoconf} generated, so that the build
@@ -675,31 +696,34 @@ some failures. Rather, it is important to capture the results
 as they should be similar after the source merge. They may not be
 identical due to Valgrind improvements or the addition of new test cases.
 
-To run the @command{regtest} verification tests, build a copy of
-@file{valgrind-new}, so that @file{valgrind-new} stays a clean clone,
-which becomes @file{valgrind-old} for the next merge.
+To run the @command{regtest} verification tests, run
+@command{upstream-regtest.sh}, giving it the file to write the list of
+failing tests to:
 
 @example
-rm -rf $INV/valgrind-new-build
-git clone -q $INV/valgrind-new $INV/valgrind-new-build
-cd $INV/valgrind-new-build
-./autogen.sh
-./configure --prefix=`pwd`/inst
-make all install
-make regtest > test.log 2>&1
+$INV/fjalar/upstream-regtest.sh $INV/regtest-upstream-$VNEWTAG.txt
 @end example
 
 @noindent
-Do not delete @file{valgrind-new-build} until you have compared its
-@command{regtest} results, in @file{$INV/valgrind-new-build/test.log}, in
-@ref{Testing Valgrind}.
+The script checks that @file{valgrind-new} is at @code{$VNEWTAG}, which
+must be set.  It builds a copy of @file{valgrind-new}, in
+@file{$INV/valgrind-new-build}, and runs the tests there.  It never builds
+in @file{valgrind-new} itself, so that @file{valgrind-new} stays a clean
+clone, which becomes @file{valgrind-old} for the next merge.
 
 @noindent
-This will take about 10-15 minutes.  A summary of the @command{regtest}
-results will be at the end of the log file.  We will use these results in
-@ref{Testing Valgrind}.
+This will take about 10-15 minutes.  The test output is in
+@file{$INV/valgrind-new-build/test.log}; a summary of the @command{regtest}
+results is at the end of it.  @file{$INV/regtest-upstream-$VNEWTAG.txt} lists the
+failing tests, in the expected-failures format that
+@command{check-regtest.sh} describes.  We will use these results in
+@ref{Testing Valgrind}.  Keep @file{valgrind-new-build} until the merge
+has landed (@pxref{Testing Valgrind}).  @ref{Testing Valgrind} also
+compares the failures after the merge with the failures in Fjalar's tree
+before the merge, which you saved in
+@ref{Verify current sources pass the regression tests}.
 
-Here is a copy of the last few lines from the latest run of these tests (01/21/2026)
+Here is a copy of the last few lines from the latest run of these tests (2026-01-21)
 running Valgrind 3.23 on a UW/CSE Rocky Linux (9.7) based system:
 
 @smallexample
@@ -731,10 +755,12 @@ make: *** [Makefile:1440: regtest] Error 1
 
 (Note that the failure of all the gdbserver tests indicates that the system does not
 have the proper glibc-debuginfo installed.)
-(Note the final include file failure - this is expected behavior.)
-(Note that the unknown directory failure is expected behavior.)
+(The unknown directory failure is from a build that installed into
+@file{inst} in the source tree, which upstream's header check does not
+know.  @command{upstream-regtest.sh} does not install, so it does not
+have that failure.)
 
-Here is another example from the latest run of these tests (01/21/2026)
+Here is another example from the latest run of these tests (2026-01-21)
 running Valgrind 3.23 on a Ubuntu Linux (25.10) based system:
 
 @smallexample
@@ -800,34 +826,39 @@ Just as is done for a Valgrind source update
 (@ref{Get New Valgrind Regtest Baseline Results}),
 we want to run the Valgrind @command{regtest} regression tests to
 establish a baseline set of results for partial verification of the
-@command{readelf} update process.  However, in this case we want
-to run the tests prior to the source update as we will use the
-current Fjalar sources.
+@command{readelf} update process.  However, these tests use the current
+Fjalar sources rather than upstream's, so run them prior to the source
+update.  (A Valgrind update runs them prior to the merge too;
+@pxref{Verify current sources pass the regression tests}.)
 
 @smallexample
-make -C $INV/fjalar --no-print-directory clean build && \
-  make -C $INV/fjalar --no-print-directory test 2>&1 | tee $INV/fjalar/test.log
+if [ -f $INV/fjalar/valgrind/Makefile ]; then make -C $INV/fjalar clean; fi \
+  && (set -o pipefail; make -C $INV/fjalar build 2>&1 | tee $INV/fjalar/build-before.log) \
+  && $INV/fjalar/check-regtest.sh
 @end smallexample
+
+@noindent
+@file{build-before.log} is for comparing compiler warnings after the
+merge (@pxref{Hints to modifying dwarf.c and readelf.c}).
+The @code{clean} makes the build recompile every file, so that the log
+contains all the warnings.  It is skipped in a tree that has never been
+built, where it would fail because @command{make build} has not yet
+created @file{valgrind/Makefile}.
 
 @noindent
 As noted in @ref{Get New Valgrind Regtest Baseline Results},
-we do not expect all the tests to pass.  We will use the results in
-@ref{Testing Valgrind}.
-
-@noindent
-Note: If there have been no operating system updates, we would expect
-the results to be identical to the ones obtained the last time a
-full Valgrind update was done.
-
-To compare compiler warnings before and after the merge
-(@pxref{Hints to modifying dwarf.c and readelf.c}), save the output of a
-build of Fjalar.  An incremental build prints no warnings for the files
-that it does not recompile, so these commands rebuild all of Fjalar:
+we do not expect all the tests to pass.  @command{check-regtest.sh}
+compares the failures with the expected failures for this operating
+system, in @file{regtest-expected/<os>.txt}, and must report no
+unexpected failures.  If this operating system has no such file, create
+a local one, which you should not commit:
 
 @smallexample
-make -C $INV/fjalar/valgrind/fjalar clean
-(set -o pipefail; make -C $INV/fjalar/valgrind/fjalar 2>&1 | tee $INV/fjalar/build-before.log)
+$INV/fjalar/check-regtest.sh --log $INV/fjalar/regtest-<os>.log --update
 @end smallexample
+
+@noindent
+@ref{Testing Valgrind} compares against it.
 
 
 @node Merging the binutils changes
@@ -1238,22 +1269,57 @@ run the installed Fjalar under @file{valgrind/inst}, so without
 @section Testing Valgrind
 
 Before we test Fjalar, it is a good idea to verify we haven't
-broken the underlying Valgrind:
+broken the underlying Valgrind.  @command{check-regtest.sh} runs
+Valgrind's @command{regtest} tests and compares the failures with the
+expected failures for this operating system, in
+@file{regtest-expected/<os>.txt}:
 
 @smallexample
-make -C $INV/fjalar --no-print-directory test 2>&1 | tee $INV/fjalar/test-after.log
+$INV/fjalar/check-regtest.sh
 @end smallexample
 
 @noindent
-While a few tests may not pass, the results at the end of
-@file{test-after.log} should be identical to
-the results obtained when running these tests
-as described in @ref{Get New Valgrind Regtest Baseline Results}
-(for a Valgrind update, in @file{$INV/valgrind-new-build/test.log})
-or @ref{Get Current Valgrind Regtest Baseline Results}
-(for a Binutils update, in @file{$INV/fjalar/test.log}).
-For a Valgrind update, once the comparison is done, delete the build copy:
-@code{rm -rf $INV/valgrind-new-build}.
+For a Binutils update, which does not change Valgrind, it must report no
+unexpected failures.  A new failure is a bug in the merge, or the result
+of an operating system or compiler update; to tell which, run the tests
+on the old sources.
+
+For a Valgrind update, the expected failures change, because the new
+release adds, removes, and fixes tests.  First compare the failures with
+the list that @command{upstream-regtest.sh} wrote
+(@pxref{Get New Valgrind Regtest Baseline Results}):
+
+@smallexample
+$INV/fjalar/check-regtest.sh --log $INV/fjalar/regtest-<os>.log \
+  --expected $INV/regtest-upstream-$VNEWTAG.txt --report-only
+@end smallexample
+
+@noindent
+Each failure that it reports is not an upstream failure.  If it is in
+@file{$INV/regtest-before-merge.txt}
+(@pxref{Verify current sources pass the regression tests}), it failed
+before the merge too, and is specific to Fjalar; otherwise it was probably
+caused by the merge, so fix it.  A test that
+@file{regtest-expected/<os>.txt} marks with @samp{?} may fail only
+sometimes, so if such a test is not in
+@file{regtest-before-merge.txt}, run the tests again before you conclude
+that the merge broke it.  Only when no failure of the second kind remains, rewrite the
+expected failures, which adds the new upstream failures and removes the
+tests that now pass, and review the diff:
+
+@smallexample
+$INV/fjalar/check-regtest.sh --log $INV/fjalar/regtest-<os>.log --update
+@end smallexample
+
+@noindent
+Commit the diff only if the list is committed, not if you created it
+locally.
+
+For a Valgrind update, keep the build copy until the merge has landed,
+because a failure that appears only in CI may need to be compared with
+upstream's results; then delete it and the list of failures before the
+merge:
+@code{rm -rf $INV/valgrind-new-build $INV/regtest-before-merge.txt}.
 
 
 @node Testing Fjalar
