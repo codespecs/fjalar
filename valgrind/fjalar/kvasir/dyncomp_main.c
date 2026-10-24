@@ -475,6 +475,13 @@ UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
   return val_uf_union_tags_in_range(a, 1);
 }
 
+// The tags of the bytes read by loads; see expr2tags_WrTmp_DC.  A slot
+// is written and read during one execution of a superblock, and
+// Valgrind switches threads only between superblocks.  Tags can be
+// garbage-collected between the write and the read, so
+// garbage_collect_tags() renumbers these tags too.
+UInt load_tag_snapshots[DC_N_LOAD_TAG_SNAPSHOTS][DC_LOAD_TAG_SNAPSHOT_BYTES];
+
 // Returns the tag of the value loaded from the range [a, a+len), in
 // dyncomp_dataflow_only_mode, dyncomp_dataflow_comparisons_mode, and
 // dyncomp_units_mode.  In those modes, a load is not an interaction, so
@@ -484,18 +491,52 @@ UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
 // WEAK_FRESH_TAG, or 0 if every tag in the range is 0.
 // Returning WEAK_FRESH_TAG rather than a fresh tag avoids allocating a
 // tag for each load of a GOT entry, such as the one in every PLT call;
-// the MC_(helperc_STORE_TAG_*) functions replace WEAK_FRESH_TAG with a
-// fresh tag if the value is stored.
-VG_REGPARM(2)
-UInt MC_(helperc_LOAD_TAG_N) ( Addr a, UWord len ) {
+// the MC_(helperc_STORE_TAG_*) functions, and
+// MC_(helperc_STORE_TAG_SNAPSHOT), replace WEAK_FRESH_TAG with a fresh
+// tag if the value is stored.  If slot is non-negative, it also saves
+// the tag of each byte in the range in that slot of load_tag_snapshots.
+VG_REGPARM(3)
+UInt MC_(helperc_LOAD_TAG_N) ( Addr a, UWord len, Word slot ) {
+  UWord i;
   UInt tag;
 
-  DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_N: %p %lu\n", (void *)a, len);
+  DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_N: %p %lu %ld\n", (void *)a, len, slot);
+  if (slot >= 0) {
+    tl_assert(slot < DC_N_LOAD_TAG_SNAPSHOTS);
+    tl_assert(len <= DC_LOAD_TAG_SNAPSHOT_BYTES);
+    for (i = 0; i < len; i++) {
+      load_tag_snapshots[slot][i] = get_tag(a + i);
+    }
+  }
   tag = first_nonzero_tag_in_range(a, len);
   if (WEAK_FRESH_TAG == tag) {
     return WEAK_FRESH_TAG;
   }
   return val_uf_find_leader(tag);
+}
+
+// Writes the tags saved in the given slot of load_tag_snapshots to the
+// range [a, a+len), one byte at a time.
+VG_REGPARM(3)
+void MC_(helperc_STORE_TAG_SNAPSHOT) ( Addr a, UWord len, UWord slot ) {
+  UWord i;
+  UInt tag;
+  UInt freshTag = 0;
+
+  DYNCOMP_TPRINTF("[DynComp] STORE_TAG_SNAPSHOT: %p %lu %lu\n", (void *)a, len, slot);
+  tl_assert(slot < DC_N_LOAD_TAG_SNAPSHOTS);
+  tl_assert(len <= DC_LOAD_TAG_SNAPSHOT_BYTES);
+  for (i = 0; i < len; i++) {
+    tag = load_tag_snapshots[slot][i];
+    // Like MC_(helperc_STORE_TAG_*), replace WEAK_FRESH_TAG by a fresh tag.
+    if (WEAK_FRESH_TAG == tag) {
+      if (0 == freshTag) {
+        freshTag = grab_fresh_tag();
+      }
+      tag = freshTag;
+    }
+    set_tag(a + i, val_uf_find_leader(tag));
+  }
 }
 
 // Make this const so gcc can eliminate dead code to improve

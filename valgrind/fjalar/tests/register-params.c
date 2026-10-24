@@ -48,6 +48,8 @@ __attribute__((noinline)) double identity(double d) {
 // optimization.  See register-params-test.sh.
 void stack_value(long v);
 void kept(long y);
+void constant_value(long c);
+void literal_value(long l);
 
 int main(void) {
   int t = 0;
@@ -59,6 +61,8 @@ int main(void) {
   split(p);
   stack_value(17);
   kept(13);
+  constant_value(17);
+  literal_value(5);
   t += (int)identity(1.5);
   return t == 12345;
 }

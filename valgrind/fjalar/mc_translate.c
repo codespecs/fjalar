@@ -8769,6 +8769,13 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
       //dce.tmpMap         = LibVEX_Alloc(dce.n_originalTmps * sizeof(IRTemp));
       for (i = 0; i < (Int)dce.n_originalTmps; i++)
          dce.tmpMap[i] = IRTemp_INVALID;
+      dce.loadTagSnapshots = NULL;
+      if (!loadIsInteraction_DC()) {
+         dce.loadTagSnapshots = VG_(malloc)("mc_translate.c.3", dce.n_originalTmps * sizeof(Int));
+         for (i = 0; i < (Int)dce.n_originalTmps; i++)
+            dce.loadTagSnapshots[i] = -1;
+      }
+      dce.n_loadTagSnapshots = 0;
    }
 
    /* Finally, begin instrumentation. */
@@ -8873,7 +8880,8 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
 #ifndef _NO_DYNCOMP
             if (do_dyncomp) {
                assign_DC( 'V', &dce, findShadowTmp_DC(&dce, st->Ist.WrTmp.tmp),
-                               expr2tags_DC( &dce, st->Ist.WrTmp.data) );
+                               expr2tags_WrTmp_DC( &dce, st->Ist.WrTmp.tmp,
+                                                   st->Ist.WrTmp.data) );
                notePendingCarryTags_DC( &dce, st->Ist.WrTmp.tmp,
                                         st->Ist.WrTmp.data );
             }
@@ -9078,6 +9086,10 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
 
    if (mce.tmpHowUsed) {
       VG_(free)( mce.tmpHowUsed );
+   }
+
+   if (do_dyncomp && dce.loadTagSnapshots) {
+      VG_(free)( dce.loadTagSnapshots );
    }
 
 #ifndef _NO_DYNCOMP
