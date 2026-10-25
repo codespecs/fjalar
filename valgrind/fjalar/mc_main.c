@@ -7,7 +7,7 @@
 /*--------------------------------------------------------------------*/
 
 /*
-   This file is derived from MemCheck, a heavyweight Valgrind tool for
+   This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
    Copyright (C) 2000-2017 Julian Seward
@@ -787,7 +787,6 @@ UChar extract_vabits4_from_vabits8 ( Addr a, UChar vabits8 )
 static INLINE
 void set_vabits2 ( Addr a, UChar vabits2 )
 {
-   //DEBUG("set_vabits2 @: %p, %x\n", (void *)a, vabits2);
    SecMap* sm       = get_secmap_for_writing(a);
    UWord   sm_off   = SM_OFF(a);
    insert_vabits2_into_vabits8( a, vabits2, &(sm->vabits8[sm_off]) );
@@ -818,7 +817,6 @@ UChar get_vabits8_for_aligned_word32 ( Addr a )
 static INLINE
 void set_vabits8_for_aligned_word32 ( Addr a, UChar vabits8 )
 {
-   //DEBUG("set_vabits8 @: %p, %x\n", (void *)a, vabits8);
    SecMap* sm       = get_secmap_for_writing(a);
    UWord   sm_off   = SM_OFF(a);
    sm->vabits8[sm_off] = vabits8;
@@ -902,8 +900,6 @@ void set_vbyte( Addr a, UWord vbyte )
 
 void set_abit_and_vbyte (Addr a, UWord abit, UWord vbyte )
 {
-   //RUDD DEBUG
-   //  printf("abit: %x, vbit: %x\n", abit, vbyte);
   UChar vabits2 = VA_BITS2_UNDEFINED;
 
   if(abit == VGM_BIT_VALID) {
@@ -1198,9 +1194,6 @@ static void set_sec_vbits8(Addr a, UWord vbits8)
    Addr         aAligned = VG_ROUNDDN(a, BYTES_PER_SEC_VBIT_NODE);
    Int          i, amod  = a % BYTES_PER_SEC_VBIT_NODE;
    SecVBitNode* n        = VG_(OSetGen_Lookup)(secVBitTable, &aAligned);
-
-   //DEBUG("set_sec_vbits8 @: %p, %lx\n", (void *)a, vbits8);
-
    // Shouldn't be fully defined or fully undefined -- those cases shouldn't
    // make it to the secondary V bits table.
    tl_assert(V_BITS8_DEFINED != vbits8 && V_BITS8_UNDEFINED != vbits8);
@@ -5311,7 +5304,6 @@ void mc_STOREV64 ( Addr a, ULong vbits64, Bool isBigEndian )
    DEBUG("mc_STOREV64(%p, %llu)\n", (void *)a, vbits64);
 
 #ifndef PERF_FAST_STOREV
-   // (comment added 2009)  
    // XXX: this slow case seems to be marginally faster than the fast case!
    // Investigate further.
    mc_STOREVn_slow( a, 64, vbits64, isBigEndian );
@@ -6534,7 +6526,6 @@ static Bool mc_process_cmd_line_options(const HChar* arg)
 
    else
      return fjalar_process_cmd_line_option(arg); // pgbovine
-     //      return VG_(replacement_malloc_process_cmd_line_option)(arg);
 
    return True;
 

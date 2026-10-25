@@ -5,7 +5,7 @@
 /*--------------------------------------------------------------------*/
 
 /*
-   This file is derived from MemCheck, a heavyweight Valgrind tool for
+   This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
    Copyright (C) 2000-2017 Julian Seward 
@@ -8767,7 +8767,6 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
          : NULL;
       dce.sbbThunk       = False;
       dce.tmpMap         = VG_(malloc)("mc_translate.c.2", dce.n_originalTmps * sizeof(IRTemp));
-      //dce.tmpMap         = LibVEX_Alloc(dce.n_originalTmps * sizeof(IRTemp));
       for (i = 0; i < (Int)dce.n_originalTmps; i++)
          dce.tmpMap[i] = IRTemp_INVALID;
       dce.loadTagSnapshots = NULL;
@@ -9005,7 +9004,6 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                             st->Ist.LLSC.storedata );
             
 #ifndef _NO_DYNCOMP
-            // (comment added 2013)  
             /* WARNING/UNDONE:
                In changeset 638 Ist_LLSC was added (was part of Ist_Store).
                The corresponding change was not made to the DYNCOMP code.
@@ -9074,11 +9072,6 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
    // a cue for a function exit.  This is very important for detecting
    // function exits!
    handle_possible_exit( &mce, sb_out->jumpkind );
-
-   // PG - pgbovine - Uncomment to pretty-print the basic
-   // block (This is great for debugging when you can compare IR to
-   // gcc-generated assembly):
-   //   ppIRSB(sb_out);
 
    /* If this fails, there's been some serious snafu with tmp management,
       that should be investigated. */

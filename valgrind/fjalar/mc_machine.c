@@ -21,7 +21,7 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2008-2013 OpenWorks Ltd
+   Copyright (C) 2008-2017 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -330,6 +330,20 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
    if (o >= GOF(VSR48) && o+sz <= GOF(VSR48)+SZB(VSR48)) return 0+ GOF(VSR48);
    if (o >= GOF(VSR49) && o+sz <= GOF(VSR49)+SZB(VSR49)) return 0+ GOF(VSR49);
    if (o >= GOF(VSR50) && o+sz <= GOF(VSR50)+SZB(VSR50)) return 0+ GOF(VSR50);
+   if (o >= GOF(VSR51) && o+sz <= GOF(VSR51)+SZB(VSR51)) return 0+ GOF(VSR51);
+   if (o >= GOF(VSR52) && o+sz <= GOF(VSR52)+SZB(VSR52)) return 0+ GOF(VSR52);
+   if (o >= GOF(VSR53) && o+sz <= GOF(VSR53)+SZB(VSR53)) return 0+ GOF(VSR53);
+   if (o >= GOF(VSR54) && o+sz <= GOF(VSR54)+SZB(VSR54)) return 0+ GOF(VSR54);
+   if (o >= GOF(VSR55) && o+sz <= GOF(VSR55)+SZB(VSR55)) return 0+ GOF(VSR55);
+   if (o >= GOF(VSR56) && o+sz <= GOF(VSR56)+SZB(VSR56)) return 0+ GOF(VSR56);
+   if (o >= GOF(VSR57) && o+sz <= GOF(VSR57)+SZB(VSR57)) return 0+ GOF(VSR57);
+   if (o >= GOF(VSR58) && o+sz <= GOF(VSR58)+SZB(VSR58)) return 0+ GOF(VSR58);
+   if (o >= GOF(VSR59) && o+sz <= GOF(VSR59)+SZB(VSR59)) return 0+ GOF(VSR59);
+   if (o >= GOF(VSR60) && o+sz <= GOF(VSR60)+SZB(VSR60)) return 0+ GOF(VSR60);
+   if (o >= GOF(VSR61) && o+sz <= GOF(VSR61)+SZB(VSR61)) return 0+ GOF(VSR61);
+   if (o >= GOF(VSR62) && o+sz <= GOF(VSR62)+SZB(VSR62)) return 0+ GOF(VSR62);
+   if (o >= GOF(VSR63) && o+sz <= GOF(VSR63)+SZB(VSR63)) return 0+ GOF(VSR63);
+
    /* ACC register file.  Each register is 128 bits. */
    if (o >= GOF(ACC_0_r0) && o+sz <= GOF(ACC_0_r0)+SZB(ACC_0_r0))
       return 0+ GOF(ACC_0_r0);
@@ -396,20 +410,6 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
    if (o >= GOF(ACC_7_r3) && o+sz <= GOF(ACC_7_r3)+SZB(ACC_7_r3))
       return 0+ GOF(ACC_7_r3);
    if (o == GOF(syscall_flag) && sz == 4) return -1;
-
-   if (o >= GOF(VSR51) && o+sz <= GOF(VSR51)+SZB(VSR51)) return 0+ GOF(VSR51);
-   if (o >= GOF(VSR52) && o+sz <= GOF(VSR52)+SZB(VSR52)) return 0+ GOF(VSR52);
-   if (o >= GOF(VSR53) && o+sz <= GOF(VSR53)+SZB(VSR53)) return 0+ GOF(VSR53);
-   if (o >= GOF(VSR54) && o+sz <= GOF(VSR54)+SZB(VSR54)) return 0+ GOF(VSR54);
-   if (o >= GOF(VSR55) && o+sz <= GOF(VSR55)+SZB(VSR55)) return 0+ GOF(VSR55);
-   if (o >= GOF(VSR56) && o+sz <= GOF(VSR56)+SZB(VSR56)) return 0+ GOF(VSR56);
-   if (o >= GOF(VSR57) && o+sz <= GOF(VSR57)+SZB(VSR57)) return 0+ GOF(VSR57);
-   if (o >= GOF(VSR58) && o+sz <= GOF(VSR58)+SZB(VSR58)) return 0+ GOF(VSR58);
-   if (o >= GOF(VSR59) && o+sz <= GOF(VSR59)+SZB(VSR59)) return 0+ GOF(VSR59);
-   if (o >= GOF(VSR60) && o+sz <= GOF(VSR60)+SZB(VSR60)) return 0+ GOF(VSR60);
-   if (o >= GOF(VSR61) && o+sz <= GOF(VSR61)+SZB(VSR61)) return 0+ GOF(VSR61);
-   if (o >= GOF(VSR62) && o+sz <= GOF(VSR62)+SZB(VSR62)) return 0+ GOF(VSR62);
-   if (o >= GOF(VSR63) && o+sz <= GOF(VSR63)+SZB(VSR63)) return 0+ GOF(VSR63);
 
    printf("MC_(get_otrack_shadow_offset)(ppc64)(off=%d,sz=%d)\n",
                offset,szB);
@@ -600,8 +600,6 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
    if (o >= GOF(VSR48) && o+sz <= GOF(VSR48)+SZB(VSR48)) return 0+ GOF(VSR48);
    if (o >= GOF(VSR49) && o+sz <= GOF(VSR49)+SZB(VSR49)) return 0+ GOF(VSR49);
    if (o >= GOF(VSR50) && o+sz <= GOF(VSR50)+SZB(VSR50)) return 0+ GOF(VSR50);
-   /* ACC registers are not supported on ppc32.  */
-
    if (o >= GOF(VSR51) && o+sz <= GOF(VSR51)+SZB(VSR51)) return 0+ GOF(VSR51);
    if (o >= GOF(VSR52) && o+sz <= GOF(VSR52)+SZB(VSR52)) return 0+ GOF(VSR52);
    if (o >= GOF(VSR53) && o+sz <= GOF(VSR53)+SZB(VSR53)) return 0+ GOF(VSR53);
@@ -615,6 +613,8 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
    if (o >= GOF(VSR61) && o+sz <= GOF(VSR61)+SZB(VSR61)) return 0+ GOF(VSR61);
    if (o >= GOF(VSR62) && o+sz <= GOF(VSR62)+SZB(VSR62)) return 0+ GOF(VSR62);
    if (o >= GOF(VSR63) && o+sz <= GOF(VSR63)+SZB(VSR63)) return 0+ GOF(VSR63);
+
+   /* ACC registers are not supported on ppc32.  */
 
    printf("MC_(get_otrack_shadow_offset)(ppc32)(off=%d,sz=%d)\n",
                offset,szB);

@@ -172,11 +172,6 @@ UWord VG_(get_shadow_xDX) ( ThreadId tid )
 #if defined(VGA_amd64)
 UInt* VG_(get_shadow_XMM_N)( ThreadId tid, UInt num )  
 {
-  
-  /* VG_(printf)("Location of xmm0 %x - index %x\n", VG_(threads)[tid].arch.vex_shadow1.guest_XMM0, (UWord)(VG_(threads)[tid].arch.vex_shadow1.guest_XMM0) - (UWord)(&VG_(threads)[tid].arch.vex.guest_RAX)); */
-
-  /* VG_(printf)("Shadow? %x\n", VG_(threads)[tid].arch.vex_shadow1.guest_XMM0[0]); */
-  /* VG_(printf)("Shadow? %x\n", VG_(threads)[tid].arch.vex_shadow1.guest_XMM0[1]); */
   switch(num) {
     CASE_SHADOW_XMM(VG_(threads)[tid].arch, 0);
     CASE_SHADOW_XMM(VG_(threads)[tid].arch, 1);

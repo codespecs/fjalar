@@ -864,7 +864,7 @@ HInstrArray* doRegisterAllocation_v2 (
             ss_busy_until_before[ss_no] = vreg_lrs[j].dead_before;
             break;
 
-      } /* switch (vreg_lrs[j].reg_class) { */
+      } /* switch (vreg_lrs[j].reg_class) */
 
       /* This reflects LibVEX's hard-wired knowledge of the baseBlock
          layout: the guest state, then two equal sized areas following
