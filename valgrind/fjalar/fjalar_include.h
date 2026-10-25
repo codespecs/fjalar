@@ -54,14 +54,19 @@ typedef enum _DeclaredType {
   D_UNSIGNED_LONG_LONG_INT,
   D_LONG_LONG_INT,
 
-  D_U128,  // Rust native type
-  D_I128,  // Rust native type
+  // An integer wider than 64 bits:  Rust's u128 and i128, and C's __int128
+  // and _BitInt(N) for N > 64.  Never printed.
+  D_U128,
+  D_I128,
 
   D_FLOAT,
   D_DOUBLE,
   D_LONG_DOUBLE,
   D_FLOAT16,          // _Float16, an IEEE 754 binary16 value
   D_BFLOAT16,         // __bf16, a bfloat16 value
+  D_FLOAT128,         // _Float128, an IEEE 754 binary128 value
+  D_COMPLEX,          // a _Complex type; never printed
+  D_DECIMAL,          // _Decimal32, _Decimal64, or _Decimal128; never printed
 
   D_ENUMERATION,
 
