@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Tests that Fjalar prints nothing but Valgrind's messages when no debugging
-# option is given.
+# Tests that Fjalar prints nothing but Valgrind's messages and warnings about
+# the debugging information when no debugging option is given.
 #
 # Fjalar's copy of Binutils' dwarf.c prints a dump of the debugging
 # information only with --fjalar-debug-dump, so each of its output statements
@@ -22,6 +22,30 @@ fi
 output_dir="$(mktemp -d)"
 trap 'rm -rf "${output_dir}"' EXIT
 
+# Fails in continuous integration (GitHub Actions sets CI, and Azure Pipelines
+# sets TF_BUILD), and otherwise skips this test, because this compiler cannot
+# run it.  Failing in continuous integration ensures that a compiler change
+# that makes this test vacuous does not go unnoticed.  $1 is the reason.
+unsuitable_compiler() {
+  if [ -n "${CI:-}" ] || [ -n "${TF_BUILD:-}" ]; then
+    echo "$0: FAILED: $1" >&2
+    exit 1
+  fi
+  echo "$0: SKIPPED: $1" >&2
+  exit 0
+}
+
+# The suffixes that display_loc_list prints after some location list entries.
+loc_list_suffixes='\[without DW_AT_frame_base\]|\(start == end\)|\(start > end\)'
+# Whether the dump of some program's debugging information contains one of
+# loc_list_suffixes.
+reached_loc_list_suffixes=false
+
+# Each of Valgrind's messages starts with the process ID, as in "==1234==".
+# Warnings and errors about the debugging information, such as that of the C
+# runtime, are not part of the dump of the debugging information.
+expected_output='^(==[0-9]+==|dwarf\.c: (Warning|Error): )'
+
 for src in deref-param.cc location-views.c; do
   case "${src}" in
     *.c) compiler=gcc ;;
@@ -33,6 +57,12 @@ for src in deref-param.cc location-views.c; do
     # only at the address in the debugging information, so the executable must
     # not be position-independent.
     "${compiler}" -gdwarf-4 -no-pie "${opt}" -o "${program}" "${test_dir}/${src}"
+
+    if "${valgrind}" --tool=fjalar --no-dyncomp --decls-only --fjalar-debug-dump \
+                     --decls-file="${program}.decls" "${program}" 2>&1 \
+         | grep -qE "${loc_list_suffixes}"; then
+      reached_loc_list_suffixes=true
+    fi
 
     out="${program}.out"
     status=0
@@ -46,13 +76,16 @@ for src in deref-param.cc location-views.c; do
       exit 1
     fi
 
-    # Each of Valgrind's messages starts with the process ID, as in "==1234==".
-    if grep -qvE '^==[0-9]+==' "${out}"; then
+    if grep -qvE "${expected_output}" "${out}"; then
       echo "$0: FAILED (${src} ${opt}): Fjalar printed output other than Valgrind's messages:" >&2
-      grep -vE '^==[0-9]+==' "${out}" >&2
+      grep -vE "${expected_output}" "${out}" >&2
       exit 1
     fi
   done
 done
+
+if [ "${reached_loc_list_suffixes}" = false ]; then
+  unsuitable_compiler "no location list entry gets a suffix such as \" (start == end)\""
+fi
 
 echo "$0: PASSED"
