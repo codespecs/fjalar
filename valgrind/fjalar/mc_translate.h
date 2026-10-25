@@ -232,6 +232,11 @@ typedef
          instrumented; see notePendingCarryTags_DC.  NULL unless
          tmpCarriesFlags is non-NULL. */
       IRExpr** tmpPendingCarryTags;
+
+      /* MODIFIED: True if the most recent PUT to the CC_OP field of the
+         flags thunk stored a constant that says that an sbb instruction
+         set the flags. */
+      Bool sbbThunk;
    }
    DCEnv;
 
