@@ -23,10 +23,16 @@
 # run, with Valgrind's process ID replaced by "PID", and the .decls file of
 # each run.
 #
-# If DIR/expected/ does not exist, or with --update, the script saves the
-# output there, as the baseline.  Otherwise, it saves the output in
-# DIR/actual/, compares it with the baseline, prints the differences, and
-# exits with status 1 if there are any.
+# If DIR/expected/ does not exist, the script saves the output there, as the
+# baseline.  Otherwise, it saves the output in DIR/actual/, compares it with
+# the baseline, prints the differences, and exits with status 1 if there are
+# any.  The output does not depend on which Fjalar tree runs the script, so
+# the baseline can come from one tree (such as the master branch's) and the
+# comparison from another.
+#
+# With --update, the script runs nothing.  It makes the output in
+# DIR/actual/, which the last comparison saved, the new baseline.  Use it
+# after a comparison whose differences are all intended.
 #
 # A typical use:
 #   ./compare-debug-output.sh /tmp/$USER/debug-output   # before the change
@@ -51,10 +57,20 @@ if [ $# -ne 1 ]; then
   exit 2
 fi
 
+if [ "$update" = true ]; then
+  if [ ! -d "$1/actual" ]; then
+    echo "$0: $1/actual does not exist; run $0 $1 first." >&2
+    exit 2
+  fi
+  rm -rf "${1:?}/expected"
+  mv "$1/actual" "$1/expected"
+  echo "Saved the output of the last comparison as the baseline in $1/expected"
+  exit 0
+fi
+
 # The Fjalar tree that contains this script, even if $0 is a symbolic link.
 FJALARDIR=$(dirname -- "$(readlink -f -- "$0")")
-VALGRIND=$FJALARDIR/valgrind/inst/bin/valgrind
-if [ ! -x "$VALGRIND" ]; then
+if [ ! -x "$FJALARDIR/valgrind/inst/bin/valgrind" ]; then
   echo "$0: Fjalar is not built; run \"make build\" in $FJALARDIR." >&2
   exit 2
 fi
@@ -62,10 +78,39 @@ mkdir -p "$1"
 DIR=$(cd "$1" && pwd)
 PROGRAMS=$DIR/programs
 
+# Valgrind copies the path of its launcher and the path of its lib directory
+# into its environment and the program's, so the addresses in the debugging
+# output depend on them.  So that the output is the same no matter which
+# Fjalar tree runs the script, Fjalar runs from a copy of the launcher in
+# DIR, and with VALGRIND_LIB set to a symbolic link in DIR.  A symbolic link
+# to the launcher would not do, because the launcher finds its own path from
+# /proc/self/exe, which resolves symbolic links.
+mkdir -p "$DIR/valgrind"
+cp -f "$FJALARDIR/valgrind/inst/bin/valgrind" "$DIR/valgrind/valgrind"
+ln -sfn "$FJALARDIR/valgrind/inst/libexec/valgrind" "$DIR/valgrind/lib"
+VALGRIND=$DIR/valgrind/valgrind
+VALGRIND_LIB=$DIR/valgrind/lib
+
+# Usage: compile_program COMPILER FLAGS SOURCE OUTPUT
+# Compiles SOURCE into OUTPUT.  FLAGS is a list of options, separated by
+# spaces.
+compile_program() {
+  local compiler=$1 flags=$2 src=$3 out=$4
+  # Some programs need options or libraries that a variant lacks; the
+  # comparison uses whichever programs compiled.
+  # shellcheck disable=SC2086 # $flags is a list of options.
+  if ! "$compiler" $flags -no-pie -o "$out" "$src" -lm > "$out.log" 2>&1; then
+    echo "Skipping $(basename "$out"), which did not compile; see $PROGRAMS/$(basename "$out").log" >&2
+    rm -f "$out"
+  else
+    rm -f "$out.log"
+  fi
+}
+
 # Usage: compile_programs
 # Compiles the test programs into $PROGRAMS.
 compile_programs() {
-  local tmp variant name cc cxx compiler flags src base out
+  local tmp variant name cc cxx compiler flags src base
   # A temporary directory, renamed at the end, so that an interrupted run
   # leaves no partial set of programs that a later run would reuse.
   tmp=$(mktemp -d "$DIR/programs.XXXXXX")
@@ -84,6 +129,8 @@ compile_programs() {
       "clang-dwarf5-O0 clang clang++ -gdwarf-5 -O0"
     )
   fi
+  export PROGRAMS
+  export -f compile_program
   for variant in "${variants[@]}"; do
     read -r name cc cxx flags <<< "$variant"
     for src in "$FJALARDIR"/valgrind/fjalar/tests/*.c "$FJALARDIR"/valgrind/fjalar/tests/*.cc; do
@@ -92,18 +139,10 @@ compile_programs() {
         *) compiler=$cxx ;;
       esac
       base=$(basename "$src")
-      out=$tmp/${base%.*}-${base##*.}-$name
-      # Some programs need options or libraries that a variant lacks; the
-      # comparison uses whichever programs compiled.
-      # shellcheck disable=SC2086 # $flags is a list of options.
-      if ! "$compiler" $flags -no-pie -o "$out" "$src" -lm > "$out.log" 2>&1; then
-        echo "Skipping $(basename "$out"), which did not compile; see $PROGRAMS/$(basename "$out").log" >&2
-        rm -f "$out"
-      else
-        rm -f "$out.log"
-      fi
+      printf '%s\0' "$compiler" "$flags" "$src" "$tmp/${base%.*}-${base##*.}-$name"
     done
-  done
+  done \
+    | xargs -0 -n 4 -P "$(nproc)" bash -e -o pipefail -c 'compile_program "$@"' _
   mv "$tmp" "$PROGRAMS"
 }
 
@@ -118,8 +157,9 @@ run_fjalar() {
   # randomization, so that they are the same in every run.  They also depend
   # on the arguments and on the environment, including the current
   # directory, which Valgrind copies to the stacks.  So Fjalar runs with the
-  # same arguments, an environment that contains only a fixed PATH, and a
-  # current directory whose name is the same in every run.
+  # same arguments, an environment that contains only a fixed PATH and
+  # VALGRIND_LIB, and a current directory whose name is the same in every
+  # run.
   rundir=$DIR/run/$name
   rm -rf "$rundir"
   mkdir -p "$rundir"
@@ -132,7 +172,8 @@ run_fjalar() {
     status=0
     # With DynComp, which is the default, Fjalar ignores --decls-only.
     (cd "$rundir" \
-       && env -i PATH=/usr/bin:/bin timeout 600 setarch "$(uname -m)" -R \
+       && env -i PATH=/usr/bin:/bin VALGRIND_LIB="$VALGRIND_LIB" \
+            timeout 600 setarch "$(uname -m)" -R \
             "$VALGRIND" --tool=fjalar --no-dyncomp --decls-only --decls-file="$config.decls" \
             "${options[@]}" "$program" > "$config.out" 2>&1) || status=$?
     # The output need not end with a newline.
@@ -167,13 +208,13 @@ fi
 # Fjalar fails on some programs.  A failure to start Valgrind would instead
 # make every run fail the same way, so that the comparison would find no
 # differences.
-if ! env -i PATH=/usr/bin:/bin timeout 600 setarch "$(uname -m)" -R \
-       "$VALGRIND" --version > /dev/null; then
+if ! env -i PATH=/usr/bin:/bin VALGRIND_LIB="$VALGRIND_LIB" \
+       timeout 600 setarch "$(uname -m)" -R "$VALGRIND" --version > /dev/null; then
   echo "$0: cannot run $VALGRIND under timeout and \"setarch -R\"" >&2
   exit 1
 fi
 
-if [ "$update" = true ] || [ ! -d "$DIR/expected" ]; then
+if [ ! -d "$DIR/expected" ]; then
   result=expected
 else
   result=actual
@@ -181,7 +222,7 @@ fi
 rm -rf "${DIR:?}/$result.tmp"
 mkdir "$DIR/$result.tmp"
 echo "Running Fjalar on the programs in $PROGRAMS"
-export VALGRIND DIR
+export VALGRIND VALGRIND_LIB DIR
 export -f run_fjalar
 # The inner shell does not inherit "set -e" and "set -o pipefail".
 # shellcheck disable=SC2016 # The inner shell expands $1 and $2.
