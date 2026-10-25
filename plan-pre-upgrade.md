@@ -6,6 +6,8 @@ upgrades smaller and easier to review, and makes future merges cheaper.
 Each upgrade plan's "Ordering" section says which of these items it
 requires; neither requires all of them.
 
+Status:  both items are done.
+
 Below, `$INV/fjalar` means the Fjalar tree being changed.
 
 Both upgrades should wait for the open PRs that change files that the
@@ -14,8 +16,14 @@ says how to list them.
 
 ## 1. Enforce the expected regtest failures in CI
 
-Fjalar's CI runs Valgrind's regression tests, but its jobs only report
-the failures.
+Before this item, Fjalar's CI ran Valgrind's regression tests, but its
+jobs only reported the failures.
+
+Status:  done.  #175 commits `regtest-expected/ubuntu-26.04.txt` and
+`regtest-expected/rocky-10.txt` and removes `--report-only` from both CI
+jobs, so CI enforces the lists on both distributions.  The steps below
+are how the lists were made; each list's header says how to regenerate
+it.
 
 1. Push a branch and let the regtest jobs run.  Download the
    `regtest-results-*` artifacts:  either download each one's `.zip` file
@@ -42,7 +50,7 @@ Why: the main runtime risk of the Valgrind upgrade is IROps that
 accident.  Finding them on 3.23 means they can be fixed separately, and any
 panic after the upgrade can then be blamed on the upgrade.
 
-Status:  done, except that #172 and then #173 must land.
+Status:  done.  #172 and #173 landed.
 
 - #172 fixes the one panic found.  amd64 translates `PMADDUBSW` (SSSE3)
   and `VPMADDUBSW` (AVX and AVX2) to `Iop_PwExtUSMulQAdd8x16`, which
@@ -73,8 +81,13 @@ Status:  done, except that #172 and then #173 must land.
   compiled with `-O3 -march=x86-64-v3`.  They exercised 258 distinct
   IROps, 84 of them on 256-bit vectors.
 - Found along the way:  Fjalar crashed on any program with a `_Float16`
-  or `__bf16` variable; #174 fixes that.  `long double`, `_Float128`, and
-  `_Complex double` variables still crash Fjalar.
+  or `__bf16` variable; #174 fixes that.  Fjalar also crashed on
+  `long double`, `_Float128`, and `_Complex` variables.  #177 and #180 fix
+  those:  Fjalar prints a `long double` or `_Float128` value converted to
+  a `double` and omits such a return value, and it omits a `_Complex`
+  value, which Daikon cannot represent.  #180 also omits the values of
+  decimal floating-point types, complex integer types, and `_BitInt(N)`
+  for N > 128, which crashed Fjalar too.
 
 To repeat the exploration (for example, after the Valgrind upgrade),
 compile each program with `-gdwarf-4 -no-pie`, because Fjalar does not read
