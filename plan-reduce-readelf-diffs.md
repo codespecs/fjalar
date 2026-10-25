@@ -283,11 +283,10 @@ This removes the `FJALAR_DPRINTF` substitutions, the `if (fjalar_debug_dump)`
 guards, the hoisted arguments, the `ok_to_print` parameters, and the existing
 local `#define printf` trick in `dwarf.c` (about 300 changed lines).
 
-It also fixes output that Fjalar's guards miss.  For example,
-`display_loc_list` in `dwarf.c` prints "[without DW_AT_frame_base]" and
-"(start == end)" unconditionally, so Fjalar prints them without any
-debugging option for some optimized programs (`deref-param.cc` compiled with
-`-O2`, in `compare-debug-output.sh`).  That change in the output is intended.
+It also prevents output that a guard misses.  For example, `display_loc_list`
+in `dwarf.c` printed "[without DW_AT_frame_base]" and "(start == end)" (with
+`printf` and `fputs`) without any debugging option, for some optimized
+programs (fixed in #187).
 
 Risks and checks:
 
