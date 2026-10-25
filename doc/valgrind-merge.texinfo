@@ -1442,7 +1442,7 @@ contains both the Daikon and Fjalar source trees.)
 
 @table @asis
 @item $INV/fjalar/valgrind/configure.ac
-Change id to Fjalar; add fjalar/Makefile to list of targets
+Add fjalar/Makefile to list of targets
 @item $INV/fjalar/valgrind/coregrind/m_libcbase.c
 Add VG_ version of strnlen
 @item $INV/fjalar/valgrind/coregrind/m_libcfile.c
