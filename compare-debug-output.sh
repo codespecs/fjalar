@@ -17,9 +17,9 @@
 # that a compiler upgrade does not change the output.  To compile them again,
 # delete DIR.
 #
-# For each program, the script runs Fjalar with --decls-only, which reads the
-# program's debugging information and writes the .decls file but does not run
-# the program, three times:  with no debugging option, with
+# For each program, the script runs Fjalar with --no-dyncomp and --decls-only,
+# which read the program's debugging information and write the .decls file but
+# do not run the program, three times:  with no debugging option, with
 # --fjalar-debug-dump, and with --fjalar-debug.  It saves the output of each
 # run, which includes the .decls file of the first, with Valgrind's process ID
 # replaced by "PID".
@@ -127,10 +127,15 @@ run_fjalar() {
       debug) options=(--fjalar-debug) ;;
     esac
     status=0
+    # With DynComp, which is the default, Fjalar ignores --decls-only.
     (cd "$rundir" \
        && env -i PATH="$PATH" timeout 600 setarch "$(uname -m)" -R \
-            "$VALGRIND" --tool=fjalar --decls-only --decls-file="$config.decls" \
+            "$VALGRIND" --tool=fjalar --no-dyncomp --decls-only --decls-file="$config.decls" \
             "${options[@]}" "$program" > "$config.out" 2>&1) || status=$?
+    # The output need not end with a newline.
+    if [ -n "$(tail -c 1 "$rundir/$config.out")" ]; then
+      echo >> "$rundir/$config.out"
+    fi
     echo "Exit status: $status" >> "$rundir/$config.out"
     # Valgrind's messages start with the process ID, as in "==1234==".  A
     # message can start in the middle of a line, after output that did not
