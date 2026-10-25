@@ -168,12 +168,14 @@ small.
      (This lists only Valgrind core's own debuginfod support.)  `ldd` and
      `nm -u` would show nothing, because Valgrind tools are linked
      statically with `-nodefaultlibs` (`valgrind/Makefile.tool.am`).
-   - Run the Kvasir tests with `./test-kvasir.sh 2>&1 | tee kvasir-before.log`
-     (Kvasir baseline; record any pre-existing failures).  `./test-kvasir.sh`
-     temporarily points `$DAIKONDIR/fjalar` at this tree (it restores the
-     old link on exit, and refuses to run if `$DAIKONDIR/fjalar` is a
-     directory rather than a symbolic link; then set `DAIKONDIR` to
-     another, possibly nonexistent, directory).  Do not use
+   - Run the Kvasir tests with
+     `(set -o pipefail; ./test-kvasir.sh 2>&1 | tee kvasir-before.log)`
+     (Kvasir baseline; record any pre-existing failures).  As in the build
+     command above, `pipefail` keeps `tee`'s success from hiding a failure.
+     `./test-kvasir.sh` temporarily points `$DAIKONDIR/fjalar` at this tree
+     (it restores the old link on exit, and refuses to run if
+     `$DAIKONDIR/fjalar` is a directory rather than a symbolic link; then
+     set `DAIKONDIR` to another, possibly nonexistent, directory).  Do not use
      `make daikon-test`: it ignores `$DAIKONDIR` and builds whatever
      `../daikon/fjalar` points to (by default `$INV/fjalar`, which is a
      different clone than `$FJALAR`).  Running
@@ -240,9 +242,13 @@ small.
      `sframe-api.h` and calls into libsframe.  Fjalar does not need it:
      disable that code with `#if 0 // This code is not needed for Fjalar.`
      (as was done for CTF) rather than vendoring libsframe.
-   - Binutils 2.40+ can decompress zstd-compressed debug sections.  Make
-     sure that code compiles out cleanly with `HAVE_ZSTD` undefined, rather
-     than pulling in libzstd.
+   - Binutils 2.40+ can decompress zstd-compressed debug sections, in code
+     guarded by `#ifdef HAVE_ZSTD`.  Fjalar's build never defines
+     `HAVE_ZSTD`:  Binutils' `configure` defines it in Binutils'
+     `config.h`, which Fjalar does not use (`readelf.c` disables its
+     `#include "sysdep.h"`, which would include `config.h`).  Make sure that
+     code compiles out cleanly with `HAVE_ZSTD` undefined, rather than
+     pulling in libzstd.
    - `dwarf.c` and `readelf.c` include the *system* `bfd.h`
      (from `binutils-devel`/`binutils-dev`), which on the CI distros is
      older than 2.47.  Grep 2.47's versions of those files for bfd macros
@@ -349,8 +355,8 @@ small.
      check).  In the other hops, rely on CI, which enforces the
      expected-failure lists when you push (the last bullet of this step).
    - `make fjalar-test`.
-   - `./test-kvasir.sh 2>&1 | tee kvasir-after.log` — compare with
-     `kvasir-before.log`; the tests must pass with no goal-file changes.
+   - `(set -o pipefail; ./test-kvasir.sh 2>&1 | tee kvasir-after.log)` —
+     compare with `kvasir-before.log`; the tests must pass with no goal-file changes.
      Superfluous output in `.out` diffs, or in a Kvasir `.decls` or
      `.dtrace` file, usually means an unguarded `printf`.
    - The regression tests may not exercise the newer DWARF paths, so also
@@ -370,12 +376,15 @@ small.
      system `readelf` is from a different version (2.46 on Ubuntu 26.04,
      2.41 on Rocky Linux 10), so build 2.47's:
      `./build-binutils-readelf.sh $BUNEWVER` builds it and prints its path.
-   - Before committing, run `./check-hook-counts.sh`.  It counts the calls
-     of each hook (step 5) in the old and new `dwarf.c` and `readelf.c`,
-     and prints each hook whose count changed, with the file and the old
-     and new counts; explain each difference.  The old files are those of
-     the commit where this branch started, even if the branch already has
-     commits (as it does after the first hop).  The count omits `#if 0`
+   - Before committing, run `./check-hook-counts.sh HEAD`.  It counts the
+     calls of each hook (step 5) in the old and new `dwarf.c` and
+     `readelf.c`, and prints each hook whose count changed, with the file
+     and the old and new counts; explain each difference.  The old files
+     are those of `HEAD`, which is the previous hop's commit (or, in the
+     first hop, the commit where this branch started).  Without the `HEAD`
+     argument, the script compares with the commit where this branch
+     started, so a later hop that undid an earlier hop's change would
+     report no difference.  The count omits `#if 0`
      regions and comments, so that it notices a hook that conflict
      resolution moved into disabled code.  It does include string literals,
      so a hook's name in a debugging message counts as a call; check any

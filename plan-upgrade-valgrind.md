@@ -40,7 +40,7 @@ it completely (merged, CI green) before starting this one.  That plan's
   conflicting with the upgrade later.  To list them:
 
   ```sh
-  gh pr list -R codespecs/fjalar --json number,files --jq \
+  gh pr list -R codespecs/fjalar --limit 1000 --json number,files --jq \
     '.[] | select(any(.files[]; .path
                       | (startswith("valgrind/") and (startswith("valgrind/fjalar/") | not))
                         or test("^valgrind/fjalar/(mc_|memcheck\\.h$)")))
