@@ -1440,8 +1440,12 @@ Effects: Performs a binary search through dwarf_entry_array, looking for
 */
 char binary_search_dwarf_entry_array(unsigned long target_ID, unsigned long* index_ptr)
 {
-  unsigned long upper = dwarf_entry_array_size - 1;
+  unsigned long upper;
   unsigned long lower = 0;
+
+  if (dwarf_entry_array_size == 0)
+    return 0;
+  upper = dwarf_entry_array_size - 1;
 
     //FJALAR_DPRINTF("--target_ID: 0x%lx, index_ptr: 0x%p, upper.ID: 0x%lx, lower.ID: 0x%lx\n",
     //              target_ID,
@@ -3047,8 +3051,12 @@ Effects: Initializes sets up dwarf_entry_array to hold num_entries components
 */
 void initialize_dwarf_entry_array(unsigned long num_entries)
 {
-  // use calloc to blank everything upon initialization
-  dwarf_entry_array = VG_(calloc)("typedata.c: initialize_dwarf_entry_array", num_entries, sizeof *dwarf_entry_array);
+  // use calloc to blank everything upon initialization.  There may be no
+  // entries, such as when every compilation unit has a DWARF version that
+  // dwarf.c does not read, and VG_(calloc) of zero elements fails an
+  // assertion.
+  dwarf_entry_array = num_entries == 0 ? NULL
+    : VG_(calloc)("typedata.c: initialize_dwarf_entry_array", num_entries, sizeof *dwarf_entry_array);
 
   // Also initialize typedef_names_map at this time
   typedef_names_map = genallocatehashtable(0,
@@ -3063,7 +3071,9 @@ Effects: Initializes and sets up an array of the dwarf entries for all compile u
 */
 void initialize_compile_unit_array(unsigned long num_entries)
 {
-  comp_unit_info = VG_(calloc)("typedata.c: initialize_compile_unit_info", num_entries, sizeof *comp_unit_info);
+  // VG_(calloc) of zero elements fails an assertion.
+  comp_unit_info = num_entries == 0 ? NULL
+    : VG_(calloc)("typedata.c: initialize_compile_unit_info", num_entries, sizeof *comp_unit_info);
 } 
 
 

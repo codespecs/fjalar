@@ -1844,8 +1844,9 @@ void initializeFunctionTable(void)
 
   if (!num_functions_added) {
     printf( "\nError - No functions were found, probably due to a lack of debugging information.\n");
-    printf( "Did you compile your program with DWARF2 debugging info?  The option is -gdwarf-2 on gcc.\n");
-    my_abort();
+    printf( "Fjalar reads DWARF versions 2, 3, and 4.  Did you compile your program\n"
+            "with -gdwarf-4?\n");
+    VG_(exit)(1);
   }
 
   FJALAR_DPRINTF("EXIT  initializeFunctionTable\n");
