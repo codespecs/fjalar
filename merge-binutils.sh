@@ -8,11 +8,11 @@
 #   NEWVER is the Binutils version to merge, such as 2.42.  The old version
 #   is BINUTILS_VERSION in valgrind/REVISION.  Each CHERRY-PICK-OPTION, such
 #   as -Xpatience, is passed to "git cherry-pick", or with --trial to "git
-#   merge-tree".
+#   merge-tree", which accepts only strategy options (-X).
 #   --trial  Report the size of Fjalar's changes to the old version and the
 #            number of conflicts that the merge would have, without changing
-#            the work tree or any ref.  It requires Git 2.40 or later, or
-#            2.43 or later with a CHERRY-PICK-OPTION.  See below.
+#            the work tree, the index, or any ref.  It requires Git 2.40 or
+#            later, or 2.43 or later with a CHERRY-PICK-OPTION.  See below.
 #
 # The script downloads and extracts both versions with download-binutils.sh.
 # It creates two commits, which it records as refs refs/binutils-merge/base
@@ -23,9 +23,11 @@
 # valgrind/fjalar/libiberty/, from Binutils' include/ and libiberty/.  Then it
 # runs "git cherry-pick --no-commit" of refs/binutils-merge/new, which
 # merges upstream's changes into Fjalar by a 3-way merge whose base is
-# refs/binutils-merge/base.  It lists the files with conflicts, and exits
-# with status 1 if there are conflicts.  It also lists the files that the
-# new version lacks, which the merge deletes.
+# refs/binutils-merge/base.  It uses the diff3 conflict style regardless of
+# the user's Git configuration, so each conflict also shows the old
+# version's text, which helps in resolving it.  It lists the files with
+# conflicts, and exits with status 1 if there are conflicts.  It also lists
+# the files that the new version lacks, which the merge deletes.
 #
 # Before merging, the script writes Fjalar's changes to the old version to
 # /tmp/$USER/binutils/OLDVER-NEWVER/binutils-Fjalar.diff.  It is a checklist
@@ -43,12 +45,12 @@
 # to evaluate a change that reduces Fjalar's differences from Binutils.  It
 # measures the Binutils-derived files in the work tree, including
 # uncommitted changes to tracked files.  It prints, for each such file that
-# Fjalar changed, the number of hunks, added lines, and removed lines in
-# Fjalar's changes to the old version.  Then it does the merge in memory, with
-# "git merge-tree", and prints the number of conflicts in each file.  It uses
-# the diff3 conflict style regardless of the user's Git configuration, because
-# the conflict style affects how Git splits and combines conflicts.  If NEWVER
-# is the old version, it prints only the changes.
+# Fjalar changed, the number of changes (runs of consecutive changed lines),
+# added lines, and removed lines in Fjalar's changes to the old version.
+# Then it does the merge in memory, with "git merge-tree", and prints the
+# number of conflicts in each file.  It uses the same conflict style and diff
+# algorithm as the merge, because they affect how Git splits and combines
+# conflicts.  If NEWVER is the old version, it prints only the changes.
 
 set -e
 set -o pipefail
@@ -72,6 +74,27 @@ if [ $# -lt 1 ]; then
 fi
 BUNEWVER=$1
 shift
+if [ "$trial" = true ]; then
+  # "git merge-tree" accepts only the strategy options of "git cherry-pick".
+  for option in "$@"; do
+    case $option in
+      -X?* | --strategy-option=?*) ;;
+      *)
+        echo "$0: with --trial, each CHERRY-PICK-OPTION must be a strategy option," >&2
+        echo "such as -Xpatience, not $option" >&2
+        exit 2
+        ;;
+    esac
+  done
+  # "git merge-tree" accepts --merge-base since Git 2.40, and -X since 2.43.
+  if [ $# -eq 0 ]; then required_git=2.40; else required_git=2.43; fi
+  git_version=$(git version | awk '{ print $3 }')
+  if [ "$(printf '%s\n' "$required_git" "$git_version" | sort -V | head -n 1)" != "$required_git" ]; then
+    echo "$0: --trial${1+ with a CHERRY-PICK-OPTION} requires Git $required_git or later," >&2
+    echo "but this is Git $git_version." >&2
+    exit 1
+  fi
+fi
 
 # The Fjalar tree that contains this script, even if $0 is a symbolic link.
 FJALARDIR=$(dirname -- "$(readlink -f -- "$0")")
@@ -194,59 +217,58 @@ binutils_commit() {
 base_commit=$(binutils_commit "$BUOLD")
 new_commit=$(binutils_commit "$BUNEW" "$base_commit")
 
-# Usage: fjalar_diff TARGET
+# Usage: fjalar_diff TARGET [ARG...]
 # Prints Fjalar's changes to the old version:  the diff from the base commit
-# to TARGET, a commit.  The diff omits the files that are not in the base
+# to TARGET, a commit.  Each ARG, such as -U0 or "-- PATH", is passed to "git
+# diff" after the commits.  The diff omits the files that are not in the base
 # commit, which only Fjalar has.  The options make the output independent of
-# the user's Git configuration.  The diff algorithm is the merge's default
-# one, so that the hunks are the ones that the merge works with, unless a
+# the user's Git configuration.  The diff algorithm is the merge's, so that
+# the changed lines are the ones that the merge works with, unless a
 # CHERRY-PICK-OPTION such as -Xpatience changes the merge's algorithm.
 fjalar_diff() {
   git diff --no-renames --no-ext-diff --no-textconv --no-color -U3 \
     --diff-algorithm=histogram --inter-hunk-context=0 \
     --src-prefix=a/ --dst-prefix=b/ --diff-filter=a \
-    "$base_commit" "$1"
+    "$base_commit" "$@"
 }
 
-# The options make rename detection independent of the user's Git
-# configuration.  They are Git's defaults, and a CHERRY-PICK-OPTION such as
-# -Xno-renames overrides them.  Unless the user has chosen a conflict style,
-# each conflict also shows the old version's text, which helps in resolving
-# it.  A trial always uses that style, because the style affects how many
-# conflicts there are.
-options=(-c merge.renames=true -c merge.directoryRenames=conflict)
-if [ "$trial" = true ] || ! git config --get merge.conflictStyle > /dev/null; then
-  options+=(-c merge.conflictStyle=diff3)
-fi
+# The options make rename detection and the diff algorithm independent of
+# the user's Git configuration.  They are Git's defaults, and a
+# CHERRY-PICK-OPTION such as -Xno-renames or -Xpatience overrides them.
+# ("git cherry-pick" uses diff.algorithm, but "git merge-tree" does not.)
+# The conflict style is fixed so that a trial counts the conflicts that the
+# merge has, because the style affects how many conflicts there are.
+options=(-c merge.renames=true -c merge.directoryRenames=conflict
+  -c diff.algorithm=histogram -c merge.conflictStyle=diff3)
 
 if [ "$trial" = true ]; then
-  # A commit of the work tree, which "git stash create" makes without
-  # changing any ref.  It prints nothing if the work tree has no changes.
-  target=$(git stash create)
-  target=${target:-HEAD}
+  # A commit of the work tree's tracked files.  A copy of the index records
+  # them, so the index is unchanged even if it has unmerged files.
+  cp "$(git rev-parse --git-path index)" "$tmpindex"
+  GIT_INDEX_FILE=$tmpindex git add --update
+  target=$(git commit-tree --no-gpg-sign -p HEAD -m "Fjalar work tree" \
+             "$(GIT_INDEX_FILE=$tmpindex git write-tree)")
   echo
   echo "Fjalar's changes to Binutils $BUOLDVER:"
-  fjalar_diff "$target" \
-    | awk '
-      # A line that starts with "---" or "+++" is a file header only before
-      # the first hunk of the file; within a hunk, it is a changed line.
-      # The "---" line names the file even if Fjalar deleted it, because the
-      # diff omits added files.
-      /^diff --git / { in_header = 1; next }
-      in_header && /^--- / { file = substr($0, 7); files[++n] = file; next }
-      /^@@/ { in_header = 0; hunks[file]++; next }
-      in_header { next }
-      /^\+/ { added[file]++ }
-      /^-/ { removed[file]++ }
-      END {
-        printf "  %6s %6s %8s  %s\n", "hunks", "added", "removed", "file"
-        for (i = 1; i <= n; i++) {
-          f = files[i]
-          printf "  %6d %6d %8d  %s\n", hunks[f], added[f], removed[f], f
-          total_hunks += hunks[f]; total_added += added[f]; total_removed += removed[f]
+  # Without context lines, each hunk is one change:  a run of consecutive
+  # changed lines.  A file's diff may have no hunk, such as one that changes
+  # only the mode.
+  fjalar_diff "$target" --name-only -z \
+    | while IFS= read -r -d '' file; do
+        fjalar_diff "$target" -U0 -- "$file" \
+          | awk -v file="$file" '
+              /^@@/ { in_hunk = 1; changes++; next }
+              in_hunk && /^\+/ { added++ }
+              in_hunk && /^-/ { removed++ }
+              END { printf "%d\t%d\t%d\t%s\n", changes, added, removed, file }'
+      done \
+    | awk -F'\t' '
+        BEGIN { printf "  %7s %6s %8s  %s\n", "changes", "added", "removed", "file" }
+        {
+          printf "  %7d %6d %8d  %s\n", $1, $2, $3, $4
+          changes += $1; added += $2; removed += $3
         }
-        printf "  %6d %6d %8d  %s\n", total_hunks, total_added, total_removed, "total"
-      }'
+        END { printf "  %7d %6d %8d  %s\n", changes, added, removed, "total" }'
   if [ "$BUOLDVER" = "$BUNEWVER" ]; then
     exit 0
   fi
@@ -256,13 +278,12 @@ if [ "$trial" = true ]; then
   merge_output=$(git "${options[@]}" merge-tree --write-tree --name-only --no-messages \
                    --merge-base="$base_commit" "$@" "$target" "$new_commit") || status=$?
   if [ "$status" -gt 1 ]; then
-    echo "$0: git merge-tree failed.  --trial requires Git 2.40 or later, or" >&2
-    echo "2.43 or later with a CHERRY-PICK-OPTION." >&2
+    echo "$0: git merge-tree failed." >&2
     exit 1
   fi
   # The first line is the merged tree; the others are the conflicted files.
   tree=$(head -n 1 <<< "$merge_output")
-  conflicted=$(tail -n +2 <<< "$merge_output" | sort -u)
+  conflicted=$(tail -n +2 <<< "$merge_output")
   printf "  %9s  %s\n" "conflicts" "file"
   total=0
   if [ -n "$conflicted" ]; then
@@ -270,7 +291,7 @@ if [ "$trial" = true ]; then
       # A file with a conflict but no conflict markers, such as one that
       # Fjalar changed and the new version deletes, counts as one conflict.
       count=$(git cat-file blob "$tree:$file" 2> /dev/null | grep -c '^<<<<<<< ' || true)
-      if [ "${count:-0}" -eq 0 ]; then
+      if [ "$count" -eq 0 ]; then
         count=1
       fi
       printf "  %9d  %s\n" "$count" "$file"
