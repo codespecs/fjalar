@@ -75,10 +75,14 @@ new ones than to fix them.)
   with the upgrade later.  To list them:
 
   ```sh
-  gh pr list -R codespecs/fjalar --json number,files --jq \
-    '.[] | select(any(.files[]; .path | test("^valgrind/fjalar/(readelf\\.c|dwarf\\.[ch]|elfcomm\\.[ch]|bucomm\\.h|demanguse\\.h|include/|libiberty/)")))
+  gh pr list -R codespecs/fjalar --limit 1000 --json number,files --jq \
+    '.[] | select((.files | length) >= 100
+                  or any(.files[]; .path | test("^valgrind/fjalar/(readelf\\.c|dwarf\\.[ch]|elfcomm\\.[ch]|bucomm\\.h|demanguse\\.h|include/|libiberty/)")))
          | .number'
   ```
+
+  `gh` returns only the first 100 files of each PR, so the command also
+  lists every PR with 100 or more files; check those by hand.
 
   No line that such a PR adds or changes may differ from Binutils 2.39
   only in whitespace, which the landed #134 made Fjalar's copies match;
@@ -372,9 +376,9 @@ small.
      that is an improvement in DWARF 5 support, which step 8 records.  Any
      other difference is a regression.
    - Run with `--fjalar-debug-dump=yes` on a DWARF 5 binary and compare
-     against `readelf --debug-dump` from Binutils 2.47 for sanity.  The
-     system `readelf` is from a different version (2.46 on Ubuntu 26.04,
-     2.41 on Rocky Linux 10), so build 2.47's:
+     against `readelf --debug-dump` from Binutils `$BUNEWVER` for sanity.
+     The system `readelf` is usually from a different version (2.46 on
+     Ubuntu 26.04, 2.41 on Rocky Linux 10), so build `$BUNEWVER`'s:
      `./build-binutils-readelf.sh $BUNEWVER` builds it and prints its path.
    - Before committing, run `./check-hook-counts.sh HEAD`.  It counts the
      calls of each hook (step 5) in the old and new `dwarf.c` and

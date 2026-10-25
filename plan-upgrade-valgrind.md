@@ -41,11 +41,15 @@ it completely (merged, CI green) before starting this one.  That plan's
 
   ```sh
   gh pr list -R codespecs/fjalar --limit 1000 --json number,files --jq \
-    '.[] | select(any(.files[]; .path
-                      | (startswith("valgrind/") and (startswith("valgrind/fjalar/") | not))
-                        or test("^valgrind/fjalar/(mc_|memcheck\\.h$)")))
+    '.[] | select((.files | length) >= 100
+                  or any(.files[]; .path
+                                   | (startswith("valgrind/") and (startswith("valgrind/fjalar/") | not))
+                                     or test("^valgrind/fjalar/(mc_|memcheck\\.h$)")))
          | .number'
   ```
+
+  `gh` returns only the first 100 files of each PR, so the command also
+  lists every PR with 100 or more files; check those by hand.
 
 ## Steps
 
