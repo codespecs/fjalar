@@ -678,12 +678,6 @@ to be explicitly supported by DynComp.
 @xref{Supporting new VEX IR Instruction}, for
 guidelines on supporting new VEX instructions.
 
-Running programs finds only the unhandled operations that those programs
-use.  @code{make fjalar-test} runs
-@file{valgrind/fjalar/tests/dyncomp-unop-coverage-test.sh}, which fails
-for each unary operation that has no case in @code{expr2tags_Unop_DC}, so
-it lists every unary operation that the merge added.
-
 
 @node Get New Valgrind Regtest Baseline Results
 @section Get New Valgrind Regtest Baseline Results
