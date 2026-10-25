@@ -7267,13 +7267,16 @@ display_loc_list (struct dwarf_section *section,
 	  off = offset + (vstart - *start_ptr);
 
 	  READ_ULEB (vbegin, vstart, section_end);
+	  if (fjalar_debug_dump)
 	  print_dwarf_view (vbegin, pointer_size, 1);
 
 	  READ_ULEB (vend, vstart, section_end);
+	  if (fjalar_debug_dump) {
 	  print_dwarf_view (vend, pointer_size, 1);
 
 	  printf (_("views at %8.8lx for:\n    %*s "),
 		  (unsigned long) off, 8, "");
+	  }
 	}
 
       if (2 > (size_t) (section_end - start))
@@ -7313,7 +7316,7 @@ display_loc_list (struct dwarf_section *section,
 						    length,
 						    cu_offset, section,
                                                     PASS_2, OK_TO_HARVEST, 0, ll);
-      if (fjalar_debug_dump)
+      if (fjalar_debug_dump) {
       putchar (')');
 
       if (need_frame_base && !has_frame_base)
@@ -7324,8 +7327,8 @@ display_loc_list (struct dwarf_section *section,
       else if (begin > end || (begin == end && vbegin > vend))
 	fputs (_(" (start > end)"), stdout);
 
-      if (fjalar_debug_dump)
       putchar ('\n');
+      }
 
       // start of Fjalar code
       // A tombstone base address means that this entry describes code that
