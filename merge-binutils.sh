@@ -74,6 +74,35 @@ if [ $# -lt 1 ]; then
 fi
 BUNEWVER=$1
 shift
+
+# The "git diff" options that make a diff like the merge's:  one for each
+# CHERRY-PICK-OPTION that changes the diff algorithm or how the merge treats
+# whitespace.  Each such strategy option is also a "git diff" option.
+diff_options=()
+strategy_option_next=false
+for option in "$@"; do
+  if [ "$strategy_option_next" = true ]; then
+    strategy_option=$option
+    strategy_option_next=false
+  else
+    case $option in
+      -X | --strategy-option)
+        strategy_option_next=true
+        continue
+        ;;
+      -X*) strategy_option=${option#-X} ;;
+      --strategy-option=*) strategy_option=${option#--strategy-option=} ;;
+      *) continue ;;
+    esac
+  fi
+  case $strategy_option in
+    patience | diff-algorithm=* | ignore-space-change | ignore-all-space \
+      | ignore-space-at-eol | ignore-cr-at-eol)
+      diff_options+=("--$strategy_option")
+      ;;
+  esac
+done
+
 if [ "$trial" = true ]; then
   # "git merge-tree" accepts only the strategy options of "git cherry-pick".
   for option in "$@"; do
@@ -222,12 +251,13 @@ new_commit=$(binutils_commit "$BUNEW" "$base_commit")
 # to TARGET, a commit.  Each ARG, such as -U0 or "-- PATH", is passed to "git
 # diff" after the commits.  The diff omits the files that are not in the base
 # commit, which only Fjalar has.  The options make the output independent of
-# the user's Git configuration.  The diff algorithm is the merge's, so that
-# the changed lines are the ones that the merge works with, unless a
-# CHERRY-PICK-OPTION such as -Xpatience changes the merge's algorithm.
+# the user's Git configuration.  The diff algorithm and the treatment of
+# whitespace are the merge's, including any that a CHERRY-PICK-OPTION such as
+# -Xpatience sets, so that the changed lines are the ones that the merge
+# works with.
 fjalar_diff() {
   git diff --no-renames --no-ext-diff --no-textconv --no-color -U3 \
-    --diff-algorithm=histogram --inter-hunk-context=0 \
+    --diff-algorithm=histogram "${diff_options[@]}" --inter-hunk-context=0 \
     --src-prefix=a/ --dst-prefix=b/ --diff-filter=a \
     "$base_commit" "$@"
 }
