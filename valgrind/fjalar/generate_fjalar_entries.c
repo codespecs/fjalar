@@ -1680,6 +1680,9 @@ void initializeFunctionTable(void)
   dwarf_entry* cur_entry = 0;
   FunctionEntry* cur_func_entry = 0;
   unsigned long num_functions_added = 0;
+  const char* dwarf_version_hint =
+    "Fjalar reads DWARF versions 2, 3, and 4.  Did you compile your program\n"
+    "with -gdwarf-4 -no-pie?\n";
 
   FJALAR_DPRINTF("ENTER initializeFunctionTable\n");
 
@@ -1843,10 +1846,21 @@ void initializeFunctionTable(void)
     }
 
   if (!num_functions_added) {
-    printf( "\nError - No functions were found, probably due to a lack of debugging information.\n");
-    printf( "Fjalar reads DWARF versions 2, 3, and 4.  Did you compile your program\n"
-            "with -gdwarf-4?\n");
+    if (num_unsupported_version_comp_units) {
+      printf( "\nError - No functions were found, because Fjalar does not read the DWARF\n"
+              "version of the program's debugging information.\n");
+    } else {
+      printf( "\nError - No functions were found, probably due to a lack of debugging information.\n");
+    }
+    printf( "%s", dwarf_version_hint);
     VG_(exit)(1);
+  }
+
+  if (num_unsupported_version_comp_units) {
+    printf( "\nWarning - Fjalar omits the functions of %lu compilation unit(s), because\n"
+            "Fjalar does not read their DWARF version.\n",
+            num_unsupported_version_comp_units);
+    printf( "%s", dwarf_version_hint);
   }
 
   FJALAR_DPRINTF("EXIT  initializeFunctionTable\n");

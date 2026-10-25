@@ -4340,6 +4340,10 @@ process_debug_info (struct dwarf_section * section,
 	  warn (_("CU at offset %s contains corrupt or "
 		  "unsupported version number: %d.\n"),
 		dwarf_vmatoa ("x", cu_offset), compunit.cu_version);
+	  // Fjalar reports the skipped compilation units.  Count them during
+	  // only one of the passes over the section.
+	  if (do_loc)
+	    num_unsupported_version_comp_units++;
 	  continue;
 	}
 
