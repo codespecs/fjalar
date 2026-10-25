@@ -73,9 +73,11 @@ Some of category 3 and 4 is already gone upstream (for example, 2.47 fixes
 ## Strategy
 
 Do all the reductions before the 2.47 upgrade, as a series of small PRs
-against the current 2.39-based code.  Each PR is a behavior-preserving
-refactoring that is verifiable on its own, whereas merge conflicts can only be
-verified all together.  Each PR also lowers the conflict count of the 2.47
+against the current 2.39-based code.  Each PR is a refactoring that is
+verifiable on its own, whereas merge conflicts can only be verified all
+together.  Each PR preserves behavior, except for any output change that it
+intends and its description states, such as PR 3's fix of the LEB128 messages
+(see "Order and expected payoff").  Each PR also lowers the conflict count of the 2.47
 merge and of every later merge.
 
 Measure after each PR.  The trial-merge numbers decide only how far to take
@@ -104,7 +106,10 @@ Verification for every later PR:
 - `./compare-warnings.sh --binutils` reports no new warnings.
 - `./test-kvasir.sh` results are unchanged.
 - `./compare-debug-output.sh`, with a baseline saved before the change,
-  shows no differences, except intended ones.
+  shows no differences, except intended ones.  If it shows intended ones,
+  check that it shows nothing else, then run
+  `./compare-debug-output.sh --update DIR` to make the new output the
+  baseline for the next PR.
 - `./check-hook-counts.sh` reports no changes, or each one is explained (the
   script needs updating when hooks move; see Phase 3).
 - CI passes on Ubuntu and Rocky Linux.
