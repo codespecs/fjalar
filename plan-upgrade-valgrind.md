@@ -14,9 +14,9 @@ Do the Binutils/readelf upgrade (`plan-upgrade-readelf.md`) first, and finish
 it completely (landed, CI green) before starting this one.  That plan's
 "Ordering" section gives the reasons and the exception.
 
-The preparation in `plan-pre-upgrade.md` must also be done; this plan
-assumes items 1 (expected regtest failures enforced in CI) and 3
-(DynComp scan).
+This plan assumes that CI enforces the expected regtest failures (#175),
+and that DynComp handles every IROp that the vectorized programs of step 9
+exercised on 3.23 (#172, #173).
 
 ## Scope
 
@@ -230,8 +230,8 @@ Memcheck and DynComp depend tightly on Valgrind core:
      amd64/x86, add handling in the `expr2tags_*_DC` functions (see the
      #79 `Iop_64x4toV256` fix for the pattern).  With #87, that includes
      new unary operations, which reach `expr2tags_Unop_DC`'s `default`
-     case, and for which `make fjalar-test` (step 9) fails.  Running the Kvasir tests and the programs of
-     `plan-pre-upgrade.md` item 2 with
+     case, and for which `make fjalar-test` (step 9) fails.  Running the Kvasir tests and the vectorized
+     programs of step 9 with
      `--dyncomp-unhandled-ops=warn` (#85) lists the unhandled ones that
      they hit.  Search for panics/`default:`
      cases that would now be hit.  Most changes for other architectures can
@@ -240,7 +240,11 @@ Memcheck and DynComp depend tightly on Valgrind core:
      `make fjalar-test` runs `valgrind/fjalar/tests/dyncomp-op-coverage-test.sh`
      (from #173), which lists each new IROp that has no case, and each IROp
      listed as unimplemented that amd64 or x86 now uses.  Handle each
-     operation that it lists, as `plan-pre-upgrade.md` item 2 describes.
+     operation that it lists, as appendix "Supporting new VEX IR
+     Instruction" of `doc/valgrind-merge.texinfo` describes:  give it a
+     case, or, if amd64 and x86 do not use it, list it in the comment of
+     `dyncomp_translate.c` that begins "The following opcodes are not
+     implemented".
      Also compare `Iex_*` and `Ist_*` kinds.
    - Read NEWS for 3.24.0 through 3.27.1 and note: new platforms (each adds
      `VEX/priv/*` and `coregrind/m_*` files and `configure.ac` cases);
@@ -413,9 +417,9 @@ Memcheck and DynComp depend tightly on Valgrind core:
   `dyncomp_translate.c`** (or vice versa).  Mitigation: the hunk-by-hunk
   checkoff in step 6.
 - **New IROps** used by modern compilers (AVX/AVX2 and others on amd64) can
-  make DynComp panic at run time.  Re-run the vectorized programs from
-  `plan-pre-upgrade.md` item 2 (which all work on 3.23 by then); a panic
-  there after the merge is due to the upgrade.
+  make DynComp panic at run time.  Re-run the vectorized programs of step 9
+  (which all work on 3.23); a panic there after the merge is due to the
+  upgrade.
 - **Build-system changes** (`Makefile.all.am`, `Makefile.tool.am`,
   `configure.ac`) can silently drop Fjalar from the build or change flags.
 - **Newer upstream build requirements** (autotools, compiler) that the CI
