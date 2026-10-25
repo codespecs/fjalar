@@ -277,6 +277,12 @@ if [ "$trial" = true ]; then
       total=$((total + count))
     done <<< "$conflicted"
   fi
+  # A merge can conflict without any file conflicting, as some directory
+  # rename conflicts do.  Such a merge counts as one conflict.
+  if [ "$status" -eq 1 ] && [ "$total" -eq 0 ]; then
+    printf "  %9d  %s\n" 1 "(in no file; the merge reports it)"
+    total=1
+  fi
   printf "  %9d  %s\n" "$total" "total"
   exit 0
 fi
