@@ -86,6 +86,8 @@ static const char* TYPE_FORMAT_STRINGS[] = {
   "%.5g",                          // D_FLOAT16,
   "%.4g",                          // D_BFLOAT16,
   "%.17g",                         // D_FLOAT128,
+  "%d - ERROR - D_COMPLEX",        // D_COMPLEX  // never printed
+  "%d - ERROR - D_DECIMAL",        // D_DECIMAL  // never printed
 
   "%d",                            // D_ENUMERATION,
 
@@ -478,6 +480,13 @@ switch (decType) \
    /* varHasReportableValue), and a pointer is printed as a hashcode, so */ \
    /* a ZST never reaches this switch. */ \
    tl_assert(0 && "TYPES_SWITCH() - D_ZST"); \
+   break; \
+ case D_COMPLEX: \
+ case D_DECIMAL: \
+   /* The traversal reports a complex or decimal floating-point number */ \
+   /* only through a pointer (see varHasReportableValue), so neither */ \
+   /* reaches here. */ \
+   tl_assert(0 && "TYPES_SWITCH() - D_COMPLEX or D_DECIMAL"); \
    break; \
  default: \
    DTRACE_PRINTF( "TYPES_SWITCH() - unknown type"); \

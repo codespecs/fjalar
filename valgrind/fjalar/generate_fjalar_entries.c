@@ -115,6 +115,8 @@ const int DecTypeByteSizes[] = {
   2,                              // D_FLOAT16,
   2,                              // D_BFLOAT16,
   16,                             // D_FLOAT128,
+  16,                             // D_COMPLEX, // never read; size varies
+  8,                              // D_DECIMAL, // never read; size varies
 
   sizeof(int),                    // D_ENUMERATION,
 
@@ -153,6 +155,10 @@ TypeEntry LongDoubleType = {D_LONG_DOUBLE, 0, sizeof(long double), 0};
 TypeEntry Float16Type = {D_FLOAT16, 0, 2, 0};
 TypeEntry BFloat16Type = {D_BFLOAT16, 0, 2, 0};
 TypeEntry Float128Type = {D_FLOAT128, 0, 16, 0};
+// Fjalar never reads a value of these types, which come in several sizes;
+// see sizedBasicType.
+TypeEntry ComplexType = {D_COMPLEX, 0, 16, 0};      // _Complex double
+TypeEntry DecimalType = {D_DECIMAL, 0, 8, 0};       // _Decimal64
 TypeEntry FunctionType = {D_FUNCTION, 0, sizeof(void*), 0};
 TypeEntry VoidType = {D_VOID, 0, sizeof(void*), 0};
 TypeEntry Char8Type = {D_CHAR8, 0, 1, 0};
@@ -186,6 +192,8 @@ TypeEntry* BasicTypesArray[] = {
   &Float16Type,             //  D_FLOAT16,
   &BFloat16Type,            //  D_BFLOAT16,
   &Float128Type,            //  D_FLOAT128,
+  &ComplexType,             //  D_COMPLEX, // or see sizedBasicType
+  &DecimalType,             //  D_DECIMAL, // or see sizedBasicType
 
   0,                        //  D_ENUMERATION,
 
@@ -226,6 +234,8 @@ const char* DeclaredTypeString[] = {
   "_Float16",               // D_FLOAT16,
   "__bf16",                 // D_BFLOAT16,
   "_Float128",              // D_FLOAT128,
+  "_Complex",               // D_COMPLEX,
+  "_Decimal",               // D_DECIMAL,
 
   // This should NOT be used unless you created an unnamed struct/union!
   // Use TypeEntry::typeName instead
@@ -300,6 +310,8 @@ const char* DeclaredTypeNames[] = {"D_NO_TYPE", // Create padding
                              "D_FLOAT16",
                              "D_BFLOAT16",
                              "D_FLOAT128",
+                             "D_COMPLEX",
+                             "D_DECIMAL",
                              "D_ENUMERATION",
                              "D_STRUCT_CLASS",
                              "D_UNION",
@@ -1873,6 +1885,48 @@ static dwarf_entry* extractArrayType(VariableEntry* varPtr, array_type* arrayPtr
   return arrayPtr->type_ptr;
 }
 
+// The TypeEntry objects that sizedBasicType has created.
+static TypeEntry** sizedBasicTypes = NULL;
+static int numSizedBasicTypes = 0;
+static int maxSizedBasicTypes = 0;
+
+// Returns a TypeEntry for the basic type decType whose values occupy
+// byteSize bytes.  Fjalar uses a type's size to lay out the stack and
+// structs, but a DeclaredType whose values Fjalar never reads may come in
+// many sizes:  for example, D_I128 includes _BitInt(N) for every N > 64.
+// The TypeEntry in BasicTypesArray serves its own size; each other size
+// gets its own TypeEntry, created on first use.
+static TypeEntry* sizedBasicType(DeclaredType decType, int byteSize)
+{
+  TypeEntry* t = BasicTypesArray[decType];
+  int i;
+
+  if (t->byteSize == byteSize) {
+    return t;
+  }
+  for (i = 0; i < numSizedBasicTypes; i++) {
+    if ((sizedBasicTypes[i]->decType == decType) &&
+        (sizedBasicTypes[i]->byteSize == byteSize)) {
+      return sizedBasicTypes[i];
+    }
+  }
+
+  if (numSizedBasicTypes == maxSizedBasicTypes) {
+    maxSizedBasicTypes = (maxSizedBasicTypes == 0) ? 8 : 2 * maxSizedBasicTypes;
+    sizedBasicTypes = (sizedBasicTypes == NULL)
+      ? VG_(malloc)("generate_fjalar_entries.c: sizedBasicType.1",
+                    maxSizedBasicTypes * sizeof(TypeEntry*))
+      : VG_(realloc)("generate_fjalar_entries.c: sizedBasicType.2",
+                     sizedBasicTypes, maxSizedBasicTypes * sizeof(TypeEntry*));
+  }
+  t = VG_(malloc)("generate_fjalar_entries.c: sizedBasicType.3",
+                  sizeof(TypeEntry));
+  *t = *BasicTypesArray[decType];
+  t->byteSize = byteSize;
+  sizedBasicTypes[numSizedBasicTypes++] = t;
+  return t;
+}
+
 // Extracts base type information by assigning var->varType to a basic
 // type TypeEntry in BasicTypesArray
 // Modifies: var->varType
@@ -1912,6 +1966,17 @@ static void extractBaseType(VariableEntry* var, base_type* basePtr)
     }
     break;
 
+  // Fjalar never reads a value of these types; see varHasReportableValue.
+  case DW_ATE_complex_float:
+  // GCC encodes a complex integer type (a GNU extension) as DW_ATE_lo_user.
+  case DW_ATE_lo_user:
+    var->varType = sizedBasicType(D_COMPLEX, basePtr->byte_size);
+    break;
+
+  case DW_ATE_decimal_float:
+    var->varType = sizedBasicType(D_DECIMAL, basePtr->byte_size);
+    break;
+
   case DW_ATE_signed:
   case DW_ATE_signed_char:
     if (basePtr->byte_size == sizeof(char)) {
@@ -1934,6 +1999,10 @@ static void extractBaseType(VariableEntry* var, base_type* basePtr)
     // Rust native type i128
     else if (basePtr->byte_size == 16) {
       var->varType = BasicTypesArray[D_I128];
+    }
+    // _BitInt(N) for N > 128
+    else if (basePtr->byte_size > 16) {
+      var->varType = sizedBasicType(D_I128, basePtr->byte_size);
     }
     // Rust Zero Sized Type
     else if (basePtr->byte_size == 0) {
@@ -1963,6 +2032,10 @@ static void extractBaseType(VariableEntry* var, base_type* basePtr)
     // Rust native type u128
     else if (basePtr->byte_size == 16) {
       var->varType = BasicTypesArray[D_U128];
+    }
+    // unsigned _BitInt(N) for N > 128
+    else if (basePtr->byte_size > 16) {
+      var->varType = sizedBasicType(D_U128, basePtr->byte_size);
     }
     // Rust Zero Sized Type
     else if (basePtr->byte_size == 0) {
