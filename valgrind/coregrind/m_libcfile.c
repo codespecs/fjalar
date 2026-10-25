@@ -128,7 +128,7 @@ Bool VG_(resolve_filename) ( Int fd, const HChar** result )
    }
    // Failure
    *result = NULL;
-      return False;
+   return False;
 
 #elif defined(VGO_freebsd)
 
@@ -289,7 +289,7 @@ SysRes VG_(mknod) ( const HChar* pathname, Int mode, UWord dev )
 }
 
 SysRes VG_(open) ( const HChar* pathname, Int flags, Int mode )
-{  
+{
 #  if defined(VGP_arm64_linux) || defined(VGP_nanomips_linux)
    /* ARM64 wants to use __NR_openat rather than __NR_open. */
    SysRes res = VG_(do_syscall4)(__NR_openat,
@@ -843,7 +843,7 @@ void VG_(record_startup_wd) ( void )
       return;
    }
 
-     vg_assert(startup_wd[szB-1] == 0);
+   vg_assert(startup_wd[szB-1] == 0);
 
 #  elif defined(VGO_darwin)
    /* We can't ask the kernel, so instead rely on launcher-*.c to
@@ -1088,7 +1088,7 @@ Int VG_(check_executable)(/*OUT*/Bool* is_setuid,
             ngrp   = VG_(getgroups)(ngrp, groups);
          }
 
-	 Int i;
+         Int i;
          /* ngrp will be -1 if VG_(getgroups) failed. */
          for (i = 0; i < ngrp; i++) {
 	    if (groups[i] == st.gid) {

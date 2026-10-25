@@ -357,8 +357,8 @@ static void mc_pp_origin ( ExeContext* ec, UInt okind )
 }
 
 HChar * MC_(snprintf_delta) (HChar * buf, Int size, 
-                            SizeT current_val, SizeT old_val, 
-                            LeakCheckDeltaMode delta_mode)
+                             SizeT current_val, SizeT old_val, 
+                             LeakCheckDeltaMode delta_mode)
 {
    // Make sure the buffer size is large enough. With old_val == 0 and
    // current_val == ULLONG_MAX the delta including inserted commas is:
@@ -575,7 +575,7 @@ void MC_(pp_Error) ( const Error* err )
                      ? "unaddressable" : "uninitialised" );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
             VG_(pp_addrinfo_mc)(VG_(get_error_address)(err),
-                           &extra->Err.MemParam.ai, False);
+                                &extra->Err.MemParam.ai, False);
             if (extra->Err.MemParam.origin_ec 
                 && !extra->Err.MemParam.isAddrErr)
                mc_pp_origin( extra->Err.MemParam.origin_ec,
@@ -587,7 +587,7 @@ void MC_(pp_Error) ( const Error* err )
                      ? "unaddressable" : "uninitialised" );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
             VG_(pp_addrinfo_mc)(VG_(get_error_address)(err),
-                           &extra->Err.MemParam.ai, False);
+                                &extra->Err.MemParam.ai, False);
             if (extra->Err.MemParam.origin_ec 
                 && !extra->Err.MemParam.isAddrErr)
                mc_pp_origin( extra->Err.MemParam.origin_ec,
@@ -606,7 +606,7 @@ void MC_(pp_Error) ( const Error* err )
                       ? "Unaddressable" : "Uninitialised" );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
             VG_(pp_addrinfo_mc)(VG_(get_error_address)(err), &extra->Err.User.ai,
-                           False);
+                                False);
             if (extra->Err.User.origin_ec && !extra->Err.User.isAddrErr)
                mc_pp_origin( extra->Err.User.origin_ec,
                              extra->Err.User.otag & 3 );
@@ -616,7 +616,7 @@ void MC_(pp_Error) ( const Error* err )
                       ? "Unaddressable" : "Uninitialised" );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
             VG_(pp_addrinfo_mc)(VG_(get_error_address)(err), &extra->Err.User.ai,
-                           False);
+                                False);
             if (extra->Err.User.origin_ec && !extra->Err.User.isAddrErr)
                mc_pp_origin( extra->Err.User.origin_ec,
                              extra->Err.User.otag & 3 );
@@ -630,12 +630,12 @@ void MC_(pp_Error) ( const Error* err )
                   " / realloc()</what>\n" );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
             VG_(pp_addrinfo_mc)( VG_(get_error_address)(err),
-                            &extra->Err.Free.ai, False );
+                                 &extra->Err.Free.ai, False );
          } else {
             emit( "Invalid free() / delete / delete[] / realloc()\n" );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
             VG_(pp_addrinfo_mc)( VG_(get_error_address)(err),
-                            &extra->Err.Free.ai, False );
+                                 &extra->Err.Free.ai, False );
          }
          break;
 
@@ -645,12 +645,12 @@ void MC_(pp_Error) ( const Error* err )
             emit( "  <what>Mismatched free() / delete / delete []</what>\n" );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
             VG_(pp_addrinfo_mc)(VG_(get_error_address)(err),
-                           &extra->Err.FreeMismatch.ai, False);
+                                &extra->Err.FreeMismatch.ai, False);
          } else {
             emit( "Mismatched free() / delete / delete []\n" );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
             VG_(pp_addrinfo_mc)(VG_(get_error_address)(err),
-                           &extra->Err.FreeMismatch.ai, False);
+                                &extra->Err.FreeMismatch.ai, False);
          }
          break;
 
@@ -663,8 +663,8 @@ void MC_(pp_Error) ( const Error* err )
                   extra->Err.Addr.szB );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
             VG_(pp_addrinfo_mc)( VG_(get_error_address)(err),
-                            &extra->Err.Addr.ai,
-                            extra->Err.Addr.maybe_gcc );
+                                 &extra->Err.Addr.ai,
+                                 extra->Err.Addr.maybe_gcc );
          } else {
             emit( "Invalid %s of size %lu\n",
                   extra->Err.Addr.isWrite ? "write" : "read",
@@ -672,8 +672,8 @@ void MC_(pp_Error) ( const Error* err )
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
 
             VG_(pp_addrinfo_mc)( VG_(get_error_address)(err),
-                            &extra->Err.Addr.ai,
-                            extra->Err.Addr.maybe_gcc );
+                                 &extra->Err.Addr.ai,
+                                 extra->Err.Addr.maybe_gcc );
          }
          break;
 
@@ -684,12 +684,12 @@ void MC_(pp_Error) ( const Error* err )
                   "on the next line</what>\n" );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
             VG_(pp_addrinfo_mc)( VG_(get_error_address)(err), &extra->Err.Jump.ai,
-                            False );
+                                 False );
          } else {
             emit( "Jump to the invalid address stated on the next line\n" );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
             VG_(pp_addrinfo_mc)( VG_(get_error_address)(err), &extra->Err.Jump.ai,
-                            False );
+                                 False );
          }
          break;
 
@@ -732,12 +732,12 @@ void MC_(pp_Error) ( const Error* err )
             emit( "  <what>Illegal memory pool address</what>\n" );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
             VG_(pp_addrinfo_mc)( VG_(get_error_address)(err),
-                            &extra->Err.IllegalMempool.ai, False );
+                                 &extra->Err.IllegalMempool.ai, False );
          } else {
             emit( "Illegal memory pool address\n" );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
             VG_(pp_addrinfo_mc)( VG_(get_error_address)(err),
-                            &extra->Err.IllegalMempool.ai, False );
+                                 &extra->Err.IllegalMempool.ai, False );
          }
          break;
 
@@ -1354,7 +1354,7 @@ static void describe_addr ( DiEpoch ep, Addr a, /*OUT*/AddrInfo* ai )
          if (MC_(get_freed_block_bracketting)( a ))
             ai->Addr.Block.block_desc = "recently re-allocated block";
          else
-         ai->Addr.Block.block_desc = "block";
+            ai->Addr.Block.block_desc = "block";
          ai->Addr.Block.block_szB  = mc->szB;
          ai->Addr.Block.rwoffset   = (Word)a - (Word)mc->data;
          ai->Addr.Block.allocated_at = MC_(allocated_at)(mc);
@@ -1366,16 +1366,16 @@ static void describe_addr ( DiEpoch ep, Addr a, /*OUT*/AddrInfo* ai )
    /* -- Search for a recently freed block which might bracket it. -- */
    mc = MC_(get_freed_block_bracketting)( a );
    if (mc) {
-         ai->tag = Addr_Block;
+      ai->tag = Addr_Block;
       ai->Addr.Block.block_kind = Block_Freed;
-         ai->Addr.Block.block_desc = "block";
-         ai->Addr.Block.block_szB  = mc->szB;
-         ai->Addr.Block.rwoffset   = (Word)a - (Word)mc->data;
+      ai->Addr.Block.block_desc = "block";
+      ai->Addr.Block.block_szB  = mc->szB;
+      ai->Addr.Block.rwoffset   = (Word)a - (Word)mc->data;
       ai->Addr.Block.allocated_at = MC_(allocated_at)(mc);
       VG_(initThreadInfo) (&ai->Addr.Block.alloc_tinfo);
       ai->Addr.Block.freed_at = MC_(freed_at)(mc);
-         return;
-      }
+      return;
+   }
 
    /* -- Perhaps it's in a meta mempool block? -- */
    /* This test is done last, because metapool blocks overlap with blocks
@@ -1545,22 +1545,22 @@ static Bool mempool_block_maybe_describe( Addr a, Bool is_metapool,
    VG_(HT_ResetIter)( MC_(mempool_list) );
    while ( (mp = VG_(HT_Next)(MC_(mempool_list))) ) {
       if (mp->chunks != NULL && mp->metapool == is_metapool) {
-               MC_Chunk* mc;
-               VG_(HT_ResetIter)(mp->chunks);
-               while ( (mc = VG_(HT_Next)(mp->chunks)) ) {
+         MC_Chunk* mc;
+         VG_(HT_ResetIter)(mp->chunks);
+         while ( (mc = VG_(HT_Next)(mp->chunks)) ) {
             if (addr_is_in_MC_Chunk_with_REDZONE_SZB(mc, a, mp->rzB)) {
-                     ai->tag = Addr_Block;
-                     ai->Addr.Block.block_kind = Block_MempoolChunk;
-                     ai->Addr.Block.block_desc = "block";
-                     ai->Addr.Block.block_szB  = mc->szB;
-                     ai->Addr.Block.rwoffset   = (Word)a - (Word)mc->data;
+               ai->tag = Addr_Block;
+               ai->Addr.Block.block_kind = Block_MempoolChunk;
+               ai->Addr.Block.block_desc = "block";
+               ai->Addr.Block.block_szB  = mc->szB;
+               ai->Addr.Block.rwoffset   = (Word)a - (Word)mc->data;
                ai->Addr.Block.allocated_at = MC_(allocated_at)(mc);
                VG_(initThreadInfo) (&ai->Addr.Block.alloc_tinfo);
                ai->Addr.Block.freed_at = MC_(freed_at)(mc);
-                     return True;
-                  }
-               }
+               return True;
             }
+         }
+      }
    }
    return False;
 }
@@ -1881,7 +1881,7 @@ const HChar* MC_(get_error_name) ( const Error* err )
 }
 
 SizeT MC_(get_extra_suppression_info) ( const Error* err,
-                                       /*OUT*/HChar* buf, Int nBuf )
+                                        /*OUT*/HChar* buf, Int nBuf )
 {
    ErrorKind ekind = VG_(get_error_kind)(err);
    tl_assert(buf);
@@ -1907,7 +1907,7 @@ SizeT MC_(get_extra_suppression_info) ( const Error* err,
 }
 
 SizeT MC_(print_extra_suppression_use) ( const Supp *su,
-                                        /*OUT*/HChar *buf, Int nBuf )
+                                         /*OUT*/HChar *buf, Int nBuf )
 {
    tl_assert(nBuf >= 1);
 
@@ -1917,9 +1917,9 @@ SizeT MC_(print_extra_suppression_use) ( const Supp *su,
       if (lse->leak_search_gen == MC_(leak_search_gen)
           && lse->blocks_suppressed > 0) {
          return VG_(snprintf) (buf, nBuf,
-                        "suppressed: %'lu bytes in %'lu blocks",
-                        lse->bytes_suppressed,
-                        lse->blocks_suppressed);
+                               "suppressed: %'lu bytes in %'lu blocks",
+                               lse->bytes_suppressed,
+                               lse->blocks_suppressed);
       }
    }
 

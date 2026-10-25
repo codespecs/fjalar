@@ -1451,7 +1451,7 @@ IRExpr* guest_amd64_spechelper ( const HChar* function_name,
             --> test dst <s src */
          return unop(Iop_1Uto64,
                      binop(Iop_CmpLT32S,
-                                 unop(Iop_64to32, cc_dep1), 
+                           unop(Iop_64to32, cc_dep1),
                            unop(Iop_64to32, cc_dep2)));
       }
       if (isU64(cc_op, AMD64G_CC_OP_SUBL) && isU64(cond, AMD64CondNL)) {

@@ -554,8 +554,8 @@ void MC_(who_points_at) ( Addr address, SizeT szB);
 // if delta_mode == LCD_Any, prints in buf an empty string
 // otherwise prints a delta in the layout  " (+%'lu)" or " (-%'lu)" 
 extern HChar * MC_(snprintf_delta) (HChar * buf, Int size, 
-                                   SizeT current_val, SizeT old_val, 
-                                   LeakCheckDeltaMode delta_mode);
+                                    SizeT current_val, SizeT old_val, 
+                                    LeakCheckDeltaMode delta_mode);
 
 
 Bool MC_(is_valid_aligned_word)     ( Addr a );
@@ -563,7 +563,7 @@ Bool MC_(is_within_valid_secondary) ( Addr a );
 
 // Prints as user msg a description of the given loss record.
 void MC_(pp_LossRecord)(UInt n_this_record, UInt n_total_records,
-                       LossRecord* l);
+                        LossRecord* l);
                           
 
 /*------------------------------------------------------------*/
@@ -591,9 +591,9 @@ Bool MC_(read_extra_suppression_info) ( Int fd, HChar** buf,
 Bool MC_(error_matches_suppression) ( const Error* err, const Supp* su );
 
 SizeT MC_(get_extra_suppression_info) ( const Error* err,
-                                       /*OUT*/HChar* buf, Int nBuf );
-SizeT MC_(print_extra_suppression_use) ( const Supp* su,
                                         /*OUT*/HChar* buf, Int nBuf );
+SizeT MC_(print_extra_suppression_use) ( const Supp* su,
+                                         /*OUT*/HChar* buf, Int nBuf );
 void MC_(update_extra_suppression_use) ( const Error* err, const Supp* su );
 
 const HChar* MC_(get_error_name) ( const Error* err );
