@@ -8,21 +8,22 @@ conflict.
 
 ## Current state (against pristine 2.39)
 
-Output of `./merge-binutils.sh --trial 2.47` on 2026-10-25, at `c2f1d5c0`:
+Output of `./merge-binutils.sh --trial 2.47` on 2026-10-25, at `b7cb6ced`:
 
-| File                 | Hunks | Added | Removed | Conflicts |
-| -------------------- | ----: | ----: | ------: | --------: |
-| `dwarf.c`            |   225 |  1331 |     292 |       128 |
-| `readelf.c`          |   159 |   791 |     222 |        59 |
-| `elfcomm.c`          |    10 |    38 |       8 |         1 |
-| `dwarf.h`            |     3 |    23 |       0 |         1 |
-| `elfcomm.h`          |     3 |    15 |       1 |         1 |
-| `bucomm.h`           |     1 |     2 |       0 |         1 |
-| `include/` (4 files) |     6 |    12 |      12 |         0 |
-| total                |   407 |  2212 |     535 |       191 |
+| File                 | Changes | Added | Removed | Conflicts |
+| -------------------- | ------: | ----: | ------: | --------: |
+| `dwarf.c`            |     418 |  1331 |     292 |       128 |
+| `readelf.c`          |     260 |   791 |     222 |        59 |
+| `elfcomm.c`          |      13 |    38 |       8 |         1 |
+| `dwarf.h`            |       5 |    23 |       0 |         1 |
+| `elfcomm.h`          |       4 |    15 |       1 |         1 |
+| `bucomm.h`           |       1 |     2 |       0 |         1 |
+| `include/` (4 files) |      12 |    12 |      12 |         0 |
+| total                |     713 |  2212 |     535 |       191 |
 
-"Conflicts" is the number of conflicts in a merge of 2.47.  Whitespace
-differences were already removed (#134).
+"Changes" is the number of runs of consecutive changed lines.  "Conflicts"
+is the number of conflicts in a merge of 2.47.  Whitespace differences were
+already removed (#134).
 
 The changed lines fall into these categories, roughly in decreasing order of
 how cheaply they can be eliminated:
