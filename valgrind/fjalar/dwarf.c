@@ -7313,7 +7313,7 @@ display_loc_list (struct dwarf_section *section,
 						    length,
 						    cu_offset, section,
                                                     PASS_2, OK_TO_HARVEST, 0, ll);
-      if (fjalar_debug_dump)
+      if (fjalar_debug_dump) {
       putchar (')');
 
       if (need_frame_base && !has_frame_base)
@@ -7324,8 +7324,8 @@ display_loc_list (struct dwarf_section *section,
       else if (begin > end || (begin == end && vbegin > vend))
 	fputs (_(" (start > end)"), stdout);
 
-      if (fjalar_debug_dump)
       putchar ('\n');
+      }
 
       // start of Fjalar code
       // A tombstone base address means that this entry describes code that
