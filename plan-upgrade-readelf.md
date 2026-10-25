@@ -15,7 +15,7 @@ no whitespace-only conflicts.  CI enforces the expected regtest failures
 Step 2 creates a local expected-failures list if this machine's OS has
 none, and step 7 compares against it before pushing.
 
-Do this upgrade, before `plan-upgrade-valgrind.md`, and finish it
+Do this upgrade first, before `plan-upgrade-valgrind.md`, and finish it
 completely (landed, CI green) before starting the Valgrind upgrade.  Reasons:
 
 - It is smaller and self-contained: about a dozen files in `valgrind/fjalar/`,
@@ -100,12 +100,12 @@ may group the changes into fewer or smaller conflicts.
 Do steps 3-7 once per hop, on the same branch.  In those steps, "2.39" and
 "2.47" stand for the hop's old and new versions, and `$BUNEWVER` is the
 hop's new version (set it with, e.g., `BUNEWVER=2.40`).  The scripts take
-the old version from `BINUTILS_VERSION` in `valgrind/REVISION`.  So at the
-end of each hop, update `valgrind/REVISION` to the hop's new version (the
+the old version from `BINUTILS_VERSION` in `valgrind/REVISION`.  So in
+step 7 of each hop, after the local tests pass and before pushing, update
+`valgrind/REVISION` to the hop's new version (the
 `# Binutils version 2.40, released ...` comment and
 `export BINUTILS_VERSION=2.40`, for the first hop) and commit, with commit
-message "Upgrade Binutils (readelf) from 2.39 to 2.40" (for the first hop),
-before starting the next hop.  If step 2 created a local
+message "Upgrade Binutils (readelf) from 2.39 to 2.40" (for the first hop).  If step 2 created a local
 `regtest-expected/<os>.txt`, do not commit it:  git does not ignore it, so
 `git add -A` would commit it.  Do steps 1, 2, and 8 only once.
 
@@ -127,7 +127,8 @@ small.
      one branch: clone Fjalar into, e.g., `$INV/fjalar-branch-binutils-2.47`
      and create the branch there.  Set `FJALAR` to that clone, e.g.,
      `FJALAR=$INV/fjalar-branch-binutils-2.47`; the commands below use it.
-   - `git pull` both `fjalar` and `daikon`; ensure clean trees.
+   - `git pull` in `daikon`, and ensure that it has no local changes.  (The
+     new Fjalar clone is already up to date.)
    - Make sure the system has `binutils-dev` / `binutils-devel` (for `bfd.h`).
 
 2. **Baselines** (before touching any source).  Run these from the new
@@ -174,19 +175,27 @@ small.
      `$INV/daikon/tests/kvasir-tests` directly has the same problem; if you
      do that, first check `readlink -f $INV/daikon/fjalar`.
    - Create the DWARF 4 and DWARF 5 baseline for step 7.  Write a small C
-     program, outside the tree, with structs, arrays, pointers, and
-     function parameters and locals.  Compile it with each of the current
-     gcc and clang, with each of `-gdwarf-4` and `-gdwarf-5`, giving four
-     binaries.  Run Kvasir on each, writing each `.decls` file into
-     `/tmp/$USER/binutils/decls-before/`:
+     program in `/tmp/$USER/binutils/prog/`, outside the tree, with
+     structs, arrays, pointers, and function parameters and locals.
+     Compile it with each of the current gcc and clang, with each of
+     `-gdwarf-4 -no-pie` and `-gdwarf-5 -no-pie`, giving four binaries,
+     such as `prog-gcc-dwarf5`.  (`-no-pie` is needed because Fjalar
+     recognizes a function's entry point only at the address in the
+     debugging information.)  Run Kvasir on each, writing each `.decls`
+     file into `/tmp/$USER/binutils/decls-before/`, which Kvasir does not
+     create:
 
      ```sh
+     mkdir -p /tmp/$USER/binutils/decls-before
      valgrind/inst/bin/valgrind --tool=fjalar --decls-only \
-       --decls-file=/tmp/$USER/binutils/decls-before/prog-gcc-dwarf5.decls ./prog-gcc-dwarf5
+       --decls-file=/tmp/$USER/binutils/decls-before/prog-gcc-dwarf5.decls \
+       /tmp/$USER/binutils/prog/prog-gcc-dwarf5
      ```
 
-     Note any differences between the DWARF 4 and DWARF 5 `.decls` files of
-     the same compiler; Fjalar's DWARF 5 support may be incomplete.
+     Note the differences between the DWARF 4 and DWARF 5 `.decls` files
+     of the same compiler.  Expect some:  Fjalar does not fully read
+     DWARF 5 (for example, it reads location lists only from `.debug_loc`,
+     not from DWARF 5's `.debug_loclists`).
 
 3. **Merge.**
 
@@ -339,11 +348,14 @@ small.
      `.dtrace` file, usually means an unguarded `printf`.
    - The regression tests may not exercise the newer DWARF paths, so also
      run Kvasir on the four binaries of step 2, as step 2 does, but writing
-     into `/tmp/$USER/binutils/decls-after/`.
-     `diff -r /tmp/$USER/binutils/decls-before /tmp/$USER/binutils/decls-after`
-     must print nothing.  Also, any difference between the DWARF 4 and
-     DWARF 5 `.decls` files of the same compiler must be one that step 2
-     noted.
+     into `/tmp/$USER/binutils/decls-after/` (`mkdir -p` it first).  Then
+     run
+     `diff -r /tmp/$USER/binutils/decls-before /tmp/$USER/binutils/decls-after`.
+     The DWARF 4 files must not differ.  A DWARF 5 file may differ only
+     where step 2 noted a difference between it and the DWARF 4 file of
+     the same compiler, and only by becoming more like the DWARF 4 file;
+     that is an improvement in DWARF 5 support, which step 8 records.  Any
+     other difference is a regression.
    - Run with `--fjalar-debug-dump=yes` on a DWARF 5 binary and compare
      against `readelf --debug-dump` from Binutils 2.47 for sanity.  The
      system `readelf` is from a different version (2.46 on Ubuntu 26.04,
@@ -367,8 +379,9 @@ small.
      a system library such as libzstd or libsframe would instead have
      caused an "undefined reference" link error in step 6, because the
      tool is linked with `-nodefaultlibs`.)
-   - Push the branch and confirm GitHub Actions CI passes (Ubuntu and
-     Rocky Linux: build, regtest, and Kvasir jobs).
+   - Commit the hop (see the note about hops above).  Then push the branch
+     and confirm GitHub Actions CI passes (Ubuntu and Rocky Linux: build,
+     regtest, and Kvasir jobs).
 
 8. **Finish.**  (The last hop has already updated `valgrind/REVISION` to
    2.47.)
@@ -399,6 +412,7 @@ small.
      title is "Upgrade Binutils (readelf) from 2.39 to 2.47").
      Delete `regtest-<os>.log`, `regtest-<os>-post.log`, and
      `regtest-<os>-observed.txt` (ignored by git).
+   - Push the branch and confirm GitHub Actions CI passes, as in step 7.
 
 ## Risks
 
