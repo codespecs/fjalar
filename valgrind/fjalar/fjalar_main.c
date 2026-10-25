@@ -26,6 +26,7 @@
 
 
 #include "pub_tool_basics.h"
+#include "pub_tool_vki.h"            // For VKI_PROT_READ
 #include "pub_tool_aspacemgr.h"
 #include "pub_tool_hashtable.h"     // For mc_include.h
 #include "pub_tool_xarray.h" //for clientstate
@@ -45,6 +46,7 @@
 #include "fjalar_runtime.h"
 #include "fjalar_tool.h"
 #include "fjalar_select.h"
+#include "fjalar_traversal.h"
 #include "disambig.h"
 #include "mc_include.h"
 #include "typedata.h"
@@ -95,8 +97,8 @@ Bool doing_debug_print = False;
 // The filename of the target executable:
 const HChar* executable_filename = 0;
 
-// Mapping between Dwarf Register numbers and
-// valgrind function to return the value
+// Mapping between DWARF register numbers and the guest-state offset
+// of the register.
 // Below comment is ripped from GCC 4.3.1
 
 /* Define the register numbers to be used in Dwarf debugging information.
@@ -122,54 +124,153 @@ const HChar* executable_filename = 0;
 #if defined(VGA_amd64)
 // AMD64 Dwarf to Architecture mapping is (thankfully) specified
 // in the AMD64 ABI (http://x86-64.org/documentation/abi.pdf)
-Addr (*get_reg[16])( ThreadId tid ) = {
-  VG_(get_xAX),
-  VG_(get_xDX),
-  VG_(get_xCX),
-  VG_(get_xBX),
-  VG_(get_xSI),
-  VG_(get_xDI),
-  VG_(get_FP),
-  VG_(get_SP),
-  VG_(get_R8),
-  VG_(get_R9),
-  VG_(get_R10),
-  VG_(get_R11),
-  VG_(get_R12),
-  VG_(get_R13),
-  VG_(get_R14),
-  VG_(get_R15),
+static const Int dwarf_reg_guest_offsets[] = {
+  offsetof(VexGuestArchState, guest_RAX),
+  offsetof(VexGuestArchState, guest_RDX),
+  offsetof(VexGuestArchState, guest_RCX),
+  offsetof(VexGuestArchState, guest_RBX),
+  offsetof(VexGuestArchState, guest_RSI),
+  offsetof(VexGuestArchState, guest_RDI),
+  offsetof(VexGuestArchState, guest_RBP),
+  offsetof(VexGuestArchState, guest_RSP),
+  offsetof(VexGuestArchState, guest_R8),
+  offsetof(VexGuestArchState, guest_R9),
+  offsetof(VexGuestArchState, guest_R10),
+  offsetof(VexGuestArchState, guest_R11),
+  offsetof(VexGuestArchState, guest_R12),
+  offsetof(VexGuestArchState, guest_R13),
+  offsetof(VexGuestArchState, guest_R14),
+  offsetof(VexGuestArchState, guest_R15),
 };
 #else
-Addr (*get_reg[11])( ThreadId tid ) = {
-  VG_(get_xAX),
-  VG_(get_xCX),
-  VG_(get_xDX),
-  VG_(get_xBX),
-  VG_(get_SP),
-  VG_(get_FP),
-  VG_(get_xSI),
-  VG_(get_xDI),
-  VG_(get_IP),
-  NULL,
-  NULL
+static const Int dwarf_reg_guest_offsets[] = {
+  offsetof(VexGuestArchState, guest_EAX),
+  offsetof(VexGuestArchState, guest_ECX),
+  offsetof(VexGuestArchState, guest_EDX),
+  offsetof(VexGuestArchState, guest_EBX),
+  offsetof(VexGuestArchState, guest_ESP),
+  offsetof(VexGuestArchState, guest_EBP),
+  offsetof(VexGuestArchState, guest_ESI),
+  offsetof(VexGuestArchState, guest_EDI),
+  offsetof(VexGuestArchState, guest_EIP),
 };
 #endif
+STATIC_ASSERT(sizeof(dwarf_reg_guest_offsets) / sizeof(dwarf_reg_guest_offsets[0])
+              == FJALAR_NUM_DWARF_REGS);
 
-// For debugging purposes, a mapping between
-// DWARF location atoms and their string
-// representation
-const HChar* dwarf_reg_string[9] = {
-  "xAX",
-  "xCX",
-  "xDX",
-  "xBX",
-  "xSP",
-  "xFP",
-  "xSI",
-  "xDI",
-  "xIP"
-};
+Int dwarf_reg_guest_offset(UInt regNum)
+{
+  tl_assert(dwarf_reg_is_readable(regNum));
+  return dwarf_reg_guest_offsets[regNum];
+}
+
+Addr read_dwarf_reg(ThreadId tid, UInt regNum)
+{
+  Addr value;
+  tl_assert(dwarf_reg_is_readable(regNum));
+  VG_(get_shadow_regs_area)(tid, (UChar*)&value, 0/*shadowNo*/,
+                            dwarf_reg_guest_offsets[regNum], sizeof(Addr));
+  return value;
+}
+
+// If atom is DW_OP_regN (the value is in register N) or DW_OP_bregN
+// (the value is at an offset from the address in register N), sets
+// *regNum to N and returns True.  Otherwise, returns False and leaves
+// *regNum unchanged.  N might not be readable by Fjalar; see
+// dwarf_reg_is_readable.
+Bool dwarf_op_reg_num(UInt atom, UInt* regNum)
+{
+  if (atom >= DW_OP_breg0 && atom <= DW_OP_breg31) {
+    *regNum = atom - DW_OP_breg0;
+    return True;
+  }
+  if (atom >= DW_OP_reg0 && atom <= DW_OP_reg31) {
+    *regNum = atom - DW_OP_reg0;
+    return True;
+  }
+  return False;
+}
+
+// Saves the registers in f_state->func->entryRegsMask, with their A
+// and V bits and DynComp tags, in f_state->entryRegs, so that formal
+// parameters whose locations use registers have their entrance values
+// at both entrance and exit.
+static void save_param_regs(FunctionExecutionState* f_state, ThreadId tid)
+{
+  UInt regNum;
+  for (regNum = 0; regNum < FJALAR_NUM_DWARF_REGS; regNum++) {
+    if (f_state->func->entryRegsMask & (1U << regNum)) {
+      f_state->entryRegs[regNum] = read_dwarf_reg(tid, regNum);
+      mc_copy_guest_reg_state(tid, dwarf_reg_guest_offset(regNum),
+                              (Addr)&f_state->entryRegs[regNum]);
+    }
+  }
+}
+
+// The most bytes past the part of the guest stack that enter_function
+// copies by default that it also copies to cover formal parameters.
+#define MAX_VIRTUAL_STACK_EXTENSION (64 * 1024)
+
+// Returns the guest address just past the formal parameters of an
+// invocation of f that lie on the guest stack at or above stackStart,
+// or copyEnd if that is greater.  frameBase is the invocation's frame
+// base.  The result is at most copyEnd + MAX_VIRTUAL_STACK_EXTENSION,
+// and all the guest memory between copyEnd and the result is readable
+// client memory.  Call this at function entrance, before copying the
+// guest stack to the virtual stack.
+static Addr formal_params_stack_end(FunctionEntry* f, ThreadId tid,
+                                    Addr frameBase, Addr stackStart,
+                                    Addr copyEnd)
+{
+  Addr limit = copyEnd + MAX_VIRTUAL_STACK_EXTENSION;
+  Addr end = copyEnd;
+  Addr regs[FJALAR_NUM_DWARF_REGS];
+  UInt regNum;
+  VarNode* node;
+
+  for (regNum = 0; regNum < FJALAR_NUM_DWARF_REGS; regNum++) {
+    if (f->entryRegsMask & (1U << regNum)) {
+      regs[regNum] = read_dwarf_reg(tid, regNum);
+    }
+  }
+  // At function entrance, the guest stack holds what the virtual stack
+  // will hold, so formalParamLocation can read the guest stack.  An
+  // empty copied stack makes it do so.
+  f->guestStackStart = 0;
+  f->guestStackEnd = 0;
+
+  for (node = f->formalParameters.first; node != NULL; node = node->next) {
+    VariableEntry* var = node->var;
+    Addr paramLoc;
+    Addr paramSize;
+    // visitVariableGroup does not read these formal parameters, or
+    // reads them from the virtual stack at a fixed offset, or reads them
+    // from a register.
+    if (formalParamIsOmitted(var)
+        || var->location_expression_size == 0
+        || (location_op_kind_of(var->location_expression[0].atom)
+            == LOC_OP_REG)) {
+      continue;
+    }
+    paramLoc = formalParamLocation(var, f, frameBase,
+                                   f->entryRegsMask != 0 ? regs : NULL);
+    paramSize = formalParamByteSize(var);
+    // The subtraction, rather than an addition, cannot overflow.
+    if (paramLoc < stackStart || paramLoc > limit
+        || paramSize > limit - paramLoc
+        || paramLoc + paramSize <= end) {
+      continue;
+    }
+    // The parameter might not be on the guest stack, if a program uses
+    // an alternate stack or a location is bogus.
+    if (!VG_(am_is_valid_for_client)(copyEnd, paramLoc + paramSize - copyEnd,
+                                     VKI_PROT_READ)) {
+      continue;
+    }
+    end = paramLoc + paramSize;
+  }
+  return end;
+}
 
 // located in VEX/priv/main_util.c
 extern void vex_bzero(void* s, UInt n);
@@ -237,7 +338,11 @@ static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
     FJALAR_DPRINTF("Found a valid entry point at %x for\n", (UInt)addr);
 
     // We need all general purpose registers.
+#if defined(VGA_amd64)
+    di->nFxState = 10;
+#else
     di->nFxState = 9;
+#endif
     vex_bzero(&di->fxState, sizeof(di->fxState));
 
     di->fxState[0].fx     = Ifx_Read;
@@ -269,6 +374,12 @@ static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
     di->fxState[8].fx     = Ifx_Read;
     di->fxState[8].offset = mce->layout->offset_xDI;
     di->fxState[8].size   = mce->layout->sizeof_xDI;
+#if defined(VGA_amd64)
+    // R8 through R15, which are contiguous in the guest state
+    di->fxState[9].fx     = Ifx_Read;
+    di->fxState[9].offset = offsetof(VexGuestArchState, guest_R8);
+    di->fxState[9].size   = 8 * sizeof(ULong);
+#endif
 
     stmt('V',  mce, IRStmt_Dirty(di) );
   }
@@ -462,7 +573,11 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
       // For function exit, we are interested in observing  all general purpose
       // integer registers,  FTOP, and FPREG[], so make sure that they are
       // updated by setting the proper annotations.
+#if defined(VGA_amd64)
+      di->nFxState = 12;
+#else
       di->nFxState = 11;
+#endif
       vex_bzero(&di->fxState, sizeof(di->fxState));
 
       di->fxState[0].fx     = Ifx_Read;
@@ -501,6 +616,12 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
       di->fxState[10].fx     = Ifx_Read;
       di->fxState[10].offset = offsetof(VexGuestArchState, guest_FPREG);
       di->fxState[10].size   = 8 * sizeof(ULong);
+#if defined(VGA_amd64)
+      // R8 through R15, which are contiguous in the guest state
+      di->fxState[11].fx     = Ifx_Read;
+      di->fxState[11].offset = offsetof(VexGuestArchState, guest_R8);
+      di->fxState[11].size   = 8 * sizeof(ULong);
+#endif
 
       stmt('V',  mce, IRStmt_Dirty(di) );
     }
@@ -532,6 +653,7 @@ void enter_function(FunctionEntry* f)
   Addr stack_ptr= VG_(get_SP)(tid);
   Addr frame_ptr = 0; /* E.g., %ebp */
   int local_stack, size;
+  UInt regNum;
 
   FJALAR_DPRINTF("[enter_function] startPC is: %x, entryPC is: %x, cu_base: %p\n",
                  (UInt)f->startPC, (UInt)f->entryPC,(void *)f->cuBase);
@@ -598,13 +720,19 @@ void enter_function(FunctionEntry* f)
           // DW_OP_deref instead of a DW_OP_breg.  The tricky bit is we don't
           // want to go back to that address because it probably won't be equal
           // to the local frame pointer due to the stack alignment.  So the HACK
-          // is to just assume the frame pointer is at EBP+8 like normal.  (markro)
+          // is to just assume the frame base is just above the saved frame
+          // pointer and the return address, as is normal:  EBP+8 on x86 and
+          // RBP+16 on amd64.  (markro)
           if (ll->atom == DW_OP_deref) {
-              ll->atom = DW_OP_breg5;
-              ll->atom_offset = 8;
+              ll->atom = DW_OP_breg0 + DWARF_FP_REG;
+              ll->atom_offset = 2 * sizeof(Addr);
           }
-          if(get_reg[ll->atom - DW_OP_breg0]) {
-            frame_ptr = (*get_reg[ll->atom - DW_OP_breg0])(tid) + ll->atom_offset;
+          // For DW_OP_regN, the offset is 0.
+          if (dwarf_op_reg_num(ll->atom, &regNum) && dwarf_reg_is_readable(regNum)) {
+            frame_ptr = read_dwarf_reg(tid, regNum) + ll->atom_offset;
+          } else {
+            FJALAR_DPRINTF("\tCannot compute frame base from location list entry with atom %s\n",
+                           location_expression_to_string(ll->atom));
           }
         }
       }
@@ -616,14 +744,24 @@ void enter_function(FunctionEntry* f)
         FJALAR_DPRINTF("\tExamining frame: %lx - %lx\n", df->begin, df->end);
         if (f->entryPC >= df->begin && f->entryPC < df->end) {
           FJALAR_DPRINTF("\tFound debug frame with reg %x and offset %lx\n", df->cfa_reg, df->cfa_offset);
-          frame_ptr = (*get_reg[df->cfa_reg])(tid) + df->cfa_offset;
+          if (dwarf_reg_is_readable(df->cfa_reg)) {
+            frame_ptr = read_dwarf_reg(tid, df->cfa_reg) + df->cfa_offset;
+          } else {
+            FJALAR_DPRINTF("\tCannot compute frame base from CFA register %s\n",
+                           dwarf_reg_name(df->cfa_reg));
+          }
           break;
         }
         df = df->next;
       }
     } else {
       FJALAR_DPRINTF("\tsimple location expression\n");
-      frame_ptr = (*get_reg[f->frame_base_atom - DW_OP_reg0])(tid) + f->frame_base_offset;
+      if (dwarf_op_reg_num(f->frame_base_atom, &regNum) && dwarf_reg_is_readable(regNum)) {
+        frame_ptr = read_dwarf_reg(tid, regNum) + f->frame_base_offset;
+      } else {
+        FJALAR_DPRINTF("\tCannot compute frame base from atom %s\n",
+                       location_expression_to_string(f->frame_base_atom));
+      }
     }
   }
 
@@ -678,11 +816,14 @@ void enter_function(FunctionEntry* f)
   // (2) The return pointer, which is sizeof(Addr) bytes
   // (3) The saved base pointer, which is sizeof(Addr) bytes
   // (4) All formal parameters passed on the stack, which is
-  //     f->formalParamStackByteSize bytes
+  //     f->formalParamStackByteSize bytes above the higher of the frame
+  //     pointer and the stack pointer.  The frame pointer is below the
+  //     stack pointer when it is a fallback, such as stack_ptr - 4.
 
   // Let's be conservative in how much we copy over to the Virtual stack. Due to the
   // stack alignment operations in main, we may need  as much as 16 bytes over the above.
-  size = local_stack + f->formalParamStackByteSize + sizeof(Addr)*2 + 32;/* plus stuff in caller's*/
+  size = MAX(local_stack, VG_STACK_REDZONE_SZB)
+    + f->formalParamStackByteSize + sizeof(Addr)*2 + 32;/* plus stuff in caller's*/
   FJALAR_DPRINTF("local_stack: %p, arg_size: %d\n", (void *)(frame_ptr - f->formalParamLowerStackByteSize),
                                                     f->formalParamLowerStackByteSize);
   int delta = stack_ptr - (frame_ptr - f->formalParamLowerStackByteSize);
@@ -691,7 +832,39 @@ void enter_function(FunctionEntry* f)
 
   tl_assert(size >= 0);
   if (size != 0) {
-    newEntry->virtualStack = VG_(calloc)("fjalar_main.c: enter_func",  size, sizeof(char));
+    Int entryRegsOffset;
+    Int entryRegsSize;
+
+    // A formal parameter can lie on the stack beyond the part that the
+    // above size covers.  An example is a C++ object passed by
+    // invisible reference, which is in the caller's frame.  Copy the
+    // stack through the end of every such formal parameter, so that at
+    // function exit Fjalar reads it from the virtual stack too, and so
+    // visits its value at function entrance.  Fjalar does not visit
+    // the formal parameters of a function that it does not print.
+    if (!f->doNotPrint) {
+      Addr stackStart = stack_ptr - VG_STACK_REDZONE_SZB;
+      Addr paramsEnd = formal_params_stack_end(f, tid, frame_ptr, stackStart,
+                                               stackStart + size);
+      if (paramsEnd > stackStart + size) {
+        FJALAR_DPRINTF("Extending the virtual stack of %s from %d to %d bytes\n",
+                       f->fjalar_name, size, (int)(paramsEnd - stackStart));
+        size = (int)(paramsEnd - stackStart);
+      }
+    }
+
+    // entryRegs follows the virtual stack in the same allocation.
+    entryRegsOffset = VG_ROUNDUP(size, sizeof(Addr));
+    entryRegsSize = (f->entryRegsMask != 0
+                     ? FJALAR_NUM_DWARF_REGS * sizeof(Addr)
+                     : 0);
+    newEntry->allocByteSize = entryRegsOffset + entryRegsSize;
+    newEntry->virtualStack = VG_(calloc)("fjalar_main.c: enter_func",
+                                         newEntry->allocByteSize,
+                                         sizeof(char));
+    newEntry->entryRegs = (f->entryRegsMask != 0
+                           ? (Addr*)(newEntry->virtualStack + entryRegsOffset)
+                           : NULL);
     newEntry->virtualStackByteSize = size;
     newEntry->virtualStackFPOffset = local_stack;
 
@@ -716,6 +889,9 @@ void enter_function(FunctionEntry* f)
     newEntry->func->guestStackEnd = newEntry->func->guestStackStart + size;
     newEntry->func->lowestVirtSP = (Addr)newEntry->virtualStack;
 
+    if (f->entryRegsMask != 0) {
+      save_param_regs(newEntry, tid);
+    }
   }
   else {
     printf("Obtained a stack size of 0 for Function: %s. Aborting\n", f->fjalar_name);
@@ -744,7 +920,6 @@ void exit_function(FunctionEntry* f)
   ULong FPUshadow;
   double fpuReturnVal;
   Addr xAX, xDX, xAXshadow, xDXshadow;
-  Bool foundFunc;
 
   FJALAR_DPRINTF("Exit function: %s\n", f->fjalar_name);
 
@@ -762,10 +937,11 @@ void exit_function(FunctionEntry* f)
   // now have shadow V-bits for the FPU stack.
 
 #if defined(VGA_amd64)
-  // XMM registers are represented as a 128-bit integer
-  // (Actually an array of 4 32-bit integers), so reinterpret
-  // cast it as a double.
-  FPUshadow = (VG_(get_shadow_XMM_N)(currentTID, 0))[0];
+  // VG_(get_XMM_N) and VG_(get_shadow_XMM_N) return the whole 256-bit
+  // YMM register, as an array of 8 32-bit integers.  A double occupies
+  // the low 2 of them, so reinterpret cast the register as a double
+  // and its shadow as a 64-bit integer.
+  FPUshadow = *(ULong *)VG_(get_shadow_XMM_N)(currentTID, 0);
   fpuReturnVal = *(double *)VG_(get_XMM_N)(currentTID, 0);
   //RUDD DEBUG
   /* for(i=0 ; i < 4; i++) { */
@@ -797,8 +973,6 @@ void exit_function(FunctionEntry* f)
   xDXshadow = VG_(get_shadow_xDX)(currentTID);
 
   FJALAR_DPRINTF("Value of eax: %lx, edx: %lx\n",xAX, xDX);
-
-  FJALAR_DPRINTF("Exit function: %s\n", f->fjalar_name);
 
   // Only do something if top->func matches func
   if (!top->func) {
@@ -836,25 +1010,19 @@ void exit_function(FunctionEntry* f)
     for(i = fn_stack_first_free_index[currentTID] - 1; i >= 0; i-- ) {
       FunctionExecutionState* curFuncExecPtr = &FunctionExecutionStateStack[currentTID][i];
       if(curFuncExecPtr->func == f) {
-        foundFunc = True;
         break;
       }
     }
 
-    if(!foundFunc) {
+    if(i < 0) {
       VG_(get_and_pp_StackTrace) (currentTID, 15);
       return;
     }
 
-    while(top->func) {
-      top = fnStackTop(currentTID);
-      if(top->func == f) {
-        break;
-      }
+    while(fn_stack_first_free_index[currentTID] > i + 1) {
       fnStackPop(currentTID);
     }
-
-    tl_assert(top->func == f);
+    top = fnStackTop(currentTID);
   }
 
   top->xAX = xAX;
@@ -866,16 +1034,14 @@ void exit_function(FunctionEntry* f)
   // state as well:
   for (i = 0; i < sizeof(Addr); i++) {
     set_abit_and_vbyte((Addr)(&top->xAX) + (Addr)i, VGM_BIT_VALID,
-                      (xAXshadow & 0xff) << (i * 8));
+                      (xAXshadow >> (i * 8)) & 0xff);
     set_abit_and_vbyte((Addr)(&top->xDX) + (Addr)i, VGM_BIT_VALID,
-                      (xDXshadow & 0xff) << (i * 8));
-    set_abit_and_vbyte((Addr)(&top->FPU) + (Addr)i, VGM_BIT_VALID,
-                      (FPUshadow & 0xff) << (i * 8));
+                      (xDXshadow >> (i * 8)) & 0xff);
   }
 
   for (i = 0; i < 8; i++) {
     set_abit_and_vbyte((Addr)(&top->FPU) + (Addr)i, VGM_BIT_VALID,
-                       (FPUshadow & 0xff) << (i * 8));
+                       (FPUshadow >> (i * 8)) & 0xff);
   }
 
   curFunctionExecutionStatePtr = top;
@@ -891,7 +1057,7 @@ void exit_function(FunctionEntry* f)
        VG_(malloc)'ed memory to be client accessible, so we have to
        make it inaccessible again before allowing Valgrind's malloc to
        use it, lest assertions fail later. */
-    mc_make_noaccess((Addr)top->virtualStack, top->virtualStackByteSize);
+    mc_make_noaccess((Addr)top->virtualStack, top->allocByteSize);
     VG_(free)(top->virtualStack);
   }
 

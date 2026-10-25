@@ -1,0 +1,26 @@
+..main():::ENTER ::extendeds[..] [ -2.25 0.1 9.9999999999999702e-311 ]
+..main():::ENTER ::extended 1.5
+..main():::ENTER ::heap[..] nonsensical
+..add():::ENTER a 1.5
+..add():::ENTER b 3
+..add():::EXIT0 a 1.5
+..add():::EXIT0 b 3
+..main():::EXIT0 ::extendeds[..] [ -2.25 0.1 9.9999999999999702e-311 ]
+..main():::EXIT0 ::extended 4.5
+..main():::EXIT0 ::heap[..] [ 3 ]
+..main():::EXIT0 return 0
+..add():::ENTER a long\_double double
+..add():::ENTER b long\_double double
+..add():::EXIT0 a long\_double double
+..add():::EXIT0 b long\_double double
+..main():::ENTER ::extendeds long\_double* hashcode
+..main():::ENTER ::extendeds[..] long\_double[] double[]
+..main():::ENTER ::extended long\_double double
+..main():::ENTER ::heap long\_double* hashcode
+..main():::ENTER ::heap[..] long\_double[] double[]
+..main():::EXIT0 ::extendeds long\_double* hashcode
+..main():::EXIT0 ::extendeds[..] long\_double[] double[]
+..main():::EXIT0 ::extended long\_double double
+..main():::EXIT0 ::heap long\_double* hashcode
+..main():::EXIT0 ::heap[..] long\_double[] double[]
+..main():::EXIT0 return int int

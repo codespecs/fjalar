@@ -31,14 +31,19 @@
 
 IRTemp findShadowTmp_DC ( DCEnv* dce, IRTemp orig );
 IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e );
+IRExpr* expr2tags_WrTmp_DC ( DCEnv* dce, IRTemp tmp, IRExpr* data );
+Bool loadIsInteraction_DC ( void );
 void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
                         IRAtom* atom, IRAtom* vatom );
 void do_shadow_PUTI_DC ( DCEnv* dce, IRPutI *puti );
 void do_shadow_STle_DC ( DCEnv* dce, IRAtom* addr, IRAtom* data );
-IRAtom* do_shadow_cond_exit_DC (DCEnv* dce, IRExpr* guard);
+void do_shadow_cond_exit_DC (DCEnv* dce, IRExpr* guard);
 
 void do_shadow_CAS_DC ( DCEnv* dce, IRCAS* cas );
 
 void do_shadow_Dirty_DC ( DCEnv* dce, IRDirty* d );
+
+Bool* findFlagsCarryingTmps_DC ( const IRSB* sb_in );
+void notePendingCarryTags_DC ( DCEnv* dce, IRTemp tmp, IRExpr* data );
 
 #endif

@@ -60,6 +60,7 @@
 #include "pub_tool_libcbase.h"
 #include "pub_tool_libcprint.h"
 #include "mc_include.h"
+#include "../../VEX/priv/guest_amd64_defs.h"  // AMD64G_CC_OP_*
 #include "memcheck.h"
 
 // Special reserved tags
@@ -72,10 +73,13 @@ int print_merge = 1;
 /* WEAK_FRESH_TAG unifies and replaces the previous special
    LITERAL_TAG and ESP_TAG values. When you merge it with a real tag,
    the real tag is the result (that's the weak part). When you store
-   it to memory, a fresh tag is stored instead, and when you load it
-   from memory, you get a fresh tag instead (those are the fresh
-   part). This tag is used for the stack pointer, the frame pointer,
-   the contents of the GOT, and literals when
+   it to memory, a fresh tag is stored instead (that's the fresh
+   part). When you load it from memory, the result depends on
+   --dyncomp-interactions: under all, MC_(helperc_LOAD_TAG_4) gives a
+   fresh tag; under none, comparisons, and units,
+   MC_(helperc_LOAD_TAG_N) gives WEAK_FRESH_TAG itself. This tag is
+   used for the stack pointer, the frame pointer, the contents of the
+   GOT, and literals when
    dyncomp-approximate-literals is enabled. */
 /* The tag valued 0 is also special; if you wanted to give it a
    symbolic name, it would be something like "NO_TAG". It's even
@@ -193,22 +197,20 @@ void val_uf_make_set_for_tag(UInt tag) {
   uf_make_set(GET_UF_OBJECT_PTR(tag), tag);
 }
 
-// Merge the sets of tag1 and tag2 and return the leader
+// Merge the sets of tag1 and tag2 and return the leader.
+// A tag of 0 or WEAK_FRESH_TAG has no comparability set, so there is
+// nothing to merge and the result is 0.
 UInt val_uf_tag_union(UInt tag1, UInt tag2) {
-  if (!IS_ZERO_TAG(tag1) && !IS_SECONDARY_UF_NULL(tag1) &&
-      !IS_ZERO_TAG(tag2) && !IS_SECONDARY_UF_NULL(tag2)) {
-    Addr eip = VG_(get_IP)(VG_(get_running_tid)());
-    const HChar *eip_info;
+  if (!IS_ZERO_TAG(tag1) && (WEAK_FRESH_TAG != tag1) && !IS_SECONDARY_UF_NULL(tag1) &&
+      !IS_ZERO_TAG(tag2) && (WEAK_FRESH_TAG != tag2) && !IS_SECONDARY_UF_NULL(tag2)) {
     uf_object* tag1_obj, *tag2_obj;
     uf_object* leader;
     tag1_obj = GET_UF_OBJECT_PTR(tag1);
     tag2_obj = GET_UF_OBJECT_PTR(tag2);
     leader = uf_union(tag1_obj, tag2_obj);
-    // Describe this (probably live) address with current epoch
-    eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), eip, NULL);
 
     DYNCOMP_TPRINTF("[DynComp-v1] Merging %u with %u to get %u at %s\n",
-                    tag1, tag2, leader->tag, eip_info);
+                    tag1, tag2, leader->tag, current_IP_description());
 
     return leader->tag;
   }
@@ -316,6 +318,24 @@ void MC_(helperc_STORE_TAG_1) ( Addr a, UInt tag ) {
   set_tag(a, tagToWrite);
 }
 
+// Returns the first non-zero tag in the range [a, a+len), or 0 if
+// there is none.
+static UInt first_nonzero_tag_in_range(Addr a, SizeT len) {
+  Addr curAddr;
+  UInt curTag;
+
+  // Hopefully this should only take one iteration
+  // because the tag of address 'a' should be non-zero.
+  for (curAddr = a; curAddr < (a + len); curAddr++) {
+    curTag = get_tag(curAddr);
+    if (curTag) {
+      DYNCOMP_TPRINTF("[DynComp] first_nonzero_tag_in_range addr=%p, tag=%u\n", (void *)curAddr, curTag);
+      return curTag;
+    }
+  }
+  return 0;
+}
+
 // Unions the tags belonging to these addresses and set
 // the tags of both to the canonical tag (for efficiency)
 void val_uf_union_tags_at_addr(Addr a1, Addr a2) {
@@ -364,7 +384,7 @@ UInt val_uf_union_tags_in_range(Addr a, SizeT len) {
 /*   if (dyncomp_approximate_literals) { */
 /*     char allLiteralTags = 1; */
 /*     for (curAddr = a; curAddr < (a + len); curAddr++) { */
-/*       if (get_tag(curAddr) != WEAK_FRESH_TAG) { */
+/*       if (WEAK_FRESH_TAG != get_tag(curAddr)) { */
 /*         allLiteralTags = 0; */
 /*         break; */
 /*       } */
@@ -379,18 +399,8 @@ UInt val_uf_union_tags_in_range(Addr a, SizeT len) {
 /*     } */
 /*   } */
 
-  // Scan the range for the first non-zero tag and use
-  // that as the basis for all the mergings:
-  // (Hopefully this should only take one iteration
-  //  because the tag of address 'a' should be non-zero)
-  for (curAddr = a; curAddr < (a + len); curAddr++) {
-    curTag = get_tag(curAddr);
-    if (curTag) {
-DYNCOMP_TPRINTF("MLR debug val_uf_union_tags_in_range addr=%p, tag=%u\n", (void *)curAddr, curTag);
-      tagToMerge = curTag;
-      break;
-    }
-  }
+  // Use the first non-zero tag in the range as the basis for all the mergings:
+  tagToMerge = first_nonzero_tag_in_range(a, len);
 
   // If they are all zeroes, then we're done;
   // Don't merge anything
@@ -445,7 +455,7 @@ UInt MC_(helperc_LOAD_TAG_8) ( Addr a ) {
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_4) ( Addr a ) {
   UInt first_tag = get_tag(a);
-  if (first_tag == WEAK_FRESH_TAG) {
+  if (WEAK_FRESH_TAG == first_tag) {
     DYNCOMP_TPRINTF("[DynComp] helperx_LOAD_ATG_4: %p =>\n", (void *)a);
     return grab_fresh_tag();
   }
@@ -463,6 +473,70 @@ VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
   DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_1: %p => %u\n", (void *)a, get_tag(a));
   return val_uf_union_tags_in_range(a, 1);
+}
+
+// The tags of the bytes read by loads; see expr2tags_WrTmp_DC.  A slot
+// is written and read during one execution of a superblock, and
+// Valgrind switches threads only between superblocks.  Tags can be
+// garbage-collected between the write and the read, so
+// garbage_collect_tags() renumbers these tags too.
+UInt load_tag_snapshots[DC_N_LOAD_TAG_SNAPSHOTS][DC_LOAD_TAG_SNAPSHOT_BYTES];
+
+// Returns the tag of the value loaded from the range [a, a+len), in
+// dyncomp_dataflow_only_mode, dyncomp_dataflow_comparisons_mode, and
+// dyncomp_units_mode.  In those modes, a load is not an interaction, so
+// unlike the other MC_(helperc_LOAD_TAG_*) functions, this does not merge
+// the tags of the addresses in the range.  It returns the leader of the
+// first non-zero tag in the range, WEAK_FRESH_TAG if that tag is
+// WEAK_FRESH_TAG, or 0 if every tag in the range is 0.
+// Returning WEAK_FRESH_TAG rather than a fresh tag avoids allocating a
+// tag for each load of a GOT entry, such as the one in every PLT call;
+// the MC_(helperc_STORE_TAG_*) functions, and
+// MC_(helperc_STORE_TAG_SNAPSHOT), replace WEAK_FRESH_TAG with a fresh
+// tag if the value is stored.  If slot is non-negative, it also saves
+// the tag of each byte in the range in that slot of load_tag_snapshots.
+VG_REGPARM(3)
+UInt MC_(helperc_LOAD_TAG_N) ( Addr a, UWord len, Word slot ) {
+  UWord i;
+  UInt tag;
+
+  DYNCOMP_TPRINTF("[DynComp] LOAD_TAG_N: %p %lu %ld\n", (void *)a, len, slot);
+  if (slot >= 0) {
+    tl_assert(slot < DC_N_LOAD_TAG_SNAPSHOTS);
+    tl_assert(len <= DC_LOAD_TAG_SNAPSHOT_BYTES);
+    for (i = 0; i < len; i++) {
+      load_tag_snapshots[slot][i] = get_tag(a + i);
+    }
+  }
+  tag = first_nonzero_tag_in_range(a, len);
+  if (WEAK_FRESH_TAG == tag) {
+    return WEAK_FRESH_TAG;
+  }
+  return val_uf_find_leader(tag);
+}
+
+// Writes the tags saved in the given slot of load_tag_snapshots to the
+// range [a, a+len), one byte at a time.
+VG_REGPARM(3)
+void MC_(helperc_STORE_TAG_SNAPSHOT) ( Addr a, UWord len, UWord slot ) {
+  UWord i;
+  UInt tag;
+  UInt freshTag = 0;
+
+  DYNCOMP_TPRINTF("[DynComp] STORE_TAG_SNAPSHOT: %p %lu %lu\n", (void *)a, len, slot);
+  tl_assert(slot < DC_N_LOAD_TAG_SNAPSHOTS);
+  tl_assert(len <= DC_LOAD_TAG_SNAPSHOT_BYTES);
+  for (i = 0; i < len; i++) {
+    tag = load_tag_snapshots[slot][i];
+    // Like MC_(helperc_STORE_TAG_*), replace WEAK_FRESH_TAG by a fresh tag.
+    if (WEAK_FRESH_TAG == tag) {
+      if (0 == freshTag) {
+        freshTag = grab_fresh_tag();
+      }
+      tag = freshTag;
+    }
+    set_tag(a + i, val_uf_find_leader(tag));
+  }
 }
 
 // Make this const so gcc can eliminate dead code to improve
@@ -499,11 +573,6 @@ UInt tag2_is_new ( UInt tag1, UInt tag2 ) {
 // of the merged set
 VG_REGPARM(2)
 UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
-  Addr eip = VG_(get_IP)(VG_(get_running_tid)());
-  const HChar *eip_info;
-  // Describe this (probably live) address with current epoch
-  eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), eip, NULL);
-
   if (dyncomp_profile_tags) {
     mergeTagsCount++;
   }
@@ -521,12 +590,12 @@ UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
   //  but that's correctly handled)
   else if (WEAK_FRESH_TAG == tag1) {
     DYNCOMP_TPRINTF("[DynComp-m1] Merging %u with %u to get %u at %s\n",
-                    tag1, tag2, tag2, eip_info);
+                    tag1, tag2, tag2, current_IP_description());
     return tag2;
   }
   else if (WEAK_FRESH_TAG == tag2) {
     DYNCOMP_TPRINTF("[DynComp-m2] Merging %u with %u to get %u at %s\n",
-                    tag1, tag2, tag1, eip_info);
+                    tag1, tag2, tag1, current_IP_description());
     return tag1;
   }
   else {
@@ -568,9 +637,6 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
     mergeTagsReturn0Count++;
   }
 
-  // (comment added 2006)  
-  // TODO: What do we do about WEAK_FRESH_TAG???
-
   if (IS_ZERO_TAG(tag1) ||
       IS_ZERO_TAG(tag2)) {
     return 0;
@@ -580,6 +646,60 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
     val_uf_tag_union(tag1, tag2);
     return 0;
   }
+}
+
+// Returns True if `cc_op`, the CC_OP field of the flags thunk, says that the
+// flags are the result of a subtraction, which is how amd64 compares
+// values:  a cmp or sub instruction, or, under
+// --dyncomp-interactions=comparisons, an sbb instruction.
+//
+// A comparison of values wider than a register, such as two __int128
+// values, compares the low halves with a cmp and the high halves with an
+// sbb, and the flags that are read are those of the sbb.  The CC_DEP2 field
+// of an sbb's thunk is the xor of its second operand and the old carry.
+// Under --dyncomp-interactions=comparisons, do_shadow_PUT_DC and
+// handleFlagsCCall_DC give that field the tag of the second operand; see
+// sbbSecondOperand_DC.  Other modes need not accept an sbb here:  under
+// --dyncomp-interactions=units, the sbb's subtraction has already merged
+// its operands.  Every caller of this function runs only under
+// --dyncomp-interactions=comparisons, so the test of the mode matters only
+// if a helper call that reads flags is handled this way in another mode.
+Bool dyncomp_cc_op_is_sub(UWord cc_op) {
+  return (AMD64G_CC_OP_SUBB <= cc_op && cc_op <= AMD64G_CC_OP_SUBQ)
+         || (dyncomp_dataflow_comparisons_mode && dyncomp_cc_op_is_sbb(cc_op));
+}
+
+// Returns True if `cc_op`, the CC_OP field of the flags thunk, says that the
+// flags are the result of an sbb instruction.
+Bool dyncomp_cc_op_is_sbb(UWord cc_op) {
+  return AMD64G_CC_OP_SBBB <= cc_op && cc_op <= AMD64G_CC_OP_SBBQ;
+}
+
+// Returns True if cc_op, the CC_OP field of the flags thunk, says that the
+// flags are the result of an inc or dec instruction.  Such an instruction
+// does not change the carry flag:  its thunk's CC_NDEP field holds the carry
+// flag of the previous thunk.
+Bool dyncomp_cc_op_preserves_carry(UWord cc_op) {
+  return AMD64G_CC_OP_INCB <= cc_op && cc_op <= AMD64G_CC_OP_DECQ;
+}
+
+// Returns the tag of an operand of the subtraction whose result the flags
+// thunk holds, or 0 if the thunk does not hold the result of a subtraction.
+// cc_op is the thunk's CC_OP field, and dep_tag is the tag of its CC_DEP1 or
+// CC_DEP2 field, which for a subtraction is an operand.  If the thunk is that
+// of an inc or dec instruction, its carry flag is preserved from an earlier
+// thunk, and pending_tag is the corresponding pending carry tag of its
+// CC_NDEP field; see notePendingCarryTags_DC.
+VG_REGPARM(3)
+UWord MC_(helperc_SUB_OPERAND_TAG) ( UWord cc_op, UWord dep_tag,
+                                     UWord pending_tag ) {
+  if (dyncomp_cc_op_is_sub(cc_op)) {
+    return dep_tag;
+  }
+  if (dyncomp_cc_op_preserves_carry(cc_op)) {
+    return pending_tag;
+  }
+  return 0;
 }
 
 /*------------------------------------------------------------------*/
@@ -594,7 +714,7 @@ void enqueue_tag(TagList* listPtr, UInt tag) {
   tl_assert(tag);
 
   // Special case for no elements
-  if (listPtr->numElts == 0) {
+  if (0 == listPtr->numElts) {
     listPtr->first = listPtr->last =
       (TagNode*)VG_(calloc)("dyncomp_main.c: enqueue_tag", 1, sizeof(TagNode));
   }
@@ -624,7 +744,7 @@ UInt dequeue_tag(TagList* listPtr) {
   listPtr->numElts--;
 
   // Special case for no elements
-  if (listPtr->numElts == 0) {
+  if (0 == listPtr->numElts) {
     listPtr->last = listPtr->first = NULL;
   }
 
@@ -639,13 +759,13 @@ char is_tag_in_list(TagList* listPtr, UInt tag, UInt n) {
 
   tl_assert(tag);
 
-  if (listPtr->numElts == 0) {
+  if (0 == listPtr->numElts) {
     return 0;
   }
   else {
     TagNode* i;
     for (i = listPtr->first;
-         (i != NULL) && (count < n);
+         (NULL != i) && (count < n);
          i = i->next, count++) {
       if (i->tag == tag) {
         return 1;
@@ -660,12 +780,12 @@ void clear_list(TagList* listPtr) {
   if (listPtr->numElts > 0) {
     TagNode* i = listPtr->first;
     TagNode* next = i->next;
-    for (i = listPtr->first; i != NULL; i = next) {
+    for (i = listPtr->first; NULL != i; i = next) {
       next = i->next;
       VG_(free)(i);
       listPtr->numElts--;
     }
   }
 
-  tl_assert(listPtr->numElts == 0);
+  tl_assert(0 == listPtr->numElts);
 }

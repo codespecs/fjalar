@@ -1,0 +1,38 @@
+..main():::ENTER ::halves[..] [ 0.5 -2 65504 5.9605e-08 inf nan ]
+..main():::ENTER ::half 1.5
+..main():::ENTER ::bfloats[..] [ 1 -0.5 3.141 ]
+..main():::ENTER ::bfloat 0.75
+..scale_half():::ENTER x 1.5
+..scale_half():::ENTER factor 3
+..scale_half():::EXIT0 x 1.5
+..scale_half():::EXIT0 factor 3
+..scale_half():::EXIT0 return 4.5
+..negate_bfloat():::ENTER b 0.75
+..negate_bfloat():::EXIT0 b 0.75
+..negate_bfloat():::EXIT0 return -0.75
+..main():::EXIT0 ::halves[..] [ 0.5 -2 65504 5.9605e-08 inf nan ]
+..main():::EXIT0 ::half 4.5
+..main():::EXIT0 ::bfloats[..] [ 1 -0.5 3.141 ]
+..main():::EXIT0 ::bfloat -0.75
+..main():::EXIT0 return 0
+..main():::ENTER ::halves _Float16* hashcode
+..main():::ENTER ::halves[..] _Float16[] double[]
+..main():::ENTER ::half _Float16 double
+..main():::ENTER ::bfloats __bf16* hashcode
+..main():::ENTER ::bfloats[..] __bf16[] double[]
+..main():::ENTER ::bfloat __bf16 double
+..main():::EXIT0 ::halves _Float16* hashcode
+..main():::EXIT0 ::halves[..] _Float16[] double[]
+..main():::EXIT0 ::half _Float16 double
+..main():::EXIT0 ::bfloats __bf16* hashcode
+..main():::EXIT0 ::bfloats[..] __bf16[] double[]
+..main():::EXIT0 ::bfloat __bf16 double
+..main():::EXIT0 return int int
+..negate_bfloat():::ENTER b __bf16 double
+..negate_bfloat():::EXIT0 b __bf16 double
+..negate_bfloat():::EXIT0 return __bf16 double
+..scale_half():::ENTER x _Float16 double
+..scale_half():::ENTER factor _Float16 double
+..scale_half():::EXIT0 x _Float16 double
+..scale_half():::EXIT0 factor _Float16 double
+..scale_half():::EXIT0 return _Float16 double

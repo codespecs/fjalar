@@ -1,0 +1,5 @@
+..add_const():::EXIT0 x 1
+..add_const():::EXIT0 return 1
+..less():::EXIT0 a 1
+..less():::EXIT0 b 1
+..less():::EXIT0 return 2

@@ -94,6 +94,7 @@ void fjalar_tool_handle_function_entrance(FunctionExecutionState* f_state) {
                      0,
                      1,
                      0, 0,
+                     0,
                      &basicAction);
 
   VG_(printf)("  Function formal parameters:\n");
@@ -104,6 +105,7 @@ void fjalar_tool_handle_function_entrance(FunctionExecutionState* f_state) {
 		     (Addr)f_state->virtualStack
 		       + f_state->virtualStackFPOffset,
                      f_state->FP,
+                     f_state->entryRegs,
                      &basicAction);
 }
 
@@ -116,6 +118,7 @@ void fjalar_tool_handle_function_exit(FunctionExecutionState* f_state) {
                      0,
                      0,
                      0, 0,
+                     0,
                      &basicAction);
 
   VG_(printf)("  Function formal parameters:\n");
@@ -126,6 +129,7 @@ void fjalar_tool_handle_function_exit(FunctionExecutionState* f_state) {
 		     (Addr)f_state->virtualStack
 		       + f_state->virtualStackFPOffset,
                      f_state->FP,
+                     f_state->entryRegs,
                      &basicAction);
 
   VG_(printf)("  Return value:\n");

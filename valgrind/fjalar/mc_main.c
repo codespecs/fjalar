@@ -69,7 +69,7 @@
 #include "kvasir/kvasir_main.h"
 #include "kvasir/dyncomp_main.h"
 #include "fjalar_main.h"
-#include "../coregrind/pub_core_aspacemgr.h"  // needed for am_is_valid_for_client
+#include "fjalar_core_decls.h"  // for VG_(am_is_valid_for_valgrind)
 
 #include "mc_include.h"
 #include "memcheck.h"   /* for client requests */
@@ -976,6 +976,29 @@ void mc_copy_address_range_state ( Addr src, Addr dst, SizeT len )
 void mc_make_noaccess ( Addr a, SizeT len )
 {
   MC_(make_mem_noaccess) ( a, len );
+}
+
+// Marks the bytes at dst addressable, gives each one the V bits of the
+// corresponding byte of the register, and gives all of them the
+// register's DynComp tag.
+void mc_copy_guest_reg_state ( ThreadId tid, Int guestOffset, Addr dst )
+{
+  UWord vbits;
+  SizeT b;
+  VG_(get_shadow_regs_area)(tid, (UChar*)&vbits, 1/*shadowNo*/,
+                            guestOffset, sizeof(Addr));
+  for (b = 0; b < sizeof(Addr); b++) {
+    set_abit_and_vbyte(dst + b, VGM_BIT_VALID, (vbits >> (b * 8)) & 0xff);
+  }
+#ifndef _NO_DYNCOMP
+  if (kvasir_with_dyncomp) {
+    // DynComp keeps one tag per register, at the register's offset.
+    UInt tag = *VG_(get_tag_ptr_for_guest_offset)(tid, guestOffset);
+    for (b = 0; b < sizeof(Addr); b++) {
+      set_tag(dst + b, tag);
+    }
+  }
+#endif /* _NO_DYNCOMP */
 }
 
 // end of code added for Fjalar

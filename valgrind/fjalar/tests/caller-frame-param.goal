@@ -1,0 +1,8 @@
+..mutate(Counted,\_Counted):::ENTER a.count 1
+..mutate(Counted,\_Counted):::ENTER a.last 10
+..mutate(Counted,\_Counted):::ENTER b.count 2
+..mutate(Counted,\_Counted):::ENTER b.last 20
+..mutate(Counted,\_Counted):::EXIT0 a.count 1
+..mutate(Counted,\_Counted):::EXIT0 a.last 10
+..mutate(Counted,\_Counted):::EXIT0 b.count 2
+..mutate(Counted,\_Counted):::EXIT0 b.last 20

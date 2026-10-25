@@ -1,0 +1,20 @@
+..main():::ENTER ::quads[..] [ -2.25 0.1 inf 9.9998886718268299e-321 nan ]
+..main():::ENTER ::quad 1.5
+..multiply():::ENTER a 1.5
+..multiply():::ENTER b 3
+..multiply():::EXIT0 a 1.5
+..multiply():::EXIT0 b 3
+..main():::EXIT0 ::quads[..] [ -2.25 0.1 inf 9.9998886718268299e-321 nan ]
+..main():::EXIT0 ::quad 4.5
+..main():::EXIT0 return 0
+..main():::ENTER ::quads _Float128* hashcode
+..main():::ENTER ::quads[..] _Float128[] double[]
+..main():::ENTER ::quad _Float128 double
+..main():::EXIT0 ::quads _Float128* hashcode
+..main():::EXIT0 ::quads[..] _Float128[] double[]
+..main():::EXIT0 ::quad _Float128 double
+..main():::EXIT0 return int int
+..multiply():::ENTER a _Float128 double
+..multiply():::ENTER b _Float128 double
+..multiply():::EXIT0 a _Float128 double
+..multiply():::EXIT0 b _Float128 double

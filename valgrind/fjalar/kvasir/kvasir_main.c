@@ -31,6 +31,7 @@
 #include "pub_tool_libcproc.h"
 #include "pub_tool_threadstate.h"
 #include "pub_tool_debuginfo.h"
+#include "pub_tool_tooliface.h"
 
 #include "kvasir_main.h"
 #include "decls-output.h"
@@ -75,6 +76,10 @@ Bool dyncomp_delayed_trace = True;
 Bool dyncomp_units_mode = False;                // Tries to be consistent with units
 Bool dyncomp_dataflow_only_mode = False;        // Nothing is an interaction
 Bool dyncomp_dataflow_comparisons_mode = False; // Only comparisons are interactions
+
+// If true, warn about (rather than panic on) a VEX IR operator (IROp) that
+// DynComp does not handle.
+Bool dyncomp_warn_unhandled_ops = False;
 
 
 FILE* decls_fp = 0; // File pointer for .decls file (this will point
@@ -519,7 +524,7 @@ static void finishDtraceFile(void)
 
 void fjalar_tool_pre_clo_init(void)
 {
-  // Nothing to do here
+  VG_(track_start_client_code)(dyncomp_gc_at_safe_point);
 }
 
 // Initialize kvasir after processing command-line options
@@ -670,9 +675,9 @@ void fjalar_tool_print_usage()
 "\n  DynComp dynamic comparability analysis\n"
 "    --dyncomp                Enables DynComp comparability analysis\n"
 "                             [default on; turn off with --no-dyncomp]\n"
-"    --dyncomp-gc-num-tags=<number>  The number of tags that get assigned between successive runs\n"
-"                             of the garbage collector (between 0 and INT_MAX)\n"
-"                             (The default is to garbage collect every 10,000,000 tags created)\n"
+"    --dyncomp-gc-num-tags=<number>  The minimum number of tags that get assigned between successive\n"
+"                             runs of the garbage collector (between 0 and INT_MAX)\n"
+"                             (The default is 10,000,000)\n"
 "                             0 is a special case that turns off the garbage collector.\n"
 "                             (Faster but may run out of memory for long-running programs)\n"
 "    --dyncomp-approximate-literals  Approximates the handling of literals for comparability.\n"
@@ -688,6 +693,9 @@ void fjalar_tool_print_usage()
 "    --dyncomp-interactions=units        Only counts interactions that are consistent with units\n"
 "    --dyncomp-interactions=comparisons  Only counts comparison operations as interactions\n"
 "    --dyncomp-interactions=none         Tracks no interactions, just dataflow\n"
+"    --dyncomp-unhandled-ops=panic       Stop at a VEX IR operator that DynComp does not handle (default)\n"
+"    --dyncomp-unhandled-ops=warn        Warn once per unhandled VEX IR operator and approximate it\n"
+"                                        (comparability may be imprecise)\n"
 "\n  Debugging:\n"
 "    --kvasir-debug           Print Kvasir-internal debug messages [--no-debug]\n"
 "    --dyncomp-debug          Print DynComp debug messages (--dyncomp must also be on)\n"
@@ -732,6 +740,10 @@ Bool fjalar_tool_process_cmd_line_option(const HChar* arg)
   else if VG_XACT_CLO(arg, "--dyncomp-interactions=all",
                       dyncomp_dataflow_only_mode,        False) {
                       dyncomp_dataflow_comparisons_mode = dyncomp_units_mode = False; }
+  else if VG_XACT_CLO(arg, "--dyncomp-unhandled-ops=panic",
+                      dyncomp_warn_unhandled_ops,        False) {}
+  else if VG_XACT_CLO(arg, "--dyncomp-unhandled-ops=warn",
+                      dyncomp_warn_unhandled_ops,        True) {}
   else if VG_YESNO_CLO(arg, "dyncomp-debug",  dyncomp_print_debug_info) {}
   else if VG_YESNO_CLO(arg, "dyncomp-trace",  dyncomp_print_trace_all) {}
   else if VG_YESNO_CLO(arg, "dyncomp-trace-merge",  dyncomp_print_trace_info) {}

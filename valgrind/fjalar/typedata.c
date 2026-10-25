@@ -40,7 +40,7 @@
 // For name demangling.
 #include "../coregrind/m_demangle/demangle.h"
 // For VG_(arena_free), to release the demanglers' results.
-#include "../coregrind/pub_core_mallocfree.h"
+#include "fjalar_core_decls.h"
 
 // Most of the following information is taken from "DWARF Debugging
 // Information Format Version 4". Published by the DWARF Debugging
@@ -438,7 +438,8 @@ char entry_is_listening_for_attribute(dwarf_entry* e, unsigned long attr)
       return (tag_is_function(tag) ||
               tag_is_variable(tag));
     case DW_AT_name:
-      return (tag_is_collection_type(tag) ||
+      return (tag_is_base_type(tag) ||
+              tag_is_collection_type(tag) ||
               tag_is_compile_unit(tag) ||
               tag_is_enumerator(tag) ||
               tag_is_formal_parameter(tag) ||
@@ -907,7 +908,12 @@ char harvest_name(dwarf_entry* e, const char* str1)
 
   tag = e->tag_name;
 
-  if (tag_is_enumerator(tag))
+  if (tag_is_base_type(tag))
+    {
+      ((base_type*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.10", str1);
+      return 1;
+    }
+  else if (tag_is_enumerator(tag))
     {
       ((enumerator*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.1", str1);
       return 1;
@@ -1190,48 +1196,58 @@ char harvest_local_var_offset(dwarf_entry* e, unsigned long value, int regNum)
       return 0;
 }
 
-char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom atom, long value)
+// Returns e's formal_parameter, or 0 if e is null, has no entry_ptr, or is not a formal parameter.
+static formal_parameter* formal_parameter_of(dwarf_entry* e)
 {
-  unsigned long tag;
-  if ((e == 0) || (e->entry_ptr == 0))
+  if ((e == 0) || (e->entry_ptr == 0) || !tag_is_formal_parameter(e->tag_name))
     return 0;
-
-  tag = e->tag_name;
-
-  if (tag_is_formal_parameter(tag))
-    {
-      formal_parameter *paramPtr = ((formal_parameter*)e->entry_ptr);
-      paramPtr->loc_atom = atom;
-
-      tl_assert(paramPtr->dwarf_stack_size < MAX_DWARF_OPS);
-      paramPtr->dwarf_stack[paramPtr->dwarf_stack_size].atom = atom;
-      paramPtr->dwarf_stack[paramPtr->dwarf_stack_size].atom_offset = value;
-      paramPtr->dwarf_stack_size++;
-      paramPtr->valid_loc = 1;
-
-      return 1;
-    }
-  else
-    return 0;
+  return (formal_parameter*)e->entry_ptr;
 }
 
-char harvest_formal_param_location_offset(dwarf_entry* e, long value)
+char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom atom, long value)
 {
-  unsigned long tag;
-  if ((e == 0) || (e->entry_ptr == 0))
+  formal_parameter* paramPtr = formal_parameter_of(e);
+  if (paramPtr == 0)
     return 0;
 
-  tag = e->tag_name;
+  if (paramPtr->dwarf_stack_size == MAX_DWARF_OPS) {
+    paramPtr->location_has_unsupported_op = 1;
+    return 1;
+  }
+  paramPtr->dwarf_stack[paramPtr->dwarf_stack_size].atom = atom;
+  paramPtr->dwarf_stack[paramPtr->dwarf_stack_size].atom_offset = value;
+  paramPtr->dwarf_stack_size++;
+  paramPtr->valid_loc = 1;
+  return 1;
+}
 
-  if (tag_is_formal_parameter(tag))
-    {
-      ((formal_parameter*)e->entry_ptr)->location_type = LT_FP_OFFSET;
-      ((formal_parameter*)e->entry_ptr)->location = value;
-      ((formal_parameter*)e->entry_ptr)->valid_loc = 1;
-      return 1;
-    }
-  else
+// If e is a formal parameter, records that Fjalar cannot read its location
+// (sets location_has_unsupported_op), so Fjalar omits the parameter from the
+// .decls and .dtrace files.  Returns 1 if e is a formal parameter, 0
+// otherwise.
+char harvest_formal_param_location_unsupported(dwarf_entry* e)
+{
+  formal_parameter* paramPtr = formal_parameter_of(e);
+  if (paramPtr == 0)
     return 0;
+
+  paramPtr->location_has_unsupported_op = 1;
+  return 1;
+}
+
+// If e is a formal parameter, records that its location expression ends
+// with "DW_OP_piece size" (sets location_piece_size).
+// extractOneFormalParameterVar omits the parameter unless the piece is the
+// whole parameter and some operation precedes it.  Returns 1 if e is a
+// formal parameter, 0 otherwise.
+char harvest_formal_param_location_piece(dwarf_entry* e, unsigned long size)
+{
+  formal_parameter* paramPtr = formal_parameter_of(e);
+  if (paramPtr == 0)
+    return 0;
+
+  paramPtr->location_piece_size = size;
+  return 1;
 }
 
 char harvest_data_member_location(dwarf_entry* e, unsigned long value)
@@ -1899,7 +1915,12 @@ static void process_abstract_origin_items(void)
       formal_parameter* cur_param = (formal_parameter*) (cur_entry->entry_ptr);
 
       // Look for all formal parameters with a abstract_origin_ID field, find the targets,
-      // and copy over the location field(s) and stack size.
+      // and copy over the name and type.  Do not copy the location in either
+      // direction:  a formal parameter's location is meaningful only in the
+      // frame of its own function.  The abstract origin may be a concrete
+      // function (such as foo) whose clones (such as foo.constprop.0) or
+      // inlined instances refer to it, and the location of their parameter
+      // is not the location of foo's.
       if (cur_param->abstract_origin_ID) {
         unsigned long aliased_index = 0;
 
@@ -1910,14 +1931,6 @@ static void process_abstract_origin_items(void)
 
           tl_assert(tag_is_formal_parameter(aliased_entry->tag_name));
           aliased_formal_param = (formal_parameter*) (aliased_entry->entry_ptr);
-
-          aliased_formal_param->location_type = cur_param->location_type;
-          aliased_formal_param->loc_atom = cur_param->loc_atom;
-          aliased_formal_param->valid_loc = cur_param->valid_loc;
-          aliased_formal_param->dwarf_stack_size = cur_param->dwarf_stack_size;
-
-          VG_(memcpy)(aliased_formal_param->dwarf_stack, cur_param->dwarf_stack,
-                      sizeof(dwarf_location)*cur_param->dwarf_stack_size);
 
           if(!cur_param->name) {
             cur_param->name = aliased_formal_param->name;
@@ -2834,13 +2847,11 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
     case DW_TAG_formal_parameter:
       {
         formal_parameter* formal_param_ptr = (formal_parameter*)(e->entry_ptr);
-        FJALAR_DPRINTF("  Name: %s, Type ID: 0x%lx, num-ops: %u, atom: %x, loc_type: %u, offset: %ld\n",
+        FJALAR_DPRINTF("  Name: %s, Type ID: 0x%lx, num-ops: %u, unsupported op: %u\n",
                formal_param_ptr->name,
                formal_param_ptr->type_ID,
                formal_param_ptr->dwarf_stack_size,
-               formal_param_ptr->loc_atom,
-               formal_param_ptr->location_type,
-               formal_param_ptr->location);
+               (UInt)formal_param_ptr->location_has_unsupported_op);
         break;
       }
     case DW_TAG_template_type_param:

@@ -347,6 +347,7 @@ void DC_outputDeclsAtEnd() {
                        0,
                        0,
                        0,
+                       0,
                        &printDeclsEntryAction);
     fputs("\n", decls_fp);
     genfreehashtable(varsDeclaredTable);
@@ -395,6 +396,9 @@ DaikonRepType decTypeToDaikonRepType(DeclaredType decType,
   case D_FLOAT:
   case D_DOUBLE:
   case D_LONG_DOUBLE:
+  case D_FLOAT16:
+  case D_BFLOAT16:
+  case D_FLOAT128:
     return R_DOUBLE;
 
   case D_STRUCT_CLASS:
@@ -412,6 +416,14 @@ DaikonRepType decTypeToDaikonRepType(DeclaredType decType,
     // pointer's rep type is hashcode without consulting this function, so a
     // ZST never reaches here.
     tl_assert(0 && "decTypeToDaikonRepType() - D_ZST");
+    return R_NO_TYPE;
+
+  case D_COMPLEX:
+  case D_DECIMAL:
+    // Daikon has no rep type for a complex or decimal floating-point
+    // number.  As for D_ZST, the traversal reports one only through a
+    // pointer.
+    tl_assert(0 && "decTypeToDaikonRepType() - D_COMPLEX or D_DECIMAL");
     return R_NO_TYPE;
 
   default:
@@ -1242,6 +1254,7 @@ printDeclsEntryAction(VariableEntry* var,
                        isEnter,
                        0,
                        0,
+                       0,
                        (faux_decls ?
                         &nullAction : &printDeclsEntryAction));
 
@@ -1251,6 +1264,7 @@ printDeclsEntryAction(VariableEntry* var,
                        isEnter,
                        0,
                        0,
+                       0,
                        (faux_decls ?
                         &nullAction : &printDeclsEntryAction));
 
@@ -1258,6 +1272,7 @@ printDeclsEntryAction(VariableEntry* var,
     if (!isEnter) {
       visitVariableGroup(FUNCTION_RETURN_VAR,
                          funcPtr,
+                         0,
                          0,
                          0,
                          0,
@@ -1511,6 +1526,7 @@ printDeclsEntryAction(VariableEntry* var,
     // print global tag values
     fputs("ppt GLOBALS\n", decls_fp);
     visitVariableGroup(GLOBAL_VAR,
+                       0,
                        0,
                        0,
                        0,
@@ -1803,11 +1819,13 @@ static void harvestOneFunctionObject(FunctionEntry* func, struct genhashtable* o
                      False,
                      0,
                      0,
+                     0,
                      &harvestObject);
 
   visitVariableGroup(FUNCTION_FORMAL_PARAM,
                      func,
                      True,
+                     0,
                      0,
                      0,
                      &harvestObject);

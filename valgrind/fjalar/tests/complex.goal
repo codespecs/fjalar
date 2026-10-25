@@ -1,0 +1,20 @@
+..main():::ENTER ::pair.n 4
+..scale():::ENTER factor 2
+..scale():::ENTER count 3
+..scale():::EXIT0 factor 2
+..scale():::EXIT0 count 3
+..main():::EXIT0 ::pair.n 4
+..main():::EXIT0 return 0
+..main():::ENTER ::zs _Complex* hashcode
+..main():::ENTER ::zp _Complex* hashcode
+..main():::ENTER ::pair pair hashcode
+..main():::ENTER ::pair.n int int
+..main():::EXIT0 ::zs _Complex* hashcode
+..main():::EXIT0 ::zp _Complex* hashcode
+..main():::EXIT0 ::pair pair hashcode
+..main():::EXIT0 ::pair.n int int
+..main():::EXIT0 return int int
+..scale():::ENTER factor long\_double double
+..scale():::ENTER count int int
+..scale():::EXIT0 factor long\_double double
+..scale():::EXIT0 count int int

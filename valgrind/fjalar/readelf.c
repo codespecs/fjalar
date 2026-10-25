@@ -20,7 +20,7 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston, MA
    02110-1301, USA.  */
-
+
 /* readelf.c
 
    This file is part of Fjalar, a dynamic analysis framework for C/C++
@@ -524,7 +524,7 @@ get_dynamic_name (const Filedata *filedata, size_t offset)
 /* Get the correct GNU hash section name.  */
 #define GNU_HASH_SECTION_NAME(filedata)		\
   filedata->dynamic_info_DT_MIPS_XHASH ? ".MIPS.xhash" : ".gnu.hash"
-
+
 // versions of error and warn needed by Fjalar
 
 static void
@@ -5505,7 +5505,7 @@ request_dump_bynumber (struct dump_data *dumpdata,
       dump_type * new_dump_sects;
 
       new_dump_sects = (dump_type *) VG_(calloc) ("readelf.c: request_dump", section + 1,
-                                                  sizeof (* new_dump_sects));
+                                             sizeof (* new_dump_sects));
 
       if (new_dump_sects == NULL)
 	error (_("Out of memory allocating dump request table.\n"));
@@ -7275,12 +7275,12 @@ process_section_headers (Filedata * filedata)
 	FJALAR_DPRINTF (_("In linked file '%s': "), filedata->file_name);
       if (! filedata->is_separate || process_links)
         FJALAR_DPRINTF (ngettext ("There is %u section header, "
-		      "starting at offset 0x%lx:\n",
-		      "There are %u section headers, "
-		      "starting at offset 0x%lx:\n",
-		      filedata->file_header.e_shnum),
-	    filedata->file_header.e_shnum,
-	    (unsigned long) filedata->file_header.e_shoff);
+			  "starting at offset 0x%lx:\n",
+			  "There are %u section headers, "
+			  "starting at offset 0x%lx:\n",
+			  filedata->file_header.e_shnum),
+		filedata->file_header.e_shnum,
+		(unsigned long) filedata->file_header.e_shoff);
     }
 
   if (!get_section_headers (filedata, false))
@@ -8579,7 +8579,7 @@ process_relocs (Filedata * filedata)
 		    filedata->file_name);
 	  else
 	    FJALAR_DPRINTF (_("\nThere are no dynamic relocations in this file.\n"));
-	}   
+	}
     }
   else
     {
@@ -8617,9 +8617,9 @@ process_relocs (Filedata * filedata)
 
 	      num_rela = rel_size / section->sh_entsize;
 	      FJALAR_DPRINTF (ngettext (" at offset 0x%lx contains %lu entry:\n",
-					" at offset 0x%lx contains %lu entries:\n",
-				        num_rela),
-		              rel_offset, num_rela);
+				" at offset 0x%lx contains %lu entries:\n",
+				num_rela),
+		      rel_offset, num_rela);
 
 	      rel_type = section->sh_type == SHT_RELA ? reltype_rela :
 		section->sh_type == SHT_REL ? reltype_rel : reltype_relr;
@@ -22543,7 +22543,7 @@ fjalar_process_file (const char * file_name)
   Filedata * filedata = NULL;
   struct vg_stat statbuf;
   unsigned int i;
-  bool res = TRUE;
+  bool res = true;
 
   SysRes sys_res = VG_(stat) (file_name, &statbuf);
   if (sr_isError(sys_res))
@@ -22553,20 +22553,20 @@ fjalar_process_file (const char * file_name)
       else
         error (_("Could not locate '%s'.  System error message: %s\n"),
                file_name, my_strerror (errno));
-      return FALSE;
+      return false;
     }
 
   if (! S_ISREG (statbuf.mode))
     {
       error (_("'%s' is not an ordinary file\n"), file_name);
-      return FALSE;
+      return false;
     }
 
   filedata = VG_(calloc) ("readelf.c: fjalar_process_file.1", 1, sizeof * filedata);
   if (filedata == NULL)
     {
       error (_("Out of memory allocating file data structure\n"));
-      return FALSE;
+      return false;
     }
 
   filedata->file_name = file_name;
@@ -22575,7 +22575,7 @@ fjalar_process_file (const char * file_name)
     {
       error (_("Input file '%s' is not readable.\n"), file_name);
       VG_(free) (filedata);
-      return FALSE;
+      return false;
     }
 
   filedata->file_size = (bfd_size_type) statbuf.size;
@@ -22585,7 +22585,7 @@ fjalar_process_file (const char * file_name)
       error (_("%s: Failed to read file header\n"), file_name);
       fclose (filedata->handle);
       VG_(free) (filedata);
-      return FALSE;
+      return false;
     }
 
   /* Initialise per file variables.  */
@@ -22608,7 +22608,7 @@ fjalar_process_file (const char * file_name)
       // FJALAR_DPRINTF("failed process_file_header()\n");
       fclose (filedata->handle);
       VG_(free) (filedata);
-      return FALSE;
+      return false;
     }
 
   // FJALAR_DPRINTF("before process_section_headers()\n");
@@ -22626,36 +22626,36 @@ fjalar_process_file (const char * file_name)
   if (! get_program_headers (filedata))
     {
       // FJALAR_DPRINTF("failed get_program_headers()\n");
-      res = FALSE;
+      res = false;
     }
 
   // FJALAR_DPRINTF("before process_relocs()\n");
   if (! process_relocs (filedata))
-    res = FALSE;
+    res = false;
 
 //  Fjalar does not need the unwind info (do_unwind always = 0).
 //if (! process_unwind (filedata))
-//  res = FALSE;
+//  res = false;
 
   // FJALAR_DPRINTF("before process_symbol_table()\n");
   if (! process_symbol_table (filedata))
-    res = FALSE;
+    res = false;
 
   // FJALAR_DPRINTF("before process_syminfo()\n");
   if (! process_syminfo (filedata))
-    res = FALSE;
+    res = false;
 
 //  Fjalar does not need the version info (do_version always = 0).
 //if (! process_version_sections (filedata))
-//  res = FALSE;
+//  res = false;
 
   // FJALAR_DPRINTF("before process_section_contents()\n");
   if (! process_section_contents (filedata))
-    res = FALSE;
+    res = false;
 
 //  Fjalar does not need the notes info (do_notes always = 0).
 //if (! process_notes (filedata))
-//  res = FALSE;
+//  res = false;
 
 //  Fjalar does not need the gnu liblist info (do_arch always = 0).
 //if (! process_gnu_liblist (filedata))

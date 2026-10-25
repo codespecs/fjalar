@@ -54,12 +54,19 @@ typedef enum _DeclaredType {
   D_UNSIGNED_LONG_LONG_INT,
   D_LONG_LONG_INT,
 
-  D_U128,  // Rust native type
-  D_I128,  // Rust native type
+  // An integer wider than 64 bits:  Rust's u128 and i128, and C's __int128
+  // and _BitInt(N) for N > 64.  Never printed.
+  D_U128,
+  D_I128,
 
   D_FLOAT,
   D_DOUBLE,
   D_LONG_DOUBLE,
+  D_FLOAT16,          // _Float16, an IEEE 754 binary16 value
+  D_BFLOAT16,         // __bf16, a bfloat16 value
+  D_FLOAT128,         // _Float128, an IEEE 754 binary128 value
+  D_COMPLEX,          // a _Complex type; never printed
+  D_DECIMAL,          // _Decimal32, _Decimal64, or _Decimal128; never printed
 
   D_ENUMERATION,
 
@@ -399,8 +406,15 @@ typedef struct _VariableEntry {
   // Occasionally the DWARF information will name a variable but not
   // provide a location for it. This means there is no way to obtain
   // a value for this variable. Variables which do not have valid
-  // location information will have validLoc = False
+  // location information will have validLoc = False.  A formal
+  // parameter is readable only if validLoc is true and
+  // locationUnsupported is false.
   Bool validLoc;
+
+  // True if the DWARF information gives a location that Fjalar cannot
+  // read (see location_has_unsupported_op in typedata.h).  Then Fjalar
+  // omits the formal parameter, even if a heuristic sets validLoc.
+  Bool locationUnsupported;
 
   // In some situations (The primary one being dealing with the
   // formal parameters to main - see the MAIN STACK LAYOUT comment
@@ -690,7 +704,18 @@ typedef struct _FunctionEntry {
 
   UInt nonce;
 
+  // Bit N is set if the valid location of some formal parameter uses
+  // DWARF register N (via DW_OP_regN or DW_OP_bregN, anywhere in its
+  // location expression) and Fjalar can read that register.  Fjalar
+  // saves those registers at function entrance in
+  // FunctionExecutionState.entryRegs.
+  UInt entryRegsMask;
+
 } FunctionEntry;
+
+// entryRegsMask needs one bit per readable DWARF register.
+STATIC_ASSERT(FJALAR_NUM_DWARF_REGS
+              <= 8 * sizeof(((FunctionEntry*)0)->entryRegsMask));
 
 
 // Returns a FunctionEntry* given its starting address (startPC)
@@ -739,6 +764,24 @@ void deleteFuncIterator(FuncIterator* funcIt);
 These data structures and functions provide mechanisms for runtime
 traversals within data structures and arrays
 **********************************************************************/
+
+// If atom is DW_OP_regN or DW_OP_bregN, sets *regNum to N and returns
+// True.  Otherwise, returns False.
+Bool dwarf_op_reg_num(UInt atom, UInt* regNum);
+
+// Returns the guest-state offset of the register with the given DWARF
+// register number, which must be readable (see
+// dwarf_reg_is_readable in fjalar_dwarf.h).
+Int dwarf_reg_guest_offset(UInt regNum);
+
+// Returns the current value of the register with the given DWARF
+// register number, which must be readable (see
+// dwarf_reg_is_readable in fjalar_dwarf.h).
+Addr read_dwarf_reg(ThreadId tid, UInt regNum);
+
+// Returns the name of the register with the given DWARF register
+// number, for debugging output (defined in dwarf.c).
+const HChar* dwarf_reg_name(UInt regNum);
 
 // Entries for tracking the runtime state of functions at entrances
 // and exits (used mainly by FunctionExecutionStateStack in
@@ -789,7 +832,27 @@ typedef struct {
   // should be invisible to the calling function anyways.
   char* virtualStack;
   int virtualStackByteSize; // Number of 1-byte entries in virtualStack
+  // Number of bytes in the allocation that starts at virtualStack,
+  // which also contains entryRegs
+  int allocByteSize;
   int virtualStackFPOffset; // Where in the stack the frame pointer was
+
+  // The values at function entrance of the registers, indexed by
+  // DWARF register number:  entryRegs[N] holds register N, if bit N
+  // of func->entryRegsMask is set.  A formal parameter whose location
+  // is a register (DW_OP_reg*) is read from here, and the address of
+  // one whose location is relative to a register (DW_OP_breg*) is
+  // computed from here, at both entrance and exit, for the same
+  // reason as virtualStack:  the function body and epilogue may change
+  // the registers.  At function entrance, Fjalar copies those
+  // registers, with their A and V bits and DynComp tags, to entryRegs.
+  // entryRegs has FJALAR_NUM_DWARF_REGS elements and lies in the same
+  // allocation as virtualStack, just after it; it is null if
+  // func->entryRegsMask is 0.  (An inline array would add
+  // FJALAR_NUM_DWARF_REGS words to every one of the FN_STACK_SIZE
+  // entries of every thread's function stack, even for functions with
+  // no register parameters.)
+  Addr* entryRegs;
 
 
   Addr lowSP;
@@ -955,6 +1018,12 @@ void visitVariableGroup(VariableOrigin varOrigin,
                         // address space (it's what we'll dereference)
                         Addr stackBaseAddr,
                         Addr stackBaseAddrGuest,
+                        // The values of the registers at function
+                        // entrance, which is
+                        // FunctionExecutionState.entryRegs (only
+                        // used for varOrigin == FUNCTION_FORMAL_PARAM
+                        // and if stackBaseAddr is non-zero)
+                        Addr* entryRegs,
                         // This function performs an action for each
                         // variable visited:
                         TraversalAction *performAction);

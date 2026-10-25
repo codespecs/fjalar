@@ -831,7 +831,7 @@ process_extended_line_op (unsigned char * data,
 	for (; rlen; rlen--)
 	  printf (" %02x", *data++);
 	printf ("]\n");
-        }
+	}
       }
       break;
     }
@@ -1451,6 +1451,13 @@ decode_location_expression (unsigned char * data,
 
       if(ll) {ll->atom = op;}
 
+      /* An op that Fjalar's evaluator cannot apply, such as an unreadable register,
+	 DW_OP_stack_value, or DW_OP_plus (the evaluator has no operand
+	 stack), makes a formal parameter's location unreadable.
+	 DW_OP_piece is handled below.  */
+      if (ok_to_harvest && location_op_kind_of (op) == LOC_OP_UNSUPPORTED)
+	harvest_formal_param_location_unsupported (entry);
+
       switch (op)
 	{
 	case DW_OP_addr:
@@ -1460,11 +1467,8 @@ decode_location_expression (unsigned char * data,
 	  printf ("DW_OP_addr: %s", dwarf_vmatoa ("x", uvalue));
 	  break;
 	case DW_OP_deref:
-	  if (ok_to_harvest) {
-	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
-	       harvest_formal_param_location_atom(entry, op, 0);
-	    }
-	  }
+	  if (ok_to_harvest)
+	    harvest_formal_param_location_atom(entry, op, 0);
 	  printf ("DW_OP_deref");
 	  break;
 	case DW_OP_const1u:
@@ -1477,38 +1481,18 @@ decode_location_expression (unsigned char * data,
 	  break;
 	case DW_OP_const2u:
 	  SAFE_BYTE_GET_AND_INC (uvalue, data, 2, end);
-	  if (ok_to_harvest)
-	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
-	      harvest_formal_param_location_atom(entry, op, uvalue);
-	      harvest_formal_param_location_offset(entry, uvalue);
-	    }
 	  printf ("DW_OP_const2u: %lu", (unsigned long) uvalue);
 	  break;
 	case DW_OP_const2s:
 	  SAFE_SIGNED_BYTE_GET_AND_INC (svalue, data, 2, end);
-	  if (ok_to_harvest)
-	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
-	      harvest_formal_param_location_atom(entry, op, svalue);
-	      harvest_formal_param_location_offset(entry, svalue);
-	    }
 	  printf ("DW_OP_const2s: %ld", (long) svalue);
 	  break;
 	case DW_OP_const4u:
 	  SAFE_BYTE_GET_AND_INC (uvalue, data, 4, end);
-	  if (ok_to_harvest)
-	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
-	      harvest_formal_param_location_atom(entry, op, uvalue);
-	      harvest_formal_param_location_offset(entry, uvalue);
-	  }
 	  printf ("DW_OP_const4u: %lu", (unsigned long) uvalue);
 	  break;
 	case DW_OP_const4s:
 	  SAFE_SIGNED_BYTE_GET_AND_INC (svalue, data, 4, end);
-      if (ok_to_harvest)
-	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
-	      harvest_formal_param_location_atom(entry, op, svalue);
-	      harvest_formal_param_location_offset(entry, svalue);
-	    }
 	  printf ("DW_OP_const4s: %ld", (long) svalue);
 	  break;
 	case DW_OP_const8u:
@@ -1525,20 +1509,10 @@ decode_location_expression (unsigned char * data,
 	  break;
 	case DW_OP_constu:
 	  READ_ULEB (uvalue, data, end);
-	  if (ok_to_harvest)
-	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
-	      harvest_formal_param_location_atom(entry, op, uvalue);
-	      harvest_formal_param_location_offset(entry, uvalue);
-	  }
 	  printf ("DW_OP_constu: %s", dwarf_vmatoa ("u", uvalue));
 	  break;
 	case DW_OP_consts:
 	  READ_SLEB (svalue, data, end);
-	  if (ok_to_harvest)
-	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
-	      harvest_formal_param_location_atom(entry, op, svalue);
-	      harvest_formal_param_location_offset(entry, svalue);
-	  }
 	  printf ("DW_OP_consts: %s", dwarf_vmatoa ("d", svalue));
 	  break;
 	case DW_OP_dup:
@@ -1596,10 +1570,7 @@ decode_location_expression (unsigned char * data,
 	case DW_OP_plus_uconst:
 	  READ_ULEB (uvalue, data, end);
 	  if (ok_to_harvest) {
-	    if (entry && tag_is_formal_parameter(entry->tag_name)) {
-		  harvest_formal_param_location_atom(entry, op, uvalue);
-		  harvest_formal_param_location_offset(entry, uvalue);
-	    }
+	    harvest_formal_param_location_atom(entry, op, uvalue);
 	    harvest_data_member_location(entry, uvalue);
 	  }
 
@@ -1676,10 +1647,6 @@ decode_location_expression (unsigned char * data,
 	case DW_OP_lit29:
 	case DW_OP_lit30:
 	case DW_OP_lit31:
-	  if (ok_to_harvest)
-	    if (entry && (tag_is_formal_parameter(entry->tag_name))) {
-	          harvest_formal_param_location_atom(entry, op, 0);
-	    }
 	  printf ("DW_OP_lit%u", op - DW_OP_lit0);
 	  break;
 
@@ -1716,9 +1683,7 @@ decode_location_expression (unsigned char * data,
 	case DW_OP_reg30:
 	case DW_OP_reg31:
 	  if (ok_to_harvest)
-	    if (entry && (tag_is_formal_parameter(entry->tag_name))) {
-	          harvest_formal_param_location_atom(entry, op, 0);
-	    }
+	    harvest_formal_param_location_atom(entry, op, 0);
 	  printf ("DW_OP_reg%u (%s)", op - DW_OP_reg0,
 		  regname (op - DW_OP_reg0, 1));
 	  break;
@@ -1756,21 +1721,12 @@ decode_location_expression (unsigned char * data,
 	case DW_OP_breg30:
 	case DW_OP_breg31:
 	  READ_SLEB (svalue, data, end);
-          if (ok_to_harvest) {
-              if(ll) {
-                ll->atom_offset = svalue;
-              }
-
-             if(entry) {
-               if (tag_is_variable(entry->tag_name)) {
-                 harvest_local_var_offset(entry, svalue, (op - DW_OP_breg0));
-               }
-               else if (tag_is_formal_parameter(entry->tag_name)) {
-                 harvest_formal_param_location_atom(entry, op, svalue);
-                 harvest_formal_param_location_offset(entry, svalue);
-               }
-             }
-          }
+	  if (ok_to_harvest) {
+	    if (ll)
+	      ll->atom_offset = svalue;
+	    harvest_local_var_offset(entry, svalue, (op - DW_OP_breg0));
+	    harvest_formal_param_location_atom(entry, op, svalue);
+	  }
 	  printf ("DW_OP_breg%u (%s): %s", op - DW_OP_breg0,
 		  regname (op - DW_OP_breg0, 1), dwarf_vmatoa ("d", svalue));
 	  break;
@@ -1783,21 +1739,12 @@ decode_location_expression (unsigned char * data,
 	case DW_OP_fbreg:
 	  need_frame_base = 1;
 	  READ_SLEB (svalue, data, end);
-          if (ok_to_harvest) {
-              if(ll) {
-                ll->atom_offset = svalue;
-              }
-
-	          if(entry) {
-		          if (tag_is_variable(entry->tag_name)) {
-		            harvest_local_var_offset(entry, svalue, -1);
-		          }
-		          else if (tag_is_formal_parameter(entry->tag_name)) {
-		            harvest_formal_param_location_atom(entry, op, svalue);
-		            harvest_formal_param_location_offset(entry, svalue);
-		          }
-	          }
-          }
+	  if (ok_to_harvest) {
+	    if (ll)
+	      ll->atom_offset = svalue;
+	    harvest_local_var_offset(entry, svalue, -1);
+	    harvest_formal_param_location_atom(entry, op, svalue);
+	  }
 	  printf ("DW_OP_fbreg: %s", dwarf_vmatoa ("d", svalue));
 	  break;
 	case DW_OP_bregx:
@@ -1809,6 +1756,19 @@ decode_location_expression (unsigned char * data,
 	  break;
 	case DW_OP_piece:
 	  READ_ULEB (uvalue, data, end);
+	  /* Fjalar can read a location that consists of one piece, if that
+	     piece is the whole parameter; extractOneFormalParameterVar
+	     checks the size and that the piece has a location (a piece with
+	     no preceding op is optimized out).  A piece that is not the
+	     last op means that the parameter is split.  A piece of size 0
+	     covers no bytes.  */
+	  if (ok_to_harvest)
+	    {
+	      if (data == end && uvalue != 0)
+		harvest_formal_param_location_piece (entry, uvalue);
+	      else
+		harvest_formal_param_location_unsupported (entry);
+	    }
 	  printf ("DW_OP_piece: %s", dwarf_vmatoa ("u", uvalue));
 	  break;
 	case DW_OP_deref_size:
@@ -2712,6 +2672,24 @@ display_discr_list (unsigned long          form,
     printf (")(unsigned)");
 }
 
+// start of Fjalar code
+// Returns true if the value of an attribute with the given form is a
+// location list offset or index.
+static bool
+is_location_list_form (unsigned long attribute, unsigned long form,
+		       int dwarf_version)
+{
+  if (form == DW_FORM_sec_offset || form == DW_FORM_loclistx)
+    return true;
+  // Before DWARF 4, DW_FORM_data4 and DW_FORM_data8 may be either a
+  // location list offset or a constant.  A member's offset does not
+  // vary with the program counter, so treat it as a constant.
+  return (dwarf_version < 4
+	  && (form == DW_FORM_data4 || form == DW_FORM_data8)
+	  && attribute != DW_AT_data_member_location);
+}
+// end of Fjalar code
+
 static unsigned char *
 read_and_display_attr_value (unsigned long           attribute,
 			     unsigned long           form,
@@ -3026,10 +3004,10 @@ read_and_display_attr_value (unsigned long           attribute,
 
     case DW_FORM_strp:
       {
-        const char* ind_str = (const char*)fetch_indirect_string (uvalue);  // added cast to remove warning
-        if (ok_to_harvest) {
-          harvest_string(entry, attribute, ind_str);
-        }
+      const char* ind_str = (const char*)fetch_indirect_string (uvalue);  // added cast to remove warning
+      if (ok_to_harvest) {
+	harvest_string(entry, attribute, ind_str);
+      }
       if (!do_loc)
 	{
 	  if (do_wide)
@@ -3136,12 +3114,13 @@ read_and_display_attr_value (unsigned long           attribute,
 		}
 	      else
 		{
-		  /* We want to compute:
-		       index = fetch_indexed_value (uvalue, loclists, debug_info_p->loclists_base);
-		       index += debug_info_p->loclists_base;
-		      Fortunately we already have that sum cached in the
-		      loc_offsets array.  */
-		  index = debug_info_p->loc_offsets [uvalue];
+		  // start of Fjalar code
+		  // Fjalar's loc_offsets array is in attribute order, not
+		  // index order, so compute the offset rather than looking
+		  // it up in loc_offsets.
+		  index = fetch_indexed_value (uvalue, loclists, debug_info_p->loclists_base);
+		  index += debug_info_p->loclists_base;
+		  // end of Fjalar code
 		}
 	    }
 	  else if (form == DW_FORM_rnglistx)
@@ -3246,57 +3225,64 @@ read_and_display_attr_value (unsigned long           attribute,
 	case DW_AT_GNU_call_site_target:
 	case DW_AT_call_target_clobbered:
 	case DW_AT_GNU_call_site_target_clobbered:
-	  if ((dwarf_version < 4
-	       && (form == DW_FORM_data4 || form == DW_FORM_data8))
-	      || form == DW_FORM_sec_offset
-	      || form == DW_FORM_loclistx)
+	  // start of Fjalar code
+	  // Fjalar reads location lists only for compilation units before
+	  // DWARF 5 (see display_debug_loc), so it records no others.
+	  if (dwarf_version < 5
+	      && is_location_list_form (attribute, form, dwarf_version))
+	  // end of Fjalar code
 	    {
 	      /* Process location list.  */
-	      //unsigned int lmax = debug_info_p->max_loc_offsets;  // Fjalar doesn't need
+	      unsigned int lmax = debug_info_p->max_loc_offsets;
 	      unsigned int num = debug_info_p->num_loc_offsets;
 
-#if 0 // This code is not needed for Fjalar.
 	      if (lmax == 0 || num >= lmax)
 		{
 		  lmax += 1024;
 		  debug_info_p->loc_offsets = (dwarf_vma *)
 		    xcrealloc (debug_info_p->loc_offsets,
 			       lmax, sizeof (*debug_info_p->loc_offsets));
+#if 0 // This code is not needed for Fjalar.
 		  debug_info_p->loc_views = (dwarf_vma *)
 		    xcrealloc (debug_info_p->loc_views,
 			       lmax, sizeof (*debug_info_p->loc_views));
 		  debug_info_p->have_frame_base = (int *)
 		    xcrealloc (debug_info_p->have_frame_base,
 			       lmax, sizeof (*debug_info_p->have_frame_base));
+#endif // This code is not needed for Fjalar.
 		  debug_info_p->max_loc_offsets = lmax;
 		}
-	      if (form == DW_FORM_loclistx)
-		uvalue = fetch_indexed_value (num, loclists, debug_info_p->loclists_base);
-	      else if (this_set != NULL)
+	      if (this_set != NULL)
 		uvalue += this_set->section_offsets [DW_SECT_LOC];
 
+#if 0 // This code is not needed for Fjalar.
 	      debug_info_p->have_frame_base [num] = have_frame_base;
 #endif // This code is not needed for Fjalar.
 	      if (attribute != DW_AT_GNU_locviews)
 		{
 		  uvalue += debug_info_p->loclists_base;
 
-		  /* Corrupt DWARF info can produce more offsets than views.
-		     See PR 23062 for an example.  */
+		  // start of Fjalar code
+		  // A DIE may have several location list attributes but
+		  // a DW_AT_GNU_locviews attribute for only some of them,
+		  // such as DW_AT_frame_base and DW_AT_static_link.  Fjalar does
+		  // not use location views, so it records every location list
+		  // offset and pads the views to match.
 		  if (debug_info_p->num_loc_offsets
 		      > debug_info_p->num_loc_views)
-		    warn (_("More location offset attributes than DW_AT_GNU_locview attributes\n"));
-		  else
-		    {
-		      //debug_info_p->loc_offsets [num] = uvalue;  // Fjalar doesn't need
-		      debug_info_p->num_loc_offsets++;
-		    }
+		    debug_info_p->num_loc_views++;
+		  debug_info_p->loc_offsets [num] = uvalue;
+		  debug_info_p->num_loc_offsets++;
+		  // end of Fjalar code
 		}
 	      else
 		{
-		  tl_assert (debug_info_p->num_loc_views <= num);
-		  num = debug_info_p->num_loc_views;
-		  if (num > debug_info_p->num_loc_offsets)
+		  // start of Fjalar code
+		  // A DW_AT_GNU_locviews attribute may precede its location
+		  // list attribute, so there may be one more view than offsets.
+		  if (debug_info_p->num_loc_views
+		      > debug_info_p->num_loc_offsets)
+		  // end of Fjalar code
 		    warn (_("More DW_AT_GNU_locview attributes than location offset attributes\n"));
 		  else
 		    {
@@ -3725,7 +3711,7 @@ read_and_display_attr_value (unsigned long           attribute,
       break;
 
     case DW_AT_frame_base:
-	have_frame_base = 1;
+      have_frame_base = 1;
       /* Fall through.  */
     case DW_AT_location:
     case DW_AT_loclists_base:
@@ -3746,10 +3732,7 @@ read_and_display_attr_value (unsigned long           attribute,
     case DW_AT_GNU_call_site_target:
     case DW_AT_call_target_clobbered:
     case DW_AT_GNU_call_site_target_clobbered:
-      if ((dwarf_version < 4
-	   && (form == DW_FORM_data4 || form == DW_FORM_data8))
-	  || form == DW_FORM_sec_offset
-	  || form == DW_FORM_loclistx)
+      if (is_location_list_form (attribute, form, dwarf_version))  // Fjalar
 	{
 	  if (attribute != DW_AT_rnglists_base
 	      && attribute != DW_AT_str_offsets_base)
@@ -3792,11 +3775,8 @@ read_and_display_attr_value (unsigned long           attribute,
 	  if (need_frame_base && !have_frame_base)
 	    printf (_(" [without DW_AT_frame_base]"));
 	}
-      else if ((dwarf_version < 4
-	   && (form == DW_FORM_data4 || form == DW_FORM_data8))
-	  || form == DW_FORM_sec_offset
-//	  || form == DW_FORM_loclistx  only in dwarf 5
-	                             )
+      else if (form != DW_FORM_loclistx  // only in dwarf 5
+	       && is_location_list_form (attribute, form, dwarf_version))  // Fjalar
 	{
           if (ok_to_harvest) {
               // frame base location list
@@ -5221,8 +5201,8 @@ display_debug_lines_raw (struct dwarf_section *  section,
 		      printf ("  %u\t", state_machine_regs.last_file_entry);
 		      file_name = (char*)data;  // fjalar code
 		      data += VG_(strnlen) ((char *) data, end - data);
-                      if (data < end)
-                        data++;
+		      if (data < end)
+			data++;
 
 		      READ_ULEB (dir_index, data, end);
 		      if (fjalar_debug_dump)
@@ -5334,29 +5314,29 @@ display_debug_lines_raw (struct dwarf_section *  section,
 			      state_machine_regs.op_index,
 			      verbose_view && addrdelta
 			      ? _(" (reset view)") : "");
-		}
+		    }
 
-              // start of Fjalar code
-              genputtable(next_line_addr,
-                          (void *)(ptrdiff_t)state_machine_regs.last_address,
-                          (void *)(ptrdiff_t)state_machine_regs.address);
-              state_machine_regs.last_address = state_machine_regs.address;
-	      // end of Fjalar code
+		  // start of Fjalar code
+		  genputtable(next_line_addr,
+			      (void *)(ptrdiff_t)state_machine_regs.last_address,
+			      (void *)(ptrdiff_t)state_machine_regs.address);
+		  state_machine_regs.last_address = state_machine_regs.address;
+		  // end of Fjalar code
 
-              adv = (op_code % linfo.li_line_range) + linfo.li_line_base;
-              state_machine_regs.line += adv;
+		  adv = (op_code % linfo.li_line_range) + linfo.li_line_base;
+		  state_machine_regs.line += adv;
 
-              if (fjalar_debug_dump) {
-              printf (_(" and Line by %s to %u"),
-                      dwarf_vmatoa ("u", adv), state_machine_regs.line);
-	      if (verbose_view || state_machine_regs.view)
+		  if (fjalar_debug_dump) {
+		  printf (_(" and Line by %s to %u"),
+			  dwarf_vmatoa ("u", adv), state_machine_regs.line);
+		  if (verbose_view || state_machine_regs.view)
 		    printf (_(" (view %u)\n"), state_machine_regs.view);
-	      else
+		  else
 		    putchar ('\n');
-	      }
-              state_machine_regs.view++;
-	    }
-	  else
+		  }
+		  state_machine_regs.view++;
+		}
+	      else
 		switch (op_code)
 		  {
 		  case DW_LNS_extended_op:
@@ -5367,7 +5347,7 @@ display_debug_lines_raw (struct dwarf_section *  section,
 
 		  case DW_LNS_copy:
 		    if (fjalar_debug_dump) {
-                    printf (_("  Copy"));
+		    printf (_("  Copy"));
 		    if (verbose_view || state_machine_regs.view)
 		      printf (_(" (view %u)\n"), state_machine_regs.view);
 		    else
@@ -5375,221 +5355,221 @@ display_debug_lines_raw (struct dwarf_section *  section,
                     }
 		    state_machine_regs.view++;
 		    
-                       // start of Fjalar code
-                       // Copy means to add another row to the state table.
-                       // This means we need to add another entry to the next_line_addrr
-                       // collection.  (markro)
-                       // However, there seems to be a bug in gcc that emits a 'copy'
-                       // even if the address has not advanced.  According to the
-                       // DWARF spec, the addresses may only increase.  Hence, we
-                       // need to check for this case and skip the copy if so.
-                       // (markro 11/04/2014)
-                       // It turns out that some uses of template classes can cause
-                       // gcc to make the 'next' address actually be prior to the
-                       // current address.  We need to skip this copy too.
-                       // (markro 11/12/2014)
+		    // start of Fjalar code
+		    // Copy means to add another row to the state table.
+		    // This means we need to add another entry to the next_line_addrr
+		    // collection.  (markro)
+		    // However, there seems to be a bug in gcc that emits a 'copy'
+		    // even if the address has not advanced.  According to the
+		    // DWARF spec, the addresses may only increase.  Hence, we
+		    // need to check for this case and skip the copy if so.
+		    // (markro 11/04/2014)
+		    // It turns out that some uses of template classes can cause
+		    // gcc to make the 'next' address actually be prior to the
+		    // current address.  We need to skip this copy too.
+		    // (markro 11/12/2014)
 
-                       if (state_machine_regs.last_address < state_machine_regs.address) {
-                       genputtable(next_line_addr,
-                                  (void *)(ptrdiff_t)state_machine_regs.last_address,
-                                  (void *)(ptrdiff_t)state_machine_regs.address);
-                       // if (fjalar_debug_dump) printf (_("  call genputtable %p %s %s\n"), next_line_addr,
-                              // dwarf_vmatoa ("x", state_machine_regs.last_address),
-                              // dwarf_vmatoa ("x", state_machine_regs.address));
-                       }
-                       state_machine_regs.last_address = state_machine_regs.address;
-                       // end of Fjalar code
+		    if (state_machine_regs.last_address < state_machine_regs.address) {
+		    genputtable(next_line_addr,
+			       (void *)(ptrdiff_t)state_machine_regs.last_address,
+			       (void *)(ptrdiff_t)state_machine_regs.address);
+		    // if (fjalar_debug_dump) printf (_("  call genputtable %p %s %s\n"), next_line_addr,
+			   // dwarf_vmatoa ("x", state_machine_regs.last_address),
+			   // dwarf_vmatoa ("x", state_machine_regs.address));
+		    }
+		    state_machine_regs.last_address = state_machine_regs.address;
+		    // end of Fjalar code
 
-		       break;
+		    break;
 
-		     case DW_LNS_advance_pc:
+		  case DW_LNS_advance_pc:
 		    READ_ULEB (uladv, data, end);
-		       if (linfo.li_max_ops_per_insn == 1)
-			 {
-			   uladv *= linfo.li_min_insn_length;
-			   state_machine_regs.address += uladv;
-			   if (uladv)
-			     state_machine_regs.view = 0;
-			   if (fjalar_debug_dump)
-			   printf (_("  Advance PC by %s to 0x%s%s\n"),
-				   dwarf_vmatoa ("u", uladv),
-				   dwarf_vmatoa ("x", state_machine_regs.address),
-				   verbose_view && uladv
-				   ? _(" (reset view)") : "");
-			 }
-		       else
-			 {
-			   unsigned addrdelta
-			     = ((state_machine_regs.op_index + uladv)
-				 / linfo.li_max_ops_per_insn)
-			     * linfo.li_min_insn_length;
-			   state_machine_regs.address
-			     += addrdelta;
-			   state_machine_regs.op_index
-			     = (state_machine_regs.op_index + uladv)
-			     % linfo.li_max_ops_per_insn;
-			   if (addrdelta)
-			     state_machine_regs.view = 0;
-			   if (fjalar_debug_dump)
-			   printf (_("  Advance PC by %s to 0x%s[%d]%s\n"),
-				   dwarf_vmatoa ("u", uladv),
-				   dwarf_vmatoa ("x", state_machine_regs.address),
-				   state_machine_regs.op_index,
-				   verbose_view && addrdelta
-				   ? _(" (reset view)") : "");
-			 }
+		    if (linfo.li_max_ops_per_insn == 1)
+		      {
+			uladv *= linfo.li_min_insn_length;
+			state_machine_regs.address += uladv;
+			if (uladv)
+			  state_machine_regs.view = 0;
+			if (fjalar_debug_dump)
+			printf (_("  Advance PC by %s to 0x%s%s\n"),
+				dwarf_vmatoa ("u", uladv),
+				dwarf_vmatoa ("x", state_machine_regs.address),
+				verbose_view && uladv
+				? _(" (reset view)") : "");
+		      }
+		    else
+		      {
+			unsigned addrdelta
+			  = ((state_machine_regs.op_index + uladv)
+			     / linfo.li_max_ops_per_insn)
+			  * linfo.li_min_insn_length;
+			state_machine_regs.address
+			  += addrdelta;
+			state_machine_regs.op_index
+			  = (state_machine_regs.op_index + uladv)
+			  % linfo.li_max_ops_per_insn;
+			if (addrdelta)
+			  state_machine_regs.view = 0;
+			if (fjalar_debug_dump)
+			printf (_("  Advance PC by %s to 0x%s[%d]%s\n"),
+				dwarf_vmatoa ("u", uladv),
+				dwarf_vmatoa ("x", state_machine_regs.address),
+				state_machine_regs.op_index,
+				verbose_view && addrdelta
+				? _(" (reset view)") : "");
+		      }
 
-                       // start of Fjalar code
-                       genputtable(next_line_addr,
-                                   (void *)(ptrdiff_t)state_machine_regs.last_address,
-                                   (void *)(ptrdiff_t)state_machine_regs.address);
-                       // if (fjalar_debug_dump) printf (_("  call genputtable %p %s %s\n"), next_line_addr,
-                           // dwarf_vmatoa ("x", state_machine_regs.last_address),
-                           // dwarf_vmatoa ("x", state_machine_regs.address));
-                       state_machine_regs.last_address = state_machine_regs.address;
-                       // end of Fjalar code
+		    // start of Fjalar code
+		    genputtable(next_line_addr,
+				(void *)(ptrdiff_t)state_machine_regs.last_address,
+				(void *)(ptrdiff_t)state_machine_regs.address);
+		    // if (fjalar_debug_dump) printf (_("  call genputtable %p %s %s\n"), next_line_addr,
+			// dwarf_vmatoa ("x", state_machine_regs.last_address),
+			// dwarf_vmatoa ("x", state_machine_regs.address));
+		    state_machine_regs.last_address = state_machine_regs.address;
+		    // end of Fjalar code
 
-		       break;
+		    break;
 
-		     case DW_LNS_advance_line:
-		       READ_SLEB (adv, data, end);
-		       state_machine_regs.line += adv;
-                       if (fjalar_debug_dump)
-		       printf (_("  Advance Line by %s to %u\n"),
-			       dwarf_vmatoa ("d", adv),
-			       state_machine_regs.line);
-		       break;
+		  case DW_LNS_advance_line:
+		    READ_SLEB (adv, data, end);
+		    state_machine_regs.line += adv;
+		    if (fjalar_debug_dump)
+		    printf (_("  Advance Line by %s to %u\n"),
+			    dwarf_vmatoa ("d", adv),
+			    state_machine_regs.line);
+		    break;
 
-		     case DW_LNS_set_file:
-		       READ_ULEB (uladv, data, end);
-                       if (fjalar_debug_dump)
-		       printf (_("  Set File Name to entry %s in the File Name Table\n"),
-			       dwarf_vmatoa ("u", uladv));
-		       state_machine_regs.file = uladv;
-		       break;
+		  case DW_LNS_set_file:
+		    READ_ULEB (uladv, data, end);
+		    if (fjalar_debug_dump)
+		    printf (_("  Set File Name to entry %s in the File Name Table\n"),
+			    dwarf_vmatoa ("u", uladv));
+		    state_machine_regs.file = uladv;
+		    break;
 
-		     case DW_LNS_set_column:
-		       READ_ULEB (uladv, data, end);
-                       if (fjalar_debug_dump)
-		       printf (_("  Set column to %s\n"),
-			       dwarf_vmatoa ("u", uladv));
-		       state_machine_regs.column = uladv;
-		       break;
+		  case DW_LNS_set_column:
+		    READ_ULEB (uladv, data, end);
+		    if (fjalar_debug_dump)
+		    printf (_("  Set column to %s\n"),
+			    dwarf_vmatoa ("u", uladv));
+		    state_machine_regs.column = uladv;
+		    break;
 
-		     case DW_LNS_negate_stmt:
-		       adv = state_machine_regs.is_stmt;
-		       adv = ! adv;
-                       if (fjalar_debug_dump)
-		       printf (_("  Set is_stmt to %s\n"), dwarf_vmatoa ("d", adv));
-		       state_machine_regs.is_stmt = adv;
-		       break;
+		  case DW_LNS_negate_stmt:
+		    adv = state_machine_regs.is_stmt;
+		    adv = ! adv;
+		    if (fjalar_debug_dump)
+		    printf (_("  Set is_stmt to %s\n"), dwarf_vmatoa ("d", adv));
+		    state_machine_regs.is_stmt = adv;
+		    break;
 
-		     case DW_LNS_set_basic_block:
-                       if (fjalar_debug_dump)
-		       printf (_("  Set basic block\n"));
-		       state_machine_regs.basic_block = 1;
-		       break;
+		  case DW_LNS_set_basic_block:
+		    if (fjalar_debug_dump)
+		    printf (_("  Set basic block\n"));
+		    state_machine_regs.basic_block = 1;
+		    break;
 
-		     case DW_LNS_const_add_pc:
-		       uladv = ((255 - linfo.li_opcode_base) / linfo.li_line_range);
-		       if (linfo.li_max_ops_per_insn)
-			 {
-			   uladv *= linfo.li_min_insn_length;
-			   state_machine_regs.address += uladv;
-                           if (uladv)
-			     state_machine_regs.view = 0;
-			   if (fjalar_debug_dump)
-			   printf (_("  Advance PC by constant %s to 0x%s%s\n"),
-				   dwarf_vmatoa ("u", uladv),
-				   dwarf_vmatoa ("x", state_machine_regs.address),
-				   verbose_view && uladv
-				   ? _(" (reset view)") : "");
-			 }
-		       else
-			 {
-			   unsigned addrdelta
-			     = ((state_machine_regs.op_index + uladv)
-				 / linfo.li_max_ops_per_insn)
-			     * linfo.li_min_insn_length;
-			   state_machine_regs.address
-			     += addrdelta;
-			   state_machine_regs.op_index
-			     = (state_machine_regs.op_index + uladv)
-			     % linfo.li_max_ops_per_insn;
-                           if (addrdelta)
-			     state_machine_regs.view = 0;
-			   if (fjalar_debug_dump)
-			   printf (_("  Advance PC by constant %s to 0x%s[%d]%s\n"),
-				   dwarf_vmatoa ("u", uladv),
-				   dwarf_vmatoa ("x", state_machine_regs.address),
-				   state_machine_regs.op_index,
-				   verbose_view && addrdelta
-				   ? _(" (reset view)") : "");
-			 }
+		  case DW_LNS_const_add_pc:
+		    uladv = ((255 - linfo.li_opcode_base) / linfo.li_line_range);
+		    if (linfo.li_max_ops_per_insn)
+		      {
+			uladv *= linfo.li_min_insn_length;
+			state_machine_regs.address += uladv;
+			if (uladv)
+			  state_machine_regs.view = 0;
+			if (fjalar_debug_dump)
+			printf (_("  Advance PC by constant %s to 0x%s%s\n"),
+				dwarf_vmatoa ("u", uladv),
+				dwarf_vmatoa ("x", state_machine_regs.address),
+				verbose_view && uladv
+				? _(" (reset view)") : "");
+		      }
+		    else
+		      {
+			unsigned addrdelta
+			  = ((state_machine_regs.op_index + uladv)
+			     / linfo.li_max_ops_per_insn)
+			  * linfo.li_min_insn_length;
+			state_machine_regs.address
+			  += addrdelta;
+			state_machine_regs.op_index
+			  = (state_machine_regs.op_index + uladv)
+			  % linfo.li_max_ops_per_insn;
+			if (addrdelta)
+			  state_machine_regs.view = 0;
+			if (fjalar_debug_dump)
+			printf (_("  Advance PC by constant %s to 0x%s[%d]%s\n"),
+				dwarf_vmatoa ("u", uladv),
+				dwarf_vmatoa ("x", state_machine_regs.address),
+				state_machine_regs.op_index,
+				verbose_view && addrdelta
+				? _(" (reset view)") : "");
+		      }
 
-                       // start of Fjalar code
-                       // It turns out that more often that not DW_LNS_const_add_pc advances to an
-                       // illegal instruction address.  It is a single byte opcode (designed to save
-                       // space) that advances the pc by a fixed amount (17 bytes on x86-64). I believe
-                       // it is always followed by special opcode that sets the pc correctly.  (markro)
-                       // Hence, we set the current address (above), but do nothing else.
-                       // end of Fjalar code
+		    // start of Fjalar code
+		    // It turns out that more often that not DW_LNS_const_add_pc advances to an
+		    // illegal instruction address.  It is a single byte opcode (designed to save
+		    // space) that advances the pc by a fixed amount (17 bytes on x86-64). I believe
+		    // it is always followed by special opcode that sets the pc correctly.  (markro)
+		    // Hence, we set the current address (above), but do nothing else.
+		    // end of Fjalar code
 
-		       break;
+		    break;
 
-		     case DW_LNS_fixed_advance_pc:
-		       SAFE_BYTE_GET_AND_INC (uladv, data, 2, end);
-		       state_machine_regs.address += uladv;
-		       state_machine_regs.op_index = 0;
-                       if (fjalar_debug_dump)
-		       printf (_("  Advance PC by fixed size amount %s to 0x%s\n"),
-			       dwarf_vmatoa ("u", uladv),
-			       dwarf_vmatoa ("x", state_machine_regs.address));
+		  case DW_LNS_fixed_advance_pc:
+		    SAFE_BYTE_GET_AND_INC (uladv, data, 2, end);
+		    state_machine_regs.address += uladv;
+		    state_machine_regs.op_index = 0;
+		    if (fjalar_debug_dump)
+		    printf (_("  Advance PC by fixed size amount %s to 0x%s\n"),
+			    dwarf_vmatoa ("u", uladv),
+			    dwarf_vmatoa ("x", state_machine_regs.address));
 
-                       // start of Fjalar code
-                       genputtable(next_line_addr,
-                                   (void *)(ptrdiff_t)state_machine_regs.last_address,
-                                   (void *)(ptrdiff_t)state_machine_regs.address);
-                       // if (fjalar_debug_dump) printf (_("  call genputtable %p %s %s\n"), next_line_addr,
-                           // dwarf_vmatoa ("x", state_machine_regs.last_address),
-                           // dwarf_vmatoa ("x", state_machine_regs.address));
-                       state_machine_regs.last_address = state_machine_regs.address;
-                       // end of Fjalar code
-                       /* Do NOT reset view.  */
-		       break;
+		    // start of Fjalar code
+		    genputtable(next_line_addr,
+				(void *)(ptrdiff_t)state_machine_regs.last_address,
+				(void *)(ptrdiff_t)state_machine_regs.address);
+		    // if (fjalar_debug_dump) printf (_("  call genputtable %p %s %s\n"), next_line_addr,
+			// dwarf_vmatoa ("x", state_machine_regs.last_address),
+			// dwarf_vmatoa ("x", state_machine_regs.address));
+		    state_machine_regs.last_address = state_machine_regs.address;
+		    // end of Fjalar code
+		    /* Do NOT reset view.  */
+		    break;
 
-		     case DW_LNS_set_prologue_end:
-                       if (fjalar_debug_dump)
-		       printf (_("  Set prologue_end to true\n"));
-		       break;
+		  case DW_LNS_set_prologue_end:
+		    if (fjalar_debug_dump)
+		    printf (_("  Set prologue_end to true\n"));
+		    break;
 
-		     case DW_LNS_set_epilogue_begin:
-                       if (fjalar_debug_dump)
-		       printf (_("  Set epilogue_begin to true\n"));
-		       break;
+		  case DW_LNS_set_epilogue_begin:
+		    if (fjalar_debug_dump)
+		    printf (_("  Set epilogue_begin to true\n"));
+		    break;
 
-		     case DW_LNS_set_isa:
-		       READ_ULEB (uladv, data, end);
-                       if (fjalar_debug_dump)
-		       printf (_("  Set ISA to %s\n"), dwarf_vmatoa ("u", uladv));
-		       break;
+		  case DW_LNS_set_isa:
+		    READ_ULEB (uladv, data, end);
+		    if (fjalar_debug_dump)
+		    printf (_("  Set ISA to %s\n"), dwarf_vmatoa ("u", uladv));
+		    break;
 
-		     default:
-                       if (fjalar_debug_dump)
-		       printf (_("  Unknown opcode %d with operands: "), op_code);
+		  default:
+		    if (fjalar_debug_dump)
+		    printf (_("  Unknown opcode %d with operands: "), op_code);
 
-			if (standard_opcodes != NULL)
-			  for (i = standard_opcodes[op_code - 1]; i > 0 ; --i)
-			   {
-		 	     READ_ULEB (uladv, data, end);
-			     if (fjalar_debug_dump)
-			     printf ("0x%s%s", dwarf_vmatoa ("x", uladv),
-				     i == 1 ? "" : ", ");
-			   }
-                       if (fjalar_debug_dump)
-		       putchar ('\n');
-		       break;
-		     }
+		    if (standard_opcodes != NULL)
+		      for (i = standard_opcodes[op_code - 1]; i > 0 ; --i)
+			{
+			  READ_ULEB (uladv, data, end);
+			  if (fjalar_debug_dump)
+			  printf ("0x%s%s", dwarf_vmatoa ("x", uladv),
+				  i == 1 ? "" : ", ");
+			}
+		    if (fjalar_debug_dump)
+		    putchar ('\n');
+		    break;
+		  }
 	    }
           if (fjalar_debug_dump)
 	  putchar ('\n');
@@ -7242,8 +7222,8 @@ display_loc_list (struct dwarf_section *section,
 	}
 
       if (fjalar_debug_dump) {
-        printf ("    ");
-        print_dwarf_vma (off, 4);
+      printf ("    ");
+      print_dwarf_vma (off, 4);
       }
 
       SAFE_BYTE_GET_AND_INC (begin, start, pointer_size, section_end);
@@ -7261,7 +7241,7 @@ display_loc_list (struct dwarf_section *section,
 	      && ! reloc_at (section, off + pointer_size))
 	    {
               if (fjalar_debug_dump)
-	        printf (_("<End of list>\n"));
+	      printf (_("<End of list>\n"));
 	      break;
 	    }
 	}
@@ -7275,9 +7255,9 @@ display_loc_list (struct dwarf_section *section,
 	  base_address_is_tombstone = (end == TOMBSTONE_ADDRESS);
 	  // end of Fjalar code
 	  if (fjalar_debug_dump) {
-	    print_dwarf_vma (begin, pointer_size);
-	    print_dwarf_vma (end, pointer_size);
-	    printf (_("(base address)\n"));
+	  print_dwarf_vma (begin, pointer_size);
+	  print_dwarf_vma (end, pointer_size);
+	  printf (_("(base address)\n"));
 	  }
 	  continue;
 	}
@@ -7313,8 +7293,8 @@ display_loc_list (struct dwarf_section *section,
 	}
 
       if (fjalar_debug_dump) {
-        print_dwarf_vma (begin + base_address, pointer_size);
-        print_dwarf_vma (end + base_address, pointer_size);
+      print_dwarf_vma (begin + base_address, pointer_size);
+      print_dwarf_vma (end + base_address, pointer_size);
       }
 
       // start of Fjalar code
@@ -7325,7 +7305,7 @@ display_loc_list (struct dwarf_section *section,
       // end of Fjalar code
 
       if (fjalar_debug_dump)
-        putchar ('(');
+      putchar ('(');
       need_frame_base = decode_location_expression (start,
 						    pointer_size,
 						    offset_size,
@@ -7334,7 +7314,7 @@ display_loc_list (struct dwarf_section *section,
 						    cu_offset, section,
                                                     PASS_2, OK_TO_HARVEST, 0, ll);
       if (fjalar_debug_dump)
-        putchar (')');
+      putchar (')');
 
       if (need_frame_base && !has_frame_base)
 	printf (_(" [without DW_AT_frame_base]"));
@@ -7345,7 +7325,7 @@ display_loc_list (struct dwarf_section *section,
 	fputs (_(" (start > end)"), stdout);
 
       if (fjalar_debug_dump)
-        putchar ('\n');
+      putchar ('\n');
 
       // start of Fjalar code
       // A tombstone base address means that this entry describes code that
@@ -7768,20 +7748,31 @@ loc_offsets_compar (const void *ap, const void *bp)
 
 #endif // This code is not needed for Fjalar.
 
+// Comparison function for VG_(ssort) on location list offsets.
+static Int
+compare_loc_offsets (const void *a, const void *b)
+{
+  dwarf_vma va = *(const dwarf_vma *) a;
+  dwarf_vma vb = *(const dwarf_vma *) b;
+  return (va > vb) - (va < vb);
+}
+
 // The body of this routine has been modified for Fjalar to be much simpler.
-// In particular, it assumes that the loc lists are in ascending order and
-// do not need to be sorted.  To date, we have not seen a contrary case.
-// Also we do not support Dwarf 5 debug_loclists.
+// It reads each location list at an offset that a DW_AT_location (or similar)
+// attribute names, ignoring anything else in the section, such as the
+// location view pairs (DW_AT_GNU_locviews) that GCC emits for optimized code.
+// Also we do not support Dwarf 5 debug_loclists:  this routine reads only
+// the .debug_loc section, and only for compilation units before DWARF 5.
 static int
 display_debug_loc (struct dwarf_section *section, void *file)
 {
-  unsigned char *start = section->start, *vstart = NULL;
+  unsigned char *start, *vstart = NULL;
   unsigned long bytes;
-  unsigned char *section_begin = start;
+  unsigned char *section_begin = section->start;
   unsigned int i;
   unsigned int j;
   bytes = section->size;
-  unsigned char *section_end = start + bytes;
+  bool is_loclists = VG_(strstr) (section->name, "debug_loclists") != NULL;
 
   if (bytes == 0) {
       FJALAR_DPRINTF (_("\nThe %s section is empty.\n"), section->name);
@@ -7794,17 +7785,39 @@ display_debug_loc (struct dwarf_section *section, void *file)
       return 0;
   }
 
+  if (is_loclists) {
+      FJALAR_DPRINTF (_("\nFjalar does not read the %s section.\n"), section->name);
+      return 1;
+  }
+
   if (fjalar_debug_dump) {
       printf (_("Contents of the .debug_loc section:\n\n"));
       printf (_("    Offset   Begin    End      Expression\n"));
   }
 
-  for (i = 0; start < section_end; i++) {
-      unsigned long offset;
+  for (i = 0; i < num_debug_info_entries; i++) {
       unsigned long base_address = debug_information [i].base_address;
+      unsigned int num_loc_offsets = debug_information [i].num_loc_offsets;
+      dwarf_vma *loc_offsets;
 
-      for (j = 0; j < debug_information[i].num_loc_offsets; j++) {
-          offset = start - section_begin;
+      // A DWARF 5 compilation unit's location lists are in .debug_loclists.
+      if (num_loc_offsets == 0 || debug_information [i].dwarf_version >= 5)
+        continue;
+
+      // Several attributes may name the same location list; read it once.
+      // Sort a copy, because debug_information [i].loc_offsets is in
+      // attribute order.
+      loc_offsets = (dwarf_vma *) xcmalloc (num_loc_offsets, sizeof (*loc_offsets));
+      VG_(memcpy) (loc_offsets, debug_information [i].loc_offsets,
+                   num_loc_offsets * sizeof (*loc_offsets));
+      VG_(ssort) (loc_offsets, num_loc_offsets, sizeof (*loc_offsets),
+                  compare_loc_offsets);
+
+      for (j = 0; j < num_loc_offsets; j++) {
+          unsigned long offset = loc_offsets [j];
+
+          if (j > 0 && offset == loc_offsets [j - 1])
+            continue;
 
           if (offset >= bytes)
             {
@@ -7813,8 +7826,11 @@ display_debug_loc (struct dwarf_section *section, void *file)
               continue;
             }
 
-            display_loc_list (section, &start, i, offset, base_address, &vstart, 0);
+          start = section_begin + offset;
+          display_loc_list (section, &start, i, offset, base_address, &vstart, 0);
       }
+
+      VG_(free) (loc_offsets);
   }
 
   if (fjalar_debug_dump)
@@ -9654,6 +9670,14 @@ regname (unsigned int regno, int name_only_p)
   return reg;
 }
 
+/* Returns the name of DWARF register REGNO, for Fjalar's debugging
+   output.  */
+const char *
+dwarf_reg_name (unsigned int regno)
+{
+  return regname (regno, 1);
+}
+
 static void
 frame_display_row (Frame_Chunk *fc, int *need_col_headers, unsigned int *max_regs)
 {
@@ -10051,7 +10075,7 @@ display_debug_frames (struct dwarf_section *section,
 		display_augmentation_data (augmentation_data, augmentation_data_len);
 
 	      putchar ('\n');
-              }
+	      }
 	    }
 	}
       else
@@ -10245,7 +10269,7 @@ display_debug_frames (struct dwarf_section *section,
           }
 
           if (fjalar_debug_dump)
-	    printf (" pc=");
+	  printf (" pc=");
 
 	  if (fc->segment_size)
 	   if (fjalar_debug_dump)
@@ -10261,7 +10285,7 @@ display_debug_frames (struct dwarf_section *section,
 	      display_augmentation_data (augmentation_data, augmentation_data_len);
 	      putchar ('\n');
 	    }
-          }
+	  }
 	}
 
       /* At this point, fc is the current chunk, cie (if any) is set, and
@@ -10446,7 +10470,7 @@ display_debug_frames (struct dwarf_section *section,
 	    {
 	    case DW_CFA_advance_loc:
 	      save_pc_begin = fc->pc_begin;
-              if (do_debug_frames_interp)
+	      if (do_debug_frames_interp)
 		frame_display_row (fc, &need_col_headers, &max_regs);
 	      else
 	       if (fjalar_debug_dump)
@@ -10693,11 +10717,11 @@ display_debug_frames (struct dwarf_section *section,
 		reg_prefix = bad_reg;
 	      if (! do_debug_frames_interp || *reg_prefix != '\0')
 		{
-		 if (fjalar_debug_dump) {
+		  if (fjalar_debug_dump) {
 		  printf ("  DW_CFA_register: %s%s in ",
 			  reg_prefix, regname (reg, 0));
 		  puts (regname (roffs, 0));
-                 }
+		  }
 		}
 	      if (*reg_prefix == '\0')
 		{
@@ -13121,7 +13145,9 @@ free_debug_memory (void)
 	  if (debug_information [i].max_loc_offsets)
 	    {
 	      VG_(free) (debug_information [i].loc_offsets);
+#if 0 // This code is not needed for Fjalar.
 	      VG_(free) (debug_information [i].have_frame_base);
+#endif // This code is not needed for Fjalar.
 	    }
 	  if (debug_information [i].max_range_lists)
 	    VG_(free) (debug_information [i].range_lists);
@@ -13369,7 +13395,7 @@ struct dwarf_section_display debug_displays[] =
   { { ".debug_sup",	    "",			     "",	 NO_ABBREVS },	    display_debug_not_supported, NULL,		false },
   /* Separate debug info files can contain their own .debug_str section,
      and this might be in *addition* to a .debug_str section already present
-     in the main file.  Hence we need to have two entries for .debug_str.  */
+     in the main file.	Hence we need to have two entries for .debug_str.  */
   { { ".debug_str",	    ".zdebug_str",	     "",	 NO_ABBREVS },	    display_debug_str,	    &do_debug_str,	false },
   { { ".note.gnu.build-id", "",                      "",	 NO_ABBREVS },	    display_debug_not_supported, NULL,		false },
 };

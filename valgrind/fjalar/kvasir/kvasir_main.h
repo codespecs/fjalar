@@ -168,6 +168,7 @@ Bool dyncomp_delayed_trace;
 Bool dyncomp_units_mode;
 Bool dyncomp_dataflow_only_mode;
 Bool dyncomp_dataflow_comparisons_mode;
+Bool dyncomp_warn_unhandled_ops;
 
 // Define MAX_DEBUG_INFO to turn on all sorts of
 // debugging printouts.  WARNING: you will get
@@ -180,6 +181,8 @@ Bool dyncomp_dataflow_comparisons_mode;
 #define DYNCOMP_DPRINTF(...) do { if (kvasir_with_dyncomp && dyncomp_print_debug_info) \
       printf(__VA_ARGS__); } while (0)
 
+// Evaluates its arguments only when tracing.  Callers rely on this to
+// avoid expensive computations, such as current_IP_description().
 #define DYNCOMP_TPRINTF(...) do { if (kvasir_with_dyncomp && dyncomp_print_trace_info) \
       printf(__VA_ARGS__); } while (0)
 

@@ -37,9 +37,10 @@ find . -type d -name CVS | xargs rm -rf
 # - Change mc_pre_clo_init() in mc_main.c to not print out the heading
 # that says Kvasir/DynComp but instead print out something
 # Fjalar-related.  And also change the contact info. and version number.
-# - Change fjalar/Makefile.am to build basic-tool instead of kvasir by
+# - Change fjalar/fjalar.am to build basic-tool instead of kvasir by
 # removing kvasir/ source files and adding 'basic-tool/basic-tool.c' to
-# FJALAR_SOURCES_COMMON
+# FJALAR_SOURCES_COMMON, and by removing kvasir/dyncomp_wrappers.c from
+# VGPRELOAD_FJALAR_SOURCES_COMMON.  (fjalar/Makefile.am is generated.)
 
 # Uncomment the following if you need to regenerate the patch;
 

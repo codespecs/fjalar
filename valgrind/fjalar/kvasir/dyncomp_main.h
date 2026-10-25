@@ -31,6 +31,7 @@
 #include "pub_tool_libcbase.h"
 #include "pub_tool_machine.h"
 #include "pub_tool_threadstate.h"
+#include "libvex_guest_amd64.h"   // for PENDING_CARRY_TAG1_OFFSET
 
 //RUDD-REMOVE
 //#include "../mac_shared.h"
@@ -131,6 +132,16 @@ UInt val_uf_union_tags_in_range(Addr a, SizeT len);
 void val_uf_union_tags_at_addr(Addr a1, Addr a2);
 void set_tag_for_GOT(Addr a, SizeT len);
 
+// Returns a description of the current instruction address, for
+// trace output.  It is expensive, so call it only when tracing; for
+// example, as an argument to DYNCOMP_TPRINTF, which evaluates its
+// arguments only when tracing.
+static __inline__ const HChar* current_IP_description(void) {
+  Addr eip = VG_(get_IP)(VG_(get_running_tid)());
+  // Describe this (probably live) address with current epoch
+  return VG_(describe_IP)(VG_(current_DiEpoch)(), eip, NULL);
+}
+
 static __inline__ void set_tag ( Addr a, UInt tag )
 {
   if (IS_SECONDARY_TAG_MAP_NULL(a)) {
@@ -176,17 +187,14 @@ static __inline__ UInt get_tag ( Addr a )
 static __inline__ UInt get_tag ( Addr a )
 {
   UInt tag;
-  Addr tid = VG_(get_IP)(VG_(get_running_tid)());
-  const HChar *eip_info;
-  // Describe this (probably live) address with current epoch
-  eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), tid, NULL);
 
   if (IS_SECONDARY_TAG_MAP_NULL(a)) {
     tag = 0; // 0 means NO tag for that byte
   } else {
     tag = primary_tag_map[PM_IDX(a)][SM_OFF(a)];
   }
-  printf("[DynComp] Fetching tag %d for %p at %s\n", tag, (void*)a, eip_info);
+  printf("[DynComp] Fetching tag %d for %p at %s\n", tag, (void*)a,
+         current_IP_description());
   return tag;
 }
 #endif
@@ -204,18 +212,7 @@ static __inline__ void clear_all_tags_in_range( Addr a, SizeT len ) {
 // Return a fresh tag and create a singleton set
 // for the uf_object associated with that tag
 static __inline__ UInt grab_fresh_tag(void) {
-  UInt tag;
-
-  // Let's try garbage collecting here.  Remember to assign
-  // tag = nextTag AFTER garbage collection (if it occurs) because
-  // nextTag may decrease due to the garbage collection step
-  if ((!dyncomp_no_gc) &&
-      totalNumTagsAssigned && // Don't garbage collect when it's zero
-      (totalNumTagsAssigned % dyncomp_gc_after_n_tags == 0)) {
-    garbage_collect_tags();
-  }
-
-  tag = nextTag;
+  UInt tag = nextTag;
 
   // Remember to make a new singleton set for the
   // uf_object associated with that tag
@@ -232,16 +229,12 @@ static __inline__ UInt grab_fresh_tag(void) {
   totalNumTagsAssigned++;
 #ifndef MAX_DEBUG_INFO
   if (dyncomp_print_trace_all) {
-#endif
-    Addr tid = VG_(get_IP)(VG_(get_running_tid)());
-    const HChar *eip_info;
-    // Describe this (probably live) address with current epoch
-    eip_info = VG_(describe_IP)(VG_(current_DiEpoch)(), tid, NULL);
-#ifndef MAX_DEBUG_INFO
-    DYNCOMP_TPRINTF("[DynComp] Creating fresh tag %u at %s\n", tag, eip_info);
+    DYNCOMP_TPRINTF("[DynComp] Creating fresh tag %u at %s\n", tag,
+                    current_IP_description());
   }
 #else
-    printf("[DynComp] Creating fresh tag %u at %s\n", tag, eip_info);
+  printf("[DynComp] Creating fresh tag %u at %s\n", tag,
+         current_IP_description());
 #endif
   return tag;
 
@@ -297,10 +290,36 @@ extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_4) ( Addr );
 extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_2) ( Addr );
 extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_1) ( Addr );
 
+// The number of slots of MC_(helperc_LOAD_TAG_N), and the size in
+// bytes of the largest load whose tags a slot can hold.
+#define DC_N_LOAD_TAG_SNAPSHOTS 128
+#define DC_LOAD_TAG_SNAPSHOT_BYTES 32
+
+extern UInt load_tag_snapshots[DC_N_LOAD_TAG_SNAPSHOTS][DC_LOAD_TAG_SNAPSHOT_BYTES];
+
+extern VG_REGPARM(3) UInt MC_(helperc_LOAD_TAG_N) ( Addr, UWord, Word );
+extern VG_REGPARM(3) void MC_(helperc_STORE_TAG_SNAPSHOT) ( Addr, UWord, UWord );
+
 extern VG_REGPARM(1) UInt MC_(helperc_CREATE_TAG) ( Addr static_id );
 
 extern VG_REGPARM(2) UInt MC_(helperc_MERGE_TAGS) ( UInt, UInt );
 extern VG_REGPARM(2) UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt, UInt );
+extern VG_REGPARM(3) UWord MC_(helperc_SUB_OPERAND_TAG) ( UWord, UWord, UWord );
+Bool dyncomp_cc_op_is_sub(UWord cc_op);
+Bool dyncomp_cc_op_is_sbb(UWord cc_op);
+Bool dyncomp_cc_op_preserves_carry(UWord cc_op);
+
+// The guest state offsets whose tags are the pending carry tags of the
+// CC_NDEP field; see notePendingCarryTags_DC.  Each is inside CC_NDEP, so
+// it is not the offset of any register, and the tags of offsets inside
+// CC_NDEP are not otherwise used.  The tag of an offset occupies 4 bytes
+// per byte of guest state starting at 4 times the offset (see
+// tagOffset_DC), and tags in the guest state are word-sized, so these
+// tags do not overlap one another or the tag of CC_NDEP itself.
+#define PENDING_CARRY_TAG1_OFFSET \
+  (offsetof(VexGuestAMD64State, guest_CC_NDEP) + 2)
+#define PENDING_CARRY_TAG2_OFFSET \
+  (offsetof(VexGuestAMD64State, guest_CC_NDEP) + 4)
 
 extern VG_REGPARM(3) UInt MC_(helperc_MERGE_3_TAGS) ( UInt, UInt, UInt );
 extern VG_REGPARM(3) UInt MC_(helperc_MERGE_4_TAGS) ( UInt, UInt, UInt, UInt );
