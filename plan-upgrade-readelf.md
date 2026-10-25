@@ -375,7 +375,7 @@ small.
      the same compiler, and only by becoming more like the DWARF 4 file;
      that is an improvement in DWARF 5 support, which step 8 records.  Any
      other difference is a regression.
-   - Run with `--fjalar-debug-dump=yes` on a DWARF 5 binary and compare
+   - Run with `--fjalar-debug-dump` on a DWARF 5 binary and compare
      against `readelf --debug-dump` from Binutils `$BUNEWVER` for sanity.
      The system `readelf` is usually from a different version (2.46 on
      Ubuntu 26.04, 2.41 on Rocky Linux 10), so build `$BUNEWVER`'s:
