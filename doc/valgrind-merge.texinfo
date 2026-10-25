@@ -898,20 +898,6 @@ uncommitted changes, so that this command undoes the merge:
 git -C $INV/fjalar reset --hard
 @end example
 
-@noindent
-To see how hard the merge will be without doing it, pass @option{--trial}:
-
-@example
-$INV/fjalar/merge-binutils.sh --trial $BUNEWVER
-@end example
-
-@noindent
-It prints the number of hunks, added lines, and removed lines in Fjalar's
-changes to each file of the old release, and the number of conflicts that
-the merge would have in each file.  It merges in memory, so it changes
-neither the tree nor any ref, and it allows uncommitted changes, which it
-includes in the measurement.
-
 The script works in @file{/tmp/$USER/binutils/}.  It downloads the old and
 new Binutils releases, verifies their signatures, and extracts the parts
 that it needs.  Then it creates two commits, which contain only the files
@@ -955,6 +941,19 @@ updating @code{BINUTILS_VERSION} in @file{$INV/fjalar/valgrind/REVISION}
 (see below), and commit it before you merge the next release.  The script
 takes the old version from that line, and it requires that the tree has no
 uncommitted changes.
+
+To see how hard a merge will be without doing it, pass @option{--trial}:
+
+@example
+$INV/fjalar/merge-binutils.sh --trial $BUNEWVER
+@end example
+
+@noindent
+For each file of the old release that Fjalar changed, it prints the number
+of hunks, added lines, and removed lines in Fjalar's changes.  Then it
+prints the number of conflicts that the merge would have in each file.  It
+merges in memory, so it changes neither the tree nor any ref, and it allows
+uncommitted changes, which it includes in the measurement.
 
 Now, handle the conflicts.  @file{merge-binutils.sh} lists the files with
 conflicts, and @command{git status} lists them as unmerged.  Each conflict

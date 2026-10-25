@@ -38,6 +38,10 @@
 set -e
 set -o pipefail
 
+# Make "cd" with a relative directory resolve it against the current
+# directory.
+unset CDPATH
+
 update=false
 if [ "${1-}" = --update ]; then
   update=true
@@ -115,8 +119,8 @@ run_fjalar() {
   # randomization, so that they are the same in every run.  They also depend
   # on the arguments and on the environment, including the current
   # directory, which Valgrind copies to the stacks.  So Fjalar runs with the
-  # same arguments, an environment that contains only PATH, and a current
-  # directory whose name is the same in every run.
+  # same arguments, an environment that contains only a fixed PATH, and a
+  # current directory whose name is the same in every run.
   rundir=$DIR/run/$name
   rm -rf "$rundir"
   mkdir -p "$rundir"
@@ -129,7 +133,7 @@ run_fjalar() {
     status=0
     # With DynComp, which is the default, Fjalar ignores --decls-only.
     (cd "$rundir" \
-       && env -i PATH="$PATH" timeout 600 setarch "$(uname -m)" -R \
+       && env -i PATH=/usr/bin:/bin timeout 600 setarch "$(uname -m)" -R \
             "$VALGRIND" --tool=fjalar --no-dyncomp --decls-only --decls-file="$config.decls" \
             "${options[@]}" "$program" > "$config.out" 2>&1) || status=$?
     # The output need not end with a newline.
@@ -139,9 +143,10 @@ run_fjalar() {
     echo "Exit status: $status" >> "$rundir/$config.out"
     # Valgrind's messages start with the process ID, as in "==1234==".  A
     # message can start in the middle of a line, after output that did not
-    # end with a newline.
-    sed -E 's/(==|--)[0-9]+(==|--)/\1PID\2/g' "$rundir/$config.out" \
-      > "$outdir/$name.$config.out"
+    # end with a newline.  After an assertion failure, Valgrind also prints
+    # the process ID as the thread's "lwpid".
+    sed -E -e 's/(==|--)[0-9]+(==|--)/\1PID\2/g' -e 's/\(lwpid [0-9]+\)/(lwpid PID)/g' \
+      "$rundir/$config.out" > "$outdir/$name.$config.out"
   done
   # The .decls file does not depend on the debugging options.
   if [ -f "$rundir/plain.decls" ]; then
@@ -165,9 +170,11 @@ mkdir "$DIR/$result.tmp"
 echo "Running Fjalar on the programs in $PROGRAMS"
 export VALGRIND DIR
 export -f run_fjalar
+# The inner shell does not inherit "set -e" and "set -o pipefail".
 # shellcheck disable=SC2016 # The inner shell expands $1 and $2.
 find "$PROGRAMS" -maxdepth 1 -type f -perm -u+x -print0 | sort -z \
-  | xargs -0 -P "$(nproc)" -I {} bash -c 'run_fjalar "$1" "$2"' _ {} "$DIR/$result.tmp"
+  | xargs -0 -P "$(nproc)" -I {} bash -e -o pipefail -c 'run_fjalar "$1" "$2"' \
+      _ {} "$DIR/$result.tmp"
 rm -rf "${DIR:?}/run" "${DIR:?}/$result"
 mv "$DIR/$result.tmp" "$DIR/$result"
 

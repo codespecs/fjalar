@@ -12,14 +12,14 @@ Output of `./merge-binutils.sh --trial 2.47` on 2026-10-25, at `c2f1d5c0`:
 
 | File                 | Hunks | Added | Removed | Conflicts |
 | -------------------- | ----: | ----: | ------: | --------: |
-| `dwarf.c`            |   225 |  1332 |     293 |       128 |
-| `readelf.c`          |   159 |   792 |     223 |        59 |
+| `dwarf.c`            |   225 |  1331 |     292 |       128 |
+| `readelf.c`          |   159 |   791 |     222 |        59 |
 | `elfcomm.c`          |    10 |    38 |       8 |         1 |
 | `dwarf.h`            |     3 |    23 |       0 |         1 |
 | `elfcomm.h`          |     3 |    15 |       1 |         1 |
 | `bucomm.h`           |     1 |     2 |       0 |         1 |
 | `include/` (4 files) |     6 |    12 |      12 |         0 |
-| total                |   407 |  2214 |     537 |       191 |
+| total                |   407 |  2212 |     535 |       191 |
 
 "Conflicts" is the number of conflicts in a merge of 2.47.  Whitespace
 differences were already removed (#134).

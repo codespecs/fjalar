@@ -191,6 +191,21 @@ binutils_commit() {
 base_commit=$(binutils_commit "$BUOLD")
 new_commit=$(binutils_commit "$BUNEW" "$base_commit")
 
+# Usage: fjalar_diff TARGET [PATHSPEC...]
+# Prints Fjalar's changes to the old version:  the diff from the base commit
+# to TARGET, a commit.  The diff omits the files that are not in the base
+# commit, which only Fjalar has.  The options make the output independent of
+# the user's Git configuration.  The diff algorithm is the one that the merge
+# uses, so that the hunks are the ones that the merge works with.
+fjalar_diff() {
+  local target=$1
+  shift
+  git diff --no-renames --no-ext-diff --no-textconv --no-color -U3 \
+    --diff-algorithm=histogram --inter-hunk-context=0 \
+    --src-prefix=a/ --dst-prefix=b/ --diff-filter=a \
+    "$base_commit" "$target" -- "$@"
+}
+
 # The options make rename detection independent of the user's Git
 # configuration.  They are Git's defaults, and a CHERRY-PICK-OPTION such as
 # -Xno-renames overrides them.  Unless the user has chosen a conflict style,
@@ -209,15 +224,14 @@ if [ "$trial" = true ]; then
   mapfile -t fjalar_paths < <(cut -f1 <<< "$paths")
   echo
   echo "Fjalar's changes to Binutils $BUOLDVER:"
-  # The options make the output independent of the user's Git configuration,
-  # as for binutils-Fjalar.diff below.
-  git diff --no-renames --no-ext-diff --no-textconv --no-color -U3 --diff-filter=a \
-    "$base_commit" "$target" -- "${fjalar_paths[@]}" \
+  fjalar_diff "$target" "${fjalar_paths[@]}" \
     | awk '
       # A line that starts with "---" or "+++" is a file header only before
       # the first hunk of the file; within a hunk, it is a changed line.
+      # The "---" line names the file even if Fjalar deleted it, because the
+      # diff omits added files.
       /^diff --git / { in_header = 1; next }
-      in_header && /^\+\+\+ / { file = substr($0, 7); files[++n] = file; next }
+      in_header && /^--- / { file = substr($0, 7); files[++n] = file; next }
       /^@@/ { in_header = 0; hunks[file]++; next }
       in_header { next }
       /^\+/ { added[file]++ }
@@ -269,11 +283,7 @@ fi
 git update-ref refs/binutils-merge/base "$base_commit"
 git update-ref refs/binutils-merge/new "$new_commit"
 
-# The options make the output independent of the user's Git configuration.
-# The diff omits the files that are not in the base commit, which only Fjalar
-# has.
-git diff --no-renames --no-ext-diff --no-textconv --no-color -U3 --diff-filter=a \
-  "$base_commit" HEAD > "$diff_tmp"
+fjalar_diff HEAD > "$diff_tmp"
 chmod "$(printf '%o' $((0666 & ~0$(umask))))" "$diff_tmp"
 mv "$diff_tmp" "$OUTDIR/binutils-Fjalar.diff"
 
