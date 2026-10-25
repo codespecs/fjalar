@@ -2,8 +2,9 @@
 
 # This script checks that a change leaves Fjalar's output unchanged, including
 # the debugging output that Fjalar's copies of Binutils' readelf.c and dwarf.c
-# print.  Use it when refactoring those files.  The Kvasir tests check only the
-# .decls and .dtrace files, not the debugging output.
+# print.  Use it when refactoring those files; see
+# plan-reduce-readelf-diffs.md.  The Kvasir tests check only the .decls and
+# .dtrace files, not the debugging output.
 #
 # Usage: ./compare-debug-output.sh [--update] DIR
 #
