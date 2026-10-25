@@ -21,7 +21,7 @@
 # do not run the program, three times:  with no debugging option, with
 # --fjalar-debug-dump, and with --fjalar-debug.  It saves the output of each
 # run, with Valgrind's process ID replaced by "PID", and the .decls file of
-# each run.
+# each run.  It fails if a run that succeeds writes no .decls file.
 #
 # If DIR/expected/ does not exist, the script saves the output there, as the
 # baseline.  Otherwise, it saves the output in DIR/actual/, compares it with
@@ -189,6 +189,9 @@ run_fjalar() {
       "$rundir/$config.out" > "$outdir/$name.$config.out"
     if [ -f "$rundir/$config.decls" ]; then
       mv "$rundir/$config.decls" "$outdir/$name.$config.decls"
+    elif [ "$status" -eq 0 ]; then
+      echo "compare-debug-output.sh: Fjalar succeeded on $name ($config) but wrote no .decls file" >&2
+      exit 1
     fi
   done
   rm -rf "$rundir"
@@ -205,12 +208,12 @@ if [ -z "$(find "$PROGRAMS" -maxdepth 1 -type f -perm -u+x -print -quit)" ]; the
 fi
 
 # run_fjalar records each run's exit status rather than stopping, because
-# Fjalar fails on some programs.  A failure to start Valgrind would instead
-# make every run fail the same way, so that the comparison would find no
-# differences.
+# Fjalar fails on some programs.  A failure to start Valgrind or to load
+# Fjalar would instead make every run fail the same way, so that the
+# comparison would find no differences.
 if ! env -i PATH=/usr/bin:/bin VALGRIND_LIB="$VALGRIND_LIB" \
-       timeout 600 setarch "$(uname -m)" -R "$VALGRIND" --version > /dev/null; then
-  echo "$0: cannot run $VALGRIND under timeout and \"setarch -R\"" >&2
+       timeout 600 setarch "$(uname -m)" -R "$VALGRIND" --tool=fjalar --help > /dev/null; then
+  echo "$0: cannot run Fjalar ($VALGRIND --tool=fjalar) under timeout and \"setarch -R\"" >&2
   exit 1
 fi
 
