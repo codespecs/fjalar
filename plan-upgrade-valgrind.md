@@ -216,11 +216,11 @@ it completely (merged, CI green) before starting this one.  That plan's
      distinct IROps, 84 of them on 256-bit vectors.  Compile each program
      with `-gdwarf-4 -no-pie`, because Fjalar does not read DWARF 5 and
      recognizes a function's entry point only at the address in the
-     debugging information.  Do not use `-march=native` or
-     `-march=x86-64-v4` unless Valgrind decodes AVX-512 (3.23 does not):
-     on a machine with AVX-512, they emit AVX-512 instructions, and if
-     Valgrind cannot decode them, the program dies with SIGILL before
-     DynComp sees its IROps.  Run each program with
+     debugging information.  Unless Valgrind decodes AVX-512 (3.23 does
+     not), do not use `-march=x86-64-v4`, which permits AVX-512
+     instructions on any machine, or `-march=native` on a machine with
+     AVX-512:  if Valgrind cannot decode an instruction, the program dies
+     with SIGILL before DynComp sees its IROps.  Run each program with
      `$INV/fjalar/valgrind/inst/bin/valgrind --tool=fjalar --dyncomp --dyncomp-unhandled-ops=warn`,
      which reports each unhandled operation once and continues, instead
      of stopping at the first; add
