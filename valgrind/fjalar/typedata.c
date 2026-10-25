@@ -26,7 +26,6 @@
 #include "my_libc.h"
 
 #include "typedata.h"
-#include "bucomm.h"
 #include "generate_fjalar_entries.h"
 
 #include "fjalar_main.h"
@@ -42,6 +41,10 @@
 #include "../coregrind/m_demangle/demangle.h"
 // For VG_(arena_free), to release the demanglers' results.
 #include "fjalar_core_decls.h"
+
+// Defined in dwarf.c and declared in bucomm.h, which typedata.c cannot
+// include
+void *xcalloc (size_t, size_t);
 
 // Most of the following information is taken from "DWARF Debugging
 // Information Format Version 4". Published by the DWARF Debugging
