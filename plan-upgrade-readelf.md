@@ -13,7 +13,7 @@ matches Binutils 2.39 (#134), so that step 3's `git cherry-pick` reports
 no whitespace-only conflicts.  CI enforces the expected regtest failures
 (#175), so step 7's CI run checks the regression tests on both distributions.
 Step 2 creates a local expected-failures list if this machine's OS has
-none, and step 7 compares against it before pushing.
+none, and step 7 of the last hop compares against it.
 
 Do this upgrade first, before `plan-upgrade-valgrind.md`, and finish it
 completely (landed, CI green) before starting the Valgrind upgrade.  Reasons:
@@ -58,7 +58,12 @@ new ones than to fix them.)
   `separate_info`) or its `dwarf_vma` type.  So if upstream changes those
   structures or types, only the Fjalar edits inside `dwarf.c` and
   `readelf.c` need adjusting, plus the signatures of those functions if
-  they use the changed types.
+  they use the changed types.  However, every Fjalar file that includes
+  `fjalar_dwarf.h`, directly or through `typedata.h` or `fjalar_include.h`,
+  compiles `elfcomm.h` and `dwarf.h`.  So if those headers start to need
+  a type or header that Valgrind's tool headers do not supply (such as
+  `<stdint.h>`'s `uint64_t`), or define a name that clashes with them, the
+  build of those files fails too.
 - Fjalar-local edits must survive the merge.  They are already in the Fjalar
   copy, so merging the upstream 2.39->2.47 changes into it preserves them;
   just don't clobber them while resolving conflicts.  The complete checklist
@@ -337,10 +342,12 @@ small.
    `valgrind/inst/bin/valgrind`.
 
 7. **Test.**  Run these from `$FJALAR` (`cd $FJALAR`).
-   - `./check-regtest.sh` — must report no unexpected failures, with no
-     change to `regtest-expected/*.txt`.  This upgrade doesn't touch
-     Valgrind, so any new failure is a bug in the merge (or an OS/compiler
-     update; then re-run on the old sources to check).
+   - In the last hop only, `./check-regtest.sh` — must report no
+     unexpected failures, with no change to `regtest-expected/*.txt`.  This
+     upgrade doesn't touch Valgrind, so any new failure is a bug in the
+     merge (or an OS/compiler update; then re-run on the old sources to
+     check).  In the other hops, rely on CI, which enforces the
+     expected-failure lists when you push (the last bullet of this step).
    - `make fjalar-test`.
    - `./test-kvasir.sh 2>&1 | tee kvasir-after.log` — compare with
      `kvasir-before.log`; the tests must pass with no goal-file changes.
@@ -348,7 +355,9 @@ small.
      `.dtrace` file, usually means an unguarded `printf`.
    - The regression tests may not exercise the newer DWARF paths, so also
      run Kvasir on the four binaries of step 2, as step 2 does, but writing
-     into `/tmp/$USER/binutils/decls-after/` (`mkdir -p` it first).  Then
+     into `/tmp/$USER/binutils/decls-after/`.  Delete and recreate that
+     directory first, so that no file from a previous hop remains if
+     Kvasir fails to write one.  Then
      run
      `diff -r /tmp/$USER/binutils/decls-before /tmp/$USER/binutils/decls-after`.
      The DWARF 4 files must not differ.  A DWARF 5 file may differ only

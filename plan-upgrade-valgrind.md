@@ -214,7 +214,7 @@ it completely (merged, CI green) before starting this one.  That plan's
      `-O3 -march=x86-64-v2`, and `-O3`, plus Daikon's `md5` and `bzip2`
      tests compiled with `-O3 -march=x86-64-v3`; they exercised 258
      distinct IROps, 84 of them on 256-bit vectors.  Compile each program
-     with `-gdwarf-4 -no-pie`, because Fjalar does not read DWARF 5 and
+     with `-gdwarf-4 -no-pie`, because Fjalar does not fully read DWARF 5 and
      recognizes a function's entry point only at the address in the
      debugging information.  Unless Valgrind decodes AVX-512 (3.23 does
      not), do not use `-march=x86-64-v4`, which permits AVX-512
