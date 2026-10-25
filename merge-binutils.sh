@@ -4,10 +4,14 @@
 # tree that contains this script.  See chapter "Updating Readelf from Binutils"
 # of doc/valgrind-merge.texinfo.
 #
-# Usage: ./merge-binutils.sh NEWVER [CHERRY-PICK-OPTION...]
+# Usage: ./merge-binutils.sh [--trial] NEWVER [CHERRY-PICK-OPTION...]
 #   NEWVER is the Binutils version to merge, such as 2.42.  The old version
 #   is BINUTILS_VERSION in valgrind/REVISION.  Each CHERRY-PICK-OPTION, such
-#   as -Xpatience, is passed to "git cherry-pick".
+#   as -Xpatience, is passed to "git cherry-pick", or with --trial to "git
+#   merge-tree".
+#   --trial  Report the size of Fjalar's changes to the old version and the
+#            number of conflicts that the merge would have, without changing
+#            the work tree, the index, or any ref.  See below.
 #
 # The script downloads and extracts both versions with download-binutils.sh.
 # It creates two commits, which it records as refs refs/binutils-merge/base
@@ -33,6 +37,15 @@
 # such headers that are in the new version's release but not in the
 # directories that it searches, and such headers that are not in the release,
 # such as system headers and headers that building Binutils generates.
+#
+# With --trial, the script measures how hard the merge would be, for example
+# to evaluate a change that reduces Fjalar's differences from Binutils.  It
+# measures the Binutils-derived files in the work tree, including
+# uncommitted changes to tracked files.  It prints, for each such file that
+# Fjalar changed, the number of hunks, added lines, and removed lines in
+# Fjalar's changes to the old version.  Then it does the merge in memory, with
+# "git merge-tree", and prints the number of conflicts in each file.  If NEWVER
+# is the old version, it prints only the changes.
 
 set -e
 set -o pipefail
@@ -45,8 +58,13 @@ unset CDPATH
 # Make sort and comm agree on the sort order.
 export LC_ALL=C
 
+trial=false
+if [ "${1-}" = --trial ]; then
+  trial=true
+  shift
+fi
 if [ $# -lt 1 ]; then
-  echo "Usage: $0 NEWVER [CHERRY-PICK-OPTION...]" >&2
+  echo "Usage: $0 [--trial] NEWVER [CHERRY-PICK-OPTION...]" >&2
   exit 2
 fi
 BUNEWVER=$1
@@ -71,7 +89,7 @@ if [ -z "$BUOLDVER" ]; then
   exit 1
 fi
 check_version "BINUTILS_VERSION in $FJALARDIR/valgrind/REVISION" "$BUOLDVER"
-if [ "$BUOLDVER" = "$BUNEWVER" ]; then
+if [ "$BUOLDVER" = "$BUNEWVER" ] && [ "$trial" = false ]; then
   echo "$0: Fjalar's readelf code is already from Binutils $BUNEWVER" >&2
   echo "There is nothing to merge.  To merge a newer version, pass it as NEWVER." >&2
   exit 1
@@ -83,9 +101,9 @@ if [ "$(printf '%s\n' "$BUOLDVER" "$BUNEWVER" | sort -V | tail -n 1)" != "$BUNEW
 fi
 
 # A clean work tree and index keep the merge separate from other changes, so
-# "git reset --hard" can undo it.
+# "git reset --hard" can undo it.  A trial changes neither.
 changes=$(git -C "$FJALARDIR" status --porcelain --untracked-files=no)
-if [ -n "$changes" ]; then
+if [ -n "$changes" ] && [ "$trial" = false ]; then
   echo "$0: $FJALARDIR has uncommitted changes:" >&2
   head -n 20 <<< "$changes" >&2
   exit 1
@@ -172,6 +190,80 @@ binutils_commit() {
 
 base_commit=$(binutils_commit "$BUOLD")
 new_commit=$(binutils_commit "$BUNEW" "$base_commit")
+
+# The options make rename detection independent of the user's Git
+# configuration.  They are Git's defaults, and a CHERRY-PICK-OPTION such as
+# -Xno-renames overrides them.  Unless the user has chosen a conflict style,
+# each conflict also shows the old version's text, which helps in resolving
+# it.
+options=(-c merge.renames=true -c merge.directoryRenames=conflict)
+if ! git config --get merge.conflictStyle > /dev/null; then
+  options+=(-c merge.conflictStyle=diff3)
+fi
+
+if [ "$trial" = true ]; then
+  # A commit of the work tree, which "git stash create" makes without
+  # changing any ref.  It prints nothing if the work tree has no changes.
+  target=$(git stash create)
+  target=${target:-HEAD}
+  mapfile -t fjalar_paths < <(cut -f1 <<< "$paths")
+  echo
+  echo "Fjalar's changes to Binutils $BUOLDVER:"
+  # The options make the output independent of the user's Git configuration,
+  # as for binutils-Fjalar.diff below.
+  git diff --no-renames --no-ext-diff --no-textconv --no-color -U3 --diff-filter=a \
+    "$base_commit" "$target" -- "${fjalar_paths[@]}" \
+    | awk '
+      # A line that starts with "---" or "+++" is a file header only before
+      # the first hunk of the file; within a hunk, it is a changed line.
+      /^diff --git / { in_header = 1; next }
+      in_header && /^\+\+\+ / { file = substr($0, 7); files[++n] = file; next }
+      /^@@/ { in_header = 0; hunks[file]++; next }
+      in_header { next }
+      /^\+/ { added[file]++ }
+      /^-/ { removed[file]++ }
+      END {
+        printf "  %6s %6s %8s  %s\n", "hunks", "added", "removed", "file"
+        for (i = 1; i <= n; i++) {
+          f = files[i]
+          printf "  %6d %6d %8d  %s\n", hunks[f], added[f], removed[f], f
+          total_hunks += hunks[f]; total_added += added[f]; total_removed += removed[f]
+        }
+        printf "  %6d %6d %8d  %s\n", total_hunks, total_added, total_removed, "total"
+      }'
+  if [ "$BUOLDVER" = "$BUNEWVER" ]; then
+    exit 0
+  fi
+  echo
+  echo "Conflicts in a merge of Binutils $BUNEWVER:"
+  status=0
+  merge_output=$(git "${options[@]}" merge-tree --write-tree --name-only --no-messages \
+                   --merge-base="$base_commit" "$@" "$target" "$new_commit") || status=$?
+  if [ "$status" -gt 1 ]; then
+    echo "$0: git merge-tree failed." >&2
+    exit 1
+  fi
+  # The first line is the merged tree; the others are the conflicted files.
+  tree=$(head -n 1 <<< "$merge_output")
+  conflicted=$(tail -n +2 <<< "$merge_output" | sort -u)
+  printf "  %9s  %s\n" "conflicts" "file"
+  total=0
+  if [ -n "$conflicted" ]; then
+    while IFS= read -r file; do
+      # A file with a conflict but no conflict markers, such as one that
+      # Fjalar changed and the new version deletes, counts as one conflict.
+      count=$(git cat-file blob "$tree:$file" 2> /dev/null | grep -c '^<<<<<<< ' || true)
+      if [ "${count:-0}" -eq 0 ]; then
+        count=1
+      fi
+      printf "  %9d  %s\n" "$count" "$file"
+      total=$((total + count))
+    done <<< "$conflicted"
+  fi
+  printf "  %9d  %s\n" "$total" "total"
+  exit 0
+fi
+
 # The refs keep the commits from being garbage-collected, and name them in
 # later commands, such as "git diff binutils-merge/base binutils-merge/new".
 git update-ref refs/binutils-merge/base "$base_commit"
@@ -185,15 +277,6 @@ git diff --no-renames --no-ext-diff --no-textconv --no-color -U3 --diff-filter=a
 chmod "$(printf '%o' $((0666 & ~0$(umask))))" "$diff_tmp"
 mv "$diff_tmp" "$OUTDIR/binutils-Fjalar.diff"
 
-# The options make rename detection independent of the user's Git
-# configuration.  They are Git's defaults, and a CHERRY-PICK-OPTION such as
-# -Xno-renames overrides them.  Unless the user has chosen a conflict style,
-# each conflict also shows the old version's text, which helps in resolving
-# it.
-options=(-c merge.renames=true -c merge.directoryRenames=conflict)
-if ! git config --get merge.conflictStyle > /dev/null; then
-  options+=(-c merge.conflictStyle=diff3)
-fi
 status=0
 git "${options[@]}" cherry-pick --no-commit "$@" "$new_commit" || status=$?
 conflicts=$(git diff --name-only --diff-filter=U)
