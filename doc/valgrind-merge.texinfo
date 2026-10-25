@@ -942,6 +942,21 @@ updating @code{BINUTILS_VERSION} in @file{$INV/fjalar/valgrind/REVISION}
 takes the old version from that line, and it requires that the tree has no
 uncommitted changes.
 
+To see how hard a merge will be without doing it, pass @option{--trial}:
+
+@example
+$INV/fjalar/merge-binutils.sh --trial $BUNEWVER
+@end example
+
+@noindent
+For each file of the old release that Fjalar changed, it prints the number
+of hunks, added lines, and removed lines in Fjalar's changes.  Then it
+prints the number of conflicts that the merge would have in each file.  It
+merges in memory, so it changes neither the tree nor any ref, and it allows
+uncommitted changes, which it includes in the measurement.  It requires Git
+2.40 or later, or 2.43 or later with a cherry-pick option such as
+@option{-Xpatience}.
+
 Now, handle the conflicts.  @file{merge-binutils.sh} lists the files with
 conflicts, and @command{git status} lists them as unmerged.  Each conflict
 in a file is marked by @samp{<<<<<<<}, @samp{|||||||}, @samp{=======}, and
@@ -1442,7 +1457,7 @@ contains both the Daikon and Fjalar source trees.)
 
 @table @asis
 @item $INV/fjalar/valgrind/configure.ac
-Change id to Fjalar; add fjalar/Makefile to list of targets
+Add fjalar/Makefile to list of targets
 @item $INV/fjalar/valgrind/coregrind/m_libcbase.c
 Add VG_ version of strnlen
 @item $INV/fjalar/valgrind/coregrind/m_libcfile.c
