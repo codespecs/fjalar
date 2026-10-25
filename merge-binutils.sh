@@ -11,7 +11,8 @@
 #   merge-tree".
 #   --trial  Report the size of Fjalar's changes to the old version and the
 #            number of conflicts that the merge would have, without changing
-#            the work tree, the index, or any ref.  See below.
+#            the work tree or any ref.  It requires Git 2.40 or later, or
+#            2.43 or later with a CHERRY-PICK-OPTION.  See below.
 #
 # The script downloads and extracts both versions with download-binutils.sh.
 # It creates two commits, which it records as refs refs/binutils-merge/base
@@ -44,7 +45,9 @@
 # uncommitted changes to tracked files.  It prints, for each such file that
 # Fjalar changed, the number of hunks, added lines, and removed lines in
 # Fjalar's changes to the old version.  Then it does the merge in memory, with
-# "git merge-tree", and prints the number of conflicts in each file.  If NEWVER
+# "git merge-tree", and prints the number of conflicts in each file.  It uses
+# the diff3 conflict style regardless of the user's Git configuration, because
+# the conflict style affects how Git splits and combines conflicts.  If NEWVER
 # is the old version, it prints only the changes.
 
 set -e
@@ -191,28 +194,28 @@ binutils_commit() {
 base_commit=$(binutils_commit "$BUOLD")
 new_commit=$(binutils_commit "$BUNEW" "$base_commit")
 
-# Usage: fjalar_diff TARGET [PATHSPEC...]
+# Usage: fjalar_diff TARGET
 # Prints Fjalar's changes to the old version:  the diff from the base commit
 # to TARGET, a commit.  The diff omits the files that are not in the base
 # commit, which only Fjalar has.  The options make the output independent of
-# the user's Git configuration.  The diff algorithm is the one that the merge
-# uses, so that the hunks are the ones that the merge works with.
+# the user's Git configuration.  The diff algorithm is the merge's default
+# one, so that the hunks are the ones that the merge works with, unless a
+# CHERRY-PICK-OPTION such as -Xpatience changes the merge's algorithm.
 fjalar_diff() {
-  local target=$1
-  shift
   git diff --no-renames --no-ext-diff --no-textconv --no-color -U3 \
     --diff-algorithm=histogram --inter-hunk-context=0 \
     --src-prefix=a/ --dst-prefix=b/ --diff-filter=a \
-    "$base_commit" "$target" -- "$@"
+    "$base_commit" "$1"
 }
 
 # The options make rename detection independent of the user's Git
 # configuration.  They are Git's defaults, and a CHERRY-PICK-OPTION such as
 # -Xno-renames overrides them.  Unless the user has chosen a conflict style,
 # each conflict also shows the old version's text, which helps in resolving
-# it.
+# it.  A trial always uses that style, because the style affects how many
+# conflicts there are.
 options=(-c merge.renames=true -c merge.directoryRenames=conflict)
-if ! git config --get merge.conflictStyle > /dev/null; then
+if [ "$trial" = true ] || ! git config --get merge.conflictStyle > /dev/null; then
   options+=(-c merge.conflictStyle=diff3)
 fi
 
@@ -221,10 +224,9 @@ if [ "$trial" = true ]; then
   # changing any ref.  It prints nothing if the work tree has no changes.
   target=$(git stash create)
   target=${target:-HEAD}
-  mapfile -t fjalar_paths < <(cut -f1 <<< "$paths")
   echo
   echo "Fjalar's changes to Binutils $BUOLDVER:"
-  fjalar_diff "$target" "${fjalar_paths[@]}" \
+  fjalar_diff "$target" \
     | awk '
       # A line that starts with "---" or "+++" is a file header only before
       # the first hunk of the file; within a hunk, it is a changed line.
@@ -254,7 +256,8 @@ if [ "$trial" = true ]; then
   merge_output=$(git "${options[@]}" merge-tree --write-tree --name-only --no-messages \
                    --merge-base="$base_commit" "$@" "$target" "$new_commit") || status=$?
   if [ "$status" -gt 1 ]; then
-    echo "$0: git merge-tree failed." >&2
+    echo "$0: git merge-tree failed.  --trial requires Git 2.40 or later, or" >&2
+    echo "2.43 or later with a CHERRY-PICK-OPTION." >&2
     exit 1
   fi
   # The first line is the merged tree; the others are the conflicted files.

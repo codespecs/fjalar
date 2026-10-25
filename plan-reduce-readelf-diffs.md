@@ -91,9 +91,9 @@ other phases.
    measures uncommitted changes too.  It takes a few seconds.  With NEWVER
    equal to the old version, it reports only the size of the changes.
 2. `./compare-debug-output.sh DIR` compiles the C and C++ programs in
-   `valgrind/fjalar/tests/` several ways, runs Fjalar with `--decls-only` on
-   each of them with no debugging option, with `--fjalar-debug-dump`, and with
-   `--fjalar-debug`, and compares the output with a baseline that an earlier
+   `valgrind/fjalar/tests/` several ways, runs Fjalar with `--no-dyncomp` and
+   `--decls-only` on each of them with no debugging option, with
+   `--fjalar-debug-dump`, and with `--fjalar-debug`, and compares the output with a baseline that an earlier
    run saved.  Category 2 changes in particular must leave this output
    identical, and `./test-kvasir.sh` only checks the `.decls` and `.dtrace`
    output.  Running each configuration separately catches a `printf` that

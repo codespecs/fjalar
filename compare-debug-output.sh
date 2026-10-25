@@ -159,6 +159,11 @@ if [ ! -d "$PROGRAMS" ]; then
   echo "Compiling the test programs into $PROGRAMS"
   compile_programs
 fi
+if [ -z "$(find "$PROGRAMS" -maxdepth 1 -type f -perm -u+x -print -quit)" ]; then
+  echo "$0: no test program compiled; see the .log files in $PROGRAMS," >&2
+  echo "then delete $PROGRAMS and re-run this script." >&2
+  exit 1
+fi
 
 if [ "$update" = true ] || [ ! -d "$DIR/expected" ]; then
   result=expected
