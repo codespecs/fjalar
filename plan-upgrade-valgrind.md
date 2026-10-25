@@ -307,6 +307,27 @@ Memcheck and DynComp depend tightly on Valgrind core:
    - Run plain Memcheck (`valgrind/inst/bin/valgrind --tool=memcheck`) on a
      small program, to make sure the core still works independently of
      Fjalar.
+   - Look for DynComp panics on unhandled IROps by running vectorized
+     programs under DynComp.  On 3.23, before the upgrade, this found one
+     (#172).  The programs were five small ones (sums, integer arithmetic,
+     floating-point arithmetic, string functions, and bit manipulation),
+     each compiled with `-O2 -march=x86-64-v3`, `-O3 -march=x86-64-v3`,
+     `-O3 -march=x86-64-v2`, and `-O3`, plus Daikon's `md5` and `bzip2`
+     tests compiled with `-O3 -march=x86-64-v3`; they exercised 258
+     distinct IROps, 84 of them on 256-bit vectors.  Compile each program
+     with `-gdwarf-4 -no-pie`, because Fjalar does not read DWARF 5 and
+     recognizes a function's entry point only at the address in the
+     debugging information.  Do not use `-march=native` or
+     `-march=x86-64-v4` unless Valgrind decodes AVX-512 (3.23 does not):
+     on a machine with AVX-512, they emit AVX-512 instructions, and if
+     Valgrind cannot decode them, the program dies with SIGILL before
+     DynComp sees its IROps.  Run each program with
+     `$FJALAR/valgrind/inst/bin/valgrind --tool=fjalar --dyncomp --dyncomp-unhandled-ops=warn`,
+     which reports each unhandled operation once and continues, instead
+     of stopping at the first; add
+     `--trace-flags=01000000 --trace-notbelow=0` to see which IROps a run
+     exercised.  Do not use `$DAIKONDIR/scripts/kvasir-dtrace`:  it runs
+     the Kvasir in `$DAIKONDIR/fjalar`, which may be a different tree.
    - Push the branch and confirm GitHub Actions CI passes (Ubuntu and
      Rocky Linux 10: build, regtest, and Kvasir jobs).  The CI containers
      differ from your machine, so the regtest jobs will probably fail
