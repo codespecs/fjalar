@@ -1,15 +1,3 @@
-/*
-   This file has been modified for Fjalar, a dynamic analysis framework
-   for C/C++ programs.
-
-   Copyright (C) 2007-2026 University of Washington Computer Science & Engineering Department,
-   Programming Languages and Software Engineering Group
-
-   This program is free software; you can redistribute it and/or
-   modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
-   License, or (at your option) any later version.
-*/
 
 /*--------------------------------------------------------------------*/
 /*--- Management, printing, etc, of errors and suppressions.       ---*/
@@ -38,8 +26,6 @@
 
    The GNU General Public License is contained in the file COPYING.
 */
-
-#include "my_libc.h"
 
 #include "pub_tool_basics.h"
 #include "pub_tool_gdbserver.h"
@@ -871,7 +857,7 @@ void MC_(pp_Error) ( const Error* err )
          break;
 
       default: 
-         printf("Error:\n  unknown Memcheck error code %d\n",
+         VG_(printf)("Error:\n  unknown Memcheck error code %d\n",
                      VG_(get_error_kind)(err));
          VG_(tool_panic)("unknown error code in mc_pp_Error)");
    }
@@ -1292,7 +1278,7 @@ Bool MC_(eq_Error) ( VgRes res, const Error* e1, const Error* e2 )
                          "since it's handled with VG_(unique_error)()!");
 
       default: 
-         printf("Error:\n  unknown error code %d\n",
+         VG_(printf)("Error:\n  unknown error code %d\n",
                      VG_(get_error_kind)(e1));
          VG_(tool_panic)("unknown error code in mc_eq_Error");
    }
@@ -1824,7 +1810,7 @@ Bool MC_(error_matches_suppression) ( const Error* err, const Supp* su )
          return (ekind == Err_AlignMismatch);
 
       default:
-         printf("Error:\n"
+         VG_(printf)("Error:\n"
                      "  unknown suppression type %d\n",
                      VG_(get_supp_kind)(su));
          VG_(tool_panic)("unknown suppression type in "
