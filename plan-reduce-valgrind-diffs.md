@@ -25,12 +25,12 @@ warning baseline, so do not run the two at the same time.
 | Step 0 | — | Not started; the CI whitespace check of Step 2 waits for it |
 | Step 1 | #182 | Landed |
 | Step 2 | #183 | Landed, without the CI check |
-| Step 3 | #184 | Open |
+| Step 3 | #184 | Landed |
 | Steps 4-9 | — | Not started |
 
-PR #184 also fixes 2 bugs that the commented-out lines it deletes had hidden
+PR #184 also fixed 2 bugs that the commented-out lines it deleted had hidden
 (`MC_(instrument)` leaked `dce.tmpMap`, and Fjalar rejected Memcheck's
-malloc-replacement options such as `--alignment`), and it rewords Fjalar's
+malloc-replacement options such as `--alignment`), and it reworded Fjalar's
 header block in the 9 Memcheck copies that carry one.
 
 ## How the differences were measured
@@ -179,7 +179,7 @@ whitespace described above.
 
 ### Step 3: revert cosmetic edits (PR 3)
 
-Open as #184.
+Landed as #184.
 
 None of these changes behavior, except as noted:
 
