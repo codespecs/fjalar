@@ -458,6 +458,7 @@ typedef struct
 extern dwarf_entry* dwarf_entry_array;
 extern compile_unit** comp_unit_info;
 extern unsigned long dwarf_entry_array_size;
+extern unsigned long num_unsupported_version_comp_units;
 extern location_list *debug_loc_list;
 
 unsigned int hashString(const char* str);

@@ -70,10 +70,14 @@ Memcheck and DynComp depend tightly on Valgrind core:
   upgrade.  To list them:
 
   ```sh
-  gh pr list -R codespecs/fjalar --json number,files --jq \
-    '.[] | select(any(.files[]; .path | startswith("valgrind/")))
+  gh pr list -R codespecs/fjalar --limit 1000 --json number,files --jq \
+    '.[] | select((.files | length) >= 100
+                  or any(.files[]; .path | startswith("valgrind/")))
          | .number'
   ```
+
+  `gh` returns only the first 100 files of each PR, so the command also
+  lists every PR with 100 or more files; check those by hand.
 
 ## Steps
 
@@ -136,11 +140,11 @@ Memcheck and DynComp depend tightly on Valgrind core:
    them, because Fjalar builds every Memcheck source file); files that
    `valgrind-old` has but Fjalar does not track, such as empty files and
    files that match `.gitignore` (add those that Fjalar should have); and
-   files whose mode differs from that in `valgrind-old`.  Against 3.23.0,
-   that last list has 3 files with an extra execute bit and 4 regular files
-   that are symbolic links in Valgrind (fix those that Fjalar did not
-   change on purpose).
-   Commit these corrections before merging, because
+   files whose mode differs from that in `valgrind-old` (fix those that
+   Fjalar did not change on purpose).  Against 3.23.0, these corrections
+   are already committed, so the script lists only Fjalar's own
+   `valgrind/fjalar/mc_translate.h`.
+   Commit any corrections before merging, because
    `merge-valgrind.sh` requires a clean work tree.  (The merge handles the
    files that upstream added or removed since `$VOLDTAG`.)
 

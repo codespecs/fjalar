@@ -23,7 +23,7 @@ m4_define([v_version],
      m4_if(v_suffix_ver, [],
        [v_major_ver.v_minor_ver.v_micro_ver],
        [v_major_ver.v_minor_ver.v_micro_ver.v_suffix_ver]))
-AC_INIT([Valgrind],[v_version.Fjalar],[daikon-developers@googlegroups.com])
+AC_INIT([Valgrind],[v_version],[valgrind-users@lists.sourceforge.net])
 
 # For valgrind.h
 AC_SUBST(VG_VER_MAJOR, v_major_ver)
