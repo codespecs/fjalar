@@ -17,6 +17,22 @@ merge.  This work is independent of the Binutils/readelf upgrade
 (`plan-upgrade-readelf.md`), except that both touch the build and the
 warning baseline, so do not run the two at the same time.
 
+## Status
+
+| Step | Pull request | State |
+| --- | --- | --- |
+| Version string in `configure.ac` (not a numbered step) | #181 | Landed |
+| Step 0 | — | Not started; the CI whitespace check of Step 2 waits for it |
+| Step 1 | #182 | Landed |
+| Step 2 | #183 | Landed, without the CI check |
+| Step 3 | #184 | Open |
+| Steps 4-9 | — | Not started |
+
+PR #184 also fixes 2 bugs that the commented-out lines it deletes had hidden
+(`MC_(instrument)` leaked `dce.tmpMap`, and Fjalar rejected Memcheck's
+malloc-replacement options such as `--alignment`), and it rewords Fjalar's
+header block in the 9 Memcheck copies that carry one.
+
 ## How the differences were measured
 
 The base tree is the one that `merge-valgrind.sh` builds as
@@ -98,6 +114,8 @@ The largest differences, by kind:
 
 ### Step 0: a script that measures the differences
 
+Not started.
+
 Add `diff-from-valgrind.sh [GIT-DIFF-OPTION...]`, which builds the base
 tree from `$INV/valgrind-old` exactly as `merge-valgrind.sh`'s
 `upstream_commit` does (factor that function into a shared file, as
@@ -107,6 +125,8 @@ tree from `$INV/valgrind-old` exactly as `merge-valgrind.sh`'s
 description below, so that reviewers see the reduction.
 
 ### Step 1: restore file types, modes, and missing files (PR 1)
+
+Landed as #182.
 
 - `./list-file-discrepancies.sh $INV/valgrind-old` lists all of them.
 - Replace the 4 regular files by upstream's symbolic links, remove the 3
@@ -119,6 +139,9 @@ Removes about 1400 lines.  Risk: none (the files are upstream test inputs
 and editor configuration).
 
 ### Step 2: restore upstream whitespace (PR 2)
+
+Landed as #183, with the `.editorconfig` but without the CI check,
+which needs Step 0's script.
 
 For each upstream file that differs from the base:
 
@@ -155,6 +178,8 @@ Removes about 1530 lines.  Risk:  low, given the review of significant
 whitespace described above.
 
 ### Step 3: revert cosmetic edits (PR 3)
+
+Open as #184.
 
 None of these changes behavior, except as noted:
 
