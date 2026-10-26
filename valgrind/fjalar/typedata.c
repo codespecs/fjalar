@@ -42,6 +42,10 @@
 // For VG_(arena_free), to release the demanglers' results.
 #include "fjalar_core_decls.h"
 
+// Defined in dwarf.c and declared in bucomm.h, which typedata.c cannot
+// include
+void *xcalloc (size_t, size_t);
+
 // Most of the following information is taken from "DWARF Debugging
 // Information Format Version 4". Published by the DWARF Debugging
 // Information Format Committee and may be found at http://www.dwarfstd.org.
@@ -125,6 +129,10 @@ static unsigned long comp_unit_info_idx = 0;
 
 // The size of this array
 unsigned long dwarf_entry_array_size = 0;
+
+// The number of compilation units that dwarf.c skips because Fjalar does not
+// read their DWARF version
+unsigned long num_unsupported_version_comp_units = 0;
 
 // Global hash table containing a mapping between
 // Location list offsets and a linked list representing
@@ -3047,8 +3055,9 @@ Effects: Initializes sets up dwarf_entry_array to hold num_entries components
 */
 void initialize_dwarf_entry_array(unsigned long num_entries)
 {
-  // use calloc to blank everything upon initialization
-  dwarf_entry_array = VG_(calloc)("typedata.c: initialize_dwarf_entry_array", num_entries, sizeof *dwarf_entry_array);
+  // use calloc to blank everything upon initialization.  xcalloc, unlike
+  // VG_(calloc), permits num_entries to be 0.
+  dwarf_entry_array = xcalloc(num_entries, sizeof *dwarf_entry_array);
 
   // Also initialize typedef_names_map at this time
   typedef_names_map = genallocatehashtable(0,
@@ -3063,7 +3072,8 @@ Effects: Initializes and sets up an array of the dwarf entries for all compile u
 */
 void initialize_compile_unit_array(unsigned long num_entries)
 {
-  comp_unit_info = VG_(calloc)("typedata.c: initialize_compile_unit_info", num_entries, sizeof *comp_unit_info);
+  // xcalloc, unlike VG_(calloc), permits num_entries to be 0.
+  comp_unit_info = xcalloc(num_entries, sizeof *comp_unit_info);
 } 
 
 
