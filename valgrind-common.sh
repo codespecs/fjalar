@@ -17,22 +17,21 @@ check_toplevel() {
 
 # At the next merge, it is easy to forget to move valgrind-new to
 # valgrind-old, or to clone the wrong tag.
-# Usage: check_tag DIR TAG_VARIABLE
-# If variable TAG_VARIABLE is set, checks that DIR is at the tag that is the
-# variable's value.
+# Usage: check_tag DIR TAG WHENCE
+# If TAG is not empty, checks that DIR is at tag TAG.  WHENCE, such as "the
+# value of VNEWTAG", says in the error messages where TAG came from.
 check_tag() {
-  local dir=$1 var=$2
-  local tag=${!var}
+  local dir=$1 tag=$2 whence=$3
   local commit
   if [ -z "$tag" ]; then
     return
   fi
   if ! commit=$(git -C "$dir" rev-parse --verify -q "refs/tags/$tag^{commit}"); then
-    echo "$0: $dir has no tag $tag (the value of $var)." >&2
+    echo "$0: $dir has no tag $tag ($whence)." >&2
     exit 1
   fi
   if [ "$(git -C "$dir" rev-parse HEAD)" != "$commit" ]; then
-    echo "$0: $dir is not at tag $tag (the value of $var)." >&2
+    echo "$0: $dir is not at tag $tag ($whence)." >&2
     exit 1
   fi
 }
@@ -57,11 +56,11 @@ valgrind_release_tag() {
 # valgrind/fjalar/, where Fjalar keeps its modified copy of Memcheck.
 # generate-fjalar-makefile.sh generates Fjalar's version of
 # memcheck/Makefile.am, so the tree omits it.  Run it in a Fjalar tree, which
-# gets the tree and its objects.  It uses the file that variable tmpindex
-# names as a temporary index, and removes that file.
-# shellcheck disable=SC2154 # The caller sets tmpindex.
-upstream_tree() {
-  local dir=$1 tree
+# gets the tree and its objects.
+# The body is a subshell, so that the trap that removes the temporary index
+# replaces no trap of the caller.
+upstream_tree() (
+  local dir=$1 tree tmpindex
   tree=$(git -C "$dir" rev-parse "HEAD^{tree}")
   # Copy the tree's objects into the Fjalar repository, unless an earlier
   # call copied them, which it did if the tree is there.  "git fetch" would
@@ -72,11 +71,13 @@ upstream_tree() {
     git -C "$dir" rev-list --objects "$tree" | cut -d' ' -f1 \
       | git -C "$dir" pack-objects -q --stdout | git index-pack --stdin > /dev/null
   fi
+  tmpindex=$(mktemp)
+  trap 'rm -f "$tmpindex"' EXIT
+  # "git read-tree --prefix" rejects an empty index file.
   rm -f "$tmpindex"
   GIT_INDEX_FILE=$tmpindex git read-tree --prefix=valgrind/ "$tree"
   GIT_INDEX_FILE=$tmpindex git read-tree --prefix=valgrind/fjalar/ "$tree:memcheck"
   GIT_INDEX_FILE=$tmpindex git rm -q -r -f --cached --ignore-unmatch -- \
     valgrind/fjalar/docs valgrind/fjalar/tests valgrind/fjalar/Makefile.am
   GIT_INDEX_FILE=$tmpindex git write-tree
-  rm -f "$tmpindex"
-}
+)

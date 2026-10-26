@@ -2,8 +2,8 @@
 
 # This script checks that Fjalar's copies of upstream Valgrind files have
 # upstream's whitespace:  that diff-from-valgrind.sh reports the same changes
-# when it ignores whitespace as when it does not.  A change of whitespace
-# alone serves no purpose, but it is a potential conflict in the next
+# when it ignores whitespace and blank lines as when it does not.  A change of
+# whitespace alone serves no purpose, but it is a potential conflict in the next
 # Valgrind merge.  An editor that removes trailing whitespace when it saves a
 # file makes such changes; see .editorconfig.
 #
@@ -31,9 +31,10 @@ fjalar=$(dirname -- "$(readlink -f -- "$0")")
 
 # Each line is the number of added lines, the number of removed lines, and
 # the file name.  Ignoring whitespace removes a file whose changes are all
-# whitespace, and lowers the numbers of a file that has some.
+# whitespace, and lowers the numbers of a file that has some.  -w does not
+# ignore an added or removed blank line, but --ignore-blank-lines does.
 plain=$("$fjalar/diff-from-valgrind.sh" "$@" --numstat)
-ignoring=$("$fjalar/diff-from-valgrind.sh" "$@" --numstat -w)
+ignoring=$("$fjalar/diff-from-valgrind.sh" "$@" --numstat -w --ignore-blank-lines)
 if [ "$plain" = "$ignoring" ]; then
   echo "$0: Fjalar's copies of upstream Valgrind files have upstream's whitespace."
   exit 0
@@ -44,5 +45,10 @@ echo "$0: these files differ from upstream Valgrind in whitespace:"
 join -t $'\t' -j 3 -a 1 -e 0 -o 1.1,1.2,2.1,2.2,0 \
     <(sort -t $'\t' -k 3 <<< "$plain") <(sort -t $'\t' -k 3 <<< "$ignoring") \
   | awk -F '\t' '$1 != $3 || $2 != $4 { print $5 ": +" $1 " -" $2 ", but +" $3 " -" $4 " ignoring whitespace" }'
-echo "To see the changes:  ./diff-from-valgrind.sh -- FILE"
+# The command is relative to the current directory, as $0 and DIR are.
+# --ws-error-highlight=all highlights trailing whitespace in removed lines as
+# well as in added lines.
+printf 'To see the changes:  %q' "$(dirname -- "$0")/diff-from-valgrind.sh"
+printf ' %q' "$@" --ws-error-highlight=all
+printf ' -- FILE\n'
 exit 1

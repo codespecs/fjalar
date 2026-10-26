@@ -70,14 +70,7 @@ cd "$fjalar"
 # A clone of another release, such as one left over from a merge, would
 # make the diff include upstream's changes between the two releases.
 tag=$(valgrind_release_tag)
-if ! tag_commit=$(git -C "$valgrind" rev-parse --verify -q "refs/tags/$tag^{commit}") \
-    || [ "$(git -C "$valgrind" rev-parse HEAD)" != "$tag_commit" ]; then
-  echo "$0: $valgrind is not at tag $tag, the release that valgrind/REVISION names." >&2
-  exit 1
-fi
-
-tmpindex=$(mktemp)
-trap 'rm -f "$tmpindex"' EXIT
+check_tag "$valgrind" "$tag" "the release that valgrind/REVISION names"
 
 base=$(upstream_tree "$valgrind")
 # --diff-filter=a omits the files that only Fjalar has.  With rename

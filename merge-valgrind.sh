@@ -5,8 +5,10 @@
 # doc/valgrind-merge.texinfo.
 # Usage: merge-valgrind.sh [CHERRY-PICK-OPTION...]
 # The base of the merge is the commit checked out in $INV/valgrind-old, and
-# the target is the commit checked out in $INV/valgrind-new.  If VOLDTAG or
-# VNEWTAG is set, the script checks that the clone is at that tag.
+# the target is the commit checked out in $INV/valgrind-new.  The script
+# checks that valgrind-old is at tag VOLDTAG, which by default is the release
+# that valgrind/REVISION names, and, if VNEWTAG is set, that valgrind-new is
+# at tag VNEWTAG.
 #
 # The script records Fjalar's HEAD as ref refs/valgrind-merge/fjalar, and
 # creates two commits, which it records as refs
@@ -55,8 +57,15 @@ source "$fjalar/valgrind-common.sh"
 check_toplevel "$fjalar"
 check_toplevel "$INV/valgrind-old"
 check_toplevel "$INV/valgrind-new"
-check_tag "$INV/valgrind-old" VOLDTAG
-check_tag "$INV/valgrind-new" VNEWTAG
+# Until the merge is committed, valgrind/REVISION names the release that
+# Fjalar is based on, which is the base of the merge.
+if [ -n "$VOLDTAG" ]; then
+  check_tag "$INV/valgrind-old" "$VOLDTAG" "the value of VOLDTAG"
+else
+  oldtag=$(cd "$fjalar" && valgrind_release_tag)
+  check_tag "$INV/valgrind-old" "$oldtag" "the release that valgrind/REVISION names"
+fi
+check_tag "$INV/valgrind-new" "$VNEWTAG" "the value of VNEWTAG"
 
 # The merge uses the committed trees of the upstream clones, so build
 # products in them do no harm, but a change to a tracked file would be
@@ -77,9 +86,6 @@ check_unchanged "$INV/valgrind-new"
 check_unchanged "$fjalar"
 
 cd "$fjalar"
-
-tmpindex=$(mktemp)
-trap 'rm -f "$tmpindex"' EXIT
 
 # Usage: upstream_commit DIR [PARENT]
 # Prints the name of a new commit, with parent PARENT if it is given, whose
