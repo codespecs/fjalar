@@ -1,6 +1,6 @@
 /*
-   This file is part of Fjalar, a dynamic analysis framework for C/C++
-   programs.
+   This file has been modified for Fjalar, a dynamic analysis framework
+   for C/C++ programs.
 
    Copyright (C) 2007-2026 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group

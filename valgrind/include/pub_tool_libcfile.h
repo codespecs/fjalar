@@ -71,7 +71,7 @@ struct vg_stat {
 
 extern SysRes VG_(mknod)  ( const HChar* pathname, Int mode, UWord dev );
 extern SysRes VG_(open)   ( const HChar* pathname, Int flags, Int mode );
-/* fd_open works like the open(2) system call: 
+/* fd_open words like the open(2) system call: 
    returns fd if success, -1 otherwise */
 extern Int VG_(fd_open)  (const HChar* pathname, Int flags, Int mode);
 extern void   VG_(close)  ( Int fd );
