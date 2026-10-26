@@ -882,10 +882,33 @@ instructions in that section).
 
 Set @env{BUNEWVER} to the Binutils version to merge; find the latest one
 at @uref{https://ftp.gnu.org/gnu/binutils/?C=M;O=D}.  The old version is
-the one in @file{$INV/fjalar/valgrind/REVISION}.  Then merge:
+the one in @file{$INV/fjalar/valgrind/REVISION}.
 
 @example
 export BUNEWVER=2.42
+@end example
+
+To see how hard the merge will be without doing it, pass @option{--trial}:
+
+@example
+$INV/fjalar/merge-binutils.sh --trial $BUNEWVER
+@end example
+
+@noindent
+For each file of the old release that Fjalar changed, it prints the number
+of changes (runs of consecutive changed lines), added lines, and removed
+lines in Fjalar's version.  Then it prints the number of conflicts that the
+merge would have in each file.  It merges in memory, so it changes neither
+the tree, the index, nor any ref, and it allows uncommitted changes, which
+it includes in the measurement.  It requires Git 2.40 or later, or 2.43 or
+later with a cherry-pick option.  With @option{--trial}, the only
+cherry-pick options are strategy options, such as @option{-Xpatience}.  If
+the merge would have too many conflicts to resolve by hand, merge an
+intermediate Binutils release first, as described below.
+
+Then merge:
+
+@example
 $INV/fjalar/merge-binutils.sh $BUNEWVER
 @end example
 
@@ -946,10 +969,10 @@ Now, handle the conflicts.  @file{merge-binutils.sh} lists the files with
 conflicts, and @command{git status} lists them as unmerged.  Each conflict
 in a file is marked by @samp{<<<<<<<}, @samp{|||||||}, @samp{=======}, and
 @samp{>>>>>>>} lines, which surround Fjalar's version, the old Binutils
-version, and the new Binutils version.  (The old Binutils version is
-omitted if your Git configuration sets @code{merge.conflictStyle} to
-@samp{merge}.)  Mark each file as resolved with @command{git add}.  When
-you are done, this command produces no output:
+version, and the new Binutils version.  (The script uses this conflict
+style regardless of your Git configuration's @code{merge.conflictStyle}.)
+Mark each file as resolved with @command{git add}.  When you are done, this
+command produces no output:
 
 @example
 git -C $INV/fjalar diff --name-only --diff-filter=U
