@@ -222,11 +222,10 @@ None of these changes behavior, except as noted:
   to check whether a shadowing warning reappears.  If it does, rename the Fjalar global that is shadowed, or stop
   including its header in `mc_main.c`, rather than renaming Memcheck's
   locals.
-- **`DEBUG`**:  restore upstream's definition
-  (`#define DEBUG(fmt, args...) //VG_(printf)(fmt, ## args)`) and upstream's
-  `DEBUG` format arguments, and remove Fjalar's added `DEBUG` calls.  If
-  someone uses `MAX_DEBUG_INFO` tracing of Memcheck, keep only the
-  definition change (one hunk).
+- **`DEBUG`**:  keep Fjalar's `MAX_DEBUG_INFO` tracing of Memcheck:  its
+  definition of `DEBUG`, its added `DEBUG` calls, and its `(void *)` casts
+  of `DEBUG` arguments, which `-Wformat` needs when the tracing is on.
+  Change only the definition's `printf` to `VG_(printf)`, as above.
 - **`#ifndef _NO_DYNCOMP`**:  `_NO_DYNCOMP` is never defined, so remove
   these wrappers from the Memcheck copies (72 lines).
 - **`memcheck.h`**:  check whether `#include "valgrind.h"` works with
