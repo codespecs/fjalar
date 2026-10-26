@@ -148,7 +148,9 @@ small.
      fails until `make build` has created `valgrind/Makefile`.
      `pipefail` makes a failed build stop the command, rather than `tee`'s
      success hiding it.  If this machine's OS has no
-     `regtest-expected/<os>.txt`, create a local one with
+     `regtest-expected/<os>.txt`, then `./check-regtest.sh` fails with "no
+     expected-failures file", after writing `regtest-<os>.log`; create a
+     local expected-failures file from that log with
      `./check-regtest.sh --log regtest-<os>.log --update` and don't commit it.
      Then run `./check-regtest.sh` at least twice more, and give a `?`
      prefix to each test whose result differs between runs (such as
@@ -165,11 +167,14 @@ small.
 
      ```sh
      (umask 077 && mkdir -p /tmp/$USER/binutils)
-     nm valgrind/fjalar/fjalar-amd64-linux | grep -iE 'zstd|sframe|debuginfod' \
-       | awk '{print $3}' > /tmp/$USER/binutils/nm-before.txt
+     (set -o pipefail; nm valgrind/fjalar/fjalar-amd64-linux \
+       | awk 'tolower($NF) ~ /zstd|sframe|debuginfod/ {print $NF}' \
+       > /tmp/$USER/binutils/nm-before.txt)
      ```
 
-     (This lists only Valgrind core's own debuginfod support.)  `ldd` and
+     (This lists only Valgrind core's own debuginfod support.)  `pipefail`
+     makes a failure of `nm` fail the command; otherwise an empty file
+     would result, and two empty files would compare equal in step 7.  `ldd` and
      `nm -u` would show nothing, because Valgrind tools are linked
      statically with `-nodefaultlibs` (`valgrind/Makefile.tool.am`).
    - Run the Kvasir tests with
