@@ -1368,7 +1368,7 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
 
    if ((o > GOF(NRADDR)) && (o <= GOF(NRADDR) +12 )) return -1;
 
-   if (o == GOF(LLaddr) && sz ==8) return -1;  /* slot unused */
+   if (o == GOF(LLaddr) && sz == 8) return -1;  /* slot unused */
    if (o == GOF(LLdata) && sz == 8) return -1;  /* slot unused */
 
    if (o >= GOF(w0)  && o+sz <= GOF(w0)  + SZB(w0))  return GOF(w0);

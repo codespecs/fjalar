@@ -59,13 +59,13 @@
 #include "pub_core_basics.h"
 #include "pub_core_debuglog.h"
 #include "pub_core_vki.h"
-#include "pub_core_vkiscnums.h"    // __NR_sched_yield
+#include "pub_core_vkiscnums.h"  // __NR_sched_yield
 #include "pub_core_threadstate.h"
 #include "pub_core_clientstate.h"
 #include "pub_core_aspacemgr.h"
-#include "pub_core_clreq.h"         // for VG_USERREQ__*
+#include "pub_core_clreq.h"      // for VG_USERREQ__*
 #include "pub_core_dispatch.h"
-#include "pub_core_errormgr.h"      // For VG_(get_n_errs_found)()
+#include "pub_core_errormgr.h"   // For VG_(get_n_errs_found)()
 #include "pub_core_extension.h"
 #include "pub_core_gdbserver.h"  // for VG_(gdbserver)/VG_(gdbserver_activity)
 #include "pub_core_libcbase.h"
@@ -279,24 +279,24 @@ const HChar* name_of_sched_event ( UInt event )
       case VEX_TRC_JMP_NODECODE:       return "NODECODE";
       case VEX_TRC_JMP_MAPFAIL:        return "MAPFAIL";
       case VEX_TRC_JMP_EXTENSION:      return "EXTENSION";
-      case VEX_TRC_JMP_SYS_SYSCALL:   return "SYSCALL";
-      case VEX_TRC_JMP_SYS_INT32:     return "INT32";
-      case VEX_TRC_JMP_SYS_INT128:    return "INT128";
-      case VEX_TRC_JMP_SYS_INT129:    return "INT129";
-      case VEX_TRC_JMP_SYS_INT130:    return "INT130";
+      case VEX_TRC_JMP_SYS_SYSCALL:    return "SYSCALL";
+      case VEX_TRC_JMP_SYS_INT32:      return "INT32";
+      case VEX_TRC_JMP_SYS_INT128:     return "INT128";
+      case VEX_TRC_JMP_SYS_INT129:     return "INT129";
+      case VEX_TRC_JMP_SYS_INT130:     return "INT130";
       case VEX_TRC_JMP_SYS_INT145:     return "INT145";
       case VEX_TRC_JMP_SYS_INT210:     return "INT210";
-      case VEX_TRC_JMP_SYS_SYSENTER:  return "SYSENTER";
+      case VEX_TRC_JMP_SYS_SYSENTER:   return "SYSENTER";
       case VEX_TRC_JMP_BORING:         return "VEX_BORING";
 
       case VG_TRC_BORING:              return "VG_BORING";
-      case VG_TRC_INNER_FASTMISS:     return "FASTMISS";
+      case VG_TRC_INNER_FASTMISS:      return "FASTMISS";
       case VG_TRC_INNER_COUNTERZERO:   return "COUNTERZERO";
-      case VG_TRC_FAULT_SIGNAL:       return "FAULTSIGNAL";
+      case VG_TRC_FAULT_SIGNAL:        return "FAULTSIGNAL";
       case VG_TRC_INVARIANT_FAILED:    return "INVFAILED";
       case VG_TRC_CHAIN_ME_TO_SLOW_EP: return "CHAIN_ME_SLOW";
       case VG_TRC_CHAIN_ME_TO_FAST_EP: return "CHAIN_ME_FAST";
-      default:                        return "??UNKNOWN??";
+      default:                         return "??UNKNOWN??";
   }
 }
 
@@ -865,7 +865,7 @@ static void do_pre_run_checks ( volatile ThreadState* tst )
    vg_assert(VG_IS_16_ALIGNED(& tst->arch.vex.guest_VSR1));
    vg_assert(VG_IS_16_ALIGNED(& tst->arch.vex_shadow1.guest_VSR1));
    vg_assert(VG_IS_16_ALIGNED(& tst->arch.vex_shadow2.guest_VSR1));
-#  endif   
+#  endif
 
 #  if defined(VGA_arm)
    /* arm guest_state VFP regs must be 8 byte aligned for
@@ -893,7 +893,7 @@ static void do_pre_run_checks ( volatile ThreadState* tst )
 #  endif
 
 #  if defined(VGA_mips32) || defined(VGA_mips64)
-  /* no special requirements */
+   /* no special requirements */
 #  endif
 }
 
@@ -934,7 +934,7 @@ void run_thread_for_a_while ( /*OUT*/HWord* two_words,
                               Bool          use_alt_host_addr )
 {
    volatile HWord        jumped         = 0;
-   volatile ThreadState* tst = NULL; /* stop gcc complaining */
+   volatile ThreadState* tst            = NULL; /* stop gcc complaining */
    volatile Int          done_this_time = 0;
    volatile HWord        host_code_addr = 0;
 
@@ -988,7 +988,7 @@ void run_thread_for_a_while ( /*OUT*/HWord* two_words,
                findable. */
             two_words[0] = VG_TRC_INNER_FASTMISS; /* hmm, is that right? */
             return;
-   }
+         }
       }
    }
    /* We have either a no-redir or a redir translation. */
@@ -1290,7 +1290,7 @@ void handle_noredir_jump ( /*OUT*/HWord* two_words,
    vg_assert(found);
    vg_assert(hcode != 0);
 
-   /* Otherwise run it and return the resulting VG_TRC_* value. */ 
+   /* Otherwise run it and return the resulting VG_TRC_* value. */
    vg_assert(*dispatchCtrP > 0); /* so as to guarantee progress */
    run_thread_for_a_while( two_words, dispatchCtrP, tid,
                            hcode, True/*use hcode*/ );
@@ -1555,7 +1555,7 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
 	 vg_assert(dispatch_ctr >= 0);
 	 handle_tt_miss(tid);
 	 break;
-	    
+
       case VG_TRC_CHAIN_ME_TO_SLOW_EP: {
          if (0) VG_(printf)("sched: CHAIN_TO_SLOW_EP: %p\n", (void*)trc[1] );
          handle_chain_me(tid, (void*)trc[1], False);
@@ -1696,20 +1696,20 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
          Addr addr = VG_(get_IP)(tid);
 
          if (VG_(clo_sigill_diag)) {
-         VG_(umsg)(
-            "valgrind: Unrecognised instruction at address %#lx.\n", addr);
-         VG_(get_and_pp_StackTrace)(tid, VG_(clo_backtrace_size));
+            VG_(umsg)(
+               "valgrind: Unrecognised instruction at address %#lx.\n", addr);
+            VG_(get_and_pp_StackTrace)(tid, VG_(clo_backtrace_size));
 #        define M(a) VG_(umsg)(a "\n");
-   M("Your program just tried to execute an instruction that Valgrind" );
-   M("did not recognise.  There are two possible reasons for this."    );
-   M("1. Your program has a bug and erroneously jumped to a non-code"  );
-   M("   location.  If you are running Memcheck and you just saw a"    );
-   M("   warning about a bad jump, it's probably your program's fault.");
-   M("2. The instruction is legitimate but Valgrind doesn't handle it,");
-   M("   i.e. it's Valgrind's fault.  If you think this is the case or");
-   M("   you are not sure, please let us know and we'll try to fix it.");
-   M("Either way, Valgrind will now raise a SIGILL signal which will"  );
-   M("probably kill your program."                                     );
+         M("Your program just tried to execute an instruction that Valgrind" );
+         M("did not recognise.  There are two possible reasons for this."    );
+         M("1. Your program has a bug and erroneously jumped to a non-code"  );
+         M("   location.  If you are running Memcheck and you just saw a"    );
+         M("   warning about a bad jump, it's probably your program's fault.");
+         M("2. The instruction is legitimate but Valgrind doesn't handle it,");
+         M("   i.e. it's Valgrind's fault.  If you think this is the case or");
+         M("   you are not sure, please let us know and we'll try to fix it.");
+         M("Either way, Valgrind will now raise a SIGILL signal which will"  );
+         M("probably kill your program."                                     );
 #        undef M
          }
 #        if defined(VGA_s390x)
@@ -2051,7 +2051,7 @@ void do_client_request ( ThreadId tid )
          Int count = 
             print_client_message( tid, format, &u.vargs,
                                   /* include_backtrace */ False );
-            SET_CLREQ_RETVAL( tid, count );
+         SET_CLREQ_RETVAL( tid, count );
          break;
       }
 
@@ -2069,14 +2069,14 @@ void do_client_request ( ThreadId tid )
          Int count =
             print_client_message( tid, format, &u.vargs,
                                   /* include_backtrace */ True );
-            SET_CLREQ_RETVAL( tid, count );
+         SET_CLREQ_RETVAL( tid, count );
          break;
       }
 
       case VG_USERREQ__PRINTF_VALIST_BY_REF: {
          const HChar* format = (HChar *)arg[1];
          va_list* vargsp = (va_list*)arg[2];
-         Int count = 
+         Int count =
             print_client_message( tid, format, vargsp,
                                   /* include_backtrace */ False );
 
@@ -2090,7 +2090,7 @@ void do_client_request ( ThreadId tid )
          Int count =
             print_client_message( tid, format, vargsp,
                                   /* include_backtrace */ True );
-            SET_CLREQ_RETVAL( tid, count );
+         SET_CLREQ_RETVAL( tid, count );
          break;
       }
 
@@ -2357,19 +2357,19 @@ void scheduler_sanity ( ThreadId tid )
    }
 
    if (0) {
-   /* Periodically show the state of all threads, for debugging
-      purposes. */
+      /* Periodically show the state of all threads, for debugging
+         purposes. */
       static UInt lasttime = 0;
       UInt now;
-   now = VG_(read_millisecond_timer)();
+      now = VG_(read_millisecond_timer)();
       if ((!bad) && (lasttime + 4000/*ms*/ <= now)) {
-      lasttime = now;
-      VG_(printf)("\n------------ Sched State at %d ms ------------\n",
-                  (Int)now);
+         lasttime = now;
+         VG_(printf)("\n------------ Sched State at %d ms ------------\n",
+                     (Int)now);
          VG_(show_sched_status)(True,  // host_stacktrace
                                 True,  // stack_usage
                                 True); // exited_threads);
-   }
+      }
    }
 
    /* core_panic also shows the sched status, which is why we don't

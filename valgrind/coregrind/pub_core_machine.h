@@ -221,17 +221,17 @@ void VG_(get_UnwindStartRegs) ( /*OUT*/UnwindStartRegs* regs,
 
    x86:   initially:  call VG_(machine_get_hwcaps)
 
-          then safe to use VG_(machine_get_VexArchInfo)
+          then safe to use VG_(machine_get_VexArchInfo) 
                        and VG_(machine_x86_have_mxcsr)
    -------------
    amd64: initially:  call VG_(machine_get_hwcaps)
 
-          then safe to use VG_(machine_get_VexArchInfo)
+          then safe to use VG_(machine_get_VexArchInfo) 
    -------------
    ppc32: initially:  call VG_(machine_get_hwcaps)
                       call VG_(machine_ppc32_set_clszB)
 
-          then safe to use VG_(machine_get_VexArchInfo)
+          then safe to use VG_(machine_get_VexArchInfo) 
                        and VG_(machine_ppc32_has_FP)
                        and VG_(machine_ppc32_has_VMX)
    -------------
@@ -239,7 +239,7 @@ void VG_(get_UnwindStartRegs) ( /*OUT*/UnwindStartRegs* regs,
                       call VG_(machine_ppc64_set_clszB)
                       call VG_(machine_ppc64_set_scv_support)
 
-          then safe to use VG_(machine_get_VexArchInfo)
+          then safe to use VG_(machine_get_VexArchInfo) 
                        and VG_(machine_ppc64_has_VMX)
    -------------
    arm:   initially:  call VG_(machine_get_hwcaps)

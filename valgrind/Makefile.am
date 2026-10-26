@@ -1,7 +1,7 @@
 
 AUTOMAKE_OPTIONS = 1.10
 
-include $(top_srcdir)/Makefile.all.am
+include $(top_srcdir)/Makefile.all.am 
 
 TOOLS = \
 		memcheck \

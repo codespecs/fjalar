@@ -327,7 +327,7 @@ void VG_(get_UnwindStartRegs) ( /*OUT*/UnwindStartRegs* regs,
 }
 
 void
-VG_(get_shadow_regs_area) ( ThreadId tid,
+VG_(get_shadow_regs_area) ( ThreadId tid, 
                             /*DST*/UChar* dst,
                             /*SRC*/Int shadowNo, PtrdiffT offset, SizeT size )
 {
@@ -351,7 +351,7 @@ VG_(get_shadow_regs_area) ( ThreadId tid,
 }
 
 void
-VG_(set_shadow_regs_area) ( ThreadId tid,
+VG_(set_shadow_regs_area) ( ThreadId tid, 
                             /*DST*/Int shadowNo, PtrdiffT offset, SizeT size,
                             /*SRC*/const UChar* src )
 {
@@ -564,7 +564,7 @@ void VG_(thread_stack_reset_iter)(/*OUT*/ThreadId* tid)
 }
 
 Bool VG_(thread_stack_next)(/*MOD*/ThreadId* tid,
-                            /*OUT*/Addr* stack_min,
+                            /*OUT*/Addr* stack_min, 
                             /*OUT*/Addr* stack_max)
 {
    ThreadId i;
@@ -1115,7 +1115,7 @@ Bool VG_(machine_get_hwcaps)( void )
      if (have_sse1)
         have_mmxext = True;
 
-        va          = VexArchX86;
+     va = VexArchX86;
      vai.endness = VexEndnessLE;
 
      if (have_sse3 && have_sse2 && have_sse1 && have_mmxext) {
@@ -1141,8 +1141,8 @@ Bool VG_(machine_get_hwcaps)( void )
         vai.hwcaps  = VEX_HWCAPS_X86_MMXEXT; /*integer only sse1 subset*/
         VG_(machine_x86_have_mxcsr) = 0;
      } else {
-     vai.hwcaps = 0; /*baseline - no sse at all*/
-     VG_(machine_x86_have_mxcsr) = 0;
+       vai.hwcaps = 0; /*baseline - no sse at all*/
+       VG_(machine_x86_have_mxcsr) = 0;
      }
 
      VG_(machine_get_cache_info)(&vai);
@@ -1281,15 +1281,15 @@ Bool VG_(machine_get_hwcaps)( void )
         have_rdseed = False;
      }
 
-     va         = VexArchAMD64;
+     va          = VexArchAMD64;
      vai.endness = VexEndnessLE;
-     vai.hwcaps = (have_sse3 ? VEX_HWCAPS_AMD64_SSE3 : 0)
+     vai.hwcaps  = (have_sse3   ? VEX_HWCAPS_AMD64_SSE3   : 0)
                  | (have_ssse3  ? VEX_HWCAPS_AMD64_SSSE3  : 0)
-                | (have_cx16  ? VEX_HWCAPS_AMD64_CX16  : 0)
-                | (have_lzcnt ? VEX_HWCAPS_AMD64_LZCNT : 0)
-                | (have_avx    ? VEX_HWCAPS_AMD64_AVX    : 0)
-                | (have_bmi    ? VEX_HWCAPS_AMD64_BMI    : 0)
-                | (have_avx2   ? VEX_HWCAPS_AMD64_AVX2   : 0)
+                 | (have_cx16   ? VEX_HWCAPS_AMD64_CX16   : 0)
+                 | (have_lzcnt  ? VEX_HWCAPS_AMD64_LZCNT  : 0)
+                 | (have_avx    ? VEX_HWCAPS_AMD64_AVX    : 0)
+                 | (have_bmi    ? VEX_HWCAPS_AMD64_BMI    : 0)
+                 | (have_avx2   ? VEX_HWCAPS_AMD64_AVX2   : 0)
                  | (have_rdtscp ? VEX_HWCAPS_AMD64_RDTSCP : 0)
                  | (have_f16c   ? VEX_HWCAPS_AMD64_F16C   : 0)
                  | (have_rdrand ? VEX_HWCAPS_AMD64_RDRAND : 0)
@@ -2574,7 +2574,7 @@ void* VG_(fnptr_to_fnentry)( void* f )
    UWord* descr = (UWord*)f;
    return (void*)(descr[0]);
 #  else
-#  error "Unknown platform"
+#    error "Unknown platform"
 #  endif
 }
 
