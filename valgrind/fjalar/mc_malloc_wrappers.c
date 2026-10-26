@@ -1,6 +1,6 @@
 /*
-   This file is part of Fjalar, a dynamic analysis framework for C/C++
-   programs.
+   This file has been modified for Fjalar, a dynamic analysis framework
+   for C/C++ programs.
 
    Copyright (C) 2007-2026 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
@@ -87,7 +87,7 @@ VgHashTable *MC_(malloc_list) = NULL;
 /* Memory pools: a hash table of MC_Mempools.  Search key is
    MC_Mempool::pool. */
 VgHashTable *MC_(mempool_list) = NULL;
-   
+
 /* Pool allocator for MC_Chunk. */   
 PoolAlloc *MC_(chunk_poolalloc) = NULL;
 static
@@ -136,10 +136,10 @@ static void add_to_freed_queue ( MC_Chunk* mc )
          freed_list_end[l]       = mc;
       }
    }
-      VG_(free_queue_volume) += (Long)mc->szB;
-      if (show)
+   VG_(free_queue_volume) += (Long)mc->szB;
+   if (show)
          printf("mc_freelist: acquire: volume now %lld\n", 
-                     VG_(free_queue_volume));
+                  VG_(free_queue_volume));
    VG_(free_queue_length)++;
 }
 
@@ -158,28 +158,28 @@ static void release_oldest_block(void)
    for (i = 0; i < 2; i++) {
       while (VG_(free_queue_volume) > MC_(clo_freelist_vol)
              && freed_list_start[i] != NULL) {
-      MC_Chunk* mc1;
+         MC_Chunk* mc1;
 
          tl_assert(freed_list_end[i] != NULL);
-
+         
          mc1 = freed_list_start[i];
-      VG_(free_queue_volume) -= (Long)mc1->szB;
-      VG_(free_queue_length)--;
-      if (show)
+         VG_(free_queue_volume) -= (Long)mc1->szB;
+         VG_(free_queue_length)--;
+         if (show)
          printf("mc_freelist: discard: volume now %lld\n", 
-                     VG_(free_queue_volume));
-      tl_assert(VG_(free_queue_volume) >= 0);
-
+                        VG_(free_queue_volume));
+         tl_assert(VG_(free_queue_volume) >= 0);
+         
          if (freed_list_start[i] == freed_list_end[i]) {
             freed_list_start[i] = freed_list_end[i] = NULL;
-      } else {
+         } else {
             freed_list_start[i] = mc1->next;
-      }
-      mc1->next = NULL; /* just paranoia */
+         }
+         mc1->next = NULL; /* just paranoia */
 
-      /* free MC_Chunk */
+         /* free MC_Chunk */
          if (MC_AllocCustom != mc1->allockind)
-      VG_(cli_free) ( (void*)(mc1->data) );
+            VG_(cli_free) ( (void*)(mc1->data) );
          delete_MC_Chunk ( mc1 );
       }
    }
@@ -500,10 +500,10 @@ void die_and_free_mem ( ThreadId tid, MC_Chunk* mc, SizeT rzB )
       accessible with a client request... */
    MC_(make_mem_noaccess)( mc->data-rzB, mc->szB + 2*rzB );
 
-      /* Record where freed */
+   /* Record where freed */
    MC_(set_freed_at) (tid, mc);
    /* Put it out of harm's way for a while */
-      add_to_freed_queue ( mc );
+   add_to_freed_queue ( mc );
    /* If the free list volume is bigger than MC_(clo_freelist_vol),
       we wait till the next block allocation to release blocks.
       This increase the chance to discover dangling pointer usage,
@@ -636,13 +636,13 @@ void* MC_(realloc) ( ThreadId tid, void* p_old, SizeT new_szB )
    a_new = (Addr)VG_(cli_malloc)(VG_(clo_alignment), new_szB);
 
    if (a_new) {
-   /* In all cases, even when the new size is smaller or unchanged, we
-      reallocate and copy the contents, and make the old block
-      inaccessible.  This is so as to guarantee to catch all cases of
-      accesses via the old address after reallocation, regardless of
-      the change in size.  (Of course the ability to detect accesses
-      to the old block also depends on the size of the freed blocks
-      queue). */
+      /* In all cases, even when the new size is smaller or unchanged, we
+         reallocate and copy the contents, and make the old block
+         inaccessible.  This is so as to guarantee to catch all cases of
+         accesses via the old address after reallocation, regardless of
+         the change in size.  (Of course the ability to detect accesses
+         to the old block also depends on the size of the freed blocks
+         queue). */
 
       // Allocate a new chunk.
       // Re-allocation does not conserve alignment.
@@ -651,11 +651,11 @@ void* MC_(realloc) ( ThreadId tid, void* p_old, SizeT new_szB )
       // Now insert the new mc (with a new 'data' field) into malloc_list.
       VG_(HT_add_node)( MC_(malloc_list), new_mc );
 
-         /* Retained part is copied, red zones set as normal */
+      /* Retained part is copied, red zones set as normal */
 
       /* Redzone at the front */
-         MC_(make_mem_noaccess)( a_new-MC_(Malloc_Redzone_SzB), 
-                                 MC_(Malloc_Redzone_SzB) );
+      MC_(make_mem_noaccess)( a_new-MC_(Malloc_Redzone_SzB), 
+                              MC_(Malloc_Redzone_SzB) );
 
       /* payload */
       if (old_szB >= new_szB) {
@@ -664,8 +664,8 @@ void* MC_(realloc) ( ThreadId tid, void* p_old, SizeT new_szB )
          /* Copy address range state and value from old to new */
          MC_(copy_address_range_state) ( (Addr)p_old, a_new, new_szB );
          VG_(memcpy)((void*)a_new, p_old, new_szB);
-   } else {
-      /* new size is bigger */
+      } else {
+         /* new size is bigger */
          UInt        ecu;
 
          /* Copy address range state and value from old to new */
@@ -679,7 +679,7 @@ void* MC_(realloc) ( ThreadId tid, void* p_old, SizeT new_szB )
          tl_assert(VG_(is_plausible_ECU)(ecu));
          MC_(make_mem_undefined_w_otag)( a_new+old_szB,
                                          new_szB-old_szB,
-                                                        ecu | MC_OKIND_HEAP );
+                                         ecu | MC_OKIND_HEAP );
 
          /* Possibly fill new area with specified junk */
          if (MC_(clo_malloc_fill) != -1) {
@@ -693,16 +693,16 @@ void* MC_(realloc) ( ThreadId tid, void* p_old, SizeT new_szB )
       /* Redzone at the back. */
       MC_(make_mem_noaccess)        ( a_new+new_szB, MC_(Malloc_Redzone_SzB));
 
-         /* Possibly fill freed area with specified junk. */
-         if (MC_(clo_free_fill) != -1) {
-            tl_assert(MC_(clo_free_fill) >= 0x00 && MC_(clo_free_fill) <= 0xFF);
-            VG_(memset)((void*)p_old, MC_(clo_free_fill), old_szB);
-         }
+      /* Possibly fill freed area with specified junk. */
+      if (MC_(clo_free_fill) != -1) {
+         tl_assert(MC_(clo_free_fill) >= 0x00 && MC_(clo_free_fill) <= 0xFF);
+         VG_(memset)((void*)p_old, MC_(clo_free_fill), old_szB);
+      }
 
-         /* Free old memory */
-         /* Nb: we have to allocate a new MC_Chunk for the new memory rather
-            than recycling the old one, so that any erroneous accesses to the
-            old memory are reported. */
+      /* Free old memory */
+      /* Nb: we have to allocate a new MC_Chunk for the new memory rather
+         than recycling the old one, so that any erroneous accesses to the
+         old memory are reported. */
       die_and_free_mem ( tid, old_mc, MC_(Malloc_Redzone_SzB) );
 
    } else {

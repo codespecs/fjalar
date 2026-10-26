@@ -36,7 +36,7 @@
 
 #include "libvex_basictypes.h"
 
-
+   
 /*---------------------------------------------------------------*/
 /*--- High-level IR description                               ---*/
 /*---------------------------------------------------------------*/
@@ -97,7 +97,7 @@
    Examples, and flattened vs. unflattened code
    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
    For example, consider this x86 instruction:
-
+     
      addl %eax, %ebx
 
    One Vex IR translation for this code would be this:
@@ -131,7 +131,7 @@
    The above IR is "flattened", ie. all sub-expressions are "atoms",
    either constants or temporaries.  An equivalent, unflattened version
    would be:
-
+   
      PUT(0) = Add32(GET:I32(0), GET:I32(12))
 
    IR is guaranteed to be flattened at instrumentation-time.  This makes
@@ -199,7 +199,7 @@
 
    - eqIRFoo is a structural equality predicate for IRFoos.
 
-   - deepCopyIRFoo is a deep copy constructor for IRFoos.
+   - deepCopyIRFoo is a deep copy constructor for IRFoos. 
      It recursively traverses the entire argument tree and
      produces a complete new tree.  All types have a deep copy
      constructor.
@@ -214,13 +214,13 @@
 
 /* A type indicates the size of a value, and whether it's an integer, a
    float, or a vector (SIMD) value. */
-typedef
-   enum {
+typedef 
+   enum { 
       Ity_INVALID=0x1100,
-      Ity_I1,
-      Ity_I8,
-      Ity_I16,
-      Ity_I32,
+      Ity_I1, 
+      Ity_I8, 
+      Ity_I16, 
+      Ity_I32, 
       Ity_I64,
       Ity_I128,  /* 128-bit scalar */
       Ity_F16,   /* 16 bit float */
@@ -238,7 +238,7 @@ typedef
 /* Pretty-print an IRType */
 extern void ppIRType ( IRType );
 
-/* Get the size (in bytes) of an IRType */
+/* Get the size (in bytes) of an IRType */ 
 extern Int sizeofIRType ( IRType );
 
 /* Translate 1/2/4/8 into Ity_I{8,16,32,64} respectively.  Asserts on
@@ -250,7 +250,7 @@ extern IRType integerIRTypeOfSize ( Int szB );
 
 /* IREndness is used in load IRExprs and store IRStmts. */
 typedef
-   enum {
+   enum { 
       Iend_LE=0x1200, /* little endian */
       Iend_BE          /* big endian */
    }
@@ -263,11 +263,11 @@ typedef
 
 /* The various kinds of constant. */
 typedef
-   enum {
+   enum { 
       Ico_U1=0x1300,
-      Ico_U8,
-      Ico_U16,
-      Ico_U32,
+      Ico_U8, 
+      Ico_U16, 
+      Ico_U32, 
       Ico_U64,
       Ico_U128,  /* 128-bit restricted integer constant,
                     same encoding scheme as V128 */
@@ -346,15 +346,15 @@ extern Bool eqIRConst ( const IRConst*, const IRConst* );
    considered 'always defined' when lazily computing definedness of
    the result.  Bit 0 of mcx_mask corresponds to args[0], bit 1 to
    args[1], etc.  If a bit is set, the corresponding arg is excluded
-   (hence "x" in "mcx") from definedness checking.
+   (hence "x" in "mcx") from definedness checking.  
 */
 
 typedef
    struct {
-      Int    regparms;
+      Int          regparms;
       const HChar* name;
-      void*  addr;
-      UInt   mcx_mask;
+      void*        addr;
+      UInt         mcx_mask;
    }
    IRCallee;
 
@@ -371,7 +371,7 @@ extern void ppIRCallee ( const IRCallee* );
 /* ------------------ Guest state arrays ------------------ */
 
 /* This describes a section of the guest state that we want to
-   be able to index at run time, so as to be able to describe
+   be able to index at run time, so as to be able to describe 
    indexed or rotating register files on the guest. */
 typedef
    struct {
@@ -411,7 +411,7 @@ extern void ppIRTemp ( IRTemp );
    (x86, PPC, etc) are represented.  Some more obscure ones (eg. cpuid)
    are not;  they are instead handled with dirty helpers that emulate
    their functionality.  Such obscure ones are thus not directly visible
-   in the IR, but their effects on guest state (memory and registers)
+   in the IR, but their effects on guest state (memory and registers) 
    are made visible via the annotations in IRDirty structures.
 
    2018-Dec-27: some of int<->fp conversion operations have been renamed so as
@@ -422,7 +422,7 @@ extern void ppIRTemp ( IRTemp );
    name, that indicates the rounding mode to use.
 */
 typedef
-   enum {
+   enum { 
       /* -- Do not change this ordering.  The IR generators rely on
             (eg) Iop_Add64 == IopAdd8 + 3. -- */
 
@@ -491,7 +491,7 @@ typedef
 
       /* PowerPC-style 3-way integer comparisons.  Without them it is
          difficult to simulate PPC efficiently.
-         op(x,y) | x < y  = 0x8 else
+         op(x,y) | x < y  = 0x8 else 
                  | x > y  = 0x4 else
                  | x == y = 0x2
       */
@@ -587,7 +587,7 @@ typedef
       /* --- Simple stuff as mandated by 754. --- */
 
       /* Binary operations, with rounding. */
-      /* :: IRRoundingMode(I32) x F64 x F64 -> F64 */
+      /* :: IRRoundingMode(I32) x F64 x F64 -> F64 */ 
       Iop_AddF64, Iop_SubF64, Iop_MulF64, Iop_DivF64,
 
       /* :: IRRoundingMode(I32) x F32 x F32 -> F32 */ 
@@ -595,8 +595,8 @@ typedef
 
       /* Variants of the above which produce a 64-bit result but which
          round their result to a IEEE float range first. */
-      /* :: IRRoundingMode(I32) x F64 x F64 -> F64 */
-      Iop_AddF64r32, Iop_SubF64r32, Iop_MulF64r32, Iop_DivF64r32,
+      /* :: IRRoundingMode(I32) x F64 x F64 -> F64 */ 
+      Iop_AddF64r32, Iop_SubF64r32, Iop_MulF64r32, Iop_DivF64r32, 
 
       /* Unary operations, without rounding. */
       /* :: F64 -> F64 */
@@ -759,7 +759,7 @@ typedef
       /* --- guest x86/amd64 specifics, not mandated by 754. --- */
 
       /* Binary ops, with rounding. */
-      /* :: IRRoundingMode(I32) x F64 x F64 -> F64 */
+      /* :: IRRoundingMode(I32) x F64 x F64 -> F64 */ 
       Iop_AtanF64,       /* FPATAN,  arctan(arg1/arg2)       */
       Iop_Yl2xF64,       /* FYL2X,   arg1 * log2(arg2)       */
       Iop_Yl2xp1F64,     /* FYL2XP1, arg1 * log2(arg2+1.0)   */
@@ -803,19 +803,19 @@ typedef
       /* Fused multiply-add/sub, with 112-bit intermediate
          precision for ppc.
          Also used to implement fused multiply-add/sub for s390. */
-      /* :: IRRoundingMode(I32) x F64 x F64 x F64 -> F64
-            (computes arg2 * arg3 +/- arg4) */
+      /* :: IRRoundingMode(I32) x F64 x F64 x F64 -> F64 
+            (computes arg2 * arg3 +/- arg4) */ 
       Iop_MAddF64, Iop_MSubF64,
 
       /* Variants of the above which produce a 64-bit result but which
          round their result to a IEEE float range first. */
-      /* :: IRRoundingMode(I32) x F64 x F64 x F64 -> F64 */
+      /* :: IRRoundingMode(I32) x F64 x F64 x F64 -> F64 */ 
       Iop_MAddF64r32, Iop_MSubF64r32,
 
       /* :: F64 -> F64 */
       Iop_RSqrtEst5GoodF64, /* reciprocal square root estimate, 5 good bits */
       Iop_RoundF64toF64_NEAREST, /* frin */
-      Iop_RoundF64toF64_NegINF,  /* frim */
+      Iop_RoundF64toF64_NegINF,  /* frim */ 
       Iop_RoundF64toF64_PosINF,  /* frip */
       Iop_RoundF64toF64_ZERO,    /* friz */
 
@@ -824,7 +824,7 @@ typedef
 
       /* :: IRRoundingMode(I32) x F64 -> F64 */
       Iop_RoundF64toF32, /* round F64 to nearest F32 value (still as F64) */
-      /* NB: pretty much the same as Iop_F64toF32, except no change
+      /* NB: pretty much the same as Iop_F64toF32, except no change 
          of type. */
 
       /* --- guest arm64 specifics, not mandated by 754. --- */
@@ -1103,7 +1103,7 @@ typedef
 
       /* PERMUTING -- copy src bytes to dst,
          as indexed by control vector bytes:
-            for i in 0 .. 7 . result[i] = argL[ argR[i] ]
+            for i in 0 .. 7 . result[i] = argL[ argR[i] ] 
          argR[i] values may only be in the range 0 .. 7, else behaviour
          is undefined.  That is, argR[i][7:3] must be zero. */
       Iop_Perm8x8,
@@ -1402,7 +1402,7 @@ typedef
       /* --- 32x4 vector FP --- */
 
       /* ternary :: IRRoundingMode(I32) x V128 x V128 -> V128 */
-      Iop_Add32Fx4, Iop_Sub32Fx4, Iop_Mul32Fx4, Iop_Div32Fx4,
+      Iop_Add32Fx4, Iop_Sub32Fx4, Iop_Mul32Fx4, Iop_Div32Fx4, 
 
       /* binary */
       Iop_Max32Fx4, Iop_Min32Fx4,
@@ -1493,9 +1493,9 @@ typedef
          unary cases, upper 3/4 is copied from the operand. */
 
       /* binary */
-      Iop_Add32F0x4, Iop_Sub32F0x4, Iop_Mul32F0x4, Iop_Div32F0x4,
+      Iop_Add32F0x4, Iop_Sub32F0x4, Iop_Mul32F0x4, Iop_Div32F0x4, 
       Iop_Max32F0x4, Iop_Min32F0x4,
-      Iop_CmpEQ32F0x4, Iop_CmpLT32F0x4, Iop_CmpLE32F0x4, Iop_CmpUN32F0x4,
+      Iop_CmpEQ32F0x4, Iop_CmpLT32F0x4, Iop_CmpLE32F0x4, Iop_CmpUN32F0x4, 
 
       /* unary */
       Iop_RecipEst32F0x4, Iop_Sqrt32F0x4, Iop_RSqrtEst32F0x4,
@@ -1503,11 +1503,11 @@ typedef
       /* --- 64x2 vector FP --- */
 
       /* ternary :: IRRoundingMode(I32) x V128 x V128 -> V128 */
-      Iop_Add64Fx2, Iop_Sub64Fx2, Iop_Mul64Fx2, Iop_Div64Fx2,
+      Iop_Add64Fx2, Iop_Sub64Fx2, Iop_Mul64Fx2, Iop_Div64Fx2, 
 
       /* binary */
       Iop_Max64Fx2, Iop_Min64Fx2,
-      Iop_CmpEQ64Fx2, Iop_CmpLT64Fx2, Iop_CmpLE64Fx2, Iop_CmpUN64Fx2,
+      Iop_CmpEQ64Fx2, Iop_CmpLT64Fx2, Iop_CmpLE64Fx2, Iop_CmpUN64Fx2, 
 
       /* unary */
       Iop_Abs64Fx2,
@@ -1539,9 +1539,9 @@ typedef
          unary cases, upper half is copied from the operand. */
 
       /* binary */
-      Iop_Add64F0x2, Iop_Sub64F0x2, Iop_Mul64F0x2, Iop_Div64F0x2,
+      Iop_Add64F0x2, Iop_Sub64F0x2, Iop_Mul64F0x2, Iop_Div64F0x2, 
       Iop_Max64F0x2, Iop_Min64F0x2,
-      Iop_CmpEQ64F0x2, Iop_CmpLT64F0x2, Iop_CmpLE64F0x2, Iop_CmpUN64F0x2,
+      Iop_CmpEQ64F0x2, Iop_CmpLT64F0x2, Iop_CmpLE64F0x2, Iop_CmpUN64F0x2, 
 
       /* unary */
       Iop_Sqrt64F0x2,
@@ -1571,7 +1571,7 @@ typedef
 
       /* BITWISE OPS */
       Iop_NotV128,
-      Iop_AndV128, Iop_OrV128, Iop_XorV128,
+      Iop_AndV128, Iop_OrV128, Iop_XorV128, 
 
       /* VECTOR SHIFT (shift amt :: Ity_I8) */
       Iop_ShlV128, Iop_ShrV128, Iop_SarV128,
@@ -1582,8 +1582,8 @@ typedef
 
       /* ADDITION (normal / U->U sat / S->S sat) */
       Iop_Add8x16,    Iop_Add16x8,    Iop_Add32x4,    Iop_Add64x2,   Iop_Add128x1,
-      Iop_QAdd8Ux16, Iop_QAdd16Ux8, Iop_QAdd32Ux4, Iop_QAdd64Ux2,
-      Iop_QAdd8Sx16, Iop_QAdd16Sx8, Iop_QAdd32Sx4, Iop_QAdd64Sx2,
+      Iop_QAdd8Ux16,  Iop_QAdd16Ux8,  Iop_QAdd32Ux4,  Iop_QAdd64Ux2,
+      Iop_QAdd8Sx16,  Iop_QAdd16Sx8,  Iop_QAdd32Sx4,  Iop_QAdd64Sx2,
 
       /* ADDITION, ARM64 specific saturating variants. */
       /* Unsigned widen left arg, signed widen right arg, add, saturate S->S.
@@ -1620,7 +1620,7 @@ typedef
          Vector Saturating Rounding Doubling Multiply Returning High Half.
          These IROps multiply corresponding elements in two vectors, double
          the results, and place the most significant half of the final results
-         in the destination vector. The results are truncated or rounded. If
+         in the destination vector.  The results are truncated or rounded.  If
          any of the results overflow, they are saturated.  To be more precise,
          for each lane, the computed result is: 
            QDMulHi:  
@@ -1912,7 +1912,7 @@ typedef
       Iop_SetElem8x16, Iop_SetElem16x8, Iop_SetElem32x4, Iop_SetElem64x2,
 
       /* DUPLICATING -- copy value to all lanes */
-      Iop_Dup8x16, Iop_Dup16x8, Iop_Dup32x4,
+      Iop_Dup8x16,   Iop_Dup16x8,   Iop_Dup32x4,
 
       /* SLICE -- produces the lowest 128 bits of (arg1:arg2) >> (8 * arg3).
          arg3 is a shift amount in bytes and may be between 0 and 16
@@ -1932,7 +1932,7 @@ typedef
 
       /* PERMUTING -- copy src bytes to dst,
          as indexed by control vector bytes:
-            for i in 0 .. 15 . result[i] = argL[ argR[i] ]
+            for i in 0 .. 15 . result[i] = argL[ argR[i] ] 
          argR[i] values may only be in the range 0 .. 15, else behaviour
          is undefined.  That is, argR[i][7:4] must be zero. */
       Iop_Perm8x16,
@@ -2080,14 +2080,14 @@ extern Bool primopMightTrap ( IROp op );
    Note, various front and back ends rely on the actual numerical
    values of these, so do not change them. */
 typedef
-   enum {
+   enum { 
       Irrm_NEAREST              = 0,  // Round to nearest, ties to even
       Irrm_NegINF               = 1,  // Round to negative infinity
       Irrm_PosINF               = 2,  // Round to positive infinity
       Irrm_ZERO                 = 3,  // Round toward zero
       Irrm_NEAREST_TIE_AWAY_0   = 4,  // Round to nearest, ties away from 0
       Irrm_PREPARE_SHORTER      = 5,  // Round to prepare for shorter 
-                                          // precision
+                                      // precision
       Irrm_AWAY_FROM_ZERO       = 6,  // Round to away from 0
       Irrm_NEAREST_TIE_TOWARD_0 = 7   // Round to nearest, ties towards 0
    }
@@ -2122,7 +2122,7 @@ typedef struct _IRTriop IRTriop; /* forward declaration */
 /* The different kinds of expressions.  Their meaning is explained below
    in the comments for IRExpr. */
 typedef
-   enum {
+   enum { 
       Iex_Binder=0x1900,
       Iex_Get,
       Iex_GetI,
@@ -2385,9 +2385,9 @@ extern IRExpr* IRExpr_Binder ( Int binder );
 extern IRExpr* IRExpr_Get    ( Int off, IRType ty );
 extern IRExpr* IRExpr_GetI   ( IRRegArray* descr, IRExpr* ix, Int bias );
 extern IRExpr* IRExpr_RdTmp  ( IRTemp tmp );
-extern IRExpr* IRExpr_Qop    ( IROp op, IRExpr* arg1, IRExpr* arg2,
+extern IRExpr* IRExpr_Qop    ( IROp op, IRExpr* arg1, IRExpr* arg2, 
                                         IRExpr* arg3, IRExpr* arg4 );
-extern IRExpr* IRExpr_Triop  ( IROp op, IRExpr* arg1,
+extern IRExpr* IRExpr_Triop  ( IROp op, IRExpr* arg1, 
                                         IRExpr* arg2, IRExpr* arg3 );
 extern IRExpr* IRExpr_Binop  ( IROp op, IRExpr* arg1, IRExpr* arg2 );
 extern IRExpr* IRExpr_Unop   ( IROp op, IRExpr* arg );
@@ -2437,7 +2437,7 @@ extern IRExpr** deepCopyIRExprVec ( IRExpr *const * );
 extern IRExpr* mkIRExpr_HWord ( HWord );
 
 /* Convenience function for constructing clean helper calls. */
-extern
+extern 
 IRExpr* mkIRExprCCall ( IRType retty,
                         Int regparms, const HChar* name, void* addr, 
                         IRExpr** args );
@@ -2655,14 +2655,14 @@ extern IRDirty* deepCopyIRDirty ( const IRDirty* );
    accessing neither guest state nor memory (hence the "unsafe"
    designation) -- you can change this marking later if need be.  A
    suitable IRCallee is constructed from the supplied bits. */
-extern
+extern 
 IRDirty* unsafeIRDirty_0_N ( Int regparms, const HChar* name, void* addr, 
                              IRExpr** args );
 
 /* Similarly, make a zero-annotation dirty call which returns a value,
    and assign that to the given temp. */
-extern
-IRDirty* unsafeIRDirty_1_N ( IRTemp dst,
+extern 
+IRDirty* unsafeIRDirty_1_N ( IRTemp dst, 
                              Int regparms, const HChar* name, void* addr, 
                              IRExpr** args );
 
@@ -2670,7 +2670,7 @@ IRDirty* unsafeIRDirty_1_N ( IRTemp dst,
 /* --------------- Memory Bus Events --------------- */
 
 typedef
-   enum {
+   enum { 
       Imbe_Fence=0x1C00, 
       /* Needed only on ARM.  It cancels a reservation made by a
          preceding Linked-Load, and needs to be handed through to the
@@ -2763,7 +2763,7 @@ typedef
 extern void ppIRCAS ( const IRCAS* cas );
 
 extern IRCAS* mkIRCAS ( IRTemp oldHi, IRTemp oldLo,
-                        IREndness end, IRExpr* addr,
+                        IREndness end, IRExpr* addr, 
                         IRExpr* expdHi, IRExpr* expdLo,
                         IRExpr* dataHi, IRExpr* dataLo );
 
@@ -2881,7 +2881,7 @@ extern IRLoadG* mkIRLoadG ( IREndness end, IRLoadGOp cvt,
    instrument the code.
 */
 
-typedef
+typedef 
    enum {
       Ist_NoOp=0x1E00,
       Ist_IMark,     /* META */
@@ -2897,7 +2897,7 @@ typedef
       Ist_Dirty,
       Ist_MBE,
       Ist_Exit
-   }
+   } 
    IRStmtTag;
 
 /* A statement.  Stored as a tagged union.  'tag' indicates what kind
@@ -3037,7 +3037,7 @@ typedef
                t<tmp> = CAS<end>(<addr> :: <expected> -> <new>)
             eg
                t1 = CASle(t2 :: t3->Add32(t3,1))
-               which denotes a 32-bit atomic increment
+               which denotes a 32-bit atomic increment 
                of a value at address t2
 
             A double-element CAS may also be denoted, in which case <tmp>,
@@ -3104,12 +3104,12 @@ typedef
             IRDirty type declaration for more information.
 
             ppIRStmt output:
-               t<tmp> = DIRTY <guard> <effects>
+               t<tmp> = DIRTY <guard> <effects> 
                   ::: <callee>(<args>)
             eg.
                t1 = DIRTY t27 RdFX-gst(16,4) RdFX-gst(60,4)
                      ::: foo{0x380035f4}(t2)
-         */
+         */       
          struct {
             IRDirty* details;
          } Dirty;
@@ -3200,13 +3200,13 @@ extern void ppIRTypeEnv ( const IRTypeEnv* );
    - A table giving a type for each temp (the "type environment")
    - An expandable array of statements
    - An expression of type 32 or 64 bits, depending on the
-     guest's word size, indicating the next destination if the block
+     guest's word size, indicating the next destination if the block 
      executes all the way to the end, without a side exit
    - An indication of any special actions (JumpKind) needed
      for this final jump.
    - Offset of the IP field in the guest state.  This will be
      updated before the final jump is done.
-
+   
    "IRSB" stands for "IR Super Block".
 */
 typedef
@@ -3258,7 +3258,7 @@ extern void typeOfIRLoadGOp ( IRLoadGOp cvt,
 /* Sanity check a BB of IR */
 extern void sanityCheckIRSB ( const  IRSB*  bb, 
                               const  HChar* caller,
-                              Bool   require_flatness,
+                              Bool   require_flatness, 
                               IRType guest_word_size );
 extern Bool isFlatIRStmt ( const IRStmt* );
 extern Bool isFlatIRSB ( const IRSB* );

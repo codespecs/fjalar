@@ -144,7 +144,7 @@ typedef
    string which is included in any messages pertaining to addresses
    within the specified memory range.  Has no other effect on the
    properties of the memory range. */
-#define VALGRIND_CREATE_BLOCK(_qzz_addr,_qzz_len, _qzz_desc)       \
+#define VALGRIND_CREATE_BLOCK(_qzz_addr,_qzz_len, _qzz_desc)	   \
     VALGRIND_DO_CLIENT_REQUEST_EXPR(0 /* default return */,        \
                             VG_USERREQ__CREATE_BLOCK,              \
                             (_qzz_addr), (_qzz_len), (_qzz_desc),  \
@@ -161,7 +161,7 @@ typedef
 /* Client-code macros to check the state of memory. */
 
 /* Check that memory at _qzz_addr is addressable for _qzz_len bytes.
-   If suitable addressability is not established, Valgrind prints an
+   If suitable addressibility is not established, Valgrind prints an
    error message and returns the address of the first offending byte.
    Otherwise it returns zero. */
 #define VALGRIND_CHECK_MEM_IS_ADDRESSABLE(_qzz_addr,_qzz_len)      \
@@ -170,7 +170,7 @@ typedef
                             (_qzz_addr), (_qzz_len), 0, 0, 0)
 
 /* Check that memory at _qzz_addr is addressable and defined for
-   _qzz_len bytes.  If suitable addressability and definedness are not
+   _qzz_len bytes.  If suitable addressibility and definedness are not
    established, Valgrind prints an error message and returns the
    address of the first offending byte.  Otherwise it returns zero. */
 #define VALGRIND_CHECK_MEM_IS_DEFINED(_qzz_addr,_qzz_len)        \
@@ -178,8 +178,8 @@ typedef
                             VG_USERREQ__CHECK_MEM_IS_DEFINED,    \
                             (_qzz_addr), (_qzz_len), 0, 0, 0)
 
-/* Use this macro to force the definedness and addressability of an
-   lvalue to be checked.  If suitable addressability and definedness
+/* Use this macro to force the definedness and addressibility of an
+   lvalue to be checked.  If suitable addressibility and definedness
    are not established, Valgrind prints an error message and returns
    the address of the first offending byte.  Otherwise it returns
    zero. */
@@ -216,8 +216,8 @@ typedef
                                     0, 3, 0, 0, 0)
 
 /* Do a summary memory leak check (like --leak-check=summary) mid-execution. */
-#define VALGRIND_DO_QUICK_LEAK_CHECK                            \
-    VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DO_LEAK_CHECK,  \
+#define VALGRIND_DO_QUICK_LEAK_CHECK                             \
+    VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DO_LEAK_CHECK,   \
                                     1, 0, 0, 0, 0)
 
 /* Return number of leaked, dubious, reachable and suppressed bytes found by

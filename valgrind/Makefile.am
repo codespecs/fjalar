@@ -1,7 +1,7 @@
 
 AUTOMAKE_OPTIONS = 1.10
 
-include $(top_srcdir)/Makefile.all.am
+include $(top_srcdir)/Makefile.all.am 
 
 TOOLS = \
 		memcheck \
@@ -36,7 +36,6 @@ SUBDIRS = \
 	mpi \
 	solaris \
 	docs
-
 DIST_SUBDIRS  = $(SUBDIRS)
 
 SUPP_FILES = \
@@ -151,3 +150,4 @@ include/vgversion.h:
 	$(top_srcdir)/auxprogs/make_or_upd_vgversion_h $(top_srcdir)
 
 .PHONY: include/vgversion.h
+

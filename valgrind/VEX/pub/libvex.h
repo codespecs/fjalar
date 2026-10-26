@@ -47,11 +47,11 @@
 /*--- Architectures, variants, and other arch info    ---*/
 /*-------------------------------------------------------*/
 
-typedef
-   enum {
+typedef 
+   enum { 
       VexArch_INVALID=0x400,
-      VexArchX86,
-      VexArchAMD64,
+      VexArchX86, 
+      VexArchAMD64, 
       VexArchARM,
       VexArchARM64,
       VexArchPPC32,
@@ -90,11 +90,11 @@ typedef
 
 /* amd64: baseline capability is SSE2, with cmpxchg8b but not
    cmpxchg16b. */
-#define VEX_HWCAPS_AMD64_SSE3  (1<<5)  /* SSE3 support */
+#define VEX_HWCAPS_AMD64_SSE3   (1<<5)  /* SSE3 support */
 #define VEX_HWCAPS_AMD64_SSSE3  (1<<12) /* Supplemental SSE3 support */
-#define VEX_HWCAPS_AMD64_CX16  (1<<6)  /* cmpxchg16b support */
-#define VEX_HWCAPS_AMD64_LZCNT (1<<7)  /* SSE4a LZCNT insn */
-#define VEX_HWCAPS_AMD64_AVX   (1<<8)  /* AVX instructions */
+#define VEX_HWCAPS_AMD64_CX16   (1<<6)  /* cmpxchg16b support */
+#define VEX_HWCAPS_AMD64_LZCNT  (1<<7)  /* SSE4a LZCNT insn */
+#define VEX_HWCAPS_AMD64_AVX    (1<<8)  /* AVX instructions */
 #define VEX_HWCAPS_AMD64_RDTSCP (1<<9)  /* RDTSCP instruction */
 #define VEX_HWCAPS_AMD64_BMI    (1<<10) /* BMI1 instructions */
 #define VEX_HWCAPS_AMD64_AVX2   (1<<11) /* AVX2 instructions */
@@ -109,7 +109,7 @@ typedef
 #define VEX_HWCAPS_PPC32_V     (1<<9)  /* Altivec (VMX) */
 #define VEX_HWCAPS_PPC32_FX    (1<<10) /* FP extns (fsqrt, fsqrts) */
 #define VEX_HWCAPS_PPC32_GX    (1<<11) /* Graphics extns
-                                         (fres,frsqrte,fsel,stfiwx) */
+                                          (fres,frsqrte,fsel,stfiwx) */
 #define VEX_HWCAPS_PPC32_VX    (1<<12) /* Vector-scalar floating-point (VSX); implies ISA 2.06 or higher  */
 #define VEX_HWCAPS_PPC32_DFP   (1<<17) /* Decimal Floating Point (DFP) -- e.g., dadd */
 #define VEX_HWCAPS_PPC32_ISA2_07   (1<<19) /* ISA 2.07 -- e.g., mtvsrd */
@@ -121,7 +121,7 @@ typedef
 #define VEX_HWCAPS_PPC64_V     (1<<13) /* Altivec (VMX) */
 #define VEX_HWCAPS_PPC64_FX    (1<<14) /* FP extns (fsqrt, fsqrts) */
 #define VEX_HWCAPS_PPC64_GX    (1<<15) /* Graphics extns
-                                         (fres,frsqrte,fsel,stfiwx) */
+                                          (fres,frsqrte,fsel,stfiwx) */
 #define VEX_HWCAPS_PPC64_VX    (1<<16) /* Vector-scalar floating-point (VSX); implies ISA 2.06 or higher  */
 #define VEX_HWCAPS_PPC64_DFP   (1<<18) /* Decimal Floating Point (DFP) -- e.g., dadd */
 #define VEX_HWCAPS_PPC64_ISA2_07   (1<<20) /* ISA 2.07 -- e.g., mtvsrd */
@@ -359,7 +359,7 @@ typedef struct {
 typedef
    struct {
       /* The following three fields are mandatory. */
-      UInt hwcaps;
+      UInt         hwcaps;
       VexEndness   endness;
       VexCacheInfo hwcache_info;
       /* PPC32/PPC64 only: size of instruction cache line */
@@ -382,7 +382,7 @@ typedef
    VexArchInfo;
 
 /* Write default settings info *vai. */
-extern
+extern 
 void LibVEX_default_VexArchInfo ( /*OUT*/VexArchInfo* vai );
 
 
@@ -433,7 +433,7 @@ void LibVEX_default_VexArchInfo ( /*OUT*/VexArchInfo* vai );
 
 typedef
    struct {
-      /* PPC and AMD64 GUESTS only: how many bytes below the
+      /* PPC and AMD64 GUESTS only: how many bytes below the 
          stack pointer are validly addressible? */
       Int guest_stack_redzone_size;
 
@@ -478,7 +478,7 @@ typedef
    VexAbiInfo;
 
 /* Write default settings info *vbi. */
-extern
+extern 
 void LibVEX_default_VexAbiInfo ( /*OUT*/VexAbiInfo* vbi );
 
 
@@ -562,7 +562,7 @@ typedef
 
 /* Write the default settings into *vcon. */
 
-extern
+extern 
 void LibVEX_default_VexControl ( /*OUT*/ VexControl* vcon );
 
 
@@ -802,14 +802,14 @@ typedef
 
       /* IN: optionally, two instrumentation functions.  May be
 	 NULL. */
-      IRSB*   (*instrument1) ( /*callback_opaque*/void*,
-                               IRSB*,
+      IRSB*   (*instrument1) ( /*callback_opaque*/void*, 
+                               IRSB*, 
                                const VexGuestLayout*, 
                                const VexGuestExtents*,
                                const VexArchInfo*,
                                IRType gWordTy, IRType hWordTy );
-      IRSB*   (*instrument2) ( /*callback_opaque*/void*,
-                               IRSB*,
+      IRSB*   (*instrument2) ( /*callback_opaque*/void*, 
+                               IRSB*, 
                                const VexGuestLayout*, 
                                const VexGuestExtents*,
                                const VexArchInfo*,
@@ -901,7 +901,7 @@ typedef
 
 
 /* Runs the entire compilation pipeline. */
-extern
+extern 
 VexTranslateResult LibVEX_Translate ( /*MOD*/ VexTranslateArgs* );
 
 /* Runs the first half of the compilation pipeline: lifts guest code to IR,
@@ -945,9 +945,9 @@ typedef
    currently contains a call to the dispatcher specified by
    disp_cp_chain_me_EXPECTED. */
 extern
-VexInvalRange LibVEX_Chain ( VexArch arch_host,
+VexInvalRange LibVEX_Chain ( VexArch     arch_host,
                              VexEndness  endhess_host,
-                             void*   place_to_chain,
+                             void*       place_to_chain,
                              const void* disp_cp_chain_me_EXPECTED,
                              const void* place_to_jump_to );
 
@@ -956,9 +956,9 @@ VexInvalRange LibVEX_Chain ( VexArch arch_host,
    (and checked) that this site currently contains a jump directly to
    the address specified by place_to_jump_to_EXPECTED. */
 extern
-VexInvalRange LibVEX_UnChain ( VexArch arch_host,
+VexInvalRange LibVEX_UnChain ( VexArch     arch_host,
                                VexEndness  endness_host,
-                               void*   place_to_unchain,
+                               void*       place_to_unchain,
                                const void* place_to_jump_to_EXPECTED,
                                const void* disp_cp_chain_me );
 
@@ -973,9 +973,9 @@ Int LibVEX_evCheckSzB ( VexArch arch_host );
 /* Patch the counter location into an existing ProfInc point.  The
    specified point is checked to make sure it is plausible. */
 extern
-VexInvalRange LibVEX_PatchProfInc ( VexArch arch_host,
+VexInvalRange LibVEX_PatchProfInc ( VexArch      arch_host,
                                     VexEndness   endness_host,
-                                    void*   place_to_patch,
+                                    void*        place_to_patch,
                                     const ULong* location_of_counter );
 
 

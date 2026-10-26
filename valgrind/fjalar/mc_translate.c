@@ -5,7 +5,7 @@
 /*--------------------------------------------------------------------*/
 
 /*
-   This file is derived from MemCheck, a heavyweight Valgrind tool for
+   This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
    Copyright (C) 2000-2017 Julian Seward 
@@ -29,8 +29,8 @@
 
 /* mc_translate.c
 
-   This file is part of Fjalar, a dynamic analysis framework for C/C++
-   programs.
+   This file has been modified for Fjalar, a dynamic analysis framework
+   for C/C++ programs.
 
    Copyright (C) 2007-2026 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
@@ -87,7 +87,7 @@ Bool kvasir_with_dyncomp; // pgbovine - dyncomp
    Here is as good a place as any to record exactly when V bits are and
    should be checked, why, and what function is responsible.
 
-
+   
    Memcheck complains when an undefined value is used:
 
    1. In the condition of a conditional branch.  Because it could cause
@@ -375,8 +375,8 @@ IRType shadowTypeV ( IRType ty )
       case Ity_I1:
       case Ity_I8:
       case Ity_I16:
-      case Ity_I32:
-      case Ity_I64:
+      case Ity_I32: 
+      case Ity_I64: 
       case Ity_I128: return ty;
       case Ity_F16:  return Ity_I16;
       case Ity_F32:  return Ity_I32;
@@ -387,7 +387,7 @@ IRType shadowTypeV ( IRType ty )
       case Ity_D128: return Ity_I128;
       case Ity_V128: return Ity_V128;
       case Ity_V256: return Ity_V256;
-      default: ppIRType(ty);
+      default: ppIRType(ty); 
                VG_(tool_panic)("memcheck:shadowTypeV");
    }
 }
@@ -431,7 +431,7 @@ static IRAtom* assignNew ( HChar cat, MCEnv* mce, IRType ty, IRExpr* e )
    switch (cat) {
       case 'V': k = VSh;  break;
       case 'B': k = BSh;  break;
-      case 'C': k = Orig; break;
+      case 'C': k = Orig; break; 
                 /* happens when we are making up new "orig"
                    expressions, for IRCAS handling */
       default: tl_assert(0);
@@ -698,9 +698,9 @@ static IRAtom* mkImproveOR1 ( MCEnv* mce, IRAtom* data, IRAtom* vbits )
    tl_assert(isShadowAtom(mce, vbits));
    tl_assert(sameKindedAtoms(data, vbits));
    return assignNew(
-             'V', mce, Ity_I1,
-             binop(Iop_Or1,
-                   assignNew('V', mce, Ity_I1, unop(Iop_Not1, data)),
+             'V', mce, Ity_I1, 
+             binop(Iop_Or1, 
+                   assignNew('V', mce, Ity_I1, unop(Iop_Not1, data)), 
                    vbits) );
 }
 
@@ -710,9 +710,9 @@ static IRAtom* mkImproveOR8 ( MCEnv* mce, IRAtom* data, IRAtom* vbits )
    tl_assert(isShadowAtom(mce, vbits));
    tl_assert(sameKindedAtoms(data, vbits));
    return assignNew(
-             'V', mce, Ity_I8,
-             binop(Iop_Or8,
-                   assignNew('V', mce, Ity_I8, unop(Iop_Not8, data)),
+             'V', mce, Ity_I8, 
+             binop(Iop_Or8, 
+                   assignNew('V', mce, Ity_I8, unop(Iop_Not8, data)), 
                    vbits) );
 }
 
@@ -722,9 +722,9 @@ static IRAtom* mkImproveOR16 ( MCEnv* mce, IRAtom* data, IRAtom* vbits )
    tl_assert(isShadowAtom(mce, vbits));
    tl_assert(sameKindedAtoms(data, vbits));
    return assignNew(
-             'V', mce, Ity_I16,
-             binop(Iop_Or16,
-                   assignNew('V', mce, Ity_I16, unop(Iop_Not16, data)),
+             'V', mce, Ity_I16, 
+             binop(Iop_Or16, 
+                   assignNew('V', mce, Ity_I16, unop(Iop_Not16, data)), 
                    vbits) );
 }
 
@@ -734,9 +734,9 @@ static IRAtom* mkImproveOR32 ( MCEnv* mce, IRAtom* data, IRAtom* vbits )
    tl_assert(isShadowAtom(mce, vbits));
    tl_assert(sameKindedAtoms(data, vbits));
    return assignNew(
-             'V', mce, Ity_I32,
-             binop(Iop_Or32,
-                   assignNew('V', mce, Ity_I32, unop(Iop_Not32, data)),
+             'V', mce, Ity_I32, 
+             binop(Iop_Or32, 
+                   assignNew('V', mce, Ity_I32, unop(Iop_Not32, data)), 
                    vbits) );
 }
 
@@ -746,9 +746,9 @@ static IRAtom* mkImproveOR64 ( MCEnv* mce, IRAtom* data, IRAtom* vbits )
    tl_assert(isShadowAtom(mce, vbits));
    tl_assert(sameKindedAtoms(data, vbits));
    return assignNew(
-             'V', mce, Ity_I64,
-             binop(Iop_Or64,
-                   assignNew('V', mce, Ity_I64, unop(Iop_Not64, data)),
+             'V', mce, Ity_I64, 
+             binop(Iop_Or64, 
+                   assignNew('V', mce, Ity_I64, unop(Iop_Not64, data)), 
                    vbits) );
 }
 
@@ -758,9 +758,9 @@ static IRAtom* mkImproveORV128 ( MCEnv* mce, IRAtom* data, IRAtom* vbits )
    tl_assert(isShadowAtom(mce, vbits));
    tl_assert(sameKindedAtoms(data, vbits));
    return assignNew(
-             'V', mce, Ity_V128,
-             binop(Iop_OrV128,
-                   assignNew('V', mce, Ity_V128, unop(Iop_NotV128, data)),
+             'V', mce, Ity_V128, 
+             binop(Iop_OrV128, 
+                   assignNew('V', mce, Ity_V128, unop(Iop_NotV128, data)), 
                    vbits) );
 }
 
@@ -782,7 +782,7 @@ static IRAtom* mkImproveORV256 ( MCEnv* mce, IRAtom* data, IRAtom* vbits )
    is undefined (value == 1) the resulting expression has all bits set to
    1. Otherwise, all bits are 0. */
 
-static IRAtom* mkPCastTo( MCEnv* mce, IRType dst_ty, IRAtom* vbits )
+static IRAtom* mkPCastTo( MCEnv* mce, IRType dst_ty, IRAtom* vbits ) 
 {
    IRType  src_ty;
    IRAtom* tmp1;
@@ -858,16 +858,16 @@ static IRAtom* mkPCastTo( MCEnv* mce, IRType dst_ty, IRAtom* vbits )
       case Ity_I1:
          tmp1 = vbits;
          break;
-      case Ity_I8:
+      case Ity_I8: 
          tmp1 = assignNew('V', mce, Ity_I1, unop(Iop_CmpNEZ8, vbits));
          break;
-      case Ity_I16:
+      case Ity_I16: 
          tmp1 = assignNew('V', mce, Ity_I1, unop(Iop_CmpNEZ16, vbits));
          break;
-      case Ity_I32:
+      case Ity_I32: 
          tmp1 = assignNew('V', mce, Ity_I1, unop(Iop_CmpNEZ32, vbits));
          break;
-      case Ity_I64:
+      case Ity_I64: 
          tmp1 = assignNew('V', mce, Ity_I1, unop(Iop_CmpNEZ64, vbits));
          break;
       case Ity_I128: {
@@ -876,7 +876,7 @@ static IRAtom* mkPCastTo( MCEnv* mce, IRType dst_ty, IRAtom* vbits )
          IRAtom* tmp2 = assignNew('V', mce, Ity_I64, unop(Iop_128HIto64, vbits));
          IRAtom* tmp3 = assignNew('V', mce, Ity_I64, unop(Iop_128to64, vbits));
          IRAtom* tmp4 = assignNew('V', mce, Ity_I64, binop(Iop_Or64, tmp2, tmp3));
-         tmp1         = assignNew('V', mce, Ity_I1,
+         tmp1         = assignNew('V', mce, Ity_I1, 
                                        unop(Iop_CmpNEZ64, tmp4));
          break;
       }
@@ -900,13 +900,13 @@ static IRAtom* mkPCastTo( MCEnv* mce, IRType dst_ty, IRAtom* vbits )
    switch (dst_ty) {
       case Ity_I1:
          return tmp1;
-      case Ity_I8:
+      case Ity_I8: 
          return assignNew('V', mce, Ity_I8, unop(Iop_1Sto8, tmp1));
-      case Ity_I16:
+      case Ity_I16: 
          return assignNew('V', mce, Ity_I16, unop(Iop_1Sto16, tmp1));
-      case Ity_I32:
+      case Ity_I32: 
          return assignNew('V', mce, Ity_I32, unop(Iop_1Sto32, tmp1));
-      case Ity_I64:
+      case Ity_I64: 
          return assignNew('V', mce, Ity_I64, unop(Iop_1Sto64, tmp1));
       case Ity_V128:
          tmp1 = assignNew('V', mce, Ity_I64,  unop(Iop_1Sto64, tmp1));
@@ -923,7 +923,7 @@ static IRAtom* mkPCastTo( MCEnv* mce, IRType dst_ty, IRAtom* vbits )
          tmp1 = assignNew('V', mce, Ity_V256, binop(Iop_V128HLtoV256,
                                                     tmp1, tmp1));
          return tmp1;
-      default:
+      default: 
          ppIRType(dst_ty);
          VG_(tool_panic)("mkPCastTo(2)");
    }
@@ -1006,7 +1006,7 @@ static IRAtom* mkOCastAt( MCEnv* mce, IRType ty, IRAtom* vbits )
 
 
 /* --------- Accurate interpretation of CmpEQ/CmpNE. --------- */
-/*
+/* 
    Normally, we can do CmpEQ/CmpNE by doing UifU on the arguments, and
    PCasting to Ity_U1.  However, sometimes it is necessary to be more
    accurate.  The insight is that the result is defined if two
@@ -1028,7 +1028,7 @@ static IRAtom* mkOCastAt( MCEnv* mce, IRType ty, IRAtom* vbits )
    )
 
    where
-     vec contains 0 (defined) bits where the corresponding arg bits
+     vec contains 0 (defined) bits where the corresponding arg bits 
      are defined but different, and 1 bits otherwise.
 
      vec = Or<sz>( vxx,   // 0 iff bit defined
@@ -1036,7 +1036,7 @@ static IRAtom* mkOCastAt( MCEnv* mce, IRType ty, IRAtom* vbits )
                    Not<sz>(Xor<sz>( xx, yy )) // 0 iff bits different
                  )
 
-     If any bit of vec is 0, the result is defined and so the
+     If any bit of vec is 0, the result is defined and so the 
      improvement term should produce 0...0, else it should produce
      1...1.
 
@@ -1071,7 +1071,7 @@ static IRAtom* mkOCastAt( MCEnv* mce, IRType ty, IRAtom* vbits )
 */
 static IRAtom* expensiveCmpEQorNE ( MCEnv*  mce,
                                     IRType  ty,
-                                    IRAtom* vxx, IRAtom* vyy,
+                                    IRAtom* vxx, IRAtom* vyy, 
                                     IRAtom* xx,  IRAtom* yy )
 {
    IRAtom *naive, *vec, *improved, *final_cast;
@@ -1083,7 +1083,7 @@ static IRAtom* expensiveCmpEQorNE ( MCEnv*  mce,
    tl_assert(isOriginalAtom(mce,yy));
    tl_assert(sameKindedAtoms(vxx,xx));
    tl_assert(sameKindedAtoms(vyy,yy));
-
+ 
    switch (ty) {
       case Ity_I8:
          opDIFD = Iop_And8;
@@ -1117,12 +1117,12 @@ static IRAtom* expensiveCmpEQorNE ( MCEnv*  mce,
          VG_(tool_panic)("expensiveCmpEQorNE");
    }
 
-   naive
+   naive 
       = assignNew('V', mce, ty, binop(opUIFU, vxx, vyy));
 
-   vec
+   vec 
       = assignNew(
-           'V', mce,ty,
+           'V', mce,ty, 
            binop( opOR,
                   naive,
                   assignNew(
@@ -1271,7 +1271,7 @@ static IRAtom* expensiveCmpGT ( MCEnv*  mce,
 
    and similarly the unsigned variant.  The default interpretation is:
 
-      CmpORD32{S,U}#(x,y,x#,y#) = PCast(x# `UifU` y#)
+      CmpORD32{S,U}#(x,y,x#,y#) = PCast(x# `UifU` y#)  
                                   & (7<<1)
 
    The "& (7<<1)" reflects the fact that all result bits except 3,2,1
@@ -1308,7 +1308,7 @@ static Bool isZeroU64 ( IRAtom* e )
 
 static IRAtom* doCmpORD ( MCEnv*  mce,
                           IROp    cmp_op,
-                          IRAtom* xxhash, IRAtom* yyhash,
+                          IRAtom* xxhash, IRAtom* yyhash, 
                           IRAtom* xx,     IRAtom* yy )
 {
    Bool   m64      = cmp_op == Iop_CmpORD64S || cmp_op == Iop_CmpORD64U;
@@ -1390,9 +1390,9 @@ static IRAtom* doCmpORD ( MCEnv*  mce,
    } else {
       /* standard interpretation */
       IRAtom* sevenLeft1 = m64 ? mkU64(7<<1) : mkU32(7<<1);
-      return
-         binop(
-            opAND,
+      return 
+         binop( 
+            opAND, 
             mkPCastTo( mce,ty,
                        mkUifU(mce,ty, xxhash,yyhash)),
             sevenLeft1
@@ -1582,17 +1582,17 @@ static void complainIfUndefined ( MCEnv* mce, IRAtom* atom, IRExpr *guard )
    tl_assert( (MC_(clo_mc_level) == 3 && origin != NULL)
               || (MC_(clo_mc_level) == 2 && origin == NULL) );
 
-   di = unsafeIRDirty_0_N( nargs/*regparms*/, nm,
+   di = unsafeIRDirty_0_N( nargs/*regparms*/, nm, 
                            VG_(fnptr_to_fnentry)( fn ), args );
    di->guard = cond; // and cond is PCast-to-1(atom#)
 
    /* If the complaint is to be issued under a guard condition, AND
       that into the guard condition for the helper call. */
    if (guard) {
-     IRAtom *g1 = assignNew('V', mce, Ity_I32, unop(Iop_1Uto32, di->guard));
-     IRAtom *g2 = assignNew('V', mce, Ity_I32, unop(Iop_1Uto32, guard));
-     IRAtom *e  = assignNew('V', mce, Ity_I32, binop(Iop_And32, g1, g2));
-     di->guard  = assignNew('V', mce, Ity_I1,  unop(Iop_32to1, e));
+      IRAtom *g1 = assignNew('V', mce, Ity_I32, unop(Iop_1Uto32, di->guard));
+      IRAtom *g2 = assignNew('V', mce, Ity_I32, unop(Iop_1Uto32, guard));
+      IRAtom *e  = assignNew('V', mce, Ity_I32, binop(Iop_And32, g1, g2));
+      di->guard  = assignNew('V', mce, Ity_I1,  unop(Iop_32to1, e));
    }
 
    setHelperAnns( mce, di );
@@ -1609,9 +1609,9 @@ static void complainIfUndefined ( MCEnv* mce, IRAtom* atom, IRExpr *guard )
       tl_assert(atom->tag == Iex_RdTmp);
       if (guard == NULL) {
          // guard is 'always True', hence update unconditionally
-      newShadowTmpV(mce, atom->Iex.RdTmp.tmp);
-      assign('V', mce, findShadowTmpV(mce, atom->Iex.RdTmp.tmp),
-                       definedOfType(ty));
+         newShadowTmpV(mce, atom->Iex.RdTmp.tmp);
+         assign('V', mce, findShadowTmpV(mce, atom->Iex.RdTmp.tmp), 
+                          definedOfType(ty));
       } else {
          // update the temp only conditionally.  Do this by copying
          // its old value when the guard is False.
@@ -1636,7 +1636,7 @@ static void complainIfUndefined ( MCEnv* mce, IRAtom* atom, IRExpr *guard )
 /* Examine the always-defined sections declared in layout to see if
    the (offset,size) section is within one.  Note, is is an error to
    partially fall into such a region: (offset,size) should either be
-   completely in such a region or completely not-in such a region.
+   completely in such a region or completely not-in such a region.  
 */
 static Bool isAlwaysDefd ( MCEnv* mce, Int offset, Int size )
 {
@@ -1671,7 +1671,7 @@ static Bool isAlwaysDefd ( MCEnv* mce, Int offset, Int size )
    We assume here, that the definedness of GUARD has already been checked.
 */
 static
-void do_shadow_PUT ( MCEnv* mce,  Int offset,
+void do_shadow_PUT ( MCEnv* mce,  Int offset, 
                      IRAtom* atom, IRAtom* vatom, IRExpr *guard )
 {
    IRType ty;
@@ -1681,7 +1681,7 @@ void do_shadow_PUT ( MCEnv* mce,  Int offset,
    // that they depend on, which includes GETs of the shadow registers.
    if (MC_(clo_mc_level) == 1)
       return;
-
+   
    if (atom) {
       tl_assert(!vatom);
       tl_assert(isOriginalAtom(mce, atom));
@@ -1715,7 +1715,7 @@ void do_shadow_PUT ( MCEnv* mce,  Int offset,
 
 
 /* Return an expression which contains the V bits corresponding to the
-   given GETI (passed in in pieces).
+   given GETI (passed in in pieces). 
 */
 static
 void do_shadow_PUTI ( MCEnv* mce, IRPutI *puti)
@@ -1733,7 +1733,7 @@ void do_shadow_PUTI ( MCEnv* mce, IRPutI *puti)
    // that they depend on, which includes GETIs of the shadow registers.
    if (MC_(clo_mc_level) == 1)
       return;
-
+   
    tl_assert(isOriginalAtom(mce,atom));
    vatom = expr2vbits( mce, atom, HuOth );
    tl_assert(sameKindedAtoms(atom, vatom));
@@ -1750,8 +1750,8 @@ void do_shadow_PUTI ( MCEnv* mce, IRPutI *puti)
    } else {
       /* Do a cloned version of the Put that refers to the shadow
          area. */
-      IRRegArray* new_descr
-         = mkIRRegArray( descr->base + mce->layout->total_sizeB,
+      IRRegArray* new_descr 
+         = mkIRRegArray( descr->base + mce->layout->total_sizeB, 
                          tyS, descr->nElems);
       stmt( 'V', mce, IRStmt_PutI( mkIRPutI(new_descr, ix, bias, vatom) ));
    }
@@ -1759,9 +1759,9 @@ void do_shadow_PUTI ( MCEnv* mce, IRPutI *puti)
 
 
 /* Return an expression which contains the V bits corresponding to the
-   given GET (passed in in pieces).
+   given GET (passed in in pieces). 
 */
-static
+static 
 IRExpr* shadow_GET ( MCEnv* mce, Int offset, IRType ty )
 {
    IRType tyS = shadowTypeV(ty);
@@ -1780,10 +1780,10 @@ IRExpr* shadow_GET ( MCEnv* mce, Int offset, IRType ty )
 
 
 /* Return an expression which contains the V bits corresponding to the
-   given GETI (passed in in pieces).
+   given GETI (passed in in pieces). 
 */
 static
-IRExpr* shadow_GETI ( MCEnv* mce,
+IRExpr* shadow_GETI ( MCEnv* mce, 
                       IRRegArray* descr, IRAtom* ix, Int bias )
 {
    IRType ty   = descr->elemTy;
@@ -1798,8 +1798,8 @@ IRExpr* shadow_GETI ( MCEnv* mce,
    } else {
       /* return a cloned version of the Get that refers to the shadow
          area. */
-      IRRegArray* new_descr
-         = mkIRRegArray( descr->base + mce->layout->total_sizeB,
+      IRRegArray* new_descr 
+         = mkIRRegArray( descr->base + mce->layout->total_sizeB, 
                          tyS, descr->nElems);
       return IRExpr_GetI( new_descr, ix, bias );
    }
@@ -1812,7 +1812,7 @@ IRExpr* shadow_GETI ( MCEnv* mce,
 /*------------------------------------------------------------*/
 
 /* Lazy propagation of undefinedness from two values, resulting in the
-   specified shadow type.
+   specified shadow type. 
 */
 static
 IRAtom* mkLazy2 ( MCEnv* mce, IRType finalVty, IRAtom* va1, IRAtom* va2 )
@@ -1871,7 +1871,7 @@ IRAtom* mkLazy2 ( MCEnv* mce, IRType finalVty, IRAtom* va1, IRAtom* va2 )
 
 /* 3-arg version of the above. */
 static
-IRAtom* mkLazy3 ( MCEnv* mce, IRType finalVty,
+IRAtom* mkLazy3 ( MCEnv* mce, IRType finalVty, 
                   IRAtom* va1, IRAtom* va2, IRAtom* va3 )
 {
    IRAtom* at;
@@ -1888,7 +1888,7 @@ IRAtom* mkLazy3 ( MCEnv* mce, IRType finalVty,
 
    /* I32 x I64 x I64 -> I64 */
    /* Standard FP idiom: rm x FParg1 x FParg2 -> FPresult */
-   if (t1 == Ity_I32 && t2 == Ity_I64 && t3 == Ity_I64
+   if (t1 == Ity_I32 && t2 == Ity_I64 && t3 == Ity_I64 
        && finalVty == Ity_I64) {
       if (0) printf("mkLazy3: I32 x I64 x I64 -> I64\n");
       /* Widen 1st arg to I64.  Since 1st arg is typically a rounding
@@ -1921,7 +1921,7 @@ IRAtom* mkLazy3 ( MCEnv* mce, IRType finalVty,
    }
 
    /* I32 x I64 x I64 -> I32 */
-   if (t1 == Ity_I32 && t2 == Ity_I64 && t3 == Ity_I64
+   if (t1 == Ity_I32 && t2 == Ity_I64 && t3 == Ity_I64 
        && finalVty == Ity_I32) {
       if (0) printf("mkLazy3: I32 x I64 x I64 -> I32\n");
       at = mkPCastTo(mce, Ity_I64, va1);
@@ -2017,7 +2017,7 @@ IRAtom* mkLazy3 ( MCEnv* mce, IRType finalVty,
 
 /* 4-arg version of the above. */
 static
-IRAtom* mkLazy4 ( MCEnv* mce, IRType finalVty,
+IRAtom* mkLazy4 ( MCEnv* mce, IRType finalVty, 
                   IRAtom* va1, IRAtom* va2, IRAtom* va3, IRAtom* va4 )
 {
    IRAtom* at;
@@ -2127,10 +2127,10 @@ IRAtom* mkLazy4 ( MCEnv* mce, IRType finalVty,
 /* Do the lazy propagation game from a null-terminated vector of
    atoms.  This is presumably the arguments to a helper call, so the
    IRCallee info is also supplied in order that we can know which
-   arguments should be ignored (via the .mcx_mask field).
+   arguments should be ignored (via the .mcx_mask field). 
 */
 static
-IRAtom* mkLazyN ( MCEnv* mce,
+IRAtom* mkLazyN ( MCEnv* mce, 
                   IRAtom** exprvec, IRType finalVtype, IRCallee* cee )
 {
    Int     i;
@@ -2167,7 +2167,7 @@ IRAtom* mkLazyN ( MCEnv* mce,
          /* calculate the arg's definedness, and pessimistically merge
             it in. */
          here = mkPCastTo( mce, mergeTy, expr2vbits(mce, exprvec[i], HuOth) );
-         curr = mergeTy64
+         curr = mergeTy64 
                    ? mkUifU64(mce, here, curr)
                    : mkUifU32(mce, here, curr);
       }
@@ -2185,7 +2185,7 @@ static
 IRAtom* expensiveAddSub ( MCEnv*  mce,
                           Bool    add,
                           IRType  ty,
-                          IRAtom* qaa, IRAtom* qbb,
+                          IRAtom* qaa, IRAtom* qbb, 
                           IRAtom* aa,  IRAtom* bb )
 {
    IRAtom *a_min, *b_min, *a_max, *b_max;
@@ -2220,12 +2220,12 @@ IRAtom* expensiveAddSub ( MCEnv*  mce,
    }
 
    // a_min = aa & ~qaa
-   a_min = assignNew('V', mce,ty,
+   a_min = assignNew('V', mce,ty, 
                      binop(opAND, aa,
                                   assignNew('V', mce,ty, unop(opNOT, qaa))));
 
    // b_min = bb & ~qbb
-   b_min = assignNew('V', mce,ty,
+   b_min = assignNew('V', mce,ty, 
                      binop(opAND, bb,
                                   assignNew('V', mce,ty, unop(opNOT, qbb))));
 
@@ -2241,8 +2241,8 @@ IRAtom* expensiveAddSub ( MCEnv*  mce,
       assignNew('V', mce,ty,
          binop( opOR,
                 assignNew('V', mce,ty, binop(opOR, qaa, qbb)),
-                assignNew('V', mce,ty,
-                   binop( opXOR,
+                assignNew('V', mce,ty, 
+                   binop( opXOR, 
                           assignNew('V', mce,ty, binop(opADD, a_min, b_min)),
                           assignNew('V', mce,ty, binop(opADD, a_max, b_max))
                    )
@@ -2255,8 +2255,8 @@ IRAtom* expensiveAddSub ( MCEnv*  mce,
       assignNew('V', mce,ty,
          binop( opOR,
                 assignNew('V', mce,ty, binop(opOR, qaa, qbb)),
-                assignNew('V', mce,ty,
-                   binop( opXOR,
+                assignNew('V', mce,ty, 
+                   binop( opXOR, 
                           assignNew('V', mce,ty, binop(opSUB, a_min, b_max)),
                           assignNew('V', mce,ty, binop(opSUB, a_max, b_min))
                    )
@@ -2458,7 +2458,7 @@ IRAtom* expensiveCountLeadingZeroes ( MCEnv* mce, IROp czop,
 static IRAtom* scalarShift ( MCEnv*  mce,
                              IRType  ty,
                              IROp    original_op,
-                             IRAtom* qaa, IRAtom* qbb,
+                             IRAtom* qaa, IRAtom* qbb, 
                              IRAtom* aa,  IRAtom* bb )
 {
    tl_assert(isShadowAtom(mce,qaa));
@@ -2467,7 +2467,7 @@ static IRAtom* scalarShift ( MCEnv*  mce,
    tl_assert(isOriginalAtom(mce,bb));
    tl_assert(sameKindedAtoms(qaa,aa));
    tl_assert(sameKindedAtoms(qbb,bb));
-   return
+   return 
       assignNew(
          'V', mce, ty,
          mkUifU( mce, ty,
@@ -2568,21 +2568,21 @@ static IRAtom* mkPCast8x4 ( MCEnv* mce, IRAtom* at )
    Lowest-lane-only versions are more complex:
 
    binary32F0x4(x,y)  ==> SetV128lo32(
-                             x#,
-                             PCast32(V128to32(UifUV128(x#,y#)))
+                             x#, 
+                             PCast32(V128to32(UifUV128(x#,y#))) 
                           )
 
    This is perhaps not so obvious.  In particular, it's faster to
    do a V128-bit UifU and then take the bottom 32 bits than the more
    obvious scheme of taking the bottom 32 bits of each operand
-   and doing a 32-bit UifU.  Basically since UifU is fast and
+   and doing a 32-bit UifU.  Basically since UifU is fast and 
    chopping lanes off vector values is slow.
 
    Finally:
 
    unary32F0x4(x)     ==> SetV128lo32(
-                             x#,
-                             PCast32(V128to32(x#))
+                             x#, 
+                             PCast32(V128to32(x#)) 
                           )
 
    Where:
@@ -3003,7 +3003,7 @@ IROp vanillaNarrowingOpOfShape ( IROp qnarrowOp )
 
 static
 IRAtom* vectorNarrowBinV128 ( MCEnv* mce, IROp narrow_op, 
-                          IRAtom* vatom1, IRAtom* vatom2)
+                              IRAtom* vatom1, IRAtom* vatom2)
 {
    IRAtom *at1, *at2, *at3;
    IRAtom* (*pcast)( MCEnv*, IRAtom* );
@@ -3029,7 +3029,7 @@ IRAtom* vectorNarrowBinV128 ( MCEnv* mce, IROp narrow_op,
 
 static
 IRAtom* vectorNarrowBin64 ( MCEnv* mce, IROp narrow_op, 
-                         IRAtom* vatom1, IRAtom* vatom2)
+                            IRAtom* vatom1, IRAtom* vatom2)
 {
    IRAtom *at1, *at2, *at3;
    IRAtom* (*pcast)( MCEnv*, IRAtom* );
@@ -3160,7 +3160,7 @@ IRAtom* binary8Ix16 ( MCEnv* mce, IRAtom* vatom1, IRAtom* vatom2 )
    IRAtom* at;
    at = mkUifUV128(mce, vatom1, vatom2);
    at = mkPCast8x16(mce, at);
-   return at;
+   return at;   
 }
 
 static
@@ -3169,7 +3169,7 @@ IRAtom* binary16Ix8 ( MCEnv* mce, IRAtom* vatom1, IRAtom* vatom2 )
    IRAtom* at;
    at = mkUifUV128(mce, vatom1, vatom2);
    at = mkPCast16x8(mce, at);
-   return at;
+   return at;   
 }
 
 static
@@ -3178,7 +3178,7 @@ IRAtom* binary32Ix4 ( MCEnv* mce, IRAtom* vatom1, IRAtom* vatom2 )
    IRAtom* at;
    at = mkUifUV128(mce, vatom1, vatom2);
    at = mkPCast32x4(mce, at);
-   return at;
+   return at;   
 }
 
 static
@@ -3187,7 +3187,7 @@ IRAtom* binary64Ix2 ( MCEnv* mce, IRAtom* vatom1, IRAtom* vatom2 )
    IRAtom* at;
    at = mkUifUV128(mce, vatom1, vatom2);
    at = mkPCast64x2(mce, at);
-   return at;
+   return at;   
 }
 
 static
@@ -3207,7 +3207,7 @@ IRAtom* binary8Ix8 ( MCEnv* mce, IRAtom* vatom1, IRAtom* vatom2 )
    IRAtom* at;
    at = mkUifU64(mce, vatom1, vatom2);
    at = mkPCast8x8(mce, at);
-   return at;
+   return at;   
 }
 
 static
@@ -3216,7 +3216,7 @@ IRAtom* binary16Ix4 ( MCEnv* mce, IRAtom* vatom1, IRAtom* vatom2 )
    IRAtom* at;
    at = mkUifU64(mce, vatom1, vatom2);
    at = mkPCast16x4(mce, at);
-   return at;
+   return at;   
 }
 
 static
@@ -3225,7 +3225,7 @@ IRAtom* binary32Ix2 ( MCEnv* mce, IRAtom* vatom1, IRAtom* vatom2 )
    IRAtom* at;
    at = mkUifU64(mce, vatom1, vatom2);
    at = mkPCast32x2(mce, at);
-   return at;
+   return at;   
 }
 
 static
@@ -3262,10 +3262,10 @@ IRAtom* binary16Ix2 ( MCEnv* mce, IRAtom* vatom1, IRAtom* vatom2 )
 /*--- Generate shadow values from all kinds of IRExprs.    ---*/
 /*------------------------------------------------------------*/
 
-static
+static 
 IRAtom* expr2vbits_Qop ( MCEnv* mce,
                          IROp op,
-                         IRAtom* atom1, IRAtom* atom2,
+                         IRAtom* atom1, IRAtom* atom2, 
                          IRAtom* atom3, IRAtom* atom4 )
 {
    IRAtom* vatom1 = expr2vbits( mce, atom1, HuOth );
@@ -3322,7 +3322,7 @@ IRAtom* expr2vbits_Qop ( MCEnv* mce,
 }
 
 
-static
+static 
 IRAtom* expr2vbits_Triop ( MCEnv* mce,
                            IROp op,
                            IRAtom* atom1, IRAtom* atom2, IRAtom* atom3 )
@@ -3406,7 +3406,7 @@ IRAtom* expr2vbits_Triop ( MCEnv* mce,
       case Iop_SetElem32x2:
          // complainIfUndefined(mce, atom2, NULL); // markro
          return assignNew('V', mce, Ity_I64, triop(op, vatom1, atom2, vatom3));
-     
+
       case Iop_SetElem8x16:
       case Iop_SetElem16x8:
       case Iop_SetElem32x4:
@@ -3419,11 +3419,11 @@ IRAtom* expr2vbits_Triop ( MCEnv* mce,
       case Iop_Perm8x16x2:
          /* (V128, V128, V128) -> V128 */
          // complainIfUndefined(mce, atom3, NULL); // markro
-         return mkUifUV128(
-                mce,
-                assignNew('V', mce, Ity_V128, triop(op, vatom1, vatom2, atom3)),
-                mkPCast8x16(mce, vatom3)
-             );
+            return mkUifUV128(
+                   mce,
+                   assignNew('V', mce, Ity_V128, triop(op, vatom1, vatom2, atom3)),
+                   mkPCast8x16(mce, vatom3)
+                );
 
       /* Vector FP with rounding mode as the first arg */
       case Iop_Add64Fx2:
@@ -3477,7 +3477,7 @@ IRAtom* expr2vbits_Triop ( MCEnv* mce,
 }
 
 
-static
+static 
 IRAtom* expr2vbits_Binop ( MCEnv* mce,
                            IROp op,
                            IRAtom* atom1, IRAtom* atom2,
@@ -3996,7 +3996,7 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
       case Iop_NCipherLV128:
       case Iop_MulI128by10E:
       case Iop_MulI128by10ECarry:
-         return binary64Ix2(mce, vatom1, vatom2);
+        return binary64Ix2(mce, vatom1, vatom2);
 
       case Iop_Add128x1:
       case Iop_Sub128x1:
@@ -4030,7 +4030,7 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
       case Iop_CmpUN64Fx2:
       case Iop_RecipStep64Fx2:
       case Iop_RSqrtStep64Fx2:
-         return binary64Fx2(mce, vatom1, vatom2);
+         return binary64Fx2(mce, vatom1, vatom2);      
 
       case Iop_CmpLT16Fx8:
       case Iop_CmpLE16Fx8:
@@ -4047,7 +4047,7 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
       case Iop_CmpEQ64F0x2:
       case Iop_CmpUN64F0x2:
       case Iop_Add64F0x2:
-         return binary64F0x2(mce, vatom1, vatom2);
+         return binary64F0x2(mce, vatom1, vatom2);      
 
       case Iop_Min32Fx4:
       case Iop_Max32Fx4:
@@ -4059,7 +4059,7 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
       case Iop_CmpGE32Fx4:
       case Iop_RecipStep32Fx4:
       case Iop_RSqrtStep32Fx4:
-         return binary32Fx4(mce, vatom1, vatom2);
+         return binary32Fx4(mce, vatom1, vatom2);      
 
       case Iop_Sub32Fx2:
       case Iop_Mul32Fx2:
@@ -4083,7 +4083,7 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
       case Iop_CmpEQ32F0x4:
       case Iop_CmpUN32F0x4:
       case Iop_Add32F0x4:
-         return binary32F0x4(mce, vatom1, vatom2);
+         return binary32F0x4(mce, vatom1, vatom2);      
 
       case Iop_QShlNsatSU8x16:
       case Iop_QShlNsatUU8x16:
@@ -4292,7 +4292,7 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
          at = binary16Ix8(mce,vatom1,vatom2);
          at = assignNew('V', mce, Ity_V128, binop(Iop_ShlN32x4, at, mkU8(16)));
          at = assignNew('V', mce, Ity_V128, binop(Iop_SarN32x4, at, mkU8(16)));
-         return at;
+	 return at;
       }
 
       /* Same deal as Iop_MullEven16{S,U}x8 */
@@ -4302,7 +4302,7 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
          at = binary8Ix16(mce,vatom1,vatom2);
          at = assignNew('V', mce, Ity_V128, binop(Iop_ShlN16x8, at, mkU8(8)));
          at = assignNew('V', mce, Ity_V128, binop(Iop_SarN16x8, at, mkU8(8)));
-         return at;
+	 return at;
       }
 
       /* Same deal as Iop_MullEven16{S,U}x8 */
@@ -4322,7 +4322,7 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
       case Iop_NarrowBin32to16x8: 
       case Iop_NarrowBin16to8x16: 
       case Iop_NarrowBin64to32x4:
-         return assignNew('V', mce, Ity_V128,
+         return assignNew('V', mce, Ity_V128, 
                                     binop(op, vatom1, vatom2));
 
       case Iop_ShrV128:
@@ -4687,7 +4687,7 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
          return expensiveCmpEQorNE(mce,Ity_I64, vatom1,vatom2, atom1,atom2 );
 
       cheap_cmp64:
-      case Iop_CmpLE64S: case Iop_CmpLE64U:
+      case Iop_CmpLE64S: case Iop_CmpLE64U: 
       case Iop_CmpLT64U: case Iop_CmpLT64S:
          return mkPCastTo(mce, Ity_I1, mkUifU64(mce, vatom1,vatom2));
 
@@ -4703,7 +4703,7 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
          return expensiveCmpEQorNE(mce,Ity_I32, vatom1,vatom2, atom1,atom2 );
 
       cheap_cmp32:
-      case Iop_CmpLE32S: case Iop_CmpLE32U:
+      case Iop_CmpLE32S: case Iop_CmpLE32U: 
       case Iop_CmpLT32U: case Iop_CmpLT32S:
          return mkPCastTo(mce, Ity_I1, mkUifU32(mce, vatom1,vatom2));
 
@@ -4760,44 +4760,44 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
          uifu = mkUifUV256; difd = mkDifDV256; 
          and_or_ty = Ity_V256; improve = mkImproveANDV256; goto do_And_Or;
       case Iop_AndV128:
-         uifu = mkUifUV128; difd = mkDifDV128;
+         uifu = mkUifUV128; difd = mkDifDV128; 
          and_or_ty = Ity_V128; improve = mkImproveANDV128; goto do_And_Or;
       case Iop_And64:
-         uifu = mkUifU64; difd = mkDifD64;
+         uifu = mkUifU64; difd = mkDifD64; 
          and_or_ty = Ity_I64; improve = mkImproveAND64; goto do_And_Or;
       case Iop_And32:
-         uifu = mkUifU32; difd = mkDifD32;
+         uifu = mkUifU32; difd = mkDifD32; 
          and_or_ty = Ity_I32; improve = mkImproveAND32; goto do_And_Or;
       case Iop_And16:
-         uifu = mkUifU16; difd = mkDifD16;
+         uifu = mkUifU16; difd = mkDifD16; 
          and_or_ty = Ity_I16; improve = mkImproveAND16; goto do_And_Or;
       case Iop_And8:
-         uifu = mkUifU8; difd = mkDifD8;
+         uifu = mkUifU8; difd = mkDifD8; 
          and_or_ty = Ity_I8; improve = mkImproveAND8; goto do_And_Or;
       case Iop_And1:
-         uifu = mkUifU1; difd = mkDifD1;
+         uifu = mkUifU1; difd = mkDifD1; 
          and_or_ty = Ity_I1; improve = mkImproveAND1; goto do_And_Or;
 
       case Iop_OrV256:
          uifu = mkUifUV256; difd = mkDifDV256; 
          and_or_ty = Ity_V256; improve = mkImproveORV256; goto do_And_Or;
       case Iop_OrV128:
-         uifu = mkUifUV128; difd = mkDifDV128;
+         uifu = mkUifUV128; difd = mkDifDV128; 
          and_or_ty = Ity_V128; improve = mkImproveORV128; goto do_And_Or;
       case Iop_Or64:
-         uifu = mkUifU64; difd = mkDifD64;
+         uifu = mkUifU64; difd = mkDifD64; 
          and_or_ty = Ity_I64; improve = mkImproveOR64; goto do_And_Or;
       case Iop_Or32:
-         uifu = mkUifU32; difd = mkDifD32;
+         uifu = mkUifU32; difd = mkDifD32; 
          and_or_ty = Ity_I32; improve = mkImproveOR32; goto do_And_Or;
       case Iop_Or16:
-         uifu = mkUifU16; difd = mkDifD16;
+         uifu = mkUifU16; difd = mkDifD16; 
          and_or_ty = Ity_I16; improve = mkImproveOR16; goto do_And_Or;
       case Iop_Or8:
-         uifu = mkUifU8; difd = mkDifD8;
+         uifu = mkUifU8; difd = mkDifD8; 
          and_or_ty = Ity_I8; improve = mkImproveOR8; goto do_And_Or;
       case Iop_Or1:
-         uifu = mkUifU1; difd = mkDifD1;
+         uifu = mkUifU1; difd = mkDifD1; 
          and_or_ty = Ity_I1; improve = mkImproveOR1; goto do_And_Or;
 
       do_And_Or:
@@ -5000,7 +5000,7 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
 }
 
 
-static
+static 
 IRExpr* expr2vbits_Unop ( MCEnv* mce, IROp op, IRAtom* atom )
 {
    /* For the widening operations {8,16,32}{U,S}to{16,32,64}, the
@@ -5135,7 +5135,7 @@ IRExpr* expr2vbits_Unop ( MCEnv* mce, IROp op, IRAtom* atom )
          return mkPCastTo(mce, Ity_I128, vatom);
 
       case Iop_F16toF64:
-      case Iop_F32toF64:
+      case Iop_F32toF64: 
       case Iop_I32StoF64:
       case Iop_I32UtoF64:
       case Iop_NegF64:
@@ -5642,7 +5642,7 @@ IRAtom* expr2vbits_Load ( MCEnv* mce,
 */
 static
 IRAtom* expr2vbits_Load_guarded_General ( MCEnv* mce,
-                                  IREndness end, IRType ty,
+                                          IREndness end, IRType ty,
                                           IRAtom* addr, UInt bias,
                                           IRAtom* guard,
                                           IROp vwiden, IRAtom* valt )
@@ -5718,8 +5718,8 @@ IRAtom* expr2vbits_ITE ( MCEnv* mce,
    IRType ty;
    /* Given ITE(cond, iftrue,  iffalse),  generate
             ITE(cond, iftrue#, iffalse#) `UifU` PCast(cond#)
-      That is, steer the V bits like the originals, but trash the
-      result if the steering value is undefined.  This gives
+      That is, steer the V bits like the originals, but trash the 
+      result if the steering value is undefined.  This gives 
       lazy propagation. */
    tl_assert(isOriginalAtom(mce, cond));
    tl_assert(isOriginalAtom(mce, iftrue));
@@ -5731,10 +5731,10 @@ IRAtom* expr2vbits_ITE ( MCEnv* mce,
    ty = typeOfIRExpr(mce->sb->tyenv, vbits0);
 
    return
-      mkUifU(mce, ty, assignNew('V', mce, ty,
+      mkUifU(mce, ty, assignNew('V', mce, ty, 
                                      IRExpr_ITE(cond, vbits1, vbits0)),
                       mkPCastTo(mce, ty, vbitsC) );
-}
+}      
 
 /* --------- This is the main expression-handling function. --------- */
 
@@ -5748,7 +5748,7 @@ IRExpr* expr2vbits ( MCEnv* mce, IRExpr* e,
          return shadow_GET( mce, e->Iex.Get.offset, e->Iex.Get.ty );
 
       case Iex_GetI:
-         return shadow_GETI( mce, e->Iex.GetI.descr,
+         return shadow_GETI( mce, e->Iex.GetI.descr, 
                                   e->Iex.GetI.ix, e->Iex.GetI.bias );
 
       case Iex_RdTmp:
@@ -5786,12 +5786,12 @@ IRExpr* expr2vbits ( MCEnv* mce, IRExpr* e,
 
       case Iex_Load:
          return expr2vbits_Load( mce, e->Iex.Load.end,
-                                      e->Iex.Load.ty,
+                                      e->Iex.Load.ty, 
                                       e->Iex.Load.addr, 0/*addr bias*/, 
                                       NULL/* guard == "always True"*/ );
 
       case Iex_CCall:
-         return mkLazyN( mce, e->Iex.CCall.args,
+         return mkLazyN( mce, e->Iex.CCall.args, 
                               e->Iex.CCall.retty,
                               e->Iex.CCall.cee );
 
@@ -5799,7 +5799,7 @@ IRExpr* expr2vbits ( MCEnv* mce, IRExpr* e,
          return expr2vbits_ITE( mce, e->Iex.ITE.cond, e->Iex.ITE.iftrue, 
                                      e->Iex.ITE.iffalse);
 
-      default:
+      default: 
          printf("\n");
          ppIRExpr(e);
          printf("\n");
@@ -5842,10 +5842,10 @@ IRExpr* zwidenToHostWord ( MCEnv* mce, IRAtom* vatom )
          case Ity_I32:
             return assignNew('V', mce, tyH, unop(Iop_32Uto64, vatom));
          case Ity_I16:
-            return assignNew('V', mce, tyH, unop(Iop_32Uto64,
+            return assignNew('V', mce, tyH, unop(Iop_32Uto64, 
                    assignNew('V', mce, Ity_I32, unop(Iop_16Uto32, vatom))));
          case Ity_I8:
-            return assignNew('V', mce, tyH, unop(Iop_32Uto64,
+            return assignNew('V', mce, tyH, unop(Iop_32Uto64, 
                    assignNew('V', mce, Ity_I32, unop(Iop_8Uto32, vatom))));
          default:
             goto unhandled;
@@ -5870,8 +5870,8 @@ IRExpr* zwidenToHostWord ( MCEnv* mce, IRAtom* vatom )
    checked for definedness; the caller of this function must do that
    if necessary.
 */
-static
-void do_shadow_Store ( MCEnv* mce,
+static 
+void do_shadow_Store ( MCEnv* mce, 
                        IREndness end,
                        IRAtom* addr, UInt bias,
                        IRAtom* data, IRAtom* vdata,
@@ -6073,17 +6073,17 @@ void do_shadow_Store ( MCEnv* mce,
       eBiasLo64 = tyAddr==Ity_I32 ? mkU32(bias+offLo64) : mkU64(bias+offLo64);
       addrLo64  = assignNew('V', mce, tyAddr, binop(mkAdd, addr, eBiasLo64) );
       vdataLo64 = assignNew('V', mce, Ity_I64, unop(opGetLO64, vdata));
-      diLo64    = unsafeIRDirty_0_N(
-                     1/*regparms*/,
-                     hname, VG_(fnptr_to_fnentry)( helper ),
+      diLo64    = unsafeIRDirty_0_N( 
+                     1/*regparms*/, 
+                     hname, VG_(fnptr_to_fnentry)( helper ), 
                      mkIRExprVec_2( addrLo64, vdataLo64 )
                   );
       eBiasHi64 = tyAddr==Ity_I32 ? mkU32(bias+offHi64) : mkU64(bias+offHi64);
       addrHi64  = assignNew('V', mce, tyAddr, binop(mkAdd, addr, eBiasHi64) );
       vdataHi64 = assignNew('V', mce, Ity_I64, unop(opGetHI64, vdata));
-      diHi64    = unsafeIRDirty_0_N(
-                     1/*regparms*/,
-                     hname, VG_(fnptr_to_fnentry)( helper ),
+      diHi64    = unsafeIRDirty_0_N( 
+                     1/*regparms*/, 
+                     hname, VG_(fnptr_to_fnentry)( helper ), 
                      mkIRExprVec_2( addrHi64, vdataHi64 )
                   );
       if (guard) diLo64->guard = guard;
@@ -6111,15 +6111,15 @@ void do_shadow_Store ( MCEnv* mce,
          /* We can't do this with regparm 2 on 32-bit platforms, since
             the back ends aren't clever enough to handle 64-bit
             regparm args.  Therefore be different. */
-         di = unsafeIRDirty_0_N(
-                 1/*regparms*/,
-                 hname, VG_(fnptr_to_fnentry)( helper ),
+         di = unsafeIRDirty_0_N( 
+                 1/*regparms*/, 
+                 hname, VG_(fnptr_to_fnentry)( helper ), 
                  mkIRExprVec_2( addrAct, vdata )
               );
       } else {
-         di = unsafeIRDirty_0_N(
-                 2/*regparms*/,
-                 hname, VG_(fnptr_to_fnentry)( helper ),
+         di = unsafeIRDirty_0_N( 
+                 2/*regparms*/, 
+                 hname, VG_(fnptr_to_fnentry)( helper ), 
                  mkIRExprVec_2( addrAct,
                                 zwidenToHostWord( mce, vdata ))
               );
@@ -6195,24 +6195,24 @@ void do_shadow_Dirty ( MCEnv* mce, IRDirty* d )
          gOff = d->fxState[i].offset + k * d->fxState[i].repeatLen;
          gSz  = d->fxState[i].size;
 
-      /* Ignore any sections marked as 'always defined'. */
+         /* Ignore any sections marked as 'always defined'. */
          if (isAlwaysDefd(mce, gOff, gSz)) {
-         if (0)
+            if (0)
          printf("memcheck: Dirty gst: ignored off %d, sz %d\n",
                         gOff, gSz);
-         continue;
-      }
+            continue;
+         }
 
-      /* This state element is read or modified.  So we need to
+         /* This state element is read or modified.  So we need to
             consider it.  If larger than 8 bytes, deal with it in
             8-byte chunks. */
-      while (True) {
+         while (True) {
             tl_assert(gSz >= 0);
-         if (gSz == 0) break;
-         n = gSz <= 8 ? gSz : 8;
-         /* update 'curr' with UifU of the state slice
-            gOff .. gOff+n-1 */
-         tySrc = szToITy( n );
+            if (gSz == 0) break;
+            n = gSz <= 8 ? gSz : 8;
+            /* update 'curr' with UifU of the state slice 
+               gOff .. gOff+n-1 */
+            tySrc = szToITy( n );
 
             /* Observe the guard expression. If it is false use an
                all-bits-defined bit pattern */
@@ -6224,11 +6224,11 @@ void do_shadow_Dirty ( MCEnv* mce, IRDirty* d )
             src     = assignNew('V', mce, tySrc,
                                 IRExpr_ITE(cond, iftrue, iffalse));
 
-         here = mkPCastTo( mce, Ity_I32, src );
-         curr = mkUifU32(mce, here, curr);
-         gSz -= n;
-         gOff += n;
-      }
+            here = mkPCastTo( mce, Ity_I32, src );
+            curr = mkUifU32(mce, here, curr);
+            gSz -= n;
+            gOff += n;
+         }
       }
    }
 
@@ -6257,7 +6257,7 @@ void do_shadow_Dirty ( MCEnv* mce, IRDirty* d )
          but nevertheless choose an endianness which is hopefully
          native to the platform. */
       while (toDo >= 4) {
-         here = mkPCastTo(
+         here = mkPCastTo( 
                    mce, Ity_I32,
                    expr2vbits_Load_guarded_Simple(
                       mce, end, Ity_I32, d->mAddr, d->mSize - toDo, d->guard )
@@ -6267,7 +6267,7 @@ void do_shadow_Dirty ( MCEnv* mce, IRDirty* d )
       }
       /* chew off 16-bit chunks */
       while (toDo >= 2) {
-         here = mkPCastTo(
+         here = mkPCastTo( 
                    mce, Ity_I32,
                    expr2vbits_Load_guarded_Simple(
                       mce, end, Ity_I16, d->mAddr, d->mSize - toDo, d->guard )
@@ -6310,27 +6310,27 @@ void do_shadow_Dirty ( MCEnv* mce, IRDirty* d )
          gOff = d->fxState[i].offset + k * d->fxState[i].repeatLen;
          gSz  = d->fxState[i].size;
 
-      /* Ignore any sections marked as 'always defined'. */
+         /* Ignore any sections marked as 'always defined'. */
          if (isAlwaysDefd(mce, gOff, gSz))
-         continue;
+            continue;
 
-      /* This state element is written or modified.  So we need to
+         /* This state element is written or modified.  So we need to
             consider it.  If larger than 8 bytes, deal with it in
             8-byte chunks. */
-      while (True) {
+         while (True) {
             tl_assert(gSz >= 0);
-         if (gSz == 0) break;
-         n = gSz <= 8 ? gSz : 8;
-         /* Write suitably-casted 'curr' to the state slice
-            gOff .. gOff+n-1 */
-         tyDst = szToITy( n );
-         do_shadow_PUT( mce, gOff,
-                             NULL, /* original atom */
+            if (gSz == 0) break;
+            n = gSz <= 8 ? gSz : 8;
+            /* Write suitably-casted 'curr' to the state slice 
+               gOff .. gOff+n-1 */
+            tyDst = szToITy( n );
+            do_shadow_PUT( mce, gOff,
+                                NULL, /* original atom */
                                 mkPCastTo( mce, tyDst, curr ), d->guard );
-         gSz -= n;
-         gOff += n;
+            gSz -= n;
+            gOff += n;
+         }
       }
-   }
    }
 
    /* Outputs: memory that we write or modify.  Same comments about
@@ -6371,7 +6371,7 @@ void do_shadow_Dirty ( MCEnv* mce, IRDirty* d )
    become undefined ("writable").  Generate code to call a helper to
    notify the A/V bit machinery of this fact.
 
-   We call
+   We call 
    void MC_(helperc_MAKE_STACK_UNINIT) ( Addr base, UWord len,
                                                     Addr nia );
 */
@@ -6416,7 +6416,7 @@ void do_AbiHint ( MCEnv* mce, IRExpr* base, Int len, IRExpr* nia )
 /* ------ Dealing with IRCAS (big and complex) ------ */
 
 /* FWDS */
-static IRAtom* gen_load_b  ( MCEnv* mce, Int szB,
+static IRAtom* gen_load_b  ( MCEnv* mce, Int szB, 
                              IRAtom* baseaddr, Int offset );
 static IRAtom* gen_maxU32  ( MCEnv* mce, IRAtom* b1, IRAtom* b2 );
 static void    gen_store_b ( MCEnv* mce, Int szB,
@@ -6539,7 +6539,7 @@ void do_shadow_CAS ( MCEnv* mce, IRCAS* cas )
       result is defined.  Why?  Details follow.
 
       x86/amd64 contains various forms of locked insns:
-      * lock prefix before all basic arithmetic insn;
+      * lock prefix before all basic arithmetic insn; 
         eg lock xorl %reg1,(%reg2)
       * atomic exchange reg-mem
       * compare-and-swaps
@@ -6664,7 +6664,7 @@ static void do_shadow_CAS_single ( MCEnv* mce, IRCAS* cas )
    voldLo
       = assignNew(
            'V', mce, elemTy,
-           expr2vbits_Load(
+           expr2vbits_Load( 
               mce,
               cas->end, elemTy, cas->addr, 0/*Addr bias*/,
               NULL/*always happens*/
@@ -6724,7 +6724,7 @@ static void do_shadow_CAS_double ( MCEnv* mce, IRCAS* cas )
    elemTy = typeOfIRExpr(mce->sb->tyenv, cas->expdLo);
    switch (elemTy) {
       case Ity_I8:
-         opCasCmpEQ = Iop_CasCmpEQ8; opOr = Iop_Or8; opXor = Iop_Xor8;
+         opCasCmpEQ = Iop_CasCmpEQ8; opOr = Iop_Or8; opXor = Iop_Xor8; 
          elemSzB = 1; zero = mkU8(0);
          break;
       case Ity_I16:
@@ -6793,7 +6793,7 @@ static void do_shadow_CAS_double ( MCEnv* mce, IRCAS* cas )
    voldHi
       = assignNew(
            'V', mce, elemTy,
-           expr2vbits_Load(
+           expr2vbits_Load( 
               mce,
               cas->end, elemTy, cas->addr, memOffsHi/*Addr bias*/,
               NULL/*always happens*/
@@ -6801,7 +6801,7 @@ static void do_shadow_CAS_double ( MCEnv* mce, IRCAS* cas )
    voldLo
       = assignNew(
            'V', mce, elemTy,
-           expr2vbits_Load(
+           expr2vbits_Load( 
               mce,
               cas->end, elemTy, cas->addr, memOffsLo/*Addr bias*/,
               NULL/*always happens*/
@@ -6835,7 +6835,7 @@ static void do_shadow_CAS_double ( MCEnv* mce, IRCAS* cas )
       expd_eq_old = xHL == 0;
    */
    xHi = assignNew('C', mce, elemTy,
-                   binop(opXor, cas->expdHi, mkexpr(cas->oldHi)));
+                   binop(opXor, cas->expdHi, mkexpr(cas->oldHi))); 
    xLo = assignNew('C', mce, elemTy,
                    binop(opXor, cas->expdLo, mkexpr(cas->oldLo)));
    xHL = assignNew('C', mce, elemTy,
@@ -7218,7 +7218,7 @@ static IRAtom* schemeE ( MCEnv* mce, IRExpr* e )
          IRRegArray* descr_b;
          IRAtom      *t1, *t2, *t3, *t4;
          IRRegArray* descr      = e->Iex.GetI.descr;
-         IRType equivIntTy
+         IRType equivIntTy 
             = MC_(get_otrack_reg_array_equiv_int_type)(descr);
          /* If this array is unshadowable for whatever reason, use the
             usual approximation. */
@@ -7234,8 +7234,8 @@ static IRAtom* schemeE ( MCEnv* mce, IRExpr* e )
             no harm in being completely general here, since iropt will
             remove any useless code), and fold it in, giving a final
             value t4. */
-         t1 = assignNew( 'B', mce, equivIntTy,
-                          IRExpr_GetI( descr_b, e->Iex.GetI.ix,
+         t1 = assignNew( 'B', mce, equivIntTy, 
+                          IRExpr_GetI( descr_b, e->Iex.GetI.ix, 
                                                 e->Iex.GetI.bias ));
          t2 = narrowTo32( mce, t1 );
          t3 = schemeE( mce, e->Iex.GetI.ix );
@@ -7323,9 +7323,9 @@ static IRAtom* schemeE ( MCEnv* mce, IRExpr* e )
       case Iex_RdTmp:
          return mkexpr( findShadowTmpB( mce, e->Iex.RdTmp.tmp ));
       case Iex_Get: {
-         Int b_offset = MC_(get_otrack_shadow_offset)(
+         Int b_offset = MC_(get_otrack_shadow_offset)( 
                            e->Iex.Get.offset,
-                           sizeofIRType(e->Iex.Get.ty)
+                           sizeofIRType(e->Iex.Get.ty) 
                         );
          tl_assert(b_offset >= -1
                    && b_offset <= mce->layout->total_sizeB -4);
@@ -7338,7 +7338,7 @@ static IRAtom* schemeE ( MCEnv* mce, IRExpr* e )
       }
       default:
          printf("mc_translate.c: schemeE: unhandled: ");
-         ppIRExpr(e);
+         ppIRExpr(e); 
          VG_(tool_panic)("memcheck:schemeE");
    }
 }
@@ -7380,26 +7380,26 @@ static void do_origins_Dirty ( MCEnv* mce, IRDirty* d )
          gOff = d->fxState[i].offset + k * d->fxState[i].repeatLen;
          gSz  = d->fxState[i].size;
 
-      /* Ignore any sections marked as 'always defined'. */
+         /* Ignore any sections marked as 'always defined'. */
          if (isAlwaysDefd(mce, gOff, gSz)) {
-         if (0)
+            if (0)
          printf("memcheck: Dirty gst: ignored off %d, sz %d\n",
                         gOff, gSz);
-         continue;
-      }
+            continue;
+         }
 
-      /* This state element is read or modified.  So we need to
+         /* This state element is read or modified.  So we need to
             consider it.  If larger than 4 bytes, deal with it in
             4-byte chunks. */
-      while (True) {
-         Int b_offset;
+         while (True) {
+            Int b_offset;
             tl_assert(gSz >= 0);
-         if (gSz == 0) break;
-         n = gSz <= 4 ? gSz : 4;
-         /* update 'curr' with maxU32 of the state slice
-            gOff .. gOff+n-1 */
-         b_offset = MC_(get_otrack_shadow_offset)(gOff, 4);
-         if (b_offset != -1) {
+            if (gSz == 0) break;
+            n = gSz <= 4 ? gSz : 4;
+            /* update 'curr' with maxU32 of the state slice 
+               gOff .. gOff+n-1 */
+            b_offset = MC_(get_otrack_shadow_offset)(gOff, 4);
+            if (b_offset != -1) {
                /* Observe the guard expression. If it is false use 0, i.e.
                   nothing is known about the origin */
                IRAtom *cond, *iffalse, *iftrue;
@@ -7409,14 +7409,14 @@ static void do_origins_Dirty ( MCEnv* mce, IRDirty* d )
                iftrue  = assignNew( 'B', mce, Ity_I32,
                                     IRExpr_Get(b_offset
                                                  + 2*mce->layout->total_sizeB,
-                                          Ity_I32));
+                                               Ity_I32));
                here = assignNew( 'B', mce, Ity_I32,
                                  IRExpr_ITE(cond, iftrue, iffalse));
-            curr = gen_maxU32( mce, curr, here );
+               curr = gen_maxU32( mce, curr, here );
+            }
+            gSz -= n;
+            gOff += n;
          }
-         gSz -= n;
-         gOff += n;
-      }
       }
    }
 
@@ -7483,43 +7483,43 @@ static void do_origins_Dirty ( MCEnv* mce, IRDirty* d )
          gOff = d->fxState[i].offset + k * d->fxState[i].repeatLen;
          gSz  = d->fxState[i].size;
 
-      /* Ignore any sections marked as 'always defined'. */
+         /* Ignore any sections marked as 'always defined'. */
          if (isAlwaysDefd(mce, gOff, gSz))
-         continue;
+            continue;
 
-      /* This state element is written or modified.  So we need to
+         /* This state element is written or modified.  So we need to
             consider it.  If larger than 4 bytes, deal with it in
             4-byte chunks. */
-      while (True) {
-         Int b_offset;
+         while (True) {
+            Int b_offset;
             tl_assert(gSz >= 0);
-         if (gSz == 0) break;
-         n = gSz <= 4 ? gSz : 4;
-         /* Write 'curr' to the state slice gOff .. gOff+n-1 */
-         b_offset = MC_(get_otrack_shadow_offset)(gOff, 4);
-         if (b_offset != -1) {
+            if (gSz == 0) break;
+            n = gSz <= 4 ? gSz : 4;
+            /* Write 'curr' to the state slice gOff .. gOff+n-1 */
+            b_offset = MC_(get_otrack_shadow_offset)(gOff, 4);
+            if (b_offset != -1) {
 
-                  /* If the guard expression evaluates to false we simply Put
-                     the value that is already stored in the guest state slot */
-                  IRAtom *cond, *iffalse;
+               /* If the guard expression evaluates to false we simply Put
+                  the value that is already stored in the guest state slot */
+               IRAtom *cond, *iffalse;
 
                cond    = assignNew('B', mce, Ity_I1,
                                    d->guard);
-                  iffalse = assignNew('B', mce, Ity_I32,
-                                      IRExpr_Get(b_offset +
-                                                 2*mce->layout->total_sizeB,
-                                                 Ity_I32));
-                  curr = assignNew('V', mce, Ity_I32,
+               iffalse = assignNew('B', mce, Ity_I32,
+                                   IRExpr_Get(b_offset +
+                                              2*mce->layout->total_sizeB,
+                                              Ity_I32));
+               curr = assignNew('V', mce, Ity_I32,
                                 IRExpr_ITE(cond, curr, iffalse));
 
                stmt( 'B', mce, IRStmt_Put(b_offset
-                                             + 2*mce->layout->total_sizeB,
-                                      curr ));
+                                          + 2*mce->layout->total_sizeB,
+                                          curr ));
+            }
+            gSz -= n;
+            gOff += n;
          }
-         gSz -= n;
-         gOff += n;
       }
-   }
    }
 
    /* Outputs: memory that we write or modify.  Same comments about
@@ -7534,8 +7534,8 @@ static void do_origins_Dirty ( MCEnv* mce, IRDirty* d )
       }
       /* handle possible 16-bit excess */
       while (toDo >= 2) {
-        gen_store_b( mce, 2, d->mAddr, d->mSize - toDo, curr,
-                     d->guard );
+         gen_store_b( mce, 2, d->mAddr, d->mSize - toDo, curr,
+                      d->guard );
          toDo -= 2;
       }
       /* chew off the remaining 8-bit chunk, if any */
@@ -7551,8 +7551,8 @@ static void do_origins_Dirty ( MCEnv* mce, IRDirty* d )
 
 /* Generate IR for origin shadowing for a general guarded store. */
 static void do_origins_Store_guarded ( MCEnv* mce,
-                               IREndness stEnd,
-                               IRExpr* stAddr,
+                                       IREndness stEnd,
+                                       IRExpr* stAddr,
                                        IRExpr* stData,
                                        IRExpr* guard )
 {
@@ -7576,7 +7576,7 @@ static void do_origins_Store_plain ( MCEnv* mce,
                                      IRExpr* stData )
 {
    do_origins_Store_guarded ( mce, stEnd, stAddr, stData,
-                     NULL/*guard*/ );
+                              NULL/*guard*/ );
 }
 
 
@@ -7660,8 +7660,8 @@ static void schemeS ( MCEnv* mce, IRStmt* st )
 
       case Ist_Store:
          do_origins_Store_plain( mce, st->Ist.Store.end,
-                                st->Ist.Store.addr,
-                                st->Ist.Store.data );
+                                      st->Ist.Store.addr,
+                                      st->Ist.Store.data );
          break;
 
       case Ist_StoreG:
@@ -7690,8 +7690,8 @@ static void schemeS ( MCEnv* mce, IRStmt* st )
          } else {
             /* Store conditional */
             do_origins_Store_plain( mce, st->Ist.LLSC.end,
-                                   st->Ist.LLSC.addr,
-                                   st->Ist.LLSC.storedata );
+                                    st->Ist.LLSC.addr,
+                                    st->Ist.LLSC.storedata );
             /* For the rationale behind this, see comments at the
                place where the V-shadow for .result is constructed, in
                do_shadow_LLSC.  In short, we regard .result as
@@ -7710,7 +7710,7 @@ static void schemeS ( MCEnv* mce, IRStmt* st )
               );
          if (b_offset >= 0) {
             /* FIXME: this isn't an atom! */
-            stmt( 'B', mce, IRStmt_Put(b_offset + 2*mce->layout->total_sizeB,
+            stmt( 'B', mce, IRStmt_Put(b_offset + 2*mce->layout->total_sizeB, 
                                        schemeE( mce, st->Ist.Put.data )) );
          }
          break;
@@ -7729,7 +7729,7 @@ static void schemeS ( MCEnv* mce, IRStmt* st )
 
       default:
          printf("mc_translate.c: schemeS: unhandled: ");
-         ppIRStmt(st);
+         ppIRStmt(st); 
          VG_(tool_panic)("memcheck:schemeS");
    }
 }
@@ -7825,11 +7825,11 @@ static Bool sameIRValue ( IRExpr* e1, IRExpr* e2 )
       case Iex_Const:
          return eqIRConst( e1->Iex.Const.con, e2->Iex.Const.con );
       case Iex_Binop:
-         return e1->Iex.Binop.op == e2->Iex.Binop.op
+         return e1->Iex.Binop.op == e2->Iex.Binop.op 
                 && sameIRValue(e1->Iex.Binop.arg1, e2->Iex.Binop.arg1)
                 && sameIRValue(e1->Iex.Binop.arg2, e2->Iex.Binop.arg2);
       case Iex_Unop:
-         return e1->Iex.Unop.op == e2->Iex.Unop.op
+         return e1->Iex.Unop.op == e2->Iex.Unop.op 
                 && sameIRValue(e1->Iex.Unop.arg, e2->Iex.Unop.arg);
       case Iex_RdTmp:
          return e1->Iex.RdTmp.tmp == e2->Iex.RdTmp.tmp;
@@ -7854,7 +7854,7 @@ static Bool sameIRValue ( IRExpr* e1, IRExpr* e2 )
          /* fallthrough */
       default:
          printf("mc_translate.c: sameIRValue: unhandled: ");
-         ppIRExpr(e1);
+         ppIRExpr(e1); 
          VG_(tool_panic)("memcheck:sameIRValue");
          return False;
    }
@@ -7970,7 +7970,7 @@ IRSB* MC_(final_tidy) ( IRSB* sb_in )
       tl_assert(guard);
       if (0) { ppIRExpr(guard); printf("\n"); }
       cee = di->cee;
-      if (!is_helperc_value_checkN_fail( cee->name ))
+      if (!is_helperc_value_checkN_fail( cee->name )) 
          continue;
        /* Ok, we have a call to helperc_value_check0/1/4/8_fail with
           guard 'guard'.  Check if we have already seen a call to this
@@ -8534,7 +8534,7 @@ static void preInstrumentationAnalysis ( /*OUT*/HowUsed** useEnvP,
 // PG - pgbovine - dyncomp - duplicated all instrumentation calls to
 // also call DynComp versions (suffixed by _DC):
 IRSB* MC_(instrument) ( VgCallbackClosure* closure,
-                        IRSB* sb_in,
+                        IRSB* sb_in, 
                         const VexGuestLayout* layout, 
                         const VexGuestExtents* vge,
                         const VexArchInfo* archinfo_host,
@@ -8685,7 +8685,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
       mce.dlbo.dl_CmpEQ64_CmpNE64 = DLexpensive;
 #     elif defined(VGA_arm)
       mce.dlbo.dl_CmpEQ32_CmpNE32 = DLexpensive;
-#  endif
+#     endif
 
       /* preInstrumentationAnalysis() will allocate &mce.tmpHowUsed and then
          fill it in. */
@@ -8767,7 +8767,6 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
          : NULL;
       dce.sbbThunk       = False;
       dce.tmpMap         = VG_(malloc)("mc_translate.c.2", dce.n_originalTmps * sizeof(IRTemp));
-      //dce.tmpMap         = LibVEX_Alloc(dce.n_originalTmps * sizeof(IRTemp));
       for (i = 0; i < (Int)dce.n_originalTmps; i++)
          dce.tmpMap[i] = IRTemp_INVALID;
       dce.loadTagSnapshots = NULL;
@@ -8863,7 +8862,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
 
       if (MC_(clo_mc_level) == 3) {
          /* See comments on case Ist_CAS below. */
-         if (st->tag != Ist_CAS)
+         if (st->tag != Ist_CAS) 
             schemeS( &mce, st );
       }
 
@@ -8876,7 +8875,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
             tl_assert(dst < (UInt)sb_in->tyenv->types_used);
             HowUsed hu = mce.tmpHowUsed ? mce.tmpHowUsed[dst]
                                         : HuOth/*we don't know, so play safe*/;
-            assign( 'V', &mce, findShadowTmpV(&mce, st->Ist.WrTmp.tmp),
+            assign( 'V', &mce, findShadowTmpV(&mce, st->Ist.WrTmp.tmp), 
                                expr2vbits( &mce, st->Ist.WrTmp.data, hu ));
 #ifndef _NO_DYNCOMP
             if (do_dyncomp) {
@@ -8891,7 +8890,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
          }
 
          case Ist_Put:
-            do_shadow_PUT( &mce,
+            do_shadow_PUT( &mce, 
                            st->Ist.Put.offset,
                            st->Ist.Put.data,
                            NULL /* shadow atom */, NULL /* guard */ );
@@ -8917,7 +8916,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                                    st->Ist.Store.addr, 0/* addr bias */,
                                    st->Ist.Store.data,
                                    NULL /* shadow data */,
-                                   NULL /* guard */);
+                                   NULL/*guard*/ );
 #ifndef _NO_DYNCOMP
             if (do_dyncomp)
                do_shadow_STle_DC( &dce, st->Ist.Store.addr, st->Ist.Store.data);
@@ -9005,7 +9004,6 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                             st->Ist.LLSC.storedata );
             
 #ifndef _NO_DYNCOMP
-            // (comment added 2013)  
             /* WARNING/UNDONE:
                In changeset 638 Ist_LLSC was added (was part of Ist_Store).
                The corresponding change was not made to the DYNCOMP code.
@@ -9075,18 +9073,17 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
    // function exits!
    handle_possible_exit( &mce, sb_out->jumpkind );
 
-   // PG - pgbovine - Uncomment to pretty-print the basic
-   // block (This is great for debugging when you can compare IR to
-   // gcc-generated assembly):
-   //   ppIRSB(sb_out);
-
-    /* If this fails, there's been some serious snafu with tmp management,
-       that should be investigated. */
-    tl_assert( VG_(sizeXA)( mce.tmpMap ) == mce.sb->tyenv->types_used );
-    VG_(deleteXA)( mce.tmpMap );
+   /* If this fails, there's been some serious snafu with tmp management,
+      that should be investigated. */
+   tl_assert( VG_(sizeXA)( mce.tmpMap ) == mce.sb->tyenv->types_used );
+   VG_(deleteXA)( mce.tmpMap );
 
    if (mce.tmpHowUsed) {
       VG_(free)( mce.tmpHowUsed );
+   }
+
+   if (do_dyncomp) {
+      VG_(free)( dce.tmpMap );
    }
 
    if (do_dyncomp && dce.loadTagSnapshots) {
@@ -9100,8 +9097,8 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
    }
 #endif /* _NO_DYNCOMP */
 
-    tl_assert(mce.sb == sb_out);
-    return sb_out;
+   tl_assert(mce.sb == sb_out);
+   return sb_out;
 }
 
 

@@ -1,0 +1,15 @@
+# Editor settings; see https://editorconfig.org/.
+root = true
+
+# Most files under valgrind/ come from upstream Valgrind or from Binutils.
+# Keep their whitespace, including trailing whitespace, as upstream has it:
+# every difference from upstream is a potential conflict in the next merge.
+[valgrind/**]
+trim_trailing_whitespace = false
+
+# Fjalar's own files under valgrind/.
+[valgrind/fjalar/{basic-tool,kvasir,tests,tools}/**]
+trim_trailing_whitespace = true
+
+[valgrind/fjalar/{fjalar_*,disambig.*,generate_fjalar_entries.*,GenericHashtable.*,my_libc*,typedata.*,mc_translate.h,fjalar.am}]
+trim_trailing_whitespace = true

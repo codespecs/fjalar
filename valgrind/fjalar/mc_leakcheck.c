@@ -1,6 +1,6 @@
 /*
-   This file is part of Fjalar, a dynamic analysis framework for C/C++
-   programs.
+   This file has been modified for Fjalar, a dynamic analysis framework
+   for C/C++ programs.
 
    Copyright (C) 2007-2026 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
@@ -1151,9 +1151,9 @@ lc_scan_memory(Addr start, SizeT len, Bool is_prior_definite,
       // Skip invalid chunks.
       if (UNLIKELY((ptr % SM_SIZE) == 0)) {
          if (! MC_(is_within_valid_secondary)(ptr) ) {
-         ptr = VG_ROUNDUP(ptr+1, SM_SIZE);
-         continue;
-      }
+            ptr = VG_ROUNDUP(ptr+1, SM_SIZE);
+            continue;
+         }
       }
 
       // Look to see if this page seems reasonable.
@@ -1164,12 +1164,12 @@ lc_scan_memory(Addr start, SizeT len, Bool is_prior_definite,
          }
       }
 
-         if ( MC_(is_valid_aligned_word)(ptr) ) {
-            lc_scanned_szB += sizeof(Addr);
+      if ( MC_(is_valid_aligned_word)(ptr) ) {
+         lc_scanned_szB += sizeof(Addr);
          // If the below read fails, we will longjmp to the loop begin.
-            addr = *(Addr *)ptr;
-            // If we get here, the scanned word is in valid memory.  Now
-            // let's see if its contents point to a chunk.
+         addr = *(Addr *)ptr;
+         // If we get here, the scanned word is in valid memory.  Now
+         // let's see if its contents point to a chunk.
          if (UNLIKELY(searched)) {
             if (addr >= searched && addr < searched + szB) {
                const DiEpoch cur_ep = VG_(current_DiEpoch)();
@@ -1557,16 +1557,16 @@ static void print_results(ThreadId tid, LeakCheckParams* lcp)
    }
 
    if (lr_table == NULL)
-   // Create the lr_table, which holds the loss records.
+      // Create the lr_table, which holds the loss records.
       // If the lr_table already exists, it means it contains
       // loss_records from the previous leak search. The old_*
       // values in these records are used to implement the
       // leak check delta mode
-   lr_table =
-      VG_(OSetGen_Create)(offsetof(LossRecord, key),
-                          cmp_LossRecordKey_LossRecord,
-                          VG_(malloc), "mc.pr.1",
-                          VG_(free));
+      lr_table =
+         VG_(OSetGen_Create)(offsetof(LossRecord, key),
+                             cmp_LossRecordKey_LossRecord,
+                             VG_(malloc), "mc.pr.1",
+                             VG_(free));
 
    // If we have loss records from a previous search, reset values to have
    // proper printing of the deltas between previous search and this search.
@@ -1798,8 +1798,8 @@ static void print_results(ThreadId tid, LeakCheckParams* lcp)
             VG_(umsg)("To see details of leaked memory, "
                       "give 'full' arg to leak_check\n");
          else
-         VG_(umsg)("Rerun with --leak-check=full to see details "
-                   "of leaked memory\n");
+            VG_(umsg)("Rerun with --leak-check=full to see details "
+                      "of leaked memory\n");
       }
       if (lcp->mode == LC_Full &&
           MC_(blocks_reachable) > 0 && !RiS(Reachable,lcp->show_leak_kinds)) {
@@ -1808,7 +1808,7 @@ static void print_results(ThreadId tid, LeakCheckParams* lcp)
          if (lcp->requested_by_monitor_command)
             VG_(umsg)("To see them, add 'reachable any' args to leak_check\n");
          else
-         VG_(umsg)("To see them, rerun with: --leak-check=full "
+            VG_(umsg)("To see them, rerun with: --leak-check=full "
                       "--show-leak-kinds=all\n");
       }
       VG_(umsg)("\n");
