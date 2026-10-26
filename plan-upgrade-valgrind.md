@@ -33,6 +33,23 @@ it completely (merged, CI green) before starting this one.  That plan's
   - The complete checklist of Fjalar changes to upstream files is
     `git diff --diff-filter=a valgrind-merge/base valgrind-merge/fjalar`
     (step 4).
+- Land the open PRs that change the files that this merge merges into
+  (everything under `valgrind/` except Fjalar's own files and the
+  Binutils-derived files) before starting this upgrade, so that their
+  changes are part of the Fjalar tree being merged into rather than
+  conflicting with the upgrade later.  To list them:
+
+  ```sh
+  gh pr list -R codespecs/fjalar --limit 1000 --json number,files --jq \
+    '.[] | select((.files | length) >= 100
+                  or any(.files[]; .path
+                                   | (startswith("valgrind/") and (startswith("valgrind/fjalar/") | not))
+                                     or test("^valgrind/fjalar/(mc_|memcheck\\.h$)")))
+         | .number'
+  ```
+
+  `gh` returns only the first 100 files of each PR, so the command also
+  lists every PR with 100 or more files; check those by hand.
 
 ## Steps
 
@@ -166,7 +183,9 @@ it completely (merged, CI green) before starting this one.  That plan's
      amd64/x86, add handling in the `expr2tags_*_DC` functions (see the
      #79 `Iop_64x4toV256` fix for the pattern).  Search for panics/`default:`
      cases that would now be hit.  Most changes for other architectures can
-     be ignored.
+     be ignored.  `valgrind/fjalar/tests/dyncomp-op-coverage-test.sh` (from
+     #173; `make fjalar-test` runs it) lists each new IROp that has no case,
+     and each IROp listed as unimplemented that amd64 or x86 now uses.
    - Check NEWS for 3.24–3.27 for tool-API changes (e.g. changes to
      `VG_(needs_*)`, debuginfo, `pub_tool_*.h` signatures, client-request
      numbering) and update Fjalar callers.
@@ -191,6 +210,27 @@ it completely (merged, CI green) before starting this one.  That plan's
    - `./test-kvasir.sh 2>&1 | tee kvasir-after.log` — compare with
      `kvasir-before.log` from step 1.  Address-related diffs
      (`<STACK_ADDR>` etc.) may require updating `clean-output.pl`.
+   - Look for DynComp panics on unhandled IROps by running vectorized
+     programs under DynComp.  On 3.23, before the upgrade, this found one
+     (#172).  The programs were five small ones (sums, integer arithmetic,
+     floating-point arithmetic, string functions, and bit manipulation),
+     each compiled with `-O2 -march=x86-64-v3`, `-O3 -march=x86-64-v3`,
+     `-O3 -march=x86-64-v2`, and `-O3`, plus Daikon's `md5` and `bzip2`
+     tests compiled with `-O3 -march=x86-64-v3`; they exercised 258
+     distinct IROps, 84 of them on 256-bit vectors.  Compile each program
+     with `-gdwarf-4 -no-pie`, because Fjalar does not fully read DWARF 5 and
+     recognizes a function's entry point only at the address in the
+     debugging information.  Unless Valgrind decodes AVX-512 (3.23 does
+     not), do not use `-march=x86-64-v4`, which permits AVX-512
+     instructions on any machine, or `-march=native` on a machine with
+     AVX-512:  if Valgrind cannot decode an instruction, the program dies
+     with SIGILL before DynComp sees its IROps.  Run each program with
+     `$INV/fjalar/valgrind/inst/bin/valgrind --tool=fjalar --dyncomp --dyncomp-unhandled-ops=warn`,
+     which reports each unhandled operation once and continues, instead
+     of stopping at the first; add
+     `--trace-flags=01000000 --trace-notbelow=0` to see which IROps a run
+     exercised.  Do not use `$DAIKONDIR/scripts/kvasir-dtrace`:  it runs
+     the Kvasir in `$DAIKONDIR/fjalar`, which may be a different tree.
    - Push the branch and confirm GitHub Actions CI passes (Ubuntu and
      Rocky Linux 10: build, regtest, and Kvasir jobs).  The CI containers
      differ from your machine, so the regtest jobs will probably fail
