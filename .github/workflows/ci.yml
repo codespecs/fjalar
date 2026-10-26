@@ -27,6 +27,24 @@ env:
 
 jobs:
 
+  # This job checks that Fjalar's copies of upstream Valgrind files have
+  # upstream's whitespace; see check-valgrind-whitespace.sh.
+  valgrind_whitespace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Clone upstream Valgrind
+        shell: bash
+        run: |
+          source ./valgrind-common.sh
+          git clone -q --depth 1 -b "$(valgrind_release_tag)" \
+            https://sourceware.org/git/valgrind.git ../valgrind-old
+      - name: check-valgrind-whitespace.sh
+        run: ./check-valgrind-whitespace.sh --valgrind=../valgrind-old
+
   # The JDK version doesn't matter, but these Docker images happen to use
   # different underlying OS versions.
 

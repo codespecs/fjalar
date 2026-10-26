@@ -83,25 +83,10 @@ trap 'rm -f "$tmpindex"' EXIT
 
 # Usage: upstream_commit DIR [PARENT]
 # Prints the name of a new commit, with parent PARENT if it is given, whose
-# tree has the tree of DIR's HEAD at valgrind/, and that tree's memcheck/,
-# without docs/, tests/, and Makefile.am, at valgrind/fjalar/.
-# generate-fjalar-makefile.sh generates Fjalar's version of
-# memcheck/Makefile.am, so the commit omits it.
+# tree is upstream_tree's for DIR.
 upstream_commit() {
   local dir=$1 parent=$2 tree
-  tree=$(git -C "$dir" rev-parse "HEAD^{tree}")
-  # Copy the tree's objects into the Fjalar repository.  "git fetch" would
-  # fail for a shallow clone, and would also copy upstream's history.
-  # "git index-pack" stores them as one pack, rather than as thousands of
-  # loose objects, and prints the pack's name.
-  git -C "$dir" rev-list --objects "$tree" | cut -d' ' -f1 \
-    | git -C "$dir" pack-objects -q --stdout | git index-pack --stdin > /dev/null
-  rm -f "$tmpindex"
-  GIT_INDEX_FILE=$tmpindex git read-tree --prefix=valgrind/ "$tree"
-  GIT_INDEX_FILE=$tmpindex git read-tree --prefix=valgrind/fjalar/ "$tree:memcheck"
-  GIT_INDEX_FILE=$tmpindex git rm -q -r -f --cached --ignore-unmatch -- \
-    valgrind/fjalar/docs valgrind/fjalar/tests valgrind/fjalar/Makefile.am
-  tree=$(GIT_INDEX_FILE=$tmpindex git write-tree)
+  tree=$(upstream_tree "$dir")
   # The commits are only for the merge, so they need no signature.
   git commit-tree --no-gpg-sign "$tree" ${parent:+-p "$parent"} \
     -m "Valgrind $(git -C "$dir" describe --tags --always)"
