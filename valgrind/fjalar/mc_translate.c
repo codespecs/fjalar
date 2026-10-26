@@ -29,8 +29,8 @@
 
 /* mc_translate.c
 
-   This file is part of Fjalar, a dynamic analysis framework for C/C++
-   programs.
+   This file has been modified for Fjalar, a dynamic analysis framework
+   for C/C++ programs.
 
    Copyright (C) 2007-2026 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
@@ -9080,6 +9080,10 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
 
    if (mce.tmpHowUsed) {
       VG_(free)( mce.tmpHowUsed );
+   }
+
+   if (do_dyncomp) {
+      VG_(free)( dce.tmpMap );
    }
 
    if (do_dyncomp && dce.loadTagSnapshots) {

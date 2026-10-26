@@ -31,8 +31,8 @@
 
 /* mc_main.c
 
-   This file is part of Fjalar, a dynamic analysis framework for C/C++
-   programs.
+   This file has been modified for Fjalar, a dynamic analysis framework
+   for C/C++ programs.
 
    Copyright (C) 2007-2026 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
@@ -6524,8 +6524,9 @@ static Bool mc_process_cmd_line_options(const HChar* arg)
    else if VG_STR_CLO (arg, "--xtree-leak-file",
                        MC_(clo_xtree_leak_file)) {}
 
+   else if (fjalar_process_cmd_line_option(arg)) {} // pgbovine
    else
-     return fjalar_process_cmd_line_option(arg); // pgbovine
+      return VG_(replacement_malloc_process_cmd_line_option)(arg);
 
    return True;
 
