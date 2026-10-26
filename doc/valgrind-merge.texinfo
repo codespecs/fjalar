@@ -1452,8 +1452,10 @@ merge, give @option{--valgrind=@var{dir}}.  Every modification is a
 potential conflict in the next merge, so keep them few:  put Fjalar's code
 in Fjalar's own files where possible, and keep upstream's whitespace.
 Continuous integration runs @command{check-valgrind-whitespace.sh}, which
-fails if Fjalar's copy of an upstream file differs from upstream in
-whitespace.
+fails if Fjalar's copy of an upstream file has a change of whitespace
+alone, such as removed trailing whitespace or an added blank line.  On a line
+whose text Fjalar also changed, a change of whitespace adds no conflict, so
+the check ignores it.
 
 (Remember that we assume @env{$INV} points to a parent directory that
 contains both the Daikon and Fjalar source trees.)
