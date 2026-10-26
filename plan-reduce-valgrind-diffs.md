@@ -22,9 +22,9 @@ warning baseline, so do not run the two at the same time.
 | Step | Pull request | State |
 | --- | --- | --- |
 | Version string in `configure.ac` (not a numbered step) | #181 | Landed |
-| Step 0 | — | Not started; the CI whitespace check of Step 2 waits for it |
+| Step 0 | #190 | Open; it also adds Step 2's CI whitespace check |
 | Step 1 | #182 | Landed |
-| Step 2 | #183 | Landed, without the CI check |
+| Step 2 | #183 | Landed; its CI check is in #190 |
 | Step 3 | #184 | Landed |
 | Steps 4-9 | — | Not started |
 
@@ -114,7 +114,8 @@ The largest differences, by kind:
 
 ### Step 0: a script that measures the differences
 
-Not started.
+Open as #190, which also adds Step 2's CI whitespace check
+(`check-valgrind-whitespace.sh`).
 
 Add `diff-from-valgrind.sh [GIT-DIFF-OPTION...]`, which builds the base
 tree from `$INV/valgrind-old` exactly as `merge-valgrind.sh`'s
@@ -141,7 +142,7 @@ and editor configuration).
 ### Step 2: restore upstream whitespace (PR 2)
 
 Landed as #183, with the `.editorconfig` but without the CI check,
-which needs Step 0's script.
+which needs Step 0's script and is in #190.
 
 For each upstream file that differs from the base:
 
