@@ -26,7 +26,8 @@ warning baseline, so do not run the two at the same time.
 | Step 1 | #182 | Landed |
 | Step 2 | #183 | Landed; its CI check is in #190 |
 | Step 3 | #184 | Landed |
-| Steps 4-9 | — | Not started |
+| Step 4 | #191 | Open, without the `line`/`str` renames |
+| Steps 5-9 | — | Not started |
 
 PR #184 also fixed 2 bugs that the commented-out lines it deleted had hidden
 (`MC_(instrument)` leaked `dce.tmpMap`, and Fjalar rejected Memcheck's
@@ -205,6 +206,12 @@ None of these changes behavior, except as noted:
   added a `{`.
 
 ### Step 4: revert unneeded source changes in the Memcheck copies (PR 4)
+
+Open as #191.  It keeps Fjalar's `line` and `str` renames, because
+upstream's names cause 21 `-Wshadow` warnings:  `dwarf.h` declares
+enumerators `line` and `str`, and `mc_main.c` includes it through 3 Fjalar
+headers.  `mc_main.c` and `mc_translate.c` keep `#include "my_libc.h"`,
+which those headers need.
 
 - **`printf` -> `VG_(printf)`** (181 lines) in all Memcheck copies.  Then
   remove `#include "my_libc.h"` from each file that no longer needs it.
