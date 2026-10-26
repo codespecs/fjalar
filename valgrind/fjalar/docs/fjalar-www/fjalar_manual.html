@@ -203,11 +203,13 @@ Fjalar's function entrance/exit tracking and array bounds checking
 features.  First, compile it:</p>
 
 <pre>
-gcc -gdwarf-2 basic-tool-test.c -o basic-tool-test
+gcc -gdwarf-4 -no-pie basic-tool-test.c -o basic-tool-test
 </pre>
 
-(The <tt>-gdwarf-2</tt> includes debugging information in the DWARF2
-format.)  Now you should be able to run Fjalar from this directory
+(The <tt>-gdwarf-4</tt> includes debugging information in the DWARF4
+format, and <tt>-no-pie</tt> produces an executable that is not
+position-independent, so that its functions are at the addresses that
+the debugging information gives.)  Now you should be able to run Fjalar from this directory
 (assuming that you have successfully compiled and installed it) with
 the following command:
 
