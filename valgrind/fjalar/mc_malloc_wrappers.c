@@ -1,15 +1,3 @@
-/*
-   This file has been modified for Fjalar, a dynamic analysis framework
-   for C/C++ programs.
-
-   Copyright (C) 2007-2026 University of Washington Computer Science & Engineering Department,
-   Programming Languages and Software Engineering Group
-
-   This program is free software; you can redistribute it and/or
-   modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
-   License, or (at your option) any later version.
-*/
 
 /*--------------------------------------------------------------------*/
 /*--- malloc/free wrappers for detecting errors and updating bits. ---*/
@@ -38,8 +26,6 @@
 
    The GNU General Public License is contained in the file COPYING.
 */
-
-#include "my_libc.h"
 
 #include "pub_tool_basics.h"
 #include "pub_tool_execontext.h"
@@ -138,7 +124,7 @@ static void add_to_freed_queue ( MC_Chunk* mc )
    }
    VG_(free_queue_volume) += (Long)mc->szB;
    if (show)
-         printf("mc_freelist: acquire: volume now %lld\n", 
+      VG_(printf)("mc_freelist: acquire: volume now %lld\n", 
                   VG_(free_queue_volume));
    VG_(free_queue_length)++;
 }
@@ -166,7 +152,7 @@ static void release_oldest_block(void)
          VG_(free_queue_volume) -= (Long)mc1->szB;
          VG_(free_queue_length)--;
          if (show)
-         printf("mc_freelist: discard: volume now %lld\n", 
+            VG_(printf)("mc_freelist: discard: volume now %lld\n", 
                         VG_(free_queue_volume));
          tl_assert(VG_(free_queue_volume) >= 0);
          

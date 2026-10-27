@@ -70,6 +70,9 @@
 #include "kvasir/dyncomp_main.h"
 #include "fjalar_main.h"
 #include "fjalar_core_decls.h"  // for VG_(am_is_valid_for_valgrind)
+// dwarf.h, which the Fjalar headers above include, declares enumerators
+// named "line" and "str", which Memcheck's locals of those names shadow.
+#pragma GCC diagnostic ignored "-Wshadow"
 
 #include "mc_include.h"
 #include "memcheck.h"   /* for client requests */
@@ -79,7 +82,7 @@ Bool kvasir_with_dyncomp; // PG - pgbovine - dyncomp
 #define VG_DEBUG_MEMORY 0
 
 #ifdef MAX_DEBUG_INFO
-#define DEBUG(fmt, args...) printf(fmt, ## args)
+#define DEBUG(fmt, args...) VG_(printf)(fmt, ## args)
 #else
 #define DEBUG(fmt, args...)
 #endif
@@ -986,7 +989,6 @@ void mc_copy_guest_reg_state ( ThreadId tid, Int guestOffset, Addr dst )
   for (b = 0; b < sizeof(Addr); b++) {
     set_abit_and_vbyte(dst + b, VGM_BIT_VALID, (vbits >> (b * 8)) & 0xff);
   }
-#ifndef _NO_DYNCOMP
   if (kvasir_with_dyncomp) {
     // DynComp keeps one tag per register, at the register's offset.
     UInt tag = *VG_(get_tag_ptr_for_guest_offset)(tid, guestOffset);
@@ -994,7 +996,6 @@ void mc_copy_guest_reg_state ( ThreadId tid, Int guestOffset, Addr dst )
       set_tag(dst + b, tag);
     }
   }
-#endif /* _NO_DYNCOMP */
 }
 
 // end of code added for Fjalar
@@ -1353,8 +1354,8 @@ static Bool parse_UInt_pair ( const HChar** ppc, UInt* result1, UInt* result2 )
 static Bool parse_ignore_ranges ( const HChar* str0 )
 {
    init_gIgnoredAddressRanges();
-   const HChar*  fstr = str0;
-   const HChar** ppc = &fstr;
+   const HChar*  str = str0;
+   const HChar** ppc = &str;
    while (1) {
       Addr start = ~(Addr)0;
       Addr end   = (Addr)0;
@@ -2063,11 +2064,9 @@ void MC_(make_mem_noaccess) ( Addr a, SizeT len )
    // PG - pgbovine - dyncomp - Anytime you make a whole range of
    // addresses invalid, clear all tags associated with those
    // addresses:
-#ifndef _NO_DYNCOMP
    if (kvasir_with_dyncomp) {
       clear_all_tags_in_range(a, len);
    }
-#endif /* _NO_DYNCOMP */
 
    if (UNLIKELY( MC_(clo_mc_level) == 3 ))
       ocache_sarp_Clear_Origins ( a, len );
@@ -2128,11 +2127,9 @@ void MC_(make_mem_defined) ( Addr a, SizeT len )
    // tags to each byte within the chunk (Without language-level
    // information about which bytes correspond to which variables, we
    // have no choice but to give each byte a unique tag):
-#ifndef _NO_DYNCOMP
    if (kvasir_with_dyncomp) {
       allocate_new_unique_tags(a, len);
    }
-#endif /* _NO_DYNCOMP */
 
    if (UNLIKELY( MC_(clo_mc_level) == 3 ))
       ocache_sarp_Clear_Origins ( a, len );
@@ -2266,11 +2263,9 @@ void MC_(copy_address_range_state) ( Addr src, Addr dst, SizeT len )
 
    // PG - pgbovine - dyncomp - If you're copying over V-bits, you
    // might as well copy over the tags of the relevant bytes:
-#ifndef _NO_DYNCOMP
    if (kvasir_with_dyncomp) {
       copy_tags(src, dst, orig_size);
    }
-#endif /* _NO_DYNCOMP */
 }
 
 
@@ -2684,20 +2679,20 @@ typedef
 /* Classify and also sanity-check 'line'.  Return 'e' (empty) if not
    in use, 'n' (nonzero) if it contains at least one valid origin tag,
    and 'z' if all the represented tags are zero. */
-static inline UChar classify_OCacheLine ( OCacheLine* ocline )
+static inline UChar classify_OCacheLine ( OCacheLine* line )
 {
    UWord i;
-   if (ocline->tag == 1/*invalid*/)
+   if (line->tag == 1/*invalid*/)
       return 'e'; /* EMPTY */
-   tl_assert(is_valid_oc_tag(ocline->tag));
+   tl_assert(is_valid_oc_tag(line->tag));
 
    // BEGIN fast special-case of the test loop below.  This will detect
    // zero-ness (case 'z') for a subset of cases that the loop below will,
    // hence is safe.
    if (OC_W64S_PER_MAIN == 5) {
-      if (ocline->u.w64s[0] == 0
-          && ocline->u.w64s[1] == 0 && ocline->u.w64s[2] == 0
-          && ocline->u.w64s[3] == 0 && ocline->u.w64s[4] == 0) {
+      if (line->u.w64s[0] == 0
+          && line->u.w64s[1] == 0 && line->u.w64s[2] == 0
+          && line->u.w64s[3] == 0 && line->u.w64s[4] == 0) {
          return 'z';
       }
    } else {
@@ -2706,8 +2701,8 @@ static inline UChar classify_OCacheLine ( OCacheLine* ocline )
    // END fast special-case of the test loop below.
 
    for (i = 0; i < OC_W32S_PER_LINE; i++) {
-      tl_assert(0 == ((~0xF) & ocline->u.main.descr[i]));
-      if (ocline->u.main.w32[i] > 0 && ocline->u.main.descr[i] > 0)
+      tl_assert(0 == ((~0xF) & line->u.main.descr[i]));
+      if (line->u.main.w32[i] > 0 && line->u.main.descr[i] > 0)
          return 'n'; /* NONZERO - contains useful info */
    }
    return 'z'; /* ZERO - no useful info */
@@ -2731,7 +2726,7 @@ static UWord   ocacheL1_event_ctr = 0;
 static void init_ocacheL2 ( void ); /* fwds */
 static void init_OCache ( void )
 {
-   UWord ocline, set;
+   UWord line, set;
    tl_assert(MC_(clo_mc_level) >= 3);
    tl_assert(ocacheL1 == NULL);
    SysRes sres = VG_(am_shadow_alloc)(sizeof(OCache));
@@ -2742,8 +2737,8 @@ static void init_OCache ( void )
    ocacheL1 = (void *)(Addr)sr_Res(sres);
    tl_assert(ocacheL1 != NULL);
    for (set = 0; set < OC_N_SETS; set++) {
-      for (ocline = 0; ocline < OC_LINES_PER_SET; ocline++) {
-         ocacheL1->set[set].line[ocline].tag = 1/*invalid*/;
+      for (line = 0; line < OC_LINES_PER_SET; line++) {
+         ocacheL1->set[set].line[line].tag = 1/*invalid*/;
       }
    }
    init_ocacheL2();
@@ -2759,25 +2754,25 @@ static inline void moveLineForwards ( OCacheSet* set, UWord lineno )
    set->line[lineno] = tmp;
 }
 
-static inline void zeroise_OCacheLine ( OCacheLine* ocline, Addr tag ) {
+static inline void zeroise_OCacheLine ( OCacheLine* line, Addr tag ) {
    UWord i;
    if (OC_W32S_PER_LINE == 8) {
       // BEGIN fast special-case of the loop below
       tl_assert(OC_W64S_PER_MAIN == 5);
-      ocline->u.w64s[0] = 0;
-      ocline->u.w64s[1] = 0;
-      ocline->u.w64s[2] = 0;
-      ocline->u.w64s[3] = 0;
-      ocline->u.w64s[4] = 0;
+      line->u.w64s[0] = 0;
+      line->u.w64s[1] = 0;
+      line->u.w64s[2] = 0;
+      line->u.w64s[3] = 0;
+      line->u.w64s[4] = 0;
       // END fast special-case of the loop below
    } else {
       tl_assert2(0, "unsupported line size (zeroise_OCacheLine)");
       for (i = 0; i < OC_W32S_PER_LINE; i++) {
-         ocline->u.main.w32[i] = 0; /* NO ORIGIN */
-         ocline->u.main.descr[i] = 0; /* REALLY REALLY NO ORIGIN! */
+         line->u.main.w32[i] = 0; /* NO ORIGIN */
+         line->u.main.descr[i] = 0; /* REALLY REALLY NO ORIGIN! */
       }
    }
-   ocline->tag = tag;
+   line->tag = tag;
 }
 
 //////////////////////////////////////////////////////////////
@@ -2842,25 +2837,25 @@ static void init_ocacheL2 ( void )
 /* Find line with the given tag in the tree, or NULL if not found. */
 static inline OCacheLine* ocacheL2_find_tag ( Addr tag )
 {
-   OCacheLine* ocline;
+   OCacheLine* line;
    tl_assert(is_valid_oc_tag(tag));
    stats__ocacheL2_finds++;
    OSet* oset = ocachesL2[HASH_OCACHE_TAG(tag)];
-   ocline = VG_(OSetGen_Lookup)( oset, &tag );
-   return ocline;
+   line = VG_(OSetGen_Lookup)( oset, &tag );
+   return line;
 }
 
 /* Delete the line with the given tag from the tree, if it is present, and
    free up the associated memory. */
 static void ocacheL2_del_tag ( Addr tag )
 {
-   OCacheLine* ocline;
+   OCacheLine* line;
    tl_assert(is_valid_oc_tag(tag));
    stats__ocacheL2_dels++;
    OSet* oset = ocachesL2[HASH_OCACHE_TAG(tag)];
-   ocline = VG_(OSetGen_Remove)( oset, &tag );
-   if (ocline) {
-      VG_(OSetGen_FreeNode)(oset, ocline);
+   line = VG_(OSetGen_Remove)( oset, &tag );
+   if (line) {
+      VG_(OSetGen_FreeNode)(oset, line);
       tl_assert(stats__ocacheL2_n_nodes > 0);
       stats__ocacheL2_n_nodes--;
    }
@@ -2868,13 +2863,13 @@ static void ocacheL2_del_tag ( Addr tag )
 
 /* Add a copy of the given line to the tree.  It must not already be
    present. */
-static void ocacheL2_add_line ( OCacheLine* ocline )
+static void ocacheL2_add_line ( OCacheLine* line )
 {
    OCacheLine* copy;
-   tl_assert(is_valid_oc_tag(ocline->tag));
-   OSet* oset = ocachesL2[HASH_OCACHE_TAG(ocline->tag)];
+   tl_assert(is_valid_oc_tag(line->tag));
+   OSet* oset = ocachesL2[HASH_OCACHE_TAG(line->tag)];
    copy = VG_(OSetGen_AllocNode)( oset, sizeof(OCacheLine) );
-   *copy = *ocline;
+   *copy = *line;
    stats__ocacheL2_adds++;
    VG_(OSetGen_Insert)( oset, copy );
    stats__ocacheL2_n_nodes++;
@@ -2890,16 +2885,16 @@ static OCacheLine* find_OCacheLine_SLOW ( Addr a )
 {
    OCacheLine *victim, *inL2;
    UChar c;
-   UWord ocline;
+   UWord line;
    UWord setno   = (a >> OC_BITS_PER_LINE) & (OC_N_SETS - 1);
    UWord tagmask = ~((1 << OC_BITS_PER_LINE) - 1);
    UWord tag     = a & tagmask;
    tl_assert(setno < OC_N_SETS);
 
-   /* we already tried ocline == 0; skip therefore. */
-   for (ocline = 1; ocline < OC_LINES_PER_SET; ocline++) {
-      if (ocacheL1->set[setno].line[ocline].tag == tag) {
-         switch (ocline) {
+   /* we already tried line == 0; skip therefore. */
+   for (line = 1; line < OC_LINES_PER_SET; line++) {
+      if (ocacheL1->set[setno].line[line].tag == tag) {
+         switch (line) {
          // with OC_LINES_PER_SET equal to 2 this is the only possible case
          case 1:
             stats_ocacheL1_found_at_1++;
@@ -2912,22 +2907,22 @@ static OCacheLine* find_OCacheLine_SLOW ( Addr a )
          }
          if (UNLIKELY(0 == (ocacheL1_event_ctr++
                             & ((1<<OC_MOVE_FORWARDS_EVERY_BITS)-1)))) {
-            moveLineForwards( &ocacheL1->set[setno], ocline );
-            ocline--;
+            moveLineForwards( &ocacheL1->set[setno], line );
+            line--;
          }
-         return &ocacheL1->set[setno].line[ocline];
+         return &ocacheL1->set[setno].line[line];
       }
    }
 
    /* A miss.  Use the last slot.  Implicitly this means we're
       ejecting the line in the last slot. */
    stats_ocacheL1_misses++;
-   tl_assert(ocline == OC_LINES_PER_SET);
-   ocline--;
-   tl_assert(ocline > 0);
+   tl_assert(line == OC_LINES_PER_SET);
+   line--;
+   tl_assert(line > 0);
 
    /* First, move the to-be-ejected line to the L2 cache. */
-   victim = &ocacheL1->set[setno].line[ocline];
+   victim = &ocacheL1->set[setno].line[line];
    c = classify_OCacheLine(victim);
    switch (c) {
       case 'e':
@@ -2962,19 +2957,19 @@ static OCacheLine* find_OCacheLine_SLOW ( Addr a )
    inL2 = ocacheL2_find_tag( tag );
    if (inL2) {
       /* We're in luck.  It's in the L2. */
-      ocacheL1->set[setno].line[ocline] = *inL2;
+      ocacheL1->set[setno].line[line] = *inL2;
    } else {
       /* Missed at both levels of the cache hierarchy.  We have to
          declare it as full of zeroes (unknown origins). */
       stats__ocacheL2_misses++;
-      zeroise_OCacheLine( &ocacheL1->set[setno].line[ocline], tag );
+      zeroise_OCacheLine( &ocacheL1->set[setno].line[line], tag );
    }
 
    /* Move it one forwards */
-   moveLineForwards( &ocacheL1->set[setno], ocline );
-   ocline--;
+   moveLineForwards( &ocacheL1->set[setno], line );
+   line--;
 
-   return &ocacheL1->set[setno].line[ocline];
+   return &ocacheL1->set[setno].line[line];
 }
 
 static INLINE OCacheLine* find_OCacheLine ( Addr a )
@@ -3001,17 +2996,17 @@ static INLINE void set_aligned_word64_Origin_to_undef ( Addr a, UInt otag )
 {
    //// BEGIN inlined, specialised version of MC_(helperc_b_store8)
    //// Set the origins for a+0 .. a+7
-   { OCacheLine* ocline;
+   { OCacheLine* line;
      UWord lineoff = oc_line_offset(a);
      if (OC_ENABLE_ASSERTIONS) {
         tl_assert(lineoff >= 0
                   && lineoff < OC_W32S_PER_LINE -1/*'cos 8-aligned*/);
      }
-     ocline = find_OCacheLine( a );
-     ocline->u.main.descr[lineoff+0] = 0xF;
-     ocline->u.main.descr[lineoff+1] = 0xF;
-     ocline->u.main.w32[lineoff+0]   = otag;
-     ocline->u.main.w32[lineoff+1]   = otag;
+     line = find_OCacheLine( a );
+     line->u.main.descr[lineoff+0] = 0xF;
+     line->u.main.descr[lineoff+1] = 0xF;
+     line->u.main.w32[lineoff+0]   = otag;
+     line->u.main.w32[lineoff+1]   = otag;
    }
    //// END inlined, specialised version of MC_(helperc_b_store8)
 }
@@ -3056,14 +3051,14 @@ void make_aligned_word32_undefined_w_otag ( Addr a, UInt otag )
    make_aligned_word32_undefined(a);
    //// BEGIN inlined, specialised version of MC_(helperc_b_store4)
    //// Set the origins for a+0 .. a+3
-   { OCacheLine* ocline;
+   { OCacheLine* line;
      UWord lineoff = oc_line_offset(a);
      if (OC_ENABLE_ASSERTIONS) {
         tl_assert(lineoff >= 0 && lineoff < OC_W32S_PER_LINE);
      }
-     ocline = find_OCacheLine( a );
-     ocline->u.main.descr[lineoff] = 0xF;
-     ocline->u.main.w32[lineoff]   = otag;
+     line = find_OCacheLine( a );
+     line->u.main.descr[lineoff] = 0xF;
+     line->u.main.w32[lineoff]   = otag;
    }
    //// END inlined, specialised version of MC_(helperc_b_store4)
 }
@@ -3093,23 +3088,21 @@ void make_aligned_word32_noaccess ( Addr a )
       //// BEGIN inlined, specialised version of MC_(helperc_b_store4)
       //// Set the origins for a+0 .. a+3.
       if (UNLIKELY( MC_(clo_mc_level) == 3 )) {
-         OCacheLine* ocline;
+         OCacheLine* line;
          UWord lineoff = oc_line_offset(a);
          if (OC_ENABLE_ASSERTIONS) {
             tl_assert(lineoff >= 0 && lineoff < OC_W32S_PER_LINE);
          }
-         ocline = find_OCacheLine( a );
-         ocline->u.main.descr[lineoff] = 0;
+         line = find_OCacheLine( a );
+         line->u.main.descr[lineoff] = 0;
       }
 
       // PG - pgbovine - dyncomp - When you make stuff noaccess, destroy
       // those tags (only put it in this branch of the #ifdef because
       // the other branch calls mc_make_noaccess()):
-#ifndef _NO_DYNCOMP
       if (kvasir_with_dyncomp) {
          clear_all_tags_in_range(a, 4);
       }
-#endif /* _NO_DYNCOMP */
       //// END inlined, specialised version of MC_(helperc_b_store4)
    }
 #endif
@@ -3150,14 +3143,14 @@ void make_aligned_word64_undefined_w_otag ( Addr a, UInt otag )
    make_aligned_word64_undefined(a);
    //// BEGIN inlined, specialised version of MC_(helperc_b_store8)
    //// Set the origins for a+0 .. a+7
-   { OCacheLine* ocline;
+   { OCacheLine* line;
      UWord lineoff = oc_line_offset(a);
      tl_assert(lineoff < OC_W32S_PER_LINE -1/*'cos 8-aligned*/);
-     ocline = find_OCacheLine( a );
-     ocline->u.main.descr[lineoff+0] = 0xF;
-     ocline->u.main.descr[lineoff+1] = 0xF;
-     ocline->u.main.w32[lineoff+0]   = otag;
-     ocline->u.main.w32[lineoff+1]   = otag;
+     line = find_OCacheLine( a );
+     line->u.main.descr[lineoff+0] = 0xF;
+     line->u.main.descr[lineoff+1] = 0xF;
+     line->u.main.w32[lineoff+0]   = otag;
+     line->u.main.w32[lineoff+1]   = otag;
    }
    //// END inlined, specialised version of MC_(helperc_b_store8)
 }
@@ -3188,22 +3181,20 @@ void make_aligned_word64_noaccess ( Addr a )
       //// BEGIN inlined, specialised version of MC_(helperc_b_store8)
       //// Clear the origins for a+0 .. a+7.
       if (UNLIKELY( MC_(clo_mc_level) == 3 )) {
-         OCacheLine* ocline;
+         OCacheLine* line;
          UWord lineoff = oc_line_offset(a);
          tl_assert(lineoff < OC_W32S_PER_LINE -1/*'cos 8-aligned*/);
-         ocline = find_OCacheLine( a );
-         ocline->u.main.descr[lineoff+0] = 0;
-         ocline->u.main.descr[lineoff+1] = 0;
+         line = find_OCacheLine( a );
+         line->u.main.descr[lineoff+0] = 0;
+         line->u.main.descr[lineoff+1] = 0;
       }
 
       // PG - pgbovine - dyncomp - When you make stuff noaccess, destroy
       // those tags (only put it in this branch of the #ifdef because
       // the other branch calls mc_make_noaccess()):
-#ifndef _NO_DYNCOMP
       if (kvasir_with_dyncomp) {
          clear_all_tags_in_range(a, 8);
       }
-#endif /* _NO_DYNCOMP */
       //// END inlined, specialised version of MC_(helperc_b_store8)
    }
 #endif
@@ -7934,7 +7925,7 @@ static INLINE UInt merge_origins ( UInt or1, UInt or2 ) {
 }
 
 UWord VG_REGPARM(1) MC_(helperc_b_load1)( Addr a ) {
-   OCacheLine* ocline;
+   OCacheLine* line;
    UChar descr;
    UWord lineoff = oc_line_offset(a);
    UWord byteoff = a & 3; /* 0, 1, 2 or 3 */
@@ -7943,9 +7934,9 @@ UWord VG_REGPARM(1) MC_(helperc_b_load1)( Addr a ) {
       tl_assert(lineoff >= 0 && lineoff < OC_W32S_PER_LINE);
    }
 
-   ocline = find_OCacheLine( a );
+   line = find_OCacheLine( a );
 
-   descr = ocline->u.main.descr[lineoff];
+   descr = line->u.main.descr[lineoff];
    if (OC_ENABLE_ASSERTIONS) {
       tl_assert(descr < 0x10);
    }
@@ -7953,12 +7944,12 @@ UWord VG_REGPARM(1) MC_(helperc_b_load1)( Addr a ) {
    if (LIKELY(0 == (descr & (1 << byteoff))))  {
       return 0;
    } else {
-      return ocline->u.main.w32[lineoff];
+      return line->u.main.w32[lineoff];
    }
 }
 
 UWord VG_REGPARM(1) MC_(helperc_b_load2)( Addr a ) {
-   OCacheLine* ocline;
+   OCacheLine* line;
    UChar descr;
    UWord lineoff, byteoff;
 
@@ -7975,9 +7966,9 @@ UWord VG_REGPARM(1) MC_(helperc_b_load2)( Addr a ) {
    if (OC_ENABLE_ASSERTIONS) {
       tl_assert(lineoff >= 0 && lineoff < OC_W32S_PER_LINE);
    }
-   ocline = find_OCacheLine( a );
+   line = find_OCacheLine( a );
 
-   descr = ocline->u.main.descr[lineoff];
+   descr = line->u.main.descr[lineoff];
    if (OC_ENABLE_ASSERTIONS) {
       tl_assert(descr < 0x10);
    }
@@ -7985,12 +7976,12 @@ UWord VG_REGPARM(1) MC_(helperc_b_load2)( Addr a ) {
    if (LIKELY(0 == (descr & (3 << byteoff)))) {
       return 0;
    } else {
-      return ocline->u.main.w32[lineoff];
+      return line->u.main.w32[lineoff];
    }
 }
 
 UWord VG_REGPARM(1) MC_(helperc_b_load4)( Addr a ) {
-   OCacheLine* ocline;
+   OCacheLine* line;
    UChar descr;
    UWord lineoff;
 
@@ -8006,9 +7997,9 @@ UWord VG_REGPARM(1) MC_(helperc_b_load4)( Addr a ) {
       tl_assert(lineoff >= 0 && lineoff < OC_W32S_PER_LINE);
    }
 
-   ocline = find_OCacheLine( a );
+   line = find_OCacheLine( a );
 
-   descr = ocline->u.main.descr[lineoff];
+   descr = line->u.main.descr[lineoff];
    if (OC_ENABLE_ASSERTIONS) {
       tl_assert(descr < 0x10);
    }
@@ -8016,12 +8007,12 @@ UWord VG_REGPARM(1) MC_(helperc_b_load4)( Addr a ) {
    if (LIKELY(0 == descr)) {
       return 0;
    } else {
-      return ocline->u.main.w32[lineoff];
+      return line->u.main.w32[lineoff];
    }
 }
 
 UWord VG_REGPARM(1) MC_(helperc_b_load8)( Addr a ) {
-   OCacheLine* ocline;
+   OCacheLine* line;
    UChar descrLo, descrHi, descr;
    UWord lineoff;
 
@@ -8037,10 +8028,10 @@ UWord VG_REGPARM(1) MC_(helperc_b_load8)( Addr a ) {
       tl_assert(lineoff == (lineoff & 6)); /*0,2,4,6*//*since 8-aligned*/
    }
 
-   ocline = find_OCacheLine( a );
+   line = find_OCacheLine( a );
 
-   descrLo = ocline->u.main.descr[lineoff + 0];
-   descrHi = ocline->u.main.descr[lineoff + 1];
+   descrLo = line->u.main.descr[lineoff + 0];
+   descrHi = line->u.main.descr[lineoff + 1];
    descr   = descrLo | descrHi;
    if (OC_ENABLE_ASSERTIONS) {
       tl_assert(descr < 0x10);
@@ -8049,8 +8040,8 @@ UWord VG_REGPARM(1) MC_(helperc_b_load8)( Addr a ) {
    if (LIKELY(0 == descr)) {
       return 0; /* both 32-bit chunks are defined */
    } else {
-      UInt oLo = descrLo == 0 ? 0 : ocline->u.main.w32[lineoff + 0];
-      UInt oHi = descrHi == 0 ? 0 : ocline->u.main.w32[lineoff + 1];
+      UInt oLo = descrLo == 0 ? 0 : line->u.main.w32[lineoff + 0];
+      UInt oHi = descrHi == 0 ? 0 : line->u.main.w32[lineoff + 1];
       return merge_origins(oLo, oHi);
    }
 }
@@ -8078,7 +8069,7 @@ UWord VG_REGPARM(1) MC_(helperc_b_load32)( Addr a ) {
 /*--------------------------------------------*/
 
 void VG_REGPARM(2) MC_(helperc_b_store1)( Addr a, UWord d32 ) {
-   OCacheLine* ocline;
+   OCacheLine* line;
    UWord lineoff = oc_line_offset(a);
    UWord byteoff = a & 3; /* 0, 1, 2 or 3 */
 
@@ -8086,37 +8077,37 @@ void VG_REGPARM(2) MC_(helperc_b_store1)( Addr a, UWord d32 ) {
       tl_assert(lineoff >= 0 && lineoff < OC_W32S_PER_LINE);
    }
 
-   ocline = find_OCacheLine( a );
+   line = find_OCacheLine( a );
 
 #if OC_PRECISION_STORE
    if (LIKELY(d32 == 0)) {
       // The byte is defined.  Just mark it as so in the descr and leave the w32
       // unchanged.  This may make the descr become zero, so the line no longer
       // contains useful info, but that's OK.  No loss of information.
-      ocline->u.main.descr[lineoff] &= ~(1 << byteoff);
-   } else if (d32 == ocline->u.main.w32[lineoff]) {
+      line->u.main.descr[lineoff] &= ~(1 << byteoff);
+   } else if (d32 == line->u.main.w32[lineoff]) {
       // At least one of the four bytes in the w32 is undefined with the same
       // origin.  Just extend the mask.  No loss of information.
-      ocline->u.main.descr[lineoff] |= (1 << byteoff);
+      line->u.main.descr[lineoff] |= (1 << byteoff);
    } else {
       // Here, we have a conflict: at least one byte in the group is undefined
       // but with some other origin.  We can't represent both origins, so we
       // forget about the previous origin and install this one instead.
-      ocline->u.main.descr[lineoff] = (1 << byteoff);
-      ocline->u.main.w32[lineoff] = d32;
+      line->u.main.descr[lineoff] = (1 << byteoff);
+      line->u.main.w32[lineoff] = d32;
    }
 #else
    if (d32 == 0) {
-      ocline->u.main.descr[lineoff] &= ~(1 << byteoff);
+      line->u.main.descr[lineoff] &= ~(1 << byteoff);
    } else {
-      ocline->u.main.descr[lineoff] |= (1 << byteoff);
-      ocline->u.main.w32[lineoff] = d32;
+      line->u.main.descr[lineoff] |= (1 << byteoff);
+      line->u.main.w32[lineoff] = d32;
    }
 #endif
 }
 
 void VG_REGPARM(2) MC_(helperc_b_store2)( Addr a, UWord d32 ) {
-   OCacheLine* ocline;
+   OCacheLine* line;
    UWord lineoff, byteoff;
 
    if (UNLIKELY(a & 1)) {
@@ -8133,31 +8124,31 @@ void VG_REGPARM(2) MC_(helperc_b_store2)( Addr a, UWord d32 ) {
       tl_assert(lineoff >= 0 && lineoff < OC_W32S_PER_LINE);
    }
 
-   ocline = find_OCacheLine( a );
+   line = find_OCacheLine( a );
 
 #if OC_PRECISION_STORE
    // Same logic as in the store1 case above.
    if (LIKELY(d32 == 0)) {
-      ocline->u.main.descr[lineoff] &= ~(3 << byteoff);
-   } else if (d32 == ocline->u.main.w32[lineoff]) {
-      ocline->u.main.descr[lineoff] |= (3 << byteoff);
-      ocline->u.main.w32[lineoff] = d32;
+      line->u.main.descr[lineoff] &= ~(3 << byteoff);
+   } else if (d32 == line->u.main.w32[lineoff]) {
+      line->u.main.descr[lineoff] |= (3 << byteoff);
+      line->u.main.w32[lineoff] = d32;
    } else {
-      ocline->u.main.descr[lineoff] = (3 << byteoff);
-      ocline->u.main.w32[lineoff] = d32;
+      line->u.main.descr[lineoff] = (3 << byteoff);
+      line->u.main.w32[lineoff] = d32;
    }
 #else
    if (d32 == 0) {
-      ocline->u.main.descr[lineoff] &= ~(3 << byteoff);
+      line->u.main.descr[lineoff] &= ~(3 << byteoff);
    } else {
-      ocline->u.main.descr[lineoff] |= (3 << byteoff);
-      ocline->u.main.w32[lineoff] = d32;
+      line->u.main.descr[lineoff] |= (3 << byteoff);
+      line->u.main.w32[lineoff] = d32;
    }
 #endif
 }
 
 void VG_REGPARM(2) MC_(helperc_b_store4)( Addr a, UWord d32 ) {
-   OCacheLine* ocline;
+   OCacheLine* line;
    UWord lineoff;
 
    if (UNLIKELY(a & 3)) {
@@ -8172,19 +8163,19 @@ void VG_REGPARM(2) MC_(helperc_b_store4)( Addr a, UWord d32 ) {
       tl_assert(lineoff >= 0 && lineoff < OC_W32S_PER_LINE);
    }
 
-   ocline = find_OCacheLine( a );
+   line = find_OCacheLine( a );
 
    if (d32 == 0) {
-      ocline->u.main.descr[lineoff] = 0;
+      line->u.main.descr[lineoff] = 0;
    } else {
-      ocline->u.main.descr[lineoff] = 0xF;
-      ocline->u.main.w32[lineoff] = d32;
+      line->u.main.descr[lineoff] = 0xF;
+      line->u.main.w32[lineoff] = d32;
    }
 }
 
 void VG_REGPARM(2) MC_(helperc_b_store8)( Addr a, UWord d32 ) {
    STATIC_ASSERT(OC_W32S_PER_LINE == 8);
-   OCacheLine* ocline;
+   OCacheLine* line;
    UWord lineoff;
 
    if (UNLIKELY(a & 7)) {
@@ -8199,22 +8190,22 @@ void VG_REGPARM(2) MC_(helperc_b_store8)( Addr a, UWord d32 ) {
       tl_assert(lineoff == (lineoff & 6)); /*0,2,4,6*//*since 8-aligned*/
    }
 
-   ocline = find_OCacheLine( a );
+   line = find_OCacheLine( a );
 
    if (d32 == 0) {
-      ocline->u.main.descr[lineoff + 0] = 0;
-      ocline->u.main.descr[lineoff + 1] = 0;
+      line->u.main.descr[lineoff + 0] = 0;
+      line->u.main.descr[lineoff + 1] = 0;
    } else {
-      ocline->u.main.descr[lineoff + 0] = 0xF;
-      ocline->u.main.descr[lineoff + 1] = 0xF;
-      ocline->u.main.w32[lineoff + 0] = d32;
-      ocline->u.main.w32[lineoff + 1] = d32;
+      line->u.main.descr[lineoff + 0] = 0xF;
+      line->u.main.descr[lineoff + 1] = 0xF;
+      line->u.main.w32[lineoff + 0] = d32;
+      line->u.main.w32[lineoff + 1] = d32;
    }
 }
 
 void VG_REGPARM(2) MC_(helperc_b_store16)( Addr a, UWord d32 ) {
    STATIC_ASSERT(OC_W32S_PER_LINE == 8);
-   OCacheLine* ocline;
+   OCacheLine* line;
    UWord lineoff;
 
    if (UNLIKELY(a & 15)) {
@@ -8229,28 +8220,28 @@ void VG_REGPARM(2) MC_(helperc_b_store16)( Addr a, UWord d32 ) {
       tl_assert(lineoff == (lineoff & 4)); /*0,4*//*since 16-aligned*/
    }
 
-   ocline = find_OCacheLine( a );
+   line = find_OCacheLine( a );
 
    if (d32 == 0) {
-      ocline->u.main.descr[lineoff + 0] = 0;
-      ocline->u.main.descr[lineoff + 1] = 0;
-      ocline->u.main.descr[lineoff + 2] = 0;
-      ocline->u.main.descr[lineoff + 3] = 0;
+      line->u.main.descr[lineoff + 0] = 0;
+      line->u.main.descr[lineoff + 1] = 0;
+      line->u.main.descr[lineoff + 2] = 0;
+      line->u.main.descr[lineoff + 3] = 0;
    } else {
-      ocline->u.main.descr[lineoff + 0] = 0xF;
-      ocline->u.main.descr[lineoff + 1] = 0xF;
-      ocline->u.main.descr[lineoff + 2] = 0xF;
-      ocline->u.main.descr[lineoff + 3] = 0xF;
-      ocline->u.main.w32[lineoff + 0] = d32;
-      ocline->u.main.w32[lineoff + 1] = d32;
-      ocline->u.main.w32[lineoff + 2] = d32;
-      ocline->u.main.w32[lineoff + 3] = d32;
+      line->u.main.descr[lineoff + 0] = 0xF;
+      line->u.main.descr[lineoff + 1] = 0xF;
+      line->u.main.descr[lineoff + 2] = 0xF;
+      line->u.main.descr[lineoff + 3] = 0xF;
+      line->u.main.w32[lineoff + 0] = d32;
+      line->u.main.w32[lineoff + 1] = d32;
+      line->u.main.w32[lineoff + 2] = d32;
+      line->u.main.w32[lineoff + 3] = d32;
    }
 }
 
 void VG_REGPARM(2) MC_(helperc_b_store32)( Addr a, UWord d32 ) {
    STATIC_ASSERT(OC_W32S_PER_LINE == 8);
-   OCacheLine* ocline;
+   OCacheLine* line;
    UWord lineoff;
 
    if (UNLIKELY(a & 31)) {
@@ -8265,34 +8256,34 @@ void VG_REGPARM(2) MC_(helperc_b_store32)( Addr a, UWord d32 ) {
       tl_assert(lineoff == 0);
    }
 
-   ocline = find_OCacheLine( a );
+   line = find_OCacheLine( a );
 
    if (d32 == 0) {
-      ocline->u.main.descr[0] = 0;
-      ocline->u.main.descr[1] = 0;
-      ocline->u.main.descr[2] = 0;
-      ocline->u.main.descr[3] = 0;
-      ocline->u.main.descr[4] = 0;
-      ocline->u.main.descr[5] = 0;
-      ocline->u.main.descr[6] = 0;
-      ocline->u.main.descr[7] = 0;
+      line->u.main.descr[0] = 0;
+      line->u.main.descr[1] = 0;
+      line->u.main.descr[2] = 0;
+      line->u.main.descr[3] = 0;
+      line->u.main.descr[4] = 0;
+      line->u.main.descr[5] = 0;
+      line->u.main.descr[6] = 0;
+      line->u.main.descr[7] = 0;
    } else {
-      ocline->u.main.descr[0] = 0xF;
-      ocline->u.main.descr[1] = 0xF;
-      ocline->u.main.descr[2] = 0xF;
-      ocline->u.main.descr[3] = 0xF;
-      ocline->u.main.descr[4] = 0xF;
-      ocline->u.main.descr[5] = 0xF;
-      ocline->u.main.descr[6] = 0xF;
-      ocline->u.main.descr[7] = 0xF;
-      ocline->u.main.w32[0] = d32;
-      ocline->u.main.w32[1] = d32;
-      ocline->u.main.w32[2] = d32;
-      ocline->u.main.w32[3] = d32;
-      ocline->u.main.w32[4] = d32;
-      ocline->u.main.w32[5] = d32;
-      ocline->u.main.w32[6] = d32;
-      ocline->u.main.w32[7] = d32;
+      line->u.main.descr[0] = 0xF;
+      line->u.main.descr[1] = 0xF;
+      line->u.main.descr[2] = 0xF;
+      line->u.main.descr[3] = 0xF;
+      line->u.main.descr[4] = 0xF;
+      line->u.main.descr[5] = 0xF;
+      line->u.main.descr[6] = 0xF;
+      line->u.main.descr[7] = 0xF;
+      line->u.main.w32[0] = d32;
+      line->u.main.w32[1] = d32;
+      line->u.main.w32[2] = d32;
+      line->u.main.w32[3] = d32;
+      line->u.main.w32[4] = d32;
+      line->u.main.w32[5] = d32;
+      line->u.main.w32[6] = d32;
+      line->u.main.w32[7] = d32;
    }
 }
 
