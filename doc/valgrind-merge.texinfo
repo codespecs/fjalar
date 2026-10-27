@@ -1479,6 +1479,26 @@ include additional information specific to the amd64 and x86 platforms.
 Finally, we had to extend Valgrind's implementation of the C library
 with a few extra functions.
 
+To see all of Fjalar's modifications to the Valgrind release that
+@file{valgrind/REVISION} names, run:
+
+@example
+$INV/fjalar/diff-from-valgrind.sh
+@end example
+
+@noindent
+It accepts the options of @command{git diff}, such as @option{--stat} and
+@option{-w}.  It compares with @file{$INV/valgrind-old}; to compare with
+another clone of that release, such as @file{$INV/valgrind-new} after a
+merge, give @option{--valgrind=@var{dir}}.  Every modification is a
+potential conflict in the next merge, so keep them few:  put Fjalar's code
+in Fjalar's own files where possible, and keep upstream's whitespace.
+Continuous integration runs @command{check-valgrind-whitespace.sh}, which
+fails if Fjalar's copy of an upstream file has a change of whitespace
+alone, such as removed trailing whitespace or an added blank line.  On a line
+whose text Fjalar also changed, a change of whitespace adds no conflict, so
+the check ignores it.
+
 (Remember that we assume @env{$INV} points to a parent directory that
 contains both the Daikon and Fjalar source trees.)
 

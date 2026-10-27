@@ -1333,7 +1333,7 @@ static IRAtom* doCmpORD ( MCEnv*  mce,
              || cmp_op == Iop_CmpORD64S || cmp_op == Iop_CmpORD64U);
 
    if (0) {
-      ppIROp(cmp_op); VG_(printf)(" ");
+      ppIROp(cmp_op); VG_(printf)(" "); 
       ppIRExpr(xx); VG_(printf)(" "); ppIRExpr( yy ); VG_(printf)("\n");
    }
 
@@ -6198,7 +6198,7 @@ void do_shadow_Dirty ( MCEnv* mce, IRDirty* d )
          /* Ignore any sections marked as 'always defined'. */
          if (isAlwaysDefd(mce, gOff, gSz)) {
             if (0)
-         VG_(printf)("memcheck: Dirty gst: ignored off %d, sz %d\n",
+            VG_(printf)("memcheck: Dirty gst: ignored off %d, sz %d\n",
                         gOff, gSz);
             continue;
          }
@@ -7383,7 +7383,7 @@ static void do_origins_Dirty ( MCEnv* mce, IRDirty* d )
          /* Ignore any sections marked as 'always defined'. */
          if (isAlwaysDefd(mce, gOff, gSz)) {
             if (0)
-         VG_(printf)("memcheck: Dirty gst: ignored off %d, sz %d\n",
+            VG_(printf)("memcheck: Dirty gst: ignored off %d, sz %d\n",
                         gOff, gSz);
             continue;
          }
