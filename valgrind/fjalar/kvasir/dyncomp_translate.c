@@ -3979,7 +3979,10 @@ Bool begin_instrument_DC ( DCEnv* dce, VgCallbackClosure* closure,
    if (first_time) {
       DebugInfo* di = VG_(find_DebugInfo)(cur_ep, closure->readdr);
       tl_assert(di);
-      loader_name = VG_(DebugInfo_get_filename)(di);
+      // Copy the name, which the DebugInfo owns, in case Valgrind
+      // discards the DebugInfo.
+      loader_name = VG_(strdup)("dyncomp_translate.c.loader_name",
+                                VG_(DebugInfo_get_filename)(di));
       DYNCOMP_DPRINTF("loader_name: %s\n", loader_name);
       first_time = False;
    } else {
