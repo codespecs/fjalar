@@ -881,8 +881,8 @@ void enter_function(FunctionEntry* f)
     // elegant to copy the metadata to an inaccessible place, but that
     // would be more work.
     FJALAR_DPRINTF("Copying over stack [%p] -> [%p] %d bytes\n",(void *)(stack_ptr - VG_STACK_REDZONE_SZB),  (void *)newEntry->virtualStack, size);
-    mc_copy_address_range_state(stack_ptr - VG_STACK_REDZONE_SZB,
-				(Addr)(newEntry->virtualStack), size);
+    MC_(copy_address_range_state)(stack_ptr - VG_STACK_REDZONE_SZB,
+				  (Addr)(newEntry->virtualStack), size);
 
 
     newEntry->func->guestStackStart = stack_ptr - VG_STACK_REDZONE_SZB;
@@ -1057,7 +1057,7 @@ void exit_function(FunctionEntry* f)
        VG_(malloc)'ed memory to be client accessible, so we have to
        make it inaccessible again before allowing Valgrind's malloc to
        use it, lest assertions fail later. */
-    mc_make_noaccess((Addr)top->virtualStack, top->allocByteSize);
+    MC_(make_mem_noaccess)((Addr)top->virtualStack, top->allocByteSize);
     VG_(free)(top->virtualStack);
   }
 
