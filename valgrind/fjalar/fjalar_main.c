@@ -165,13 +165,19 @@ Int dwarf_reg_guest_offset(UInt regNum)
   return dwarf_reg_guest_offsets[regNum];
 }
 
+// Returns the word at the given offset in thread tid's guest state
+// (shadowNo 0) or in its V bits (shadowNo 1).
+static UWord read_guest_word(ThreadId tid, Int shadowNo, Int offset)
+{
+  UWord value;
+  VG_(get_shadow_regs_area)(tid, (UChar*)&value, shadowNo, offset, sizeof(UWord));
+  return value;
+}
+
 Addr read_dwarf_reg(ThreadId tid, UInt regNum)
 {
-  Addr value;
   tl_assert(dwarf_reg_is_readable(regNum));
-  VG_(get_shadow_regs_area)(tid, (UChar*)&value, 0/*shadowNo*/,
-                            dwarf_reg_guest_offsets[regNum], sizeof(Addr));
-  return value;
+  return read_guest_word(tid, 0, dwarf_reg_guest_offsets[regNum]);
 }
 
 #if defined(VGA_amd64)
@@ -188,21 +194,12 @@ Addr read_dwarf_reg(ThreadId tid, UInt regNum)
 #define GUEST_xDI guest_EDI
 #endif
 
-// Returns the word at the given offset in thread tid's guest state
-// (shadowNo 0) or in its V bits (shadowNo 1).
-static UWord read_guest_word(ThreadId tid, Int shadowNo, Int offset)
-{
-  UWord value;
-  VG_(get_shadow_regs_area)(tid, (UChar*)&value, shadowNo, offset, sizeof(UWord));
-  return value;
-}
-
 Addr read_xAX(ThreadId tid)
 {
   return read_guest_word(tid, 0, offsetof(VexGuestArchState, GUEST_xAX));
 }
 
-Addr read_xCX(ThreadId tid)
+static Addr read_xCX(ThreadId tid)
 {
   return read_guest_word(tid, 0, offsetof(VexGuestArchState, GUEST_xCX));
 }
@@ -212,12 +209,12 @@ Addr read_xDX(ThreadId tid)
   return read_guest_word(tid, 0, offsetof(VexGuestArchState, GUEST_xDX));
 }
 
-Addr read_xSI(ThreadId tid)
+static Addr read_xSI(ThreadId tid)
 {
   return read_guest_word(tid, 0, offsetof(VexGuestArchState, GUEST_xSI));
 }
 
-Addr read_xDI(ThreadId tid)
+static Addr read_xDI(ThreadId tid)
 {
   return read_guest_word(tid, 0, offsetof(VexGuestArchState, GUEST_xDI));
 }
@@ -763,7 +760,7 @@ void enter_function(FunctionEntry* f)
   FJALAR_DPRINTF("[enter_function] startPC is: %x, entryPC is: %x, cu_base: %p\n",
                  (UInt)f->startPC, (UInt)f->entryPC,(void *)f->cuBase);
   FJALAR_DPRINTF("Value of edi: %lx, esi: %lx, edx: %lx, ecx: %lx\n",
-      (UWord)read_xDI(tid), (UWord)read_xSI(tid), (UWord)read_xDX(tid), (UWord)read_xCX(tid));
+      read_xDI(tid), read_xSI(tid), read_xDX(tid), read_xCX(tid));
   FJALAR_DPRINTF("frame_base_atom: %x, frame_base_offset: %lx\n", f->frame_base_atom, (unsigned long int) f->frame_base_offset);
 
   // Determine the frame pointer for this function using DWARF
@@ -1040,9 +1037,6 @@ void exit_function(FunctionEntry* f)
   FPUshadow = read_shadow_float_return(currentTID);
 
 
-  //RUDD DEBUG
-  /* printf("%.16g\n", fpuReturnVal); */
-  /* printf("shadow: %x\n", FPUshadow); */
   // Get the value at the simulated %EAX (integer and pointer return
   // values are stored here upon function exit)
   xAX = read_xAX(currentTID);

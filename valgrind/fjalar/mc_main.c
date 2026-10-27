@@ -69,7 +69,7 @@
 #include "kvasir/kvasir_main.h"
 #include "kvasir/dyncomp_main.h"
 #include "fjalar_main.h"
-#include "fjalar_core_decls.h"  // for VG_(am_is_valid_for_valgrind)
+#include "fjalar_core_decls.h"  // for VG_(am_is_valid_for_valgrind), VG_(get_tag_ptr_for_guest_offset)
 #include "mc_fjalar.h"
 // dwarf.h, which the Fjalar headers above include, declares enumerators
 // named "line" and "str", which Memcheck's locals of those names shadow.

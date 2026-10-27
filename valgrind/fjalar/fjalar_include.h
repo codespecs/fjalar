@@ -782,10 +782,7 @@ Addr read_dwarf_reg(ThreadId tid, UInt regNum);
 // Return the current value of a register of thread tid.  xAX is %rax
 // on amd64 and %eax on x86, and so on.
 Addr read_xAX(ThreadId tid);
-Addr read_xCX(ThreadId tid);
 Addr read_xDX(ThreadId tid);
-Addr read_xSI(ThreadId tid);
-Addr read_xDI(ThreadId tid);
 // Return the V bits of a register of thread tid.
 UWord read_shadow_xAX(ThreadId tid);
 UWord read_shadow_xDX(ThreadId tid);
