@@ -53,7 +53,12 @@ Memcheck and DynComp depend tightly on Valgrind core:
   Hopping through every release would multiply the manual DynComp work,
   because `mc_translate.c` and `dyncomp_translate.c` would have to be
   revisited five times.  Fall back to a hop at 3.25.1 only if the Memcheck
-  conflicts are unmanageable.
+  conflicts are unmanageable.  The steps below are written for the single
+  jump.  For the fallback, do all the steps twice, once for 3.23.0 -> 3.25.1
+  and once for 3.25.1 -> 3.27.1, and in each pass substitute that hop's
+  versions for 3.23.0 and 3.27.1 everywhere:  `VOLDTAG` and `VNEWTAG`
+  (including in the CI command of step 9), the NEWS releases to read,
+  `valgrind/REVISION`, and the commit message.
 - The checklist of Fjalar changes to upstream files is
   `git diff --diff-filter=a valgrind-merge/base valgrind-merge/fjalar`
   (step 4).  By where they matter:
