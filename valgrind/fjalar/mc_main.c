@@ -2462,10 +2462,7 @@ void MC_(copy_address_range_state) ( Addr src, Addr dst, SizeT len )
 
 static UWord stats_ocacheL1_find           = 0;
 static UWord stats_ocacheL1_found_at_1     = 0;
-// Added #ifdef around def to remove warnings. (markro)
-#ifdef UNDEFINED_FOO
 static UWord stats_ocacheL1_found_at_N     = 0;
-#endif
 static UWord stats_ocacheL1_misses         = 0;
 static UWord stats_ocacheL1_lossage        = 0;
 static UWord stats_ocacheL1_movefwds       = 0;
@@ -4757,9 +4754,6 @@ static
 void mc_new_mem_mmap ( Addr a, SizeT len, Bool rr, Bool ww, Bool xx,
                        ULong di_handle )
 {
-  // Silence GCC warnings - RUDD
-   (void)di_handle;
-
    if (rr || ww || xx) {
       /* (2) mmap/mprotect other -> defined */
       MC_(make_mem_defined)(a, len);
@@ -4786,10 +4780,6 @@ static
 void mc_new_mem_startup( Addr a, SizeT len,
                          Bool rr, Bool ww, Bool xx, ULong di_handle )
 {
-
-  //Silenced GCC warnings - Rudd
-  (void)rr; (void)ww; (void)xx; (void)di_handle;
-
    // Because code is defined, initialised variables get put in the data
    // segment and are defined, and uninitialised variables get put in the
    // bss segment and are auto-zeroed (and so defined).
@@ -4813,9 +4803,6 @@ void mc_new_mem_startup( Addr a, SizeT len,
 static
 void mc_post_mem_write(CorePart part, ThreadId tid, Addr a, SizeT len)
 {
-  // Silence GCC warnings - RUDD
-  (void)part; (void)tid;
-
    MC_(make_mem_defined)(a, len);
 }
 
@@ -4862,18 +4849,12 @@ static void mc_post_reg_write ( CorePart part, ThreadId tid,
    VG_(memset)(area, V_BITS8_DEFINED, size);
    VG_(set_shadow_regs_area)( tid, 1/*shadowNo*/,offset,size, area );
 #  undef MAX_REG_WRITE_SIZE
-   // Silence GCC warnings - RUDD
-  (void)part;
-
 }
 
 static
 void mc_post_reg_write_clientcall ( ThreadId tid,
                                     PtrdiffT offset, SizeT size, Addr f)
 {
-// Silence GCC warnings - RUDD
-  (void)f;
-
    mc_post_reg_write(/*dummy*/0, tid, offset, size);
 }
 
@@ -4889,8 +4870,6 @@ static void mc_pre_reg_read ( CorePart part, ThreadId tid, const HChar* s,
    UInt  otag;
 
    UChar area[16];
-   // Silence GCC warnings - RUDD
-   (void) part;
    tl_assert(size <= 16);
 
    VG_(get_shadow_regs_area)( tid, area, 1/*shadowNo*/,offset,size );
@@ -6650,9 +6629,7 @@ Int alloc_client_block ( void )
    return cgb_used-1;
 }
 
-// PG - pgbovine - disable Memcheck leak detection for faster shutdown:
-// Added #ifdef around function defs to remove warnings. (markro)
-#ifdef UNDEFINED_FOO
+
 static void show_client_block_stats ( void )
 {
    VG_(message)(Vg_DebugMsg,
@@ -6660,8 +6637,6 @@ static void show_client_block_stats ( void )
       cgb_allocs, cgb_discards, cgb_used_MAX, cgb_search
    );
 }
-#endif
-
 static void print_monitor_help ( void )
 {
    VG_(gdb_printf)
@@ -7718,10 +7693,6 @@ static Bool mc_handle_client_request ( ThreadId tid, UWord* arg, UWord* ret )
 // We track a number of interesting events (using PROF_EVENT)
 // if MC_PROFILE_MEMORY is defined.
 
-// PG - pgbovine - disable Memcheck leak detection for faster shutdown:
-// Added #ifdef around function defs to remove warnings. (markro)
-#ifdef UNDEFINED_FOO
-
 #ifdef MC_PROFILE_MEMORY
 
 ULong  MC_(event_ctr)[MCPE_LAST];
@@ -7894,8 +7865,6 @@ static void done_prof_mem ( void )
 
 static void init_prof_mem ( void ) { }
 static void done_prof_mem ( void ) { }
-
-#endif
 
 #endif
 
@@ -8576,9 +8545,6 @@ static void mc_post_clo_init ( void )
 
 }
 
-// PG - pgbovine - disable Memcheck leak detection for faster shutdown:
-// Added #ifdef around function defs to remove warnings. (markro)
-#ifdef UNDEFINED_FOO
 static void print_SM_info(const HChar* type, Int n_SMs)
 {
    VG_(message)(Vg_DebugMsg,
@@ -8686,13 +8652,14 @@ static void mc_print_stats (void)
          tl_assert(ocachesL2[1] == NULL);
       }
    }
-#endif
+}
+
 
 static void mc_fini ( Int exitcode )
 {
-   // PG - pgbovine - disable Memcheck leak detection for faster shutdown:
-  (void)exitcode;
-#ifdef UNDEFINED_FOO
+   fjalar_finish();
+   return; // Fjalar skips Memcheck's end-of-run reports.
+
    MC_(xtmemory_report) (VG_(clo_xtree_memory_file), True);
    MC_(print_malloc_stats)();
 
@@ -8779,9 +8746,6 @@ static void mc_fini ( Int exitcode )
         "------ Valgrind's client block stats follow ---------------\n" );
       show_client_block_stats();
    }
-#endif
-
-   fjalar_finish();
 }
 
 /* mark the given addr/len unaddressable for watchpoint implementation
@@ -8842,7 +8806,7 @@ static void mc_pre_clo_init(void)
    VG_(needs_client_requests)     (mc_handle_client_request);
    VG_(needs_sanity_checks)       (mc_cheap_sanity_check,
                                    mc_expensive_sanity_check);
-// VG_(needs_print_stats)         (mc_print_stats);
+   VG_(needs_print_stats)         (mc_print_stats);
    VG_(needs_info_location)       (MC_(pp_describe_addr));
    VG_(needs_malloc_replacement)  (MC_(malloc),
                                    MC_(__builtin_new),
@@ -8916,9 +8880,7 @@ static void mc_pre_clo_init(void)
    tl_assert(MC_(chunk_poolalloc) == NULL);
    MC_(malloc_list)  = VG_(HT_construct)( "MC_(malloc_list)" );
    MC_(mempool_list) = VG_(HT_construct)( "MC_(mempool_list)" );
-// PG - pgbovine - disable Memcheck leak detection for faster shutdown:
-// Commented out following call to remove warnings. (markro)
-// init_prof_mem();
+   init_prof_mem();
 
    tl_assert( mc_expensive_sanity_check() );
 
