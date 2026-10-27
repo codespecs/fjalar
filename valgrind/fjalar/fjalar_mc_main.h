@@ -28,17 +28,13 @@ functions.
 #include "pub_tool_vki.h"  // needed for VKI_PROT_ defines
 #include "fjalar_core_decls.h"  // for VG_(am_is_valid_for_valgrind)
 
-void set_abit_and_vbyte (Addr a, UWord abit, UWord vbyte )
+void mc_set_addressable_vbyte (Addr a, UWord vbyte )
 {
-  UChar vabits2 = VA_BITS2_UNDEFINED;
+  UChar vabits2;
 
-  if(abit == VGM_BIT_VALID) {
-    if      ( V_BITS8_DEFINED   == vbyte ) { vabits2 = VA_BITS2_DEFINED;   }
-    else if ( V_BITS8_UNDEFINED == vbyte ) { vabits2 = VA_BITS2_UNDEFINED; }
-    else                                    { vabits2 = VA_BITS2_PARTDEFINED;}
-  } else {
-    vabits2 = VA_BITS2_UNDEFINED;
-  }
+  if      ( V_BITS8_DEFINED   == vbyte ) { vabits2 = VA_BITS2_DEFINED;   }
+  else if ( V_BITS8_UNDEFINED == vbyte ) { vabits2 = VA_BITS2_UNDEFINED; }
+  else                                    { vabits2 = VA_BITS2_PARTDEFINED;}
 
   set_vabits2(a, vabits2);
 
@@ -99,7 +95,7 @@ void mc_copy_guest_reg_state ( ThreadId tid, Int guestOffset, Addr dst )
   VG_(get_shadow_regs_area)(tid, (UChar*)&vbits, 1/*shadowNo*/,
                             guestOffset, sizeof(Addr));
   for (b = 0; b < sizeof(Addr); b++) {
-    set_abit_and_vbyte(dst + b, VGM_BIT_VALID, (vbits >> (b * 8)) & 0xff);
+    mc_set_addressable_vbyte(dst + b, (vbits >> (b * 8)) & 0xff);
   }
   if (kvasir_with_dyncomp) {
     // DynComp keeps one tag per register, at the register's offset.

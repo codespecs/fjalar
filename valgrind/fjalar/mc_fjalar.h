@@ -37,10 +37,8 @@ files include this header instead of mc_include.h.
 
 #include "mc_include.h"
 
-// Value of the abit argument of set_abit_and_vbyte.
-#define VGM_BIT_VALID       0
-
-void set_abit_and_vbyte ( Addr a, UWord abit, UWord vbyte );
+// Marks the byte at a addressable and gives it the V bits vbyte.
+void mc_set_addressable_vbyte ( Addr a, UWord vbyte );
 
 void mc_copy_address_range_state ( Addr src, Addr dst, SizeT len );
 void mc_make_noaccess ( Addr a, SizeT len );
