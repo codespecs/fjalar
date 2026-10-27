@@ -145,11 +145,10 @@ it completely (merged, CI green) before starting this one.  That plan's
      (`strnlen`), `m_libcfile.c`/`pub_tool_libcfile.h` (`mkdir`, `fcntl`),
      `m_machine.c`/`pub_tool_machine.h`/`pub_core_machine.h` (extra registers),
      `pub_core_threadstate.h` (extra shadow area), `m_scheduler/scheduler.c`
-     (shadow-size assertion), VEX `guest_{amd64,x86}_helpers.c`,
-     `host_amd64_defs.c`, `host_generic_reg_alloc2.c` (and check
+     (shadow-size assertion), VEX `host_amd64_defs.c`,
+     `host_generic_reg_alloc2.c` (and check
      `host_generic_reg_alloc3.c`, which is now the default allocator),
-     `libvex.h`, `libvex_ir.h`, `none/tests/Makefile.am`,
-     `tests/check_headers_and_includes`.
+     `none/tests/Makefile.am`, `tests/check_headers_and_includes`.
    - Pay special attention to any upstream change to guest-state layout
      (`libvex_guest_amd64.h`, `libvex_guest_x86.h`) or to the shadow-area
      size/alignment checks, since Fjalar enlarges the shadow area.

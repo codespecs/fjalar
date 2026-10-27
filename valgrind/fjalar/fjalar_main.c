@@ -298,28 +298,36 @@ int *fn_stack_first_free_index;
 
 typedef VG_REGPARM(1) void entry_func(FunctionEntry *);
 
-// Records in di->fxState[0] and di->fxState[1] that the helper call di
+// Appends to di->fxState an entry recording that the helper call di
+// reads size bytes of the guest state, starting at offset.
+static void add_fxState_read(IRDirty* di, Int offset, Int size) {
+  tl_assert(di->nFxState < VEX_N_FXSTATE);
+  di->fxState[di->nFxState].fx        = Ifx_Read;
+  di->fxState[di->nFxState].offset    = offset;
+  di->fxState[di->nFxState].size      = size;
+  di->fxState[di->nFxState].nRepeats  = 0;
+  di->fxState[di->nFxState].repeatLen = 0;
+  di->nFxState++;
+}
+
+// Appends to di->fxState entries recording that the helper call di
 // reads all the general-purpose integer registers (including the stack
-// and frame pointers) and the instruction pointer.  The general-purpose
-// registers are contiguous in the guest state, so fxState[0] describes
-// all of them.
-static void set_fxState_read_GPRs_and_IP(IRDirty* di) {
+// and frame pointers) and the instruction pointer.
+static void add_fxState_read_GPRs_and_IP(IRDirty* di) {
+  // The general-purpose integer registers are contiguous in the guest
+  // state, so one fxState entry describes all of them.
 #if defined(VGA_amd64)
-  di->fxState[0].fx     = Ifx_Read;
-  di->fxState[0].offset = offsetof(VexGuestArchState, guest_RAX);
-  di->fxState[0].size   = offsetof(VexGuestArchState, guest_R15) + sizeof(ULong)
-                          - offsetof(VexGuestArchState, guest_RAX);
-  di->fxState[1].fx     = Ifx_Read;
-  di->fxState[1].offset = offsetof(VexGuestArchState, guest_RIP);
-  di->fxState[1].size   = sizeof(ULong);
+  tl_assert(offsetof(VexGuestArchState, guest_R15)
+            == offsetof(VexGuestArchState, guest_RAX) + 15 * sizeof(ULong));
+  add_fxState_read(di, offsetof(VexGuestArchState, guest_RAX),
+                   16 * sizeof(ULong));
+  add_fxState_read(di, offsetof(VexGuestArchState, guest_RIP), sizeof(ULong));
 #else
-  di->fxState[0].fx     = Ifx_Read;
-  di->fxState[0].offset = offsetof(VexGuestArchState, guest_EAX);
-  di->fxState[0].size   = offsetof(VexGuestArchState, guest_EDI) + sizeof(UInt)
-                          - offsetof(VexGuestArchState, guest_EAX);
-  di->fxState[1].fx     = Ifx_Read;
-  di->fxState[1].offset = offsetof(VexGuestArchState, guest_EIP);
-  di->fxState[1].size   = sizeof(UInt);
+  tl_assert(offsetof(VexGuestArchState, guest_EDI)
+            == offsetof(VexGuestArchState, guest_EAX) + 7 * sizeof(UInt));
+  add_fxState_read(di, offsetof(VexGuestArchState, guest_EAX),
+                   8 * sizeof(UInt));
+  add_fxState_read(di, offsetof(VexGuestArchState, guest_EIP), sizeof(UInt));
 #endif
 }
 
@@ -354,18 +362,14 @@ static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
     di = unsafeIRDirty_0_N(1/*regparms*/, func_name, func,
 			 mkIRExprVec_1(IRExpr_Const(IRConst_UWord(entry_w))));
 
-    // For function entry, we are interested in observing the stack
-    // and frame pointers so make sure that they're updated by setting
-    // the proper annotations:
-
     entry->entryPC = addr;
 
     FJALAR_DPRINTF("Found a valid entry point at %x for\n", (UInt)addr);
 
-    // We need all general purpose registers.
-    di->nFxState = 2;
-    vex_bzero(&di->fxState, sizeof(di->fxState));
-    set_fxState_read_GPRs_and_IP(di);
+    // For function entry, we are interested in observing all general
+    // purpose integer registers, so make sure that they are updated by
+    // setting the proper annotations.
+    add_fxState_read_GPRs_and_IP(di);
 
     stmt('V',  mce, IRStmt_Dirty(di) );
   }
@@ -559,16 +563,11 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
       // For function exit, we are interested in observing  all general purpose
       // integer registers,  FTOP, and FPREG[], so make sure that they are
       // updated by setting the proper annotations.
-      di->nFxState = 4;
-      vex_bzero(&di->fxState, sizeof(di->fxState));
-      set_fxState_read_GPRs_and_IP(di);
-
-      di->fxState[2].fx     = Ifx_Read;
-      di->fxState[2].offset = offsetof(VexGuestArchState, guest_FTOP);
-      di->fxState[2].size   = sizeof(UInt); /* FTOP is 4 bytes even on x64 */
-      di->fxState[3].fx     = Ifx_Read;
-      di->fxState[3].offset = offsetof(VexGuestArchState, guest_FPREG);
-      di->fxState[3].size   = 8 * sizeof(ULong);
+      add_fxState_read_GPRs_and_IP(di);
+      add_fxState_read(di, offsetof(VexGuestArchState, guest_FTOP),
+                       sizeof(UInt)); /* FTOP is 4 bytes even on x64 */
+      add_fxState_read(di, offsetof(VexGuestArchState, guest_FPREG),
+                       8 * sizeof(ULong));
 
       stmt('V',  mce, IRStmt_Dirty(di) );
     }
