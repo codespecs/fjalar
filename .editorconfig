@@ -11,5 +11,5 @@ trim_trailing_whitespace = false
 [valgrind/fjalar/{basic-tool,kvasir,tests,tools}/**]
 trim_trailing_whitespace = true
 
-[valgrind/fjalar/{fjalar_*,disambig.*,generate_fjalar_entries.*,GenericHashtable.*,my_libc*,typedata.*,mc_translate.h,fjalar.am}]
+[valgrind/fjalar/{fjalar_*,disambig.*,generate_fjalar_entries.*,GenericHashtable.*,my_libc*,typedata.*,mc_fjalar.h,mc_translate.h,fjalar.am}]
 trim_trailing_whitespace = true

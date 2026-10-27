@@ -229,6 +229,9 @@ Memcheck and DynComp depend tightly on Valgrind core:
      hunk by hunk, checking off each hunk as
      applied, not applicable, or ported to DynComp (step 7).
    - Check `mc_main.c` still has Fjalar's options/version info.
+   - Check that `mc_main.c` still has `#include "fjalar_mc_main.h"`, after
+     the definitions of the static functions that `fjalar_mc_main.h` calls
+     (see "Memcheck modifications" in `doc/valgrind-merge.texinfo`).
    - `merge-valgrind.sh` runs `generate-fjalar-makefile.sh`, which regenerates
      `valgrind/fjalar/Makefile.am` from `valgrind/memcheck/Makefile.am`, so
      Fjalar builds every new Memcheck source file.  If
