@@ -28,7 +28,7 @@ changes to the Memcheck copies).  So did #181, which restored upstream's
 
 | Step | Pull request | State |
 | --- | --- | --- |
-| Step 5 | — | In progress |
+| Step 5 | #192 | Open |
 | Steps 6-9 | — | Not started |
 
 ## Dependences among steps
@@ -117,6 +117,9 @@ of a file in a tool directory.
 ## Steps
 
 ### Step 5: replace scattered disabling by a single switch (PR 5)
+
+Open as #192.  No warning silencer remained necessary:  the build does not
+enable unused-parameter warnings.
 
 - **`complainIfUndefined`**:  restore upstream's 30-odd calls, and the
   definitions of `complainIfUndefined` and `newShadowTmpV` (now inside
