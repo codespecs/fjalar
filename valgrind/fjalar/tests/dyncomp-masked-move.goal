@@ -1,0 +1,12 @@
+..masked_store_skipped():::EXIT0 a 1
+..masked_store_skipped():::EXIT0 b 2
+..masked_store_skipped():::EXIT0 return 2
+..masked_store():::EXIT0 a 1
+..masked_store():::EXIT0 b 2
+..masked_store():::EXIT0 return 1
+..masked_load_skipped():::EXIT0 a 1
+..masked_load_skipped():::EXIT0 b 2
+..masked_load_skipped():::EXIT0 return 2
+..masked_load():::EXIT0 a 1
+..masked_load():::EXIT0 b 2
+..masked_load():::EXIT0 return 1
