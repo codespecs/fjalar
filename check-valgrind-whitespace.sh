@@ -33,6 +33,9 @@ fjalar=$(dirname -- "$(readlink -f -- "$0")")
 # the file name.  Ignoring whitespace removes a file whose changes are all
 # whitespace, and lowers the numbers of a file that has some.  -w does not
 # ignore an added or removed blank line, but --ignore-blank-lines does.
+# The numbers do not reveal a whitespace change to a line that also moved,
+# because the diff does not pair the line with its upstream version, but the
+# move alone is a potential conflict.
 plain=$("$fjalar/diff-from-valgrind.sh" "$@" --numstat)
 ignoring=$("$fjalar/diff-from-valgrind.sh" "$@" --numstat -w --ignore-blank-lines)
 if [ "$plain" = "$ignoring" ]; then
