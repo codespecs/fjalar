@@ -17,21 +17,22 @@ check_toplevel() {
 
 # At the next merge, it is easy to forget to move valgrind-new to
 # valgrind-old, or to clone the wrong tag.
-# Usage: check_tag DIR TAG WHENCE
-# If TAG is not empty, checks that DIR is at tag TAG.  WHENCE, such as "the
-# value of VNEWTAG", says in the error messages where TAG came from.
+# Usage: check_tag DIR TAG TAG_SOURCE
+# If TAG is not empty, checks that DIR is at tag TAG.  TAG_SOURCE describes
+# where TAG came from, such as "the value of VNEWTAG"; the error messages
+# include it.
 check_tag() {
-  local dir=$1 tag=$2 whence=$3
+  local dir=$1 tag=$2 tag_source=$3
   local commit
   if [ -z "$tag" ]; then
     return
   fi
   if ! commit=$(git -C "$dir" rev-parse --verify -q "refs/tags/$tag^{commit}"); then
-    echo "$0: $dir has no tag $tag ($whence)." >&2
+    echo "$0: $dir has no tag $tag ($tag_source)." >&2
     exit 1
   fi
   if [ "$(git -C "$dir" rev-parse HEAD)" != "$commit" ]; then
-    echo "$0: $dir is not at tag $tag ($whence)." >&2
+    echo "$0: $dir is not at tag $tag ($tag_source)." >&2
     exit 1
   fi
 }
