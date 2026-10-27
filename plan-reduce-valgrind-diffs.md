@@ -19,74 +19,77 @@ warning baseline, so do not run the two at the same time.
 
 ## Status
 
+Steps 0-4 have landed:  #190 (Step 0, a script that measures the
+differences, and a CI check that upstream files keep upstream's
+whitespace), #182 (Step 1, file types and modes), #183 (Step 2,
+whitespace), #184 (Step 3, cosmetic edits), and #191 (Step 4, unneeded
+changes to the Memcheck copies).  So did #181, which restored upstream's
+`AC_INIT` version string.
+
 | Step | Pull request | State |
 | --- | --- | --- |
-| Version string in `configure.ac` (not a numbered step) | #181 | Landed |
-| Step 0 | #190 | Open; it also adds Step 2's CI whitespace check |
-| Step 1 | #182 | Landed |
-| Step 2 | #183 | Landed; its CI check is in #190 |
-| Step 3 | #184 | Landed |
-| Step 4 | #191 | Open |
-| Steps 5-9 | — | Not started |
+| Step 5 | — | In progress |
+| Steps 6-9 | — | Not started |
 
-PR #184 also fixed 2 bugs that the commented-out lines it deleted had hidden
-(`MC_(instrument)` leaked `dce.tmpMap`, and Fjalar rejected Memcheck's
-malloc-replacement options such as `--alignment`), and it reworded Fjalar's
-header block in the 9 Memcheck copies that carry one.
+## Dependences among steps
 
-## How the differences were measured
+No step needs another step's result, except Step 9, which documents what
+the others leave.  But some steps change the same lines, so do each of
+these groups one step at a time, in the order given, to avoid merge
+conflicts:
 
-The base tree is the one that `merge-valgrind.sh` builds as
-`refs/valgrind-merge/base`:  upstream `VALGRIND_3_23_0` at `valgrind/`,
-plus upstream `memcheck/` (without `docs/`, `tests/`, and `Makefile.am`) at
-`valgrind/fjalar/`.  The diff is
-`git diff --diff-filter=a <base> HEAD -- valgrind`, which omits the files
-that only Fjalar has (Fjalar's own sources and Binutils-derived files).
-Measured at commit 821648e0:
+- Step 5, then 6c and 6d.  All 3 change the `Ist_Exit` case of
+  `MC_(instrument)`:  Step 5 restores the `complainIfUndefined` call
+  between Fjalar's `handle_possible_exit` call (whose `&mce` argument 6c
+  may replace) and its DynComp hook (which 6d moves).
+- 6a, then 6b.  6a changes the return type of `mc_check_readable`, which
+  6b moves out of `mc_main.c`.
+- 7b and 7c, in either order.  Both add headers to the
+  `fjalar_core_decls.stamp` rule in `fjalar.am`, and declarations to
+  `fjalar_core_decls.h`.
 
-| Part | Files | Lines added | Lines removed | Same, ignoring whitespace (`-w`) |
-| --- | ---: | ---: | ---: | --- |
-| All | 43 | 3590 | 1334 | +2827 / -571 |
-| Memcheck copies in `valgrind/fjalar/` | 10 | 1493 | 1022 | +997 / -526 |
-| `valgrind/memcheck/tests/` | 4 | 1387 | 4 | +1387 / -4 |
-| Everything else (Coregrind, VEX, include, build, tests) | 29 | 710 | 308 | +443 / -41 |
+7a before 6c is not required, but it makes 6c simpler:  after 7a,
+`fjalar_main.c` needs only the stack-pointer, frame-pointer, and
+instruction-pointer offsets of the layout.  Step 8's change to the tool
+details in `mc_main.c` must land with its companion Daikon PR.
+
+## The remaining differences
+
+`diff-from-valgrind.sh` prints the differences from the tree that
+`merge-valgrind.sh` uses as the base of a merge:  upstream
+`VALGRIND_3_23_0` at `valgrind/`, plus upstream `memcheck/` (without
+`docs/`, `tests/`, and `Makefile.am`) at `valgrind/fjalar/`.  It omits the
+files that only Fjalar has (Fjalar's own sources and Binutils-derived
+files).  Measured at commit 23bfcf99, the differences are in 26 files,
+with 1054 lines added and 266 removed:
+
+| Part | Files | Lines added | Lines removed |
+| --- | ---: | ---: | ---: |
+| Memcheck copies in `valgrind/fjalar/` | 4 | 623 | 254 |
+| Coregrind and `include/` | 7 | 248 | 1 |
+| VEX | 7 | 154 | 3 |
+| Build and upstream tests | 8 | 29 | 8 |
 
 The largest differences, by kind:
 
-- **Accidental file-type and mode changes (about 1390 lines).**  4 files
-  that are symbolic links upstream are regular files in Fjalar
-  (`memcheck/tests/{amd64,x86}/pcmpgt.cpp`,
-  `memcheck/tests/linux/strlcat_strlcpy.{c,stderr.exp}`); 3 files have an
-  extra execute bit; `valgrind/.clang-format` and
-  `valgrind/.git-blame-ignore-revs` are missing.
-- **Whitespace (about 1530 lines).**  Trailing whitespace was stripped and
-  tabs were changed to spaces, mostly in `guest_x86_helpers.c`,
-  `libvex_ir.h`, `scheduler.c`, `mc_translate.c`, and `mc_main.c`.  No tool
-  in the repository prevents this; editors do it on save.
-- **Variable renames in `mc_main.c` (331 lines).**  `line` -> `ocline`,
-  `str` -> `fstr`/`astr`, made in 892545f9 (2016) to silence shadowing
-  warnings caused by a readelf merge.
-- **`VG_(printf)` -> `printf` in Memcheck copies (181 lines).**
-  `printf` is Fjalar's `my_libc` function, which writes unbuffered to file
-  descriptor 1 (standard output); `VG_(printf)` writes to Valgrind's log
-  (standard error, unless `--log-fd` or `--log-file` says otherwise).  All
-  of these calls are in panic, debugging, and IR-tracing code.
-- **`complainIfUndefined` calls commented out (77 lines in
-  `mc_translate.c`).**
-- **Fjalar copyright headers added to Memcheck copies (69 lines).**
-- **`#ifndef _NO_DYNCOMP` wrappers (72 lines).**  `_NO_DYNCOMP` is never
-  defined.
+- **`complainIfUndefined` calls commented out** in `mc_translate.c`, and
+  **Memcheck's end-of-run reports inside `#ifdef UNDEFINED_FOO`** in
+  `mc_main.c` (Step 5).
 - **Code moved out of upstream files.**  About 200 lines of type
   definitions, inline functions, and macros were moved from
   `mc_translate.c` to the Fjalar file `mc_translate.h`, so upstream changes
-  to them can never merge automatically.
+  to them can never merge automatically (Step 6).
 - **Register accessors in Coregrind (about 240 lines** in `m_machine.c`,
   `pub_tool_machine.h`, `pub_core_machine.h`) and **guest-layout fields in
   VEX (about 140 lines** in `libvex.h`, `guest_amd64_helpers.c`,
-  `guest_x86_helpers.c`).
+  `guest_x86_helpers.c`) (Step 7).
 - **Genuine DynComp/Fjalar hooks**:  the extra shadow area, DynComp calls in
   `MC_(instrument)` and in the `make_mem_*` functions, `CHECK_SP` calls,
-  and the Fjalar entry points in `mc_main.c`.
+  and the Fjalar entry points in `mc_main.c` (Steps 6 and 8).
+
+`memcheck.h` differs only in including `pub_tool_clreq.h` instead of
+upstream's `valgrind.h`, which `tests/check_headers_and_includes` requires
+of a file in a tool directory.
 
 ## Principles
 
@@ -100,152 +103,18 @@ The largest differences, by kind:
    its x86-only changes.  Where a step replaces an amd64 change by Fjalar
    code, replace the corresponding x86 change the same way, so that x86
    keeps working (untested, as now).  Do not keep PPC-only Fjalar changes.
-4. Each step is behavior-preserving, except where the step says otherwise
-   (Step 4 moves some debugging messages from standard output to
-   Valgrind's log, as upstream does).  Verify each PR with `make build`,
-   `./check-regtest.sh`, `make fjalar-test`, and `./test-kvasir.sh`
-   (output identical to the output before the PR).  Also compare compiler
-   warnings:  save the log of a full build (after `make very-clean`) before
-   the PR and after it, and run
-   `./compare-warnings.sh BEFORE.log AFTER.log`.
+4. Each step is behavior-preserving, except where the step says otherwise.
+   Verify each PR with `make build`, `./check-regtest.sh`,
+   `make fjalar-test`, and `./test-kvasir.sh` (output identical to the
+   output before the PR).  Also compare compiler warnings:  save the log
+   of a full build (after `make very-clean`) before the PR and after it,
+   and run `./compare-warnings.sh BEFORE.log AFTER.log`.  Record
+   `diff-from-valgrind.sh --shortstat` before and after in each PR
+   description, so that reviewers see the reduction.
 5. Do the mechanical, low-risk steps first:  they shrink the diff the
    most, and they make the remaining changes easy to see.
 
 ## Steps
-
-### Step 0: a script that measures the differences
-
-Open as #190, which also adds Step 2's CI whitespace check
-(`check-valgrind-whitespace.sh`).
-
-Add `diff-from-valgrind.sh [GIT-DIFF-OPTION...]`, which builds the base
-tree from `$INV/valgrind-old` exactly as `merge-valgrind.sh`'s
-`upstream_commit` does (factor that function into a shared file, as
-`binutils-common.sh` does for the Binutils scripts) and runs
-`git diff --diff-filter=a <base> HEAD -- valgrind` with the given options
-(for example, `--stat` or `-w`).  Record the diffstat in each PR
-description below, so that reviewers see the reduction.
-
-### Step 1: restore file types, modes, and missing files (PR 1)
-
-Landed as #182.
-
-- `./list-file-discrepancies.sh $INV/valgrind-old` lists all of them.
-- Replace the 4 regular files by upstream's symbolic links, remove the 3
-  extra execute bits, and restore `valgrind/.clang-format` and
-  `valgrind/.git-blame-ignore-revs`.
-- Check that `.gitignore` does not ignore the restored files, so that they
-  stay tracked.
-
-Removes about 1400 lines.  Risk: none (the files are upstream test inputs
-and editor configuration).
-
-### Step 2: restore upstream whitespace (PR 2)
-
-Landed as #183, with the `.editorconfig` but without the CI check,
-which needs Step 0's script and is in #190.
-
-For each upstream file that differs from the base:
-
-```sh
-git diff -w --diff-filter=a <base> HEAD -- FILE > FILE.patch
-git show <base>:FILE > FILE
-git apply --ignore-whitespace FILE.patch
-```
-
-Write `FILE.patch` in a scratch directory, not in the work tree.  Then
-check that `git diff -w HEAD` is empty (no change other than whitespace)
-and that `diff-from-valgrind.sh` and `diff-from-valgrind.sh -w` report the
-same line counts.  Fjalar's own added lines keep their whitespace.
-
-`git diff -w` cannot show a whitespace change that matters, so an empty
-result does not prove that the step changed nothing that matters.  Review
-`git diff HEAD` by hand for the whitespace that is significant:  tabs at
-the start of recipe lines in `Makefile.am` files, and whitespace inside
-string and character literals.  Then build.
-
-To keep the whitespace from drifting again:
-
-- Add a CI check, using `diff-from-valgrind.sh`, that fails if the diff of
-  an upstream file changes when whitespace is ignored.  It needs a shallow
-  clone of `VALGRIND_3_23_0`, which takes a few seconds.  This check is
-  the real guard.
-- Add a top-level `.editorconfig` that sets
-  `trim_trailing_whitespace = false` for `valgrind/**` and turns it back on
-  for Fjalar's own directories (`valgrind/fjalar/kvasir/**` and others).
-  It helps only with editors that honor `.editorconfig` (for Emacs, the
-  `editorconfig` package), so it reduces drift but does not prevent it.
-
-Removes about 1530 lines.  Risk:  low, given the review of significant
-whitespace described above.
-
-### Step 3: revert cosmetic edits (PR 3)
-
-Landed as #184.
-
-None of these changes behavior, except as noted:
-
-- Typo fixes in upstream comments (`pub_tool_libcfile.h`, `memcheck.h`),
-  the `apt` command lines in `docs/README`, and the blank lines of
-  `Makefile.am`.
-- Merge damage:  the copyright years that went backward
-  (`mc_replace_strmem.c`, `mc_machine.c`), the misplaced `VSR51`..`VSR63`
-  block and ACC comment in `mc_machine.c`, and
-  "This file is part of" -> "This file is derived from".
-- Commented-out `DEBUG` calls, `// (comment added 2009)`-style comments,
-  and the commented-out `ppIRSB`, `LibVEX_Alloc`, and `VG_(printf)` lines.
-  (The `if (verboze)` blocks that Fjalar added to `MC_(instrument)` are not
-  dead code:  they print the IR trace.)
-- `-j $(nproc)` in `auxprogs/Makefile.am` is not purely cosmetic:  in a
-  Makefile, `$(nproc)` is an undefined variable, so upstream's recipe runs
-  `make -j` with no job limit, and Fjalar's removal of it avoided that.
-  Restore it anyway, because only `make auxchecks` uses the rule and
-  Fjalar never runs that target.
-- In `host_generic_reg_alloc2.c`, upstream's
-  `} /* switch (vreg_lrs[j].reg_class) */`, inside whose comment Fjalar
-  added a `{`.
-
-### Step 4: revert unneeded source changes in the Memcheck copies (PR 4)
-
-Open as #191.  It restores upstream's `line` and `str`, which cause 21
-`-Wshadow` warnings:  `dwarf.h` declares enumerators `line` and `str`, and
-`mc_main.c` includes it through 3 Fjalar headers.  So `mc_main.c` turns off
-`-Wshadow` with a `#pragma` after those includes.  `mc_main.c` and `mc_translate.c` keep `#include "my_libc.h"`,
-which those headers need.
-
-- **`printf` -> `VG_(printf)`** (181 lines) in all Memcheck copies.  Then
-  remove `#include "my_libc.h"` from each file that no longer needs it.
-  This is not purely mechanical:  the messages move from standard output
-  to Valgrind's log, as in upstream.  That is an improvement, because the
-  IR tracing in `mc_translate.c` mixes these messages with `ppIRStmt` and
-  `ppIRExpr` output, which already goes to the log, so today the two halves
-  of a trace line can go to different streams.  None of the messages
-  appears in a normal run, so the Kvasir tests are unaffected; check that
-  the IR trace (`--fjalar-debug --fjalar-print-ir`) reads correctly.
-  After this change and Step 3, `mc_machine.c` differs from upstream only
-  in Fjalar's copyright header.
-- **Variable renames** (331 lines).  Restore upstream's `line` and `str`.
-  Compare full-build logs with `./compare-warnings.sh` (see Principle 4)
-  to check whether a shadowing warning reappears.  If it does, rename the Fjalar global that is shadowed, or stop
-  including its header in `mc_main.c`, rather than renaming Memcheck's
-  locals.
-- **`DEBUG`**:  keep Fjalar's `MAX_DEBUG_INFO` tracing of Memcheck:  its
-  definition of `DEBUG`, its added `DEBUG` calls, and its `(void *)` casts
-  of `DEBUG` arguments, which `-Wformat` needs when the tracing is on.
-  Change only the definition's `printf` to `VG_(printf)`, as above.
-- **`#ifndef _NO_DYNCOMP`**:  `_NO_DYNCOMP` is never defined, so remove
-  these wrappers from the Memcheck copies (72 lines).
-- **`memcheck.h`**:  check whether `#include "valgrind.h"` works with
-  Fjalar's include path; if so, revert to it.
-- **Copyright headers**:  remove Fjalar's copyright header from every
-  Memcheck copy that, without it, is identical to upstream, so that the
-  merge never conflicts in that file.  After Steps 3 and 4, these should
-  be `mc_errors.c`, `mc_malloc_wrappers.c`, `mc_leakcheck.c`,
-  `mc_replace_strmem.c`, `mc_machine.c`, `mc_main_asm.c`, and (if the
-  `#include` reverts) `memcheck.h`.  Keep the header in the files that
-  Fjalar still modifies (`mc_main.c`, `mc_translate.c`, `mc_include.h`).
-  If a later step makes another Memcheck copy identical to upstream, remove
-  its header then.
 
 ### Step 5: replace scattered disabling by a single switch (PR 5)
 
@@ -480,9 +349,7 @@ These are estimates, to be checked with `diff-from-valgrind.sh`.
 
 | After step | Remaining differences (approximate) |
 | --- | --- |
-| Now | 43 files, 4924 changed lines |
-| 1-2 | 34 files, about 2000 changed lines |
-| 3-5 | about 25 files, about 900 changed lines |
+| 4 (measured) | 26 files, 1320 changed lines |
 | 6-8 | about 12 files, about 200 changed lines |
 
 What remains is Fjalar's essential hooks:  the extra shadow area (4
@@ -516,5 +383,3 @@ Fjalar hooks in `mc_main.c` and `mc_translate.c`.
   overlaps none (the nearest, `guest_CC_OP`, follows `guest_R15`); after
   each Valgrind merge, check `.alwaysDefd` in `guest_amd64_helpers.c`
   again.
-- Restoring upstream names (Step 4) could bring back warnings that
-  `compare-warnings.sh` reports as new; fix them in Fjalar's headers.
