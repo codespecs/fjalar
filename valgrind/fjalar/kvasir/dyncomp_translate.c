@@ -30,7 +30,7 @@
 
 #include "my_libc.h"
 
-#include "mc_include.h"
+#include "mc_fjalar.h"
 #include "kvasir_main.h"
 #include "dyncomp_translate.h"
 #include "dyncomp_main.h"

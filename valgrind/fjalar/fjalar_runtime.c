@@ -29,7 +29,7 @@ tools.
 #include "fjalar_runtime.h"
 #include "fjalar_select.h"
 #include "generate_fjalar_entries.h"
-#include "mc_include.h"
+#include "mc_fjalar.h"
 
 // I don't want to use macros, but this is a useful one for finding
 // out whether a particular VariableEntry refers to a
@@ -521,7 +521,7 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
 
     if (foundGlobalArrayVariable) {
       while ((highestAddr > varLocation) &&
-              (MC_Ok != mc_check_readable(highestAddr, targetVarBytesBetweenElts, 0))) {
+              !mc_check_readable(highestAddr, targetVarBytesBetweenElts, 0)) {
         highestAddr -= targetVarBytesBetweenElts;
       }
     }
@@ -591,9 +591,7 @@ Bool addressIsAllocatedOrInitialized(Addr addressInQuestion,
         }
       else
         {
-          // Notice that the return type of mc_check_readable has
-          // changed from the Valgrind 2.X Memcheck:
-          return (MC_Ok == mc_check_readable(addressInQuestion, numBytes, 0));
+          return mc_check_readable(addressInQuestion, numBytes, 0);
         }
   }
 }
