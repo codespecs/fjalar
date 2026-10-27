@@ -29,16 +29,6 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-/* mc_main_asm.c
-
-   This file has been modified for Fjalar, a dynamic analysis framework
-   for C/C++ programs.
-
-   Copyright (C) 2007-2026 University of Washington Computer Science & Engineering Department,
-   Programming Languages and Software Engineering Group
-
-*/
-
 /* Having these in mc_main.c gives undefined references at link time,
    when compiling with lto. Having them in a separate file solves this.
    Also, for some toolchain, we might maybe need to disable lto. */

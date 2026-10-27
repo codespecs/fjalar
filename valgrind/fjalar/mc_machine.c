@@ -1,15 +1,3 @@
-/*
-   This file has been modified for Fjalar, a dynamic analysis framework
-   for C/C++ programs.
-
-   Copyright (C) 2007-2026 University of Washington Computer Science & Engineering Department,
-   Programming Languages and Software Engineering Group
-
-   This program is free software; you can redistribute it and/or
-   modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
-   License, or (at your option) any later version.
-*/
 
 /*--------------------------------------------------------------------*/
 /*--- Contains machine-specific (guest-state-layout-specific)      ---*/
@@ -44,8 +32,6 @@
    used to endorse or promote products derived from this software
    without prior written permission.
 */
-
-#include "my_libc.h"
 
 #include "pub_tool_basics.h"
 #include "pub_tool_poolalloc.h"     // For mc_include.h
@@ -411,7 +397,7 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
       return 0+ GOF(ACC_7_r3);
    if (o == GOF(syscall_flag) && sz == 4) return -1;
 
-   printf("MC_(get_otrack_shadow_offset)(ppc64)(off=%d,sz=%d)\n",
+   VG_(printf)("MC_(get_otrack_shadow_offset)(ppc64)(off=%d,sz=%d)\n",
                offset,szB);
    tl_assert(0);
 #  undef GOF
@@ -616,7 +602,7 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
 
    /* ACC registers are not supported on ppc32.  */
 
-   printf("MC_(get_otrack_shadow_offset)(ppc32)(off=%d,sz=%d)\n",
+   VG_(printf)("MC_(get_otrack_shadow_offset)(ppc32)(off=%d,sz=%d)\n",
                offset,szB);
    tl_assert(0);
 #  undef GOF
@@ -738,7 +724,7 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
    if (o == 4+ GOF(RDX) && sz == 4) return GOF(RDX);
    if (o == 4+ GOF(RBX) && sz == 4) return GOF(RBX);
 
-   printf("MC_(get_otrack_shadow_offset)(amd64)(off=%d,sz=%d)\n",
+   VG_(printf)("MC_(get_otrack_shadow_offset)(amd64)(off=%d,sz=%d)\n",
                offset,szB);
    tl_assert(0);
 #  undef GOF
@@ -846,7 +832,7 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
    if (o == GOF(LDT) && sz == 4) return -1;
    if (o == GOF(GDT) && sz == 4) return -1;
 
-   printf("MC_(get_otrack_shadow_offset)(x86)(off=%d,sz=%d)\n",
+   VG_(printf)("MC_(get_otrack_shadow_offset)(x86)(off=%d,sz=%d)\n",
                offset,szB);
    tl_assert(0);
 #  undef GOF
@@ -905,7 +891,7 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
    if (o == GOF(IA)       && sz == 8) return -1;
    if (o == (GOF(IA) + 4) && sz == 4) return -1;
    if (o == GOF(SYSNO)    && sz == 8) return -1;
-   printf("MC_(get_otrack_shadow_offset)(s390x)(off=%d,sz=%d)\n",
+   VG_(printf)("MC_(get_otrack_shadow_offset)(s390x)(off=%d,sz=%d)\n",
                offset,szB);
    tl_assert(0);
 #  undef GOF
@@ -1027,7 +1013,7 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
    if (o == GOF(CMSTART) && sz == 4) return -1;
    if (o == GOF(CMLEN)   && sz == 4) return -1;
 
-   printf("MC_(get_otrack_shadow_offset)(arm)(off=%d,sz=%d)\n",
+   VG_(printf)("MC_(get_otrack_shadow_offset)(arm)(off=%d,sz=%d)\n",
                offset,szB);
    tl_assert(0);
 #  undef GOF
@@ -1289,7 +1275,7 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
    if (o >= GOF(w30) && o+sz <= GOF(w30) + SZB(w30)) return GOF(w30);
    if (o >= GOF(w31) && o+sz <= GOF(w31) + SZB(w31)) return GOF(w31);
 
-   printf("MC_(get_otrack_shadow_offset)(mips)(off=%d,sz=%d)\n",
+   VG_(printf)("MC_(get_otrack_shadow_offset)(mips)(off=%d,sz=%d)\n",
                offset,szB);
    tl_assert(0);
 #  undef GOF
@@ -1404,7 +1390,7 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
    if (o >= GOF(w30) && o+sz <= GOF(w30) + SZB(w30)) return GOF(w30);
    if (o >= GOF(w31) && o+sz <= GOF(w31) + SZB(w31)) return GOF(w31);
 
-   printf("MC_(get_otrack_shadow_offset)(mips)(off=%d,sz=%d)\n",
+   VG_(printf)("MC_(get_otrack_shadow_offset)(mips)(off=%d,sz=%d)\n",
                offset,szB);
    tl_assert(0);
 #  undef GOF
@@ -1437,9 +1423,9 @@ IRType MC_(get_otrack_reg_array_equiv_int_type) ( IRRegArray* arr )
        && arr->nElems == VEX_GUEST_PPC64_REDIR_STACK_SIZE)
       return Ity_I64;
 
-   printf("get_reg_array_equiv_int_type(ppc64): unhandled: ");
+   VG_(printf)("get_reg_array_equiv_int_type(ppc64): unhandled: ");
    ppIRRegArray(arr);
-   printf("\n");
+   VG_(printf)("\n");
    tl_assert(0);
 
    /* -------------------- ppc32 -------------------- */
@@ -1450,9 +1436,9 @@ IRType MC_(get_otrack_reg_array_equiv_int_type) ( IRRegArray* arr )
        && arr->nElems == VEX_GUEST_PPC32_REDIR_STACK_SIZE)
       return Ity_I32;
 
-   printf("get_reg_array_equiv_int_type(ppc32): unhandled: ");
+   VG_(printf)("get_reg_array_equiv_int_type(ppc32): unhandled: ");
    ppIRRegArray(arr);
-   printf("\n");
+   VG_(printf)("\n");
    tl_assert(0);
 
    /* -------------------- amd64 -------------------- */
@@ -1468,9 +1454,9 @@ IRType MC_(get_otrack_reg_array_equiv_int_type) ( IRRegArray* arr )
        && arr->elemTy == Ity_F64 && arr->nElems == 8)
       return Ity_I64;
 
-   printf("get_reg_array_equiv_int_type(amd64): unhandled: ");
+   VG_(printf)("get_reg_array_equiv_int_type(amd64): unhandled: ");
    ppIRRegArray(arr);
-   printf("\n");
+   VG_(printf)("\n");
    tl_assert(0);
 
    /* --------------------- x86 --------------------- */
@@ -1486,16 +1472,16 @@ IRType MC_(get_otrack_reg_array_equiv_int_type) ( IRRegArray* arr )
        && arr->elemTy == Ity_F64 && arr->nElems == 8)
       return Ity_I64;
 
-   printf("get_reg_array_equiv_int_type(x86): unhandled: ");
+   VG_(printf)("get_reg_array_equiv_int_type(x86): unhandled: ");
    ppIRRegArray(arr);
-   printf("\n");
+   VG_(printf)("\n");
    tl_assert(0);
 
    /* --------------------- arm --------------------- */
 #  elif defined(VGA_arm)
-   printf("get_reg_array_equiv_int_type(arm): unhandled: ");
+   VG_(printf)("get_reg_array_equiv_int_type(arm): unhandled: ");
    ppIRRegArray(arr);
-   printf("\n");
+   VG_(printf)("\n");
    tl_assert(0);
 
    /* --------------------- arm64 --------------------- */
@@ -1513,9 +1499,9 @@ IRType MC_(get_otrack_reg_array_equiv_int_type) ( IRRegArray* arr )
 
 /* --------------------- mips32 --------------------- */
 #  elif defined(VGA_mips32)
-   printf("get_reg_array_equiv_int_type(mips32): unhandled: ");
+   VG_(printf)("get_reg_array_equiv_int_type(mips32): unhandled: ");
    ppIRRegArray(arr);
-   printf("\n");
+   VG_(printf)("\n");
    tl_assert(0);
 /* --------------------- nanomips ------------------- */
 #  elif defined(VGA_nanomips)
@@ -1526,9 +1512,9 @@ IRType MC_(get_otrack_reg_array_equiv_int_type) ( IRRegArray* arr )
 
    /* --------------------- mips64 --------------------- */
 #  elif defined(VGA_mips64)
-   printf("get_reg_array_equiv_int_type(mips64): unhandled: ");
+   VG_(printf)("get_reg_array_equiv_int_type(mips64): unhandled: ");
    ppIRRegArray(arr);
-   printf("\n");
+   VG_(printf)("\n");
    tl_assert(0);
 
 #  else
