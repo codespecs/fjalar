@@ -29,7 +29,8 @@ changes to the Memcheck copies).  So did #181, which restored upstream's
 | Step | Pull request | State |
 | --- | --- | --- |
 | Step 5 | #192 | Open |
-| Steps 6-9 | — | Not started |
+| Step 6a | #193 | Open |
+| Steps 6b-9 | — | Not started |
 
 ## Dependences among steps
 
@@ -151,19 +152,20 @@ enable unused-parameter warnings.
 
 ### Step 6: move Fjalar code out of upstream files (PRs 6a-6d)
 
-- **6a. `mc_include.h`.**  Move Fjalar's declarations, the `VGM_*`
-  constants (which `mc_main.c` also defines, a duplicate), and the extra
-  `#include`s into a new Fjalar header, such as `fjalar/mc_fjalar.h`.
-  Restore `MC_ReadResult` to its upstream place in `mc_main.c`; change the
-  exported `mc_check_readable` to return a type that does not need it, or
-  declare it in the new header under another name.
+- **6a. `mc_include.h`.**  Open as #193.  It moves Fjalar's declarations,
+  the 2 `VGM_*` constants that Fjalar uses, and the extra `#include`s into
+  the new Fjalar header `mc_fjalar.h`, restores `MC_ReadResult` to its
+  upstream place in `mc_main.c`, and makes `mc_check_readable` return a
+  `Bool`.  It also moves Fjalar's functions in `mc_main.c`, as one block,
+  to the end of the "Checking memory" section, after the definition of
+  `MC_ReadResult`.
 - **6b. Fjalar's functions in `mc_main.c`** (`set_abit`,
   `set_abit_and_vbyte`, `mc_check_readable`, `mc_copy_guest_reg_state`, and
   others; about 130 lines).  They call `static` Memcheck functions, so move
   them to a Fjalar file and `#include` that file from `mc_main.c`, at the
-  point where the block is now (after the definitions and forward
-  declarations of the `static` functions that it calls), which keeps the
-  change to `mc_main.c` to one line.  The file must not also be compiled
+  point where the block is after 6a (after the definitions of the `static`
+  functions that it calls), which keeps the change to `mc_main.c` to one
+  line.  The file must not also be compiled
   on its own, which would define its functions twice, so give it a name
   that does not end in `.c` (such as `mc_main_fjalar.inc`) and do not list
   it in `FJALAR_SOURCES_COMMON` in `fjalar.am`.
