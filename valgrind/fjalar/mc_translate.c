@@ -573,7 +573,7 @@ static IRAtom* mkUifU ( MCEnv* mce, IRType vty, IRAtom* a1, IRAtom* a2 ) {
       case Ity_V128: return mkUifUV128(mce, a1, a2);
       case Ity_V256: return mkUifUV256(mce, a1, a2);
       default:
-         printf("\n"); ppIRType(vty); printf("\n");
+         VG_(printf)("\n"); ppIRType(vty); VG_(printf)("\n");
          VG_(tool_panic)("memcheck:mkUifU");
    }
 }
@@ -1333,8 +1333,8 @@ static IRAtom* doCmpORD ( MCEnv*  mce,
              || cmp_op == Iop_CmpORD64S || cmp_op == Iop_CmpORD64U);
 
    if (0) {
-      ppIROp(cmp_op); printf(" ");
-      ppIRExpr(xx); printf(" "); ppIRExpr( yy ); printf("\n");
+      ppIROp(cmp_op); VG_(printf)(" "); 
+      ppIRExpr(xx); VG_(printf)(" "); ppIRExpr( yy ); VG_(printf)("\n");
    }
 
    if (syned && isZero(yy)) {
@@ -1829,7 +1829,7 @@ IRAtom* mkLazy2 ( MCEnv* mce, IRType finalVty, IRAtom* va1, IRAtom* va2 )
 
    /* I64 x I64 -> I64 */
    if (t1 == Ity_I64 && t2 == Ity_I64 && finalVty == Ity_I64) {
-      if (0) printf("mkLazy2: I64 x I64 -> I64\n");
+      if (0) VG_(printf)("mkLazy2: I64 x I64 -> I64\n");
       at = mkUifU(mce, Ity_I64, va1, va2);
       at = mkPCastTo(mce, Ity_I64, at);
       return at;
@@ -1837,7 +1837,7 @@ IRAtom* mkLazy2 ( MCEnv* mce, IRType finalVty, IRAtom* va1, IRAtom* va2 )
 
    /* I64 x I64 -> I32 */
    if (t1 == Ity_I64 && t2 == Ity_I64 && finalVty == Ity_I32) {
-      if (0) printf("mkLazy2: I64 x I64 -> I32\n");
+      if (0) VG_(printf)("mkLazy2: I64 x I64 -> I32\n");
       at = mkUifU(mce, Ity_I64, va1, va2);
       at = mkPCastTo(mce, Ity_I32, at);
       return at;
@@ -1852,13 +1852,13 @@ IRAtom* mkLazy2 ( MCEnv* mce, IRType finalVty, IRAtom* va1, IRAtom* va2 )
    }
 
    if (0) {
-      printf("mkLazy2 ");
+      VG_(printf)("mkLazy2 ");
       ppIRType(t1);
-      printf("_");
+      VG_(printf)("_");
       ppIRType(t2);
-      printf("_");
+      VG_(printf)("_");
       ppIRType(finalVty);
-      printf("\n");
+      VG_(printf)("\n");
    }
 
    /* General case: force everything via 32-bit intermediaries. */
@@ -1890,7 +1890,7 @@ IRAtom* mkLazy3 ( MCEnv* mce, IRType finalVty,
    /* Standard FP idiom: rm x FParg1 x FParg2 -> FPresult */
    if (t1 == Ity_I32 && t2 == Ity_I64 && t3 == Ity_I64 
        && finalVty == Ity_I64) {
-      if (0) printf("mkLazy3: I32 x I64 x I64 -> I64\n");
+      if (0) VG_(printf)("mkLazy3: I32 x I64 x I64 -> I64\n");
       /* Widen 1st arg to I64.  Since 1st arg is typically a rounding
          mode indication which is fully defined, this should get
          folded out later. */
@@ -1906,7 +1906,7 @@ IRAtom* mkLazy3 ( MCEnv* mce, IRType finalVty,
    /* I32 x I8 x I64 -> I64 */
    if (t1 == Ity_I32 && t2 == Ity_I8 && t3 == Ity_I64
        && finalVty == Ity_I64) {
-      if (0) printf("mkLazy3: I32 x I8 x I64 -> I64\n");
+      if (0) VG_(printf)("mkLazy3: I32 x I8 x I64 -> I64\n");
       /* Widen 1st and 2nd args to I64.  Since 1st arg is typically a
        * rounding mode indication which is fully defined, this should
        * get folded out later.
@@ -1923,7 +1923,7 @@ IRAtom* mkLazy3 ( MCEnv* mce, IRType finalVty,
    /* I32 x I64 x I64 -> I32 */
    if (t1 == Ity_I32 && t2 == Ity_I64 && t3 == Ity_I64 
        && finalVty == Ity_I32) {
-      if (0) printf("mkLazy3: I32 x I64 x I64 -> I32\n");
+      if (0) VG_(printf)("mkLazy3: I32 x I64 x I64 -> I32\n");
       at = mkPCastTo(mce, Ity_I64, va1);
       at = mkUifU(mce, Ity_I64, at, va2);
       at = mkUifU(mce, Ity_I64, at, va3);
@@ -1935,7 +1935,7 @@ IRAtom* mkLazy3 ( MCEnv* mce, IRType finalVty,
    /* 32-bit FP idiom, as (eg) happens on ARM */
    if (t1 == Ity_I32 && t2 == Ity_I32 && t3 == Ity_I32 
        && finalVty == Ity_I32) {
-      if (0) printf("mkLazy3: I32 x I32 x I32 -> I32\n");
+      if (0) VG_(printf)("mkLazy3: I32 x I32 x I32 -> I32\n");
       at = va1;
       at = mkUifU(mce, Ity_I32, at, va2);
       at = mkUifU(mce, Ity_I32, at, va3);
@@ -1959,7 +1959,7 @@ IRAtom* mkLazy3 ( MCEnv* mce, IRType finalVty,
    /* Standard FP idiom: rm x FParg1 x FParg2 -> FPresult */
    if (t1 == Ity_I32 && t2 == Ity_I128 && t3 == Ity_I128
        && finalVty == Ity_I128) {
-      if (0) printf("mkLazy3: I32 x I128 x I128 -> I128\n");
+      if (0) VG_(printf)("mkLazy3: I32 x I128 x I128 -> I128\n");
       /* Widen 1st arg to I128.  Since 1st arg is typically a rounding
          mode indication which is fully defined, this should get
          folded out later. */
@@ -1976,7 +1976,7 @@ IRAtom* mkLazy3 ( MCEnv* mce, IRType finalVty,
    /* Standard FP idiom: rm x FParg1 x FParg2 -> FPresult */
    if (t1 == Ity_I32 && t2 == Ity_I8 && t3 == Ity_I128
        && finalVty == Ity_I128) {
-      if (0) printf("mkLazy3: I32 x I8 x I128 -> I128\n");
+      if (0) VG_(printf)("mkLazy3: I32 x I8 x I128 -> I128\n");
       /* Use I64 as an intermediate type, which means PCasting all 3
          args to I64 to start with. 1st arg is typically a rounding
          mode indication which is fully defined, so we hope that it
@@ -1992,15 +1992,15 @@ IRAtom* mkLazy3 ( MCEnv* mce, IRType finalVty,
       return at;
    }
    if (1) {
-      printf("mkLazy3: ");
+      VG_(printf)("mkLazy3: ");
       ppIRType(t1);
-      printf(" x ");
+      VG_(printf)(" x ");
       ppIRType(t2);
-      printf(" x ");
+      VG_(printf)(" x ");
       ppIRType(t3);
-      printf(" -> ");
+      VG_(printf)(" -> ");
       ppIRType(finalVty);
-      printf("\n");
+      VG_(printf)("\n");
    }
 
    tl_assert(0);
@@ -2055,7 +2055,7 @@ IRAtom* mkLazy4 ( MCEnv* mce, IRType finalVty,
    /* I32 x I64 x I64 x I64 -> I64 */
    if (t1 == Ity_I32 && t2 == Ity_I64 && t3 == Ity_I64 && t4 == Ity_I64
        && finalVty == Ity_I64) {
-      if (0) printf("mkLazy4: I32 x I64 x I64 x I64 -> I64\n");
+      if (0) VG_(printf)("mkLazy4: I32 x I64 x I64 x I64 -> I64\n");
       /* Widen 1st arg to I64.  Since 1st arg is typically a rounding
          mode indication which is fully defined, this should get
          folded out later. */
@@ -2072,7 +2072,7 @@ IRAtom* mkLazy4 ( MCEnv* mce, IRType finalVty,
    /* Standard FP idiom: rm x FParg1 x FParg2 x FParg3 -> FPresult */
    if (t1 == Ity_I32 && t2 == Ity_I32 && t3 == Ity_I32 && t4 == Ity_I32
        && finalVty == Ity_I32) {
-      if (0) printf("mkLazy4: I32 x I32 x I32 x I32 -> I32\n");
+      if (0) VG_(printf)("mkLazy4: I32 x I32 x I32 x I32 -> I32\n");
       at = va1;
       /* Now fold in 2nd, 3rd, 4th args. */
       at = mkUifU(mce, Ity_I32, at, va2);
@@ -2107,17 +2107,17 @@ IRAtom* mkLazy4 ( MCEnv* mce, IRType finalVty,
    }
 
    if (1) {
-      printf("mkLazy4: ");
+      VG_(printf)("mkLazy4: ");
       ppIRType(t1);
-      printf(" x ");
+      VG_(printf)(" x ");
       ppIRType(t2);
-      printf(" x ");
+      VG_(printf)(" x ");
       ppIRType(t3);
-      printf(" x ");
+      VG_(printf)(" x ");
       ppIRType(t4);
-      printf(" -> ");
+      VG_(printf)(" -> ");
       ppIRType(finalVty);
-      printf("\n");
+      VG_(printf)("\n");
    }
 
    tl_assert(0);
@@ -2162,7 +2162,7 @@ IRAtom* mkLazyN ( MCEnv* mce,
       if (cee->mcx_mask & (1<<i)) {
          /* the arg is to be excluded from definedness checking.  Do
             nothing. */
-         if (0) printf("excluding %s(%d)\n", cee->name, i);
+         if (0) VG_(printf)("excluding %s(%d)\n", cee->name, i);
       } else {
          /* calculate the arg's definedness, and pessimistically merge
             it in. */
@@ -5800,9 +5800,9 @@ IRExpr* expr2vbits ( MCEnv* mce, IRExpr* e,
                                      e->Iex.ITE.iffalse);
 
       default: 
-         printf("\n");
+         VG_(printf)("\n");
          ppIRExpr(e);
-         printf("\n");
+         VG_(printf)("\n");
          VG_(tool_panic)("memcheck: expr2vbits");
    }
 }
@@ -5854,7 +5854,7 @@ IRExpr* zwidenToHostWord ( MCEnv* mce, IRAtom* vatom )
       goto unhandled;
    }
   unhandled:
-   printf("\nty = "); ppIRType(ty); printf("\n");
+   VG_(printf)("\nty = "); ppIRType(ty); VG_(printf)("\n");
    VG_(tool_panic)("zwidenToHostWord");
 }
 
@@ -6198,7 +6198,7 @@ void do_shadow_Dirty ( MCEnv* mce, IRDirty* d )
          /* Ignore any sections marked as 'always defined'. */
          if (isAlwaysDefd(mce, gOff, gSz)) {
             if (0)
-         printf("memcheck: Dirty gst: ignored off %d, sz %d\n",
+            VG_(printf)("memcheck: Dirty gst: ignored off %d, sz %d\n",
                         gOff, gSz);
             continue;
          }
@@ -7058,7 +7058,7 @@ static IRAtom* gen_guarded_load_b ( MCEnv* mce, Int szB,
                hName = "MC_(helperc_b_load32)";
                break;
       default:
-         printf("mc_translate.c: gen_load_b: unhandled szB == %d\n", szB);
+         VG_(printf)("mc_translate.c: gen_load_b: unhandled szB == %d\n", szB);
          tl_assert(0);
    }
    di = unsafeIRDirty_1_N(
@@ -7255,7 +7255,7 @@ static IRAtom* schemeE ( MCEnv* mce, IRExpr* e )
             if (e->Iex.CCall.cee->mcx_mask & (1<<i)) {
                /* the arg is to be excluded from definedness checking.
                   Do nothing. */
-               if (0) printf("excluding %s(%d)\n",
+               if (0) VG_(printf)("excluding %s(%d)\n",
                                   e->Iex.CCall.cee->name, i);
             } else {
                /* calculate the arg's definedness, and pessimistically
@@ -7337,7 +7337,7 @@ static IRAtom* schemeE ( MCEnv* mce, IRExpr* e )
          return mkU32(0);
       }
       default:
-         printf("mc_translate.c: schemeE: unhandled: ");
+         VG_(printf)("mc_translate.c: schemeE: unhandled: ");
          ppIRExpr(e); 
          VG_(tool_panic)("memcheck:schemeE");
    }
@@ -7383,7 +7383,7 @@ static void do_origins_Dirty ( MCEnv* mce, IRDirty* d )
          /* Ignore any sections marked as 'always defined'. */
          if (isAlwaysDefd(mce, gOff, gSz)) {
             if (0)
-         printf("memcheck: Dirty gst: ignored off %d, sz %d\n",
+            VG_(printf)("memcheck: Dirty gst: ignored off %d, sz %d\n",
                         gOff, gSz);
             continue;
          }
@@ -7728,7 +7728,7 @@ static void schemeS ( MCEnv* mce, IRStmt* st )
          break;
 
       default:
-         printf("mc_translate.c: schemeS: unhandled: ");
+         VG_(printf)("mc_translate.c: schemeS: unhandled: ");
          ppIRStmt(st); 
          VG_(tool_panic)("memcheck:schemeS");
    }
@@ -7853,7 +7853,7 @@ static Bool sameIRValue ( IRExpr* e1, IRExpr* e2 )
          /* should never see this */
          /* fallthrough */
       default:
-         printf("mc_translate.c: sameIRValue: unhandled: ");
+         VG_(printf)("mc_translate.c: sameIRValue: unhandled: ");
          ppIRExpr(e1); 
          VG_(tool_panic)("memcheck:sameIRValue");
          return False;
@@ -7968,7 +7968,7 @@ IRSB* MC_(final_tidy) ( IRSB* sb_in )
       di = st->Ist.Dirty.details;
       guard = di->guard;
       tl_assert(guard);
-      if (0) { ppIRExpr(guard); printf("\n"); }
+      if (0) { ppIRExpr(guard); VG_(printf)("\n"); }
       cee = di->cee;
       if (!is_helperc_value_checkN_fail( cee->name )) 
          continue;
@@ -7979,7 +7979,7 @@ IRSB* MC_(final_tidy) ( IRSB* sb_in )
       alreadyPresent = check_or_add( &pairs, guard, cee->addr );
       if (alreadyPresent) {
          sb_in->stmts[i] = IRStmt_NoOp();
-         if (0) printf("XX\n");
+         if (0) VG_(printf)("XX\n");
       }
    }
 
@@ -8552,12 +8552,12 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
 
    if (verboze) {
       ThreadId tid = VG_(get_running_tid)();
-      printf("\n");
-      printf("0x%lx ", VG_(get_IP)(tid));
-      printf("0x%lx ", VG_(get_SP)(tid));
-      printf("0x%lx ", VG_(get_FP)(tid));
-      printf("0x%lx ", VG_(get_xAX)(tid));
-      printf("\n");
+      VG_(printf)("\n");
+      VG_(printf)("0x%lx ", VG_(get_IP)(tid));
+      VG_(printf)("0x%lx ", VG_(get_SP)(tid));
+      VG_(printf)("0x%lx ", VG_(get_FP)(tid));
+      VG_(printf)("0x%lx ", VG_(get_xAX)(tid));
+      VG_(printf)("\n");
    }
 
    /* The update to libc-2.21 and ld-2.21 started causing spurious
@@ -8831,9 +8831,9 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
             assign( 'B', &mce, tmp_b, mkU32(0)/* UNKNOWN ORIGIN */);
          }
          if (0) {
-            printf("create shadow tmp(s) for preamble tmp [%d] ty ", j);
+            VG_(printf)("create shadow tmp(s) for preamble tmp [%d] ty ", j);
             ppIRType( ty_v );
-            printf("\n");
+            VG_(printf)("\n");
          }
       }
    }
@@ -8849,15 +8849,13 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
 
       st = sb_in->stmts[i];
       first_stmt = sb_out->stmts_used;
-#ifndef _NO_DYNCOMP
       if (do_dyncomp)
          dce.stmtIndex = i;
-#endif /* _NO_DYNCOMP */
 
       if (verboze) {
-         printf("\n");
+         VG_(printf)("\n");
          ppIRStmt(st);
-         printf("\n");
+         VG_(printf)("\n");
       }
 
       if (MC_(clo_mc_level) == 3) {
@@ -8877,7 +8875,6 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                                         : HuOth/*we don't know, so play safe*/;
             assign( 'V', &mce, findShadowTmpV(&mce, st->Ist.WrTmp.tmp), 
                                expr2vbits( &mce, st->Ist.WrTmp.data, hu ));
-#ifndef _NO_DYNCOMP
             if (do_dyncomp) {
                assign_DC( 'V', &dce, findShadowTmp_DC(&dce, st->Ist.WrTmp.tmp),
                                expr2tags_WrTmp_DC( &dce, st->Ist.WrTmp.tmp,
@@ -8885,7 +8882,6 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                notePendingCarryTags_DC( &dce, st->Ist.WrTmp.tmp,
                                         st->Ist.WrTmp.data );
             }
-#endif /* _NO_DYNCOMP */
             break;
          }
 
@@ -8894,21 +8890,17 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                            st->Ist.Put.offset,
                            st->Ist.Put.data,
                            NULL /* shadow atom */, NULL /* guard */ );
-#ifndef _NO_DYNCOMP
             if (do_dyncomp)
                do_shadow_PUT_DC( &dce,
                               st->Ist.Put.offset,
                               st->Ist.Put.data,
                               NULL /* shadow atom */ );
-#endif /* _NO_DYNCOMP */
             break;
 
          case Ist_PutI:
             do_shadow_PUTI( &mce, st->Ist.PutI.details);
-#ifndef _NO_DYNCOMP
             if (do_dyncomp)
                do_shadow_PUTI_DC( &dce, st->Ist.PutI.details );
-#endif /* _NO_DYNCOMP */
             break;
 
          case Ist_Store:
@@ -8917,10 +8909,8 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                                    st->Ist.Store.data,
                                    NULL /* shadow data */,
                                    NULL/*guard*/ );
-#ifndef _NO_DYNCOMP
             if (do_dyncomp)
                do_shadow_STle_DC( &dce, st->Ist.Store.addr, st->Ist.Store.data);
-#endif /* _NO_DYNCOMP */
             break;
 
          case Ist_StoreG:
@@ -8934,28 +8924,24 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
          case Ist_Exit:
             handle_possible_exit( &mce, st->Ist.Exit.jk ); // pgbovine
             //complainIfUndefined( &mce, st->Ist.Exit.guard, NULL ); // pgbovine
-#ifndef _NO_DYNCOMP
             if (do_dyncomp)
                do_shadow_cond_exit_DC( &dce, st->Ist.Exit.guard );
-#endif /* _NO_DYNCOMP */
             break;
 
          case Ist_IMark:
             if (verboze) {
                ThreadId tid = VG_(get_running_tid)();
-               printf("\n");
-               printf("0x%lx ", VG_(get_IP)(tid));
-               printf("0x%lx ", VG_(get_SP)(tid));
-               printf("0x%lx ", VG_(get_FP)(tid));
-               printf("0x%lx ", VG_(get_xAX)(tid));
-               printf("\n");
+               VG_(printf)("\n");
+               VG_(printf)("0x%lx ", VG_(get_IP)(tid));
+               VG_(printf)("0x%lx ", VG_(get_SP)(tid));
+               VG_(printf)("0x%lx ", VG_(get_FP)(tid));
+               VG_(printf)("0x%lx ", VG_(get_xAX)(tid));
+               VG_(printf)("\n");
             }
 
             handle_possible_entry( &mce, st->Ist.IMark.addr, sb_in); // pgbovine
-#ifndef _NO_DYNCOMP
             if (do_dyncomp)
                dce.origAddr = st->Ist.IMark.addr;
-#endif /* _NO_DYNCOMP */
             break;
 
          case Ist_NoOp:
@@ -8964,22 +8950,18 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
 
          case Ist_Dirty:
             do_shadow_Dirty( &mce, st->Ist.Dirty.details );
-#ifndef _NO_DYNCOMP
             if (do_dyncomp)
                do_shadow_Dirty_DC( &dce, st->Ist.Dirty.details );
-#endif /* _NO_DYNCOMP */
             break;
 
          case Ist_AbiHint:
             do_AbiHint( &mce, st->Ist.AbiHint.base,
                               st->Ist.AbiHint.len,
                               st->Ist.AbiHint.nia );
-#ifndef _NO_DYNCOMP
             if (do_dyncomp)
                do_AbiHint( &mce, st->Ist.AbiHint.base,
                               st->Ist.AbiHint.len,
                               st->Ist.AbiHint.nia );
-#endif /* _NO_DYNCOMP */
             break;
 
          case Ist_CAS:
@@ -8990,10 +8972,8 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                skip the origin-tracking stuff (call to schemeS) above,
                since that's all tangled up with it too; do_shadow_CAS
                does it all. */
-#ifndef _NO_DYNCOMP
             if(do_dyncomp)
               do_shadow_CAS_DC( &dce, st->Ist.CAS.details);
-#endif /* _NO_DYNCOMP */
             break;
 
          case Ist_LLSC:
@@ -9003,7 +8983,6 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                             st->Ist.LLSC.addr,
                             st->Ist.LLSC.storedata );
             
-#ifndef _NO_DYNCOMP
             /* WARNING/UNDONE:
                In changeset 638 Ist_LLSC was added (was part of Ist_Store).
                The corresponding change was not made to the DYNCOMP code.
@@ -9020,24 +8999,23 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                     // UNDONE!
                 }
             }
-#endif /* _NO_DYNCOMP */
             break;
 
          default:
-            printf("\n");
+            VG_(printf)("\n");
             ppIRStmt(st);
-            printf("\n");
+            VG_(printf)("\n");
             VG_(tool_panic)("kvasir/dyncomp: unhandled IRStmt");
 
       } /* switch (st->tag) */
 
       if (0 && verboze) {
          for (j = first_stmt; j < sb_out->stmts_used; j++) {
-            printf("   ");
+            VG_(printf)("   ");
             ppIRStmt(sb_out->stmts[j]);
-            printf("\n");
+            VG_(printf)("\n");
          }
-         printf("\n");
+         VG_(printf)("\n");
       }
 
       /* ... and finally copy the stmt itself to the output.  Except,
@@ -9051,20 +9029,20 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
    first_stmt = sb_out->stmts_used;
 
    if (verboze) {
-      printf("sb_in->next = ");
+      VG_(printf)("sb_in->next = ");
       ppIRExpr(sb_in->next);
-      printf("\n\n");
+      VG_(printf)("\n\n");
    }
 
    //complainIfUndefined( &mce, sb_in->next, NULL ); // pgbovine
 
    if (0 && verboze) {
       for (j = first_stmt; j < sb_out->stmts_used; j++) {
-         printf("   ");
+         VG_(printf)("   ");
          ppIRStmt(sb_out->stmts[j]);
-         printf("\n");
+         VG_(printf)("\n");
       }
-      printf("\n");
+      VG_(printf)("\n");
    }
 
    // PG - pgbovine - The IRBB itself may contain a Ret
@@ -9090,12 +9068,10 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
       VG_(free)( dce.loadTagSnapshots );
    }
 
-#ifndef _NO_DYNCOMP
    if (do_dyncomp) {
       VG_(free)( dce.tmpCarriesFlags );
       VG_(free)( dce.tmpPendingCarryTags );
    }
-#endif /* _NO_DYNCOMP */
 
    tl_assert(mce.sb == sb_out);
    return sb_out;

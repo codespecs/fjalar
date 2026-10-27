@@ -882,10 +882,33 @@ instructions in that section).
 
 Set @env{BUNEWVER} to the Binutils version to merge; find the latest one
 at @uref{https://ftp.gnu.org/gnu/binutils/?C=M;O=D}.  The old version is
-the one in @file{$INV/fjalar/valgrind/REVISION}.  Then merge:
+the one in @file{$INV/fjalar/valgrind/REVISION}.
 
 @example
 export BUNEWVER=2.42
+@end example
+
+To see how hard the merge will be without doing it, pass @option{--trial}:
+
+@example
+$INV/fjalar/merge-binutils.sh --trial $BUNEWVER
+@end example
+
+@noindent
+For each file of the old release that Fjalar changed, it prints the number
+of changes (runs of consecutive changed lines), added lines, and removed
+lines in Fjalar's version.  Then it prints the number of conflicts that the
+merge would have in each file.  It merges in memory, so it changes neither
+the tree, the index, nor any ref, and it allows uncommitted changes, which
+it includes in the measurement.  It requires Git 2.40 or later, or 2.43 or
+later with a cherry-pick option.  With @option{--trial}, the only
+cherry-pick options are strategy options, such as @option{-Xpatience}.  If
+the merge would have too many conflicts to resolve by hand, merge an
+intermediate Binutils release first, as described below.
+
+Then merge:
+
+@example
 $INV/fjalar/merge-binutils.sh $BUNEWVER
 @end example
 
@@ -946,10 +969,10 @@ Now, handle the conflicts.  @file{merge-binutils.sh} lists the files with
 conflicts, and @command{git status} lists them as unmerged.  Each conflict
 in a file is marked by @samp{<<<<<<<}, @samp{|||||||}, @samp{=======}, and
 @samp{>>>>>>>} lines, which surround Fjalar's version, the old Binutils
-version, and the new Binutils version.  (The old Binutils version is
-omitted if your Git configuration sets @code{merge.conflictStyle} to
-@samp{merge}.)  Mark each file as resolved with @command{git add}.  When
-you are done, this command produces no output:
+version, and the new Binutils version.  (The script uses this conflict
+style regardless of your Git configuration's @code{merge.conflictStyle}.)
+Mark each file as resolved with @command{git add}.  When you are done, this
+command produces no output:
 
 @example
 git -C $INV/fjalar diff --name-only --diff-filter=U
@@ -1350,7 +1373,7 @@ address ranges in @file{$DAIKONDIR/tests/kvasir-tests/clean-output.pl}
 with those in the new binaries and see if changes to
 @file{clean-output.pl} are required.
 
-After a Binutils merge, also run Kvasir with @option{--fjalar-debug-dump=yes},
+After a Binutils merge, also run Kvasir with @option{--fjalar-debug-dump},
 which mimics @samp{readelf --debug-dump}, on a program compiled with
 @option{-gdwarf-5}, and compare its output with that of the new Binutils'
 @command{readelf}.  The system's @command{readelf} may be older, so build
@@ -1361,6 +1384,25 @@ path:
 READELF=$($INV/fjalar/build-binutils-readelf.sh $BUNEWVER)
 $READELF --debug-dump @var{program}
 @end example
+
+The Kvasir tests check only the @file{.decls} and @file{.dtrace} files, not
+the output of @option{--fjalar-debug-dump} and @option{--fjalar-debug}.
+@command{compare-debug-output.sh} checks all of them: it runs Fjalar on
+programs compiled from Fjalar's tests and compares the output with a
+baseline.  Its first run saves the baseline, and later runs compare with
+it.  Save the baseline with a built Fjalar tree that does not contain the
+merge, such as a clone of the master branch, and then compare with the
+merged tree:
+
+@example
+@var{unmerged-fjalar}/compare-debug-output.sh /tmp/$USER/debug-output
+$INV/fjalar/compare-debug-output.sh /tmp/$USER/debug-output
+@end example
+
+@noindent
+A Valgrind or Binutils merge may change the output intentionally; review
+each difference.  See the comments at the top of
+@file{compare-debug-output.sh} for details.
 
 
 @node Documenting Changes
@@ -1436,6 +1478,26 @@ Additionally, we had to modify some of the VEX architecture files to
 include additional information specific to the amd64 and x86 platforms.
 Finally, we had to extend Valgrind's implementation of the C library
 with a few extra functions.
+
+To see all of Fjalar's modifications to the Valgrind release that
+@file{valgrind/REVISION} names, run:
+
+@example
+$INV/fjalar/diff-from-valgrind.sh
+@end example
+
+@noindent
+It accepts the options of @command{git diff}, such as @option{--stat} and
+@option{-w}.  It compares with @file{$INV/valgrind-old}; to compare with
+another clone of that release, such as @file{$INV/valgrind-new} after a
+merge, give @option{--valgrind=@var{dir}}.  Every modification is a
+potential conflict in the next merge, so keep them few:  put Fjalar's code
+in Fjalar's own files where possible, and keep upstream's whitespace.
+Continuous integration runs @command{check-valgrind-whitespace.sh}, which
+fails if Fjalar's copy of an upstream file has a change of whitespace
+alone, such as removed trailing whitespace or an added blank line.  On a line
+whose text Fjalar also changed, a change of whitespace adds no conflict, so
+the check ignores it.
 
 (Remember that we assume @env{$INV} points to a parent directory that
 contains both the Daikon and Fjalar source trees.)

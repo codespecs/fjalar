@@ -248,18 +248,18 @@ typedef
 /* add stmt to a bb */
 static inline void stmt ( HChar cat, MCEnv* mce, IRStmt* st ) {
    if (mce->trace) {
-      printf("  %c: ", cat);
+      VG_(printf)("  %c: ", cat);
       ppIRStmt(st);
-      printf("\n");
+      VG_(printf)("\n");
    }
    addStmtToIRSB(mce->sb, st);
 }
 
 static inline void stmt_DC ( HChar cat, DCEnv* dce, IRStmt* st ) {
    if (dce->mce->trace) {
-      printf("D %c: ", cat);
+      VG_(printf)("D %c: ", cat);
       ppIRStmt(st);
-      printf("\n");
+      VG_(printf)("\n");
    }
    addStmtToIRSB(dce->bb, st);
 }
