@@ -1563,7 +1563,7 @@ the default Memcheck ones.  Also, an @code{#include} of
 @file{fjalar_mc_main.h}, which defines the functions that Fjalar adds to
 Memcheck (@file{mc_fjalar.h} declares them).  Those functions call
 static functions of @file{mc_main.c}, such as @code{set_vabits2},
-@code{set_vbits8}, @code{set_sec_vbits8}, @code{get_vabits2},
+@code{set_sec_vbits8}, @code{get_vabits2},
 @code{is_mem_defined}, and @code{is_mem_addressable}, so the
 @code{#include} must follow the definitions of those functions.
 @item $INV/fjalar/valgrind/fjalar/mc_translate.c
