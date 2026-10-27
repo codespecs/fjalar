@@ -3950,15 +3950,13 @@ void do_shadow_CAS_DC ( DCEnv* dce, IRCAS* cas) {
 
 /* Called by MC_(instrument), before it instruments any statement of
    sb_in.  Returns True if DynComp instruments sb_in, and in that case
-   initializes dce, with sb_out as the block being constructed and mce
-   as Memcheck's environment.  DynComp does not instrument the blocks of
+   initializes dce, with mce as Memcheck's environment; DynComp adds its
+   statements to the same block as Memcheck, mce->sb.  DynComp does not instrument the blocks of
    the dynamic loader:  with libc-2.21 and ld-2.21, doing so put large
    sections of libc data, and with them unrelated user variables, into
    the same comparability set. */
 Bool begin_instrument_DC ( DCEnv* dce, VgCallbackClosure* closure,
-                           const IRSB* sb_in, IRSB* sb_out,
-                           const VexGuestLayout* layout, IRType hWordTy,
-                           MCEnv* mce )
+                           const IRSB* sb_in, MCEnv* mce )
 {
    static Bool first_time = True;
    static const HChar* loader_name = "GaRbAgE";
@@ -4001,10 +3999,10 @@ Bool begin_instrument_DC ( DCEnv* dce, VgCallbackClosure* closure,
       return False;
 
    dce->mce = mce;
-   dce->bb             = sb_out;
-   dce->layout         = layout;
-   dce->n_originalTmps = sb_out->tyenv->types_used;
-   dce->hWordTy        = hWordTy;
+   dce->bb             = mce->sb;
+   dce->layout         = mce->layout;
+   dce->n_originalTmps = mce->sb->tyenv->types_used;
+   dce->hWordTy        = mce->hWordTy;
    dce->sb_in          = sb_in;
    // Only this mode uses the flags-carrying analysis.
    dce->tmpCarriesFlags =
@@ -4077,13 +4075,6 @@ void instrument_stmt_DC ( DCEnv* dce, Int stmtIndex )
          do_shadow_Dirty_DC( dce, st->Ist.Dirty.details );
          break;
 
-      case Ist_AbiHint:
-         // This repeats Memcheck's instrumentation of the hint.
-         do_AbiHint( dce->mce, st->Ist.AbiHint.base,
-                               st->Ist.AbiHint.len,
-                               st->Ist.AbiHint.nia );
-         break;
-
       case Ist_CAS:
          do_shadow_CAS_DC( dce, st->Ist.CAS.details);
          break;
@@ -4097,9 +4088,17 @@ void instrument_stmt_DC ( DCEnv* dce, Int stmtIndex )
          }
          break;
 
+      case Ist_StoreG:
+      case Ist_LoadG:
+         /* UNDONE:  DynComp does not instrument a guarded store or a
+            guarded load, though amd64 uses them (for example, for AVX
+            masked moves).  So a guarded store leaves the tags of the
+            memory it writes unchanged, and the result of a guarded load
+            has no tag. */
+         break;
+
       default:
-         // DynComp does not instrument Ist_StoreG, Ist_LoadG, Ist_NoOp,
-         // or Ist_MBE.
+         // Ist_NoOp, Ist_AbiHint, and Ist_MBE do not affect tags.
          break;
    }
 }

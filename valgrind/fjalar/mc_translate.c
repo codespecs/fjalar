@@ -6365,6 +6365,7 @@ void do_shadow_Dirty ( MCEnv* mce, IRDirty* d )
    void MC_(helperc_MAKE_STACK_UNINIT) ( Addr base, UWord len,
                                                     Addr nia );
 */
+static
 void do_AbiHint ( MCEnv* mce, IRExpr* base, Int len, IRExpr* nia )
 {
    IRDirty* di;
@@ -8682,7 +8683,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
    }
    tl_assert( VG_(sizeXA)( mce.tmpMap ) == sb_in->tyenv->types_used );
 
-   Bool do_dyncomp = begin_instrument_DC( &dce, closure, sb_in, sb_out, layout, hWordTy, &mce );
+   Bool do_dyncomp = begin_instrument_DC( &dce, closure, sb_in, &mce );
 
    /* Finally, begin instrumentation. */
    /* Copy verbatim any IR preamble preceding the first IMark */

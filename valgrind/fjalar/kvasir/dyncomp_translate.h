@@ -47,9 +47,7 @@ Bool* findFlagsCarryingTmps_DC ( const IRSB* sb_in );
 void notePendingCarryTags_DC ( DCEnv* dce, IRTemp tmp, IRExpr* data );
 
 Bool begin_instrument_DC ( DCEnv* dce, VgCallbackClosure* closure,
-                           const IRSB* sb_in, IRSB* sb_out,
-                           const VexGuestLayout* layout, IRType hWordTy,
-                           MCEnv* mce );
+                           const IRSB* sb_in, MCEnv* mce );
 void instrument_stmt_DC ( DCEnv* dce, Int stmtIndex );
 void end_instrument_DC ( DCEnv* dce );
 
