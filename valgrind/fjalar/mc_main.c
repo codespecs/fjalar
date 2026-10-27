@@ -4514,7 +4514,7 @@ static Bool mc_is_defined_asciiz ( Addr a, Addr* bad_addr, UInt* otag )
    }
 }
 
-#include "mc_main_fjalar.inc"  // Fjalar's functions that use Memcheck's internals
+#include "fjalar_mc_main.h"  // Fjalar's functions that use Memcheck's internals
 
 /*------------------------------------------------------------*/
 /*--- Memory event handlers                                ---*/

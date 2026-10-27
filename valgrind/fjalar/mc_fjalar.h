@@ -18,7 +18,8 @@
 /* mc_fjalar.h:
 
 Fjalar's interface to its copy of Memcheck:  Memcheck's private header
-mc_include.h, and the functions that Fjalar adds to mc_main.c.  Fjalar's
+mc_include.h, and the functions that Fjalar adds to Memcheck, which
+fjalar_mc_main.h defines and mc_main.c includes.  Fjalar's
 files include this header instead of mc_include.h.
 
 */
@@ -36,12 +37,9 @@ files include this header instead of mc_include.h.
 
 #include "mc_include.h"
 
-// Values of the abit argument of set_abit_and_vbyte.
+// Value of the abit argument of set_abit_and_vbyte.
 #define VGM_BIT_VALID       0
-#define VGM_BIT_INVALID     1
 
-void set_abit ( Addr a, UChar abit );
-void set_vbyte ( Addr a, UWord vbyte );
 void set_abit_and_vbyte ( Addr a, UWord abit, UWord vbyte );
 
 void mc_copy_address_range_state ( Addr src, Addr dst, SizeT len );

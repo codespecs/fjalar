@@ -15,22 +15,18 @@
    License, or (at your option) any later version.
 */
 
-/* mc_main_fjalar.inc:
+/* fjalar_mc_main.h:
 
 The functions that Fjalar adds to Memcheck, which mc_fjalar.h declares.
 They use mc_main.c's static functions and macros, so mc_main.c includes
 this file, after the definitions of those, rather than this file being
-compiled on its own.
+compiled on its own.  No other file may include it, because it defines
+functions.
 
 */
 
 #include "pub_tool_vki.h"  // needed for VKI_PROT_ defines
 #include "fjalar_core_decls.h"  // for VG_(am_is_valid_for_valgrind)
-
-void set_vbyte( Addr a, UWord vbyte )
-{
-  set_vbits8( a, vbyte);
-}
 
 void set_abit_and_vbyte (Addr a, UWord abit, UWord vbyte )
 {
@@ -50,15 +46,6 @@ void set_abit_and_vbyte (Addr a, UWord abit, UWord vbyte )
     set_sec_vbits8(a, vbyte);
   }
 
-}
-
-void set_abit( Addr a, UChar abit )
-{
-  UChar vabits2 = VA_BITS2_UNDEFINED;
-  if(abit) {
-    vabits2 = VA_BITS2_PARTDEFINED;
-  }
-  set_vabits2(a, vabits2);
 }
 
 Bool mc_check_writable (Addr a, SizeT len, Addr* bad_addr) {
