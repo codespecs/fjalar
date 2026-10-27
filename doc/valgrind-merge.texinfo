@@ -1373,7 +1373,7 @@ address ranges in @file{$DAIKONDIR/tests/kvasir-tests/clean-output.pl}
 with those in the new binaries and see if changes to
 @file{clean-output.pl} are required.
 
-After a Binutils merge, also run Kvasir with @option{--fjalar-debug-dump=yes},
+After a Binutils merge, also run Kvasir with @option{--fjalar-debug-dump},
 which mimics @samp{readelf --debug-dump}, on a program compiled with
 @option{-gdwarf-5}, and compare its output with that of the new Binutils'
 @command{readelf}.  The system's @command{readelf} may be older, so build
@@ -1384,6 +1384,25 @@ path:
 READELF=$($INV/fjalar/build-binutils-readelf.sh $BUNEWVER)
 $READELF --debug-dump @var{program}
 @end example
+
+The Kvasir tests check only the @file{.decls} and @file{.dtrace} files, not
+the output of @option{--fjalar-debug-dump} and @option{--fjalar-debug}.
+@command{compare-debug-output.sh} checks all of them: it runs Fjalar on
+programs compiled from Fjalar's tests and compares the output with a
+baseline.  Its first run saves the baseline, and later runs compare with
+it.  Save the baseline with a built Fjalar tree that does not contain the
+merge, such as a clone of the master branch, and then compare with the
+merged tree:
+
+@example
+@var{unmerged-fjalar}/compare-debug-output.sh /tmp/$USER/debug-output
+$INV/fjalar/compare-debug-output.sh /tmp/$USER/debug-output
+@end example
+
+@noindent
+A Valgrind or Binutils merge may change the output intentionally; review
+each difference.  See the comments at the top of
+@file{compare-debug-output.sh} for details.
 
 
 @node Documenting Changes
