@@ -36,7 +36,7 @@
 //RUDD-REMOVE
 //#include "../mac_shared.h"
 //#include "../mc_translate.h"
-#include "../mc_include.h"
+#include "../mc_fjalar.h"
 #include "union_find.h"
 #include "kvasir/dyncomp_runtime.h"
 
