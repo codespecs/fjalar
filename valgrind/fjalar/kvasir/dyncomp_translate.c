@@ -3951,10 +3951,10 @@ void do_shadow_CAS_DC ( DCEnv* dce, IRCAS* cas) {
 /* Called by MC_(instrument), before it instruments any statement of
    sb_in.  Returns True if DynComp instruments sb_in, and in that case
    initializes dce, with mce as Memcheck's environment; DynComp adds its
-   statements to the same block as Memcheck, mce->sb.  DynComp does not instrument the blocks of
-   the dynamic loader:  with libc-2.21 and ld-2.21, doing so put large
-   sections of libc data, and with them unrelated user variables, into
-   the same comparability set. */
+   statements to the same block as Memcheck, mce->sb.  DynComp does not
+   instrument the blocks of the dynamic loader:  with libc-2.21 and
+   ld-2.21, doing so put large sections of libc data, and with them
+   unrelated user variables, into the same comparability set. */
 Bool begin_instrument_DC ( DCEnv* dce, VgCallbackClosure* closure,
                            const IRSB* sb_in, MCEnv* mce )
 {
