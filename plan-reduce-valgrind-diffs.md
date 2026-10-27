@@ -19,18 +19,24 @@ warning baseline, so do not run the two at the same time.
 
 ## Status
 
-Steps 0-4 have landed:  #190 (Step 0, a script that measures the
+Steps 0-5 and 6a have landed:  #190 (Step 0, a script that measures the
 differences, and a CI check that upstream files keep upstream's
 whitespace), #182 (Step 1, file types and modes), #183 (Step 2,
-whitespace), #184 (Step 3, cosmetic edits), and #191 (Step 4, unneeded
-changes to the Memcheck copies).  So did #181, which restored upstream's
-`AC_INIT` version string.
+whitespace), #184 (Step 3, cosmetic edits), #191 (Step 4, unneeded
+changes to the Memcheck copies), #192 (Step 5, a single switch for each
+disabled part of Memcheck), and #193 (Step 6a, `mc_include.h`).  So
+did #181, which restored upstream's `AC_INIT` version string.
 
 | Step | Pull request | State |
 | --- | --- | --- |
-| Step 5 | #192 | Open |
-| Step 6a | #193 | Open |
-| Steps 6b-9 | — | Not started |
+| Step 5 | #192 | Landed |
+| Step 6a | #193 | Landed |
+| Step 6b | #194 | Open |
+| Step 6c | — | Not started |
+| Step 6d | #197 | Open |
+| Step 7a | #195 | Open |
+| Step 7b | #196 | Open |
+| Steps 7c-9 | — | Not started |
 
 ## Dependences among steps
 
