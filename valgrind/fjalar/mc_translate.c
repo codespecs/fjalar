@@ -49,6 +49,7 @@
 #include "kvasir/kvasir_main.h"
 #include "kvasir/dyncomp_main.h"
 #include "kvasir/dyncomp_translate.h"
+#include "fjalar_core_decls.h"
 Bool kvasir_with_dyncomp; // pgbovine - dyncomp
 
 #include "mc_include.h"
@@ -8547,7 +8548,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
       VG_(printf)("0x%lx ", VG_(get_IP)(tid));
       VG_(printf)("0x%lx ", VG_(get_SP)(tid));
       VG_(printf)("0x%lx ", VG_(get_FP)(tid));
-      VG_(printf)("0x%lx ", VG_(get_xAX)(tid));
+      VG_(printf)("0x%lx ", read_xAX(tid));
       VG_(printf)("\n");
    }
 
@@ -8926,7 +8927,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                VG_(printf)("0x%lx ", VG_(get_IP)(tid));
                VG_(printf)("0x%lx ", VG_(get_SP)(tid));
                VG_(printf)("0x%lx ", VG_(get_FP)(tid));
-               VG_(printf)("0x%lx ", VG_(get_xAX)(tid));
+               VG_(printf)("0x%lx ", read_xAX(tid));
                VG_(printf)("\n");
             }
 

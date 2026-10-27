@@ -49,6 +49,7 @@
 #include "fjalar_traversal.h"
 #include "disambig.h"
 #include "mc_fjalar.h"
+#include "fjalar_core_decls.h"
 #include "typedata.h"
 #include "vex_common.h"
 #include "kvasir/kvasir_main.h"
@@ -171,6 +172,110 @@ Addr read_dwarf_reg(ThreadId tid, UInt regNum)
   VG_(get_shadow_regs_area)(tid, (UChar*)&value, 0/*shadowNo*/,
                             dwarf_reg_guest_offsets[regNum], sizeof(Addr));
   return value;
+}
+
+#if defined(VGA_amd64)
+#define GUEST_xAX guest_RAX
+#define GUEST_xCX guest_RCX
+#define GUEST_xDX guest_RDX
+#define GUEST_xSI guest_RSI
+#define GUEST_xDI guest_RDI
+#else
+#define GUEST_xAX guest_EAX
+#define GUEST_xCX guest_ECX
+#define GUEST_xDX guest_EDX
+#define GUEST_xSI guest_ESI
+#define GUEST_xDI guest_EDI
+#endif
+
+// Returns the word at the given offset in thread tid's guest state
+// (shadowNo 0) or in its V bits (shadowNo 1).
+static UWord read_guest_word(ThreadId tid, Int shadowNo, Int offset)
+{
+  UWord value;
+  VG_(get_shadow_regs_area)(tid, (UChar*)&value, shadowNo, offset, sizeof(UWord));
+  return value;
+}
+
+Addr read_xAX(ThreadId tid)
+{
+  return read_guest_word(tid, 0, offsetof(VexGuestArchState, GUEST_xAX));
+}
+
+Addr read_xCX(ThreadId tid)
+{
+  return read_guest_word(tid, 0, offsetof(VexGuestArchState, GUEST_xCX));
+}
+
+Addr read_xDX(ThreadId tid)
+{
+  return read_guest_word(tid, 0, offsetof(VexGuestArchState, GUEST_xDX));
+}
+
+Addr read_xSI(ThreadId tid)
+{
+  return read_guest_word(tid, 0, offsetof(VexGuestArchState, GUEST_xSI));
+}
+
+Addr read_xDI(ThreadId tid)
+{
+  return read_guest_word(tid, 0, offsetof(VexGuestArchState, GUEST_xDI));
+}
+
+UWord read_shadow_xAX(ThreadId tid)
+{
+  return read_guest_word(tid, 1, offsetof(VexGuestArchState, GUEST_xAX));
+}
+
+UWord read_shadow_xDX(ThreadId tid)
+{
+  return read_guest_word(tid, 1, offsetof(VexGuestArchState, GUEST_xDX));
+}
+
+UInt read_xAX_tag(ThreadId tid)
+{
+  return *VG_(get_tag_ptr_for_guest_offset)(tid, offsetof(VexGuestArchState, GUEST_xAX));
+}
+
+UInt read_xDX_tag(ThreadId tid)
+{
+  return *VG_(get_tag_ptr_for_guest_offset)(tid, offsetof(VexGuestArchState, GUEST_xDX));
+}
+
+// Returns the guest-state offset of the 8 bytes that hold a function's
+// floating-point return value:  the low 64 bits of %xmm0 on amd64, and
+// the top of the x87 FPU stack on x86.
+static Int float_return_guest_offset(ThreadId tid)
+{
+#if defined(VGA_amd64)
+  return offsetof(VexGuestArchState, guest_YMM0);
+#else
+  UInt ftop;
+  VG_(get_shadow_regs_area)(tid, (UChar*)&ftop, 0/*shadowNo*/,
+                            offsetof(VexGuestArchState, guest_FTOP), sizeof(UInt));
+  return offsetof(VexGuestArchState, guest_FPREG) + (ftop & 7) * sizeof(ULong);
+#endif
+}
+
+double read_float_return(ThreadId tid)
+{
+  double value;
+  VG_(get_shadow_regs_area)(tid, (UChar*)&value, 0/*shadowNo*/,
+                            float_return_guest_offset(tid), sizeof(double));
+  return value;
+}
+
+ULong read_shadow_float_return(ThreadId tid)
+{
+  ULong vbits;
+  VG_(get_shadow_regs_area)(tid, (UChar*)&vbits, 1/*shadowNo*/,
+                            float_return_guest_offset(tid), sizeof(ULong));
+  return vbits;
+}
+
+UInt read_float_return_tag(ThreadId tid)
+{
+  return *VG_(get_tag_ptr_for_guest_offset)(tid, float_return_guest_offset(tid));
 }
 
 // If atom is DW_OP_regN (the value is in register N) or DW_OP_bregN
@@ -658,7 +763,7 @@ void enter_function(FunctionEntry* f)
   FJALAR_DPRINTF("[enter_function] startPC is: %x, entryPC is: %x, cu_base: %p\n",
                  (UInt)f->startPC, (UInt)f->entryPC,(void *)f->cuBase);
   FJALAR_DPRINTF("Value of edi: %lx, esi: %lx, edx: %lx, ecx: %lx\n",
-      (UWord)VG_(get_xDI)(tid), (UWord)VG_(get_xSI)(tid), (UWord)VG_(get_xDX)(tid), (UWord)VG_(get_xCX)(tid));
+      (UWord)read_xDI(tid), (UWord)read_xSI(tid), (UWord)read_xDX(tid), (UWord)read_xCX(tid));
   FJALAR_DPRINTF("frame_base_atom: %x, frame_base_offset: %lx\n", f->frame_base_atom, (unsigned long int) f->frame_base_offset);
 
   // Determine the frame pointer for this function using DWARF
@@ -931,28 +1036,8 @@ void exit_function(FunctionEntry* f)
 
   FJALAR_DPRINTF("\tState of Guest Stack [%p - %p] \n", (void *)top->lowestSP, (void *)(top->lowestSP + top->virtualStackByteSize));
 
-  // Ok, in Valgrind 2.X, we needed to directly code some assembly to
-  // grab the top of the floating-point stack, but Valgrind 3.0
-  // provides a virtual FPU stack, so we can just grab that.  Plus, we
-  // now have shadow V-bits for the FPU stack.
-
-#if defined(VGA_amd64)
-  // VG_(get_XMM_N) and VG_(get_shadow_XMM_N) return the whole 256-bit
-  // YMM register, as an array of 8 32-bit integers.  A double occupies
-  // the low 2 of them, so reinterpret cast the register as a double
-  // and its shadow as a 64-bit integer.
-  FPUshadow = *(ULong *)VG_(get_shadow_XMM_N)(currentTID, 0);
-  fpuReturnVal = *(double *)VG_(get_XMM_N)(currentTID, 0);
-  //RUDD DEBUG
-  /* for(i=0 ; i < 4; i++) { */
-  /*   printf("Testing %d\n", test[i]); */
-  /*   printf("shadow: %x\n", testing[i]); */
-  /* }    */
-
-#else
-  fpuReturnVal = VG_(get_FPU_stack_top)(currentTID);
-  FPUshadow = VG_(get_shadow_FPU_stack_top)(currentTID);
-#endif
+  fpuReturnVal = read_float_return(currentTID);
+  FPUshadow = read_shadow_float_return(currentTID);
 
 
   //RUDD DEBUG
@@ -960,17 +1045,17 @@ void exit_function(FunctionEntry* f)
   /* printf("shadow: %x\n", FPUshadow); */
   // Get the value at the simulated %EAX (integer and pointer return
   // values are stored here upon function exit)
-  xAX = VG_(get_xAX)(currentTID);
+  xAX = read_xAX(currentTID);
 
   // Get the value of the simulated %EDX (the high 32-bits of the long
   // long int return value is stored here upon function exit)
-  xDX = VG_(get_xDX)(currentTID);
+  xDX = read_xDX(currentTID);
 
 
   // 64 bits
   // Use SHADOW values of Valgrind simulated registers to get V-bits
-  xAXshadow = VG_(get_shadow_xAX)(currentTID);
-  xDXshadow = VG_(get_shadow_xDX)(currentTID);
+  xAXshadow = read_shadow_xAX(currentTID);
+  xDXshadow = read_shadow_xDX(currentTID);
 
   FJALAR_DPRINTF("Value of eax: %lx, edx: %lx\n",xAX, xDX);
 
