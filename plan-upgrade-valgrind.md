@@ -58,7 +58,11 @@ Memcheck and DynComp depend tightly on Valgrind core:
   and once for 3.25.1 -> 3.27.1, and in each pass substitute that hop's
   versions for 3.23.0 and 3.27.1 everywhere:  `VOLDTAG` and `VNEWTAG`
   (including in the CI command of step 9), the NEWS releases to read,
-  `valgrind/REVISION`, and the commit message.
+  `valgrind/REVISION`, and the commit message.  Do the passes in order:
+  land the first pass's PR and do its step 10 before you start the second
+  pass, whose step 2 reuses the first pass's `valgrind-new` as
+  `valgrind-old` (`merge-valgrind.sh` requires `valgrind-old` to be at
+  the second pass's `VOLDTAG`).
 - The checklist of Fjalar changes to upstream files is
   `git diff --diff-filter=a valgrind-merge/base valgrind-merge/fjalar`
   (step 4).  By where they matter:
@@ -96,6 +100,12 @@ Memcheck and DynComp depend tightly on Valgrind core:
      it.
 
    - `git pull` both `fjalar` and `daikon`; ensure no local or outgoing changes.
+   - Install `gdb` and the glibc debuginfo package (`libc6-dbg` on
+     Ubuntu; `dnf debuginfo-install glibc` on Rocky Linux), if they are
+     not installed; without them, most `gdbserver_tests` fail.  The
+     regression tests of this step, step 3, and step 9 must run with the
+     same packages installed, so that their lists of failures are
+     comparable.
    - Record baselines on current sources, from the new clone
      (`cd $FJALAR`):
      `(set -o pipefail; make build 2>&1 | tee build-before.log)` (save the
@@ -153,8 +163,7 @@ Memcheck and DynComp depend tightly on Valgrind core:
    `merge-valgrind.sh` requires a clean work tree.  (The merge handles the
    files that upstream added or removed since `$VOLDTAG`.)
 
-3. **Baseline.**  First install `gdb` and the glibc debuginfo package;
-   without them, most `gdbserver_tests` fail.  Then run
+3. **Baseline.**  Run
    `$FJALAR/upstream-regtest.sh $INV/regtest-upstream-$VNEWTAG.txt`, which
    takes about 15 minutes.  It checks that `valgrind-new` is at
    `$VNEWTAG`, builds a fresh copy of it, in `valgrind-new-build`, runs
@@ -326,8 +335,13 @@ Memcheck and DynComp depend tightly on Valgrind core:
      floating-point arithmetic, string functions, and bit manipulation),
      each compiled with `-O2 -march=x86-64-v3`, `-O3 -march=x86-64-v3`,
      `-O3 -march=x86-64-v2`, and `-O3`, plus Daikon's `md5` and `bzip2`
-     tests compiled with `-O3 -march=x86-64-v3`; they exercised 258
-     distinct IROps, 84 of them on 256-bit vectors.  Compile each program
+     tests (in `$DAIKONDIR/tests/kvasir-tests/`) compiled with
+     `-O3 -march=x86-64-v3`; they exercised 258 distinct IROps, 84 of them
+     on 256-bit vectors.  The five small programs are not in the
+     repository, so write similar ones, with loops over arrays that the
+     compiler vectorizes.  (`make fjalar-test` already runs
+     `valgrind/fjalar/tests/dyncomp-vector-ops.c`, which uses intrinsics to
+     execute AVX2, FMA, and F16C instructions.)  Compile each program
      with `-gdwarf-4 -no-pie`, because Fjalar does not fully read DWARF 5 and
      recognizes a function's entry point only at the address in the
      debugging information.  Unless Valgrind decodes AVX-512 (3.23 does
