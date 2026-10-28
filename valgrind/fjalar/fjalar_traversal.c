@@ -1286,7 +1286,6 @@ void visitReturnValue(FunctionExecutionState* e,
       VG_(memcpy)(returnBuffer                       ,  &e->xAX, 8);
       VG_(memcpy)(returnBuffer + (Addr)sizeof(e->xAX),  &e->xDX, 8);
 
-      unsigned long long int uLong = (e->xAX);
       FJALAR_DPRINTF("tiny struct\n");
 
       // Copy A and V bits over:
@@ -1297,11 +1296,6 @@ void visitReturnValue(FunctionExecutionState* e,
       MC_(copy_address_range_state)((Addr)(&(e->xDX)),
                                     (Addr)(&returnBuffer) + (Addr)sizeof(e->xAX),
                                     sizeof(e->xDX));
-
-      // Remember to copy A and V-bits over:
-      MC_(copy_address_range_state)((Addr)(&(e->xAX)),
-                                    (Addr)(&uLong),
-                                    sizeof(e->xAX));
 
       visitVariable(cur_node->var,
                     (Addr) returnBuffer,
