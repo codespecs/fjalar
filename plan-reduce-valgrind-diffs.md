@@ -19,15 +19,16 @@ warning baseline, so do not run the two at the same time.
 
 ## Status
 
-Steps 0-5, 6a, 6b, and 6d have landed:  #190 (Step 0, a script that measures the
-differences, and a CI check that upstream files keep upstream's
-whitespace), #182 (Step 1, file types and modes), #183 (Step 2,
-whitespace), #184 (Step 3, cosmetic edits), #191 (Step 4, unneeded
-changes to the Memcheck copies), #192 (Step 5, a single switch for each
-disabled part of Memcheck), #193 (Step 6a, `mc_include.h`), #194
-(Step 6b, Fjalar's functions in `mc_main.c`), and #197 (Step 6d, DynComp
-in `MC_(instrument)`).  So did #181, which restored upstream's `AC_INIT`
-version string.
+Steps 0-5, 6a, 6b, 6d, 7a, and 7b have landed:  #190 (Step 0, a script
+that measures the differences, and a CI check that upstream files keep
+upstream's whitespace), #182 (Step 1, file types and modes), #183
+(Step 2, whitespace), #184 (Step 3, cosmetic edits), #191 (Step 4,
+unneeded changes to the Memcheck copies), #192 (Step 5, a single switch
+for each disabled part of Memcheck), #193 (Step 6a, `mc_include.h`), #194
+(Step 6b, Fjalar's functions in `mc_main.c`), #197 (Step 6d, DynComp in
+`MC_(instrument)`), #195 (Step 7a, the guest-layout fields and
+`VEX_N_FXSTATE`), and #196 (Step 7b, the register accessors).  So did PR
+# 181, which restored upstream's `AC_INIT` version string.
 
 | Step | Pull request | State |
 | --- | --- | --- |
@@ -36,8 +37,8 @@ version string.
 | Step 6b | #194 | Landed |
 | Step 6c | — | Not started |
 | Step 6d | #197 | Landed |
-| Step 7a | #195 | Open |
-| Step 7b | #196 | Open |
+| Step 7a | #195 | Landed |
+| Step 7b | #196 | Landed |
 | Step 7c | — | Not started |
 | Step 7d | #206 | Open |
 | Step 8 | #205 | Open; land with codespecs/daikon#955 |
@@ -45,25 +46,24 @@ version string.
 
 ## Dependences among steps
 
-No step needs another step's result, except Step 9, which documents what
-the others leave.  But some steps change the same lines, so do each of
-these groups one step at a time, in the order given, to avoid merge
-conflicts:
+Of the remaining steps, only Step 9 needs another step's result:  it
+documents what the others leave, and it edits
+`doc/valgrind-merge.texinfo` and `plan-upgrade-valgrind.md`, which #205
+(Step 8) also changes.  So do Step 9 last.
 
-- Step 5, then 6c and 6d.  All 3 change the `Ist_Exit` case of
-  `MC_(instrument)`:  Step 5 restores the `complainIfUndefined` call
-  between Fjalar's `handle_possible_exit` call (whose `&mce` argument 6c
-  may replace) and its DynComp hook (which 6d moves).
-- 6a, then 6b.  6a changes the return type of `mc_check_readable`, which
-  6b moves out of `mc_main.c`.
-- 7b and 7c, in either order.  Both add headers to the
-  `fjalar_core_decls.stamp` rule in `fjalar.am`, and declarations to
-  `fjalar_core_decls.h`.
+Steps 7c, 7d, and 8 change disjoint lines, and no open PR changes the
+lines that 7c changes.
 
-7a before 6c is not required, but it makes 6c simpler:  after 7a,
-`fjalar_main.c` needs only the stack-pointer, frame-pointer, and
-instruction-pointer offsets of the layout.  Step 8's change to the tool
-details in `mc_main.c` must land with its companion Daikon PR.
+Step 6c conflicts with PRs that are not part of this plan.  6c must
+change `begin_instrument_DC` in `kvasir/dyncomp_translate.c`, which reads
+the fields `sb`, `layout`, and `hWordTy` of `MCEnv`, and #200 and #201
+rewrite the lines around those reads.  So start 6c after #200 and #201
+land.  The other files that 6c changes (`mc_translate.c`,
+`mc_translate.h`, `fjalar_main.h`, and `handle_possible_entry` and
+`handle_possible_exit` in `fjalar_main.c`) have no changes in open PRs.
+
+Step 8's change to the tool details in `mc_main.c` must land with its
+companion Daikon PR.
 
 ## The remaining differences
 
@@ -72,32 +72,40 @@ details in `mc_main.c` must land with its companion Daikon PR.
 `VALGRIND_3_23_0` at `valgrind/`, plus upstream `memcheck/` (without
 `docs/`, `tests/`, and `Makefile.am`) at `valgrind/fjalar/`.  It omits the
 files that only Fjalar has (Fjalar's own sources and Binutils-derived
-files).  Measured at commit 23bfcf99, the differences are in 26 files,
-with 1054 lines added and 266 removed:
+files).
+
+Measured at commit 23bfcf99 (after Step 4), the differences were in 26
+files, with 1054 lines added and 266 removed.  Measured at commit 31c4af5f
+(after Step 7b), they are in 20 files, with 269 lines added and 212
+removed:
 
 | Part | Files | Lines added | Lines removed |
 | --- | ---: | ---: | ---: |
-| Memcheck copies in `valgrind/fjalar/` | 4 | 623 | 254 |
-| Coregrind and `include/` | 7 | 248 | 1 |
-| VEX | 7 | 154 | 3 |
+| Memcheck copies in `valgrind/fjalar/` | 3 | 203 | 201 |
+| Coregrind and `include/` | 6 | 24 | 1 |
+| VEX | 3 | 13 | 2 |
 | Build and upstream tests | 8 | 29 | 8 |
 
-The largest differences, by kind:
+The largest remaining differences, by kind:
 
-- **`complainIfUndefined` calls commented out** in `mc_translate.c`, and
-  **Memcheck's end-of-run reports inside `#ifdef UNDEFINED_FOO`** in
-  `mc_main.c` (Step 5).
-- **Code moved out of upstream files.**  About 200 lines of type
+- **Code moved out of upstream files.**  About 180 lines of type
   definitions, inline functions, and macros were moved from
   `mc_translate.c` to the Fjalar file `mc_translate.h`, so upstream changes
-  to them can never merge automatically (Step 6).
-- **Register accessors in Coregrind (about 240 lines** in `m_machine.c`,
-  `pub_tool_machine.h`, `pub_core_machine.h`) and **guest-layout fields in
-  VEX (about 140 lines** in `libvex.h`, `guest_amd64_helpers.c`,
-  `guest_x86_helpers.c`) (Step 7).
+  to them can never merge automatically (Step 6c).
 - **Genuine DynComp/Fjalar hooks**:  the extra shadow area, DynComp calls in
   `MC_(instrument)` and in the `make_mem_*` functions, `CHECK_SP` calls,
-  and the Fjalar entry points in `mc_main.c` (Steps 6 and 8).
+  and the Fjalar entry points in `mc_main.c` (Step 8).
+- **Edits that no step covers yet**, in `mc_main.c` and `mc_translate.c`
+  (about 70 lines):  a Fjalar header comment at the top of each file;
+  in `mc_main.c`, a `DEBUG` macro that `MAX_DEBUG_INFO` enables, casts to
+  `void *` in its calls, extra `DEBUG` calls, `#undef`s of `SM_OFF`,
+  `SM_OFF_16`, and `INLINE`, and the renaming of a parameter `str` to
+  `astr`; and in `MC_(instrument)`, 2 copies of a 9-line block that prints
+  registers when `fjalar_print_IR` is set.
+- **Function-name printing in VEX** (`host_amd64_defs.c`, and the libvex
+  test changes that it forces) (Step 7d).
+- **File functions** in `m_libcfile.c` and `pub_tool_libcfile.h`
+  (Step 7c).
 
 `memcheck.h` differs only in including `pub_tool_clreq.h` instead of
 upstream's `valgrind.h`, which `tests/check_headers_and_includes` requires
@@ -184,9 +192,10 @@ enable unused-parameter warnings.
   `MCEnv`, `TempMapEnt`, `HowUsed`, `DetailLevelByOp`, `stmt`, `assign`,
   the `binop`/`unop`/`mkU*` macros, and `IRAtom` to their upstream places in
   `mc_translate.c`, so that upstream changes to them merge.  Fjalar's code
-  does not need the definitions:  DynComp (`kvasir/`) reads no field of
-  `MCEnv`, and uses `MCEnv` only through `newTemp`, `stmt`, and `assign`;
-  `fjalar_main.c` reads only `mce->layout`, and calls `stmt`.  So:
+  barely needs the definitions:  DynComp (`kvasir/`) uses `MCEnv` through
+  `newTemp`, `stmt`, and `assign`, and reads only the fields `sb`,
+  `layout`, and `hWordTy`, in `begin_instrument_DC`;
+  `fjalar_main.c` reads no field of `MCEnv`, and calls `stmt`.  So:
   - `mc_translate.h` declares `struct _MCEnv;`, as upstream's
     `mc_translate.c` already does near its top, and Fjalar's code refers to
     `struct _MCEnv*`.  (A `typedef struct _MCEnv MCEnv;` in the header
@@ -200,11 +209,10 @@ enable unused-parameter warnings.
     `mc_stmt` and `mc_assign`) in Fjalar's part of `mc_translate.c`.
     Exporting functions named `stmt` and `assign` would put very generic
     names into a tool that also links Binutils and libiberty code.
-  - Give `fjalar_main.c` the layout without reading `MCEnv`:  pass the
-    `layout` argument of `MC_(instrument)` to Fjalar's entry and exit hooks
-    instead of `mce`, or add an exported accessor.  After Step 7a,
-    `fjalar_main.c` needs only `offset_SP`, `offset_FP`, `offset_IP`, and
-    their sizes, which it could also get from `offsetof`.
+  - Give `begin_instrument_DC` the block, layout, and host word type
+    without reading `MCEnv`:  pass them as arguments from
+    `MC_(instrument)`, which has them as `sb_out`, `layout`, and `hWordTy`,
+    or add exported accessors.
 
   If DynComp later needs a field of `MCEnv`, add an accessor function
   rather than moving the definitions back to the header.  Shorten the
@@ -366,6 +374,7 @@ These are estimates, to be checked with `diff-from-valgrind.sh`.
 | After step | Remaining differences (approximate) |
 | --- | --- |
 | 4 (measured) | 26 files, 1320 changed lines |
+| 5, 6a, 6b, 6d, 7a, 7b (measured) | 20 files, 481 changed lines |
 | 6-8 | about 12 files, about 200 changed lines |
 
 What remains is Fjalar's essential hooks:  the extra shadow area (4
