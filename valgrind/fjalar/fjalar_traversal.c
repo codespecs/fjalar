@@ -1622,13 +1622,13 @@ void visitReturnValue(FunctionExecutionState* e,
     FJALAR_DPRINTF("long long int type\n");
 
     // Remember to copy A and V-bits over:
-    mc_copy_address_range_state((Addr)(&(e->xAX)),
-                                (Addr)(&uLong),
-                                sizeof(e->xAX));
+    MC_(copy_address_range_state)((Addr)(&(e->xAX)),
+                                  (Addr)(&uLong),
+                                  sizeof(e->xAX));
 
-    mc_copy_address_range_state((Addr)(&(e->xDX)),
-                                (Addr)(&uLong) + (Addr)sizeof(e->xAX),
-                                sizeof(e->xDX));
+    MC_(copy_address_range_state)((Addr)(&(e->xDX)),
+                                  (Addr)(&uLong) + (Addr)sizeof(e->xAX),
+                                  sizeof(e->xDX));
 
     visitVariable(cur_node->var,
                   (Addr)&uLong,
@@ -1646,13 +1646,13 @@ void visitReturnValue(FunctionExecutionState* e,
     long long int signedLong = (e->xAX) | (((long long int)(e->xDX)) << 32);
 
     // Remember to copy A and V-bits over:
-    mc_copy_address_range_state((Addr)(&(e->xAX)),
-                                (Addr)(&signedLong),
-                                sizeof(e->xAX));
+    MC_(copy_address_range_state)((Addr)(&(e->xAX)),
+                                  (Addr)(&signedLong),
+                                  sizeof(e->xAX));
 
-    mc_copy_address_range_state((Addr)(&(e->xDX)),
-                                (Addr)(&signedLong) + (Addr)sizeof(e->xAX),
-                                sizeof(e->xDX));
+    MC_(copy_address_range_state)((Addr)(&(e->xDX)),
+                                  (Addr)(&signedLong) + (Addr)sizeof(e->xAX),
+                                  sizeof(e->xDX));
 
     visitVariable(cur_node->var,
                   (Addr)&signedLong,

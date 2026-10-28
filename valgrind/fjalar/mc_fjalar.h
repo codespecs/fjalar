@@ -43,8 +43,6 @@ mc_include.h.
 
 void set_abit_and_vbyte ( Addr a, UWord abit, UWord vbyte );
 
-void mc_copy_address_range_state ( Addr src, Addr dst, SizeT len );
-void mc_make_noaccess ( Addr a, SizeT len );
 // Copies the A and V bits and the DynComp tag of the pointer-sized
 // guest register at guestOffset in thread tid's guest state to the
 // sizeof(Addr) bytes of memory at dst.

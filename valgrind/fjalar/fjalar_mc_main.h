@@ -83,16 +83,6 @@ char mc_are_some_bytes_initialized(Addr a, SizeT len) {
   return 0;
  }
 
-void mc_copy_address_range_state ( Addr src, Addr dst, SizeT len )
-{
-  MC_(copy_address_range_state) ( src, dst, len );
-}
-
-void mc_make_noaccess ( Addr a, SizeT len )
-{
-  MC_(make_mem_noaccess) ( a, len );
-}
-
 // Marks the bytes at dst addressable, gives each one the V bits of the
 // corresponding byte of the register, and gives all of them the
 // register's DynComp tag.
