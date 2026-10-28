@@ -4061,8 +4061,7 @@ Bool begin_instrument_DC ( DCEnv* dce, VgCallbackClosure* closure,
    }
    DYNCOMP_DPRINTF("objname: %s soname: %s\n\n", objname, soname);
 
-   if (!kvasir_with_dyncomp
-       || VG_(strcmp)(soname, VG_U_LD_LINUX_X86_64_SO_2) == 0
+   if (VG_(strcmp)(soname, VG_U_LD_LINUX_X86_64_SO_2) == 0
        || VG_(strcmp)(soname, VG_U_LD_LINUX_SO_2) == 0)
       return False;
 
