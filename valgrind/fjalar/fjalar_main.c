@@ -1122,7 +1122,7 @@ void exit_function(FunctionEntry* f)
 static void fjalar_pre_thread_ll_exit(ThreadId tid)
 {
   while (fn_stack_first_free_index[tid] > 0) {
-    free_virtual_stack(fnStackPop(tid));
+    pop_frame(tid);
   }
 }
 
