@@ -790,6 +790,25 @@ Int dwarf_reg_guest_offset(UInt regNum);
 // dwarf_reg_is_readable in fjalar_dwarf.h).
 Addr read_dwarf_reg(ThreadId tid, UInt regNum);
 
+// Return the current value of a register of thread tid.  xAX is %rax
+// on amd64 and %eax on x86, and so on.
+Addr read_xAX(ThreadId tid);
+Addr read_xDX(ThreadId tid);
+// Return the V bits of a register of thread tid.
+UWord read_shadow_xAX(ThreadId tid);
+UWord read_shadow_xDX(ThreadId tid);
+// Return the DynComp tag of the low byte of a register of thread tid.
+UInt read_xAX_tag(ThreadId tid);
+UInt read_xDX_tag(ThreadId tid);
+
+// Return the floating-point return value of a function that has just
+// returned in thread tid (the low 64 bits of %xmm0 on amd64, and the
+// top of the x87 FPU stack on x86), its V bits, and the DynComp tag of
+// its low byte.
+double read_float_return(ThreadId tid);
+ULong read_shadow_float_return(ThreadId tid);
+UInt read_float_return_tag(ThreadId tid);
+
 // Returns the name of the register with the given DWARF register
 // number, for debugging output (defined in dwarf.c).
 const HChar* dwarf_reg_name(UInt regNum);
