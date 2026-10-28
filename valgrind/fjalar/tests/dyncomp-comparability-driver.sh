@@ -48,8 +48,13 @@ trap 'rm -rf "${output_dir}"' EXIT
 
 # Fjalar does not read DWARF 5, and it recognizes a function's entry point
 # only at the address in the debugging information, so the executable must not
-# be position-independent.
-gcc -gdwarf-4 -no-pie -O0 -o "${output_dir}/${program}" \
+# be position-independent.  -mno-red-zone keeps a leaf function's formal
+# parameters out of the red zone below the stack pointer:  at function
+# entrance, Fjalar clears the tags of part of the red zone, and the part can
+# include a formal parameter whose location is relative to the stack pointer.
+# (A compiler that does not enable -fstack-protector by default, such as GCC on
+# Rocky Linux 10, puts a leaf function's locals in the red zone.)
+gcc -gdwarf-4 -no-pie -O0 -mno-red-zone -o "${output_dir}/${program}" \
     "${test_dir}/${program}.c"
 
 # Fjalar disables chasing, so each superblock ends at a jump and VEX cannot
