@@ -3961,13 +3961,17 @@ Bool begin_instrument_DC ( DCEnv* dce, VgCallbackClosure* closure,
    static Bool first_time = True;
    static const HChar* loader_name = "GaRbAgE";
    Bool do_dyncomp = False;
-   const DiEpoch cur_ep = VG_(current_DiEpoch)();
    Int i;
+
+   if (!kvasir_with_dyncomp)
+      return False;
+
+   const DiEpoch cur_ep = VG_(current_DiEpoch)();
 
    if (dyncomp_print_debug_info) {
       const HChar *fnname;
       // Describe this (probably live) address with current epoch
-      Bool ok = VG_(get_fnname)(VG_(current_DiEpoch)(), closure->readdr, &fnname);
+      Bool ok = VG_(get_fnname)(cur_ep, closure->readdr, &fnname);
 
       if (!ok) fnname = "UNKNOWN_FUNCTION";
       if (closure->nraddr != closure->readdr) {
@@ -3991,7 +3995,7 @@ Bool begin_instrument_DC ( DCEnv* dce, VgCallbackClosure* closure,
       DYNCOMP_DPRINTF("objname: %s\n\n", objname);
       // if its not part of the loader, go ahead and process
       if (VG_(strcmp)(objname, loader_name)) {
-         do_dyncomp = kvasir_with_dyncomp;
+         do_dyncomp = True;
       }
    }
 
