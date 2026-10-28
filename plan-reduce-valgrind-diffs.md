@@ -27,8 +27,8 @@ unneeded changes to the Memcheck copies), #192 (Step 5, a single switch
 for each disabled part of Memcheck), #193 (Step 6a, `mc_include.h`), #194
 (Step 6b, Fjalar's functions in `mc_main.c`), #197 (Step 6d, DynComp in
 `MC_(instrument)`), #195 (Step 7a, the guest-layout fields and
-`VEX_N_FXSTATE`), and #196 (Step 7b, the register accessors).  So did PR
-# 181, which restored upstream's `AC_INIT` version string.
+`VEX_N_FXSTATE`), and #196 (Step 7b, the register accessors).  So did
+PR #181, which restored upstream's `AC_INIT` version string.
 
 | Step | Pull request | State |
 | --- | --- | --- |
