@@ -992,7 +992,8 @@ void exit_function(FunctionEntry* f)
   int i;
   ULong FPUshadow;
   double fpuReturnVal;
-  Addr xAX, xDX, xAXshadow, xDXshadow;
+  Addr xAX, xDX;
+  UWord xAXshadow, xDXshadow;
 
   FJALAR_DPRINTF("Exit function: %s\n", f->fjalar_name);
 
@@ -1083,7 +1084,7 @@ void exit_function(FunctionEntry* f)
   top->FPU = fpuReturnVal;
 
   // Very important!  Set the A and V bits of the appropriate
-  // FunctionExecutionState object from the (x86) guest state:
+  // FunctionExecutionState object from the guest state:
   mc_set_addressable_vbytes((Addr)(&top->xAX), xAXshadow, sizeof(top->xAX));
   mc_set_addressable_vbytes((Addr)(&top->xDX), xDXshadow, sizeof(top->xDX));
   mc_set_addressable_vbytes((Addr)(&top->FPU), FPUshadow, sizeof(top->FPU));

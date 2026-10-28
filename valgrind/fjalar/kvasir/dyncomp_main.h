@@ -199,6 +199,15 @@ static __inline__ UInt get_tag ( Addr a )
 }
 #endif
 
+// Set the tag of all bytes in range [a, a + len) to tag
+static __inline__ void set_tag_in_range( Addr a, SizeT len, UInt tag ) {
+  Addr curAddr;
+
+  for (curAddr = a; curAddr < (a+len); curAddr++) {
+    set_tag(curAddr, tag);
+  }
+}
+
 // Clear all tags for all bytes in range [a, a + len)
 static __inline__ void clear_all_tags_in_range( Addr a, SizeT len ) {
   Addr curAddr;

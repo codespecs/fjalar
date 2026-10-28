@@ -24,7 +24,7 @@ compiled on its own.  No other file may include it, because it defines
 functions.
 
 This file relies on mc_main.c's #includes and definitions, such as DEBUG,
-kvasir_with_dyncomp, and set_tag.  It includes only the headers that
+kvasir_with_dyncomp, and set_tag_in_range.  It includes only the headers that
 mc_main.c needs for this file's functions and for nothing else.
 
 */
@@ -34,13 +34,13 @@ mc_main.c needs for this file's functions and for nothing else.
 
 void mc_set_addressable_vbytes ( Addr a, ULong vbits, SizeT len )
 {
-  SizeT i;
-  tl_assert(len <= sizeof(vbits));
-  for (i = 0; i < len; i++) {
-    // set_vbits8 does nothing to a byte that is not addressable.
-    set_vabits2(a + i, VA_BITS2_UNDEFINED);
-    set_vbits8(a + i, vbits >> (i * 8));
-  }
+  // mc_STOREVn_slow reports an error for a byte that is not addressable.
+  make_mem_undefined(a, len);
+#if defined(VG_BIGENDIAN)
+  mc_STOREVn_slow(a, len * 8, vbits, True);
+#else
+  mc_STOREVn_slow(a, len * 8, vbits, False);
+#endif
 }
 
 Bool mc_check_writable (Addr a, SizeT len, Addr* bad_addr) {
@@ -86,9 +86,6 @@ void mc_copy_guest_reg_state ( ThreadId tid, Int guestOffset, Addr dst )
   if (kvasir_with_dyncomp) {
     // DynComp keeps one tag per register, at the register's offset.
     UInt tag = *VG_(get_tag_ptr_for_guest_offset)(tid, guestOffset);
-    SizeT b;
-    for (b = 0; b < sizeof(Addr); b++) {
-      set_tag(dst + b, tag);
-    }
+    set_tag_in_range(dst, sizeof(Addr), tag);
   }
 }
