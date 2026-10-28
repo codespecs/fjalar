@@ -960,17 +960,15 @@ static void pop_frame(ThreadId tid)
 {
   FunctionExecutionState* state = fnStackPop(tid);
 
-  if (state->virtualStack) {
-    /* The V bits of the virtual stack hold the guest's V bits, but
-       Memcheck doesn't normally expect VG_(malloc)'ed memory to be
-       client accessible, so we have to make it inaccessible again
-       before allowing Valgrind's malloc to use it, lest assertions
-       fail later. */
-    MC_(make_mem_noaccess)((Addr)state->virtualStack, state->allocByteSize);
-    VG_(free)(state->virtualStack);
-    state->virtualStack = NULL;
-    state->entryRegs = NULL;
-  }
+  /* The V bits of the virtual stack hold the guest's V bits, but
+     Memcheck doesn't normally expect VG_(malloc)'ed memory to be
+     client accessible, so we have to make it inaccessible again
+     before allowing Valgrind's malloc to use it, lest assertions
+     fail later. */
+  MC_(make_mem_noaccess)((Addr)state->virtualStack, state->allocByteSize);
+  VG_(free)(state->virtualStack);
+  state->virtualStack = NULL;
+  state->entryRegs = NULL;
 }
 
 /*
@@ -1016,15 +1014,15 @@ void exit_function(FunctionEntry* f)
 
   FJALAR_DPRINTF("Value of eax: %lx, edx: %lx\n",xAX, xDX);
 
+  top = fnStackTop(currentTID);
   // Do nothing if the function stack is empty.
-  if (fn_stack_first_free_index[currentTID] == 0) {
+  if (!top) {
     printf("More exit_function()s than entry_function()s!\n");
     // RUDD EXCEPTION
     VG_(get_and_pp_StackTrace) (currentTID, 15);
     return;
   }
 
-  top = fnStackTop(currentTID);
   if (!(top->func->fjalar_name) || (top->func != f)) {
     // There are a couple reasons why the function at the top
     // of the Function Execution State Stack would not be the
@@ -1105,25 +1103,39 @@ void exit_function(FunctionEntry* f)
   // Pop, and destroy the memory allocated by virtualStack, at the VERY
   // end after the tool is done handling the exit.
   // This is subtle but important - this must be done AFTER the tool
-  // runs all of it's function exit code, as functions in fjalar_traversal
+  // runs all of its function exit code, as functions in fjalar_traversal
   // and fjalar_runtime may make use of the function stack. If we fail to
   // pop the function, however, the stack will be left in an inconsistent
-  // state and the "!top->func == f" check will fail causing no more
+  // state and the "top->func != f" check will fail causing no more
   // program points to be printed.
   pop_frame(currentTID);
 
 }
 
-// Pops and frees every frame of thread tid, which is exiting.  The
-// frames of a thread that exits from inside instrumented functions,
-// such as by calling pthread_exit, never reach exit_function.  Popping
-// them also empties the function stack for the next thread that gets
-// the same ThreadId.
-static void fjalar_pre_thread_ll_exit(ThreadId tid)
+// Pops and frees every frame of thread tid.
+static void pop_all_frames(ThreadId tid)
 {
   while (fn_stack_first_free_index[tid] > 0) {
     pop_frame(tid);
   }
+}
+
+// Pops and frees every frame of thread tid, which is exiting.  The
+// frames of a thread that exits from inside instrumented functions,
+// such as by calling pthread_exit, never reach exit_function.
+static void fjalar_pre_thread_ll_exit(ThreadId tid)
+{
+  pop_all_frames(tid);
+}
+
+// Pops and frees every frame of thread child, which is being created,
+// so that it does not inherit the frames of an earlier thread that had
+// the same ThreadId.  Such frames remain when Valgrind empties a thread
+// slot without calling the pre_thread_ll_exit callback, as it does for
+// all but the calling thread in the child process of a fork.
+static void fjalar_pre_thread_ll_create(ThreadId parent, ThreadId child)
+{
+  pop_all_frames(child);
 }
 
 
@@ -1237,6 +1249,7 @@ void fjalar_pre_clo_init()
   VG_(memset)(fn_stack_first_free_index, 0, VG_N_THREADS * sizeof fn_stack_first_free_index[0]);
   VG_(memset)(FunctionExecutionStateStack, 0, VG_N_THREADS * FN_STACK_SIZE * sizeof FunctionExecutionStateStack[0][0]);
 
+  VG_(track_pre_thread_ll_create)(fjalar_pre_thread_ll_create);
   VG_(track_pre_thread_ll_exit)(fjalar_pre_thread_ll_exit);
 
   // (comment added 2005)
