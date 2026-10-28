@@ -58,22 +58,24 @@ TEMP-daikon-test: ../daikon
 ../daikon:
 	cd .. && git clone https://github.com/codespecs/daikon.git
 
-# Removing config.guess and config.sub makes the next build get fresh ones.
-# Removing Makefile.in makes the next build regenerate it from Makefile.am.
+# Files that autogen.sh ("automake -a") creates in valgrind/, and that
+# Valgrind's own clean targets do not remove.  "make build" recreates them
+# (fresh copies of config.guess and config.sub, and Makefile.in regenerated
+# from Makefile.am); a plain make in valgrind/ does not.
+AUTOGEN_FILES := valgrind/config.guess valgrind/config.sub valgrind/Makefile.in
+
 clean:
 	cd valgrind && $(MAKE) clean
-	rm -f valgrind/config.guess valgrind/config.sub valgrind/Makefile.in
+	rm -f $(AUTOGEN_FILES)
 
 very-clean:
 	cd valgrind && $(MAKE) uninstall
 	cd valgrind && $(MAKE) distclean
-	# See the comment above "clean:".
-	rm -f valgrind/config.guess valgrind/config.sub
+	rm -f $(AUTOGEN_FILES)
 	rm -rf valgrind/config.h.in
 	rm -rf valgrind/aclocal.m4
 	rm -rf valgrind/configure
 	rm -rf valgrind/autom4te.cache
-	rm -rf valgrind/Makefile.in
 	rm -rf valgrind/Makefile.vex.in
 
 .PHONY: doc

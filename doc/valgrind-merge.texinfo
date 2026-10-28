@@ -1538,6 +1538,8 @@ Add additional general purpose registers to the guest state
 Add function name to debug dump of call instruction
 @item $INV/fjalar/valgrind/VEX/priv/host_generic_reg_alloc2.c
 Modify memory calculation using the shadow size
+@item $INV/fjalar/valgrind/VEX/priv/host_generic_reg_alloc3.c
+Modify memory calculation using the shadow size
 @item $INV/fjalar/valgrind/VEX/pub/libvex.h
 Add additional general purpose registers to the guest state
 @item $INV/fjalar/valgrind/VEX/pub/libvex_ir.h

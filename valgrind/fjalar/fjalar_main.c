@@ -1194,6 +1194,9 @@ void fjalar_pre_clo_init()
   // that sets no name would be "Memcheck", which Valgrind's core treats
   // specially.
   VG_(details_name)            ("fjalar");
+  /* This next line is automatically updated by the toplevel Daikon
+     distribution Makefile; be careful with its formatting -SMcC */
+  VG_(details_version)         ("5.9.1");
   VG_(details_description)     ("a tool built upon Fjalar");
   VG_(details_copyright_author)(
      "Copyright (C) 2007-2026, University of Washington CSE PLSE Group");

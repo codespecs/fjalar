@@ -230,8 +230,9 @@ Memcheck and DynComp depend tightly on Valgrind core:
      applied, not applicable, or ported to DynComp (step 7).
    - Check that `mc_pre_clo_init` in `mc_main.c` still sets upstream
      Memcheck's details (name, version, and so on), unchanged.  Fjalar's
-     defaults are set in `fjalar_pre_clo_init` in `fjalar_main.c`, and
-     Kvasir's details, including its version, in `kvasir/kvasir_main.c`.
+     defaults, including the version that Kvasir reports, are set in
+     `fjalar_pre_clo_init` in `fjalar_main.c`, and Kvasir's other details
+     in `kvasir/kvasir_main.c`.
    - Check that `mc_main.c` still has `#include "fjalar_mc_main.h"`, after
      the definitions of the static functions that `fjalar_mc_main.h` calls
      (see "Memcheck modifications" in `doc/valgrind-merge.texinfo`).

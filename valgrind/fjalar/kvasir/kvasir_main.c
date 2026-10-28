@@ -526,9 +526,6 @@ void fjalar_tool_pre_clo_init(void)
 {
   // These override the defaults that fjalar_pre_clo_init sets.
   VG_(details_name)            ("kvasir");
-  /* This next line is automatically updated by the toplevel Daikon
-     distribution Makefile; be careful with its formatting -SMcC */
-  VG_(details_version)         ("5.9.1");
   VG_(details_description)     ("C/C++ Language Front-End for Daikon with DynComp comparability analysis tool.");
 
   VG_(track_start_client_code)(dyncomp_gc_at_safe_point);
