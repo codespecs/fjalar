@@ -365,7 +365,8 @@ Memcheck files that Fjalar's copy of Memcheck, in @file{valgrind/fjalar},
 has but that the base Valgrind release does not have.  These are the files
 in @file{valgrind/fjalar} whose names start with @file{mc_} or
 @file{memcheck}; the other files there are Fjalar's own.
-Fjalar created some of them, such as @file{mc_translate.h}; keep those.
+Fjalar created some of them, such as @file{mc_fjalar.h} and
+@file{mc_translate.h}; keep those.
 Remove the others with @command{git rm}.
 
 @item
@@ -1550,7 +1551,13 @@ Other modifications include:
 @table @asis
 @item $INV/fjalar/valgrind/fjalar/mc_main.c
 Run-time arguments and versioning information for Kvasir to replace
-the default Memcheck ones
+the default Memcheck ones.  Also, an @code{#include} of
+@file{fjalar_mc_main.h}, which defines the functions that Fjalar adds to
+Memcheck (@file{mc_fjalar.h} declares them).  Those functions call
+static functions of @file{mc_main.c}, such as @code{set_vabits2},
+@code{set_sec_vbits8}, @code{get_vabits2},
+@code{is_mem_defined}, and @code{is_mem_addressable}, so the
+@code{#include} must follow the definitions of those functions.
 @item $INV/fjalar/valgrind/fjalar/mc_translate.c
 In Memcheck's instrumentation block, duplicate each case for DynComp.
 @end table
