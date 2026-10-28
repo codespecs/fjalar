@@ -40,6 +40,7 @@
 #include "pub_tool_replacemalloc.h"
 #include "pub_tool_stacktrace.h"
 #include "pub_tool_clientstate.h"
+#include "pub_tool_tooliface.h"
 
 #include "generate_fjalar_entries.h"
 #include "fjalar_main.h"
@@ -1084,15 +1085,12 @@ void exit_function(FunctionEntry* f)
   // FunctionExecutionState object and the tags from the (x86) guest
   // state as well:
   for (i = 0; i < sizeof(Addr); i++) {
-    set_abit_and_vbyte((Addr)(&top->xAX) + (Addr)i, VGM_BIT_VALID,
-                      (xAXshadow >> (i * 8)) & 0xff);
-    set_abit_and_vbyte((Addr)(&top->xDX) + (Addr)i, VGM_BIT_VALID,
-                      (xDXshadow >> (i * 8)) & 0xff);
+    mc_set_addressable_vbyte((Addr)(&top->xAX) + (Addr)i, xAXshadow >> (i * 8));
+    mc_set_addressable_vbyte((Addr)(&top->xDX) + (Addr)i, xDXshadow >> (i * 8));
   }
 
   for (i = 0; i < 8; i++) {
-    set_abit_and_vbyte((Addr)(&top->FPU) + (Addr)i, VGM_BIT_VALID,
-                       (FPUshadow >> (i * 8)) & 0xff);
+    mc_set_addressable_vbyte((Addr)(&top->FPU) + (Addr)i, FPUshadow >> (i * 8));
   }
 
   curFunctionExecutionStatePtr = top;
@@ -1257,7 +1255,20 @@ void fjalar_pre_clo_init()
   // command-line options?  We don't need to as long as this function
   // is only run once at the beginning of program execution.
 
-  // Make sure to execute this last!
+  // Defaults for every Fjalar tool.  They override the details that
+  // mc_pre_clo_init sets, which are Memcheck's.  Without them, a tool
+  // that sets no name would be "Memcheck", which Valgrind's core treats
+  // specially.
+  VG_(details_name)            ("fjalar");
+  /* This next line is automatically updated by the toplevel Daikon
+     distribution Makefile; be careful with its formatting -SMcC */
+  VG_(details_version)         ("5.9.1");
+  VG_(details_description)     ("a tool built upon Fjalar");
+  VG_(details_copyright_author)(
+     "Copyright (C) 2007-2026, University of Washington CSE PLSE Group");
+  VG_(details_bug_reports_to)  ("daikon-developers@googlegroups.com");
+
+  // Make sure to execute this last!  It may override the details above.
   fjalar_tool_pre_clo_init();
 }
 

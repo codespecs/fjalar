@@ -26,6 +26,7 @@
 
 #include "../fjalar_tool.h"
 #include "../fjalar_include.h"
+#include "../fjalar_core_decls.h"  // VG_(fcntl)
 
 #include "pub_tool_libcfile.h"
 #include "pub_tool_libcproc.h"
@@ -120,7 +121,6 @@ static void createDeclsAndDtraceFiles(const HChar* appname)
   char* filename = 0;
   char* newpath_decls = 0;
   char* newpath_dtrace;
-  SysRes res;
 
   // Free VisitedStructsTable if it has been allocated
   if (VisitedStructsTable)
@@ -186,10 +186,9 @@ static void createDeclsAndDtraceFiles(const HChar* appname)
   }
 
   // Step 2: Make the daikon-output/ directory
-  res = VG_(mkdir)(decls_folder, 0777); // more abbreviated UNIX form
-  if (sr_isError(res) && sr_Err(res) != VKI_EEXIST)
+  if (mkdir(decls_folder, 0777) == -1 && errno != VKI_EEXIST)
     printf( "Couldn't create %s: %s\n", decls_folder,
-		 my_strerror(sr_Err(res)));
+		 my_strerror(errno));
 
   // ASSUME mkdir succeeded! (or that the directory already exists)
 
@@ -524,6 +523,10 @@ static void finishDtraceFile(void)
 
 void fjalar_tool_pre_clo_init(void)
 {
+  // These override the defaults that fjalar_pre_clo_init sets.
+  VG_(details_name)            ("kvasir");
+  VG_(details_description)     ("C/C++ Language Front-End for Daikon with DynComp comparability analysis tool.");
+
   VG_(track_start_client_code)(dyncomp_gc_at_safe_point);
 }
 

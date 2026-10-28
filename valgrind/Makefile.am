@@ -138,9 +138,6 @@ all-local: default.supp include/vgversion.h
 
 clean-local:
 	rm -rf $(inplacedir) include/vgversion.h
-	rm -f config.guess
-	rm -f config.sub
-	rm -f Makefile.in
 
 # Need config.h in the installed tree, since some files depend on it
 pkginclude_HEADERS = config.h

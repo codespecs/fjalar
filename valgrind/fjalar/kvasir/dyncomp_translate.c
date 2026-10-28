@@ -32,6 +32,7 @@
 
 #include "mc_fjalar.h"
 #include "pub_tool_debuginfo.h"
+#include "pub_tool_redir.h"
 #include "kvasir_main.h"
 #include "dyncomp_translate.h"
 #include "dyncomp_main.h"
@@ -42,7 +43,7 @@
 extern char dyncomp_profile_tags;
 static
 IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
-                            Int slot );
+                            Int slot, IRAtom* guard );
 static
 IRExpr* tmpDefinition_DC ( DCEnv* dce, IRTemp tmp );
 
@@ -3124,11 +3125,12 @@ Bool loadIsInteraction_DC ( void )
             || dyncomp_units_mode);
 }
 
-/* Worker function; do not call directly.  slot is as for
-   expr2tags_LDle_DC, and must be negative if a load is an interaction. */
+/* Worker function; do not call directly.  slot and guard are as for
+   expr2tags_LDle_DC, and slot must be negative if a load is an
+   interaction. */
 static
 IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
-                                Int slot )
+                                Int slot, IRAtom* guard )
 {
    void*    helper;
    const HChar* hname;
@@ -3181,6 +3183,9 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
    di = unsafeIRDirty_1_N( datatag,
                            regparms, hname, helper, args );
    setHelperAnns_DC( dce, di );
+   if (guard) {
+      di->guard = guard;
+   }
    stmt_DC('V',  dce, IRStmt_Dirty(di) );
 
    return mkexpr(datatag);
@@ -3188,12 +3193,14 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
 
 // Returns the tag of a load of type ty from addr+bias.  If slot is
 // non-negative, the load also saves the tags of the bytes it reads in
-// that slot of MC_(helperc_LOAD_TAG_N); see expr2tags_WrTmp_DC.
+// that slot of MC_(helperc_LOAD_TAG_N); see expr2tags_WrTmp_DC.  If
+// guard is non-NULL, the load happens only if guard is true; if guard
+// is false, the result is not a tag, and the caller must not use it.
 // For Ity_V256, if a load is an interaction, only the low 16 bytes are
 // read, so the tag ignores the upper 16 bytes.
 static
 IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
-                            Int slot )
+                            Int slot, IRAtom* guard )
 {
    IRAtom *v64hi, *v64lo;
    //   IRDirty* di;
@@ -3210,7 +3217,7 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
    // If a load is not an interaction, a load of any size does not merge
    // the tags of the bytes it reads.
    if (!loadIsInteraction_DC()) {
-      return expr2tags_LDle_WRK_DC(dce, ty, addr, bias, slot);
+      return expr2tags_LDle_WRK_DC(dce, ty, addr, bias, slot, guard);
    }
    tl_assert(slot < 0);
 
@@ -3219,12 +3226,22 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
       case Ity_I16:
       case Ity_I32:
       case Ity_I64:
-         return expr2tags_LDle_WRK_DC(dce, ty, addr, bias, -1);
+         return expr2tags_LDle_WRK_DC(dce, ty, addr, bias, -1, guard);
       case Ity_I128:
       case Ity_V128:
       case Ity_V256:  // not right, should do 4 times?
-         v64lo = expr2tags_LDle_WRK_DC(dce, Ity_I64, addr, bias, -1);
-         v64hi = expr2tags_LDle_WRK_DC(dce, Ity_I64, addr, bias+8, -1);
+         v64lo = expr2tags_LDle_WRK_DC(dce, Ity_I64, addr, bias, -1, guard);
+         v64hi = expr2tags_LDle_WRK_DC(dce, Ity_I64, addr, bias+8, -1, guard);
+         if (guard) {
+            // If the guard is false, the helpers are not called, and
+            // v64lo and v64hi are not tags, so they must not be merged.
+            v64lo = assignNew_DC(dce, Ity_Word,
+                                 IRExpr_ITE(guard, v64lo,
+                                            IRExpr_Const(IRConst_UWord(0))));
+            v64hi = assignNew_DC(dce, Ity_Word,
+                                 IRExpr_ITE(guard, v64hi,
+                                            IRExpr_Const(IRConst_UWord(0))));
+         }
 
          // Merge the tags of the results of the
          // lower and upper 64-bit loads:
@@ -3396,7 +3413,7 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
       case Iex_Load:
          return expr2tags_LDle_DC( dce, e->Iex.Load.ty,
                                       e->Iex.Load.addr, 0/*addr bias*/,
-                                      -1/*no snapshot*/ );
+                                      -1/*no snapshot*/, NULL/*unguarded*/ );
 
       case Iex_CCall:
          return handleCCall_DC( dce,
@@ -3437,7 +3454,8 @@ IRExpr* expr2tags_WrTmp_DC ( DCEnv* dce, IRTemp tmp, IRExpr* data )
       slot = dce->n_loadTagSnapshots++;
       dce->loadTagSnapshots[tmp] = slot;
       return expr2tags_LDle_DC( dce, data->Iex.Load.ty,
-                                data->Iex.Load.addr, 0/*addr bias*/, slot );
+                                data->Iex.Load.addr, 0/*addr bias*/, slot,
+                                NULL/*unguarded*/ );
    }
    return expr2tags_DC( dce, data );
 }
@@ -3445,9 +3463,11 @@ IRExpr* expr2tags_WrTmp_DC ( DCEnv* dce, IRTemp tmp, IRExpr* data )
 /* PG says we might need to resync this with Memcheck's
    do_shadow_Store().  The only problem I know about is fixing an
    endianness assumption in the 128-bit case. -SMcC */
+/* If guard is non-NULL, the store happens only if guard is true. */
 void do_shadow_STle_DC ( DCEnv* dce,
                       IRAtom* addr,
-                      IRAtom* data )
+                      IRAtom* data,
+                      IRAtom* guard )
 {
    IROp     mkAdd;
    IRType   ty, tyAddr;
@@ -3515,6 +3535,9 @@ void do_shadow_STle_DC ( DCEnv* dce,
                              mkIRExpr_HWord(sizeofIRType(ty)),
                              mkIRExpr_HWord(dce->loadTagSnapshots[data->Iex.RdTmp.tmp]) ));
       setHelperAnns_DC( dce, di );
+      if (guard) {
+         di->guard = guard;
+      }
       stmt_DC('V',  dce, IRStmt_Dirty(di) );
       return;
    }
@@ -3559,6 +3582,10 @@ void do_shadow_STle_DC ( DCEnv* dce,
 
       setHelperAnns_DC( dce, diLo64 );
       setHelperAnns_DC( dce, diHi64 );
+      if (guard) {
+         diLo64->guard = guard;
+         diHi64->guard = guard;
+      }
       stmt_DC('V',  dce, IRStmt_Dirty(diLo64) );
       stmt_DC('V',  dce, IRStmt_Dirty(diHi64) );
 
@@ -3581,6 +3608,9 @@ void do_shadow_STle_DC ( DCEnv* dce,
       }
 
       setHelperAnns_DC( dce, di );
+      if (guard) {
+         di->guard = guard;
+      }
       stmt_DC('V',  dce, IRStmt_Dirty(di) );
    }
 
@@ -3662,7 +3692,7 @@ static void do_shadow_CAS_single_DC ( DCEnv* dce, IRCAS* cas ) {
    voldLo
      = assignNew_DC(dce, elemTy,
                     expr2tags_LDle_DC(dce,elemTy, cas->addr, 0/*Addr bias*/,
-                                      -1/*no snapshot*/));
+                                      -1/*no snapshot*/, NULL/*unguarded*/));
 
    orig = mkexpr(cas->oldLo);
 
@@ -3835,12 +3865,12 @@ static void do_shadow_CAS_double_DC ( DCEnv* dce, IRCAS* cas )
       = assignNew_DC(
            dce, elemTy,
            expr2tags_LDle_DC(dce, elemTy, cas->addr, memOffsHi/*Addr bias*/,
-                             -1/*no snapshot*/ ));
+                             -1/*no snapshot*/, NULL/*unguarded*/ ));
    voldLo
       = assignNew_DC(
            dce, elemTy,
            expr2tags_LDle_DC(dce, elemTy, cas->addr, memOffsLo/*Addr bias*/,
-                             -1/*no snapshot*/));
+                             -1/*no snapshot*/, NULL/*unguarded*/));
 
    origLo = mkexpr(cas->oldLo);
    origHi = mkexpr(cas->oldHi);
@@ -3948,26 +3978,74 @@ void do_shadow_CAS_DC ( DCEnv* dce, IRCAS* cas) {
 
 }
 
+// Stores the tag of sg->data if sg->guard is true.
+static void do_shadow_StoreG_DC ( DCEnv* dce, IRStoreG* sg )
+{
+   tl_assert(sg->end == Iend_LE);
+   // Anchor the tag of the guard, to preserve the tag merges in the
+   // expression that produced it.
+   anchorAtomTag_DC(dce, sg->guard);
+   do_shadow_STle_DC(dce, sg->addr, sg->data, sg->guard);
+}
+
+// The tag of lg->dst is the tag of the loaded value if lg->guard is
+// true, and the tag of lg->alt otherwise.  Each conversion that
+// lg->cvt can name, such as ILGop_8Uto32, keeps the tag of its operand.
+// A constant lg->alt, such as the zero that VEX supplies for a lane
+// that vmaskmovps does not load, has tag 0:  VEX synthesizes it, so it
+// is not a program literal, and a fresh tag for it would be discarded
+// whenever the guard is true.
+static void do_shadow_LoadG_DC ( DCEnv* dce, IRLoadG* lg )
+{
+   IRType  tyRes, tyLoaded;
+   IRAtom* loaded;
+   IRAtom* alt;
+
+   tl_assert(lg->end == Iend_LE);
+   typeOfIRLoadGOp(lg->cvt, &tyRes, &tyLoaded);
+   // Anchor the tag of the guard, to preserve the tag merges in the
+   // expression that produced it.
+   anchorAtomTag_DC(dce, lg->guard);
+   // expr2tags_LDle_DC may return a clean call, but an operand of
+   // IRExpr_ITE must be an atom.
+   loaded = assignNew_DC(dce, Ity_Word,
+                         expr2tags_LDle_DC(dce, tyLoaded, lg->addr,
+                                           0/*addr bias*/, -1/*no snapshot*/,
+                                           lg->guard));
+   if (lg->alt->tag == Iex_Const) {
+      alt = IRExpr_Const(IRConst_UWord(0));
+   } else {
+      alt = expr2tags_DC(dce, lg->alt);
+   }
+   assign_DC('V', dce, findShadowTmp_DC(dce, lg->dst),
+             IRExpr_ITE(lg->guard, loaded, alt));
+}
+
 /* Called by MC_(instrument), before it instruments any statement of
    sb_in.  Returns True if DynComp instruments sb_in, and in that case
    initializes dce, with mce as Memcheck's environment; DynComp adds its
    statements to the same block as Memcheck, mce->sb.  DynComp does not
-   instrument the blocks of the dynamic loader:  with libc-2.21 and
-   ld-2.21, doing so put large sections of libc data, and with them
-   unrelated user variables, into the same comparability set. */
+   instrument the blocks of the dynamic loader, which it recognizes by its
+   soname:  with libc-2.21 and ld-2.21, doing so put large sections of
+   libc data, and with them unrelated user variables, into the same
+   comparability set. */
 Bool begin_instrument_DC ( DCEnv* dce, VgCallbackClosure* closure,
                            const IRSB* sb_in, MCEnv* mce )
 {
-   static Bool first_time = True;
-   static const HChar* loader_name = "GaRbAgE";
-   Bool do_dyncomp = False;
-   const DiEpoch cur_ep = VG_(current_DiEpoch)();
+   const HChar* objname = "UNKNOWN_OBJECT";
+   const HChar* soname = "NONE";
+   DebugInfo* di;
    Int i;
+
+   if (!kvasir_with_dyncomp)
+      return False;
+
+   const DiEpoch cur_ep = VG_(current_DiEpoch)();
 
    if (dyncomp_print_debug_info) {
       const HChar *fnname;
       // Describe this (probably live) address with current epoch
-      Bool ok = VG_(get_fnname)(VG_(current_DiEpoch)(), closure->readdr, &fnname);
+      Bool ok = VG_(get_fnname)(cur_ep, closure->readdr, &fnname);
 
       if (!ok) fnname = "UNKNOWN_FUNCTION";
       if (closure->nraddr != closure->readdr) {
@@ -3976,26 +4054,15 @@ Bool begin_instrument_DC ( DCEnv* dce, VgCallbackClosure* closure,
       DYNCOMP_DPRINTF("address: %p fnname: %s\n", (void*)closure->readdr, fnname);
    }
 
-   if (first_time) {
-      DebugInfo* di = VG_(find_DebugInfo)(cur_ep, closure->readdr);
-      tl_assert(di);
-      loader_name = VG_(DebugInfo_get_filename)(di);
-      DYNCOMP_DPRINTF("loader_name: %s\n", loader_name);
-      first_time = False;
-   } else {
-      const HChar* objname = "UNKNOWN_OBJECT";
-      DebugInfo* di = VG_(find_DebugInfo)(cur_ep, closure->readdr);
-      if (di) {
-         objname = VG_(DebugInfo_get_filename)(di);
-      }
-      DYNCOMP_DPRINTF("objname: %s\n\n", objname);
-      // if its not part of the loader, go ahead and process
-      if (VG_(strcmp)(objname, loader_name)) {
-         do_dyncomp = kvasir_with_dyncomp;
-      }
+   di = VG_(find_DebugInfo)(cur_ep, closure->readdr);
+   if (di) {
+      objname = VG_(DebugInfo_get_filename)(di);
+      soname = VG_(DebugInfo_get_soname)(di);
    }
+   DYNCOMP_DPRINTF("objname: %s soname: %s\n\n", objname, soname);
 
-   if (!do_dyncomp)
+   if (VG_(strcmp)(soname, VG_U_LD_LINUX_X86_64_SO_2) == 0
+       || VG_(strcmp)(soname, VG_U_LD_LINUX_SO_2) == 0)
       return False;
 
    dce->mce = mce;
@@ -4060,7 +4127,8 @@ void instrument_stmt_DC ( DCEnv* dce, Int stmtIndex )
          break;
 
       case Ist_Store:
-         do_shadow_STle_DC( dce, st->Ist.Store.addr, st->Ist.Store.data);
+         do_shadow_STle_DC( dce, st->Ist.Store.addr, st->Ist.Store.data,
+                            NULL/*unguarded*/ );
          break;
 
       case Ist_Exit:
@@ -4084,17 +4152,17 @@ void instrument_stmt_DC ( DCEnv* dce, Int stmtIndex )
             not instrument a load-linked.  Only PPC, MIPS, and ARM,
             which Fjalar does not support, use Ist_LLSC. */
          if (st->Ist.LLSC.storedata) {
-            do_shadow_STle_DC( dce, st->Ist.LLSC.addr, st->Ist.LLSC.storedata);
+            do_shadow_STle_DC( dce, st->Ist.LLSC.addr, st->Ist.LLSC.storedata,
+                               NULL/*unguarded*/ );
          }
          break;
 
       case Ist_StoreG:
+         do_shadow_StoreG_DC( dce, st->Ist.StoreG.details );
+         break;
+
       case Ist_LoadG:
-         /* UNDONE:  DynComp does not instrument a guarded store or a
-            guarded load, though amd64 uses them (for example, for AVX
-            masked moves).  So a guarded store leaves the tags of the
-            memory it writes unchanged, and the result of a guarded load
-            has no tag. */
+         do_shadow_LoadG_DC( dce, st->Ist.LoadG.details );
          break;
 
       default:
@@ -4107,11 +4175,7 @@ void instrument_stmt_DC ( DCEnv* dce, Int stmtIndex )
 void end_instrument_DC ( DCEnv* dce )
 {
    VG_(free)( dce->tmpMap );
-
-   if (dce->loadTagSnapshots) {
-      VG_(free)( dce->loadTagSnapshots );
-   }
-
+   VG_(free)( dce->loadTagSnapshots );
    VG_(free)( dce->tmpCarriesFlags );
    VG_(free)( dce->tmpPendingCarryTags );
 }
