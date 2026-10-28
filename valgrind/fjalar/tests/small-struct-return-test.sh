@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Tests that Fjalar reports the fields of a returned struct.
+# Tests that Fjalar reports the fields of a returned struct, and reports a
+# field as uninitialized if any of its bytes is uninitialized.
 #
 # On amd64, a struct of at most 16 bytes is returned in RAX and RDX, and a
 # larger struct is returned in memory, at the address in RAX.

@@ -12,7 +12,8 @@
 */
 
 // A C program whose functions return structs, some small enough to be
-// returned in registers.  See small-struct-return-test.sh.
+// returned in registers, and some partly uninitialized.  See
+// small-struct-return-test.sh.
 
 struct one_int { int a; };
 struct two_ints { int a; int b; };
@@ -64,6 +65,41 @@ __attribute__((noinline)) long long return_long_long(void) {
   return -10;
 }
 
+// The field is uninitialized.
+__attribute__((noinline)) struct one_int return_one_int_uninitialized(void) {
+  struct one_int s;
+  return s;
+}
+
+// Field b, in the high 4 bytes of RAX, is uninitialized.
+__attribute__((noinline)) struct two_ints return_two_ints_b_uninitialized(void) {
+  struct two_ints s;
+  s.a = 11;
+  return s;
+}
+
+// Field b, in RDX, is uninitialized.
+__attribute__((noinline)) struct long_int return_long_int_b_uninitialized(void) {
+  struct long_int s;
+  s.a = 12;
+  return s;
+}
+
+// Field a, in RAX, is uninitialized.
+__attribute__((noinline)) struct two_longs return_two_longs_a_uninitialized(void) {
+  struct two_longs s;
+  s.b = 13;
+  return s;
+}
+
+// Field c is uninitialized.
+__attribute__((noinline)) struct three_longs return_three_longs_c_uninitialized(void) {
+  struct three_longs s;
+  s.a = 14;
+  s.b = 15;
+  return s;
+}
+
 int main(void) {
   long sum = return_one_int().a;
   sum += return_two_ints().b;
@@ -71,5 +107,10 @@ int main(void) {
   sum += return_two_longs().b;
   sum += return_three_longs().c;
   sum += return_long_long();
+  return_one_int_uninitialized();
+  sum += return_two_ints_b_uninitialized().a;
+  sum += return_long_int_b_uninitialized().a;
+  sum += return_two_longs_a_uninitialized().b;
+  sum += return_three_longs_c_uninitialized().b;
   return sum == 12345;
 }
