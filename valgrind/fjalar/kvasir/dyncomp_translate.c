@@ -4107,11 +4107,7 @@ void instrument_stmt_DC ( DCEnv* dce, Int stmtIndex )
 void end_instrument_DC ( DCEnv* dce )
 {
    VG_(free)( dce->tmpMap );
-
-   if (dce->loadTagSnapshots) {
-      VG_(free)( dce->loadTagSnapshots );
-   }
-
+   VG_(free)( dce->loadTagSnapshots );
    VG_(free)( dce->tmpCarriesFlags );
    VG_(free)( dce->tmpPendingCarryTags );
 }
