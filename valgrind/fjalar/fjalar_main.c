@@ -904,6 +904,20 @@ void enter_function(FunctionEntry* f)
   fjalar_tool_handle_function_entrance(newEntry);
 }
 
+// Frees the virtual stack of the given FunctionExecutionState.
+static void free_virtual_stack(FunctionExecutionState* state)
+{
+  if (state->virtualStack) {
+    /* The V bits of the virtual stack hold the guest's V bits, but
+       Memcheck doesn't normally expect VG_(malloc)'ed memory to be
+       client accessible, so we have to make it inaccessible again
+       before allowing Valgrind's malloc to use it, lest assertions
+       fail later. */
+    MC_(make_mem_noaccess)((Addr)state->virtualStack, state->allocByteSize);
+    VG_(free)(state->virtualStack);
+  }
+}
+
 /*
 This is the hook into Valgrind that is called whenever the target
 program exits a function.  Initializes the top entry of
@@ -1020,7 +1034,7 @@ void exit_function(FunctionEntry* f)
     }
 
     while(fn_stack_first_free_index[currentTID] > i + 1) {
-      fnStackPop(currentTID);
+      free_virtual_stack(fnStackPop(currentTID));
     }
     top = fnStackTop(currentTID);
   }
@@ -1051,15 +1065,7 @@ void exit_function(FunctionEntry* f)
 
   // Destroy the memory allocated by virtualStack
   // AFTER the tool has handled the exit
-  if (top->virtualStack) {
-    /* We were previously using the V bits associated with the area to
-       store guest V bits, but Memcheck doesn't normally expect
-       VG_(malloc)'ed memory to be client accessible, so we have to
-       make it inaccessible again before allowing Valgrind's malloc to
-       use it, lest assertions fail later. */
-    MC_(make_mem_noaccess)((Addr)top->virtualStack, top->allocByteSize);
-    VG_(free)(top->virtualStack);
-  }
+  free_virtual_stack(top);
 
   // Pop at the VERY end after the tool is done handling the exit.
   // This is subtle but important - this must be done AFTER the tool
