@@ -101,11 +101,13 @@ endif
 
 fjalar_core_decls.stamp: $(srcdir)/fjalar_core_decls.h \
 		$(top_srcdir)/coregrind/pub_core_aspacemgr.h \
+		$(top_srcdir)/coregrind/pub_core_machine.h \
 		$(top_srcdir)/coregrind/pub_core_mallocfree.h
 	{ echo '#include "fjalar_core_decls.h"'; \
 	  echo 'enum { fjalar_ar_demangle = VG_AR_DEMANGLE };'; \
 	  echo '#undef VG_AR_DEMANGLE'; \
 	  echo '#include "pub_core_aspacemgr.h"'; \
+	  echo '#include "pub_core_machine.h"'; \
 	  echo '#include "pub_core_mallocfree.h"'; \
 	  echo '_Static_assert(fjalar_ar_demangle == VG_AR_DEMANGLE,'; \
 	  echo '  "VG_AR_DEMANGLE in fjalar_core_decls.h is wrong");'; \
