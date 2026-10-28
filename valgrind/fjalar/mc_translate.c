@@ -46,14 +46,10 @@
 // pgbovine
 #include "mc_translate.h"
 #include "fjalar_main.h"
-#include "kvasir/kvasir_main.h"
-#include "kvasir/dyncomp_main.h"
 #include "kvasir/dyncomp_translate.h"
 #include "fjalar_core_decls.h"
-Bool kvasir_with_dyncomp; // pgbovine - dyncomp
 
 #include "mc_include.h"
-#include "pub_tool_debuginfo.h"
 
 
 /* FIXMEs JRS 2011-June-16.
@@ -8526,8 +8522,6 @@ static void preInstrumentationAnalysis ( /*OUT*/HowUsed** useEnvP,
 }
 
 
-// PG - pgbovine - dyncomp - duplicated all instrumentation calls to
-// also call DynComp versions (suffixed by _DC):
 IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                         IRSB* sb_in, 
                         const VexGuestLayout* layout, 
@@ -8539,7 +8533,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
    Int     i, j, first_stmt;
    IRStmt* st;
    MCEnv   mce;
-   DCEnv   dce; // PG - pgbovine - dyncomp
+   DCEnv   dce;
    IRSB*   sb_out;
 
    if (verboze) {
@@ -8550,51 +8544,6 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
       VG_(printf)("0x%lx ", VG_(get_FP)(tid));
       VG_(printf)("0x%lx ", read_xAX(tid));
       VG_(printf)("\n");
-   }
-
-   /* The update to libc-2.21 and ld-2.21 started causing spurious
-      results with DynComp. Large sections of libc data were being
-      assigned to the same comprability set - presumablby, due to
-      changes in the loader and libc_memalign. This would, in turn,
-      cause unrelated user variables to be assigned to the same
-      comparability set.  Thus, we now skip DynComp processing for
-      any block that is part of the loader.  mlr 10/30/2015
-    */
-
-   if (dyncomp_print_debug_info) {
-      const HChar *fnname;
-      // Describe this (probably live) address with current epoch
-      Bool ok = VG_(get_fnname)(VG_(current_DiEpoch)(), closure->readdr, &fnname);
-
-      if (!ok) fnname = "UNKNOWN_FUNCTION";
-      if (closure->nraddr != closure->readdr) {
-         DYNCOMP_DPRINTF("Redirect: %p => %p\n", (void*)closure->nraddr, (void*)closure->readdr);
-      }
-      DYNCOMP_DPRINTF("address: %p fnname: %s\n", (void*)closure->readdr, fnname);
-   }
-
-   static Bool first_time = True;
-   static const HChar* loader_name = "GaRbAgE";
-   Bool do_dyncomp = False;
-   const DiEpoch cur_ep = VG_(current_DiEpoch)();
-
-   if (first_time) {
-      DebugInfo* di = VG_(find_DebugInfo)(cur_ep, closure->readdr);
-      tl_assert(di);
-      loader_name = VG_(DebugInfo_get_filename)(di);
-      DYNCOMP_DPRINTF("loader_name: %s\n", loader_name);
-      first_time = False;
-   } else {
-      const HChar* objname = "UNKNOWN_OBJECT";
-      DebugInfo* di = VG_(find_DebugInfo)(cur_ep, closure->readdr);
-      if (di) {
-         objname = VG_(DebugInfo_get_filename)(di);
-      }
-      DYNCOMP_DPRINTF("objname: %s\n\n", objname);
-      // if its not part of the loader, go ahead and process
-      if (VG_(strcmp)(objname, loader_name)) {
-         do_dyncomp = kvasir_with_dyncomp;
-      }
    }
 
    if (gWordTy != hWordTy) {
@@ -8735,40 +8684,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
    }
    tl_assert( VG_(sizeXA)( mce.tmpMap ) == sb_in->tyenv->types_used );
 
-   // PG - pgbovine - dyncomp
-   // Is this aliasing of 'bb' going to be a problem?
-   // Not if we allocate enough space for the shadow tag guest state
-   // and adjust the offsets appropriately
-   if (do_dyncomp) {
-      dce.mce = &mce;
-      dce.bb             = sb_out;
-      dce.layout         = layout;
-      dce.n_originalTmps = sb_out->tyenv->types_used;
-      dce.hWordTy        = hWordTy;
-      dce.sb_in          = sb_in;
-      // Only this mode uses the flags-carrying analysis.
-      dce.tmpCarriesFlags =
-         dyncomp_dataflow_comparisons_mode
-         ? findFlagsCarryingTmps_DC(sb_in) : NULL;
-      // VG_(calloc) asserts that the size is non-zero, and a superblock
-      // may have no temporaries.
-      dce.tmpPendingCarryTags =
-         dce.tmpCarriesFlags
-         ? VG_(calloc)("mc_translate.c.tmpPendingCarryTags",
-                       2 * dce.n_originalTmps + 1, sizeof(IRExpr*))
-         : NULL;
-      dce.sbbThunk       = False;
-      dce.tmpMap         = VG_(malloc)("mc_translate.c.2", dce.n_originalTmps * sizeof(IRTemp));
-      for (i = 0; i < (Int)dce.n_originalTmps; i++)
-         dce.tmpMap[i] = IRTemp_INVALID;
-      dce.loadTagSnapshots = NULL;
-      if (!loadIsInteraction_DC()) {
-         dce.loadTagSnapshots = VG_(malloc)("mc_translate.c.3", dce.n_originalTmps * sizeof(Int));
-         for (i = 0; i < (Int)dce.n_originalTmps; i++)
-            dce.loadTagSnapshots[i] = -1;
-      }
-      dce.n_loadTagSnapshots = 0;
-   }
+   Bool do_dyncomp = begin_instrument_DC( &dce, closure, sb_in, &mce );
 
    /* Finally, begin instrumentation. */
    /* Copy verbatim any IR preamble preceding the first IMark */
@@ -8841,8 +8757,6 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
 
       st = sb_in->stmts[i];
       first_stmt = sb_out->stmts_used;
-      if (do_dyncomp)
-         dce.stmtIndex = i;
 
       if (verboze) {
          VG_(printf)("\n");
@@ -8867,13 +8781,6 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                                         : HuOth/*we don't know, so play safe*/;
             assign( 'V', &mce, findShadowTmpV(&mce, st->Ist.WrTmp.tmp), 
                                expr2vbits( &mce, st->Ist.WrTmp.data, hu ));
-            if (do_dyncomp) {
-               assign_DC( 'V', &dce, findShadowTmp_DC(&dce, st->Ist.WrTmp.tmp),
-                               expr2tags_WrTmp_DC( &dce, st->Ist.WrTmp.tmp,
-                                                   st->Ist.WrTmp.data) );
-               notePendingCarryTags_DC( &dce, st->Ist.WrTmp.tmp,
-                                        st->Ist.WrTmp.data );
-            }
             break;
          }
 
@@ -8882,17 +8789,10 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                            st->Ist.Put.offset,
                            st->Ist.Put.data,
                            NULL /* shadow atom */, NULL /* guard */ );
-            if (do_dyncomp)
-               do_shadow_PUT_DC( &dce,
-                              st->Ist.Put.offset,
-                              st->Ist.Put.data,
-                              NULL /* shadow atom */ );
             break;
 
          case Ist_PutI:
             do_shadow_PUTI( &mce, st->Ist.PutI.details);
-            if (do_dyncomp)
-               do_shadow_PUTI_DC( &dce, st->Ist.PutI.details );
             break;
 
          case Ist_Store:
@@ -8901,8 +8801,6 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                                    st->Ist.Store.data,
                                    NULL /* shadow data */,
                                    NULL/*guard*/ );
-            if (do_dyncomp)
-               do_shadow_STle_DC( &dce, st->Ist.Store.addr, st->Ist.Store.data);
             break;
 
          case Ist_StoreG:
@@ -8916,8 +8814,6 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
          case Ist_Exit:
             handle_possible_exit( &mce, st->Ist.Exit.jk ); // pgbovine
             complainIfUndefined( &mce, st->Ist.Exit.guard, NULL );
-            if (do_dyncomp)
-               do_shadow_cond_exit_DC( &dce, st->Ist.Exit.guard );
             break;
 
          case Ist_IMark:
@@ -8932,8 +8828,6 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
             }
 
             handle_possible_entry( &mce, st->Ist.IMark.addr, sb_in); // pgbovine
-            if (do_dyncomp)
-               dce.origAddr = st->Ist.IMark.addr;
             break;
 
          case Ist_NoOp:
@@ -8942,16 +8836,10 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
 
          case Ist_Dirty:
             do_shadow_Dirty( &mce, st->Ist.Dirty.details );
-            if (do_dyncomp)
-               do_shadow_Dirty_DC( &dce, st->Ist.Dirty.details );
             break;
 
          case Ist_AbiHint:
             do_AbiHint( &mce, st->Ist.AbiHint.base,
-                              st->Ist.AbiHint.len,
-                              st->Ist.AbiHint.nia );
-            if (do_dyncomp)
-               do_AbiHint( &mce, st->Ist.AbiHint.base,
                               st->Ist.AbiHint.len,
                               st->Ist.AbiHint.nia );
             break;
@@ -8964,8 +8852,6 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                skip the origin-tracking stuff (call to schemeS) above,
                since that's all tangled up with it too; do_shadow_CAS
                does it all. */
-            if(do_dyncomp)
-              do_shadow_CAS_DC( &dce, st->Ist.CAS.details);
             break;
 
          case Ist_LLSC:
@@ -8974,32 +8860,17 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                             st->Ist.LLSC.result,
                             st->Ist.LLSC.addr,
                             st->Ist.LLSC.storedata );
-            
-            /* WARNING/UNDONE:
-               In changeset 638 Ist_LLSC was added (was part of Ist_Store).
-               The corresponding change was not made to the DYNCOMP code.
-               I have made a partial guess as to what should be done here,
-               but its not finished.  Doesn't really matter as instruction
-               is on PPC, MIPS and ARM - none of which we support. (markro)
-            */
-            if (do_dyncomp) {
-                if (st->Ist.LLSC.storedata) {
-                    // it's a Store-Conditional
-                    do_shadow_STle_DC( &dce, st->Ist.LLSC.addr, st->Ist.LLSC.storedata);
-                } else {
-                    // it's a Load-Linked
-                    // UNDONE!
-                }
-            }
             break;
 
          default:
             VG_(printf)("\n");
             ppIRStmt(st);
             VG_(printf)("\n");
-            VG_(tool_panic)("kvasir/dyncomp: unhandled IRStmt");
+            VG_(tool_panic)("memcheck: unhandled IRStmt");
 
       } /* switch (st->tag) */
+
+      if (do_dyncomp) instrument_stmt_DC( &dce, i );
 
       if (0 && verboze) {
          for (j = first_stmt; j < sb_out->stmts_used; j++) {
@@ -9052,18 +8923,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
       VG_(free)( mce.tmpHowUsed );
    }
 
-   if (do_dyncomp) {
-      VG_(free)( dce.tmpMap );
-   }
-
-   if (do_dyncomp && dce.loadTagSnapshots) {
-      VG_(free)( dce.loadTagSnapshots );
-   }
-
-   if (do_dyncomp) {
-      VG_(free)( dce.tmpCarriesFlags );
-      VG_(free)( dce.tmpPendingCarryTags );
-   }
+   if (do_dyncomp) end_instrument_DC( &dce );
 
    tl_assert(mce.sb == sb_out);
    return sb_out;

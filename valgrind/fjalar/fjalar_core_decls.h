@@ -14,7 +14,7 @@
 /* fjalar_core_decls.h:
 
 Declarations of the few Valgrind core (non-tool) entities that Fjalar
-uses.  Fjalar code (e.g., mc_main.c and typedata.c) includes this file
+uses.  Fjalar code (e.g., fjalar_mc_main.h and typedata.c) includes this file
 to call those entities.  Tool files must not include coregrind/pub_core_*.h (see
 tests/check_headers_and_includes), so these are copied here instead.
 The build checks that the copies agree with the originals (see the
