@@ -499,11 +499,17 @@ static struct  genhashtable *funcs_handled = NULL;
    execution of the very first instruction. To accomplish that, we put
    a call to the prime_function() hook there; when executed, it sets
    the first_time flag. In enter_function(), we check the flag before
-   doing anything, and then clear it. */
+   doing anything, and then clear it. prime_function() also records
+   the function's canonical frame address, which enter_function()
+   cannot compute because the prolog may have moved the stack
+   pointer. */
 static Bool first_time = False;
+static Addr primed_CFA = 0;
 VG_REGPARM(1) void prime_function(FunctionEntry *f)
 {
   first_time = True;
+  // The stack pointer points to the return address.
+  primed_CFA = VG_(get_SP)(VG_(get_running_tid)()) + sizeof(Addr);
   return;
 }
 
@@ -837,6 +843,7 @@ void enter_function(FunctionEntry* f)
   newEntry->func->lowestSP = stack_ptr;
   newEntry->FP = frame_ptr;
   newEntry->lowSP = stack_ptr;
+  newEntry->CFA = primed_CFA;
   newEntry->lowestSP = stack_ptr;
   newEntry->xAX = 0;
   newEntry->xDX = 0;
@@ -975,23 +982,25 @@ static void pop_frame(ThreadId tid)
 
 // Returns True if the stack of the given frame has been unwound, where
 // currentSP is the guest stack pointer at a function exit.  The exit
-// hook runs after the return instruction, so currentSP is the stack
-// pointer of the exiting frame's caller.  The exiting frame, and every
-// frame that it called, has a lowSP below currentSP; every frame that is
-// still live has a lowSP at or above currentSP.
+// hook runs after the return instruction has popped the return address
+// (and, for "ret N", N more bytes), so currentSP is at or above the CFA
+// of the exiting frame, and above the CFA of every frame that it
+// called.  The return address of every frame that is still live is on
+// the stack, so the CFA of such a frame is above currentSP.
 static Bool frame_is_unwound(FunctionExecutionState* state, Addr currentSP)
 {
-  return state->lowSP < currentSP;
+  return state->CFA <= currentSP;
 }
 
 // Returns the index, in the function stack of thread tid, of the frame
 // of f that is exiting, or -1 if there is none.  The exiting frame lies
 // among the unwound frames at the top of the stack.  Several of them can
-// be frames of f, if a recursive call of f exited non-locally.  The
-// exiting frame is the outermost of those, which has the highest lowSP.
-// A tie means that a frame left by an earlier non-local exit is at the
-// same stack depth as the exiting frame, which is the topmost of the
-// tied frames.
+// be frames of f, if an earlier call of f exited non-locally.  The
+// exiting frame is the one with the highest CFA, because its CFA is
+// currentSP (or currentSP - N, after "ret N"), and no unwound frame has
+// a CFA above currentSP.  A tie means that a frame left by an earlier
+// non-local exit has the same CFA as the exiting frame, which is the
+// topmost of the tied frames.
 static int exiting_frame_index(ThreadId tid, FunctionEntry* f, Addr currentSP)
 {
   int result = -1;
@@ -1004,7 +1013,7 @@ static int exiting_frame_index(ThreadId tid, FunctionEntry* f, Addr currentSP)
     }
     if (state->func == f
         && (result < 0
-            || state->lowSP > FunctionExecutionStateStack[tid][result].lowSP)) {
+            || state->CFA > FunctionExecutionStateStack[tid][result].CFA)) {
       result = i;
     }
   }
@@ -1079,19 +1088,17 @@ void exit_function(FunctionEntry* f)
   top = fnStackTop(currentTID);
   exitingIndex = exiting_frame_index(currentTID, f, currentSP);
   if (exitingIndex != fn_stack_first_free_index[currentTID] - 1) {
-    // There are a couple reasons why the frame at the top
-    // of the Function Execution State Stack would not be the
-    // frame we expected. All of them are related to a non-
-    // local exit of the function. Situations where this might
-    // come up include:
+    // The frame at the top of the Function Execution State Stack
+    // is not the exiting frame of f.  Either the frames above the
+    // exiting frame exited non-locally, or no frame of f is exiting.
+    // Non-local exits come from:
 
     // (1) C++ Exceptions
     // (2) setjmp/longjmp
 
     // For Fjalar to resume normal operation, we need to pop
-    // off functions off the Function Execution State Stack
-    // (these would be all the functions that had non-local
-    // exits) until we encounter the frame that is exiting.
+    // off the Function Execution State Stack the frames that
+    // exited non-locally.
     printf("MISMATCHED on exit_function! f: %s !=  %s\nDetectedEntryIP: %p - AssumedEntryIP: %p\nDetctedExitIP: %p - AssumedExitIp: %p\n",
                 f->fjalar_name,
                 top->func->fjalar_name,
@@ -1101,8 +1108,10 @@ void exit_function(FunctionEntry* f)
                 (void *)f->endPC);
 
 
-    // If no frame of f is exiting, then f's entry was not observed.
-    // Discard only the frames whose stack has been unwound.
+    // No frame of f is exiting if f's entry was not observed, or if
+    // the return instruction did not return from f (for example, a
+    // "push; ret" sequence that jumps within f).  Discard only the
+    // frames whose stack has been unwound.
     if (exitingIndex < 0) {
       pop_unwound_frames(currentTID, currentSP);
       VG_(get_and_pp_StackTrace) (currentTID, 15);
@@ -1147,11 +1156,8 @@ void exit_function(FunctionEntry* f)
   // Pop, and destroy the memory allocated by virtualStack, at the VERY
   // end after the tool is done handling the exit.
   // This is subtle but important - this must be done AFTER the tool
-  // runs all of it's function exit code, as functions in fjalar_traversal
-  // and fjalar_runtime may make use of the function stack. If we fail to
-  // pop the function, however, the stack will be left in an inconsistent
-  // state and the "!top->func == f" check will fail causing no more
-  // program points to be printed.
+  // runs all of its function exit code, as functions in fjalar_traversal
+  // and fjalar_runtime may make use of the function stack.
   pop_frame(currentTID);
 
   // Frames below the exiting frame may also have been unwound.  Examples

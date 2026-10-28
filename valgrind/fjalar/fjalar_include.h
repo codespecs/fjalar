@@ -875,6 +875,13 @@ typedef struct {
 
 
   Addr lowSP;
+
+  // The canonical frame address:  the stack pointer at the first
+  // instruction of the function, plus the size of the return address.
+  // It is the stack pointer just before the call instruction (or,
+  // after a tail call, the caller's canonical frame address).  While
+  // the function is live, the stack pointer is below it.
+  Addr CFA;
 } FunctionExecutionState;
 
 
