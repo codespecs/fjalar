@@ -39,7 +39,7 @@ PR #181, which restored upstream's `AC_INIT` version string.
 | Step 6d | #197 | Landed |
 | Step 7a | #195 | Landed |
 | Step 7b | #196 | Landed |
-| Step 7c | — | Not started |
+| Step 7c | #220 | Open |
 | Step 7d | #206 | Open |
 | Step 8 | #205 | Open; land with codespecs/daikon#955 |
 | Step 9 | — | Not started |
