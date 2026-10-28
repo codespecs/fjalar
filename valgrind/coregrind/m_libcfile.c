@@ -772,12 +772,6 @@ Int VG_(fcntl) ( Int fd, Int cmd, Addr arg )
    return (Int)sr_Res(res);
 }
 
-// RUDD - OK?
-SysRes VG_(mkdir) ( const HChar* path_name, Int mode )
-{
-   return VG_(do_syscall2)(__NR_mkdir, (UWord)path_name, (UWord)mode);
-}
-
 Int VG_(rename) ( const HChar* old_name, const HChar* new_name )
 {
 #  if defined(VGO_solaris) || defined(VGP_arm64_linux)

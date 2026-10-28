@@ -1131,15 +1131,12 @@ void exit_function(FunctionEntry* f)
   // FunctionExecutionState object and the tags from the (x86) guest
   // state as well:
   for (i = 0; i < sizeof(Addr); i++) {
-    set_abit_and_vbyte((Addr)(&top->xAX) + (Addr)i, VGM_BIT_VALID,
-                      (xAXshadow >> (i * 8)) & 0xff);
-    set_abit_and_vbyte((Addr)(&top->xDX) + (Addr)i, VGM_BIT_VALID,
-                      (xDXshadow >> (i * 8)) & 0xff);
+    mc_set_addressable_vbyte((Addr)(&top->xAX) + (Addr)i, xAXshadow >> (i * 8));
+    mc_set_addressable_vbyte((Addr)(&top->xDX) + (Addr)i, xDXshadow >> (i * 8));
   }
 
   for (i = 0; i < 8; i++) {
-    set_abit_and_vbyte((Addr)(&top->FPU) + (Addr)i, VGM_BIT_VALID,
-                       (FPUshadow >> (i * 8)) & 0xff);
+    mc_set_addressable_vbyte((Addr)(&top->FPU) + (Addr)i, FPUshadow >> (i * 8));
   }
 
   curFunctionExecutionStatePtr = top;
