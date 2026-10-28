@@ -22,18 +22,7 @@ fi
 output_dir="$(mktemp -d)"
 trap 'rm -rf "${output_dir}"' EXIT
 
-# Fails in continuous integration (GitHub Actions sets CI, and Azure Pipelines
-# sets TF_BUILD), and otherwise skips this test, because this compiler cannot
-# run it.  Failing in continuous integration ensures that a compiler change
-# that makes this test vacuous does not go unnoticed.  $1 is the reason.
-unsuitable_compiler() {
-  if [ -n "${CI:-}" ] || [ -n "${TF_BUILD:-}" ]; then
-    echo "$0: FAILED: $1" >&2
-    exit 1
-  fi
-  echo "$0: SKIPPED: $1" >&2
-  exit 0
-}
+. "${test_dir}/environment-checks.sh"
 
 # The suffixes that display_loc_list prints after some location list entries.
 loc_list_suffixes='\[without DW_AT_frame_base\]|\(start == end\)|\(start > end\)'
@@ -85,7 +74,7 @@ for src in deref-param.cc location-views.c; do
 done
 
 if [ "${reached_loc_list_suffixes}" = false ]; then
-  unsuitable_compiler "no location list entry gets a suffix such as \" (start == end)\""
+  unsuitable_environment "$0" "no location list entry gets a suffix such as \" (start == end)\""
 fi
 
 echo "$0: PASSED"

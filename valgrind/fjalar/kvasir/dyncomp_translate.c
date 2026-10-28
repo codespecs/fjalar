@@ -3187,21 +3187,14 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
    }
    stmt_DC('V',  dce, IRStmt_Dirty(di) );
 
-   if (guard) {
-      // If the guard is false, the helper is not called, and datatag
-      // holds 0x55..55, which is not a tag.
-      return assignNew_DC(dce, Ity_Word,
-                          IRExpr_ITE(guard, mkexpr(datatag),
-                                     IRExpr_Const(IRConst_UWord(0))));
-   }
    return mkexpr(datatag);
 }
 
 // Returns the tag of a load of type ty from addr+bias.  If slot is
 // non-negative, the load also saves the tags of the bytes it reads in
 // that slot of MC_(helperc_LOAD_TAG_N); see expr2tags_WrTmp_DC.  If
-// guard is non-NULL, the load happens only if guard is true, and
-// otherwise the tag is 0.
+// guard is non-NULL, the load happens only if guard is true; if guard
+// is false, the result is not a tag, and the caller must not use it.
 // For Ity_V256, if a load is an interaction, only the low 16 bytes are
 // read, so the tag ignores the upper 16 bytes.
 static
@@ -3238,6 +3231,16 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
       case Ity_V256:  // not right, should do 4 times?
          v64lo = expr2tags_LDle_WRK_DC(dce, Ity_I64, addr, bias, -1, guard);
          v64hi = expr2tags_LDle_WRK_DC(dce, Ity_I64, addr, bias+8, -1, guard);
+         if (guard) {
+            // If the guard is false, the helpers are not called, and
+            // v64lo and v64hi are not tags, so they must not be merged.
+            v64lo = assignNew_DC(dce, Ity_Word,
+                                 IRExpr_ITE(guard, v64lo,
+                                            IRExpr_Const(IRConst_UWord(0))));
+            v64hi = assignNew_DC(dce, Ity_Word,
+                                 IRExpr_ITE(guard, v64hi,
+                                            IRExpr_Const(IRConst_UWord(0))));
+         }
 
          // Merge the tags of the results of the
          // lower and upper 64-bit loads:
@@ -3987,6 +3990,10 @@ static void do_shadow_StoreG_DC ( DCEnv* dce, IRStoreG* sg )
 // The tag of lg->dst is the tag of the loaded value if lg->guard is
 // true, and the tag of lg->alt otherwise.  Each conversion that
 // lg->cvt can name, such as ILGop_8Uto32, keeps the tag of its operand.
+// A constant lg->alt, such as the zero that VEX supplies for a lane
+// that vmaskmovps does not load, has tag 0:  VEX synthesizes it, so it
+// is not a program literal, and a fresh tag for it would be discarded
+// whenever the guard is true.
 static void do_shadow_LoadG_DC ( DCEnv* dce, IRLoadG* lg )
 {
    IRType  tyRes, tyLoaded;
@@ -3998,9 +4005,17 @@ static void do_shadow_LoadG_DC ( DCEnv* dce, IRLoadG* lg )
    // Anchor the tag of the guard, to preserve the tag merges in the
    // expression that produced it.
    anchorAtomTag_DC(dce, lg->guard);
-   loaded = expr2tags_LDle_DC(dce, tyLoaded, lg->addr, 0/*addr bias*/,
-                              -1/*no snapshot*/, lg->guard);
-   alt = expr2tags_DC(dce, lg->alt);
+   // expr2tags_LDle_DC may return a clean call, but an operand of
+   // IRExpr_ITE must be an atom.
+   loaded = assignNew_DC(dce, Ity_Word,
+                         expr2tags_LDle_DC(dce, tyLoaded, lg->addr,
+                                           0/*addr bias*/, -1/*no snapshot*/,
+                                           lg->guard));
+   if (lg->alt->tag == Iex_Const) {
+      alt = IRExpr_Const(IRConst_UWord(0));
+   } else {
+      alt = expr2tags_DC(dce, lg->alt);
+   }
    assign_DC('V', dce, findShadowTmp_DC(dce, lg->dst),
              IRExpr_ITE(lg->guard, loaded, alt));
 }
