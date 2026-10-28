@@ -30,7 +30,7 @@ mc_main.c needs for this file's functions and for nothing else.
 */
 
 #include "pub_tool_vki.h"  // needed for VKI_PROT_ defines
-#include "fjalar_core_decls.h"  // for VG_(am_is_valid_for_valgrind)
+#include "fjalar_core_decls.h"  // for VG_(am_is_valid_for_valgrind), VG_(get_tag_ptr_for_guest_offset)
 
 void set_abit_and_vbyte (Addr a, UWord abit, UWord vbyte )
 {
