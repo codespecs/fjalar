@@ -952,13 +952,14 @@ void enter_function(FunctionEntry* f)
   fjalar_tool_handle_function_entrance(newEntry);
 }
 
-// Frees the virtual stack of the given FunctionExecutionState, together
-// with its entryRegs, which share the same allocation.  First marks that
-// memory noaccess, which also clears its DynComp tags.  Sets
-// state->virtualStack and state->entryRegs to NULL.  Does nothing if
-// state->virtualStack is already NULL.
-static void free_virtual_stack(FunctionExecutionState* state)
+// Pops the top frame off the function stack of thread tid, and frees the
+// frame's virtual stack, together with its entryRegs, which share the
+// same allocation.  First marks that memory noaccess, which also clears
+// its DynComp tags.  Sets the frame's virtualStack and entryRegs to NULL.
+static void pop_frame(ThreadId tid)
 {
+  FunctionExecutionState* state = fnStackPop(tid);
+
   if (state->virtualStack) {
     /* The V bits of the virtual stack hold the guest's V bits, but
        Memcheck doesn't normally expect VG_(malloc)'ed memory to be
@@ -974,15 +975,19 @@ static void free_virtual_stack(FunctionExecutionState* state)
 
 /*
 This is the hook into Valgrind that is called whenever the target
-program exits a function.  Initializes the top entry of
+program exits a function.  Does nothing if the function stack is empty.
+If the function at the top of the stack is not f, because of a non-local
+exit, pops and frees the frames above the topmost frame of f, or does
+nothing if there is no frame of f.  Initializes the top entry of
 FunctionExecutionStateStack with return values from EAX, EDX, and FPU,
-then calls out to a handler function implemented by the Fjalar tool.
+calls out to a handler function implemented by the Fjalar tool, and
+then pops and frees the top entry.
 */
 VG_REGPARM(1)
 void exit_function(FunctionEntry* f)
 {
   ThreadId currentTID = VG_(get_running_tid)();
-  FunctionExecutionState* top = fnStackTop(currentTID);
+  FunctionExecutionState* top;
   extern FunctionExecutionState* curFunctionExecutionStatePtr;
   int i;
   ULong FPUshadow;
@@ -1011,13 +1016,16 @@ void exit_function(FunctionEntry* f)
 
   FJALAR_DPRINTF("Value of eax: %lx, edx: %lx\n",xAX, xDX);
 
-  // Only do something if top->func matches func
-  if (fn_stack_first_free_index[currentTID] == 0 || !top->func) {
+  // Do nothing if the function stack is empty.
+  if (fn_stack_first_free_index[currentTID] == 0) {
     printf("More exit_function()s than entry_function()s!\n");
     // RUDD EXCEPTION
     VG_(get_and_pp_StackTrace) (currentTID, 15);
     return;
-  } else if (!(top->func->fjalar_name) || (top->func != f)) {
+  }
+
+  top = fnStackTop(currentTID);
+  if (!(top->func->fjalar_name) || (top->func != f)) {
     // There are a couple reasons why the function at the top
     // of the Function Execution State Stack would not be the
     // function we expected. All of them are related to a non-
@@ -1057,7 +1065,7 @@ void exit_function(FunctionEntry* f)
     }
 
     while(fn_stack_first_free_index[currentTID] > i + 1) {
-      free_virtual_stack(fnStackPop(currentTID));
+      pop_frame(currentTID);
     }
     top = fnStackTop(currentTID);
   }
@@ -1068,7 +1076,7 @@ void exit_function(FunctionEntry* f)
   top->func->FP  = top->FP;
   top->func->lowestSP  = top->func->guestStackStart;
 
-  FJALAR_DPRINTF("\tState of Guest Stack [%p - %p] \n", (void *)top->lowestSP, (void *)(top->lowestSP + top->virtualStackByteSize));
+  FJALAR_DPRINTF("\tState of Guest Stack [%p - %p] \n", (void *)top->func->guestStackStart, (void *)top->func->guestStackEnd);
 
   top->xAX = xAX;
   top->xDX = xDX;
@@ -1094,18 +1102,15 @@ void exit_function(FunctionEntry* f)
 
   fjalar_tool_handle_function_exit(top);
 
-  // Destroy the memory allocated by virtualStack
-  // AFTER the tool has handled the exit
-  free_virtual_stack(top);
-
-  // Pop at the VERY end after the tool is done handling the exit.
+  // Pop, and destroy the memory allocated by virtualStack, at the VERY
+  // end after the tool is done handling the exit.
   // This is subtle but important - this must be done AFTER the tool
   // runs all of it's function exit code, as functions in fjalar_traversal
   // and fjalar_runtime may make use of the function stack. If we fail to
   // pop the function, however, the stack will be left in an inconsistent
   // state and the "!top->func == f" check will fail causing no more
   // program points to be printed.
-  fnStackPop(currentTID);
+  pop_frame(currentTID);
 
 }
 
