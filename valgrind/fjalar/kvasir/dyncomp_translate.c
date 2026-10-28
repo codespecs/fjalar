@@ -3195,13 +3195,13 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
 // that slot of MC_(helperc_LOAD_TAG_N); see expr2tags_WrTmp_DC.  If
 // guard is non-NULL, the load happens only if guard is true; if guard
 // is false, the result is not a tag, and the caller must not use it.
-// For Ity_V256, if a load is an interaction, only the low 16 bytes are
-// read, so the tag ignores the upper 16 bytes.
 static
 IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
                             Int slot, IRAtom* guard )
 {
-   IRAtom *v64hi, *v64lo;
+   // The tags of the 8-byte chunks of a 128-bit or 256-bit load
+   IRAtom* chunkTags[4];
+   Int     nChunks, i;
    //   IRDirty* di;
    //   IRTemp   datatag;
 
@@ -3228,22 +3228,23 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
          return expr2tags_LDle_WRK_DC(dce, ty, addr, bias, -1, guard);
       case Ity_I128:
       case Ity_V128:
-      case Ity_V256:  // not right, should do 4 times?
-         v64lo = expr2tags_LDle_WRK_DC(dce, Ity_I64, addr, bias, -1, guard);
-         v64hi = expr2tags_LDle_WRK_DC(dce, Ity_I64, addr, bias+8, -1, guard);
-         if (guard) {
-            // If the guard is false, the helpers are not called, and
-            // v64lo and v64hi are not tags, so they must not be merged.
-            v64lo = assignNew_DC(dce, Ity_Word,
-                                 IRExpr_ITE(guard, v64lo,
+      case Ity_V256:
+         nChunks = sizeofIRType(ty) / 8;
+         tl_assert(nChunks == 2 || nChunks == 4);
+         for (i = 0; i < nChunks; i++) {
+            chunkTags[i] = expr2tags_LDle_WRK_DC(dce, Ity_I64, addr,
+                                                 bias + 8*i, -1, guard);
+            if (guard) {
+               // If the guard is false, the helper is not called, and
+               // chunkTags[i] is not a tag, so it must not be merged.
+               chunkTags[i]
+                  = assignNew_DC(dce, Ity_Word,
+                                 IRExpr_ITE(guard, chunkTags[i],
                                             IRExpr_Const(IRConst_UWord(0))));
-            v64hi = assignNew_DC(dce, Ity_Word,
-                                 IRExpr_ITE(guard, v64hi,
-                                            IRExpr_Const(IRConst_UWord(0))));
+            }
          }
 
-         // Merge the tags of the results of the
-         // lower and upper 64-bit loads:
+         // Merge the tags of the results of the 64-bit loads:
 
          // Dirty call version:
          //         datatag = newIRTemp(dce->bb->tyenv, Ity_Word);
@@ -3267,10 +3268,17 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
          // On second thought, let's just go ahead and do it for now:
 
          // Clean call version:
-         return mkMergeTags_DC (2 /*Int regparms*/,
-                                "MC_(helperc_MERGE_TAGS)",
-                                &MC_(helperc_MERGE_TAGS),
-                                mkIRExprVec_2( v64lo, v64hi ));
+         if (nChunks == 2) {
+            return mkMergeTags_DC (2 /*Int regparms*/,
+                                   "MC_(helperc_MERGE_TAGS)",
+                                   &MC_(helperc_MERGE_TAGS),
+                                   mkIRExprVec_2( chunkTags[0], chunkTags[1] ));
+         }
+         return mkMergeTags_DC (3 /*Int regparms*/,
+                                "MC_(helperc_MERGE_4_TAGS)",
+                                &MC_(helperc_MERGE_4_TAGS),
+                                mkIRExprVec_4( chunkTags[0], chunkTags[1],
+                                               chunkTags[2], chunkTags[3] ));
 
 
       default:
@@ -3477,8 +3485,6 @@ void do_shadow_STle_DC ( DCEnv* dce,
    tyAddr = dce->hWordTy;
    tl_assert( tyAddr == Ity_I32 || tyAddr == Ity_I64 );
 
-   di = NULL;
-
    tl_assert(data);
    //   tl_assert(isOriginalAtom_DC(dce, data));
    if (data->tag == Iex_Const &&
@@ -3536,12 +3542,24 @@ void do_shadow_STle_DC ( DCEnv* dce,
       return;
    }
 
+   /* 128-bit and 256-bit cases */
+   if (ty == Ity_V128 || ty == Ity_I128 || ty == Ity_V256) {
+      di = unsafeIRDirty_0_N(
+              3/*regparms*/,
+              "MC_(helperc_STORE_TAG_N)",
+              &MC_(helperc_STORE_TAG_N),
+              mkIRExprVec_3( addr, mkIRExpr_HWord(sizeofIRType(ty)), vdata ));
+      setHelperAnns_DC( dce, di );
+      if (guard) {
+         di->guard = guard;
+      }
+      stmt_DC('V',  dce, IRStmt_Dirty(di) );
+      return;
+   }
+
    /* Now decide which helper function to call to write the data tag
       into shadow memory. */
    switch (ty) {
-      case Ity_V256: /* we'll use the helper 4 times */
-      case Ity_V128: /* we'll use the helper twice */
-      case Ity_I128: /* we'll use the helper twice */
       case Ity_I64: helper = &MC_(helperc_STORE_TAG_8);
                     hname = "MC_(helperc_STORE_TAG_8)";
                     break;
@@ -3557,46 +3575,28 @@ void do_shadow_STle_DC ( DCEnv* dce,
       default:      VG_(tool_panic)("dyncomp:do_shadow_STle_DC");
    }
 
-   if (ty == Ity_V128 || ty == Ity_I128 || ty == Ity_V256) {
-      /* 128-bit and 256-bit cases:  store the tag in each 8-byte chunk.
-         See the comment in the next clause re 64-bit regparms. */
-      UInt offset;
-      for (offset = 0; offset < sizeofIRType(ty); offset += 8) {
-         di = unsafeIRDirty_0_N(
-                 1/*regparms*/, hname, helper,
-                 mkIRExprVec_2( mkAddrPlusBias_DC(dce, addr, offset),
-                                vdata ));
-         setHelperAnns_DC( dce, di );
-         if (guard) {
-            di->guard = guard;
-         }
-         stmt_DC('V',  dce, IRStmt_Dirty(di) );
-      }
+   /* 8/16/32/64-bit cases */
 
+   // For some reason, we still need to make a special case for
+   // 64-bit things ... I dunno why, though ???
+   if (ty == Ity_I64) {
+      /* We can't do this with regparm 2 on 32-bit platforms, since
+         the back ends aren't clever enough to handle 64-bit
+         regparm args.  Therefore be different. */
+      di = unsafeIRDirty_0_N(
+                             1/*regparms*/, hname, helper,
+                             mkIRExprVec_2( addr, vdata ));
    } else {
-      /* 8/16/32/64-bit cases */
-
-      // For some reason, we still need to make a special case for
-      // 64-bit things ... I dunno why, though ???
-      if (ty == Ity_I64) {
-         /* We can't do this with regparm 2 on 32-bit platforms, since
-            the back ends aren't clever enough to handle 64-bit
-            regparm args.  Therefore be different. */
-         di = unsafeIRDirty_0_N(
-                                1/*regparms*/, hname, helper,
-                                mkIRExprVec_2( addr, vdata ));
-      } else {
-         di = unsafeIRDirty_0_N(
-                                2/*regparms*/, hname, helper,
-                                mkIRExprVec_2( addr, vdata ));
-      }
-
-      setHelperAnns_DC( dce, di );
-      if (guard) {
-         di->guard = guard;
-      }
-      stmt_DC('V',  dce, IRStmt_Dirty(di) );
+      di = unsafeIRDirty_0_N(
+                             2/*regparms*/, hname, helper,
+                             mkIRExprVec_2( addr, vdata ));
    }
+
+   setHelperAnns_DC( dce, di );
+   if (guard) {
+      di->guard = guard;
+   }
+   stmt_DC('V',  dce, IRStmt_Dirty(di) );
 
 }
 
