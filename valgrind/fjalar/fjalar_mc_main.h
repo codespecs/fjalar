@@ -34,13 +34,14 @@ mc_main.c needs for this file's functions and for nothing else.
 
 void mc_set_addressable_vbytes ( Addr a, ULong vbits, SizeT len )
 {
+#if defined(VG_BIGENDIAN)
+  Bool bigendian = True;
+#else
+  Bool bigendian = False;
+#endif
   // mc_STOREVn_slow reports an error for a byte that is not addressable.
   make_mem_undefined(a, len);
-#if defined(VG_BIGENDIAN)
-  mc_STOREVn_slow(a, len * 8, vbits, True);
-#else
-  mc_STOREVn_slow(a, len * 8, vbits, False);
-#endif
+  mc_STOREVn_slow(a, len * 8, vbits, bigendian);
 }
 
 Bool mc_check_writable (Addr a, SizeT len, Addr* bad_addr) {

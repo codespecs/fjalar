@@ -38,9 +38,10 @@ mc_include.h.
 
 #include "mc_include.h"
 
-// Marks the len bytes at a addressable, and gives them the V bits
-// vbits, as a store of a len-byte value whose V bits are vbits would.
-// len must be 1, 2, 4, or 8.
+// Marks the len bytes at a addressable, and gives them the V bits in
+// the low-order len bytes of vbits.  The V bits are laid out in the
+// host's byte order, as a store of a len-byte value to a lays out the
+// value.  len must be 1, 2, 4, or 8.
 void mc_set_addressable_vbytes ( Addr a, ULong vbits, SizeT len );
 
 // Copies the A and V bits and the DynComp tag of the pointer-sized

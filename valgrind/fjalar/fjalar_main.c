@@ -219,26 +219,6 @@ static Addr read_xDI(ThreadId tid)
   return read_guest_word(tid, 0, offsetof(VexGuestArchState, GUEST_xDI));
 }
 
-UWord read_shadow_xAX(ThreadId tid)
-{
-  return read_guest_word(tid, 1, offsetof(VexGuestArchState, GUEST_xAX));
-}
-
-UWord read_shadow_xDX(ThreadId tid)
-{
-  return read_guest_word(tid, 1, offsetof(VexGuestArchState, GUEST_xDX));
-}
-
-UInt read_xAX_tag(ThreadId tid)
-{
-  return *VG_(get_tag_ptr_for_guest_offset)(tid, offsetof(VexGuestArchState, GUEST_xAX));
-}
-
-UInt read_xDX_tag(ThreadId tid)
-{
-  return *VG_(get_tag_ptr_for_guest_offset)(tid, offsetof(VexGuestArchState, GUEST_xDX));
-}
-
 // Returns the guest-state offset of the 8 bytes that hold a function's
 // floating-point return value:  the low 64 bits of %xmm0 on amd64, and
 // the top of the x87 FPU stack on x86.
@@ -993,7 +973,6 @@ void exit_function(FunctionEntry* f)
   ULong FPUshadow;
   double fpuReturnVal;
   Addr xAX, xDX;
-  UWord xAXshadow, xDXshadow;
 
   FJALAR_DPRINTF("Exit function: %s\n", f->fjalar_name);
 
@@ -1008,12 +987,6 @@ void exit_function(FunctionEntry* f)
   // Get the value of the simulated %EDX (the high 32-bits of the long
   // long int return value is stored here upon function exit)
   xDX = read_xDX(currentTID);
-
-
-  // 64 bits
-  // Use SHADOW values of Valgrind simulated registers to get V-bits
-  xAXshadow = read_shadow_xAX(currentTID);
-  xDXshadow = read_shadow_xDX(currentTID);
 
   FJALAR_DPRINTF("Value of eax: %lx, edx: %lx\n",xAX, xDX);
 
@@ -1083,10 +1056,13 @@ void exit_function(FunctionEntry* f)
   top->xDX = xDX;
   top->FPU = fpuReturnVal;
 
-  // Very important!  Set the A and V bits of the appropriate
-  // FunctionExecutionState object from the guest state:
-  mc_set_addressable_vbytes((Addr)(&top->xAX), xAXshadow, sizeof(top->xAX));
-  mc_set_addressable_vbytes((Addr)(&top->xDX), xDXshadow, sizeof(top->xDX));
+  // Very important!  Set the A and V bits, and the DynComp tags of xAX
+  // and xDX, of the appropriate FunctionExecutionState object from the
+  // guest state.  fjalar_tool_handle_function_exit sets the tag of FPU.
+  mc_copy_guest_reg_state(currentTID, offsetof(VexGuestArchState, GUEST_xAX),
+                          (Addr)(&top->xAX));
+  mc_copy_guest_reg_state(currentTID, offsetof(VexGuestArchState, GUEST_xDX),
+                          (Addr)(&top->xDX));
   mc_set_addressable_vbytes((Addr)(&top->FPU), FPUshadow, sizeof(top->FPU));
 
   curFunctionExecutionStatePtr = top;

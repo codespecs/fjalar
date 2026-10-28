@@ -199,7 +199,9 @@ static __inline__ UInt get_tag ( Addr a )
 }
 #endif
 
-// Set the tag of all bytes in range [a, a + len) to tag
+// Set the tag of all bytes in range [a, a + len) to tag.  Unlike
+// set_tag_for_range in dyncomp_main.c, this does not replace tag by
+// its union-find leader.
 static __inline__ void set_tag_in_range( Addr a, SizeT len, UInt tag ) {
   Addr curAddr;
 
@@ -210,12 +212,7 @@ static __inline__ void set_tag_in_range( Addr a, SizeT len, UInt tag ) {
 
 // Clear all tags for all bytes in range [a, a + len)
 static __inline__ void clear_all_tags_in_range( Addr a, SizeT len ) {
-  Addr curAddr;
-
-  for (curAddr = a; curAddr < (a+len); curAddr++) {
-    // Set the tag to 0
-    set_tag(curAddr, 0);
-  }
+  set_tag_in_range(a, len, 0);
 }
 
 // Return a fresh tag and create a singleton set

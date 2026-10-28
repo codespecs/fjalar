@@ -783,12 +783,6 @@ Addr read_dwarf_reg(ThreadId tid, UInt regNum);
 // on amd64 and %eax on x86, and so on.
 Addr read_xAX(ThreadId tid);
 Addr read_xDX(ThreadId tid);
-// Return the V bits of a register of thread tid.
-UWord read_shadow_xAX(ThreadId tid);
-UWord read_shadow_xDX(ThreadId tid);
-// Return the DynComp tag of the low byte of a register of thread tid.
-UInt read_xAX_tag(ThreadId tid);
-UInt read_xDX_tag(ThreadId tid);
 
 // Return the floating-point return value of a function that has just
 // returned in thread tid (the low 64 bits of %xmm0 on amd64, and the

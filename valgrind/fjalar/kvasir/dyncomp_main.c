@@ -219,14 +219,10 @@ UInt val_uf_tag_union(UInt tag1, UInt tag2) {
   }
 }
 
-// Write tag into all addresses in the range [a, a+len)
+// Write the union-find leader of tag into all addresses in the range
+// [a, a+len)
 static __inline__ void set_tag_for_range(Addr a, SizeT len, UInt tag) {
-  Addr curAddr;
-  UInt leader = val_uf_find_leader(tag);
-
-  for (curAddr = a; curAddr < (a+len); curAddr++) {
-    set_tag(curAddr, leader);
-  }
+  set_tag_in_range(a, len, val_uf_find_leader(tag));
 }
 
 // Write the special GOT tag into all addresses in the range [a, a+len)
