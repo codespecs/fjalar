@@ -1062,7 +1062,7 @@ void exit_function(FunctionEntry* f)
 
   FJALAR_DPRINTF("Value of eax: %lx, edx: %lx\n",xAX, xDX);
 
-  // Only do something if top->func matches func
+  // Do nothing if the function stack is empty.
   if (fn_stack_first_free_index[currentTID] == 0 || !top->func) {
     printf("More exit_function()s than entry_function()s!\n");
     // RUDD EXCEPTION
