@@ -423,6 +423,39 @@ int *fn_stack_first_free_index;
 
 typedef VG_REGPARM(1) void entry_func(FunctionEntry *);
 
+// Appends to di->fxState an entry recording that the helper call di
+// reads size bytes of the guest state, starting at offset.
+static void add_fxState_read(IRDirty* di, Int offset, Int size) {
+  tl_assert(di->nFxState < VEX_N_FXSTATE);
+  di->fxState[di->nFxState].fx        = Ifx_Read;
+  di->fxState[di->nFxState].offset    = offset;
+  di->fxState[di->nFxState].size      = size;
+  di->fxState[di->nFxState].nRepeats  = 0;
+  di->fxState[di->nFxState].repeatLen = 0;
+  di->nFxState++;
+}
+
+// Appends to di->fxState entries recording that the helper call di
+// reads all the general-purpose integer registers (including the stack
+// and frame pointers) and the instruction pointer.
+static void add_fxState_read_GPRs_and_IP(IRDirty* di) {
+  // The general-purpose integer registers are contiguous in the guest
+  // state, so one fxState entry describes all of them.
+#if defined(VGA_amd64)
+  tl_assert(offsetof(VexGuestArchState, guest_R15)
+            == offsetof(VexGuestArchState, guest_RAX) + 15 * sizeof(ULong));
+  add_fxState_read(di, offsetof(VexGuestArchState, guest_RAX),
+                   16 * sizeof(ULong));
+  add_fxState_read(di, offsetof(VexGuestArchState, guest_RIP), sizeof(ULong));
+#else
+  tl_assert(offsetof(VexGuestArchState, guest_EDI)
+            == offsetof(VexGuestArchState, guest_EAX) + 7 * sizeof(UInt));
+  add_fxState_read(di, offsetof(VexGuestArchState, guest_EAX),
+                   8 * sizeof(UInt));
+  add_fxState_read(di, offsetof(VexGuestArchState, guest_EIP), sizeof(UInt));
+#endif
+}
+
 // This inserts an IR Statement responsible for calling a helper
 // function before the instruction at addr is executed. This is primarily
 // used for inserting the call to enter_function on function entry.
@@ -454,57 +487,14 @@ static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
     di = unsafeIRDirty_0_N(1/*regparms*/, func_name, func,
 			 mkIRExprVec_1(IRExpr_Const(IRConst_UWord(entry_w))));
 
-    // For function entry, we are interested in observing the stack
-    // and frame pointers so make sure that they're updated by setting
-    // the proper annotations:
-
     entry->entryPC = addr;
 
     FJALAR_DPRINTF("Found a valid entry point at %x for\n", (UInt)addr);
 
-    // We need all general purpose registers.
-#if defined(VGA_amd64)
-    di->nFxState = 10;
-#else
-    di->nFxState = 9;
-#endif
-    vex_bzero(&di->fxState, sizeof(di->fxState));
-
-    di->fxState[0].fx     = Ifx_Read;
-    di->fxState[0].offset = mce->layout->offset_SP;
-    di->fxState[0].size   = mce->layout->sizeof_SP;
-    di->fxState[1].fx     = Ifx_Read;
-    di->fxState[1].offset = mce->layout->offset_FP;
-    di->fxState[1].size   = mce->layout->sizeof_FP;
-    di->fxState[2].fx     = Ifx_Read;
-    di->fxState[2].offset = mce->layout->offset_IP;
-    di->fxState[2].size   = mce->layout->sizeof_IP;
-
-    di->fxState[3].fx     = Ifx_Read;
-    di->fxState[3].offset = mce->layout->offset_xAX;
-    di->fxState[3].size   = mce->layout->sizeof_xAX;
-    di->fxState[4].fx     = Ifx_Read;
-    di->fxState[4].offset = mce->layout->offset_xBX;
-    di->fxState[4].size   = mce->layout->sizeof_xBX;
-    di->fxState[5].fx     = Ifx_Read;
-    di->fxState[5].offset = mce->layout->offset_xCX;
-    di->fxState[5].size   = mce->layout->sizeof_xCX;
-
-    di->fxState[6].fx     = Ifx_Read;
-    di->fxState[6].offset = mce->layout->offset_xDX;
-    di->fxState[6].size   = mce->layout->sizeof_xDX;
-    di->fxState[7].fx     = Ifx_Read;
-    di->fxState[7].offset = mce->layout->offset_xSI;
-    di->fxState[7].size   = mce->layout->sizeof_xSI;
-    di->fxState[8].fx     = Ifx_Read;
-    di->fxState[8].offset = mce->layout->offset_xDI;
-    di->fxState[8].size   = mce->layout->sizeof_xDI;
-#if defined(VGA_amd64)
-    // R8 through R15, which are contiguous in the guest state
-    di->fxState[9].fx     = Ifx_Read;
-    di->fxState[9].offset = offsetof(VexGuestArchState, guest_R8);
-    di->fxState[9].size   = 8 * sizeof(ULong);
-#endif
+    // For function entry, we are interested in observing all general
+    // purpose integer registers, so make sure that they are updated by
+    // setting the proper annotations.
+    add_fxState_read_GPRs_and_IP(di);
 
     stmt('V',  mce, IRStmt_Dirty(di) );
   }
@@ -698,55 +688,11 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
       // For function exit, we are interested in observing  all general purpose
       // integer registers,  FTOP, and FPREG[], so make sure that they are
       // updated by setting the proper annotations.
-#if defined(VGA_amd64)
-      di->nFxState = 12;
-#else
-      di->nFxState = 11;
-#endif
-      vex_bzero(&di->fxState, sizeof(di->fxState));
-
-      di->fxState[0].fx     = Ifx_Read;
-      di->fxState[0].offset = mce->layout->offset_SP;
-      di->fxState[0].size   = mce->layout->sizeof_SP;
-      di->fxState[1].fx     = Ifx_Read;
-      di->fxState[1].offset = mce->layout->offset_FP;
-      di->fxState[1].size   = mce->layout->sizeof_FP;
-      di->fxState[2].fx     = Ifx_Read;
-      di->fxState[2].offset = mce->layout->offset_IP;
-      di->fxState[2].size   = mce->layout->sizeof_IP;
-
-      di->fxState[3].fx     = Ifx_Read;
-      di->fxState[3].offset = mce->layout->offset_xAX;
-      di->fxState[3].size   = mce->layout->sizeof_xAX;
-      di->fxState[4].fx     = Ifx_Read;
-      di->fxState[4].offset = mce->layout->offset_xBX;
-      di->fxState[4].size   = mce->layout->sizeof_xBX;
-      di->fxState[5].fx     = Ifx_Read;
-      di->fxState[5].offset = mce->layout->offset_xCX;
-      di->fxState[5].size   = mce->layout->sizeof_xCX;
-
-      di->fxState[6].fx     = Ifx_Read;
-      di->fxState[6].offset = mce->layout->offset_xDX;
-      di->fxState[6].size   = mce->layout->sizeof_xDX;
-      di->fxState[7].fx     = Ifx_Read;
-      di->fxState[7].offset = mce->layout->offset_xSI;
-      di->fxState[7].size   = mce->layout->sizeof_xSI;
-      di->fxState[8].fx     = Ifx_Read;
-      di->fxState[8].offset = mce->layout->offset_xDI;
-      di->fxState[8].size   = mce->layout->sizeof_xDI;
-
-      di->fxState[9].fx     = Ifx_Read;
-      di->fxState[9].offset = offsetof(VexGuestArchState, guest_FTOP);
-      di->fxState[9].size   = sizeof(UInt); /* FTOP is 4 bytes even on x64 */
-      di->fxState[10].fx     = Ifx_Read;
-      di->fxState[10].offset = offsetof(VexGuestArchState, guest_FPREG);
-      di->fxState[10].size   = 8 * sizeof(ULong);
-#if defined(VGA_amd64)
-      // R8 through R15, which are contiguous in the guest state
-      di->fxState[11].fx     = Ifx_Read;
-      di->fxState[11].offset = offsetof(VexGuestArchState, guest_R8);
-      di->fxState[11].size   = 8 * sizeof(ULong);
-#endif
+      add_fxState_read_GPRs_and_IP(di);
+      add_fxState_read(di, offsetof(VexGuestArchState, guest_FTOP),
+                       sizeof(UInt)); /* FTOP is 4 bytes even on x64 */
+      add_fxState_read(di, offsetof(VexGuestArchState, guest_FPREG),
+                       8 * sizeof(ULong));
 
       stmt('V',  mce, IRStmt_Dirty(di) );
     }
