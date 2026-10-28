@@ -18,9 +18,10 @@
 /* mc_fjalar.h:
 
 Fjalar's interface to its copy of Memcheck:  Memcheck's private header
-mc_include.h, and the functions that Fjalar adds to Memcheck, which
-fjalar_mc_main.h defines and mc_main.c includes.  Fjalar's
-files include this header instead of mc_include.h.
+mc_include.h, and the functions that Fjalar adds to Memcheck.
+fjalar_mc_main.h defines those functions, and mc_main.c includes
+fjalar_mc_main.h.  Fjalar's files include this header instead of
+mc_include.h.
 
 */
 
