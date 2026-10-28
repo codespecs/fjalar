@@ -1030,11 +1030,10 @@ void exit_function(FunctionEntry* f)
   top->FPU = fpuReturnVal;
 
   // Very important!  Set the A and V bits of the appropriate
-  // FunctionExecutionState object and the tags from the (x86) guest
-  // state as well:
-  mc_set_addressable_vbytes((Addr)(&top->xAX), xAXshadow, sizeof(Addr));
-  mc_set_addressable_vbytes((Addr)(&top->xDX), xDXshadow, sizeof(Addr));
-  mc_set_addressable_vbytes((Addr)(&top->FPU), FPUshadow, 8);
+  // FunctionExecutionState object from the (x86) guest state:
+  mc_set_addressable_vbytes((Addr)(&top->xAX), xAXshadow, sizeof(top->xAX));
+  mc_set_addressable_vbytes((Addr)(&top->xDX), xDXshadow, sizeof(top->xDX));
+  mc_set_addressable_vbytes((Addr)(&top->FPU), FPUshadow, sizeof(top->FPU));
 
   curFunctionExecutionStatePtr = top;
   top->func->nonce = top->invocation_nonce;

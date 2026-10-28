@@ -40,6 +40,8 @@ mc_include.h.
 
 // Marks the len bytes at a addressable, and gives byte i the V bits
 // (vbits >> (i * 8)) & 0xff.  len must be at most sizeof(ULong).
+// This assumes a little-endian platform (such as x86 or amd64), where
+// byte i of a value in memory or a register is (value >> (i * 8)) & 0xff.
 void mc_set_addressable_vbytes ( Addr a, ULong vbits, SizeT len );
 
 void mc_copy_address_range_state ( Addr src, Addr dst, SizeT len );

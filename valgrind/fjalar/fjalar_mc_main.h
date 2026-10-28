@@ -32,20 +32,14 @@ mc_main.c needs for this file's functions and for nothing else.
 #include "pub_tool_vki.h"  // needed for VKI_PROT_ defines
 #include "fjalar_core_decls.h"  // for VG_(am_is_valid_for_valgrind)
 
-// Marks the byte at a addressable and gives it the V bits vbyte.
-static void mc_set_addressable_vbyte ( Addr a, UChar vbyte )
-{
-  // set_vbits8 does nothing to a byte that is not addressable.
-  set_vabits2(a, VA_BITS2_UNDEFINED);
-  set_vbits8(a, vbyte);
-}
-
 void mc_set_addressable_vbytes ( Addr a, ULong vbits, SizeT len )
 {
   SizeT i;
   tl_assert(len <= sizeof(vbits));
   for (i = 0; i < len; i++) {
-    mc_set_addressable_vbyte(a + i, vbits >> (i * 8));
+    // set_vbits8 does nothing to a byte that is not addressable.
+    set_vabits2(a + i, VA_BITS2_UNDEFINED);
+    set_vbits8(a + i, vbits >> (i * 8));
   }
 }
 
@@ -96,13 +90,13 @@ void mc_make_noaccess ( Addr a, SizeT len )
 void mc_copy_guest_reg_state ( ThreadId tid, Int guestOffset, Addr dst )
 {
   UWord vbits;
-  SizeT b;
   VG_(get_shadow_regs_area)(tid, (UChar*)&vbits, 1/*shadowNo*/,
                             guestOffset, sizeof(Addr));
   mc_set_addressable_vbytes(dst, vbits, sizeof(Addr));
   if (kvasir_with_dyncomp) {
     // DynComp keeps one tag per register, at the register's offset.
     UInt tag = *VG_(get_tag_ptr_for_guest_offset)(tid, guestOffset);
+    SizeT b;
     for (b = 0; b < sizeof(Addr); b++) {
       set_tag(dst + b, tag);
     }
