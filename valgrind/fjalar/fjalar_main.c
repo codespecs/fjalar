@@ -49,6 +49,7 @@
 #include "fjalar_traversal.h"
 #include "disambig.h"
 #include "mc_fjalar.h"
+#include "fjalar_core_decls.h"
 #include "typedata.h"
 #include "vex_common.h"
 #include "kvasir/kvasir_main.h"
@@ -164,13 +165,114 @@ Int dwarf_reg_guest_offset(UInt regNum)
   return dwarf_reg_guest_offsets[regNum];
 }
 
+// Returns the word at the given offset in thread tid's guest state
+// (shadowNo 0) or in its V bits (shadowNo 1).
+static UWord read_guest_word(ThreadId tid, Int shadowNo, Int offset)
+{
+  UWord value;
+  VG_(get_shadow_regs_area)(tid, (UChar*)&value, shadowNo, offset, sizeof(UWord));
+  return value;
+}
+
 Addr read_dwarf_reg(ThreadId tid, UInt regNum)
 {
-  Addr value;
   tl_assert(dwarf_reg_is_readable(regNum));
+  return read_guest_word(tid, 0, dwarf_reg_guest_offsets[regNum]);
+}
+
+#if defined(VGA_amd64)
+#define GUEST_xAX guest_RAX
+#define GUEST_xCX guest_RCX
+#define GUEST_xDX guest_RDX
+#define GUEST_xSI guest_RSI
+#define GUEST_xDI guest_RDI
+#else
+#define GUEST_xAX guest_EAX
+#define GUEST_xCX guest_ECX
+#define GUEST_xDX guest_EDX
+#define GUEST_xSI guest_ESI
+#define GUEST_xDI guest_EDI
+#endif
+
+Addr read_xAX(ThreadId tid)
+{
+  return read_guest_word(tid, 0, offsetof(VexGuestArchState, GUEST_xAX));
+}
+
+static Addr read_xCX(ThreadId tid)
+{
+  return read_guest_word(tid, 0, offsetof(VexGuestArchState, GUEST_xCX));
+}
+
+Addr read_xDX(ThreadId tid)
+{
+  return read_guest_word(tid, 0, offsetof(VexGuestArchState, GUEST_xDX));
+}
+
+static Addr read_xSI(ThreadId tid)
+{
+  return read_guest_word(tid, 0, offsetof(VexGuestArchState, GUEST_xSI));
+}
+
+static Addr read_xDI(ThreadId tid)
+{
+  return read_guest_word(tid, 0, offsetof(VexGuestArchState, GUEST_xDI));
+}
+
+UWord read_shadow_xAX(ThreadId tid)
+{
+  return read_guest_word(tid, 1, offsetof(VexGuestArchState, GUEST_xAX));
+}
+
+UWord read_shadow_xDX(ThreadId tid)
+{
+  return read_guest_word(tid, 1, offsetof(VexGuestArchState, GUEST_xDX));
+}
+
+UInt read_xAX_tag(ThreadId tid)
+{
+  return *VG_(get_tag_ptr_for_guest_offset)(tid, offsetof(VexGuestArchState, GUEST_xAX));
+}
+
+UInt read_xDX_tag(ThreadId tid)
+{
+  return *VG_(get_tag_ptr_for_guest_offset)(tid, offsetof(VexGuestArchState, GUEST_xDX));
+}
+
+// Returns the guest-state offset of the 8 bytes that hold a function's
+// floating-point return value:  the low 64 bits of %xmm0 on amd64, and
+// the top of the x87 FPU stack on x86.
+static Int float_return_guest_offset(ThreadId tid)
+{
+#if defined(VGA_amd64)
+  return offsetof(VexGuestArchState, guest_YMM0);
+#else
+  UInt ftop;
+  VG_(get_shadow_regs_area)(tid, (UChar*)&ftop, 0/*shadowNo*/,
+                            offsetof(VexGuestArchState, guest_FTOP), sizeof(UInt));
+  return offsetof(VexGuestArchState, guest_FPREG) + (ftop & 7) * sizeof(ULong);
+#endif
+}
+
+double read_float_return(ThreadId tid)
+{
+  double value;
   VG_(get_shadow_regs_area)(tid, (UChar*)&value, 0/*shadowNo*/,
-                            dwarf_reg_guest_offsets[regNum], sizeof(Addr));
+                            float_return_guest_offset(tid), sizeof(double));
   return value;
+}
+
+ULong read_shadow_float_return(ThreadId tid)
+{
+  ULong vbits;
+  VG_(get_shadow_regs_area)(tid, (UChar*)&vbits, 1/*shadowNo*/,
+                            float_return_guest_offset(tid), sizeof(ULong));
+  return vbits;
+}
+
+UInt read_float_return_tag(ThreadId tid)
+{
+  return *VG_(get_tag_ptr_for_guest_offset)(tid, float_return_guest_offset(tid));
 }
 
 // If atom is DW_OP_regN (the value is in register N) or DW_OP_bregN
@@ -298,6 +400,39 @@ int *fn_stack_first_free_index;
 
 typedef VG_REGPARM(1) void entry_func(FunctionEntry *);
 
+// Appends to di->fxState an entry recording that the helper call di
+// reads size bytes of the guest state, starting at offset.
+static void add_fxState_read(IRDirty* di, Int offset, Int size) {
+  tl_assert(di->nFxState < VEX_N_FXSTATE);
+  di->fxState[di->nFxState].fx        = Ifx_Read;
+  di->fxState[di->nFxState].offset    = offset;
+  di->fxState[di->nFxState].size      = size;
+  di->fxState[di->nFxState].nRepeats  = 0;
+  di->fxState[di->nFxState].repeatLen = 0;
+  di->nFxState++;
+}
+
+// Appends to di->fxState entries recording that the helper call di
+// reads all the general-purpose integer registers (including the stack
+// and frame pointers) and the instruction pointer.
+static void add_fxState_read_GPRs_and_IP(IRDirty* di) {
+  // The general-purpose integer registers are contiguous in the guest
+  // state, so one fxState entry describes all of them.
+#if defined(VGA_amd64)
+  tl_assert(offsetof(VexGuestArchState, guest_R15)
+            == offsetof(VexGuestArchState, guest_RAX) + 15 * sizeof(ULong));
+  add_fxState_read(di, offsetof(VexGuestArchState, guest_RAX),
+                   16 * sizeof(ULong));
+  add_fxState_read(di, offsetof(VexGuestArchState, guest_RIP), sizeof(ULong));
+#else
+  tl_assert(offsetof(VexGuestArchState, guest_EDI)
+            == offsetof(VexGuestArchState, guest_EAX) + 7 * sizeof(UInt));
+  add_fxState_read(di, offsetof(VexGuestArchState, guest_EAX),
+                   8 * sizeof(UInt));
+  add_fxState_read(di, offsetof(VexGuestArchState, guest_EIP), sizeof(UInt));
+#endif
+}
+
 // This inserts an IR Statement responsible for calling a helper
 // function before the instruction at addr is executed. This is primarily
 // used for inserting the call to enter_function on function entry.
@@ -329,57 +464,14 @@ static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
     di = unsafeIRDirty_0_N(1/*regparms*/, func_name, func,
 			 mkIRExprVec_1(IRExpr_Const(IRConst_UWord(entry_w))));
 
-    // For function entry, we are interested in observing the stack
-    // and frame pointers so make sure that they're updated by setting
-    // the proper annotations:
-
     entry->entryPC = addr;
 
     FJALAR_DPRINTF("Found a valid entry point at %x for\n", (UInt)addr);
 
-    // We need all general purpose registers.
-#if defined(VGA_amd64)
-    di->nFxState = 10;
-#else
-    di->nFxState = 9;
-#endif
-    vex_bzero(&di->fxState, sizeof(di->fxState));
-
-    di->fxState[0].fx     = Ifx_Read;
-    di->fxState[0].offset = mce->layout->offset_SP;
-    di->fxState[0].size   = mce->layout->sizeof_SP;
-    di->fxState[1].fx     = Ifx_Read;
-    di->fxState[1].offset = mce->layout->offset_FP;
-    di->fxState[1].size   = mce->layout->sizeof_FP;
-    di->fxState[2].fx     = Ifx_Read;
-    di->fxState[2].offset = mce->layout->offset_IP;
-    di->fxState[2].size   = mce->layout->sizeof_IP;
-
-    di->fxState[3].fx     = Ifx_Read;
-    di->fxState[3].offset = mce->layout->offset_xAX;
-    di->fxState[3].size   = mce->layout->sizeof_xAX;
-    di->fxState[4].fx     = Ifx_Read;
-    di->fxState[4].offset = mce->layout->offset_xBX;
-    di->fxState[4].size   = mce->layout->sizeof_xBX;
-    di->fxState[5].fx     = Ifx_Read;
-    di->fxState[5].offset = mce->layout->offset_xCX;
-    di->fxState[5].size   = mce->layout->sizeof_xCX;
-
-    di->fxState[6].fx     = Ifx_Read;
-    di->fxState[6].offset = mce->layout->offset_xDX;
-    di->fxState[6].size   = mce->layout->sizeof_xDX;
-    di->fxState[7].fx     = Ifx_Read;
-    di->fxState[7].offset = mce->layout->offset_xSI;
-    di->fxState[7].size   = mce->layout->sizeof_xSI;
-    di->fxState[8].fx     = Ifx_Read;
-    di->fxState[8].offset = mce->layout->offset_xDI;
-    di->fxState[8].size   = mce->layout->sizeof_xDI;
-#if defined(VGA_amd64)
-    // R8 through R15, which are contiguous in the guest state
-    di->fxState[9].fx     = Ifx_Read;
-    di->fxState[9].offset = offsetof(VexGuestArchState, guest_R8);
-    di->fxState[9].size   = 8 * sizeof(ULong);
-#endif
+    // For function entry, we are interested in observing all general
+    // purpose integer registers, so make sure that they are updated by
+    // setting the proper annotations.
+    add_fxState_read_GPRs_and_IP(di);
 
     stmt('V',  mce, IRStmt_Dirty(di) );
   }
@@ -573,55 +665,11 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
       // For function exit, we are interested in observing  all general purpose
       // integer registers,  FTOP, and FPREG[], so make sure that they are
       // updated by setting the proper annotations.
-#if defined(VGA_amd64)
-      di->nFxState = 12;
-#else
-      di->nFxState = 11;
-#endif
-      vex_bzero(&di->fxState, sizeof(di->fxState));
-
-      di->fxState[0].fx     = Ifx_Read;
-      di->fxState[0].offset = mce->layout->offset_SP;
-      di->fxState[0].size   = mce->layout->sizeof_SP;
-      di->fxState[1].fx     = Ifx_Read;
-      di->fxState[1].offset = mce->layout->offset_FP;
-      di->fxState[1].size   = mce->layout->sizeof_FP;
-      di->fxState[2].fx     = Ifx_Read;
-      di->fxState[2].offset = mce->layout->offset_IP;
-      di->fxState[2].size   = mce->layout->sizeof_IP;
-
-      di->fxState[3].fx     = Ifx_Read;
-      di->fxState[3].offset = mce->layout->offset_xAX;
-      di->fxState[3].size   = mce->layout->sizeof_xAX;
-      di->fxState[4].fx     = Ifx_Read;
-      di->fxState[4].offset = mce->layout->offset_xBX;
-      di->fxState[4].size   = mce->layout->sizeof_xBX;
-      di->fxState[5].fx     = Ifx_Read;
-      di->fxState[5].offset = mce->layout->offset_xCX;
-      di->fxState[5].size   = mce->layout->sizeof_xCX;
-
-      di->fxState[6].fx     = Ifx_Read;
-      di->fxState[6].offset = mce->layout->offset_xDX;
-      di->fxState[6].size   = mce->layout->sizeof_xDX;
-      di->fxState[7].fx     = Ifx_Read;
-      di->fxState[7].offset = mce->layout->offset_xSI;
-      di->fxState[7].size   = mce->layout->sizeof_xSI;
-      di->fxState[8].fx     = Ifx_Read;
-      di->fxState[8].offset = mce->layout->offset_xDI;
-      di->fxState[8].size   = mce->layout->sizeof_xDI;
-
-      di->fxState[9].fx     = Ifx_Read;
-      di->fxState[9].offset = offsetof(VexGuestArchState, guest_FTOP);
-      di->fxState[9].size   = sizeof(UInt); /* FTOP is 4 bytes even on x64 */
-      di->fxState[10].fx     = Ifx_Read;
-      di->fxState[10].offset = offsetof(VexGuestArchState, guest_FPREG);
-      di->fxState[10].size   = 8 * sizeof(ULong);
-#if defined(VGA_amd64)
-      // R8 through R15, which are contiguous in the guest state
-      di->fxState[11].fx     = Ifx_Read;
-      di->fxState[11].offset = offsetof(VexGuestArchState, guest_R8);
-      di->fxState[11].size   = 8 * sizeof(ULong);
-#endif
+      add_fxState_read_GPRs_and_IP(di);
+      add_fxState_read(di, offsetof(VexGuestArchState, guest_FTOP),
+                       sizeof(UInt)); /* FTOP is 4 bytes even on x64 */
+      add_fxState_read(di, offsetof(VexGuestArchState, guest_FPREG),
+                       8 * sizeof(ULong));
 
       stmt('V',  mce, IRStmt_Dirty(di) );
     }
@@ -658,7 +706,7 @@ void enter_function(FunctionEntry* f)
   FJALAR_DPRINTF("[enter_function] startPC is: %x, entryPC is: %x, cu_base: %p\n",
                  (UInt)f->startPC, (UInt)f->entryPC,(void *)f->cuBase);
   FJALAR_DPRINTF("Value of edi: %lx, esi: %lx, edx: %lx, ecx: %lx\n",
-      (UWord)VG_(get_xDI)(tid), (UWord)VG_(get_xSI)(tid), (UWord)VG_(get_xDX)(tid), (UWord)VG_(get_xCX)(tid));
+      read_xDI(tid), read_xSI(tid), read_xDX(tid), read_xCX(tid));
   FJALAR_DPRINTF("frame_base_atom: %x, frame_base_offset: %lx\n", f->frame_base_atom, (unsigned long int) f->frame_base_offset);
 
   // Determine the frame pointer for this function using DWARF
@@ -881,8 +929,8 @@ void enter_function(FunctionEntry* f)
     // elegant to copy the metadata to an inaccessible place, but that
     // would be more work.
     FJALAR_DPRINTF("Copying over stack [%p] -> [%p] %d bytes\n",(void *)(stack_ptr - VG_STACK_REDZONE_SZB),  (void *)newEntry->virtualStack, size);
-    mc_copy_address_range_state(stack_ptr - VG_STACK_REDZONE_SZB,
-				(Addr)(newEntry->virtualStack), size);
+    MC_(copy_address_range_state)(stack_ptr - VG_STACK_REDZONE_SZB,
+				  (Addr)(newEntry->virtualStack), size);
 
 
     newEntry->func->guestStackStart = stack_ptr - VG_STACK_REDZONE_SZB;
@@ -931,46 +979,23 @@ void exit_function(FunctionEntry* f)
 
   FJALAR_DPRINTF("\tState of Guest Stack [%p - %p] \n", (void *)top->lowestSP, (void *)(top->lowestSP + top->virtualStackByteSize));
 
-  // Ok, in Valgrind 2.X, we needed to directly code some assembly to
-  // grab the top of the floating-point stack, but Valgrind 3.0
-  // provides a virtual FPU stack, so we can just grab that.  Plus, we
-  // now have shadow V-bits for the FPU stack.
-
-#if defined(VGA_amd64)
-  // VG_(get_XMM_N) and VG_(get_shadow_XMM_N) return the whole 256-bit
-  // YMM register, as an array of 8 32-bit integers.  A double occupies
-  // the low 2 of them, so reinterpret cast the register as a double
-  // and its shadow as a 64-bit integer.
-  FPUshadow = *(ULong *)VG_(get_shadow_XMM_N)(currentTID, 0);
-  fpuReturnVal = *(double *)VG_(get_XMM_N)(currentTID, 0);
-  //RUDD DEBUG
-  /* for(i=0 ; i < 4; i++) { */
-  /*   printf("Testing %d\n", test[i]); */
-  /*   printf("shadow: %x\n", testing[i]); */
-  /* }    */
-
-#else
-  fpuReturnVal = VG_(get_FPU_stack_top)(currentTID);
-  FPUshadow = VG_(get_shadow_FPU_stack_top)(currentTID);
-#endif
+  fpuReturnVal = read_float_return(currentTID);
+  FPUshadow = read_shadow_float_return(currentTID);
 
 
-  //RUDD DEBUG
-  /* printf("%.16g\n", fpuReturnVal); */
-  /* printf("shadow: %x\n", FPUshadow); */
   // Get the value at the simulated %EAX (integer and pointer return
   // values are stored here upon function exit)
-  xAX = VG_(get_xAX)(currentTID);
+  xAX = read_xAX(currentTID);
 
   // Get the value of the simulated %EDX (the high 32-bits of the long
   // long int return value is stored here upon function exit)
-  xDX = VG_(get_xDX)(currentTID);
+  xDX = read_xDX(currentTID);
 
 
   // 64 bits
   // Use SHADOW values of Valgrind simulated registers to get V-bits
-  xAXshadow = VG_(get_shadow_xAX)(currentTID);
-  xDXshadow = VG_(get_shadow_xDX)(currentTID);
+  xAXshadow = read_shadow_xAX(currentTID);
+  xDXshadow = read_shadow_xDX(currentTID);
 
   FJALAR_DPRINTF("Value of eax: %lx, edx: %lx\n",xAX, xDX);
 
@@ -1057,7 +1082,7 @@ void exit_function(FunctionEntry* f)
        VG_(malloc)'ed memory to be client accessible, so we have to
        make it inaccessible again before allowing Valgrind's malloc to
        use it, lest assertions fail later. */
-    mc_make_noaccess((Addr)top->virtualStack, top->allocByteSize);
+    MC_(make_mem_noaccess)((Addr)top->virtualStack, top->allocByteSize);
     VG_(free)(top->virtualStack);
   }
 
