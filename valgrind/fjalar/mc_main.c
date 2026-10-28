@@ -2972,7 +2972,7 @@ void make_aligned_word32_noaccess ( Addr a )
 
       // PG - pgbovine - dyncomp - When you make stuff noaccess, destroy
       // those tags (only put it in this branch of the #ifdef because
-      // the other branch calls mc_make_noaccess()):
+      // the other branch calls MC_(make_mem_noaccess)()):
       if (kvasir_with_dyncomp) {
          clear_all_tags_in_range(a, 4);
       }
@@ -3064,7 +3064,7 @@ void make_aligned_word64_noaccess ( Addr a )
 
       // PG - pgbovine - dyncomp - When you make stuff noaccess, destroy
       // those tags (only put it in this branch of the #ifdef because
-      // the other branch calls mc_make_noaccess()):
+      // the other branch calls MC_(make_mem_noaccess)()):
       if (kvasir_with_dyncomp) {
          clear_all_tags_in_range(a, 8);
       }
