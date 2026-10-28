@@ -21,6 +21,7 @@
 #define MC_TRANSLATE_H
 
 #include "pub_tool_basics.h"
+#include "pub_tool_poolalloc.h"     // For mc_include.h
 #include "pub_tool_hashtable.h"     // For mc_include.h
 #include "pub_tool_libcassert.h"
 #include "pub_tool_libcprint.h"
@@ -194,6 +195,14 @@ typedef
       IRTemp* tmpMap;
       UInt     n_originalTmps; /* for range checking */
 
+      /* MODIFIED: a table [0 .. #temps_in_original_bb-1] which maps
+         each original temp to the slot of MC_(helperc_LOAD_TAG_N)
+         that holds the tags of the bytes loaded into it, or to -1.
+         NULL if a load is an interaction (see loadIsInteraction_DC).
+         See expr2tags_WrTmp_DC. */
+      Int* loadTagSnapshots;
+      Int  n_loadTagSnapshots; /* number of slots in use */
+
       /* READONLY: the guest layout.  This indicates which parts of
          the guest state should be regarded as 'always defined'. */
       const VexGuestLayout* layout;
@@ -218,6 +227,17 @@ typedef
          forward; see findFlagsCarryingTmps_DC.  NULL unless
          --dyncomp-interactions is comparisons. */
       Bool* tmpCarriesFlags;
+      /* MODIFIED: a table [0 .. 2 * #temps_in_original_bb-1] whose
+         entries 2*t and 2*t+1 are the pending carry tags of t, a
+         temporary that carries flags, once its assignment has been
+         instrumented; see notePendingCarryTags_DC.  NULL unless
+         tmpCarriesFlags is non-NULL. */
+      IRExpr** tmpPendingCarryTags;
+
+      /* MODIFIED: True if the most recent PUT to the CC_OP field of the
+         flags thunk stored a constant that says that an sbb instruction
+         set the flags. */
+      Bool sbbThunk;
    }
    DCEnv;
 
@@ -229,18 +249,18 @@ typedef
 /* add stmt to a bb */
 static inline void stmt ( HChar cat, MCEnv* mce, IRStmt* st ) {
    if (mce->trace) {
-      printf("  %c: ", cat);
+      VG_(printf)("  %c: ", cat);
       ppIRStmt(st);
-      printf("\n");
+      VG_(printf)("\n");
    }
    addStmtToIRSB(mce->sb, st);
 }
 
 static inline void stmt_DC ( HChar cat, DCEnv* dce, IRStmt* st ) {
    if (dce->mce->trace) {
-      printf("D %c: ", cat);
+      VG_(printf)("D %c: ", cat);
       ppIRStmt(st);
-      printf("\n");
+      VG_(printf)("\n");
    }
    addStmtToIRSB(dce->bb, st);
 }

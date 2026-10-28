@@ -48,6 +48,8 @@ __attribute__((noinline)) double identity(double d) {
 // optimization.  See register-params-test.sh.
 void stack_value(long v);
 void kept(long y);
+void whole_piece(long w__);
+void part_piece(long p__);
 void constant_value(long c);
 void literal_value(long l);
 
@@ -61,6 +63,8 @@ int main(void) {
   split(p);
   stack_value(17);
   kept(13);
+  whole_piece(14);
+  part_piece(15);
   constant_value(17);
   literal_value(5);
   t += (int)identity(1.5);

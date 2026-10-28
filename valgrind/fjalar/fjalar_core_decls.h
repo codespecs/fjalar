@@ -14,7 +14,7 @@
 /* fjalar_core_decls.h:
 
 Declarations of the few Valgrind core (non-tool) entities that Fjalar
-uses.  Fjalar code (e.g., mc_main.c and typedata.c) includes this file
+uses.  Fjalar code (e.g., fjalar_mc_main.h and typedata.c) includes this file
 to call those entities.  Tool files must not include coregrind/pub_core_*.h (see
 tests/check_headers_and_includes), so these are copied here instead.
 The build checks that the copies agree with the originals (see the
@@ -31,6 +31,17 @@ fjalar_core_decls.stamp rule in Makefile.am).
 // mc_check_readable uses this to accept readable memory that Valgrind
 // owns, which VG_(am_is_valid_for_client) rejects.
 extern Bool VG_(am_is_valid_for_valgrind)(Addr start, SizeT len, UInt prot);
+
+// From coregrind/pub_core_machine.h.
+// enter_function uses the frame pointer when a function's debugging
+// information gives no frame base.
+extern Addr VG_(get_FP) ( ThreadId tid );
+
+// From coregrind/pub_core_machine.h, which declares it for Fjalar.
+// Returns the address of the DynComp tag of the guest-state byte at
+// offset.  Each guest-state byte has a 4-byte tag in vex_extra_shadow,
+// which a tool cannot reach.
+extern UInt* VG_(get_tag_ptr_for_guest_offset) ( ThreadId tid, UInt offset );
 
 // From coregrind/pub_core_mallocfree.h.
 // Used to release the demanglers' results, which are allocated in the

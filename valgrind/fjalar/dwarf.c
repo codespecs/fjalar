@@ -1453,7 +1453,8 @@ decode_location_expression (unsigned char * data,
 
       /* An op that Fjalar's evaluator cannot apply, such as an unreadable register,
 	 DW_OP_stack_value, or DW_OP_plus (the evaluator has no operand
-	 stack), makes a formal parameter's location unreadable.  */
+	 stack), makes a formal parameter's location unreadable.
+	 DW_OP_piece is handled below.  */
       if (ok_to_harvest && location_op_kind_of (op) == LOC_OP_UNSUPPORTED)
 	harvest_formal_param_location_unsupported (entry);
 
@@ -1755,6 +1756,19 @@ decode_location_expression (unsigned char * data,
 	  break;
 	case DW_OP_piece:
 	  READ_ULEB (uvalue, data, end);
+	  /* Fjalar can read a location that consists of one piece, if that
+	     piece is the whole parameter; extractOneFormalParameterVar
+	     checks the size and that the piece has a location (a piece with
+	     no preceding op is optimized out).  A piece that is not the
+	     last op means that the parameter is split.  A piece of size 0
+	     covers no bytes.  */
+	  if (ok_to_harvest)
+	    {
+	      if (data == end && uvalue != 0)
+		harvest_formal_param_location_piece (entry, uvalue);
+	      else
+		harvest_formal_param_location_unsupported (entry);
+	    }
 	  printf ("DW_OP_piece: %s", dwarf_vmatoa ("u", uvalue));
 	  break;
 	case DW_OP_deref_size:
@@ -4326,6 +4340,10 @@ process_debug_info (struct dwarf_section * section,
 	  warn (_("CU at offset %s contains corrupt or "
 		  "unsupported version number: %d.\n"),
 		dwarf_vmatoa ("x", cu_offset), compunit.cu_version);
+	  // Fjalar reports the skipped compilation units.  Count them during
+	  // only one of the passes over the section.
+	  if (do_loc)
+	    num_unsupported_version_comp_units++;
 	  continue;
 	}
 
@@ -7253,13 +7271,16 @@ display_loc_list (struct dwarf_section *section,
 	  off = offset + (vstart - *start_ptr);
 
 	  READ_ULEB (vbegin, vstart, section_end);
+	  if (fjalar_debug_dump)
 	  print_dwarf_view (vbegin, pointer_size, 1);
 
 	  READ_ULEB (vend, vstart, section_end);
+	  if (fjalar_debug_dump) {
 	  print_dwarf_view (vend, pointer_size, 1);
 
 	  printf (_("views at %8.8lx for:\n    %*s "),
 		  (unsigned long) off, 8, "");
+	  }
 	}
 
       if (2 > (size_t) (section_end - start))
@@ -7299,7 +7320,7 @@ display_loc_list (struct dwarf_section *section,
 						    length,
 						    cu_offset, section,
                                                     PASS_2, OK_TO_HARVEST, 0, ll);
-      if (fjalar_debug_dump)
+      if (fjalar_debug_dump) {
       putchar (')');
 
       if (need_frame_base && !has_frame_base)
@@ -7310,8 +7331,8 @@ display_loc_list (struct dwarf_section *section,
       else if (begin > end || (begin == end && vbegin > vend))
 	fputs (_(" (start > end)"), stdout);
 
-      if (fjalar_debug_dump)
       putchar ('\n');
+      }
 
       // start of Fjalar code
       // A tombstone base address means that this entry describes code that
