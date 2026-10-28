@@ -1492,16 +1492,16 @@ static Bool copyStructReturnValue(FunctionExecutionState* e, TypeEntry* t,
       // bytes beyond the double the V bits and tags of its sign and
       // exponent.
       convert_f64le_to_f80le((UChar*)&e->st0, dst);
-      mc_copy_address_range_state((Addr)&e->st0, (Addr)dst, sizeof(e->st0));
-      mc_copy_address_range_state((Addr)&e->st0 + sizeof(e->st0) - 2,
-                                  (Addr)dst + sizeof(e->st0), 2);
+      MC_(copy_address_range_state)((Addr)&e->st0, (Addr)dst, sizeof(e->st0));
+      MC_(copy_address_range_state)((Addr)&e->st0 + sizeof(e->st0) - 2,
+                                    (Addr)dst + sizeof(e->st0), 2);
       break;
     default:
       break;
     }
     if (src) {
       VG_(memcpy)(dst, src, sizeof(Word));
-      mc_copy_address_range_state((Addr)src, (Addr)dst, sizeof(Word));
+      MC_(copy_address_range_state)((Addr)src, (Addr)dst, sizeof(Word));
     }
   }
   return True;
