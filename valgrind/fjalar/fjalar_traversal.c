@@ -1274,10 +1274,10 @@ void visitReturnValue(FunctionExecutionState* e,
       (IS_AGGREGATE_TYPE(cur_node->var->varType)) && !cur_node->var->referenceLevels) {
 
 
-    // AMD64 special case: If the size of the the struct is <= the size
-    // of 2 architectural registers, it is passed via RAX and RDX.
+    // AMD64 special case: If the size of the struct is <= the size
+    // of 2 architectural registers, it is returned in RAX and RDX.
     // We're going to express this by creating a 16 byte buffer and
-    // copying the contents of RAX and EDX to it and passing a pointer
+    // copying the contents of RAX and RDX to it and passing a pointer
     // to it.
 #if defined(VGA_amd64)
     if(cur_node->var->varType->byteSize <= 16) {
