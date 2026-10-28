@@ -571,10 +571,11 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
 			     mkIRExprVec_1(IRExpr_Const(IRConst_UWord((Addr)curFuncPtr))));
 
       // For function exit, we are interested in observing  all general purpose
-      // integer registers,  FTOP, and FPREG[], so make sure that they are
-      // updated by setting the proper annotations.
+      // integer registers,  FTOP, and FPREG[] (and on amd64 %xmm0 and
+      // %xmm1), so make sure that they are updated by setting the proper
+      // annotations.
 #if defined(VGA_amd64)
-      di->nFxState = 12;
+      di->nFxState = 13;
 #else
       di->nFxState = 11;
 #endif
@@ -621,6 +622,11 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
       di->fxState[11].fx     = Ifx_Read;
       di->fxState[11].offset = offsetof(VexGuestArchState, guest_R8);
       di->fxState[11].size   = 8 * sizeof(ULong);
+      // YMM0 and YMM1, which are contiguous in the guest state; their low
+      // 16 bytes are %xmm0 and %xmm1
+      di->fxState[12].fx     = Ifx_Read;
+      di->fxState[12].offset = offsetof(VexGuestArchState, guest_YMM0);
+      di->fxState[12].size   = 2 * sizeof(U256);
 #endif
 
       stmt('V',  mce, IRStmt_Dirty(di) );
@@ -1043,6 +1049,34 @@ void exit_function(FunctionEntry* f)
     set_abit_and_vbyte((Addr)(&top->FPU) + (Addr)i, VGM_BIT_VALID,
                        (FPUshadow >> (i * 8)) & 0xff);
   }
+
+#if defined(VGA_amd64)
+  // Save the other registers that can hold a struct/union return value,
+  // with their V bits and DynComp tags.
+  {
+    Int xmm0Offset = offsetof(VexGuestArchState, guest_YMM0);
+    Int xmm1Offset = offsetof(VexGuestArchState, guest_YMM1);
+    Int st0Offset;
+    UInt ftop;
+
+    VG_(get_shadow_regs_area)(currentTID, top->xmm0, 0/*shadowNo*/,
+                              xmm0Offset, sizeof(top->xmm0));
+    VG_(get_shadow_regs_area)(currentTID, top->xmm1, 0/*shadowNo*/,
+                              xmm1Offset, sizeof(top->xmm1));
+    for (i = 0; i < sizeof(top->xmm0); i += sizeof(Addr)) {
+      mc_copy_guest_reg_state(currentTID, xmm0Offset + i, (Addr)top->xmm0 + i);
+      mc_copy_guest_reg_state(currentTID, xmm1Offset + i, (Addr)top->xmm1 + i);
+    }
+
+    VG_(get_shadow_regs_area)(currentTID, (UChar*)&ftop, 0/*shadowNo*/,
+                              offsetof(VexGuestArchState, guest_FTOP),
+                              sizeof(ftop));
+    st0Offset = offsetof(VexGuestArchState, guest_FPREG) + (ftop & 7) * sizeof(ULong);
+    VG_(get_shadow_regs_area)(currentTID, (UChar*)&top->st0, 0/*shadowNo*/,
+                              st0Offset, sizeof(top->st0));
+    mc_copy_guest_reg_state(currentTID, st0Offset, (Addr)&top->st0);
+  }
+#endif
 
   curFunctionExecutionStatePtr = top;
   top->func->nonce = top->invocation_nonce;

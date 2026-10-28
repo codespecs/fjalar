@@ -337,7 +337,7 @@ char tag_is_namespace(unsigned long tag) {
 
 // DW_AT_abstract_origin: function, formal_parameter, variable
 // DW_AT_accessibility: function, inheritance, member, variable
-// DW_AT_artificial: variable
+// DW_AT_artificial: function, variable
 // DW_AT_bit_offset: base_type, member
 // DW_AT_bit_size: base_type, member
 // DW_AT_byte_size: base_type, collection_type, member
@@ -347,6 +347,8 @@ char tag_is_namespace(unsigned long tag) {
 // DW_AT_data_member_location: inheritance, member
 // DW_AT_declaration: collection_type, function, variable
 // DW_AT_decl_file: member, variable
+// DW_AT_defaulted: function
+// DW_AT_deleted: function
 // DW_AT_encoding: base_type
 // DW_AT_external: function, member, variable
 // DW_AT_frame_base: compile_unit, function
@@ -364,6 +366,7 @@ char tag_is_namespace(unsigned long tag) {
 // DW_AT_stmt_list: compile_unit
 // DW_AT_type: array_type, formal_parameter, function, function_type, inheritance, member, modifier_type, template_type_parameter, typedef, variable
 // DW_AT_upper_bound: array_subrange_type
+// DW_AT_virtuality: function, inheritance
 
 // clang-format off
 
@@ -389,7 +392,8 @@ char entry_is_listening_for_attribute(dwarf_entry* e, unsigned long attr)
               tag_is_member(tag) ||
               tag_is_variable(tag));
     case DW_AT_artificial:
-      return tag_is_variable(tag);
+      return (tag_is_function(tag) ||
+              tag_is_variable(tag));
     case DW_AT_bit_offset:
       return (tag_is_base_type(tag) ||
               tag_is_member(tag));
@@ -418,6 +422,10 @@ char entry_is_listening_for_attribute(dwarf_entry* e, unsigned long attr)
     case DW_AT_decl_file:
       return (tag_is_member(tag) ||
               tag_is_variable(tag));
+    case DW_AT_defaulted:
+      return tag_is_function(tag);
+    case DW_AT_deleted:
+      return tag_is_function(tag);
     case DW_AT_encoding:
       return tag_is_base_type(tag);
     case DW_AT_external:
@@ -484,6 +492,9 @@ char entry_is_listening_for_attribute(dwarf_entry* e, unsigned long attr)
               tag_is_variable(tag));
     case DW_AT_upper_bound:
       return tag_is_array_subrange_type(tag);
+    case DW_AT_virtuality:
+      return (tag_is_function(tag) ||
+              tag_is_inheritance(tag));
     default:
       return 0;
     }
@@ -726,8 +737,56 @@ char harvest_artificial_value(dwarf_entry* e, unsigned long value) {
 
   tag = e->tag_name;
 
-  if (tag_is_variable(tag)) {
+  if (tag_is_function(tag)) {
+    ((function*)e->entry_ptr)->is_artificial = value;
+    return 1;
+  }
+  else if (tag_is_variable(tag)) {
     ((variable*)e->entry_ptr)->is_declaration_or_artificial = value;
+    return 1;
+  }
+  else
+    return 0;
+}
+
+char harvest_defaulted_value(dwarf_entry* e, unsigned long value) {
+  if ((e == 0) || (e->entry_ptr == 0))
+    return 0;
+
+  if (tag_is_function(e->tag_name)) {
+    ((function*)e->entry_ptr)->defaulted = value;
+    return 1;
+  }
+  else
+    return 0;
+}
+
+char harvest_deleted_value(dwarf_entry* e, unsigned long value) {
+  if ((e == 0) || (e->entry_ptr == 0))
+    return 0;
+
+  if (tag_is_function(e->tag_name)) {
+    ((function*)e->entry_ptr)->is_deleted = value;
+    return 1;
+  }
+  else
+    return 0;
+}
+
+// DW_AT_virtuality is DW_VIRTUALITY_{none,virtual,pure_virtual}.
+char harvest_virtuality_value(dwarf_entry* e, unsigned long value) {
+  unsigned long tag;
+  if ((e == 0) || (e->entry_ptr == 0))
+    return 0;
+
+  tag = e->tag_name;
+
+  if (tag_is_function(tag)) {
+    ((function*)e->entry_ptr)->is_virtual = (value != DW_VIRTUALITY_none);
+    return 1;
+  }
+  else if (tag_is_inheritance(tag)) {
+    ((inheritance_type*)e->entry_ptr)->is_virtual = (value != DW_VIRTUALITY_none);
     return 1;
   }
   else
@@ -1392,7 +1451,8 @@ char harvest_ordinary_unsigned_value(dwarf_entry* e, unsigned long attr, unsigne
   // Multiplex since
   // DW_AT_byte_size, DW_AT_encoding, DW_AT_const_value,
   // DW_AT_bit_size, DW_AT_bit_offset, DW_AT_external, DW_AT_upper_bound, DW_AT_count
-  // DW_AT_declaration, DW_AT_artificial, DW_AT_language, DW_AT_inline
+  // DW_AT_declaration, DW_AT_artificial, DW_AT_language, DW_AT_inline,
+  // DW_AT_defaulted, DW_AT_deleted, DW_AT_virtuality
   // return ordinary unsigned data
   // In Dwarf 2 the DW_AT_data_member_location of a DW_TAG_member was always a DW_FORM_block
   // which implied a location list, but in Dwarf 3 it may be a DW_FORM_data which is an
@@ -1425,6 +1485,12 @@ char harvest_ordinary_unsigned_value(dwarf_entry* e, unsigned long attr, unsigne
       return harvest_declaration_value(e, value);
     case DW_AT_artificial:
       return harvest_artificial_value(e, value);
+    case DW_AT_defaulted:
+      return harvest_defaulted_value(e, value);
+    case DW_AT_deleted:
+      return harvest_deleted_value(e, value);
+    case DW_AT_virtuality:
+      return harvest_virtuality_value(e, value);
     case DW_AT_data_member_location:
       return harvest_data_member_location(e, value);
     case DW_AT_high_pc:

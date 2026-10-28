@@ -124,6 +124,7 @@ typedef struct
   unsigned long superclass_type_ID; // the ID of the superclass
   unsigned long accessibility;      // the type of inheritance (public, protected, private)
   unsigned long member_var_offset;  // the offset of member variables inherited from this class
+  char is_virtual;                  // 1 if this is a virtual base class (DW_AT_virtuality)
 } inheritance_type;
 
 // For C++ namespaces
@@ -306,6 +307,14 @@ typedef struct
   // if the compiler emitted one, will be a separate entry that has its
   // own start_pc and DW_AT_inline is not set.
   char is_inline;  /* Has it been inlined? If so, probably want to skip it */
+
+  // C++ only.  These describe a member function's declaration within its
+  // class, which Fjalar uses to decide whether the class is trivial for
+  // the purposes of calls (see extractStructUnionType).
+  char is_artificial; // 1 if the compiler declared it implicitly (DW_AT_artificial)
+  char defaulted;     // the DW_AT_defaulted value: DW_DEFAULTED_{no,in_class,out_of_class}
+  char is_deleted;    // 1 if it is "= delete" (DW_AT_deleted)
+  char is_virtual;    // 1 if it is virtual or pure virtual (DW_AT_virtuality)
 
 } function;
 
@@ -580,6 +589,9 @@ char harvest_local_var_offset(dwarf_entry* e, unsigned long value, int regNum);
 char harvest_sibling(dwarf_entry* e, unsigned long value);
 char harvest_declaration_value(dwarf_entry* e, unsigned long value);
 char harvest_artificial_value(dwarf_entry* e, unsigned long value);
+char harvest_defaulted_value(dwarf_entry* e, unsigned long value);
+char harvest_deleted_value(dwarf_entry* e, unsigned long value);
+char harvest_virtuality_value(dwarf_entry* e, unsigned long value);
 char harvest_specification_value(dwarf_entry* e, unsigned long value);
 char harvest_abstract_origin_value(dwarf_entry* e, unsigned long value);
 char harvest_accessibility(dwarf_entry* e, char a);

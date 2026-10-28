@@ -27,6 +27,7 @@
 #include "generate_fjalar_entries.h"
 #include "disambig.h"
 #include "mc_fjalar.h"
+#include "../VEX/priv/guest_generic_x87.h"  // convert_f64le_to_f80le
 
 #include "pub_tool_threadstate.h"
 
@@ -1229,6 +1230,285 @@ void visitVariableGroup(VariableOrigin varOrigin,
 }
 
 
+#if defined(VGA_amd64)
+
+// The classes into which the System V amd64 ABI sorts each eightbyte
+// (8-byte chunk) of a value, which determine the registers that return
+// it.  RC_NO_CLASS is the class of an eightbyte that holds only padding.
+typedef enum {
+  RC_NO_CLASS,
+  RC_INTEGER,  // returned in %rax, then %rdx
+  RC_SSE,      // returned in the low 8 bytes of %xmm0, then of %xmm1
+  RC_SSEUP,    // returned in the high 8 bytes of the preceding SSE register
+  RC_X87,      // returned in %st(0)
+  RC_X87UP,    // the padding of an RC_X87 eightbyte's 80-bit value
+  RC_MEMORY    // returned in memory
+} ReturnClass;
+
+// The ABI returns a struct/union in registers only if it is at most
+// this many bytes, which is two eightbytes.
+#define MAX_REGISTER_RETURN_SIZE (2 * sizeof(Word))
+
+// Returns the class of an eightbyte that holds values of classes a and b.
+static ReturnClass mergeReturnClasses(ReturnClass a, ReturnClass b)
+{
+  if (a == b) {
+    return a;
+  }
+  if (a == RC_NO_CLASS) {
+    return b;
+  }
+  if (b == RC_NO_CLASS) {
+    return a;
+  }
+  if ((a == RC_MEMORY) || (b == RC_MEMORY)) {
+    return RC_MEMORY;
+  }
+  if ((a == RC_INTEGER) || (b == RC_INTEGER)) {
+    return RC_INTEGER;
+  }
+  if ((a == RC_X87) || (a == RC_X87UP) || (b == RC_X87) || (b == RC_X87UP)) {
+    return RC_MEMORY;
+  }
+  return RC_SSE;
+}
+
+// Merges class c into the class of the eightbyte of the return value
+// that contains byte 'offset'.
+static void mergeEightbyteClass(ReturnClass classes[2], unsigned long offset,
+                                ReturnClass c)
+{
+  if (offset < MAX_REGISTER_RETURN_SIZE) {
+    classes[offset / sizeof(Word)] =
+      mergeReturnClasses(classes[offset / sizeof(Word)], c);
+  }
+}
+
+static void classifyAggregate(TypeEntry* t, unsigned long offset,
+                              ReturnClass classes[2]);
+
+// Merges into classes[] the classes of a value of type t at byte
+// 'offset' of the return value.  If isPointer, the value is a pointer
+// or a C++ reference to t instead.
+static void classifyValue(TypeEntry* t, Bool isPointer, unsigned long offset,
+                          ReturnClass classes[2])
+{
+  // The classes of the value's first and (if it is 16 bytes) second
+  // eightbyte
+  ReturnClass lo, hi;
+  unsigned long size, align;
+
+  if (isPointer) {
+    lo = hi = RC_INTEGER;
+    size = align = sizeof(Addr);
+  }
+  else if (IS_AGGREGATE_TYPE(t)) {
+    classifyAggregate(t, offset, classes);
+    return;
+  }
+  else {
+    size = align = t->byteSize;
+    switch (t->decType) {
+    case D_FLOAT:
+    case D_DOUBLE:
+    case D_FLOAT16:
+    case D_BFLOAT16:
+    case D_DECIMAL:     // _Decimal128 is 16 bytes
+    case D_FLOAT128:
+      lo = RC_SSE;
+      hi = RC_SSEUP;
+      break;
+    case D_LONG_DOUBLE:
+      lo = RC_X87;
+      hi = RC_X87UP;
+      break;
+    case D_COMPLEX:
+      // A complex value is a pair of values of half its size.  Fjalar
+      // does not distinguish a complex integer (a GNU extension) from a
+      // complex floating-point value; this treats both as the latter.
+      lo = hi = RC_SSE;
+      align = size / 2;
+      break;
+    default:
+      lo = hi = RC_INTEGER;
+      break;
+    }
+  }
+
+  if (size == 0) {
+    return;
+  }
+  // The ABI returns a value that has an unaligned field in memory.
+  if ((offset % align) != 0) {
+    mergeEightbyteClass(classes, 0, RC_MEMORY);
+    return;
+  }
+  mergeEightbyteClass(classes, offset, lo);
+  if (size > sizeof(Word)) {
+    mergeEightbyteClass(classes, offset + sizeof(Word), hi);
+  }
+}
+
+// Merges into classes[] the classes of the struct/union t at byte
+// 'offset' of the return value.
+static void classifyAggregate(TypeEntry* t, unsigned long offset,
+                              ReturnClass classes[2])
+{
+  // Bit i is set if a base class or a member variable other than a
+  // bit-field occupies byte i of the return value.
+  UInt occupied = 0;
+  Bool hasBitField = False;
+  SimpleNode* n;
+  VarNode* v;
+  unsigned long i;
+
+  // A class that is non-trivial for the purposes of calls is returned in
+  // memory.  Its base classes and member variables are classified below,
+  // so this need not check them.
+  if (t->aggType->declaresNonTrivialForCalls) {
+    mergeEightbyteClass(classes, 0, RC_MEMORY);
+    return;
+  }
+
+  if (t->aggType->superclassList) {
+    for (n = t->aggType->superclassList->first; n; n = n->next) {
+      Superclass* super = (Superclass*)(n->elt);
+      if (super->class && IS_AGGREGATE_TYPE(super->class)) {
+        unsigned long superOffset = offset + super->member_var_offset;
+        classifyAggregate(super->class, superOffset, classes);
+        for (i = 0; (i < (unsigned long)super->class->byteSize) &&
+                    (superOffset + i < MAX_REGISTER_RETURN_SIZE); i++) {
+          occupied |= 1u << (superOffset + i);
+        }
+      }
+    }
+  }
+
+  if (t->aggType->memberVarList) {
+    for (v = t->aggType->memberVarList->first; v; v = v->next) {
+      VariableEntry* var = v->var;
+      Bool isPointer;
+      unsigned long varOffset, eltSize, numElts = 1;
+
+      if (!var->varType || !IS_MEMBER_VAR(var)) {
+        continue;
+      }
+      // Fjalar does not record the position of a bit-field (the DWARF
+      // attribute DW_AT_data_bit_offset).  A bit-field is in the INTEGER
+      // class, so this classifies as INTEGER the bytes that no other
+      // member variable occupies.
+      if (var->memberVar->internalBitSize > 0) {
+        hasBitField = True;
+        continue;
+      }
+
+      varOffset = offset + var->memberVar->data_member_location;
+      isPointer = (var->referenceLevels > 0) ||
+                  (var->ptrLevels > (IS_STATIC_ARRAY_VAR(var) ? 1 : 0));
+      eltSize = isPointer ? sizeof(Addr) : (unsigned long)var->varType->byteSize;
+      if (IS_STATIC_ARRAY_VAR(var)) {
+        for (i = 0; i < var->staticArr->numDimensions; i++) {
+          numElts *= var->staticArr->upperBounds[i] + 1;
+        }
+      }
+
+      for (i = 0; i < numElts; i++) {
+        if (varOffset + i * eltSize >= MAX_REGISTER_RETURN_SIZE) {
+          break;
+        }
+        classifyValue(var->varType, isPointer, varOffset + i * eltSize, classes);
+      }
+      for (i = 0; (i < numElts * eltSize) &&
+                  (varOffset + i < MAX_REGISTER_RETURN_SIZE); i++) {
+        occupied |= 1u << (varOffset + i);
+      }
+    }
+  }
+
+  if (hasBitField) {
+    for (i = offset; i < offset + t->byteSize; i++) {
+      if ((i < MAX_REGISTER_RETURN_SIZE) && !(occupied & (1u << i))) {
+        mergeEightbyteClass(classes, i, RC_INTEGER);
+      }
+    }
+  }
+}
+
+// If the System V amd64 ABI returns a value of the struct/union type t
+// in registers, then copies the value, with its A and V bits and DynComp
+// tags, from the registers that 'e' saved to buf, which is
+// MAX_REGISTER_RETURN_SIZE bytes, and returns True.  Otherwise returns
+// False; then the value is in memory, and %rax holds its address.
+static Bool copyStructReturnValue(FunctionExecutionState* e, TypeEntry* t,
+                                  UChar* buf)
+{
+  ReturnClass classes[2] = {RC_NO_CLASS, RC_NO_CLASS};
+  // The registers that return INTEGER and SSE eightbytes, in order
+  UChar* intRegs[] = {(UChar*)&e->xAX, (UChar*)&e->xDX};
+  UChar* sseRegs[] = {e->xmm0, e->xmm1};
+  int numIntRegs = 0, numSSERegs = 0;
+  unsigned long i;
+
+  if (t->byteSize > MAX_REGISTER_RETURN_SIZE) {
+    return False;
+  }
+  classifyAggregate(t, 0, classes);
+
+  // The ABI's post-merger cleanup
+  if ((classes[0] == RC_MEMORY) || (classes[1] == RC_MEMORY) ||
+      (classes[0] == RC_X87UP) ||
+      ((classes[1] == RC_X87UP) && (classes[0] != RC_X87))) {
+    return False;
+  }
+  if (classes[0] == RC_SSEUP) {
+    classes[0] = RC_SSE;
+  }
+  if ((classes[1] == RC_SSEUP) && (classes[0] != RC_SSE)) {
+    classes[1] = RC_SSE;
+  }
+
+  // A byte that no register supplies, such as padding, is undefined.
+  MC_(make_mem_undefined_w_otag)((Addr)buf, MAX_REGISTER_RETURN_SIZE,
+                                 MC_OKIND_UNKNOWN);
+
+  for (i = 0; i * sizeof(Word) < (unsigned long)t->byteSize; i++) {
+    UChar* dst = buf + i * sizeof(Word);
+    UChar* src = NULL;
+    switch (classes[i]) {
+    case RC_INTEGER:
+      src = intRegs[numIntRegs++];
+      break;
+    case RC_SSE:
+      src = sseRegs[numSSERegs++];
+      break;
+    case RC_SSEUP:
+      // The preceding eightbyte is RC_SSE, in the low 8 bytes of %xmm0.
+      src = e->xmm0 + sizeof(Word);
+      break;
+    case RC_X87:
+      // %st(0) holds the 80-bit value, and the RC_X87UP eightbyte holds
+      // its last 2 bytes, then padding.  VEX represents %st(0) as a
+      // double, so this converts the double to 80 bits, and gives the 2
+      // bytes beyond the double the V bits and tags of its sign and
+      // exponent.
+      convert_f64le_to_f80le((UChar*)&e->st0, dst);
+      mc_copy_address_range_state((Addr)&e->st0, (Addr)dst, sizeof(e->st0));
+      mc_copy_address_range_state((Addr)&e->st0 + sizeof(e->st0) - 2,
+                                  (Addr)dst + sizeof(e->st0), 2);
+      break;
+    default:
+      break;
+    }
+    if (src) {
+      VG_(memcpy)(dst, src, sizeof(Word));
+      mc_copy_address_range_state((Addr)src, (Addr)dst, sizeof(Word));
+    }
+  }
+  return True;
+}
+
+#endif
+
 // Grabs the appropriate return value of the function denoted by the
 // execution state 'e' from Valgrind simulated registers and visits
 // the variables to perform some action.  This differs from calling
@@ -1272,26 +1552,13 @@ void visitReturnValue(FunctionExecutionState* e,
       (IS_AGGREGATE_TYPE(cur_node->var->varType)) && !cur_node->var->referenceLevels) {
 
 
-    // AMD64 special case: If the size of the struct is <= the size
-    // of 2 architectural registers, it is returned in RAX and RDX.
-    // We're going to express this by creating a buffer, copying the
-    // contents of RAX and RDX to it, and passing a pointer to it.
+    // AMD64 special case: The ABI returns a small struct in registers.
+    // We're going to express this by copying the registers' contents to
+    // a buffer and passing a pointer to it.
 #if defined(VGA_amd64)
-    char returnBuffer[sizeof(e->xAX) + sizeof(e->xDX)];
-    if(cur_node->var->varType->byteSize <= sizeof(returnBuffer)) {
-      VG_(memcpy)(returnBuffer                       ,  &e->xAX, sizeof(e->xAX));
-      VG_(memcpy)(returnBuffer + (Addr)sizeof(e->xAX),  &e->xDX, sizeof(e->xDX));
-
+    UChar returnBuffer[MAX_REGISTER_RETURN_SIZE];
+    if (copyStructReturnValue(e, cur_node->var->varType, returnBuffer)) {
       FJALAR_DPRINTF("tiny struct\n");
-
-      // Copy A and V bits over:
-      mc_copy_address_range_state((Addr)(&(e->xAX)),
-                                  (Addr)(&returnBuffer),
-                                  sizeof(e->xAX));
-
-      mc_copy_address_range_state((Addr)(&(e->xDX)),
-                                  (Addr)(&returnBuffer) + (Addr)sizeof(e->xAX),
-                                  sizeof(e->xDX));
 
       visitVariable(cur_node->var,
                     (Addr) returnBuffer,
@@ -1305,9 +1572,10 @@ void visitReturnValue(FunctionExecutionState* e,
     } else
 #endif
 
-    // e->xAX is the contents of the virtual xAX, which should be the
-    // address of the struct/union, so pass that along ...  NO extra
-    // level of indirection needed
+    // A struct/union that is returned in memory:  e->xAX is the
+    // contents of the virtual xAX, which is the address of the
+    // struct/union, so pass that along ...  NO extra level of
+    // indirection needed
     visitVariable(cur_node->var,
                   (Addr)e->xAX,
                   0, /* register, no guest location*/

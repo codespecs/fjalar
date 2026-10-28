@@ -2100,6 +2100,98 @@ static void extractEnumerationType(TypeEntry* t, collection_type* collectionPtr)
   FJALAR_DPRINTF("EXIT  extractEnumerationType\n");
 }
 
+// Returns True if the member function f, declared in the class that the
+// collection entry classEntry describes, is a copy constructor or a move
+// constructor:  a constructor whose only explicit parameter is a
+// reference to the class.  This is an approximation:  Fjalar does not
+// record rvalue reference types, so any constructor whose only explicit
+// parameter has a type that Fjalar does not record counts as a move
+// constructor.
+static Bool isCopyOrMoveConstructor(function* f, dwarf_entry* classEntry)
+{
+  collection_type* classPtr = (collection_type*)(classEntry->entry_ptr);
+  // A constructor's name is its class's name without template arguments.
+  char* templateArgs = VG_(strchr)(classPtr->name, '<');
+  SizeT nameLen = templateArgs ? (SizeT)(templateArgs - classPtr->name)
+                               : VG_(strlen)(classPtr->name);
+  formal_parameter* param;
+  unsigned long typeIndex = 0;
+  dwarf_entry* type;
+
+  if (!f->name ||
+      (VG_(strncmp)(f->name, classPtr->name, nameLen) != 0) ||
+      (f->name[nameLen] != '\0')) {
+    return False;
+  }
+  // The first parameter is the artificial 'this'.
+  if (f->num_formal_params != 2) {
+    return False;
+  }
+  param = (formal_parameter*)(f->params[1]->entry_ptr);
+  if (!binary_search_dwarf_entry_array(param->type_ID, &typeIndex)) {
+    return True;
+  }
+  type = &dwarf_entry_array[typeIndex];
+  if (type->tag_name != DW_TAG_reference_type) {
+    return False;
+  }
+  // Follow the reference and any const or volatile modifiers.
+  do {
+    if (!binary_search_dwarf_entry_array(((modifier_type*)type->entry_ptr)->target_ID,
+                                         &typeIndex)) {
+      return False;
+    }
+    type = &dwarf_entry_array[typeIndex];
+  } while ((type->tag_name == DW_TAG_const_type) ||
+           (type->tag_name == DW_TAG_volatile_type));
+  return (type == classEntry) ||
+         (tag_is_collection_type(type->tag_name) &&
+          ((collection_type*)type->entry_ptr)->name &&
+          VG_STREQ(((collection_type*)type->entry_ptr)->name, classPtr->name));
+}
+
+// Returns the value for the declaresNonTrivialForCalls field of the
+// AggregateType for the struct/union/class that the collection entry e
+// describes.
+static Bool declaresNonTrivialForCalls(dwarf_entry* e)
+{
+  collection_type* collectionPtr = (collection_type*)(e->entry_ptr);
+  UInt numCopyOrMoveConstructors = 0, numDeleted = 0;
+  UInt i;
+
+  for (i = 0; i < collectionPtr->num_superclasses; i++) {
+    if (((inheritance_type*)collectionPtr->superclasses[i]->entry_ptr)->is_virtual) {
+      return True;
+    }
+  }
+
+  for (i = 0; i < collectionPtr->num_member_funcs; i++) {
+    function* f = (function*)(collectionPtr->member_funcs[i]->entry_ptr);
+    Bool isDestructor = (f->name && (f->name[0] == '~'));
+    Bool isCopyOrMove = (collectionPtr->name && isCopyOrMoveConstructor(f, e));
+
+    if (f->is_virtual) {
+      return True;
+    }
+    if (isCopyOrMove) {
+      numCopyOrMoveConstructors++;
+      if (f->is_deleted) {
+        numDeleted++;
+      }
+    }
+    // A special member function is user-provided unless it is implicit,
+    // deleted, or defaulted on its first declaration.
+    if ((isDestructor || isCopyOrMove) &&
+        !f->is_artificial && !f->is_deleted &&
+        (f->defaulted != DW_DEFAULTED_in_class)) {
+      return True;
+    }
+  }
+
+  return (numCopyOrMoveConstructors > 0) &&
+         (numDeleted == numCopyOrMoveConstructors);
+}
+
 // Extracts struct/union type info from collectionPtr and creates
 // entries for member variables in t->memberVarList
 // (which can be null if there are no non-static member vars)
@@ -2124,6 +2216,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
 
   t->aggType = VG_(calloc)("generate_fjalar_entries.c: extractStructUnionType.1", 1, sizeof(*t->aggType));
+  t->aggType->declaresNonTrivialForCalls = declaresNonTrivialForCalls(e);
 
 
   if (e->tag_name == DW_TAG_union_type) {

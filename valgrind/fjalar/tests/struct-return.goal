@@ -1,0 +1,23 @@
+..get_two_longs():::EXIT0 return.a 1
+..get_two_longs():::EXIT0 return.b 2
+..get_two_doubles():::EXIT0 return.x 3.5
+..get_two_doubles():::EXIT0 return.y 4.5
+..get_long_double():::EXIT0 return.a 5
+..get_long_double():::EXIT0 return.b 6.5
+..get_double_long():::EXIT0 return.a 7.5
+..get_double_long():::EXIT0 return.b 8
+..get_three_floats():::EXIT0 return.a 9.5
+..get_three_floats():::EXIT0 return.b 10.5
+..get_three_floats():::EXIT0 return.c 11.5
+..get_int_float():::EXIT0 return.i 12
+..get_int_float():::EXIT0 return.f 13.5
+..get_double_bitfield():::EXIT0 return.d 14.5
+..get_double_bitfield():::EXIT0 return.bits 5
+..get_packed():::EXIT0 return.c 112
+..get_packed():::EXIT0 return.l 16
+..get_x87():::EXIT0 return.ld 17.5
+..get_double_or_long():::EXIT0 return.d 8.8931816251424408e-323
+..get_double_or_long():::EXIT0 return.l 18
+..get_nested():::EXIT0 return.p.a 19.5
+..get_nested():::EXIT0 return.p.b 20.5
+..get_nested():::EXIT0 return.q[..] [ 21.5 22.5 ]

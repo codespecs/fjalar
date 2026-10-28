@@ -245,6 +245,17 @@ struct _AggregateType {
   //       but that shouldn't really matter in practice - oh well...
   SimpleList* /* <Superclass> */ superclassList;
 
+  // For C++: True if this class's own declarations make it non-trivial
+  // for the purposes of calls, as the Itanium C++ ABI defines it:  it
+  // has a virtual function or a virtual base class, it declares a
+  // user-provided copy constructor, move constructor, or destructor, or
+  // it declares copy or move constructors and all of them are deleted.
+  // A class is also non-trivial for the purposes of calls if one of its
+  // base classes or non-static member variables is; this field does not
+  // account for that.  An object of a class that is non-trivial for the
+  // purposes of calls is returned in memory.
+  Bool declaresNonTrivialForCalls;
+
 };
 
 
@@ -811,6 +822,12 @@ typedef struct {
   Word xAX;     // primary integer return value (%eax, %rax)
   Word xDX;     // secondary integer return value (%edx, %rdx)
   double FPU;   // floating-point return value (x86 %st(0))
+
+  // amd64 only.  A struct/union return value can also be in these
+  // registers; see visitReturnValue.
+  UChar xmm0[16]; // the low 16 bytes of %xmm0
+  UChar xmm1[16]; // the low 16 bytes of %xmm1
+  double st0;     // %st(0), which VEX represents as a double
 
   // Unique nonce corresponding to this invocation of the function.
   // Used to differentiate between different calls to the same
