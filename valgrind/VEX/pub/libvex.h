@@ -606,55 +606,6 @@ typedef
       /* Whereabouts is the instruction pointer? */
       Int offset_IP;
       Int sizeof_IP; /* 4 or 8 */
-      /* Whereabouts is the primary integer return register? */
-      Int offset_xAX;
-      Int sizeof_xAX; /* 4 or 8 */
-      /* Whereabouts is the secondary integer return register? */
-      Int offset_xDX;
-      Int sizeof_xDX; /* 4 or 8 */
-       /* Whereabouts is the CX register? */
-      Int offset_xCX;
-      Int sizeof_xCX; /* 4 or 8 */
-      /* Whereabouts is the BX register? */
-      Int offset_xBX;
-      Int sizeof_xBX; /* 4 or 8 */
-      /* Whereabouts is the SI register? */
-      Int offset_xSI;
-      Int sizeof_xSI; /* 4 or 8 */
-      /* Whereabouts is the DI register? */
-      Int offset_xDI;
-      Int sizeof_xDI; /* 4 or 8 */ 
-      /* Whereabouts is the first SSE register? */
-      Int offset_XMM0;     
-      Int sizeof_XMM0;
-      /* Whereabouts is the first SSE register? */
-      Int offset_XMM1;     
-      Int sizeof_XMM1;
-      /* Whereabouts is the R8 register? */
-      Int offset_R8;
-      Int sizeof_R8; /* 8 */
-      /* Whereabouts is the R9 register? */
-      Int offset_R9;
-      Int sizeof_R9; /* 8 */
-      /* Whereabouts is the R10 register? */
-      Int offset_R10;
-      Int sizeof_R10; /* 8 */
-      /* Whereabouts is the R11 register? */
-      Int offset_R11;
-      Int sizeof_R11; /* 8 */
-      /* Whereabouts is the R12 register? */
-      Int offset_R12;
-      Int sizeof_R12; /* 8 */
-      /* Whereabouts is the R13 register? */
-      Int offset_R13;
-      Int sizeof_R13; /* 8 */
-      /* Whereabouts is the R14 register? */
-      Int offset_R14;
-      Int sizeof_R14; /* 8 */
-      /* Whereabouts is the R15 register? */
-      Int offset_R15;
-      Int sizeof_R15; /* 8 */
-
       /* Describe parts of the guest state regarded as 'always
          defined'. */
       Int n_alwaysDefd;

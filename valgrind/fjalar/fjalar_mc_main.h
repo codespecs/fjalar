@@ -30,7 +30,7 @@ mc_main.c needs for this file's functions and for nothing else.
 */
 
 #include "pub_tool_vki.h"  // needed for VKI_PROT_ defines
-#include "fjalar_core_decls.h"  // for VG_(am_is_valid_for_valgrind)
+#include "fjalar_core_decls.h"  // for VG_(am_is_valid_for_valgrind), VG_(get_tag_ptr_for_guest_offset)
 
 void set_abit_and_vbyte (Addr a, UWord abit, UWord vbyte )
 {
@@ -82,16 +82,6 @@ char mc_are_some_bytes_initialized(Addr a, SizeT len) {
   }
   return 0;
  }
-
-void mc_copy_address_range_state ( Addr src, Addr dst, SizeT len )
-{
-  MC_(copy_address_range_state) ( src, dst, len );
-}
-
-void mc_make_noaccess ( Addr a, SizeT len )
-{
-  MC_(make_mem_noaccess) ( a, len );
-}
 
 // Marks the bytes at dst addressable, gives each one the V bits of the
 // corresponding byte of the register, and gives all of them the
