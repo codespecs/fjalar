@@ -365,7 +365,8 @@ Memcheck files that Fjalar's copy of Memcheck, in @file{valgrind/fjalar},
 has but that the base Valgrind release does not have.  These are the files
 in @file{valgrind/fjalar} whose names start with @file{mc_} or
 @file{memcheck}; the other files there are Fjalar's own.
-Fjalar created some of them, such as @file{mc_translate.h}; keep those.
+Fjalar created some of them, such as @file{mc_fjalar.h} and
+@file{mc_translate.h}; keep those.
 Remove the others with @command{git rm}.
 
 @item
@@ -1385,6 +1386,25 @@ READELF=$($INV/fjalar/build-binutils-readelf.sh $BUNEWVER)
 $READELF --debug-dump @var{program}
 @end example
 
+The Kvasir tests check only the @file{.decls} and @file{.dtrace} files, not
+the output of @option{--fjalar-debug-dump} and @option{--fjalar-debug}.
+@command{compare-debug-output.sh} checks all of them: it runs Fjalar on
+programs compiled from Fjalar's tests and compares the output with a
+baseline.  Its first run saves the baseline, and later runs compare with
+it.  Save the baseline with a built Fjalar tree that does not contain the
+merge, such as a clone of the master branch, and then compare with the
+merged tree:
+
+@example
+@var{unmerged-fjalar}/compare-debug-output.sh /tmp/$USER/debug-output
+$INV/fjalar/compare-debug-output.sh /tmp/$USER/debug-output
+@end example
+
+@noindent
+A Valgrind or Binutils merge may change the output intentionally; review
+each difference.  See the comments at the top of
+@file{compare-debug-output.sh} for details.
+
 
 @node Documenting Changes
 @section Documenting Changes
@@ -1460,6 +1480,26 @@ include additional information specific to the amd64 and x86 platforms.
 Finally, we had to extend Valgrind's implementation of the C library
 with a few extra functions.
 
+To see all of Fjalar's modifications to the Valgrind release that
+@file{valgrind/REVISION} names, run:
+
+@example
+$INV/fjalar/diff-from-valgrind.sh
+@end example
+
+@noindent
+It accepts the options of @command{git diff}, such as @option{--stat} and
+@option{-w}.  It compares with @file{$INV/valgrind-old}; to compare with
+another clone of that release, such as @file{$INV/valgrind-new} after a
+merge, give @option{--valgrind=@var{dir}}.  Every modification is a
+potential conflict in the next merge, so keep them few:  put Fjalar's code
+in Fjalar's own files where possible, and keep upstream's whitespace.
+Continuous integration runs @command{check-valgrind-whitespace.sh}, which
+fails if Fjalar's copy of an upstream file has a change of whitespace
+alone, such as removed trailing whitespace or an added blank line.  On a line
+whose text Fjalar also changed, a change of whitespace adds no conflict, so
+the check ignores it.
+
 (Remember that we assume @env{$INV} points to a parent directory that
 contains both the Daikon and Fjalar source trees.)
 
@@ -1519,7 +1559,13 @@ Other modifications include:
 @table @asis
 @item $INV/fjalar/valgrind/fjalar/mc_main.c
 Run-time arguments and versioning information for Kvasir to replace
-the default Memcheck ones
+the default Memcheck ones.  Also, an @code{#include} of
+@file{fjalar_mc_main.h}, which defines the functions that Fjalar adds to
+Memcheck (@file{mc_fjalar.h} declares them).  Those functions call
+static functions of @file{mc_main.c}, such as @code{set_vabits2},
+@code{set_sec_vbits8}, @code{get_vabits2},
+@code{is_mem_defined}, and @code{is_mem_addressable}, so the
+@code{#include} must follow the definitions of those functions.
 @item $INV/fjalar/valgrind/fjalar/mc_translate.c
 In Memcheck's instrumentation block, duplicate each case for DynComp.
 @end table

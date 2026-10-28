@@ -48,7 +48,7 @@
 #include "fjalar_select.h"
 #include "fjalar_traversal.h"
 #include "disambig.h"
-#include "mc_include.h"
+#include "mc_fjalar.h"
 #include "typedata.h"
 #include "vex_common.h"
 #include "kvasir/kvasir_main.h"

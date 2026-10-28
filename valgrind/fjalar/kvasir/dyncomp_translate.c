@@ -30,7 +30,8 @@
 
 #include "my_libc.h"
 
-#include "mc_include.h"
+#include "mc_fjalar.h"
+#include "pub_tool_debuginfo.h"
 #include "kvasir_main.h"
 #include "dyncomp_translate.h"
 #include "dyncomp_main.h"
@@ -3945,4 +3946,172 @@ void do_shadow_CAS_DC ( DCEnv* dce, IRCAS* cas) {
     do_shadow_CAS_double_DC( dce, cas );
   }
 
+}
+
+/* Called by MC_(instrument), before it instruments any statement of
+   sb_in.  Returns True if DynComp instruments sb_in, and in that case
+   initializes dce, with mce as Memcheck's environment; DynComp adds its
+   statements to the same block as Memcheck, mce->sb.  DynComp does not
+   instrument the blocks of the dynamic loader:  with libc-2.21 and
+   ld-2.21, doing so put large sections of libc data, and with them
+   unrelated user variables, into the same comparability set. */
+Bool begin_instrument_DC ( DCEnv* dce, VgCallbackClosure* closure,
+                           const IRSB* sb_in, MCEnv* mce )
+{
+   static Bool first_time = True;
+   static const HChar* loader_name = "GaRbAgE";
+   Bool do_dyncomp = False;
+   const DiEpoch cur_ep = VG_(current_DiEpoch)();
+   Int i;
+
+   if (dyncomp_print_debug_info) {
+      const HChar *fnname;
+      // Describe this (probably live) address with current epoch
+      Bool ok = VG_(get_fnname)(VG_(current_DiEpoch)(), closure->readdr, &fnname);
+
+      if (!ok) fnname = "UNKNOWN_FUNCTION";
+      if (closure->nraddr != closure->readdr) {
+         DYNCOMP_DPRINTF("Redirect: %p => %p\n", (void*)closure->nraddr, (void*)closure->readdr);
+      }
+      DYNCOMP_DPRINTF("address: %p fnname: %s\n", (void*)closure->readdr, fnname);
+   }
+
+   if (first_time) {
+      DebugInfo* di = VG_(find_DebugInfo)(cur_ep, closure->readdr);
+      tl_assert(di);
+      loader_name = VG_(DebugInfo_get_filename)(di);
+      DYNCOMP_DPRINTF("loader_name: %s\n", loader_name);
+      first_time = False;
+   } else {
+      const HChar* objname = "UNKNOWN_OBJECT";
+      DebugInfo* di = VG_(find_DebugInfo)(cur_ep, closure->readdr);
+      if (di) {
+         objname = VG_(DebugInfo_get_filename)(di);
+      }
+      DYNCOMP_DPRINTF("objname: %s\n\n", objname);
+      // if its not part of the loader, go ahead and process
+      if (VG_(strcmp)(objname, loader_name)) {
+         do_dyncomp = kvasir_with_dyncomp;
+      }
+   }
+
+   if (!do_dyncomp)
+      return False;
+
+   dce->mce = mce;
+   dce->bb             = mce->sb;
+   dce->layout         = mce->layout;
+   dce->n_originalTmps = mce->sb->tyenv->types_used;
+   dce->hWordTy        = mce->hWordTy;
+   dce->sb_in          = sb_in;
+   // Only this mode uses the flags-carrying analysis.
+   dce->tmpCarriesFlags =
+      dyncomp_dataflow_comparisons_mode
+      ? findFlagsCarryingTmps_DC(sb_in) : NULL;
+   // VG_(calloc) asserts that the size is non-zero, and a superblock
+   // may have no temporaries.
+   dce->tmpPendingCarryTags =
+      dce->tmpCarriesFlags
+      ? VG_(calloc)("dyncomp_translate.c.tmpPendingCarryTags",
+                    2 * dce->n_originalTmps + 1, sizeof(IRExpr*))
+      : NULL;
+   dce->sbbThunk       = False;
+   dce->tmpMap         = VG_(malloc)("dyncomp_translate.c.tmpMap", dce->n_originalTmps * sizeof(IRTemp));
+   for (i = 0; i < (Int)dce->n_originalTmps; i++)
+      dce->tmpMap[i] = IRTemp_INVALID;
+   dce->loadTagSnapshots = NULL;
+   if (!loadIsInteraction_DC()) {
+      dce->loadTagSnapshots = VG_(malloc)("dyncomp_translate.c.loadTagSnapshots", dce->n_originalTmps * sizeof(Int));
+      for (i = 0; i < (Int)dce->n_originalTmps; i++)
+         dce->loadTagSnapshots[i] = -1;
+   }
+   dce->n_loadTagSnapshots = 0;
+   return True;
+}
+
+/* Instruments statement stmtIndex of dce->sb_in.  MC_(instrument) calls
+   this after Memcheck has instrumented the statement, and before it
+   copies the statement to the output. */
+void instrument_stmt_DC ( DCEnv* dce, Int stmtIndex )
+{
+   IRStmt* st = dce->sb_in->stmts[stmtIndex];
+
+   dce->stmtIndex = stmtIndex;
+
+   switch (st->tag) {
+
+      case Ist_WrTmp:
+         assign_DC( 'V', dce, findShadowTmp_DC(dce, st->Ist.WrTmp.tmp),
+                    expr2tags_WrTmp_DC( dce, st->Ist.WrTmp.tmp,
+                                        st->Ist.WrTmp.data) );
+         notePendingCarryTags_DC( dce, st->Ist.WrTmp.tmp,
+                                  st->Ist.WrTmp.data );
+         break;
+
+      case Ist_Put:
+         do_shadow_PUT_DC( dce,
+                           st->Ist.Put.offset,
+                           st->Ist.Put.data,
+                           NULL /* shadow atom */ );
+         break;
+
+      case Ist_PutI:
+         do_shadow_PUTI_DC( dce, st->Ist.PutI.details );
+         break;
+
+      case Ist_Store:
+         do_shadow_STle_DC( dce, st->Ist.Store.addr, st->Ist.Store.data);
+         break;
+
+      case Ist_Exit:
+         do_shadow_cond_exit_DC( dce, st->Ist.Exit.guard );
+         break;
+
+      case Ist_IMark:
+         dce->origAddr = st->Ist.IMark.addr;
+         break;
+
+      case Ist_Dirty:
+         do_shadow_Dirty_DC( dce, st->Ist.Dirty.details );
+         break;
+
+      case Ist_CAS:
+         do_shadow_CAS_DC( dce, st->Ist.CAS.details);
+         break;
+
+      case Ist_LLSC:
+         /* DynComp treats a store-conditional like a store, and does
+            not instrument a load-linked.  Only PPC, MIPS, and ARM,
+            which Fjalar does not support, use Ist_LLSC. */
+         if (st->Ist.LLSC.storedata) {
+            do_shadow_STle_DC( dce, st->Ist.LLSC.addr, st->Ist.LLSC.storedata);
+         }
+         break;
+
+      case Ist_StoreG:
+      case Ist_LoadG:
+         /* UNDONE:  DynComp does not instrument a guarded store or a
+            guarded load, though amd64 uses them (for example, for AVX
+            masked moves).  So a guarded store leaves the tags of the
+            memory it writes unchanged, and the result of a guarded load
+            has no tag. */
+         break;
+
+      default:
+         // Ist_NoOp, Ist_AbiHint, and Ist_MBE do not affect tags.
+         break;
+   }
+}
+
+/* Frees what begin_instrument_DC allocated. */
+void end_instrument_DC ( DCEnv* dce )
+{
+   VG_(free)( dce->tmpMap );
+
+   if (dce->loadTagSnapshots) {
+      VG_(free)( dce->loadTagSnapshots );
+   }
+
+   VG_(free)( dce->tmpCarriesFlags );
+   VG_(free)( dce->tmpPendingCarryTags );
 }

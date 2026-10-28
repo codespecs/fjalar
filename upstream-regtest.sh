@@ -59,7 +59,7 @@ if [ -z "${VNEWTAG-}" ]; then
   echo "$0: VNEWTAG is not set; see doc/valgrind-merge.texinfo." >&2
   exit 1
 fi
-check_tag "$INV/valgrind-new" VNEWTAG
+check_tag "$INV/valgrind-new" "$VNEWTAG" "the value of VNEWTAG"
 
 # Check OUTFILE now rather than after the tests, which take 15 minutes.  The
 # script deletes valgrind-new-build, and valgrind-new must stay a clean

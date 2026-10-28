@@ -27,6 +27,38 @@ env:
 
 jobs:
 
+  # This job checks that Fjalar's copies of upstream Valgrind files have
+  # upstream's whitespace; see check-valgrind-whitespace.sh.
+  valgrind_whitespace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Clone upstream Valgrind
+        shell: bash
+        run: |
+          source ./valgrind-common.sh
+          # A failure in a command substitution that is an argument would not
+          # stop the step.
+          tag=$(valgrind_release_tag)
+          # sourceware.org is sometimes slow or unavailable.  A failed clone
+          # removes the directory that it created.
+          for attempt in 1 2 3; do
+            if git clone -q --depth 1 -b "$tag" \
+                https://sourceware.org/git/valgrind.git ../valgrind-old; then
+              exit 0
+            fi
+            echo "git clone failed (attempt $attempt of 3)." >&2
+            if [ "$attempt" -lt 3 ]; then
+              sleep 60
+            fi
+          done
+          exit 1
+      - name: check-valgrind-whitespace.sh
+        run: ./check-valgrind-whitespace.sh --valgrind=../valgrind-old
+
   # The JDK version doesn't matter, but these Docker images happen to use
   # different underlying OS versions.
 

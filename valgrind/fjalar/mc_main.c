@@ -7,7 +7,7 @@
 /*--------------------------------------------------------------------*/
 
 /*
-   This file is derived from MemCheck, a heavyweight Valgrind tool for
+   This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
    Copyright (C) 2000-2017 Julian Seward
@@ -31,8 +31,8 @@
 
 /* mc_main.c
 
-   This file is part of Fjalar, a dynamic analysis framework for C/C++
-   programs.
+   This file has been modified for Fjalar, a dynamic analysis framework
+   for C/C++ programs.
 
    Copyright (C) 2007-2026 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
@@ -61,7 +61,6 @@
 #include "pub_tool_replacemalloc.h"
 #include "pub_tool_tooliface.h"
 #include "pub_tool_threadstate.h"
-#include "pub_tool_vki.h"  // needed for VKI_PROT_ defines
 #include "pub_tool_xarray.h"
 #include "pub_tool_xtree.h"
 #include "pub_tool_xtmemory.h"
@@ -69,7 +68,10 @@
 #include "kvasir/kvasir_main.h"
 #include "kvasir/dyncomp_main.h"
 #include "fjalar_main.h"
-#include "fjalar_core_decls.h"  // for VG_(am_is_valid_for_valgrind)
+#include "mc_fjalar.h"
+// dwarf.h, which the Fjalar headers above include, declares enumerators
+// named "line" and "str", which Memcheck's locals of those names shadow.
+#pragma GCC diagnostic ignored "-Wshadow"
 
 #include "mc_include.h"
 #include "memcheck.h"   /* for client requests */
@@ -79,7 +81,7 @@ Bool kvasir_with_dyncomp; // PG - pgbovine - dyncomp
 #define VG_DEBUG_MEMORY 0
 
 #ifdef MAX_DEBUG_INFO
-#define DEBUG(fmt, args...) printf(fmt, ## args)
+#define DEBUG(fmt, args...) VG_(printf)(fmt, ## args)
 #else
 #define DEBUG(fmt, args...)
 #endif
@@ -535,7 +537,7 @@ static const HChar* check_auxmap_L1_L2_sanity ( Word* n_secmaps_found )
       for (i = 0; i < N_AUXMAP_L1; i++) {
          if (auxmap_L1[i].base == 0)
             continue;
-         for (j = i+1; j < N_AUXMAP_L1; j++) {
+	 for (j = i+1; j < N_AUXMAP_L1; j++) {
             if (auxmap_L1[j].base == 0)
                continue;
             if (auxmap_L1[j].base == auxmap_L1[i].base)
@@ -787,7 +789,6 @@ UChar extract_vabits4_from_vabits8 ( Addr a, UChar vabits8 )
 static INLINE
 void set_vabits2 ( Addr a, UChar vabits2 )
 {
-   //DEBUG("set_vabits2 @: %p, %x\n", (void *)a, vabits2);
    SecMap* sm       = get_secmap_for_writing(a);
    UWord   sm_off   = SM_OFF(a);
    insert_vabits2_into_vabits8( a, vabits2, &(sm->vabits8[sm_off]) );
@@ -818,7 +819,6 @@ UChar get_vabits8_for_aligned_word32 ( Addr a )
 static INLINE
 void set_vabits8_for_aligned_word32 ( Addr a, UChar vabits8 )
 {
-   //DEBUG("set_vabits8 @: %p, %x\n", (void *)a, vabits8);
    SecMap* sm       = get_secmap_for_writing(a);
    UWord   sm_off   = SM_OFF(a);
    sm->vabits8[sm_off] = vabits8;
@@ -875,133 +875,6 @@ Bool get_vbits8 ( Addr a, UChar* vbits8 )
    return ok;
 }
 
-// code added for Fjalar
-
-// pgbovine
-// Rudd - memcheck merge, minor interface function to make things a bit eaier
-#define VGM_BIT_VALID       0
-#define VGM_BIT_INVALID     1
-
-#define VGM_NIBBLE_VALID    0
-#define VGM_NIBBLE_INVALID  0xF
-
-#define VGM_BYTE_VALID      0
-#define VGM_BYTE_INVALID    0xFF
-
-#define VGM_WORD32_VALID    0
-#define VGM_WORD32_INVALID  0xFFFFFFFF
-
-#define VGM_WORD64_VALID    0ULL
-#define VGM_WORD64_INVALID  0xFFFFFFFFFFFFFFFFULL
-
-
-void set_vbyte( Addr a, UWord vbyte )
-{
-  set_vbits8( a, vbyte);
-}
-
-void set_abit_and_vbyte (Addr a, UWord abit, UWord vbyte )
-{
-   //RUDD DEBUG
-   //  printf("abit: %x, vbit: %x\n", abit, vbyte);
-  UChar vabits2 = VA_BITS2_UNDEFINED;
-
-  if(abit == VGM_BIT_VALID) {
-    if      ( V_BITS8_DEFINED   == vbyte ) { vabits2 = VA_BITS2_DEFINED;   }
-    else if ( V_BITS8_UNDEFINED == vbyte ) { vabits2 = VA_BITS2_UNDEFINED; }
-    else                                    { vabits2 = VA_BITS2_PARTDEFINED;}
-  } else {
-    vabits2 = VA_BITS2_UNDEFINED;
-  }
-
-  set_vabits2(a, vabits2);
-
-  if(vabits2 == VA_BITS2_PARTDEFINED) {
-    set_sec_vbits8(a, vbyte);
-  }
-
-}
-
-void set_abit( Addr a, UChar abit )
-{
-  UChar vabits2 = VA_BITS2_UNDEFINED;
-  if(abit) {
-    vabits2 = VA_BITS2_PARTDEFINED;
-  }
-  set_vabits2(a, vabits2);
-}
-
-static Bool is_mem_addressable ( Addr a, SizeT len, /*OUT*/Addr* bad_addr );
-static MC_ReadResult is_mem_defined ( Addr a, SizeT len,
-                                      /*OUT*/Addr* bad_addr, /*OUT*/UInt* otag );
-
-Bool mc_check_writable (Addr a, SizeT len, Addr* bad_addr) {
-  return is_mem_addressable (a, len, bad_addr) ;
-}
-
-MC_ReadResult mc_check_readable ( Addr a, SizeT len, Addr* bad_addr ) {
-  MC_ReadResult result = is_mem_defined( a, len, bad_addr, NULL);
-  if (result != MC_Ok) return result;
-  // Unfortunately, the test above lets through references to memory
-  // marked executable.  Thanks to Philippe Waroquiers of the Valgrind
-  // team for a way to detect this case.
-  int vResult = VG_(am_is_valid_for_client)(a, len, VKI_PROT_READ) |
-                VG_(am_is_valid_for_valgrind)(a, len, VKI_PROT_READ);
-  if (vResult == 0) return MC_AddrErr;
-  return MC_Ok;
-}
-
-// PG - pgbovine - Returns true if ANY of the v-bits are set for the
-// bytes in question.  (Less stringent than MC_(check_readable))
-char mc_are_some_bytes_initialized(Addr a, SizeT len) {
-  SizeT i;
-  UChar abit;
-
-  DEBUG("MC_(are_some_bytes_initialized)\n");
-  for (i = 0; i < len; i++) {
-    abit = get_vabits2 (a);
-    if((abit == VA_BITS2_PARTDEFINED) || (abit == VA_BITS2_DEFINED)) {
-      return 1;
-    }
-    a++;
-  }
-  return 0;
- }
-
-void mc_copy_address_range_state ( Addr src, Addr dst, SizeT len )
-{
-  MC_(copy_address_range_state) ( src, dst, len );
-}
-
-void mc_make_noaccess ( Addr a, SizeT len )
-{
-  MC_(make_mem_noaccess) ( a, len );
-}
-
-// Marks the bytes at dst addressable, gives each one the V bits of the
-// corresponding byte of the register, and gives all of them the
-// register's DynComp tag.
-void mc_copy_guest_reg_state ( ThreadId tid, Int guestOffset, Addr dst )
-{
-  UWord vbits;
-  SizeT b;
-  VG_(get_shadow_regs_area)(tid, (UChar*)&vbits, 1/*shadowNo*/,
-                            guestOffset, sizeof(Addr));
-  for (b = 0; b < sizeof(Addr); b++) {
-    set_abit_and_vbyte(dst + b, VGM_BIT_VALID, (vbits >> (b * 8)) & 0xff);
-  }
-#ifndef _NO_DYNCOMP
-  if (kvasir_with_dyncomp) {
-    // DynComp keeps one tag per register, at the register's offset.
-    UInt tag = *VG_(get_tag_ptr_for_guest_offset)(tid, guestOffset);
-    for (b = 0; b < sizeof(Addr); b++) {
-      set_tag(dst + b, tag);
-    }
-  }
-#endif /* _NO_DYNCOMP */
-}
-
-// end of code added for Fjalar
 
 /* --------------- Secondary V bit table ------------ */
 
@@ -1129,17 +1002,17 @@ static void gcSecVBitTable(void)
    // Traverse the table, moving fresh nodes into the new table.
    VG_(OSetGen_ResetIter)(secVBitTable);
    while ( (n = VG_(OSetGen_Next)(secVBitTable)) ) {
-         // Keep node if any of its bytes are non-stale.  Using
-         // get_vabits2() for the lookup is not very efficient, but I don't
-         // think it matters.
-         for (i = 0; i < BYTES_PER_SEC_VBIT_NODE; i++) {
-            if (VA_BITS2_PARTDEFINED == get_vabits2(n->a + i)) {
+      // Keep node if any of its bytes are non-stale.  Using
+      // get_vabits2() for the lookup is not very efficient, but I don't
+      // think it matters.
+      for (i = 0; i < BYTES_PER_SEC_VBIT_NODE; i++) {
+         if (VA_BITS2_PARTDEFINED == get_vabits2(n->a + i)) {
             // Found a non-stale byte, so keep =>
-         // Insert a copy of the node into the new table.
+            // Insert a copy of the node into the new table.
             SecVBitNode* n2 =
-            VG_(OSetGen_AllocNode)(secVBitTable2, sizeof(SecVBitNode));
-         *n2 = *n;
-         VG_(OSetGen_Insert)(secVBitTable2, n2);
+               VG_(OSetGen_AllocNode)(secVBitTable2, sizeof(SecVBitNode));
+            *n2 = *n;
+            VG_(OSetGen_Insert)(secVBitTable2, n2);
             break;
          }
       }
@@ -1198,9 +1071,6 @@ static void set_sec_vbits8(Addr a, UWord vbits8)
    Addr         aAligned = VG_ROUNDDN(a, BYTES_PER_SEC_VBIT_NODE);
    Int          i, amod  = a % BYTES_PER_SEC_VBIT_NODE;
    SecVBitNode* n        = VG_(OSetGen_Lookup)(secVBitTable, &aAligned);
-
-   //DEBUG("set_sec_vbits8 @: %p, %lx\n", (void *)a, vbits8);
-
    // Shouldn't be fully defined or fully undefined -- those cases shouldn't
    // make it to the secondary V bits table.
    tl_assert(V_BITS8_DEFINED != vbits8 && V_BITS8_UNDEFINED != vbits8);
@@ -1316,7 +1186,7 @@ Bool MC_(in_ignored_range_below_sp) ( Addr sp, Addr a, UInt szB )
          return True;
       else
          return False;
-}
+   }
    /*NOTREACHED*/
    tl_assert(0);
 }
@@ -1360,8 +1230,8 @@ static Bool parse_UInt_pair ( const HChar** ppc, UInt* result1, UInt* result2 )
 static Bool parse_ignore_ranges ( const HChar* str0 )
 {
    init_gIgnoredAddressRanges();
-   const HChar*  fstr = str0;
-   const HChar** ppc = &fstr;
+   const HChar*  str = str0;
+   const HChar** ppc = &str;
    while (1) {
       Addr start = ~(Addr)0;
       Addr end   = (Addr)0;
@@ -1722,7 +1592,7 @@ ULong mc_LOADVn_slow ( Addr a, SizeT nBits, Bool bigendian )
 
    /* Exemption doesn't apply.  Flag an addressing error in the normal
       way. */
-      MC_(record_address_error)( VG_(get_running_tid)(), a, szB, False );
+   MC_(record_address_error)( VG_(get_running_tid)(), a, szB, False );
 
    return vbits64;
 }
@@ -2070,11 +1940,9 @@ void MC_(make_mem_noaccess) ( Addr a, SizeT len )
    // PG - pgbovine - dyncomp - Anytime you make a whole range of
    // addresses invalid, clear all tags associated with those
    // addresses:
-#ifndef _NO_DYNCOMP
    if (kvasir_with_dyncomp) {
       clear_all_tags_in_range(a, len);
    }
-#endif /* _NO_DYNCOMP */
 
    if (UNLIKELY( MC_(clo_mc_level) == 3 ))
       ocache_sarp_Clear_Origins ( a, len );
@@ -2135,11 +2003,9 @@ void MC_(make_mem_defined) ( Addr a, SizeT len )
    // tags to each byte within the chunk (Without language-level
    // information about which bytes correspond to which variables, we
    // have no choice but to give each byte a unique tag):
-#ifndef _NO_DYNCOMP
    if (kvasir_with_dyncomp) {
       allocate_new_unique_tags(a, len);
    }
-#endif /* _NO_DYNCOMP */
 
    if (UNLIKELY( MC_(clo_mc_level) == 3 ))
       ocache_sarp_Clear_Origins ( a, len );
@@ -2273,11 +2139,9 @@ void MC_(copy_address_range_state) ( Addr src, Addr dst, SizeT len )
 
    // PG - pgbovine - dyncomp - If you're copying over V-bits, you
    // might as well copy over the tags of the relevant bytes:
-#ifndef _NO_DYNCOMP
    if (kvasir_with_dyncomp) {
       copy_tags(src, dst, orig_size);
    }
-#endif /* _NO_DYNCOMP */
 }
 
 
@@ -2596,10 +2460,7 @@ void MC_(copy_address_range_state) ( Addr src, Addr dst, SizeT len )
 
 static UWord stats_ocacheL1_find           = 0;
 static UWord stats_ocacheL1_found_at_1     = 0;
-// Added #ifdef around def to remove warnings. (markro)
-#ifdef UNDEFINED_FOO
 static UWord stats_ocacheL1_found_at_N     = 0;
-#endif
 static UWord stats_ocacheL1_misses         = 0;
 static UWord stats_ocacheL1_lossage        = 0;
 static UWord stats_ocacheL1_movefwds       = 0;
@@ -2691,20 +2552,20 @@ typedef
 /* Classify and also sanity-check 'line'.  Return 'e' (empty) if not
    in use, 'n' (nonzero) if it contains at least one valid origin tag,
    and 'z' if all the represented tags are zero. */
-static inline UChar classify_OCacheLine ( OCacheLine* ocline )
+static inline UChar classify_OCacheLine ( OCacheLine* line )
 {
    UWord i;
-   if (ocline->tag == 1/*invalid*/)
+   if (line->tag == 1/*invalid*/)
       return 'e'; /* EMPTY */
-   tl_assert(is_valid_oc_tag(ocline->tag));
+   tl_assert(is_valid_oc_tag(line->tag));
 
    // BEGIN fast special-case of the test loop below.  This will detect
    // zero-ness (case 'z') for a subset of cases that the loop below will,
    // hence is safe.
    if (OC_W64S_PER_MAIN == 5) {
-      if (ocline->u.w64s[0] == 0
-          && ocline->u.w64s[1] == 0 && ocline->u.w64s[2] == 0
-          && ocline->u.w64s[3] == 0 && ocline->u.w64s[4] == 0) {
+      if (line->u.w64s[0] == 0
+          && line->u.w64s[1] == 0 && line->u.w64s[2] == 0
+          && line->u.w64s[3] == 0 && line->u.w64s[4] == 0) {
          return 'z';
       }
    } else {
@@ -2713,8 +2574,8 @@ static inline UChar classify_OCacheLine ( OCacheLine* ocline )
    // END fast special-case of the test loop below.
 
    for (i = 0; i < OC_W32S_PER_LINE; i++) {
-      tl_assert(0 == ((~0xF) & ocline->u.main.descr[i]));
-      if (ocline->u.main.w32[i] > 0 && ocline->u.main.descr[i] > 0)
+      tl_assert(0 == ((~0xF) & line->u.main.descr[i]));
+      if (line->u.main.w32[i] > 0 && line->u.main.descr[i] > 0)
          return 'n'; /* NONZERO - contains useful info */
    }
    return 'z'; /* ZERO - no useful info */
@@ -2738,7 +2599,7 @@ static UWord   ocacheL1_event_ctr = 0;
 static void init_ocacheL2 ( void ); /* fwds */
 static void init_OCache ( void )
 {
-   UWord ocline, set;
+   UWord line, set;
    tl_assert(MC_(clo_mc_level) >= 3);
    tl_assert(ocacheL1 == NULL);
    SysRes sres = VG_(am_shadow_alloc)(sizeof(OCache));
@@ -2749,8 +2610,8 @@ static void init_OCache ( void )
    ocacheL1 = (void *)(Addr)sr_Res(sres);
    tl_assert(ocacheL1 != NULL);
    for (set = 0; set < OC_N_SETS; set++) {
-      for (ocline = 0; ocline < OC_LINES_PER_SET; ocline++) {
-         ocacheL1->set[set].line[ocline].tag = 1/*invalid*/;
+      for (line = 0; line < OC_LINES_PER_SET; line++) {
+         ocacheL1->set[set].line[line].tag = 1/*invalid*/;
       }
    }
    init_ocacheL2();
@@ -2766,25 +2627,25 @@ static inline void moveLineForwards ( OCacheSet* set, UWord lineno )
    set->line[lineno] = tmp;
 }
 
-static inline void zeroise_OCacheLine ( OCacheLine* ocline, Addr tag ) {
+static inline void zeroise_OCacheLine ( OCacheLine* line, Addr tag ) {
    UWord i;
    if (OC_W32S_PER_LINE == 8) {
       // BEGIN fast special-case of the loop below
       tl_assert(OC_W64S_PER_MAIN == 5);
-      ocline->u.w64s[0] = 0;
-      ocline->u.w64s[1] = 0;
-      ocline->u.w64s[2] = 0;
-      ocline->u.w64s[3] = 0;
-      ocline->u.w64s[4] = 0;
+      line->u.w64s[0] = 0;
+      line->u.w64s[1] = 0;
+      line->u.w64s[2] = 0;
+      line->u.w64s[3] = 0;
+      line->u.w64s[4] = 0;
       // END fast special-case of the loop below
    } else {
       tl_assert2(0, "unsupported line size (zeroise_OCacheLine)");
-   for (i = 0; i < OC_W32S_PER_LINE; i++) {
-         ocline->u.main.w32[i] = 0; /* NO ORIGIN */
-         ocline->u.main.descr[i] = 0; /* REALLY REALLY NO ORIGIN! */
+      for (i = 0; i < OC_W32S_PER_LINE; i++) {
+         line->u.main.w32[i] = 0; /* NO ORIGIN */
+         line->u.main.descr[i] = 0; /* REALLY REALLY NO ORIGIN! */
+      }
    }
-   }
-   ocline->tag = tag;
+   line->tag = tag;
 }
 
 //////////////////////////////////////////////////////////////
@@ -2839,8 +2700,8 @@ static void init_ocacheL2 ( void )
    for (UInt i = 0; i < 4096; i++) {
       tl_assert(!ocachesL2[i]);
       ocachesL2[i]
-      = VG_(OSetGen_Create)( offsetof(OCacheLine,tag),
-                             NULL, /* fast cmp */
+         = VG_(OSetGen_Create)( offsetof(OCacheLine,tag),
+                                NULL, /* fast cmp */
                                 ocacheL2_malloc, "mc.ioL2", ocacheL2_free);
    }
    stats__ocacheL2_n_nodes = 0;
@@ -2849,25 +2710,25 @@ static void init_ocacheL2 ( void )
 /* Find line with the given tag in the tree, or NULL if not found. */
 static inline OCacheLine* ocacheL2_find_tag ( Addr tag )
 {
-   OCacheLine* ocline;
+   OCacheLine* line;
    tl_assert(is_valid_oc_tag(tag));
    stats__ocacheL2_finds++;
    OSet* oset = ocachesL2[HASH_OCACHE_TAG(tag)];
-   ocline = VG_(OSetGen_Lookup)( oset, &tag );
-   return ocline;
+   line = VG_(OSetGen_Lookup)( oset, &tag );
+   return line;
 }
 
 /* Delete the line with the given tag from the tree, if it is present, and
    free up the associated memory. */
 static void ocacheL2_del_tag ( Addr tag )
 {
-   OCacheLine* ocline;
+   OCacheLine* line;
    tl_assert(is_valid_oc_tag(tag));
    stats__ocacheL2_dels++;
    OSet* oset = ocachesL2[HASH_OCACHE_TAG(tag)];
-   ocline = VG_(OSetGen_Remove)( oset, &tag );
-   if (ocline) {
-      VG_(OSetGen_FreeNode)(oset, ocline);
+   line = VG_(OSetGen_Remove)( oset, &tag );
+   if (line) {
+      VG_(OSetGen_FreeNode)(oset, line);
       tl_assert(stats__ocacheL2_n_nodes > 0);
       stats__ocacheL2_n_nodes--;
    }
@@ -2875,13 +2736,13 @@ static void ocacheL2_del_tag ( Addr tag )
 
 /* Add a copy of the given line to the tree.  It must not already be
    present. */
-static void ocacheL2_add_line ( OCacheLine* ocline )
+static void ocacheL2_add_line ( OCacheLine* line )
 {
    OCacheLine* copy;
-   tl_assert(is_valid_oc_tag(ocline->tag));
-   OSet* oset = ocachesL2[HASH_OCACHE_TAG(ocline->tag)];
+   tl_assert(is_valid_oc_tag(line->tag));
+   OSet* oset = ocachesL2[HASH_OCACHE_TAG(line->tag)];
    copy = VG_(OSetGen_AllocNode)( oset, sizeof(OCacheLine) );
-   *copy = *ocline;
+   *copy = *line;
    stats__ocacheL2_adds++;
    VG_(OSetGen_Insert)( oset, copy );
    stats__ocacheL2_n_nodes++;
@@ -2897,16 +2758,16 @@ static OCacheLine* find_OCacheLine_SLOW ( Addr a )
 {
    OCacheLine *victim, *inL2;
    UChar c;
-   UWord ocline;
+   UWord line;
    UWord setno   = (a >> OC_BITS_PER_LINE) & (OC_N_SETS - 1);
    UWord tagmask = ~((1 << OC_BITS_PER_LINE) - 1);
    UWord tag     = a & tagmask;
    tl_assert(setno < OC_N_SETS);
 
-   /* we already tried ocline == 0; skip therefore. */
-   for (ocline = 1; ocline < OC_LINES_PER_SET; ocline++) {
-      if (ocacheL1->set[setno].line[ocline].tag == tag) {
-         switch (ocline) {
+   /* we already tried line == 0; skip therefore. */
+   for (line = 1; line < OC_LINES_PER_SET; line++) {
+      if (ocacheL1->set[setno].line[line].tag == tag) {
+         switch (line) {
          // with OC_LINES_PER_SET equal to 2 this is the only possible case
          case 1:
             stats_ocacheL1_found_at_1++;
@@ -2919,22 +2780,22 @@ static OCacheLine* find_OCacheLine_SLOW ( Addr a )
          }
          if (UNLIKELY(0 == (ocacheL1_event_ctr++
                             & ((1<<OC_MOVE_FORWARDS_EVERY_BITS)-1)))) {
-            moveLineForwards( &ocacheL1->set[setno], ocline );
-            ocline--;
+            moveLineForwards( &ocacheL1->set[setno], line );
+            line--;
          }
-         return &ocacheL1->set[setno].line[ocline];
+         return &ocacheL1->set[setno].line[line];
       }
    }
 
    /* A miss.  Use the last slot.  Implicitly this means we're
       ejecting the line in the last slot. */
    stats_ocacheL1_misses++;
-   tl_assert(ocline == OC_LINES_PER_SET);
-   ocline--;
-   tl_assert(ocline > 0);
+   tl_assert(line == OC_LINES_PER_SET);
+   line--;
+   tl_assert(line > 0);
 
    /* First, move the to-be-ejected line to the L2 cache. */
-   victim = &ocacheL1->set[setno].line[ocline];
+   victim = &ocacheL1->set[setno].line[line];
    c = classify_OCacheLine(victim);
    switch (c) {
       case 'e':
@@ -2969,19 +2830,19 @@ static OCacheLine* find_OCacheLine_SLOW ( Addr a )
    inL2 = ocacheL2_find_tag( tag );
    if (inL2) {
       /* We're in luck.  It's in the L2. */
-      ocacheL1->set[setno].line[ocline] = *inL2;
+      ocacheL1->set[setno].line[line] = *inL2;
    } else {
       /* Missed at both levels of the cache hierarchy.  We have to
          declare it as full of zeroes (unknown origins). */
       stats__ocacheL2_misses++;
-      zeroise_OCacheLine( &ocacheL1->set[setno].line[ocline], tag );
+      zeroise_OCacheLine( &ocacheL1->set[setno].line[line], tag );
    }
 
    /* Move it one forwards */
-   moveLineForwards( &ocacheL1->set[setno], ocline );
-   ocline--;
+   moveLineForwards( &ocacheL1->set[setno], line );
+   line--;
 
-   return &ocacheL1->set[setno].line[ocline];
+   return &ocacheL1->set[setno].line[line];
 }
 
 static INLINE OCacheLine* find_OCacheLine ( Addr a )
@@ -3008,17 +2869,17 @@ static INLINE void set_aligned_word64_Origin_to_undef ( Addr a, UInt otag )
 {
    //// BEGIN inlined, specialised version of MC_(helperc_b_store8)
    //// Set the origins for a+0 .. a+7
-   { OCacheLine* ocline;
+   { OCacheLine* line;
      UWord lineoff = oc_line_offset(a);
      if (OC_ENABLE_ASSERTIONS) {
         tl_assert(lineoff >= 0
                   && lineoff < OC_W32S_PER_LINE -1/*'cos 8-aligned*/);
      }
-     ocline = find_OCacheLine( a );
-     ocline->u.main.descr[lineoff+0] = 0xF;
-     ocline->u.main.descr[lineoff+1] = 0xF;
-     ocline->u.main.w32[lineoff+0]   = otag;
-     ocline->u.main.w32[lineoff+1]   = otag;
+     line = find_OCacheLine( a );
+     line->u.main.descr[lineoff+0] = 0xF;
+     line->u.main.descr[lineoff+1] = 0xF;
+     line->u.main.w32[lineoff+0]   = otag;
+     line->u.main.w32[lineoff+1]   = otag;
    }
    //// END inlined, specialised version of MC_(helperc_b_store8)
 }
@@ -3063,14 +2924,14 @@ void make_aligned_word32_undefined_w_otag ( Addr a, UInt otag )
    make_aligned_word32_undefined(a);
    //// BEGIN inlined, specialised version of MC_(helperc_b_store4)
    //// Set the origins for a+0 .. a+3
-   { OCacheLine* ocline;
+   { OCacheLine* line;
      UWord lineoff = oc_line_offset(a);
      if (OC_ENABLE_ASSERTIONS) {
         tl_assert(lineoff >= 0 && lineoff < OC_W32S_PER_LINE);
      }
-     ocline = find_OCacheLine( a );
-     ocline->u.main.descr[lineoff] = 0xF;
-     ocline->u.main.w32[lineoff]   = otag;
+     line = find_OCacheLine( a );
+     line->u.main.descr[lineoff] = 0xF;
+     line->u.main.w32[lineoff]   = otag;
    }
    //// END inlined, specialised version of MC_(helperc_b_store4)
 }
@@ -3100,23 +2961,21 @@ void make_aligned_word32_noaccess ( Addr a )
       //// BEGIN inlined, specialised version of MC_(helperc_b_store4)
       //// Set the origins for a+0 .. a+3.
       if (UNLIKELY( MC_(clo_mc_level) == 3 )) {
-         OCacheLine* ocline;
+         OCacheLine* line;
          UWord lineoff = oc_line_offset(a);
          if (OC_ENABLE_ASSERTIONS) {
             tl_assert(lineoff >= 0 && lineoff < OC_W32S_PER_LINE);
          }
-         ocline = find_OCacheLine( a );
-         ocline->u.main.descr[lineoff] = 0;
+         line = find_OCacheLine( a );
+         line->u.main.descr[lineoff] = 0;
       }
 
       // PG - pgbovine - dyncomp - When you make stuff noaccess, destroy
       // those tags (only put it in this branch of the #ifdef because
       // the other branch calls mc_make_noaccess()):
-#ifndef _NO_DYNCOMP
       if (kvasir_with_dyncomp) {
          clear_all_tags_in_range(a, 4);
       }
-#endif /* _NO_DYNCOMP */
       //// END inlined, specialised version of MC_(helperc_b_store4)
    }
 #endif
@@ -3157,14 +3016,14 @@ void make_aligned_word64_undefined_w_otag ( Addr a, UInt otag )
    make_aligned_word64_undefined(a);
    //// BEGIN inlined, specialised version of MC_(helperc_b_store8)
    //// Set the origins for a+0 .. a+7
-   { OCacheLine* ocline;
+   { OCacheLine* line;
      UWord lineoff = oc_line_offset(a);
      tl_assert(lineoff < OC_W32S_PER_LINE -1/*'cos 8-aligned*/);
-     ocline = find_OCacheLine( a );
-     ocline->u.main.descr[lineoff+0] = 0xF;
-     ocline->u.main.descr[lineoff+1] = 0xF;
-     ocline->u.main.w32[lineoff+0]   = otag;
-     ocline->u.main.w32[lineoff+1]   = otag;
+     line = find_OCacheLine( a );
+     line->u.main.descr[lineoff+0] = 0xF;
+     line->u.main.descr[lineoff+1] = 0xF;
+     line->u.main.w32[lineoff+0]   = otag;
+     line->u.main.w32[lineoff+1]   = otag;
    }
    //// END inlined, specialised version of MC_(helperc_b_store8)
 }
@@ -3195,22 +3054,20 @@ void make_aligned_word64_noaccess ( Addr a )
       //// BEGIN inlined, specialised version of MC_(helperc_b_store8)
       //// Clear the origins for a+0 .. a+7.
       if (UNLIKELY( MC_(clo_mc_level) == 3 )) {
-         OCacheLine* ocline;
+         OCacheLine* line;
          UWord lineoff = oc_line_offset(a);
          tl_assert(lineoff < OC_W32S_PER_LINE -1/*'cos 8-aligned*/);
-         ocline = find_OCacheLine( a );
-         ocline->u.main.descr[lineoff+0] = 0;
-         ocline->u.main.descr[lineoff+1] = 0;
+         line = find_OCacheLine( a );
+         line->u.main.descr[lineoff+0] = 0;
+         line->u.main.descr[lineoff+1] = 0;
       }
 
       // PG - pgbovine - dyncomp - When you make stuff noaccess, destroy
       // those tags (only put it in this branch of the #ifdef because
       // the other branch calls mc_make_noaccess()):
-#ifndef _NO_DYNCOMP
       if (kvasir_with_dyncomp) {
          clear_all_tags_in_range(a, 8);
       }
-#endif /* _NO_DYNCOMP */
       //// END inlined, specialised version of MC_(helperc_b_store8)
    }
 #endif
@@ -3997,8 +3854,8 @@ void MC_(helperc_MAKE_STACK_UNINIT_w_o) ( Addr base, UWord len, Addr nia )
       VG_(printf)("helperc_MAKE_STACK_UNINIT_w_o (%#lx,%lu,nia=%#lx)\n",
                   base, len, nia );
 
-        UInt ecu = convert_nia_to_ecu ( nia );
-      tl_assert(VG_(is_plausible_ECU)(ecu));
+   UInt ecu = convert_nia_to_ecu ( nia );
+   tl_assert(VG_(is_plausible_ECU)(ecu));
 
    UInt otag = ecu | MC_OKIND_STACK;
 
@@ -4465,6 +4322,15 @@ void MC_(helperc_MAKE_STACK_UNINIT_128_no_o) ( Addr base )
 /*--- Checking memory                                      ---*/
 /*------------------------------------------------------------*/
 
+typedef
+   enum {
+      MC_Ok = 5,
+      MC_AddrErr = 6,
+      MC_ValueErr = 7
+   }
+   MC_ReadResult;
+
+
 /* Check permissions for address range.  If inadequate permissions
    exist, *bad_addr is set to the offending address, so the caller can
    know what it is. */
@@ -4648,6 +4514,7 @@ static Bool mc_is_defined_asciiz ( Addr a, Addr* bad_addr, UInt* otag )
    }
 }
 
+#include "fjalar_mc_main.h"  // Fjalar's functions that use Memcheck's internals
 
 /*------------------------------------------------------------*/
 /*--- Memory event handlers                                ---*/
@@ -4783,18 +4650,15 @@ void check_mem_is_defined_asciiz ( CorePart part, ThreadId tid,
 */
 static
 void mc_new_mem_mmap ( Addr a, SizeT len, Bool rr, Bool ww, Bool xx,
-                        ULong di_handle )
+                       ULong di_handle )
 {
-  // Silence GCC warnings - RUDD
-   (void)di_handle;
-
-    if (rr || ww || xx) {
+   if (rr || ww || xx) {
       /* (2) mmap/mprotect other -> defined */
-       MC_(make_mem_defined)(a, len);
-    } else {
+      MC_(make_mem_defined)(a, len);
+   } else {
       /* (1) mmap/mprotect NONE  -> noaccess */
-       MC_(make_mem_noaccess)(a, len);
-    }
+      MC_(make_mem_noaccess)(a, len);
+   }
 }
 
 static
@@ -4814,10 +4678,6 @@ static
 void mc_new_mem_startup( Addr a, SizeT len,
                          Bool rr, Bool ww, Bool xx, ULong di_handle )
 {
-
-  //Silenced GCC warnings - Rudd
-  (void)rr; (void)ww; (void)xx; (void)di_handle;
-
    // Because code is defined, initialised variables get put in the data
    // segment and are defined, and uninitialised variables get put in the
    // bss segment and are auto-zeroed (and so defined).
@@ -4841,9 +4701,6 @@ void mc_new_mem_startup( Addr a, SizeT len,
 static
 void mc_post_mem_write(CorePart part, ThreadId tid, Addr a, SizeT len)
 {
-  // Silence GCC warnings - RUDD
-  (void)part; (void)tid;
-
    MC_(make_mem_defined)(a, len);
 }
 
@@ -4890,18 +4747,12 @@ static void mc_post_reg_write ( CorePart part, ThreadId tid,
    VG_(memset)(area, V_BITS8_DEFINED, size);
    VG_(set_shadow_regs_area)( tid, 1/*shadowNo*/,offset,size, area );
 #  undef MAX_REG_WRITE_SIZE
-   // Silence GCC warnings - RUDD
-  (void)part;
-
 }
 
 static
 void mc_post_reg_write_clientcall ( ThreadId tid,
                                     PtrdiffT offset, SizeT size, Addr f)
 {
-// Silence GCC warnings - RUDD
-  (void)f;
-
    mc_post_reg_write(/*dummy*/0, tid, offset, size);
 }
 
@@ -4917,8 +4768,6 @@ static void mc_pre_reg_read ( CorePart part, ThreadId tid, const HChar* s,
    UInt  otag;
 
    UChar area[16];
-   // Silence GCC warnings - RUDD
-   (void) part;
    tl_assert(size <= 16);
 
    VG_(get_shadow_regs_area)( tid, area, 1/*shadowNo*/,offset,size );
@@ -5311,7 +5160,6 @@ void mc_STOREV64 ( Addr a, ULong vbits64, Bool isBigEndian )
    DEBUG("mc_STOREV64(%p, %llu)\n", (void *)a, vbits64);
 
 #ifndef PERF_FAST_STOREV
-   // (comment added 2009)  
    // XXX: this slow case seems to be marginally faster than the fast case!
    // Investigate further.
    mc_STOREVn_slow( a, 64, vbits64, isBigEndian );
@@ -5341,9 +5189,9 @@ void mc_STOREV64 ( Addr a, ULong vbits64, Bool isBigEndian )
             return;
          }
          PROF_EVENT(MCPE_STOREV64_SLOW2);
-            mc_STOREVn_slow( a, 64, vbits64, isBigEndian );
+         mc_STOREVn_slow( a, 64, vbits64, isBigEndian );
          return;
-         }
+      }
       if (V_BITS64_UNDEFINED == vbits64) {
          if (vabits16 == (UShort)VA_BITS16_UNDEFINED) {
             return;
@@ -5476,9 +5324,9 @@ void mc_STOREV32 ( Addr a, UWord vbits32, Bool isBigEndian )
             return;
          }
          PROF_EVENT(MCPE_STOREV32_SLOW2);
-            mc_STOREVn_slow( a, 32, (ULong)vbits32, isBigEndian );
+         mc_STOREVn_slow( a, 32, (ULong)vbits32, isBigEndian );
          return;
-         }
+      }
       if (V_BITS32_UNDEFINED == vbits32) {
          if (vabits8 == (UInt)VA_BITS8_UNDEFINED) {
             return;
@@ -5488,13 +5336,13 @@ void mc_STOREV32 ( Addr a, UWord vbits32, Bool isBigEndian )
             return;
          }
          PROF_EVENT(MCPE_STOREV32_SLOW3);
-            mc_STOREVn_slow( a, 32, (ULong)vbits32, isBigEndian );
+         mc_STOREVn_slow( a, 32, (ULong)vbits32, isBigEndian );
          return;
-         }
+      }
 
       PROF_EVENT(MCPE_STOREV32_SLOW4);
-         mc_STOREVn_slow( a, 32, (ULong)vbits32, isBigEndian );
-      }
+      mc_STOREVn_slow( a, 32, (ULong)vbits32, isBigEndian );
+   }
 #endif
 }
 
@@ -5961,7 +5809,7 @@ void MC_(helperc_STOREV8) ( Addr a, UWord vbits8 )
              && VA_BITS2_NOACCESS != extract_vabits2_from_vabits8(a, vabits8)) {
             // direct mod
             insert_vabits2_into_vabits8( a, VA_BITS2_DEFINED,
-                                          &(sm->vabits8[sm_off]) );
+                                         &(sm->vabits8[sm_off]) );
             return;
          }
          PROF_EVENT(MCPE_STOREV8_SLOW2);
@@ -5977,7 +5825,7 @@ void MC_(helperc_STOREV8) ( Addr a, UWord vbits8 )
                  != extract_vabits2_from_vabits8(a, vabits8))) {
             // direct mod
             insert_vabits2_into_vabits8( a, VA_BITS2_UNDEFINED,
-                                          &(sm->vabits8[sm_off]) );
+                                         &(sm->vabits8[sm_off]) );
             return;
          }
          PROF_EVENT(MCPE_STOREV8_SLOW3);
@@ -6102,8 +5950,8 @@ static Int mc_get_or_set_vbits_for_client (
          ((UChar*)vbits)[i] = vbits8;
       }
       if (is_client_request)
-      // The bytes in vbits[] have now been set, so mark them as such.
-      MC_(make_mem_defined)(vbits, szB);
+        // The bytes in vbits[] have now been set, so mark them as such.
+        MC_(make_mem_defined)(vbits, szB);
    }
 
    return 1;
@@ -6140,7 +5988,7 @@ Bool MC_(is_valid_aligned_word) ( Addr a )
       return False;
    if (sizeof(UWord) == 8) {
       if (get_vabits8_for_aligned_word32 (a + 4) != VA_BITS8_DEFINED)
-      return False;
+         return False;
    }
    if (UNLIKELY(MC_(in_ignored_range)(a)))
       return False;
@@ -6343,7 +6191,7 @@ static Bool mc_process_cmd_line_options(const HChar* arg)
 {
    const HChar* tmp_str;
    Bool   tmp_show;
-   
+
    tl_assert( MC_(clo_mc_level) >= 1 && MC_(clo_mc_level) <= 3 );
 
    /* Set MC_(clo_mc_level):
@@ -6435,8 +6283,8 @@ static Bool mc_process_cmd_line_options(const HChar* arg)
          VG_(message)(Vg_DebugMsg,
             "ERROR: --ignore-ranges: "
             "invalid syntax, or end <= start in range\n");
-            return False;
-         }
+         return False;
+      }
       if (gIgnoredAddressRanges) {
          UInt i;
          for (i = 0; i < VG_(sizeRangeMap)(gIgnoredAddressRanges); i++) {
@@ -6449,14 +6297,14 @@ static Bool mc_process_cmd_line_options(const HChar* arg)
             UWord limit = 0x4000000; /* 64M - entirely arbitrary limit */
             if (key_max - key_min > limit && val == IAR_CommandLine) {
                VG_(message)(Vg_DebugMsg,
-               "ERROR: --ignore-ranges: suspiciously large range:\n");
+                  "ERROR: --ignore-ranges: suspiciously large range:\n");
                VG_(message)(Vg_DebugMsg,
                    "       0x%lx-0x%lx (size %lu)\n", key_min, key_max,
                    key_max - key_min + 1);
-            return False;
+               return False;
+            }
          }
       }
-   }
    }
 
    else if VG_STR_CLOM(cloPD, arg, "--ignore-range-below-sp", tmp_str) {
@@ -6532,9 +6380,9 @@ static Bool mc_process_cmd_line_options(const HChar* arg)
    else if VG_STR_CLO (arg, "--xtree-leak-file",
                        MC_(clo_xtree_leak_file)) {}
 
+   else if (fjalar_process_cmd_line_option(arg)) {} // pgbovine
    else
-     return fjalar_process_cmd_line_option(arg); // pgbovine
-     //      return VG_(replacement_malloc_process_cmd_line_option)(arg);
+      return VG_(replacement_malloc_process_cmd_line_option)(arg);
 
    return True;
 
@@ -6679,9 +6527,7 @@ Int alloc_client_block ( void )
    return cgb_used-1;
 }
 
-// PG - pgbovine - disable Memcheck leak detection for faster shutdown:
-// Added #ifdef around function defs to remove warnings. (markro)
-#ifdef UNDEFINED_FOO
+
 static void show_client_block_stats ( void )
 {
    VG_(message)(Vg_DebugMsg,
@@ -6689,8 +6535,6 @@ static void show_client_block_stats ( void )
       cgb_allocs, cgb_discards, cgb_used_MAX, cgb_search
    );
 }
-#endif
-
 static void print_monitor_help ( void )
 {
    VG_(gdb_printf)
@@ -6942,7 +6786,7 @@ static Bool handle_gdb_monitor_command (ThreadId tid, HChar *req)
                 || !VG_(parse_enum_set)(MC_(parse_leak_kinds_tokens),
                                         True/*allow_all*/,
                                         wcmd,
-                                                       &lcp.show_leak_kinds)) {
+                                        &lcp.show_leak_kinds)) {
                VG_(gdb_printf) ("missing or malformed leak kinds set\n");
                err++;
             }
@@ -6964,7 +6808,7 @@ static Bool handle_gdb_monitor_command (ThreadId tid, HChar *req)
                 || !VG_(parse_enum_set)(MC_(parse_leak_heuristics_tokens),
                                         True,/*allow_all*/
                                         wcmd,
-                                                            &lcp.heuristics)) {
+                                        &lcp.heuristics)) {
                VG_(gdb_printf) ("missing or malformed heuristics set\n");
                err++;
             }
@@ -7095,7 +6939,7 @@ static Bool handle_gdb_monitor_command (ThreadId tid, HChar *req)
          }
          else
             VG_(printf) ("Address %p len %lu defined\n",
-                             (void *)address, szB);
+                         (void *)address, szB);
          // Describe this (probably live) address with current epoch
          MC_(pp_describe_addr) (VG_(current_DiEpoch)(), address);
          break;
@@ -7708,7 +7552,7 @@ static Bool mc_handle_client_request ( ThreadId tid, UWord* arg, UWord* ret )
          Addr pool      = (Addr)arg[1];
 
          *ret = (UWord) MC_(mempool_exists) ( pool );
-         return True;
+	 return True;
       }
 
       case VG_USERREQ__GDB_MONITOR_COMMAND: {
@@ -7746,10 +7590,6 @@ static Bool mc_handle_client_request ( ThreadId tid, UWord* arg, UWord* ret )
 
 // We track a number of interesting events (using PROF_EVENT)
 // if MC_PROFILE_MEMORY is defined.
-
-// PG - pgbovine - disable Memcheck leak detection for faster shutdown:
-// Added #ifdef around function defs to remove warnings. (markro)
-#ifdef UNDEFINED_FOO
 
 #ifdef MC_PROFILE_MEMORY
 
@@ -7926,8 +7766,6 @@ static void done_prof_mem ( void ) { }
 
 #endif
 
-#endif
-
 
 /*------------------------------------------------------------*/
 /*--- Origin tracking stuff                                ---*/
@@ -7942,7 +7780,7 @@ static INLINE UInt merge_origins ( UInt or1, UInt or2 ) {
 }
 
 UWord VG_REGPARM(1) MC_(helperc_b_load1)( Addr a ) {
-   OCacheLine* ocline;
+   OCacheLine* line;
    UChar descr;
    UWord lineoff = oc_line_offset(a);
    UWord byteoff = a & 3; /* 0, 1, 2 or 3 */
@@ -7951,9 +7789,9 @@ UWord VG_REGPARM(1) MC_(helperc_b_load1)( Addr a ) {
       tl_assert(lineoff >= 0 && lineoff < OC_W32S_PER_LINE);
    }
 
-   ocline = find_OCacheLine( a );
+   line = find_OCacheLine( a );
 
-   descr = ocline->u.main.descr[lineoff];
+   descr = line->u.main.descr[lineoff];
    if (OC_ENABLE_ASSERTIONS) {
       tl_assert(descr < 0x10);
    }
@@ -7961,12 +7799,12 @@ UWord VG_REGPARM(1) MC_(helperc_b_load1)( Addr a ) {
    if (LIKELY(0 == (descr & (1 << byteoff))))  {
       return 0;
    } else {
-      return ocline->u.main.w32[lineoff];
+      return line->u.main.w32[lineoff];
    }
 }
 
 UWord VG_REGPARM(1) MC_(helperc_b_load2)( Addr a ) {
-   OCacheLine* ocline;
+   OCacheLine* line;
    UChar descr;
    UWord lineoff, byteoff;
 
@@ -7983,9 +7821,9 @@ UWord VG_REGPARM(1) MC_(helperc_b_load2)( Addr a ) {
    if (OC_ENABLE_ASSERTIONS) {
       tl_assert(lineoff >= 0 && lineoff < OC_W32S_PER_LINE);
    }
-   ocline = find_OCacheLine( a );
+   line = find_OCacheLine( a );
 
-   descr = ocline->u.main.descr[lineoff];
+   descr = line->u.main.descr[lineoff];
    if (OC_ENABLE_ASSERTIONS) {
       tl_assert(descr < 0x10);
    }
@@ -7993,12 +7831,12 @@ UWord VG_REGPARM(1) MC_(helperc_b_load2)( Addr a ) {
    if (LIKELY(0 == (descr & (3 << byteoff)))) {
       return 0;
    } else {
-      return ocline->u.main.w32[lineoff];
+      return line->u.main.w32[lineoff];
    }
 }
 
 UWord VG_REGPARM(1) MC_(helperc_b_load4)( Addr a ) {
-   OCacheLine* ocline;
+   OCacheLine* line;
    UChar descr;
    UWord lineoff;
 
@@ -8014,9 +7852,9 @@ UWord VG_REGPARM(1) MC_(helperc_b_load4)( Addr a ) {
       tl_assert(lineoff >= 0 && lineoff < OC_W32S_PER_LINE);
    }
 
-   ocline = find_OCacheLine( a );
+   line = find_OCacheLine( a );
 
-   descr = ocline->u.main.descr[lineoff];
+   descr = line->u.main.descr[lineoff];
    if (OC_ENABLE_ASSERTIONS) {
       tl_assert(descr < 0x10);
    }
@@ -8024,12 +7862,12 @@ UWord VG_REGPARM(1) MC_(helperc_b_load4)( Addr a ) {
    if (LIKELY(0 == descr)) {
       return 0;
    } else {
-      return ocline->u.main.w32[lineoff];
+      return line->u.main.w32[lineoff];
    }
 }
 
 UWord VG_REGPARM(1) MC_(helperc_b_load8)( Addr a ) {
-   OCacheLine* ocline;
+   OCacheLine* line;
    UChar descrLo, descrHi, descr;
    UWord lineoff;
 
@@ -8045,10 +7883,10 @@ UWord VG_REGPARM(1) MC_(helperc_b_load8)( Addr a ) {
       tl_assert(lineoff == (lineoff & 6)); /*0,2,4,6*//*since 8-aligned*/
    }
 
-   ocline = find_OCacheLine( a );
+   line = find_OCacheLine( a );
 
-   descrLo = ocline->u.main.descr[lineoff + 0];
-   descrHi = ocline->u.main.descr[lineoff + 1];
+   descrLo = line->u.main.descr[lineoff + 0];
+   descrHi = line->u.main.descr[lineoff + 1];
    descr   = descrLo | descrHi;
    if (OC_ENABLE_ASSERTIONS) {
       tl_assert(descr < 0x10);
@@ -8057,8 +7895,8 @@ UWord VG_REGPARM(1) MC_(helperc_b_load8)( Addr a ) {
    if (LIKELY(0 == descr)) {
       return 0; /* both 32-bit chunks are defined */
    } else {
-      UInt oLo = descrLo == 0 ? 0 : ocline->u.main.w32[lineoff + 0];
-      UInt oHi = descrHi == 0 ? 0 : ocline->u.main.w32[lineoff + 1];
+      UInt oLo = descrLo == 0 ? 0 : line->u.main.w32[lineoff + 0];
+      UInt oHi = descrHi == 0 ? 0 : line->u.main.w32[lineoff + 1];
       return merge_origins(oLo, oHi);
    }
 }
@@ -8086,7 +7924,7 @@ UWord VG_REGPARM(1) MC_(helperc_b_load32)( Addr a ) {
 /*--------------------------------------------*/
 
 void VG_REGPARM(2) MC_(helperc_b_store1)( Addr a, UWord d32 ) {
-   OCacheLine* ocline;
+   OCacheLine* line;
    UWord lineoff = oc_line_offset(a);
    UWord byteoff = a & 3; /* 0, 1, 2 or 3 */
 
@@ -8094,37 +7932,37 @@ void VG_REGPARM(2) MC_(helperc_b_store1)( Addr a, UWord d32 ) {
       tl_assert(lineoff >= 0 && lineoff < OC_W32S_PER_LINE);
    }
 
-   ocline = find_OCacheLine( a );
+   line = find_OCacheLine( a );
 
 #if OC_PRECISION_STORE
    if (LIKELY(d32 == 0)) {
       // The byte is defined.  Just mark it as so in the descr and leave the w32
       // unchanged.  This may make the descr become zero, so the line no longer
       // contains useful info, but that's OK.  No loss of information.
-      ocline->u.main.descr[lineoff] &= ~(1 << byteoff);
-   } else if (d32 == ocline->u.main.w32[lineoff]) {
+      line->u.main.descr[lineoff] &= ~(1 << byteoff);
+   } else if (d32 == line->u.main.w32[lineoff]) {
       // At least one of the four bytes in the w32 is undefined with the same
       // origin.  Just extend the mask.  No loss of information.
-      ocline->u.main.descr[lineoff] |= (1 << byteoff);
+      line->u.main.descr[lineoff] |= (1 << byteoff);
    } else {
       // Here, we have a conflict: at least one byte in the group is undefined
       // but with some other origin.  We can't represent both origins, so we
       // forget about the previous origin and install this one instead.
-      ocline->u.main.descr[lineoff] = (1 << byteoff);
-      ocline->u.main.w32[lineoff] = d32;
+      line->u.main.descr[lineoff] = (1 << byteoff);
+      line->u.main.w32[lineoff] = d32;
    }
 #else
    if (d32 == 0) {
-      ocline->u.main.descr[lineoff] &= ~(1 << byteoff);
+      line->u.main.descr[lineoff] &= ~(1 << byteoff);
    } else {
-      ocline->u.main.descr[lineoff] |= (1 << byteoff);
-      ocline->u.main.w32[lineoff] = d32;
+      line->u.main.descr[lineoff] |= (1 << byteoff);
+      line->u.main.w32[lineoff] = d32;
    }
 #endif
 }
 
 void VG_REGPARM(2) MC_(helperc_b_store2)( Addr a, UWord d32 ) {
-   OCacheLine* ocline;
+   OCacheLine* line;
    UWord lineoff, byteoff;
 
    if (UNLIKELY(a & 1)) {
@@ -8141,31 +7979,31 @@ void VG_REGPARM(2) MC_(helperc_b_store2)( Addr a, UWord d32 ) {
       tl_assert(lineoff >= 0 && lineoff < OC_W32S_PER_LINE);
    }
 
-   ocline = find_OCacheLine( a );
+   line = find_OCacheLine( a );
 
 #if OC_PRECISION_STORE
    // Same logic as in the store1 case above.
    if (LIKELY(d32 == 0)) {
-      ocline->u.main.descr[lineoff] &= ~(3 << byteoff);
-   } else if (d32 == ocline->u.main.w32[lineoff]) {
-      ocline->u.main.descr[lineoff] |= (3 << byteoff);
-      ocline->u.main.w32[lineoff] = d32;
+      line->u.main.descr[lineoff] &= ~(3 << byteoff);
+   } else if (d32 == line->u.main.w32[lineoff]) {
+      line->u.main.descr[lineoff] |= (3 << byteoff);
+      line->u.main.w32[lineoff] = d32;
    } else {
-      ocline->u.main.descr[lineoff] = (3 << byteoff);
-      ocline->u.main.w32[lineoff] = d32;
+      line->u.main.descr[lineoff] = (3 << byteoff);
+      line->u.main.w32[lineoff] = d32;
    }
 #else
    if (d32 == 0) {
-      ocline->u.main.descr[lineoff] &= ~(3 << byteoff);
+      line->u.main.descr[lineoff] &= ~(3 << byteoff);
    } else {
-      ocline->u.main.descr[lineoff] |= (3 << byteoff);
-      ocline->u.main.w32[lineoff] = d32;
+      line->u.main.descr[lineoff] |= (3 << byteoff);
+      line->u.main.w32[lineoff] = d32;
    }
 #endif
 }
 
 void VG_REGPARM(2) MC_(helperc_b_store4)( Addr a, UWord d32 ) {
-   OCacheLine* ocline;
+   OCacheLine* line;
    UWord lineoff;
 
    if (UNLIKELY(a & 3)) {
@@ -8180,19 +8018,19 @@ void VG_REGPARM(2) MC_(helperc_b_store4)( Addr a, UWord d32 ) {
       tl_assert(lineoff >= 0 && lineoff < OC_W32S_PER_LINE);
    }
 
-   ocline = find_OCacheLine( a );
+   line = find_OCacheLine( a );
 
    if (d32 == 0) {
-      ocline->u.main.descr[lineoff] = 0;
+      line->u.main.descr[lineoff] = 0;
    } else {
-      ocline->u.main.descr[lineoff] = 0xF;
-      ocline->u.main.w32[lineoff] = d32;
+      line->u.main.descr[lineoff] = 0xF;
+      line->u.main.w32[lineoff] = d32;
    }
 }
 
 void VG_REGPARM(2) MC_(helperc_b_store8)( Addr a, UWord d32 ) {
    STATIC_ASSERT(OC_W32S_PER_LINE == 8);
-   OCacheLine* ocline;
+   OCacheLine* line;
    UWord lineoff;
 
    if (UNLIKELY(a & 7)) {
@@ -8207,28 +8045,28 @@ void VG_REGPARM(2) MC_(helperc_b_store8)( Addr a, UWord d32 ) {
       tl_assert(lineoff == (lineoff & 6)); /*0,2,4,6*//*since 8-aligned*/
    }
 
-   ocline = find_OCacheLine( a );
+   line = find_OCacheLine( a );
 
    if (d32 == 0) {
-      ocline->u.main.descr[lineoff + 0] = 0;
-      ocline->u.main.descr[lineoff + 1] = 0;
+      line->u.main.descr[lineoff + 0] = 0;
+      line->u.main.descr[lineoff + 1] = 0;
    } else {
-      ocline->u.main.descr[lineoff + 0] = 0xF;
-      ocline->u.main.descr[lineoff + 1] = 0xF;
-      ocline->u.main.w32[lineoff + 0] = d32;
-      ocline->u.main.w32[lineoff + 1] = d32;
+      line->u.main.descr[lineoff + 0] = 0xF;
+      line->u.main.descr[lineoff + 1] = 0xF;
+      line->u.main.w32[lineoff + 0] = d32;
+      line->u.main.w32[lineoff + 1] = d32;
    }
 }
 
 void VG_REGPARM(2) MC_(helperc_b_store16)( Addr a, UWord d32 ) {
    STATIC_ASSERT(OC_W32S_PER_LINE == 8);
-   OCacheLine* ocline;
+   OCacheLine* line;
    UWord lineoff;
 
    if (UNLIKELY(a & 15)) {
       /* Handle misaligned case, slowly. */
-   MC_(helperc_b_store8)( a + 0, d32 );
-   MC_(helperc_b_store8)( a + 8, d32 );
+      MC_(helperc_b_store8)( a + 0, d32 );
+      MC_(helperc_b_store8)( a + 8, d32 );
       return;
    }
 
@@ -8237,28 +8075,28 @@ void VG_REGPARM(2) MC_(helperc_b_store16)( Addr a, UWord d32 ) {
       tl_assert(lineoff == (lineoff & 4)); /*0,4*//*since 16-aligned*/
    }
 
-   ocline = find_OCacheLine( a );
+   line = find_OCacheLine( a );
 
    if (d32 == 0) {
-      ocline->u.main.descr[lineoff + 0] = 0;
-      ocline->u.main.descr[lineoff + 1] = 0;
-      ocline->u.main.descr[lineoff + 2] = 0;
-      ocline->u.main.descr[lineoff + 3] = 0;
+      line->u.main.descr[lineoff + 0] = 0;
+      line->u.main.descr[lineoff + 1] = 0;
+      line->u.main.descr[lineoff + 2] = 0;
+      line->u.main.descr[lineoff + 3] = 0;
    } else {
-      ocline->u.main.descr[lineoff + 0] = 0xF;
-      ocline->u.main.descr[lineoff + 1] = 0xF;
-      ocline->u.main.descr[lineoff + 2] = 0xF;
-      ocline->u.main.descr[lineoff + 3] = 0xF;
-      ocline->u.main.w32[lineoff + 0] = d32;
-      ocline->u.main.w32[lineoff + 1] = d32;
-      ocline->u.main.w32[lineoff + 2] = d32;
-      ocline->u.main.w32[lineoff + 3] = d32;
+      line->u.main.descr[lineoff + 0] = 0xF;
+      line->u.main.descr[lineoff + 1] = 0xF;
+      line->u.main.descr[lineoff + 2] = 0xF;
+      line->u.main.descr[lineoff + 3] = 0xF;
+      line->u.main.w32[lineoff + 0] = d32;
+      line->u.main.w32[lineoff + 1] = d32;
+      line->u.main.w32[lineoff + 2] = d32;
+      line->u.main.w32[lineoff + 3] = d32;
    }
 }
 
 void VG_REGPARM(2) MC_(helperc_b_store32)( Addr a, UWord d32 ) {
    STATIC_ASSERT(OC_W32S_PER_LINE == 8);
-   OCacheLine* ocline;
+   OCacheLine* line;
    UWord lineoff;
 
    if (UNLIKELY(a & 31)) {
@@ -8273,34 +8111,34 @@ void VG_REGPARM(2) MC_(helperc_b_store32)( Addr a, UWord d32 ) {
       tl_assert(lineoff == 0);
    }
 
-   ocline = find_OCacheLine( a );
+   line = find_OCacheLine( a );
 
    if (d32 == 0) {
-      ocline->u.main.descr[0] = 0;
-      ocline->u.main.descr[1] = 0;
-      ocline->u.main.descr[2] = 0;
-      ocline->u.main.descr[3] = 0;
-      ocline->u.main.descr[4] = 0;
-      ocline->u.main.descr[5] = 0;
-      ocline->u.main.descr[6] = 0;
-      ocline->u.main.descr[7] = 0;
+      line->u.main.descr[0] = 0;
+      line->u.main.descr[1] = 0;
+      line->u.main.descr[2] = 0;
+      line->u.main.descr[3] = 0;
+      line->u.main.descr[4] = 0;
+      line->u.main.descr[5] = 0;
+      line->u.main.descr[6] = 0;
+      line->u.main.descr[7] = 0;
    } else {
-      ocline->u.main.descr[0] = 0xF;
-      ocline->u.main.descr[1] = 0xF;
-      ocline->u.main.descr[2] = 0xF;
-      ocline->u.main.descr[3] = 0xF;
-      ocline->u.main.descr[4] = 0xF;
-      ocline->u.main.descr[5] = 0xF;
-      ocline->u.main.descr[6] = 0xF;
-      ocline->u.main.descr[7] = 0xF;
-      ocline->u.main.w32[0] = d32;
-      ocline->u.main.w32[1] = d32;
-      ocline->u.main.w32[2] = d32;
-      ocline->u.main.w32[3] = d32;
-      ocline->u.main.w32[4] = d32;
-      ocline->u.main.w32[5] = d32;
-      ocline->u.main.w32[6] = d32;
-      ocline->u.main.w32[7] = d32;
+      line->u.main.descr[0] = 0xF;
+      line->u.main.descr[1] = 0xF;
+      line->u.main.descr[2] = 0xF;
+      line->u.main.descr[3] = 0xF;
+      line->u.main.descr[4] = 0xF;
+      line->u.main.descr[5] = 0xF;
+      line->u.main.descr[6] = 0xF;
+      line->u.main.descr[7] = 0xF;
+      line->u.main.w32[0] = d32;
+      line->u.main.w32[1] = d32;
+      line->u.main.w32[2] = d32;
+      line->u.main.w32[3] = d32;
+      line->u.main.w32[4] = d32;
+      line->u.main.w32[5] = d32;
+      line->u.main.w32[6] = d32;
+      line->u.main.w32[7] = d32;
    }
 }
 
@@ -8460,7 +8298,7 @@ static void mc_post_clo_init ( void )
                    MC_(clo_freelist_big_blocks),
                    MC_(clo_freelist_vol));
    }
-  
+
    if (MC_(clo_workaround_gcc296_bugs)
        && VG_(clo_verbosity) == 1 && !VG_(clo_xml)) {
       VG_(umsg)(
@@ -8469,7 +8307,7 @@ static void mc_post_clo_init ( void )
          "\n"
       );
    }
-  
+
    fjalar_post_clo_init();
 
    tl_assert( MC_(clo_mc_level) >= 1 && MC_(clo_mc_level) <= 3 );
@@ -8583,11 +8421,11 @@ static void mc_post_clo_init ( void )
    }
 
    MC_(chunk_poolalloc) = VG_(newPA)
-         (sizeof(MC_Chunk) + MC_(n_where_pointers)() * sizeof(ExeContext*),
-          1000,
-          VG_(malloc),
-          "mc.cMC.1 (MC_Chunk pools)",
-          VG_(free));
+      (sizeof(MC_Chunk) + MC_(n_where_pointers)() * sizeof(ExeContext*),
+       1000,
+       VG_(malloc),
+       "mc.cMC.1 (MC_Chunk pools)",
+       VG_(free));
 
    /* Do not check definedness of guest state if --undef-value-errors=no */
    if (MC_(clo_mc_level) >= 2)
@@ -8605,9 +8443,6 @@ static void mc_post_clo_init ( void )
 
 }
 
-// PG - pgbovine - disable Memcheck leak detection for faster shutdown:
-// Added #ifdef around function defs to remove warnings. (markro)
-#ifdef UNDEFINED_FOO
 static void print_SM_info(const HChar* type, Int n_SMs)
 {
    VG_(message)(Vg_DebugMsg,
@@ -8620,108 +8455,109 @@ static void print_SM_info(const HChar* type, Int n_SMs)
 
 static void mc_print_stats (void)
 {
-      SizeT max_secVBit_szB, max_SMs_szB, max_shmem_szB;
+   SizeT max_secVBit_szB, max_SMs_szB, max_shmem_szB;
 
    VG_(message)(Vg_DebugMsg, " memcheck: freelist: vol %lld length %lld\n",
                 VG_(free_queue_volume), VG_(free_queue_length));
-      VG_(message)(Vg_DebugMsg,
-         " memcheck: sanity checks: %d cheap, %d expensive\n",
-         n_sanity_cheap, n_sanity_expensive );
-      VG_(message)(Vg_DebugMsg,
+   VG_(message)(Vg_DebugMsg,
+      " memcheck: sanity checks: %d cheap, %d expensive\n",
+      n_sanity_cheap, n_sanity_expensive );
+   VG_(message)(Vg_DebugMsg,
       " memcheck: auxmaps: %llu auxmap entries (%lluk, %lluM) in use\n",
       n_auxmap_L2_nodes,
       n_auxmap_L2_nodes * 64,
-         n_auxmap_L2_nodes / 16 );
-      VG_(message)(Vg_DebugMsg,
+      n_auxmap_L2_nodes / 16 );
+   VG_(message)(Vg_DebugMsg,
       " memcheck: auxmaps_L1: %llu searches, %llu cmps, ratio %llu:10\n",
-         n_auxmap_L1_searches, n_auxmap_L1_cmps,
+      n_auxmap_L1_searches, n_auxmap_L1_cmps,
       (10ULL * n_auxmap_L1_cmps)
          / (n_auxmap_L1_searches ? n_auxmap_L1_searches : 1)
    );
-      VG_(message)(Vg_DebugMsg,
+   VG_(message)(Vg_DebugMsg,
       " memcheck: auxmaps_L2: %llu searches, %llu nodes\n",
-         n_auxmap_L2_searches, n_auxmap_L2_nodes
+      n_auxmap_L2_searches, n_auxmap_L2_nodes
    );
 
-      print_SM_info("n_issued     ", n_issued_SMs);
-      print_SM_info("n_deissued   ", n_deissued_SMs);
-      print_SM_info("max_noaccess ", max_noaccess_SMs);
-      print_SM_info("max_undefined", max_undefined_SMs);
-      print_SM_info("max_defined  ", max_defined_SMs);
-      print_SM_info("max_non_DSM  ", max_non_DSM_SMs);
+   print_SM_info("n_issued     ", n_issued_SMs);
+   print_SM_info("n_deissued   ", n_deissued_SMs);
+   print_SM_info("max_noaccess ", max_noaccess_SMs);
+   print_SM_info("max_undefined", max_undefined_SMs);
+   print_SM_info("max_defined  ", max_defined_SMs);
+   print_SM_info("max_non_DSM  ", max_non_DSM_SMs);
 
-      // Three DSMs, plus the non-DSM ones
-      max_SMs_szB = (3 + max_non_DSM_SMs) * sizeof(SecMap);
-      // The 3*sizeof(Word) bytes is the AVL node metadata size.
-      // The VG_ROUNDUP is because the OSet pool allocator will/must align
-      // the elements on pointer size.
-      // Note that the pool allocator has some additional small overhead
-      // which is not counted in the below.
-      // Hardwiring this logic sucks, but I don't see how else to do it.
+   // Three DSMs, plus the non-DSM ones
+   max_SMs_szB = (3 + max_non_DSM_SMs) * sizeof(SecMap);
+   // The 3*sizeof(Word) bytes is the AVL node metadata size.
+   // The VG_ROUNDUP is because the OSet pool allocator will/must align
+   // the elements on pointer size.
+   // Note that the pool allocator has some additional small overhead
+   // which is not counted in the below.
+   // Hardwiring this logic sucks, but I don't see how else to do it.
    max_secVBit_szB = max_secVBit_nodes *
-            (3*sizeof(Word) + VG_ROUNDUP(sizeof(SecVBitNode), sizeof(void*)));
-      max_shmem_szB   = sizeof(primary_map) + max_SMs_szB + max_secVBit_szB;
+         (3*sizeof(Word) + VG_ROUNDUP(sizeof(SecVBitNode), sizeof(void*)));
+   max_shmem_szB   = sizeof(primary_map) + max_SMs_szB + max_secVBit_szB;
 
-      VG_(message)(Vg_DebugMsg,
+   VG_(message)(Vg_DebugMsg,
       " memcheck: max sec V bit nodes:    %d (%luk, %luM)\n",
-         max_secVBit_nodes, max_secVBit_szB / 1024,
-                            max_secVBit_szB / (1024 * 1024));
-      VG_(message)(Vg_DebugMsg,
-         " memcheck: set_sec_vbits8 calls: %llu (new: %llu, updates: %llu)\n",
-         sec_vbits_new_nodes + sec_vbits_updates,
-         sec_vbits_new_nodes, sec_vbits_updates );
-      VG_(message)(Vg_DebugMsg,
+      max_secVBit_nodes, max_secVBit_szB / 1024,
+                         max_secVBit_szB / (1024 * 1024));
+   VG_(message)(Vg_DebugMsg,
+      " memcheck: set_sec_vbits8 calls: %llu (new: %llu, updates: %llu)\n",
+      sec_vbits_new_nodes + sec_vbits_updates,
+      sec_vbits_new_nodes, sec_vbits_updates );
+   VG_(message)(Vg_DebugMsg,
       " memcheck: max shadow mem size:   %luk, %luM\n",
-         max_shmem_szB / 1024, max_shmem_szB / (1024 * 1024));
+      max_shmem_szB / 1024, max_shmem_szB / (1024 * 1024));
 
-      if (MC_(clo_mc_level) >= 3) {
-         VG_(message)(Vg_DebugMsg,
+   if (MC_(clo_mc_level) >= 3) {
+      VG_(message)(Vg_DebugMsg,
                    " ocacheL1: %'14lu refs   %'14lu misses (%'lu lossage)\n",
                    stats_ocacheL1_find,
-                      stats_ocacheL1_misses,
-                      stats_ocacheL1_lossage );
-         VG_(message)(Vg_DebugMsg,
+                   stats_ocacheL1_misses,
+                   stats_ocacheL1_lossage );
+      VG_(message)(Vg_DebugMsg,
                    " ocacheL1: %'14lu at 0   %'14lu at 1\n",
                    stats_ocacheL1_find - stats_ocacheL1_misses
                       - stats_ocacheL1_found_at_1
-                         - stats_ocacheL1_found_at_N,
-                      stats_ocacheL1_found_at_1 );
-         VG_(message)(Vg_DebugMsg,
+                      - stats_ocacheL1_found_at_N,
+                   stats_ocacheL1_found_at_1 );
+      VG_(message)(Vg_DebugMsg,
                    " ocacheL1: %'14lu at 2+  %'14lu move-fwds\n",
-                      stats_ocacheL1_found_at_N,
-                      stats_ocacheL1_movefwds );
-         VG_(message)(Vg_DebugMsg,
+                   stats_ocacheL1_found_at_N,
+                   stats_ocacheL1_movefwds );
+      VG_(message)(Vg_DebugMsg,
                    " ocacheL1: %'14lu sizeB  %'14d useful\n",
                    (SizeT)sizeof(OCache),
-                      4 * OC_W32S_PER_LINE * OC_LINES_PER_SET * OC_N_SETS );
-         VG_(message)(Vg_DebugMsg,
+                   4 * OC_W32S_PER_LINE * OC_LINES_PER_SET * OC_N_SETS );
+      VG_(message)(Vg_DebugMsg,
                    " ocacheL2: %'14lu finds  %'14lu misses\n",
                    stats__ocacheL2_finds,
-                      stats__ocacheL2_misses );
-         VG_(message)(Vg_DebugMsg,
+                   stats__ocacheL2_misses );
+      VG_(message)(Vg_DebugMsg,
                    " ocacheL2: %'14lu adds   %'14lu dels\n",
                    stats__ocacheL2_adds,
                    stats__ocacheL2_dels );
       VG_(message)(Vg_DebugMsg,
-                      " ocacheL2:    %'9lu max nodes %'9lu curr nodes\n",
-                      stats__ocacheL2_n_nodes_max,
-                      stats__ocacheL2_n_nodes );
-         VG_(message)(Vg_DebugMsg,
-                      " niacache: %'12lu refs   %'12lu misses\n",
-                      stats__nia_cache_queries, stats__nia_cache_misses);
-      } else {
-         tl_assert(ocacheL1 == NULL);
+                   " ocacheL2:    %'9lu max nodes %'9lu curr nodes\n",
+                   stats__ocacheL2_n_nodes_max,
+                   stats__ocacheL2_n_nodes );
+      VG_(message)(Vg_DebugMsg,
+                   " niacache: %'12lu refs   %'12lu misses\n",
+                   stats__nia_cache_queries, stats__nia_cache_misses);
+   } else {
+      tl_assert(ocacheL1 == NULL);
       for (UInt i = 0; i < 4096; i++ ) {
          tl_assert(ocachesL2[1] == NULL);
       }
-      }
-#endif
+   }
+}
+
 
 static void mc_fini ( Int exitcode )
 {
-   // PG - pgbovine - disable Memcheck leak detection for faster shutdown:
-  (void)exitcode;
-#ifdef UNDEFINED_FOO
+   fjalar_finish();
+   return; // Fjalar skips Memcheck's end-of-run reports.
+
    MC_(xtmemory_report) (VG_(clo_xtree_memory_file), True);
    MC_(print_malloc_stats)();
 
@@ -8753,7 +8589,7 @@ static void mc_fini ( Int exitcode )
             "For a detailed leak analysis, rerun with: --leak-check=full\n"
             "\n"
          );
-   }
+      }
    }
 
    if (MC_(any_value_errors) && !VG_(clo_xml) && VG_(clo_verbosity) >= 1
@@ -8808,9 +8644,6 @@ static void mc_fini ( Int exitcode )
         "------ Valgrind's client block stats follow ---------------\n" );
       show_client_block_stats();
    }
-#endif
-
-   fjalar_finish();
 }
 
 /* mark the given addr/len unaddressable for watchpoint implementation
@@ -8871,7 +8704,7 @@ static void mc_pre_clo_init(void)
    VG_(needs_client_requests)     (mc_handle_client_request);
    VG_(needs_sanity_checks)       (mc_cheap_sanity_check,
                                    mc_expensive_sanity_check);
-// VG_(needs_print_stats)         (mc_print_stats);
+   VG_(needs_print_stats)         (mc_print_stats);
    VG_(needs_info_location)       (MC_(pp_describe_addr));
    VG_(needs_malloc_replacement)  (MC_(malloc),
                                    MC_(__builtin_new),
@@ -8945,9 +8778,7 @@ static void mc_pre_clo_init(void)
    tl_assert(MC_(chunk_poolalloc) == NULL);
    MC_(malloc_list)  = VG_(HT_construct)( "MC_(malloc_list)" );
    MC_(mempool_list) = VG_(HT_construct)( "MC_(mempool_list)" );
-// PG - pgbovine - disable Memcheck leak detection for faster shutdown:
-// Commented out following call to remove warnings. (markro)
-// init_prof_mem();
+   init_prof_mem();
 
    tl_assert( mc_expensive_sanity_check() );
 
