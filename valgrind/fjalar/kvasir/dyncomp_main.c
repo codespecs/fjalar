@@ -259,49 +259,37 @@ UInt MC_(helperc_TAG_NOP) ( UInt tag ) {
 // regardless of whether dyncomp_approximate_literals is on or not.
 // Real tags are in the range of [1, LARGEST_REAL_TAG])
 
+// Writes the tag into the len bytes [a, a+len).  A WEAK_FRESH_TAG is
+// replaced by a distinct fresh tag for each 8-byte chunk.
+VG_REGPARM(3)
+void MC_(helperc_STORE_TAG_N) ( Addr a, UWord len, UInt tag ) {
+  UWord i;
+
+  if (WEAK_FRESH_TAG == tag) {
+    for (i = 0; i < len; i += 8) {
+      set_tag_for_range(a + i, (len - i < 8) ? len - i : 8, grab_fresh_tag());
+    }
+  }
+  else {
+    set_tag_for_range(a, len, tag);
+  }
+}
+
 // For some reason, 64-bit stuff needs REGPARM(1) (Look in
 // mc_translate.c) - this is very important for some reason
 VG_REGPARM(1)
 void MC_(helperc_STORE_TAG_8) ( Addr a, UInt tag ) {
-  UInt tagToWrite;
-
-  if (WEAK_FRESH_TAG == tag) {
-    tagToWrite = grab_fresh_tag();
-  }
-  else {
-    tagToWrite = tag;
-  }
-
-  set_tag_for_range(a, 8, tagToWrite);
+  MC_(helperc_STORE_TAG_N)(a, 8, tag);
 }
 
 VG_REGPARM(2)
 void MC_(helperc_STORE_TAG_4) ( Addr a, UInt tag ) {
-  UInt tagToWrite;
-
-
-  if (WEAK_FRESH_TAG == tag) {
-    tagToWrite = grab_fresh_tag();
-  }
-  else {
-    tagToWrite = tag;
-  }
-
-  set_tag_for_range(a, 4, tagToWrite);
+  MC_(helperc_STORE_TAG_N)(a, 4, tag);
 }
 
 VG_REGPARM(2)
 void MC_(helperc_STORE_TAG_2) ( Addr a, UInt tag ) {
-  UInt tagToWrite;
-
-  if (WEAK_FRESH_TAG == tag) {
-    tagToWrite = grab_fresh_tag();
-  }
-  else {
-    tagToWrite = tag;
-  }
-
-  set_tag_for_range(a, 2, tagToWrite);
+  MC_(helperc_STORE_TAG_N)(a, 2, tag);
 }
 
 VG_REGPARM(2)
@@ -316,23 +304,6 @@ void MC_(helperc_STORE_TAG_1) ( Addr a, UInt tag ) {
   }
 
   set_tag(a, tagToWrite);
-}
-
-// Like the other MC_(helperc_STORE_TAG_*) functions, but writes the tag
-// into the len bytes [a, a+len).  A WEAK_FRESH_TAG is replaced by one
-// fresh tag for the whole range.
-VG_REGPARM(3)
-void MC_(helperc_STORE_TAG_N) ( Addr a, UWord len, UInt tag ) {
-  UInt tagToWrite;
-
-  if (WEAK_FRESH_TAG == tag) {
-    tagToWrite = grab_fresh_tag();
-  }
-  else {
-    tagToWrite = tag;
-  }
-
-  set_tag_for_range(a, len, tagToWrite);
 }
 
 // Returns the first non-zero tag in the range [a, a+len), or 0 if

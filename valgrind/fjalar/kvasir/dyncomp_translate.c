@@ -3534,62 +3534,54 @@ void do_shadow_STle_DC ( DCEnv* dce,
               mkIRExprVec_3( addr,
                              mkIRExpr_HWord(sizeofIRType(ty)),
                              mkIRExpr_HWord(dce->loadTagSnapshots[data->Iex.RdTmp.tmp]) ));
-      setHelperAnns_DC( dce, di );
-      if (guard) {
-         di->guard = guard;
-      }
-      stmt_DC('V',  dce, IRStmt_Dirty(di) );
-      return;
-   }
-
-   /* 128-bit and 256-bit cases */
-   if (ty == Ity_V128 || ty == Ity_I128 || ty == Ity_V256) {
+   } else if (ty == Ity_V128 || ty == Ity_I128 || ty == Ity_V256) {
+      /* 128-bit and 256-bit cases.  vdata is one tag for the whole value,
+         so every byte of the destination gets that tag.
+         TODO: When data was not loaded in this superblock, this makes
+         unrelated fields comparable.  For example, if a 32-byte struct is
+         copied by a vmovdqu load in one superblock and a vmovdqu store in
+         a later one, every field of the destination gets the tag of the
+         first field of the source.  Fixing this requires tracking a tag per
+         8-byte lane of vector temps and guest registers, or carrying load
+         snapshots across superblocks. */
       di = unsafeIRDirty_0_N(
               3/*regparms*/,
               "MC_(helperc_STORE_TAG_N)",
               &MC_(helperc_STORE_TAG_N),
               mkIRExprVec_3( addr, mkIRExpr_HWord(sizeofIRType(ty)), vdata ));
-      setHelperAnns_DC( dce, di );
-      if (guard) {
-         di->guard = guard;
-      }
-      stmt_DC('V',  dce, IRStmt_Dirty(di) );
-      return;
-   }
-
-   /* Now decide which helper function to call to write the data tag
-      into shadow memory. */
-   switch (ty) {
-      case Ity_I64: helper = &MC_(helperc_STORE_TAG_8);
-                    hname = "MC_(helperc_STORE_TAG_8)";
-                    break;
-      case Ity_I32: helper = &MC_(helperc_STORE_TAG_4);
-                    hname = "MC_(helperc_STORE_TAG_4)";
-                    break;
-      case Ity_I16: helper = &MC_(helperc_STORE_TAG_2);
-                    hname = "MC_(helperc_STORE_TAG_2)";
-                    break;
-      case Ity_I8:  helper = &MC_(helperc_STORE_TAG_1);
-                    hname = "MC_(helperc_STORE_TAG_1)";
-                    break;
-      default:      VG_(tool_panic)("dyncomp:do_shadow_STle_DC");
-   }
-
-   /* 8/16/32/64-bit cases */
-
-   // For some reason, we still need to make a special case for
-   // 64-bit things ... I dunno why, though ???
-   if (ty == Ity_I64) {
-      /* We can't do this with regparm 2 on 32-bit platforms, since
-         the back ends aren't clever enough to handle 64-bit
-         regparm args.  Therefore be different. */
-      di = unsafeIRDirty_0_N(
-                             1/*regparms*/, hname, helper,
-                             mkIRExprVec_2( addr, vdata ));
    } else {
-      di = unsafeIRDirty_0_N(
-                             2/*regparms*/, hname, helper,
-                             mkIRExprVec_2( addr, vdata ));
+      /* 8/16/32/64-bit cases.  Decide which helper function to call to
+         write the data tag into shadow memory. */
+      switch (ty) {
+         case Ity_I64: helper = &MC_(helperc_STORE_TAG_8);
+                       hname = "MC_(helperc_STORE_TAG_8)";
+                       break;
+         case Ity_I32: helper = &MC_(helperc_STORE_TAG_4);
+                       hname = "MC_(helperc_STORE_TAG_4)";
+                       break;
+         case Ity_I16: helper = &MC_(helperc_STORE_TAG_2);
+                       hname = "MC_(helperc_STORE_TAG_2)";
+                       break;
+         case Ity_I8:  helper = &MC_(helperc_STORE_TAG_1);
+                       hname = "MC_(helperc_STORE_TAG_1)";
+                       break;
+         default:      VG_(tool_panic)("dyncomp:do_shadow_STle_DC");
+      }
+
+      // For some reason, we still need to make a special case for
+      // 64-bit things ... I dunno why, though ???
+      if (ty == Ity_I64) {
+         /* We can't do this with regparm 2 on 32-bit platforms, since
+            the back ends aren't clever enough to handle 64-bit
+            regparm args.  Therefore be different. */
+         di = unsafeIRDirty_0_N(
+                                1/*regparms*/, hname, helper,
+                                mkIRExprVec_2( addr, vdata ));
+      } else {
+         di = unsafeIRDirty_0_N(
+                                2/*regparms*/, hname, helper,
+                                mkIRExprVec_2( addr, vdata ));
+      }
    }
 
    setHelperAnns_DC( dce, di );
