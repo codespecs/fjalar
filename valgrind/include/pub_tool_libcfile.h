@@ -79,7 +79,6 @@ extern Int    VG_(read)   ( Int fd, void* buf, Int count);
 extern Int    VG_(write)  ( Int fd, const void* buf, Int count);
 extern Int    VG_(pipe)   ( Int fd[2] );
 extern Off64T VG_(lseek)  ( Int fd, Off64T offset, Int whence );
-extern Int    VG_(fcntl)  ( Int fd, Int cmd, Addr arg );
 
 extern SysRes VG_(stat)   ( const HChar* file_name, struct vg_stat* buf );
 #if defined(VGO_freebsd)
@@ -90,7 +89,6 @@ extern SysRes VG_(dup)    ( Int oldfd );
 extern SysRes VG_(dup2)   ( Int oldfd, Int newfd );
 extern Int    VG_(rename) ( const HChar* old_name, const HChar* new_name );
 extern Int    VG_(unlink) ( const HChar* file_name );
-extern SysRes VG_(mkdir)  ( const HChar* path_name, Int mode );
 
 extern SysRes VG_(poll) (struct vki_pollfd *fds, Int nfds, Int timeout);
 
