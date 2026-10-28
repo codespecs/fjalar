@@ -38,8 +38,9 @@ mc_include.h.
 
 #include "mc_include.h"
 
-// Marks the byte at a addressable and gives it the V bits vbyte.
-void mc_set_addressable_vbyte ( Addr a, UChar vbyte );
+// Marks the len bytes at a addressable, and gives byte i the V bits
+// (vbits >> (i * 8)) & 0xff.  len must be at most sizeof(ULong).
+void mc_set_addressable_vbytes ( Addr a, ULong vbits, SizeT len );
 
 void mc_copy_address_range_state ( Addr src, Addr dst, SizeT len );
 void mc_make_noaccess ( Addr a, SizeT len );
