@@ -26,13 +26,9 @@
 
 // Runs before processing command-line options:
 void fjalar_tool_pre_clo_init() {
-  // These override the details that mc_pre_clo_init sets, which are
-  // Memcheck's.
+  // These override the defaults that fjalar_pre_clo_init sets.
   VG_(details_name)            ("basic-tool");
   VG_(details_description)     ("a basic tool built upon Fjalar");
-  VG_(details_copyright_author)(
-     "Copyright (C) 2007-2026, University of Washington CSE PLSE Group");
-  VG_(details_bug_reports_to)  ("daikon-developers@googlegroups.com");
 
   VG_(printf)("\nfjalar_tool_pre_clo_init()\n\n");
 }

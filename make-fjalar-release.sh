@@ -34,9 +34,9 @@ find . -type d -name CVS | xargs rm -rf
 # - Cut out all dyncomp-related stuff from mc_main.c and mc_translate.c
 # (grep for 'PG', 'pgbovine', or 'dyncomp' - this may not be a trivial
 # task)
-# - Change mc_pre_clo_init() in mc_main.c to not print out the heading
-# that says Kvasir/DynComp but instead print out something
-# Fjalar-related.  And also change the contact info. and version number.
+# - The heading that says Kvasir/DynComp is set in
+# fjalar_tool_pre_clo_init() in kvasir/kvasir_main.c, which a Fjalar
+# release replaces with basic-tool/basic-tool.c, so it needs no change.
 # - Change fjalar/fjalar.am to build basic-tool instead of kvasir by
 # removing kvasir/ source files and adding 'basic-tool/basic-tool.c' to
 # FJALAR_SOURCES_COMMON, and by removing kvasir/dyncomp_wrappers.c from

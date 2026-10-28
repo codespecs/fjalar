@@ -30,7 +30,11 @@ implement in order to compile properly.
 Functions that run at specific times during execution:
 **********************************************************************/
 
-// Runs before command-line options are processed:
+// Runs before command-line options are processed.  It may call
+// VG_(details_name), VG_(details_version), VG_(details_description),
+// VG_(details_copyright_author), and VG_(details_bug_reports_to) to
+// override Fjalar's defaults, which describe a generic Fjalar tool.
+// A tool should at least set its name and description.
 void fjalar_tool_pre_clo_init(void);
 // Runs after command-line options are processed:
 void fjalar_tool_post_clo_init(void);

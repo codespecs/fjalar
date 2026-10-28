@@ -524,16 +524,12 @@ static void finishDtraceFile(void)
 
 void fjalar_tool_pre_clo_init(void)
 {
-  // These override the details that mc_pre_clo_init sets, which are
-  // Memcheck's.
+  // These override the defaults that fjalar_pre_clo_init sets.
   VG_(details_name)            ("kvasir");
   /* This next line is automatically updated by the toplevel Daikon
      distribution Makefile; be careful with its formatting -SMcC */
   VG_(details_version)         ("5.9.1");
   VG_(details_description)     ("C/C++ Language Front-End for Daikon with DynComp comparability analysis tool.");
-  VG_(details_copyright_author)(
-     "Copyright (C) 2007-2026, University of Washington CSE PLSE Group");
-  VG_(details_bug_reports_to)  ("daikon-developers@googlegroups.com");
 
   VG_(track_start_client_code)(dyncomp_gc_at_safe_point);
 }

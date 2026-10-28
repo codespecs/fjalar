@@ -821,7 +821,8 @@ static void do_pre_run_checks ( volatile ThreadState* tst )
    /* Also check there's no hole between the second shadow area and
       the spill area. */
    vg_assert(sz_spill == LibVEX_N_SPILL_BYTES);
-   vg_assert(a_vex + (3 + 4) * sz_vex == a_spill); // Fjalar: + 4 for vex_extra_shadow
+   // Fjalar: + 4 for vex_extra_shadow
+   vg_assert(a_vex + (3 + 4) * sz_vex == a_spill);
 
 #  if defined(VGA_x86)
    /* x86 XMM regs must form an array, ie, have no holes in

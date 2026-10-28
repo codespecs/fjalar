@@ -891,8 +891,9 @@ HInstrArray* doRegisterAllocation_v3(
       /* This reflects VEX's hard-wired knowledge of the guest state layout:
          the guest state itself, then two equal sized areas following it for two
          sets of shadow state, and then the spill area. */
+      // Fjalar: + 4 for vex_extra_shadow
       vreg_state[v_idx].spill_offset
-         = toShort(con->guest_sizeB * (3 + 4) + ss_no * 8); // Fjalar: + 4 for vex_extra_shadow
+         = toShort(con->guest_sizeB * (3 + 4) + ss_no * 8);
 
       /* Independent check that we've made a sane choice of the slot. */
       switch (vreg_state[v_idx].reg_class) {
