@@ -15,18 +15,7 @@ test_dir="$(cd "$(dirname "$0")" && pwd)"
 output_dir="$(mktemp -d)"
 trap 'rm -rf "${output_dir}"' EXIT
 
-# Fails in continuous integration (GitHub Actions sets CI, and Azure Pipelines
-# sets TF_BUILD), and otherwise skips this test, because this compiler cannot
-# run it.  Failing in continuous integration ensures that a compiler change
-# that makes this test vacuous does not go unnoticed.  $1 is the reason.
-unsuitable_compiler() {
-  if [ -n "${CI:-}" ] || [ -n "${TF_BUILD:-}" ]; then
-    echo "$0: FAILED: $1" >&2
-    exit 1
-  fi
-  echo "$0: SKIPPED: $1" >&2
-  exit 0
-}
+. "${test_dir}/environment-checks.sh"
 
 # Compile as dyncomp-comparability-driver.sh does.
 gcc -gdwarf-4 -no-pie -O0 -o "${output_dir}/dyncomp-red-zone-param" \
@@ -43,7 +32,7 @@ if ! readelf --debug-dump=info "${output_dir}/dyncomp-red-zone-param" \
              if (/\(DW_OP_breg7 \(rsp\): -[0-9]+\)/) found++
            }
            END { exit found != 2 }'; then
-  unsuitable_compiler "the locations of leaf's a and b are not \"DW_OP_breg7 (rsp): N\" with N < 0"
+  unsuitable_environment "$0" "the locations of leaf's a and b are not \"DW_OP_breg7 (rsp): N\" with N < 0"
 fi
 
 exec "${test_dir}/dyncomp-comparability-driver.sh" dyncomp-red-zone-param ''
