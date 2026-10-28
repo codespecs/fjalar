@@ -6,12 +6,6 @@
 #include <machine/endian.h>
 # endif
 #include "../../VEX/pub/libvex.h"
-#include "pub_tool_tooliface.h"
-
-static void dummy_pre_clo_init(void)
-{
-}
-VG_DETERMINE_INTERFACE_VERSION(dummy_pre_clo_init)
 
 Bool return_false(void*cb, Addr ad)
 {

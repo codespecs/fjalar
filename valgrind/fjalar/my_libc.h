@@ -208,6 +208,10 @@ const char* my_strerror(int errnum);
 
 int mkfifo(const char *fn, __mode_t mode);
 
+/* sys/stat.h */
+
+int mkdir(const char *path, __mode_t mode);
+
 /* bfd/bfd-in.h */
 
 #include "pub_tool_basics.h"
