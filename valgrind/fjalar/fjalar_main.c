@@ -915,6 +915,8 @@ static void free_virtual_stack(FunctionExecutionState* state)
        fail later. */
     MC_(make_mem_noaccess)((Addr)state->virtualStack, state->allocByteSize);
     VG_(free)(state->virtualStack);
+    state->virtualStack = NULL;
+    state->entryRegs = NULL;
   }
 }
 
@@ -936,14 +938,6 @@ void exit_function(FunctionEntry* f)
   Addr xAX, xDX, xAXshadow, xDXshadow;
 
   FJALAR_DPRINTF("Exit function: %s\n", f->fjalar_name);
-
-  top->func->guestStackStart = top->lowSP - VG_STACK_REDZONE_SZB;
-  top->func->guestStackEnd = top->func->guestStackStart + top->virtualStackByteSize;
-  top->func->lowestVirtSP = (Addr)top->virtualStack;
-  top->func->FP  = top->FP;
-  top->func->lowestSP  = top->func->guestStackStart;
-
-  FJALAR_DPRINTF("\tState of Guest Stack [%p - %p] \n", (void *)top->lowestSP, (void *)(top->lowestSP + top->virtualStackByteSize));
 
   // Ok, in Valgrind 2.X, we needed to directly code some assembly to
   // grab the top of the floating-point stack, but Valgrind 3.0
@@ -989,7 +983,7 @@ void exit_function(FunctionEntry* f)
   FJALAR_DPRINTF("Value of eax: %lx, edx: %lx\n",xAX, xDX);
 
   // Only do something if top->func matches func
-  if (!top->func) {
+  if (fn_stack_first_free_index[currentTID] == 0 || !top->func) {
     printf("More exit_function()s than entry_function()s!\n");
     // RUDD EXCEPTION
     VG_(get_and_pp_StackTrace) (currentTID, 15);
@@ -1038,6 +1032,14 @@ void exit_function(FunctionEntry* f)
     }
     top = fnStackTop(currentTID);
   }
+
+  top->func->guestStackStart = top->lowSP - VG_STACK_REDZONE_SZB;
+  top->func->guestStackEnd = top->func->guestStackStart + top->virtualStackByteSize;
+  top->func->lowestVirtSP = (Addr)top->virtualStack;
+  top->func->FP  = top->FP;
+  top->func->lowestSP  = top->func->guestStackStart;
+
+  FJALAR_DPRINTF("\tState of Guest Stack [%p - %p] \n", (void *)top->lowestSP, (void *)(top->lowestSP + top->virtualStackByteSize));
 
   top->xAX = xAX;
   top->xDX = xDX;
