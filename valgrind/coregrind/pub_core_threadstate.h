@@ -103,8 +103,11 @@ typedef
       VexGuestArchState vex_shadow2 
                         __attribute__((aligned(LibVEX_GUEST_STATE_ALIGN)));
 
-      /* PG - pgbovine - Extra shadow guest state for DynComp */
-      VexGuestArchState vex_extra_shadow[4] 
+      /* Fjalar:  DynComp's tags for the guest state, a 4-byte tag per
+         byte.  The spill offset in VEX's register allocators and
+         do_pre_run_checks in scheduler.c count these 4 areas ("+ 4 for
+         vex_extra_shadow"). */
+      VexGuestArchState vex_extra_shadow[4]
                         __attribute__((aligned(LibVEX_GUEST_STATE_ALIGN)));
 
       /* Spill area. */

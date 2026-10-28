@@ -58,12 +58,15 @@ TEMP-daikon-test: ../daikon
 ../daikon:
 	cd .. && git clone https://github.com/codespecs/daikon.git
 
+# Removing config.guess and config.sub makes the next build get fresh ones.
 clean:
 	cd valgrind && $(MAKE) clean
+	rm -f valgrind/config.guess valgrind/config.sub valgrind/Makefile.in
 
 very-clean:
 	cd valgrind && $(MAKE) uninstall
 	cd valgrind && $(MAKE) distclean
+	rm -f valgrind/config.guess valgrind/config.sub
 	rm -rf valgrind/config.h.in
 	rm -rf valgrind/aclocal.m4
 	rm -rf valgrind/configure

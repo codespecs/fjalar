@@ -821,9 +821,7 @@ static void do_pre_run_checks ( volatile ThreadState* tst )
    /* Also check there's no hole between the second shadow area and
       the spill area. */
    vg_assert(sz_spill == LibVEX_N_SPILL_BYTES);
-   // PG - pgbovine - changed from 2 to 6 to account for vex_extra_shadow in ThreadArchState
-   // changed to 7 when 2nd shadow area added in 2008.  (mlr)
-   vg_assert(a_vex + 7 * sz_vex == a_spill);
+   vg_assert(a_vex + (3 + 4) * sz_vex == a_spill); // Fjalar: + 4 for vex_extra_shadow
 
 #  if defined(VGA_x86)
    /* x86 XMM regs must form an array, ie, have no holes in
