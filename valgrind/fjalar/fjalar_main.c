@@ -904,7 +904,11 @@ void enter_function(FunctionEntry* f)
   fjalar_tool_handle_function_entrance(newEntry);
 }
 
-// Frees the virtual stack of the given FunctionExecutionState.
+// Frees the virtual stack of the given FunctionExecutionState, together
+// with its entryRegs, which share the same allocation.  First marks that
+// memory noaccess, which also clears its DynComp tags.  Sets
+// state->virtualStack and state->entryRegs to NULL.  Does nothing if
+// state->virtualStack is already NULL.
 static void free_virtual_stack(FunctionExecutionState* state)
 {
   if (state->virtualStack) {
