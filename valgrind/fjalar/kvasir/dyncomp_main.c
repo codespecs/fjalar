@@ -318,6 +318,23 @@ void MC_(helperc_STORE_TAG_1) ( Addr a, UInt tag ) {
   set_tag(a, tagToWrite);
 }
 
+// Like the other MC_(helperc_STORE_TAG_*) functions, but writes the tag
+// into the len bytes [a, a+len).  A WEAK_FRESH_TAG is replaced by one
+// fresh tag for the whole range.
+VG_REGPARM(3)
+void MC_(helperc_STORE_TAG_N) ( Addr a, UWord len, UInt tag ) {
+  UInt tagToWrite;
+
+  if (WEAK_FRESH_TAG == tag) {
+    tagToWrite = grab_fresh_tag();
+  }
+  else {
+    tagToWrite = tag;
+  }
+
+  set_tag_for_range(a, len, tagToWrite);
+}
+
 // Returns the first non-zero tag in the range [a, a+len), or 0 if
 // there is none.
 static UInt first_nonzero_tag_in_range(Addr a, SizeT len) {

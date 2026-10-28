@@ -42,7 +42,7 @@
 extern char dyncomp_profile_tags;
 static
 IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
-                            Int slot );
+                            Int slot, IRAtom* guard );
 static
 IRExpr* tmpDefinition_DC ( DCEnv* dce, IRTemp tmp );
 
@@ -3124,11 +3124,12 @@ Bool loadIsInteraction_DC ( void )
             || dyncomp_units_mode);
 }
 
-/* Worker function; do not call directly.  slot is as for
-   expr2tags_LDle_DC, and must be negative if a load is an interaction. */
+/* Worker function; do not call directly.  slot and guard are as for
+   expr2tags_LDle_DC, and slot must be negative if a load is an
+   interaction. */
 static
 IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
-                                Int slot )
+                                Int slot, IRAtom* guard )
 {
    void*    helper;
    const HChar* hname;
@@ -3181,6 +3182,9 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
    di = unsafeIRDirty_1_N( datatag,
                            regparms, hname, helper, args );
    setHelperAnns_DC( dce, di );
+   if (guard) {
+      di->guard = guard;
+   }
    stmt_DC('V',  dce, IRStmt_Dirty(di) );
 
    return mkexpr(datatag);
@@ -3188,14 +3192,16 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
 
 // Returns the tag of a load of type ty from addr+bias.  If slot is
 // non-negative, the load also saves the tags of the bytes it reads in
-// that slot of MC_(helperc_LOAD_TAG_N); see expr2tags_WrTmp_DC.
-// For Ity_V256, if a load is an interaction, only the low 16 bytes are
-// read, so the tag ignores the upper 16 bytes.
+// that slot of MC_(helperc_LOAD_TAG_N); see expr2tags_WrTmp_DC.  If
+// guard is non-NULL, the load happens only if guard is true; if guard
+// is false, the result is not a tag, and the caller must not use it.
 static
 IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
-                            Int slot )
+                            Int slot, IRAtom* guard )
 {
-   IRAtom *v64hi, *v64lo;
+   // The tags of the 8-byte chunks of a 128-bit or 256-bit load
+   IRAtom* chunkTags[4];
+   Int     nChunks, i;
    //   IRDirty* di;
    //   IRTemp   datatag;
 
@@ -3210,7 +3216,7 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
    // If a load is not an interaction, a load of any size does not merge
    // the tags of the bytes it reads.
    if (!loadIsInteraction_DC()) {
-      return expr2tags_LDle_WRK_DC(dce, ty, addr, bias, slot);
+      return expr2tags_LDle_WRK_DC(dce, ty, addr, bias, slot, guard);
    }
    tl_assert(slot < 0);
 
@@ -3219,15 +3225,26 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
       case Ity_I16:
       case Ity_I32:
       case Ity_I64:
-         return expr2tags_LDle_WRK_DC(dce, ty, addr, bias, -1);
+         return expr2tags_LDle_WRK_DC(dce, ty, addr, bias, -1, guard);
       case Ity_I128:
       case Ity_V128:
-      case Ity_V256:  // not right, should do 4 times?
-         v64lo = expr2tags_LDle_WRK_DC(dce, Ity_I64, addr, bias, -1);
-         v64hi = expr2tags_LDle_WRK_DC(dce, Ity_I64, addr, bias+8, -1);
+      case Ity_V256:
+         nChunks = sizeofIRType(ty) / 8;
+         tl_assert(nChunks == 2 || nChunks == 4);
+         for (i = 0; i < nChunks; i++) {
+            chunkTags[i] = expr2tags_LDle_WRK_DC(dce, Ity_I64, addr,
+                                                 bias + 8*i, -1, guard);
+            if (guard) {
+               // If the guard is false, the helper is not called, and
+               // chunkTags[i] is not a tag, so it must not be merged.
+               chunkTags[i]
+                  = assignNew_DC(dce, Ity_Word,
+                                 IRExpr_ITE(guard, chunkTags[i],
+                                            IRExpr_Const(IRConst_UWord(0))));
+            }
+         }
 
-         // Merge the tags of the results of the
-         // lower and upper 64-bit loads:
+         // Merge the tags of the results of the 64-bit loads:
 
          // Dirty call version:
          //         datatag = newIRTemp(dce->bb->tyenv, Ity_Word);
@@ -3251,10 +3268,17 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
          // On second thought, let's just go ahead and do it for now:
 
          // Clean call version:
-         return mkMergeTags_DC (2 /*Int regparms*/,
-                                "MC_(helperc_MERGE_TAGS)",
-                                &MC_(helperc_MERGE_TAGS),
-                                mkIRExprVec_2( v64lo, v64hi ));
+         if (nChunks == 2) {
+            return mkMergeTags_DC (2 /*Int regparms*/,
+                                   "MC_(helperc_MERGE_TAGS)",
+                                   &MC_(helperc_MERGE_TAGS),
+                                   mkIRExprVec_2( chunkTags[0], chunkTags[1] ));
+         }
+         return mkMergeTags_DC (3 /*Int regparms*/,
+                                "MC_(helperc_MERGE_4_TAGS)",
+                                &MC_(helperc_MERGE_4_TAGS),
+                                mkIRExprVec_4( chunkTags[0], chunkTags[1],
+                                               chunkTags[2], chunkTags[3] ));
 
 
       default:
@@ -3396,7 +3420,7 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
       case Iex_Load:
          return expr2tags_LDle_DC( dce, e->Iex.Load.ty,
                                       e->Iex.Load.addr, 0/*addr bias*/,
-                                      -1/*no snapshot*/ );
+                                      -1/*no snapshot*/, NULL/*unguarded*/ );
 
       case Iex_CCall:
          return handleCCall_DC( dce,
@@ -3437,33 +3461,29 @@ IRExpr* expr2tags_WrTmp_DC ( DCEnv* dce, IRTemp tmp, IRExpr* data )
       slot = dce->n_loadTagSnapshots++;
       dce->loadTagSnapshots[tmp] = slot;
       return expr2tags_LDle_DC( dce, data->Iex.Load.ty,
-                                data->Iex.Load.addr, 0/*addr bias*/, slot );
+                                data->Iex.Load.addr, 0/*addr bias*/, slot,
+                                NULL/*unguarded*/ );
    }
    return expr2tags_DC( dce, data );
 }
 
 /* PG says we might need to resync this with Memcheck's
-   do_shadow_Store().  The only problem I know about is fixing an
-   endianness assumption in the 128-bit case. -SMcC */
+   do_shadow_Store(). -SMcC */
+/* If guard is non-NULL, the store happens only if guard is true. */
 void do_shadow_STle_DC ( DCEnv* dce,
                       IRAtom* addr,
-                      IRAtom* data )
+                      IRAtom* data,
+                      IRAtom* guard )
 {
-   IROp     mkAdd;
    IRType   ty, tyAddr;
-   IRDirty  *di, *diLo64, *diHi64;
-   IRAtom   *addrHi64;
+   IRDirty  *di;
    IRAtom   *vdata;
    void*    helper = NULL;
    const HChar* hname = NULL;
    Int      pcOffset = -1;
 
    tyAddr = dce->hWordTy;
-   mkAdd  = tyAddr==Ity_I32 ? Iop_Add32 : Iop_Add64;
    tl_assert( tyAddr == Ity_I32 || tyAddr == Ity_I64 );
-
-   di = diLo64 = diHi64 = NULL;
-   addrHi64 = NULL;
 
    tl_assert(data);
    //   tl_assert(isOriginalAtom_DC(dce, data));
@@ -3515,6 +3535,24 @@ void do_shadow_STle_DC ( DCEnv* dce,
                              mkIRExpr_HWord(sizeofIRType(ty)),
                              mkIRExpr_HWord(dce->loadTagSnapshots[data->Iex.RdTmp.tmp]) ));
       setHelperAnns_DC( dce, di );
+      if (guard) {
+         di->guard = guard;
+      }
+      stmt_DC('V',  dce, IRStmt_Dirty(di) );
+      return;
+   }
+
+   /* 128-bit and 256-bit cases */
+   if (ty == Ity_V128 || ty == Ity_I128 || ty == Ity_V256) {
+      di = unsafeIRDirty_0_N(
+              3/*regparms*/,
+              "MC_(helperc_STORE_TAG_N)",
+              &MC_(helperc_STORE_TAG_N),
+              mkIRExprVec_3( addr, mkIRExpr_HWord(sizeofIRType(ty)), vdata ));
+      setHelperAnns_DC( dce, di );
+      if (guard) {
+         di->guard = guard;
+      }
       stmt_DC('V',  dce, IRStmt_Dirty(di) );
       return;
    }
@@ -3522,9 +3560,6 @@ void do_shadow_STle_DC ( DCEnv* dce,
    /* Now decide which helper function to call to write the data tag
       into shadow memory. */
    switch (ty) {
-      case Ity_V256: // not right, should do 4 times?
-      case Ity_V128: /* we'll use the helper twice */
-      case Ity_I128: /* we'll use the helper twice */
       case Ity_I64: helper = &MC_(helperc_STORE_TAG_8);
                     hname = "MC_(helperc_STORE_TAG_8)";
                     break;
@@ -3540,49 +3575,28 @@ void do_shadow_STle_DC ( DCEnv* dce,
       default:      VG_(tool_panic)("dyncomp:do_shadow_STle_DC");
    }
 
-   if (ty == Ity_V128) {
-      IRAtom *eight = tyAddr==Ity_I32 ? mkU32(8) : mkU64(8);
-      // (comment added 2006)
-      /* XXX this branch assumes little-endianness, and would need to
-	 be fixed for a PPC port. */
+   /* 8/16/32/64-bit cases */
 
-      /* V128-bit case */
-      /* See comment in next clause re 64-bit regparms */
-      diLo64    = unsafeIRDirty_0_N(
-                     1/*regparms*/, hname, helper,
-                     mkIRExprVec_2( addr, vdata ));
-
-      addrHi64  = assignNew_DC(dce, tyAddr, binop(mkAdd, addr, eight) );
-      diHi64    = unsafeIRDirty_0_N(
-                     1/*regparms*/, hname, helper,
-                     mkIRExprVec_2( addrHi64, vdata ));
-
-      setHelperAnns_DC( dce, diLo64 );
-      setHelperAnns_DC( dce, diHi64 );
-      stmt_DC('V',  dce, IRStmt_Dirty(diLo64) );
-      stmt_DC('V',  dce, IRStmt_Dirty(diHi64) );
-
+   // For some reason, we still need to make a special case for
+   // 64-bit things ... I dunno why, though ???
+   if (ty == Ity_I64) {
+      /* We can't do this with regparm 2 on 32-bit platforms, since
+         the back ends aren't clever enough to handle 64-bit
+         regparm args.  Therefore be different. */
+      di = unsafeIRDirty_0_N(
+                             1/*regparms*/, hname, helper,
+                             mkIRExprVec_2( addr, vdata ));
    } else {
-      /* 8/16/32/64-bit cases */
-
-      // For some reason, we still need to make a special case for
-      // 64-bit things ... I dunno why, though ???
-      if (ty == Ity_I64) {
-         /* We can't do this with regparm 2 on 32-bit platforms, since
-            the back ends aren't clever enough to handle 64-bit
-            regparm args.  Therefore be different. */
-         di = unsafeIRDirty_0_N(
-                                1/*regparms*/, hname, helper,
-                                mkIRExprVec_2( addr, vdata ));
-      } else {
-         di = unsafeIRDirty_0_N(
-                                2/*regparms*/, hname, helper,
-                                mkIRExprVec_2( addr, vdata ));
-      }
-
-      setHelperAnns_DC( dce, di );
-      stmt_DC('V',  dce, IRStmt_Dirty(di) );
+      di = unsafeIRDirty_0_N(
+                             2/*regparms*/, hname, helper,
+                             mkIRExprVec_2( addr, vdata ));
    }
+
+   setHelperAnns_DC( dce, di );
+   if (guard) {
+      di->guard = guard;
+   }
+   stmt_DC('V',  dce, IRStmt_Dirty(di) );
 
 }
 
@@ -3662,7 +3676,7 @@ static void do_shadow_CAS_single_DC ( DCEnv* dce, IRCAS* cas ) {
    voldLo
      = assignNew_DC(dce, elemTy,
                     expr2tags_LDle_DC(dce,elemTy, cas->addr, 0/*Addr bias*/,
-                                      -1/*no snapshot*/));
+                                      -1/*no snapshot*/, NULL/*unguarded*/));
 
    orig = mkexpr(cas->oldLo);
 
@@ -3835,12 +3849,12 @@ static void do_shadow_CAS_double_DC ( DCEnv* dce, IRCAS* cas )
       = assignNew_DC(
            dce, elemTy,
            expr2tags_LDle_DC(dce, elemTy, cas->addr, memOffsHi/*Addr bias*/,
-                             -1/*no snapshot*/ ));
+                             -1/*no snapshot*/, NULL/*unguarded*/ ));
    voldLo
       = assignNew_DC(
            dce, elemTy,
            expr2tags_LDle_DC(dce, elemTy, cas->addr, memOffsLo/*Addr bias*/,
-                             -1/*no snapshot*/));
+                             -1/*no snapshot*/, NULL/*unguarded*/));
 
    origLo = mkexpr(cas->oldLo);
    origHi = mkexpr(cas->oldHi);
@@ -3946,6 +3960,49 @@ void do_shadow_CAS_DC ( DCEnv* dce, IRCAS* cas) {
     do_shadow_CAS_double_DC( dce, cas );
   }
 
+}
+
+// Stores the tag of sg->data if sg->guard is true.
+static void do_shadow_StoreG_DC ( DCEnv* dce, IRStoreG* sg )
+{
+   tl_assert(sg->end == Iend_LE);
+   // Anchor the tag of the guard, to preserve the tag merges in the
+   // expression that produced it.
+   anchorAtomTag_DC(dce, sg->guard);
+   do_shadow_STle_DC(dce, sg->addr, sg->data, sg->guard);
+}
+
+// The tag of lg->dst is the tag of the loaded value if lg->guard is
+// true, and the tag of lg->alt otherwise.  Each conversion that
+// lg->cvt can name, such as ILGop_8Uto32, keeps the tag of its operand.
+// A constant lg->alt, such as the zero that VEX supplies for a lane
+// that vmaskmovps does not load, has tag 0:  VEX synthesizes it, so it
+// is not a program literal, and a fresh tag for it would be discarded
+// whenever the guard is true.
+static void do_shadow_LoadG_DC ( DCEnv* dce, IRLoadG* lg )
+{
+   IRType  tyRes, tyLoaded;
+   IRAtom* loaded;
+   IRAtom* alt;
+
+   tl_assert(lg->end == Iend_LE);
+   typeOfIRLoadGOp(lg->cvt, &tyRes, &tyLoaded);
+   // Anchor the tag of the guard, to preserve the tag merges in the
+   // expression that produced it.
+   anchorAtomTag_DC(dce, lg->guard);
+   // expr2tags_LDle_DC may return a clean call, but an operand of
+   // IRExpr_ITE must be an atom.
+   loaded = assignNew_DC(dce, Ity_Word,
+                         expr2tags_LDle_DC(dce, tyLoaded, lg->addr,
+                                           0/*addr bias*/, -1/*no snapshot*/,
+                                           lg->guard));
+   if (lg->alt->tag == Iex_Const) {
+      alt = IRExpr_Const(IRConst_UWord(0));
+   } else {
+      alt = expr2tags_DC(dce, lg->alt);
+   }
+   assign_DC('V', dce, findShadowTmp_DC(dce, lg->dst),
+             IRExpr_ITE(lg->guard, loaded, alt));
 }
 
 /* Called by MC_(instrument), before it instruments any statement of
@@ -4060,7 +4117,8 @@ void instrument_stmt_DC ( DCEnv* dce, Int stmtIndex )
          break;
 
       case Ist_Store:
-         do_shadow_STle_DC( dce, st->Ist.Store.addr, st->Ist.Store.data);
+         do_shadow_STle_DC( dce, st->Ist.Store.addr, st->Ist.Store.data,
+                            NULL/*unguarded*/ );
          break;
 
       case Ist_Exit:
@@ -4084,17 +4142,17 @@ void instrument_stmt_DC ( DCEnv* dce, Int stmtIndex )
             not instrument a load-linked.  Only PPC, MIPS, and ARM,
             which Fjalar does not support, use Ist_LLSC. */
          if (st->Ist.LLSC.storedata) {
-            do_shadow_STle_DC( dce, st->Ist.LLSC.addr, st->Ist.LLSC.storedata);
+            do_shadow_STle_DC( dce, st->Ist.LLSC.addr, st->Ist.LLSC.storedata,
+                               NULL/*unguarded*/ );
          }
          break;
 
       case Ist_StoreG:
+         do_shadow_StoreG_DC( dce, st->Ist.StoreG.details );
+         break;
+
       case Ist_LoadG:
-         /* UNDONE:  DynComp does not instrument a guarded store or a
-            guarded load, though amd64 uses them (for example, for AVX
-            masked moves).  So a guarded store leaves the tags of the
-            memory it writes unchanged, and the result of a guarded load
-            has no tag. */
+         do_shadow_LoadG_DC( dce, st->Ist.LoadG.details );
          break;
 
       default:
