@@ -32,7 +32,11 @@ mc_main.c needs for this file's functions and for nothing else.
 #include "pub_tool_vki.h"  // needed for VKI_PROT_ defines
 #include "fjalar_core_decls.h"  // for VG_(am_is_valid_for_valgrind), VG_(get_tag_ptr_for_guest_offset)
 
-void mc_set_addressable_vbytes ( Addr a, ULong vbits, SizeT len )
+// Marks the len bytes at a addressable, and gives them the V bits in
+// the low-order len bytes of vbits.  The V bits are laid out in the
+// host's byte order, as a store of a len-byte value to a lays out the
+// value.  len must be 1, 2, 4, or 8.
+static void mc_set_addressable_vbytes ( Addr a, ULong vbits, SizeT len )
 {
 #if defined(VG_BIGENDIAN)
   Bool bigendian = True;
@@ -78,15 +82,23 @@ char mc_are_some_bytes_initialized(Addr a, SizeT len) {
 // Marks the bytes at dst addressable, gives each one the V bits of the
 // corresponding byte of the register, and gives all of them the
 // register's DynComp tag.
-void mc_copy_guest_reg_state ( ThreadId tid, Int guestOffset, Addr dst )
+void mc_copy_guest_reg_state ( ThreadId tid, Int guestOffset, Addr dst,
+                               SizeT len )
 {
-  UWord vbits;
-  VG_(get_shadow_regs_area)(tid, (UChar*)&vbits, 1/*shadowNo*/,
-                            guestOffset, sizeof(Addr));
-  mc_set_addressable_vbytes(dst, vbits, sizeof(Addr));
+  ULong vbits = 0;
+  // Where the register's V bits go, so that they are the low-order len
+  // bytes of vbits.
+  UChar* vbitsLowBytes = (UChar*)&vbits;
+  tl_assert(len <= sizeof(vbits));
+#if defined(VG_BIGENDIAN)
+  vbitsLowBytes += sizeof(vbits) - len;
+#endif
+  VG_(get_shadow_regs_area)(tid, vbitsLowBytes, 1/*shadowNo*/,
+                            guestOffset, len);
+  mc_set_addressable_vbytes(dst, vbits, len);
   if (kvasir_with_dyncomp) {
     // DynComp keeps one tag per register, at the register's offset.
     UInt tag = *VG_(get_tag_ptr_for_guest_offset)(tid, guestOffset);
-    set_tag_in_range(dst, sizeof(Addr), tag);
+    set_tag_in_range(dst, len, tag);
   }
 }

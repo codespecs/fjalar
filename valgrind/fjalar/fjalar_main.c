@@ -242,19 +242,6 @@ double read_float_return(ThreadId tid)
   return value;
 }
 
-ULong read_shadow_float_return(ThreadId tid)
-{
-  ULong vbits;
-  VG_(get_shadow_regs_area)(tid, (UChar*)&vbits, 1/*shadowNo*/,
-                            float_return_guest_offset(tid), sizeof(ULong));
-  return vbits;
-}
-
-UInt read_float_return_tag(ThreadId tid)
-{
-  return *VG_(get_tag_ptr_for_guest_offset)(tid, float_return_guest_offset(tid));
-}
-
 // If atom is DW_OP_regN (the value is in register N) or DW_OP_bregN
 // (the value is at an offset from the address in register N), sets
 // *regNum to N and returns True.  Otherwise, returns False and leaves
@@ -284,7 +271,8 @@ static void save_param_regs(FunctionExecutionState* f_state, ThreadId tid)
     if (f_state->func->entryRegsMask & (1U << regNum)) {
       f_state->entryRegs[regNum] = read_dwarf_reg(tid, regNum);
       mc_copy_guest_reg_state(tid, dwarf_reg_guest_offset(regNum),
-                              (Addr)&f_state->entryRegs[regNum]);
+                              (Addr)&f_state->entryRegs[regNum],
+                              sizeof(f_state->entryRegs[regNum]));
     }
   }
 }
@@ -970,14 +958,12 @@ void exit_function(FunctionEntry* f)
   FunctionExecutionState* top;
   extern FunctionExecutionState* curFunctionExecutionStatePtr;
   int i;
-  ULong FPUshadow;
   double fpuReturnVal;
   Addr xAX, xDX;
 
   FJALAR_DPRINTF("Exit function: %s\n", f->fjalar_name);
 
   fpuReturnVal = read_float_return(currentTID);
-  FPUshadow = read_shadow_float_return(currentTID);
 
 
   // Get the value at the simulated %EAX (integer and pointer return
@@ -1056,14 +1042,14 @@ void exit_function(FunctionEntry* f)
   top->xDX = xDX;
   top->FPU = fpuReturnVal;
 
-  // Very important!  Set the A and V bits, and the DynComp tags of xAX
-  // and xDX, of the appropriate FunctionExecutionState object from the
-  // guest state.  fjalar_tool_handle_function_exit sets the tag of FPU.
+  // Very important!  Set the A and V bits and the DynComp tags of the
+  // appropriate FunctionExecutionState object from the guest state.
   mc_copy_guest_reg_state(currentTID, offsetof(VexGuestArchState, GUEST_xAX),
-                          (Addr)(&top->xAX));
+                          (Addr)(&top->xAX), sizeof(top->xAX));
   mc_copy_guest_reg_state(currentTID, offsetof(VexGuestArchState, GUEST_xDX),
-                          (Addr)(&top->xDX));
-  mc_set_addressable_vbytes((Addr)(&top->FPU), FPUshadow, sizeof(top->FPU));
+                          (Addr)(&top->xDX), sizeof(top->xDX));
+  mc_copy_guest_reg_state(currentTID, float_return_guest_offset(currentTID),
+                          (Addr)(&top->FPU), sizeof(top->FPU));
 
   curFunctionExecutionStatePtr = top;
   top->func->nonce = top->invocation_nonce;

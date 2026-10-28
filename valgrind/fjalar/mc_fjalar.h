@@ -38,16 +38,11 @@ mc_include.h.
 
 #include "mc_include.h"
 
-// Marks the len bytes at a addressable, and gives them the V bits in
-// the low-order len bytes of vbits.  The V bits are laid out in the
-// host's byte order, as a store of a len-byte value to a lays out the
-// value.  len must be 1, 2, 4, or 8.
-void mc_set_addressable_vbytes ( Addr a, ULong vbits, SizeT len );
-
-// Copies the A and V bits and the DynComp tag of the pointer-sized
-// guest register at guestOffset in thread tid's guest state to the
-// sizeof(Addr) bytes of memory at dst.
-void mc_copy_guest_reg_state ( ThreadId tid, Int guestOffset, Addr dst );
+// Copies the A and V bits and the DynComp tag of the len-byte guest
+// register at guestOffset in thread tid's guest state to the len bytes
+// of memory at dst.  len must be 1, 2, 4, or 8.
+void mc_copy_guest_reg_state ( ThreadId tid, Int guestOffset, Addr dst,
+                               SizeT len );
 
 char mc_are_some_bytes_initialized ( Addr a, SizeT len );
 Bool mc_check_writable ( Addr a, SizeT len, Addr* bad_addr );

@@ -820,16 +820,6 @@ void fjalar_tool_handle_function_entrance(FunctionExecutionState* f_state) {
 }
 
 void fjalar_tool_handle_function_exit(FunctionExecutionState* f_state) {
-
-  if (kvasir_with_dyncomp) {
-    ThreadId currentTID = VG_(get_running_tid)();
-
-    // For DynComp, update the tag of the saved floating-point return
-    // value.  exit_function sets the tags of xAX and xDX.
-    set_tag_in_range((Addr)(&(f_state->FPU)), sizeof(f_state->FPU),
-                     read_float_return_tag(currentTID));
-  }
-
   printDtraceForFunction(f_state, 0);
 }
 
