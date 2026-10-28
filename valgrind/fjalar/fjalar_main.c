@@ -1018,19 +1018,20 @@ static void pop_unwound_frames(ThreadId tid, Addr currentSP)
 {
   while (fn_stack_first_free_index[tid] > 0
          && frame_is_unwound(fnStackTop(tid), currentSP)) {
-    free_virtual_stack(fnStackPop(tid));
+    pop_frame(tid);
   }
 }
 
 /*
 This is the hook into Valgrind that is called whenever the target
 program exits a function.  Does nothing if the function stack is empty.
-If the function at the top of the stack is not f, because of a non-local
-exit, pops and frees the frames above the topmost frame of f, or does
-nothing if there is no frame of f.  Initializes the top entry of
+Finds the exiting frame of f (see exiting_frame_index).  If there is
+none, pops and frees the unwound frames and does nothing else.  If it is
+not at the top of the stack, because of a non-local exit, pops and frees
+the frames above it.  Initializes the top entry of
 FunctionExecutionStateStack with return values from EAX, EDX, and FPU,
 calls out to a handler function implemented by the Fjalar tool, and
-then pops and frees the top entry.
+then pops and frees the top entry and any unwound frames below it.
 */
 VG_REGPARM(1)
 void exit_function(FunctionEntry* f)
