@@ -211,6 +211,63 @@ static void save_param_regs(FunctionExecutionState* f_state, ThreadId tid)
 // copies by default that it also copies to cover formal parameters.
 #define MAX_VIRTUAL_STACK_EXTENSION (64 * 1024)
 
+// Sets regs to the values of the registers in f->entryRegsMask, and makes
+// formalParamLocation read the guest stack, so that formalParamLocation
+// with regs gives the locations of the formal parameters of an invocation
+// of f.  Call this at function entrance, before copying the guest stack to
+// the virtual stack.
+static void prepare_entrance_param_locations(FunctionEntry* f, ThreadId tid,
+                                             Addr regs[FJALAR_NUM_DWARF_REGS])
+{
+  UInt regNum;
+
+  for (regNum = 0; regNum < FJALAR_NUM_DWARF_REGS; regNum++) {
+    if (f->entryRegsMask & (1U << regNum)) {
+      regs[regNum] = read_dwarf_reg(tid, regNum);
+    }
+  }
+  // At function entrance, the guest stack holds what the virtual stack
+  // will hold, so formalParamLocation can read the guest stack.  An
+  // empty copied stack makes it do so.
+  f->guestStackStart = 0;
+  f->guestStackEnd = 0;
+}
+
+// Returns the lowest guest address in [stackStart, stackEnd) at which a
+// formal parameter of an invocation of f lies, or stackEnd if none lies
+// there.  frameBase is the invocation's frame base.  Call this at function
+// entrance, before copying the guest stack to the virtual stack.
+static Addr formal_params_stack_start(FunctionEntry* f, ThreadId tid,
+                                      Addr frameBase, Addr stackStart,
+                                      Addr stackEnd)
+{
+  Addr start = stackEnd;
+  Addr regs[FJALAR_NUM_DWARF_REGS];
+  VarNode* node;
+
+  prepare_entrance_param_locations(f, tid, regs);
+  for (node = f->formalParameters.first; node != NULL; node = node->next) {
+    VariableEntry* var = node->var;
+    Addr paramLoc;
+    if (formalParamIsOmitted(var)) {
+      continue;
+    }
+    if (var->location_expression_size == 0) {
+      paramLoc = frameBase + var->byteOffset;
+    } else if (location_op_kind_of(var->location_expression[0].atom)
+               == LOC_OP_REG) {
+      continue;
+    } else {
+      paramLoc = formalParamLocation(var, f, frameBase,
+                                     f->entryRegsMask != 0 ? regs : NULL);
+    }
+    if (paramLoc >= stackStart && paramLoc < start) {
+      start = paramLoc;
+    }
+  }
+  return start;
+}
+
 // Returns the guest address just past the formal parameters of an
 // invocation of f that lie on the guest stack at or above stackStart,
 // or copyEnd if that is greater.  frameBase is the invocation's frame
@@ -225,20 +282,9 @@ static Addr formal_params_stack_end(FunctionEntry* f, ThreadId tid,
   Addr limit = copyEnd + MAX_VIRTUAL_STACK_EXTENSION;
   Addr end = copyEnd;
   Addr regs[FJALAR_NUM_DWARF_REGS];
-  UInt regNum;
   VarNode* node;
 
-  for (regNum = 0; regNum < FJALAR_NUM_DWARF_REGS; regNum++) {
-    if (f->entryRegsMask & (1U << regNum)) {
-      regs[regNum] = read_dwarf_reg(tid, regNum);
-    }
-  }
-  // At function entrance, the guest stack holds what the virtual stack
-  // will hold, so formalParamLocation can read the guest stack.  An
-  // empty copied stack makes it do so.
-  f->guestStackStart = 0;
-  f->guestStackEnd = 0;
-
+  prepare_entrance_param_locations(f, tid, regs);
   for (node = f->formalParameters.first; node != NULL; node = node->next) {
     VariableEntry* var = node->var;
     Addr paramLoc;
@@ -824,12 +870,6 @@ void enter_function(FunctionEntry* f)
   // stack alignment operations in main, we may need  as much as 16 bytes over the above.
   size = MAX(local_stack, VG_STACK_REDZONE_SZB)
     + f->formalParamStackByteSize + sizeof(Addr)*2 + 32;/* plus stuff in caller's*/
-  FJALAR_DPRINTF("local_stack: %p, arg_size: %d\n", (void *)(frame_ptr - f->formalParamLowerStackByteSize),
-                                                    f->formalParamLowerStackByteSize);
-  int delta = stack_ptr - (frame_ptr - f->formalParamLowerStackByteSize);
-  if (delta < 0 )
-      delta = 0;
-
   tl_assert(size >= 0);
   if (size != 0) {
     Int entryRegsOffset;
@@ -868,7 +908,16 @@ void enter_function(FunctionEntry* f)
     newEntry->virtualStackByteSize = size;
     newEntry->virtualStackFPOffset = local_stack;
 
-    clear_all_tags_in_range(stack_ptr - VG_STACK_REDZONE_SZB, VG_STACK_REDZONE_SZB - delta);
+    // The tags of the red zone below the formal parameters that lie in
+    // it are stale.  The location of a formal parameter may be relative
+    // to the stack pointer rather than to the frame base, so compute
+    // each location.
+    {
+      Addr redZoneStart = stack_ptr - VG_STACK_REDZONE_SZB;
+      Addr paramsStart = formal_params_stack_start(f, tid, frame_ptr,
+                                                   redZoneStart, stack_ptr);
+      clear_all_tags_in_range(redZoneStart, paramsStart - redZoneStart);
+    }
 
     VG_(memcpy)(newEntry->virtualStack,
 		(char*)stack_ptr - VG_STACK_REDZONE_SZB, size);
