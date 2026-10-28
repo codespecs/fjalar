@@ -1084,6 +1084,18 @@ void exit_function(FunctionEntry* f)
 
 }
 
+// Pops and frees every frame of thread tid, which is exiting.  The
+// frames of a thread that exits from inside instrumented functions,
+// such as by calling pthread_exit, never reach exit_function.  Popping
+// them also empties the function stack for the next thread that gets
+// the same ThreadId.
+static void fjalar_pre_thread_ll_exit(ThreadId tid)
+{
+  while (fn_stack_first_free_index[tid] > 0) {
+    free_virtual_stack(fnStackPop(tid));
+  }
+}
+
 
 /*------------------------------------------------------------*/
 /*--- Command line processing                              ---*/
@@ -1194,6 +1206,8 @@ void fjalar_pre_clo_init()
   // Clear FunctionExecutionStateStack
   VG_(memset)(fn_stack_first_free_index, 0, VG_N_THREADS * sizeof fn_stack_first_free_index[0]);
   VG_(memset)(FunctionExecutionStateStack, 0, VG_N_THREADS * FN_STACK_SIZE * sizeof FunctionExecutionStateStack[0][0]);
+
+  VG_(track_pre_thread_ll_exit)(fjalar_pre_thread_ll_exit);
 
   // (comment added 2005)
   // TODO: Do we need to clear all global variables before processing
