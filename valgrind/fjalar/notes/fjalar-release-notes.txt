@@ -13,8 +13,6 @@ Note that Fjalar is distributed in two ways:
 fjalar_tool.h.txt in this directory.]
 
 
-These are now made somewhat obsolete by daikon/scripts/make-fjalar-release.sh
-
 - Copy over the entire valgrind-3 directory and all sub-directories
 into a folder and cd there.
 
