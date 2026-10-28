@@ -38,7 +38,10 @@ version string.
 | Step 6d | #197 | Landed |
 | Step 7a | #195 | Open |
 | Step 7b | #196 | Open |
-| Steps 7c-9 | — | Not started |
+| Step 7c | — | Not started |
+| Step 7d | #206 | Open |
+| Step 8 | #205 | Open; land with codespecs/daikon#955 |
+| Step 9 | — | Not started |
 
 ## Dependences among steps
 
