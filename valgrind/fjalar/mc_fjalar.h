@@ -44,8 +44,6 @@ mc_include.h.
 // byte i of a value in memory or a register is (value >> (i * 8)) & 0xff.
 void mc_set_addressable_vbytes ( Addr a, ULong vbits, SizeT len );
 
-void mc_copy_address_range_state ( Addr src, Addr dst, SizeT len );
-void mc_make_noaccess ( Addr a, SizeT len );
 // Copies the A and V bits and the DynComp tag of the pointer-sized
 // guest register at guestOffset in thread tid's guest state to the
 // sizeof(Addr) bytes of memory at dst.
