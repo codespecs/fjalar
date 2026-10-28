@@ -924,6 +924,55 @@ static void free_virtual_stack(FunctionExecutionState* state)
   }
 }
 
+// Returns True if the stack of the given frame has been unwound, where
+// currentSP is the guest stack pointer at a function exit.  The exit
+// hook runs after the return instruction, so currentSP is the stack
+// pointer of the exiting frame's caller.  The exiting frame, and every
+// frame that it called, has a lowSP below currentSP; every frame that is
+// still live has a lowSP at or above currentSP.
+static Bool frame_is_unwound(FunctionExecutionState* state, Addr currentSP)
+{
+  return state->lowSP < currentSP;
+}
+
+// Returns the index, in the function stack of thread tid, of the frame
+// of f that is exiting, or -1 if there is none.  The exiting frame lies
+// among the unwound frames at the top of the stack.  Several of them can
+// be frames of f, if a recursive call of f exited non-locally.  The
+// exiting frame is the outermost of those, which has the highest lowSP.
+// A tie means that a frame left by an earlier non-local exit is at the
+// same stack depth as the exiting frame, which is the topmost of the
+// tied frames.
+static int exiting_frame_index(ThreadId tid, FunctionEntry* f, Addr currentSP)
+{
+  int result = -1;
+  int i;
+
+  for (i = fn_stack_first_free_index[tid] - 1; i >= 0; i--) {
+    FunctionExecutionState* state = &FunctionExecutionStateStack[tid][i];
+    if (!frame_is_unwound(state, currentSP)) {
+      break;
+    }
+    if (state->func == f
+        && (result < 0
+            || state->lowSP > FunctionExecutionStateStack[tid][result].lowSP)) {
+      result = i;
+    }
+  }
+  return result;
+}
+
+// Pops and frees the frames at the top of the function stack of thread
+// tid whose stack has been unwound, where currentSP is the guest stack
+// pointer at a function exit.
+static void pop_unwound_frames(ThreadId tid, Addr currentSP)
+{
+  while (fn_stack_first_free_index[tid] > 0
+         && frame_is_unwound(fnStackTop(tid), currentSP)) {
+    free_virtual_stack(fnStackPop(tid));
+  }
+}
+
 /*
 This is the hook into Valgrind that is called whenever the target
 program exits a function.  Initializes the top entry of
@@ -936,6 +985,8 @@ void exit_function(FunctionEntry* f)
   ThreadId currentTID = VG_(get_running_tid)();
   FunctionExecutionState* top = fnStackTop(currentTID);
   extern FunctionExecutionState* curFunctionExecutionStatePtr;
+  Addr currentSP = VG_(get_SP)(currentTID);
+  int exitingIndex;
   int i;
   ULong FPUshadow;
   double fpuReturnVal;
@@ -992,10 +1043,13 @@ void exit_function(FunctionEntry* f)
     // RUDD EXCEPTION
     VG_(get_and_pp_StackTrace) (currentTID, 15);
     return;
-  } else if (!(top->func->fjalar_name) || (top->func != f)) {
-    // There are a couple reasons why the function at the top
+  }
+
+  exitingIndex = exiting_frame_index(currentTID, f, currentSP);
+  if (exitingIndex != fn_stack_first_free_index[currentTID] - 1) {
+    // There are a couple reasons why the frame at the top
     // of the Function Execution State Stack would not be the
-    // function we expected. All of them are related to a non-
+    // frame we expected. All of them are related to a non-
     // local exit of the function. Situations where this might
     // come up include:
 
@@ -1005,8 +1059,7 @@ void exit_function(FunctionEntry* f)
     // For Fjalar to resume normal operation, we need to pop
     // off functions off the Function Execution State Stack
     // (these would be all the functions that had non-local
-    // exits) until we encounter the Function Execution State
-    // Stack corresponding to our function.
+    // exits) until we encounter the frame that is exiting.
     printf("MISMATCHED on exit_function! f: %s !=  %s\nDetectedEntryIP: %p - AssumedEntryIP: %p\nDetctedExitIP: %p - AssumedExitIp: %p\n",
                 f->fjalar_name,
                 top->func->fjalar_name,
@@ -1016,22 +1069,15 @@ void exit_function(FunctionEntry* f)
                 (void *)f->endPC);
 
 
-    // This is probably being overconservative. However let's revert
-    // to Fjalar's old behavior (do nothing) if we can't find an
-    // instance of our function in the function stack.
-    for(i = fn_stack_first_free_index[currentTID] - 1; i >= 0; i-- ) {
-      FunctionExecutionState* curFuncExecPtr = &FunctionExecutionStateStack[currentTID][i];
-      if(curFuncExecPtr->func == f) {
-        break;
-      }
-    }
-
-    if(i < 0) {
+    // If no frame of f is exiting, then f's entry was not observed.
+    // Discard only the frames whose stack has been unwound.
+    if (exitingIndex < 0) {
+      pop_unwound_frames(currentTID, currentSP);
       VG_(get_and_pp_StackTrace) (currentTID, 15);
       return;
     }
 
-    while(fn_stack_first_free_index[currentTID] > i + 1) {
+    while(fn_stack_first_free_index[currentTID] > exitingIndex + 1) {
       free_virtual_stack(fnStackPop(currentTID));
     }
     top = fnStackTop(currentTID);
@@ -1081,6 +1127,12 @@ void exit_function(FunctionEntry* f)
   // state and the "!top->func == f" check will fail causing no more
   // program points to be printed.
   fnStackPop(currentTID);
+
+  // Frames below the exiting frame may also have been unwound.  Examples
+  // are a frame that made a tail call to f, and frames that an earlier
+  // non-local exit left behind because no frame below them has exited
+  // since.
+  pop_unwound_frames(currentTID, currentSP);
 
 }
 
