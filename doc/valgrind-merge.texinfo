@@ -1530,18 +1530,10 @@ Add fjalar to the list of tools; add files to clean-local target
 Add @nospellcheck{coregrind/libcoregrind-amd64-linux.a to libvex} tests
 @item $INV/fjalar/valgrind/tests/check_headers_and_includes
 Add fjalar to @nospellcheck{tool_dirs and inst to dirs_to_ignore}
-@item $INV/fjalar/valgrind/VEX/priv/guest_amd64_helpers.c
-Add additional general purpose registers to the guest state
-@item $INV/fjalar/valgrind/VEX/priv/guest_x86_helpers.c
-Add additional general purpose registers to the guest state
 @item $INV/fjalar/valgrind/VEX/priv/host_amd64_defs.c
 Add function name to debug dump of call instruction
 @item $INV/fjalar/valgrind/VEX/priv/host_generic_reg_alloc2.c
 Modify memory calculation using the shadow size
-@item $INV/fjalar/valgrind/VEX/pub/libvex.h
-Add additional general purpose registers to the guest state
-@item $INV/fjalar/valgrind/VEX/pub/libvex_ir.h
-Add additional general purpose registers to the guest state
 @end table
 
 
