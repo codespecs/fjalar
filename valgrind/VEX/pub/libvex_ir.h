@@ -2577,9 +2577,7 @@ extern void ppIRJumpKind ( IRJumpKind );
    even if the guard evaluates to false.
 */
 
-// RUDD: VEX_N_FXSTATE was originally 7, going to increase by 10
-// to cover all general purpose Integer registers on x86-64
-#define VEX_N_FXSTATE  17   /* enough for FXSAVE/FXRSTOR on x86 */
+#define VEX_N_FXSTATE  7   /* enough for FXSAVE/FXRSTOR on x86 */
 
 /* Effects on resources (eg. registers, memory locations) */
 typedef
