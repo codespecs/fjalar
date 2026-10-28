@@ -23,6 +23,10 @@ this file, after the definitions of those, rather than this file being
 compiled on its own.  No other file may include it, because it defines
 functions.
 
+This file relies on mc_main.c's #includes and definitions, such as DEBUG,
+kvasir_with_dyncomp, and set_tag.  It includes only the headers that
+mc_main.c needs for this file's functions and for nothing else.
+
 */
 
 #include "pub_tool_vki.h"  // needed for VKI_PROT_ defines
@@ -59,12 +63,12 @@ Bool mc_check_readable ( Addr a, SizeT len, Addr* bad_addr ) {
 }
 
 // PG - pgbovine - Returns true if ANY of the v-bits are set for the
-// bytes in question.  (Less stringent than MC_(check_readable))
+// bytes in question.  (Less stringent than mc_check_readable)
 char mc_are_some_bytes_initialized(Addr a, SizeT len) {
   SizeT i;
   UChar abit;
 
-  DEBUG("MC_(are_some_bytes_initialized)\n");
+  DEBUG("mc_are_some_bytes_initialized\n");
   for (i = 0; i < len; i++) {
     abit = get_vabits2 (a);
     if((abit == VA_BITS2_PARTDEFINED) || (abit == VA_BITS2_DEFINED)) {
