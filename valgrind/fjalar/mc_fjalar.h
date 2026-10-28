@@ -39,7 +39,7 @@ mc_include.h.
 #include "mc_include.h"
 
 // Marks the byte at a addressable and gives it the V bits vbyte.
-void mc_set_addressable_vbyte ( Addr a, UWord vbyte );
+void mc_set_addressable_vbyte ( Addr a, UChar vbyte );
 
 void mc_copy_address_range_state ( Addr src, Addr dst, SizeT len );
 void mc_make_noaccess ( Addr a, SizeT len );
