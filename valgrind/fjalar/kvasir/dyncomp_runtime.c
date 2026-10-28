@@ -41,6 +41,7 @@
 #include "dyncomp_runtime.h"
 
 #include "../fjalar_include.h"
+#include "../fjalar_core_decls.h"
 
 extern char* func_name;
 extern char* cur_var_name;
