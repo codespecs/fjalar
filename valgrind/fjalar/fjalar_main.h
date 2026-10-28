@@ -86,8 +86,8 @@ extern struct genhashtable* loc_list_map;
 // The master debug_frame. This is explained in typedata.h
 extern debug_frame* debug_frame_HEAD;
 
-extern VG_REGPARM(2) void prime_function(FunctionEntry* f, Addr stack_ptr);
-extern VG_REGPARM(2) void enter_function(FunctionEntry* f, Addr stack_ptr);
+extern VG_REGPARM(1) void prime_function(FunctionEntry* f);
+extern VG_REGPARM(1) void enter_function(FunctionEntry* f);
 extern VG_REGPARM(1) void exit_function(FunctionEntry* f);
 
 

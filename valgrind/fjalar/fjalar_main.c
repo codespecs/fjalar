@@ -398,7 +398,7 @@ int *fn_stack_first_free_index;
 // The top element of the stack is:
 // FunctionExecutionStateStack[fn_stack_first_free_index - 1]
 
-typedef VG_REGPARM(2) void entry_func(FunctionEntry *, Addr);
+typedef VG_REGPARM(1) void entry_func(FunctionEntry *);
 
 // Appends to di->fxState an entry recording that the helper call di
 // reads size bytes of the guest state, starting at offset.
@@ -438,8 +438,7 @@ static void add_fxState_read_GPRs_and_IP(IRDirty* di) {
 // used for inserting the call to enter_function on function entry.
 // It is also used for handling of 'function priming' (see
 // comment above prime_function). The result of looking up addr in
-// table will be passed to the helper as its first argument, and the
-// guest stack pointer as its second argument. This function
+// table will be passed to the helper as it's only argument. This function
 // does nothing if it is unable to successfully look up addr in the
 // provided table.
 static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
@@ -462,11 +461,8 @@ static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
   if (entry && (!fjalar_trace_prog_pts_filename ||
 		prog_pts_tree_entry_found(entry))) {
     UWord entry_w = (UWord)entry;
-    IRTemp sp = newTemp(mce, mce->hWordTy, VSh);
-    assign('V', mce, sp, IRExpr_Get(mce->layout->offset_SP, mce->hWordTy));
-    di = unsafeIRDirty_0_N(2/*regparms*/, func_name, func,
-			 mkIRExprVec_2(IRExpr_Const(IRConst_UWord(entry_w)),
-				       IRExpr_RdTmp(sp)));
+    di = unsafeIRDirty_0_N(1/*regparms*/, func_name, func,
+			 mkIRExprVec_1(IRExpr_Const(IRConst_UWord(entry_w))));
 
     entry->entryPC = addr;
 
@@ -501,19 +497,25 @@ static struct  genhashtable *funcs_handled = NULL;
    confused. Instead, we want to only do enter_function() once per
    invocation of the function, where we define an invocation to be an
    execution of the very first instruction. To accomplish that, we put
-   a call to the prime_function() hook there; when executed, it sets
-   the first_time flag. In enter_function(), we check the flag before
-   doing anything, and then clear it. prime_function() also records
+   a call to the prime_function() hook there; when executed, it records
+   the function and the thread. In enter_function(), we check that they
+   match before doing anything, and then clear the record. A mismatch
+   means that the thread did not execute the function's first
+   instruction just before (for example, it jumped back to the entry
+   point), or that another thread did. prime_function() also records
    the function's canonical frame address, which enter_function()
    cannot compute because the prolog may have moved the stack
    pointer. */
-static Bool first_time = False;
+static FunctionEntry* primed_func = NULL;
+static ThreadId primed_tid = VG_INVALID_THREADID;
 static Addr primed_CFA = 0;
-VG_REGPARM(2) void prime_function(FunctionEntry *f, Addr stack_ptr)
+VG_REGPARM(1) void prime_function(FunctionEntry *f)
 {
-  first_time = True;
+  ThreadId tid = VG_(get_running_tid)();
+  primed_func = f;
+  primed_tid = tid;
   // The stack pointer points to the return address.
-  primed_CFA = stack_ptr + sizeof(Addr);
+  primed_CFA = VG_(get_SP)(tid) + sizeof(Addr);
   return;
 }
 
@@ -697,20 +699,21 @@ new frame occupies, pushes an entry onto the top of
 FunctionExecutionStateStack, and calls out to a handler function
 implemented by the Fjalar tool.
 */
-VG_REGPARM(2)
-void enter_function(FunctionEntry* f, Addr stack_ptr)
+VG_REGPARM(1)
+void enter_function(FunctionEntry* f)
 {
   FunctionExecutionState* newEntry;
   extern FunctionExecutionState* curFunctionExecutionStatePtr;
+  ThreadId tid = VG_(get_running_tid)();
 
-  // Only do enter_function if this is the first time we have
+  // Only do enter_function if this is the first time this thread has
   // reached the preferred entry point after entering the function.
-  if (!first_time) {
+  if (primed_func != f || primed_tid != tid) {
     return;
   }
-  first_time = False;
+  primed_func = NULL;
 
-  ThreadId tid = VG_(get_running_tid)();
+  Addr stack_ptr= VG_(get_SP)(tid);
   Addr frame_ptr = 0; /* E.g., %ebp */
   int local_stack, size;
   UInt regNum;
@@ -990,15 +993,51 @@ static void pop_frame(ThreadId tid)
   }
 }
 
-// Returns True if addr lies on the alternate signal stack of thread tid.
-static Bool on_altstack(ThreadId tid, Addr addr)
+// A thread can run on several stacks:  its own stack, an alternate
+// signal stack, and stacks that it switches to, as for coroutines.
+// Fjalar identifies a stack by the address-space segment that contains
+// it.  Addresses on different stacks are unrelated, so whether a frame
+// on one stack has been unwound cannot be decided from a stack pointer
+// on another stack.  Such a frame is kept, because it may be suspended,
+// unless it lies on the alternate signal stack (see
+// frame_is_on_altstack).
+
+// Sets *start and *end to the lowest and highest addresses of the stack
+// that contains sp, a stack pointer.  The byte just below sp determines
+// the stack, because sp can be just past the end of the stack.  If no
+// segment contains that byte, then the bounds are all of memory.
+static void get_stack_bounds(Addr sp, Addr* start, Addr* end)
 {
-  Addr min = VG_(thread_get_altstack_min)(tid);
-  return min <= addr && addr - min < VG_(thread_get_altstack_size)(tid);
+  NSegment const* seg = VG_(am_find_nsegment)(sp - 1);
+  *start = seg ? seg->start : 0;
+  *end = seg ? seg->end : ~(Addr)0;
 }
 
-// Returns True if the stack of the given frame of thread tid has been
-// unwound, where sp is the stack pointer in the caller of a frame that
+// Returns True if the given frame lies on the stack with the given
+// bounds, as set by get_stack_bounds.
+static Bool frame_is_on_stack(FunctionExecutionState* state,
+                              Addr start, Addr end)
+{
+  // The return address lies on the frame's stack; the CFA can be just
+  // past the end of that stack.
+  Addr retAddrSlot = state->CFA - sizeof(Addr);
+  return start <= retAddrSlot && retAddrSlot <= end;
+}
+
+// Returns True if the given frame of thread tid lies on the thread's
+// alternate signal stack.  When the thread runs on another stack, such
+// a frame has been unwound, as by a siglongjmp out of a signal handler.
+static Bool frame_is_on_altstack(ThreadId tid, FunctionExecutionState* state)
+{
+  Addr retAddrSlot = state->CFA - sizeof(Addr);
+  Addr min = VG_(thread_get_altstack_min)(tid);
+  return min <= retAddrSlot
+         && retAddrSlot - min < VG_(thread_get_altstack_size)(tid);
+}
+
+// Returns True if the stack of the given frame has been unwound, where
+// the frame lies on the same stack as sp, the stack pointer in the
+// caller of a frame that
 // is exiting or entering:  at an exit, the stack pointer after the
 // return instruction; at an entry, the new frame's CFA.
 //
@@ -1009,43 +1048,44 @@ static Bool on_altstack(ThreadId tid, Addr addr)
 // sp, so the stack of every frame whose CFA is at or below sp has been
 // reused.  The return address of every frame that is still live is on
 // the stack, so the CFA of such a frame is above sp.
-//
-// That comparison is meaningful only if the frame and sp are on the
-// same stack.  A signal handler may run on an alternate signal stack,
-// at addresses unrelated to those of the thread's stack.  While sp is
-// on the alternate signal stack, every frame on the thread's stack is
-// below the signal handler's frame, so it is live.  While sp is on the
-// thread's stack, every frame on the alternate signal stack has been
-// unwound, as by a siglongjmp out of a signal handler.
-static Bool frame_is_unwound(ThreadId tid, FunctionExecutionState* state,
-                             Addr sp)
+static Bool frame_is_unwound(FunctionExecutionState* state, Addr sp)
 {
-  // The return address lies on the frame's stack; the CFA itself can be
-  // just past the end of that stack.
-  Bool frameOnAltstack = on_altstack(tid, state->CFA - sizeof(Addr));
-  if (frameOnAltstack != on_altstack(tid, sp)) {
-    return frameOnAltstack;
-  }
   return state->CFA <= sp;
 }
 
 // Returns the index, in the function stack of thread tid, of the frame
 // of f that is exiting, or -1 if there is none.  The exiting frame lies
-// among the unwound frames at the top of the stack.  Several of them can
-// be frames of f, if an earlier call of f exited non-locally.  The
-// exiting frame is the bottommost of them.  enter_function pops every
-// frame on the same stack whose CFA is at or below the new frame's CFA,
-// so every frame below the exiting frame on its stack has a CFA above
-// the exiting frame's CFA, which is currentSP (after a return
-// instruction other than "ret N").
+// among the unwound frames, on the stack of currentSP, at the top of the
+// stack.  Several of them can be frames of f, if an earlier call of f
+// exited non-locally.  The exiting frame is the bottommost of them.
+// enter_function pops every frame on the same stack whose CFA is at or
+// below the new frame's CFA, so every frame below the exiting frame on
+// its stack has a CFA above the exiting frame's CFA, which is currentSP
+// (after a return instruction other than "ret N").
+//
+// Frames on other stacks that lie above those frames were entered
+// later, and have exited non-locally or are suspended; they are skipped.
+// A frame on another stack that lies below them called into the stack
+// of currentSP, as a signal handler or a stack switch does, so it is
+// live.
 static int exiting_frame_index(ThreadId tid, FunctionEntry* f, Addr currentSP)
 {
+  Addr stackStart, stackEnd;
+  Bool seenFrameOnStack = False;
   int result = -1;
   int i;
 
+  get_stack_bounds(currentSP, &stackStart, &stackEnd);
   for (i = fn_stack_first_free_index[tid] - 1; i >= 0; i--) {
     FunctionExecutionState* state = &FunctionExecutionStateStack[tid][i];
-    if (!frame_is_unwound(tid, state, currentSP)) {
+    if (!frame_is_on_stack(state, stackStart, stackEnd)) {
+      if (seenFrameOnStack) {
+        break;
+      }
+      continue;
+    }
+    seenFrameOnStack = True;
+    if (!frame_is_unwound(state, currentSP)) {
       break;
     }
     if (state->func == f) {
@@ -1056,11 +1096,22 @@ static int exiting_frame_index(ThreadId tid, FunctionEntry* f, Addr currentSP)
 }
 
 // Pops and frees the frames at the top of the function stack of thread
-// tid whose stack has been unwound, where sp is as for frame_is_unwound.
+// tid whose stack has been unwound:  those that lie on the stack of sp
+// and are unwound according to frame_is_unwound (where sp is as for
+// frame_is_unwound), and those that lie on the alternate signal stack
+// when sp does not.
 static void pop_unwound_frames(ThreadId tid, Addr sp)
 {
-  while (fn_stack_first_free_index[tid] > 0
-         && frame_is_unwound(tid, fnStackTop(tid), sp)) {
+  Addr stackStart, stackEnd;
+
+  get_stack_bounds(sp, &stackStart, &stackEnd);
+  while (fn_stack_first_free_index[tid] > 0) {
+    FunctionExecutionState* top = fnStackTop(tid);
+    if (frame_is_on_stack(top, stackStart, stackEnd)
+        ? !frame_is_unwound(top, sp)
+        : !frame_is_on_altstack(tid, top)) {
+      break;
+    }
     pop_frame(tid);
   }
 }
