@@ -32,6 +32,17 @@ fjalar_core_decls.stamp rule in Makefile.am).
 // owns, which VG_(am_is_valid_for_client) rejects.
 extern Bool VG_(am_is_valid_for_valgrind)(Addr start, SizeT len, UInt prot);
 
+// From coregrind/pub_core_machine.h.
+// enter_function uses the frame pointer when a function's debugging
+// information gives no frame base.
+extern Addr VG_(get_FP) ( ThreadId tid );
+
+// From coregrind/pub_core_machine.h, which declares it for Fjalar.
+// Returns the address of the DynComp tag of the guest-state byte at
+// offset.  Each guest-state byte has a 4-byte tag in vex_extra_shadow,
+// which a tool cannot reach.
+extern UInt* VG_(get_tag_ptr_for_guest_offset) ( ThreadId tid, UInt offset );
+
 // From coregrind/pub_core_mallocfree.h.
 // Used to release the demanglers' results, which are allocated in the
 // VG_AR_DEMANGLE arena.  ArenaId is a typedef for Int.
