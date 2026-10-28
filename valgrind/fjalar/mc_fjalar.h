@@ -38,10 +38,8 @@ mc_include.h.
 
 #include "mc_include.h"
 
-// Value of the abit argument of set_abit_and_vbyte.
-#define VGM_BIT_VALID       0
-
-void set_abit_and_vbyte ( Addr a, UWord abit, UWord vbyte );
+// Marks the byte at a addressable and gives it the V bits vbyte.
+void mc_set_addressable_vbyte ( Addr a, UChar vbyte );
 
 // Copies the A and V bits and the DynComp tag of the pointer-sized
 // guest register at guestOffset in thread tid's guest state to the

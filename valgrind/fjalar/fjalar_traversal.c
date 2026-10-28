@@ -1263,28 +1263,24 @@ void visitReturnValue(FunctionExecutionState* e,
 
   stringStackPush(&fullNameStack, cur_node->var->name);
 
-  // Struct/union type - use xAX but remember that xAX holds
-  // a POINTER to the struct/union so we must dereference appropriately
-  // WE NEED TO CHECK THAT declaredPtrLevels == 0 since we need a
-  // real struct/union, not just a pointer to one
-  // BE CAREFUL WITH declaredType - it may be misleading since all
-  // pointers share the same declaredType
-  // RUDD - Need an extra indirection level for references.
+  // Struct/union type, returned by value.  The test must check
+  // ptrLevels, because varType is the same for a struct/union and for
+  // every pointer to it.  A reference to a struct/union is handled
+  // by the int/pointer case below, because it needs an extra
+  // indirection level.
   if ((cur_node->var->ptrLevels == 0) &&
       (IS_AGGREGATE_TYPE(cur_node->var->varType)) && !cur_node->var->referenceLevels) {
 
 
-    // AMD64 special case: If the size of the the struct is <= the size
-    // of 2 architectural registers, it is passed via RAX and RDX.
-    // We're going to express this by creating a 16 byte buffer and
-    // copying the contents of RAX and EDX to it and passing a pointer
-    // to it.
+    // AMD64 special case: If the size of the struct is <= the size
+    // of 2 architectural registers, it is returned in RAX and RDX.
+    // We're going to express this by creating a buffer, copying the
+    // contents of RAX and RDX to it, and passing a pointer to it.
 #if defined(VGA_amd64)
-    if(cur_node->var->varType->byteSize <= 16) {
-      char returnBuffer[16];
-
-      VG_(memcpy)(returnBuffer                       ,  &e->xAX, 8);
-      VG_(memcpy)(returnBuffer + (Addr)sizeof(e->xAX),  &e->xDX, 8);
+    char returnBuffer[sizeof(e->xAX) + sizeof(e->xDX)];
+    if(cur_node->var->varType->byteSize <= sizeof(returnBuffer)) {
+      VG_(memcpy)(returnBuffer                       ,  &e->xAX, sizeof(e->xAX));
+      VG_(memcpy)(returnBuffer + (Addr)sizeof(e->xAX),  &e->xDX, sizeof(e->xDX));
 
       FJALAR_DPRINTF("tiny struct\n");
 
