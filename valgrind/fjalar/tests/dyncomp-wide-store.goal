@@ -1,0 +1,3 @@
+..wide_store():::EXIT0 a 1
+..wide_store():::EXIT0 b 2
+..wide_store():::EXIT0 return 1

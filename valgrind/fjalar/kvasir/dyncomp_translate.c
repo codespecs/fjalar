@@ -3443,27 +3443,22 @@ IRExpr* expr2tags_WrTmp_DC ( DCEnv* dce, IRTemp tmp, IRExpr* data )
 }
 
 /* PG says we might need to resync this with Memcheck's
-   do_shadow_Store().  The only problem I know about is fixing an
-   endianness assumption in the 128-bit case. -SMcC */
+   do_shadow_Store(). -SMcC */
 void do_shadow_STle_DC ( DCEnv* dce,
                       IRAtom* addr,
                       IRAtom* data )
 {
-   IROp     mkAdd;
    IRType   ty, tyAddr;
-   IRDirty  *di, *diLo64, *diHi64;
-   IRAtom   *addrHi64;
+   IRDirty  *di;
    IRAtom   *vdata;
    void*    helper = NULL;
    const HChar* hname = NULL;
    Int      pcOffset = -1;
 
    tyAddr = dce->hWordTy;
-   mkAdd  = tyAddr==Ity_I32 ? Iop_Add32 : Iop_Add64;
    tl_assert( tyAddr == Ity_I32 || tyAddr == Ity_I64 );
 
-   di = diLo64 = diHi64 = NULL;
-   addrHi64 = NULL;
+   di = NULL;
 
    tl_assert(data);
    //   tl_assert(isOriginalAtom_DC(dce, data));
@@ -3522,7 +3517,7 @@ void do_shadow_STle_DC ( DCEnv* dce,
    /* Now decide which helper function to call to write the data tag
       into shadow memory. */
    switch (ty) {
-      case Ity_V256: // not right, should do 4 times?
+      case Ity_V256: /* we'll use the helper 4 times */
       case Ity_V128: /* we'll use the helper twice */
       case Ity_I128: /* we'll use the helper twice */
       case Ity_I64: helper = &MC_(helperc_STORE_TAG_8);
@@ -3540,27 +3535,18 @@ void do_shadow_STle_DC ( DCEnv* dce,
       default:      VG_(tool_panic)("dyncomp:do_shadow_STle_DC");
    }
 
-   if (ty == Ity_V128) {
-      IRAtom *eight = tyAddr==Ity_I32 ? mkU32(8) : mkU64(8);
-      // (comment added 2006)
-      /* XXX this branch assumes little-endianness, and would need to
-	 be fixed for a PPC port. */
-
-      /* V128-bit case */
-      /* See comment in next clause re 64-bit regparms */
-      diLo64    = unsafeIRDirty_0_N(
-                     1/*regparms*/, hname, helper,
-                     mkIRExprVec_2( addr, vdata ));
-
-      addrHi64  = assignNew_DC(dce, tyAddr, binop(mkAdd, addr, eight) );
-      diHi64    = unsafeIRDirty_0_N(
-                     1/*regparms*/, hname, helper,
-                     mkIRExprVec_2( addrHi64, vdata ));
-
-      setHelperAnns_DC( dce, diLo64 );
-      setHelperAnns_DC( dce, diHi64 );
-      stmt_DC('V',  dce, IRStmt_Dirty(diLo64) );
-      stmt_DC('V',  dce, IRStmt_Dirty(diHi64) );
+   if (ty == Ity_V128 || ty == Ity_I128 || ty == Ity_V256) {
+      /* 128-bit and 256-bit cases:  store the tag in each 8-byte chunk.
+         See the comment in the next clause re 64-bit regparms. */
+      UInt offset;
+      for (offset = 0; offset < sizeofIRType(ty); offset += 8) {
+         di = unsafeIRDirty_0_N(
+                 1/*regparms*/, hname, helper,
+                 mkIRExprVec_2( mkAddrPlusBias_DC(dce, addr, offset),
+                                vdata ));
+         setHelperAnns_DC( dce, di );
+         stmt_DC('V',  dce, IRStmt_Dirty(di) );
+      }
 
    } else {
       /* 8/16/32/64-bit cases */
