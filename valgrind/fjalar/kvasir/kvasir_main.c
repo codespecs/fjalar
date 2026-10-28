@@ -845,6 +845,15 @@ void fjalar_tool_handle_function_exit(FunctionExecutionState* f_state) {
     for (i = 4; i < 8; i++) {
       set_tag((Addr)(&(f_state->FPU)) + (Addr)i, FPUtag);
     }
+
+#if defined(VGA_amd64)
+    {
+      UInt FPU2tag = read_float_return2_tag(currentTID);
+      for (i = 0; i < sizeof(f_state->FPU2); i++) {
+        set_tag((Addr)(&(f_state->FPU2)) + (Addr)i, FPU2tag);
+      }
+    }
+#endif
   }
 
   printDtraceForFunction(f_state, 0);

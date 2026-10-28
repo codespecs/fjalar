@@ -275,6 +275,29 @@ UInt read_float_return_tag(ThreadId tid)
   return *VG_(get_tag_ptr_for_guest_offset)(tid, float_return_guest_offset(tid));
 }
 
+#if defined(VGA_amd64)
+double read_float_return2(ThreadId tid)
+{
+  double value;
+  VG_(get_shadow_regs_area)(tid, (UChar*)&value, 0/*shadowNo*/,
+                            offsetof(VexGuestArchState, guest_YMM1), sizeof(double));
+  return value;
+}
+
+ULong read_shadow_float_return2(ThreadId tid)
+{
+  ULong vbits;
+  VG_(get_shadow_regs_area)(tid, (UChar*)&vbits, 1/*shadowNo*/,
+                            offsetof(VexGuestArchState, guest_YMM1), sizeof(ULong));
+  return vbits;
+}
+
+UInt read_float_return2_tag(ThreadId tid)
+{
+  return *VG_(get_tag_ptr_for_guest_offset)(tid, offsetof(VexGuestArchState, guest_YMM1));
+}
+#endif
+
 // If atom is DW_OP_regN (the value is in register N) or DW_OP_bregN
 // (the value is at an offset from the address in register N), sets
 // *regNum to N and returns True.  Otherwise, returns False and leaves
@@ -1021,6 +1044,10 @@ void exit_function(FunctionEntry* f)
   int i;
   ULong FPUshadow;
   double fpuReturnVal;
+#if defined(VGA_amd64)
+  ULong FPU2shadow;
+  double fpuReturnVal2;
+#endif
   Addr xAX, xDX, xAXshadow, xDXshadow;
 
   FJALAR_DPRINTF("Exit function: %s\n", f->fjalar_name);
@@ -1035,6 +1062,10 @@ void exit_function(FunctionEntry* f)
 
   fpuReturnVal = read_float_return(currentTID);
   FPUshadow = read_shadow_float_return(currentTID);
+#if defined(VGA_amd64)
+  fpuReturnVal2 = read_float_return2(currentTID);
+  FPU2shadow = read_shadow_float_return2(currentTID);
+#endif
 
 
   // Get the value at the simulated %EAX (integer and pointer return
@@ -1107,6 +1138,9 @@ void exit_function(FunctionEntry* f)
   top->xAX = xAX;
   top->xDX = xDX;
   top->FPU = fpuReturnVal;
+#if defined(VGA_amd64)
+  top->FPU2 = fpuReturnVal2;
+#endif
 
   // Very important!  Set the A and V bits of the appropriate
   // FunctionExecutionState object and the tags from the (x86) guest
@@ -1121,6 +1155,10 @@ void exit_function(FunctionEntry* f)
   for (i = 0; i < 8; i++) {
     set_abit_and_vbyte((Addr)(&top->FPU) + (Addr)i, VGM_BIT_VALID,
                        (FPUshadow >> (i * 8)) & 0xff);
+#if defined(VGA_amd64)
+    set_abit_and_vbyte((Addr)(&top->FPU2) + (Addr)i, VGM_BIT_VALID,
+                       (FPU2shadow >> (i * 8)) & 0xff);
+#endif
   }
 
   curFunctionExecutionStatePtr = top;

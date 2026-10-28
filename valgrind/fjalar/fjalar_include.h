@@ -237,6 +237,10 @@ struct _AggregateType {
   SimpleList* /* <FunctionEntry> */ constructorList;
   SimpleList* /* <FunctionEntry> */ destructorList;
 
+  // For C++: True if this class has a virtual function table pointer,
+  // which is not in memberVarList
+  Bool hasVtablePointer;
+
   // A list of classes that are the superclasses of this class
   // Every elt is a Superclass* so this is like List<Superclass>
   // (Only non-null if there is at least 1 superclass)
@@ -798,6 +802,15 @@ double read_float_return(ThreadId tid);
 ULong read_shadow_float_return(ThreadId tid);
 UInt read_float_return_tag(ThreadId tid);
 
+#if defined(VGA_amd64)
+// Return the low 64 bits of %xmm1 in thread tid, its V bits, and the
+// DynComp tag of its low byte.  A function that returns a small struct
+// may return part of it there; see visitReturnValue.
+double read_float_return2(ThreadId tid);
+ULong read_shadow_float_return2(ThreadId tid);
+UInt read_float_return2_tag(ThreadId tid);
+#endif
+
 // Returns the name of the register with the given DWARF register
 // number, for debugging output (defined in dwarf.c).
 const HChar* dwarf_reg_name(UInt regNum);
@@ -829,7 +842,10 @@ typedef struct {
 
   Word xAX;     // primary integer return value (%eax, %rax)
   Word xDX;     // secondary integer return value (%edx, %rdx)
-  double FPU;   // floating-point return value (x86 %st(0))
+  double FPU;   // floating-point return value (x86 %st(0), amd64 %xmm0)
+#if defined(VGA_amd64)
+  double FPU2;  // second floating-point return value (amd64 %xmm1)
+#endif
 
   // Unique nonce corresponding to this invocation of the function.
   // Used to differentiate between different calls to the same
