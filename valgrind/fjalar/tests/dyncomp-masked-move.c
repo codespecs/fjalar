@@ -10,7 +10,7 @@
 // loaded gets the zero that VEX supplies, which has no tag, and a lane that
 // is not stored leaves the tag of the memory unchanged.  Each value is moved
 // into or out of a vector register with vmovd or vmovq, which moves one lane,
-// because a 128-bit load would make the values in its lanes comparable.  The
+// because DynComp keeps one tag for a whole vector register.  The
 // comments on the functions give the comparability under the default
 // --dyncomp-interactions=all.
 
