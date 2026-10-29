@@ -1,10 +1,10 @@
 ..load_128():::EXIT0 a 1
-..load_128():::EXIT0 b 1
-..load_128():::EXIT0 c 2
+..load_128():::EXIT0 b 2
+..load_128():::EXIT0 c 3
 ..load_256():::EXIT0 a 1
-..load_256():::EXIT0 b 1
-..load_256():::EXIT0 c 1
-..load_256():::EXIT0 d 1
+..load_256():::EXIT0 b 2
+..load_256():::EXIT0 c 3
+..load_256():::EXIT0 d 4
 ..store_128_4():::EXIT0 a 1
 ..store_128_4():::EXIT0 b 2
 ..store_128_4():::EXIT0 return 2

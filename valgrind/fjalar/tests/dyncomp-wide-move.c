@@ -7,9 +7,8 @@
 // superblock, so DynComp stores the tag of the vector rather than the tags of
 // the bytes that a load read.
 //
-// Under --dyncomp-interactions=all, a 128-bit or 256-bit load is an
-// interaction, which merges the tags of every byte that it reads.  Under the
-// other values of --dyncomp-interactions, it merges nothing.
+// A 128-bit or 256-bit load is not an interaction under any value of
+// --dyncomp-interactions, so it merges nothing.
 
 // Stores a 256-bit vector whose tag is the tag of a to dst, after storing b
 // to element I of dst.  a and b should not be comparable; the return value
@@ -49,8 +48,8 @@ STORE_128(3)
 // The return value should be comparable to b, not to a.
 STORE_128(4)
 
-// Loads 32 bytes, which hold a, b, c, and d, one in each 8-byte chunk.
-// Under --dyncomp-interactions=all, a, b, c, and d should be comparable.
+// Loads 32 bytes, which hold a, b, c, and d, one in each 8-byte chunk.  No
+// two of a, b, c, and d should be comparable.
 void load_256(int a, int b, int c, int d) {
   int src[8] = {0, 0, 0, 0, 0, 0, 0, 0};
   src[1] = a;
@@ -60,9 +59,8 @@ void load_256(int a, int b, int c, int d) {
   __asm__ volatile ("vmovdqu %0, %%ymm0" : : "m" (src) : "xmm0");
 }
 
-// Loads 16 bytes, which hold a and b but not c.  Under
-// --dyncomp-interactions=all, a and b should be comparable, and c should
-// not be comparable to either.
+// Loads 16 bytes, which hold a and b but not c.  No two of a, b, and c
+// should be comparable.
 void load_128(int a, int b, int c) {
   int src[8] = {0, 0, 0, 0, 0, 0, 0, 0};
   src[0] = a;
