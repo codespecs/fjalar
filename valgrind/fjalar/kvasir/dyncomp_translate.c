@@ -413,11 +413,11 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
 //    mergeTagsReturn0_DC (a dirty call, whose result is discarded).  In
 //    dyncomp_dataflow_only_mode, mkMergeTags_DC returns tag 0 and
 //    mergeTagsReturn0_DC emits nothing.
-//  * At run time, a load merges the tags of the bytes it reads.  In
-//    dyncomp_dataflow_only_mode (and dyncomp_dataflow_comparisons_mode
-//    and dyncomp_units_mode; see loadIsInteraction_DC),
-//    expr2tags_LDle_DC instead calls MC_(helperc_LOAD_TAG_N), which
-//    merges nothing.
+//  * At run time, a load of at most 8 bytes merges the tags of the bytes
+//    it reads.  In dyncomp_dataflow_only_mode (and
+//    dyncomp_dataflow_comparisons_mode and dyncomp_units_mode; see
+//    loadIsInteraction_DC), expr2tags_LDle_DC instead calls
+//    MC_(helperc_LOAD_TAG_N), which merges nothing.
 // Every current caller of mkMergeTags_DC and mergeTagsReturn0_DC also
 // tests dyncomp_dataflow_only_mode and does not call them in that mode,
 // so their own tests are a backstop for future callers.  A caller must
@@ -3115,21 +3115,29 @@ IRAtom* mkAddrPlusBias_DC ( DCEnv* dce, IRAtom* addr, UInt bias )
    return assignNew_DC(dce, tyAddr, binop(mkAdd, addr, eBias) );
 }
 
-// Returns true if a load is an interaction, which merges the tags of
-// the bytes it reads.  It is one only under --dyncomp-interactions=all.
-Bool loadIsInteraction_DC ( void )
+// Returns true if a load of type ty is an interaction, which merges the
+// tags of the bytes it reads.  It is one only under
+// --dyncomp-interactions=all, and only if ty is at most 8 bytes.  A
+// 128-bit or 256-bit value usually holds several values, such as the
+// adjacent fields of a struct that a vector load and store copy, so a
+// wider load is not an interaction.
+Bool loadIsInteraction_DC ( IRType ty )
 {
    return !(dyncomp_dataflow_only_mode
             || dyncomp_dataflow_comparisons_mode
-            || dyncomp_units_mode);
+            || dyncomp_units_mode)
+          && sizeofIRType(ty) <= 8;
 }
 
-/* Worker function; do not call directly.  slot and guard are as for
-   expr2tags_LDle_DC, and slot must be negative if a load is an
-   interaction. */
+// Returns the tag of a load of type ty from addr+bias.  If slot is
+// non-negative, the load also saves the tags of the bytes it reads in
+// that slot of MC_(helperc_LOAD_TAG_N); see expr2tags_WrTmp_DC.  slot
+// must be negative if a load of type ty is an interaction.  If guard is
+// non-NULL, the load happens only if guard is true; if guard is false,
+// the result is not a tag, and the caller must not use it.
 static
-IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
-                                Int slot, IRAtom* guard )
+IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
+                            Int slot, IRAtom* guard )
 {
    void*    helper;
    const HChar* hname;
@@ -3139,14 +3147,20 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
    IRExpr** args;
    Int      regparms;
 
+   tl_assert(addr);
    tl_assert(isOriginalAtom_DC(dce,addr));
+
+   /* Compute the tag for the effective address, and throw the result
+      away, but anchor it so that Valgrind doesn't optimize the merges
+      away. */
+   anchorAtomTag_DC(dce, addr);
 
    /* Generate the actual address into addrAct. */
    addrAct = mkAddrPlusBias_DC(dce, addr, bias);
 
    /* Now cook up a call to the relevant helper function, to read the
       tag for the given address. */
-   if (!loadIsInteraction_DC()) {
+   if (!loadIsInteraction_DC(ty)) {
       helper   = &MC_(helperc_LOAD_TAG_N);
       hname    = "MC_(helperc_LOAD_TAG_N)";
       regparms = 3;
@@ -3188,102 +3202,6 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
    stmt_DC('V',  dce, IRStmt_Dirty(di) );
 
    return mkexpr(datatag);
-}
-
-// Returns the tag of a load of type ty from addr+bias.  If slot is
-// non-negative, the load also saves the tags of the bytes it reads in
-// that slot of MC_(helperc_LOAD_TAG_N); see expr2tags_WrTmp_DC.  If
-// guard is non-NULL, the load happens only if guard is true; if guard
-// is false, the result is not a tag, and the caller must not use it.
-static
-IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
-                            Int slot, IRAtom* guard )
-{
-   // The tags of the 8-byte chunks of a 128-bit or 256-bit load
-   IRAtom* chunkTags[4];
-   Int     nChunks, i;
-   //   IRDirty* di;
-   //   IRTemp   datatag;
-
-   tl_assert(addr);
-   tl_assert(isOriginalAtom_DC(dce, addr));
-
-   /* Compute the tag for the effective address, and throw the result
-      away, but anchor it so that Valgrind doesn't optimize the merges
-      away. */
-   anchorAtomTag_DC(dce, addr);
-
-   // If a load is not an interaction, a load of any size does not merge
-   // the tags of the bytes it reads.
-   if (!loadIsInteraction_DC()) {
-      return expr2tags_LDle_WRK_DC(dce, ty, addr, bias, slot, guard);
-   }
-   tl_assert(slot < 0);
-
-   switch (shadowTypeV(ty)) {
-      case Ity_I8:
-      case Ity_I16:
-      case Ity_I32:
-      case Ity_I64:
-         return expr2tags_LDle_WRK_DC(dce, ty, addr, bias, -1, guard);
-      case Ity_I128:
-      case Ity_V128:
-      case Ity_V256:
-         nChunks = sizeofIRType(ty) / 8;
-         tl_assert(nChunks == 2 || nChunks == 4);
-         for (i = 0; i < nChunks; i++) {
-            chunkTags[i] = expr2tags_LDle_WRK_DC(dce, Ity_I64, addr,
-                                                 bias + 8*i, -1, guard);
-            if (guard) {
-               // If the guard is false, the helper is not called, and
-               // chunkTags[i] is not a tag, so it must not be merged.
-               chunkTags[i]
-                  = assignNew_DC(dce, Ity_Word,
-                                 IRExpr_ITE(guard, chunkTags[i],
-                                            IRExpr_Const(IRConst_UWord(0))));
-            }
-         }
-
-         // Merge the tags of the results of the 64-bit loads:
-
-         // Dirty call version:
-         //         datatag = newIRTemp(dce->bb->tyenv, Ity_Word);
-         //         di = unsafeIRDirty_1_N(datatag,
-         //                                2,
-         //                                "MC_(helperc_MERGE_TAGS)",
-         //                                &MC_(helperc_MERGE_TAGS),
-         //                                mkIRExprVec_2( v64lo, v64hi ));
-
-         //         setHelperAnns_DC( dce, di );
-         //         stmt( dce->bb, IRStmt_Dirty(di) );
-         //         return mkexpr(datatag);
-
-         // (comment added 2005)
-         // pgbovine TODO: Is this merge tags really necessary or too
-         // premature?  We should aim to do all of the merging on the
-         // language level if somebody really reads this as a 128-bit
-         // value instead of forcing all of these bytes to be merged
-         // on the memory level
-
-         // On second thought, let's just go ahead and do it for now:
-
-         // Clean call version:
-         if (nChunks == 2) {
-            return mkMergeTags_DC (2 /*Int regparms*/,
-                                   "MC_(helperc_MERGE_TAGS)",
-                                   &MC_(helperc_MERGE_TAGS),
-                                   mkIRExprVec_2( chunkTags[0], chunkTags[1] ));
-         }
-         return mkMergeTags_DC (3 /*Int regparms*/,
-                                "MC_(helperc_MERGE_4_TAGS)",
-                                &MC_(helperc_MERGE_4_TAGS),
-                                mkIRExprVec_4( chunkTags[0], chunkTags[1],
-                                               chunkTags[2], chunkTags[3] ));
-
-
-      default:
-         VG_(tool_panic)("expr2tags_LDle_DC");
-   }
 }
 
 static
@@ -3452,8 +3370,8 @@ IRExpr* expr2tags_WrTmp_DC ( DCEnv* dce, IRTemp tmp, IRExpr* data )
 {
    Int slot;
 
-   if (!loadIsInteraction_DC()
-       && data->tag == Iex_Load
+   if (data->tag == Iex_Load
+       && !loadIsInteraction_DC(data->Iex.Load.ty)
        && sizeofIRType(data->Iex.Load.ty) > 1
        && sizeofIRType(data->Iex.Load.ty) <= DC_LOAD_TAG_SNAPSHOT_BYTES
        && dce->n_loadTagSnapshots < DC_N_LOAD_TAG_SNAPSHOTS) {
@@ -3523,8 +3441,7 @@ void do_shadow_STle_DC ( DCEnv* dce,
 
    // If data was loaded in this superblock, write the tags of the
    // loaded bytes; see expr2tags_WrTmp_DC.
-   if (dce->loadTagSnapshots
-       && data->tag == Iex_RdTmp
+   if (data->tag == Iex_RdTmp
        && data->Iex.RdTmp.tmp < dce->n_originalTmps
        && dce->loadTagSnapshots[data->Iex.RdTmp.tmp] >= 0) {
       di = unsafeIRDirty_0_N(
@@ -3534,62 +3451,54 @@ void do_shadow_STle_DC ( DCEnv* dce,
               mkIRExprVec_3( addr,
                              mkIRExpr_HWord(sizeofIRType(ty)),
                              mkIRExpr_HWord(dce->loadTagSnapshots[data->Iex.RdTmp.tmp]) ));
-      setHelperAnns_DC( dce, di );
-      if (guard) {
-         di->guard = guard;
-      }
-      stmt_DC('V',  dce, IRStmt_Dirty(di) );
-      return;
-   }
-
-   /* 128-bit and 256-bit cases */
-   if (ty == Ity_V128 || ty == Ity_I128 || ty == Ity_V256) {
+   } else if (ty == Ity_V128 || ty == Ity_I128 || ty == Ity_V256) {
+      /* 128-bit and 256-bit cases.  vdata is one tag for the whole value,
+         so every byte of the destination gets that tag.
+         TODO: When data was not loaded in this superblock, this makes
+         unrelated fields comparable.  For example, if a 32-byte struct is
+         copied by a vmovdqu load in one superblock and a vmovdqu store in
+         a later one, every field of the destination gets the tag of the
+         first field of the source.  Fixing this requires tracking a tag per
+         8-byte lane of vector temps and guest registers, or carrying load
+         snapshots across superblocks. */
       di = unsafeIRDirty_0_N(
               3/*regparms*/,
               "MC_(helperc_STORE_TAG_N)",
               &MC_(helperc_STORE_TAG_N),
               mkIRExprVec_3( addr, mkIRExpr_HWord(sizeofIRType(ty)), vdata ));
-      setHelperAnns_DC( dce, di );
-      if (guard) {
-         di->guard = guard;
-      }
-      stmt_DC('V',  dce, IRStmt_Dirty(di) );
-      return;
-   }
-
-   /* Now decide which helper function to call to write the data tag
-      into shadow memory. */
-   switch (ty) {
-      case Ity_I64: helper = &MC_(helperc_STORE_TAG_8);
-                    hname = "MC_(helperc_STORE_TAG_8)";
-                    break;
-      case Ity_I32: helper = &MC_(helperc_STORE_TAG_4);
-                    hname = "MC_(helperc_STORE_TAG_4)";
-                    break;
-      case Ity_I16: helper = &MC_(helperc_STORE_TAG_2);
-                    hname = "MC_(helperc_STORE_TAG_2)";
-                    break;
-      case Ity_I8:  helper = &MC_(helperc_STORE_TAG_1);
-                    hname = "MC_(helperc_STORE_TAG_1)";
-                    break;
-      default:      VG_(tool_panic)("dyncomp:do_shadow_STle_DC");
-   }
-
-   /* 8/16/32/64-bit cases */
-
-   // For some reason, we still need to make a special case for
-   // 64-bit things ... I dunno why, though ???
-   if (ty == Ity_I64) {
-      /* We can't do this with regparm 2 on 32-bit platforms, since
-         the back ends aren't clever enough to handle 64-bit
-         regparm args.  Therefore be different. */
-      di = unsafeIRDirty_0_N(
-                             1/*regparms*/, hname, helper,
-                             mkIRExprVec_2( addr, vdata ));
    } else {
-      di = unsafeIRDirty_0_N(
-                             2/*regparms*/, hname, helper,
-                             mkIRExprVec_2( addr, vdata ));
+      /* 8/16/32/64-bit cases.  Decide which helper function to call to
+         write the data tag into shadow memory. */
+      switch (ty) {
+         case Ity_I64: helper = &MC_(helperc_STORE_TAG_8);
+                       hname = "MC_(helperc_STORE_TAG_8)";
+                       break;
+         case Ity_I32: helper = &MC_(helperc_STORE_TAG_4);
+                       hname = "MC_(helperc_STORE_TAG_4)";
+                       break;
+         case Ity_I16: helper = &MC_(helperc_STORE_TAG_2);
+                       hname = "MC_(helperc_STORE_TAG_2)";
+                       break;
+         case Ity_I8:  helper = &MC_(helperc_STORE_TAG_1);
+                       hname = "MC_(helperc_STORE_TAG_1)";
+                       break;
+         default:      VG_(tool_panic)("dyncomp:do_shadow_STle_DC");
+      }
+
+      // For some reason, we still need to make a special case for
+      // 64-bit things ... I dunno why, though ???
+      if (ty == Ity_I64) {
+         /* We can't do this with regparm 2 on 32-bit platforms, since
+            the back ends aren't clever enough to handle 64-bit
+            regparm args.  Therefore be different. */
+         di = unsafeIRDirty_0_N(
+                                1/*regparms*/, hname, helper,
+                                mkIRExprVec_2( addr, vdata ));
+      } else {
+         di = unsafeIRDirty_0_N(
+                                2/*regparms*/, hname, helper,
+                                mkIRExprVec_2( addr, vdata ));
+      }
    }
 
    setHelperAnns_DC( dce, di );
@@ -4080,12 +3989,9 @@ Bool begin_instrument_DC ( DCEnv* dce, VgCallbackClosure* closure,
    dce->tmpMap         = VG_(malloc)("dyncomp_translate.c.tmpMap", dce->n_originalTmps * sizeof(IRTemp));
    for (i = 0; i < (Int)dce->n_originalTmps; i++)
       dce->tmpMap[i] = IRTemp_INVALID;
-   dce->loadTagSnapshots = NULL;
-   if (!loadIsInteraction_DC()) {
-      dce->loadTagSnapshots = VG_(malloc)("dyncomp_translate.c.loadTagSnapshots", dce->n_originalTmps * sizeof(Int));
-      for (i = 0; i < (Int)dce->n_originalTmps; i++)
-         dce->loadTagSnapshots[i] = -1;
-   }
+   dce->loadTagSnapshots = VG_(malloc)("dyncomp_translate.c.loadTagSnapshots", dce->n_originalTmps * sizeof(Int));
+   for (i = 0; i < (Int)dce->n_originalTmps; i++)
+      dce->loadTagSnapshots[i] = -1;
    dce->n_loadTagSnapshots = 0;
    return True;
 }

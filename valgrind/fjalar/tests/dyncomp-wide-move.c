@@ -7,9 +7,10 @@
 // superblock, so DynComp stores the tag of the vector rather than the tags of
 // the bytes that a load read.
 //
-// Under --dyncomp-interactions=all, a 128-bit or 256-bit load is an
-// interaction, which merges the tags of every byte that it reads.  Under the
-// other values of --dyncomp-interactions, it merges nothing.
+// A 128-bit or 256-bit load is not an interaction under any value of
+// --dyncomp-interactions, so it merges nothing.  A store of a vector that was
+// loaded in the same superblock writes the tag of each byte that the load
+// read.
 
 // Stores a 256-bit vector whose tag is the tag of a to dst, after storing b
 // to element I of dst.  a and b should not be comparable; the return value
@@ -49,8 +50,8 @@ STORE_128(3)
 // The return value should be comparable to b, not to a.
 STORE_128(4)
 
-// Loads 32 bytes, which hold a, b, c, and d, one in each 8-byte chunk.
-// Under --dyncomp-interactions=all, a, b, c, and d should be comparable.
+// Loads 32 bytes, which hold a, b, c, and d, one in each 8-byte chunk.  No
+// two of a, b, c, and d should be comparable.
 void load_256(int a, int b, int c, int d) {
   int src[8] = {0, 0, 0, 0, 0, 0, 0, 0};
   src[1] = a;
@@ -60,9 +61,8 @@ void load_256(int a, int b, int c, int d) {
   __asm__ volatile ("vmovdqu %0, %%ymm0" : : "m" (src) : "xmm0");
 }
 
-// Loads 16 bytes, which hold a and b but not c.  Under
-// --dyncomp-interactions=all, a and b should be comparable, and c should
-// not be comparable to either.
+// Loads 16 bytes, which hold a and b but not c.  No two of a, b, and c
+// should be comparable.
 void load_128(int a, int b, int c) {
   int src[8] = {0, 0, 0, 0, 0, 0, 0, 0};
   src[0] = a;
@@ -70,6 +70,28 @@ void load_128(int a, int b, int c) {
   src[4] = c;
   __asm__ volatile ("vmovdqu %0, %%xmm0" : : "m" (src) : "xmm0");
 }
+
+// Copies a 32-byte array that holds a, b, c, and d, one in each 8-byte chunk,
+// with one 256-bit load and one 256-bit store in the same superblock, and
+// returns element I of the copy.  No two of a, b, c, and d should be
+// comparable; the return value should be comparable to element I.
+#define COPY_256(I)                                             \
+  long copy_256_##I(long a, long b, long c, long d) {           \
+    long src[4], dst[4];                                        \
+    src[0] = a;                                                 \
+    src[1] = b;                                                 \
+    src[2] = c;                                                 \
+    src[3] = d;                                                 \
+    __asm__ volatile ("vmovdqu %1, %%ymm0\n\t"                  \
+                      "vmovdqu %%ymm0, %0"                      \
+                      : "=m" (dst) : "m" (src) : "xmm0");       \
+    return dst[I];                                              \
+  }
+
+COPY_256(0)
+COPY_256(1)
+COPY_256(2)
+COPY_256(3)
 
 int main(void) {
   store_256_0(1, 2);
@@ -84,5 +106,9 @@ int main(void) {
   store_128_4(1, 2);
   load_256(1, 2, 3, 4);
   load_128(1, 2, 3);
+  copy_256_0(1, 2, 3, 4);
+  copy_256_1(1, 2, 3, 4);
+  copy_256_2(1, 2, 3, 4);
+  copy_256_3(1, 2, 3, 4);
   return 0;
 }
