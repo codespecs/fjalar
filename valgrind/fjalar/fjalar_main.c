@@ -442,7 +442,7 @@ static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
     // setting the proper annotations.
     add_fxState_read_GPRs_and_IP(di);
 
-    stmt('V',  mce, IRStmt_Dirty(di) );
+    mc_stmt('V',  mce, IRStmt_Dirty(di) );
   }
 }
 
@@ -652,7 +652,7 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
       add_fxState_read(di, offsetof(VexGuestArchState, guest_FPREG),
                        8 * sizeof(ULong));
 
-      stmt('V',  mce, IRStmt_Dirty(di) );
+      mc_stmt('V',  mce, IRStmt_Dirty(di) );
     }
   }
 }

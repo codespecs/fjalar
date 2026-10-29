@@ -608,9 +608,6 @@ $INV/fjalar/list-file-discrepancies.sh $INV/valgrind-new
 Each list should contain only the files that Fjalar created and the
 files that you decided to keep or to omit.
 
-One bit of confusion is that a portion of the original @file{mc_translate.c}
-has been relocated to @file{fjalar/mc_translate.h} so it can be shared.
-
 The largest modification to Memcheck is in @file{mc_translate.c} and special
 care should be made to ensure it is present and up to date.
 The function @code{MC_(instrument)} handles the instrumentation of calls for
@@ -641,9 +638,6 @@ editing @file{fjalar/kvasir/dyncomp_translate.c} by hand:
 @smallexample
 git -C $INV/fjalar diff valgrind-merge/base valgrind-merge/new -- valgrind/fjalar/mc_translate.c
 @end smallexample
-
-One bit of confusion is that a portion of the original @file{mc_translate.c}
-has been relocated to @file{fjalar/mc_translate.h} so it can be shared.
 
 Additionally Fjalar/Kvasir need to be updated to properly handle any
 changes in Valgrind API/functionality. For the most part Valgrind
@@ -1543,9 +1537,10 @@ Modify memory calculation using the shadow size
 @appendix Memcheck modifications
 
 The modifications made to Memcheck are more organizational in nature.
-A few functions from @file{mc_main.c} and @file{mc_translate.c} have been made
-non-static. An extra header has also been created and filled with their
-signatures for use by Fjalar.  Several changes to remove compile warnings
+Fjalar code that uses static functions of @file{mc_main.c} or
+@file{mc_translate.c} is in a file that each of them includes, and
+@file{mc_fjalar.h} and @file{mc_translate.h} declare that code for the
+rest of Fjalar.  Several changes to remove compile warnings
 for use of function name as variable.
 
 Other modifications include:
@@ -1564,6 +1559,13 @@ static functions of @file{mc_main.c}, such as @code{set_vabits2},
 @code{#include} must follow the definitions of those functions.
 @item $INV/fjalar/valgrind/fjalar/mc_translate.c
 In Memcheck's instrumentation block, duplicate each case for DynComp.
+Also, a @code{DC} kind of @code{TempKind}, for DynComp's temporaries,
+and an @code{#include} of @file{fjalar_mc_translate.h}, which defines
+the functions through which the rest of Fjalar uses Memcheck's
+instrumenter (@file{mc_translate.h} declares them).  Those functions
+use @code{MCEnv} and static functions of @file{mc_translate.c}, such as
+@code{stmt}, @code{newTemp}, and @code{shadowTypeV}, so the
+@code{#include} must follow the definitions of those.
 @end table
 
 
