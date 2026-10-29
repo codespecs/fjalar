@@ -49,6 +49,17 @@
 #include "kvasir/dyncomp_translate.h"
 #include "fjalar_core_decls.h"
 
+#include "pub_tool_basics.h"
+#include "pub_tool_poolalloc.h"     // For mc_include.h
+#include "pub_tool_hashtable.h"     // For mc_include.h
+#include "pub_tool_libcassert.h"
+#include "pub_tool_libcprint.h"
+#include "pub_tool_tooliface.h"
+#include "pub_tool_machine.h"     // VG_(fnptr_to_fnentry)
+#include "pub_tool_xarray.h"
+#include "pub_tool_mallocfree.h"
+#include "pub_tool_libcbase.h"
+
 #include "mc_include.h"
 
 
@@ -147,6 +158,12 @@
 
 struct _MCEnv;
 
+// See below for comments explaining what this is for.
+typedef
+   enum __attribute__((packed)) { HuUnU=0, HuPCa=1, HuOth=2 }
+   HowUsed;
+
+static IRType  shadowTypeV ( IRType ty );
 static IRExpr* expr2vbits ( struct _MCEnv* mce, IRExpr* e,
                             HowUsed hu/*use HuOth if unknown*/ );
 static IRTemp  findShadowTmpB ( struct _MCEnv* mce, IRTemp orig );
@@ -157,6 +174,44 @@ static IRExpr *i128_const_zero(void);
 /*------------------------------------------------------------*/
 /*--- Memcheck running state, and tmp management.          ---*/
 /*------------------------------------------------------------*/
+
+/* For a few (maybe 1%) IROps, we have both a cheaper, less exact vbit
+   propagation scheme, and a more expensive, more precise vbit propagation
+   scheme.  This enum describes, for such an IROp, which scheme to use. */
+typedef
+   enum {
+      // Use the cheaper, less-exact variant.
+      DLcheap=4,
+      // Choose between cheap and expensive based on analysis of the block
+      // to be instrumented.  Note that the choice may be done on a
+      // per-instance basis of the IROp that this DetailLevel describes.
+      DLauto,
+      // Use the more expensive, more-exact variant.
+      DLexpensive
+   }
+   DetailLevel;
+
+
+/* A readonly part of the running state.  For IROps that have both a
+   less-exact and more-exact interpretation, records which interpretation is
+   to be used.  */
+typedef
+   struct {
+      // For Add32/64 and Sub32/64, all 3 settings are allowed.  For the
+      // DLauto case, a per-instance decision is to be made by inspecting
+      // the associated tmp's entry in MCEnv.tmpHowUsed.
+      DetailLevel dl_Add32;
+      DetailLevel dl_Add64;
+      DetailLevel dl_Sub32;
+      DetailLevel dl_Sub64;
+      // For Cmp{EQ,NE}{64,32,16,8}, only DLcheap and DLexpensive are
+      // allowed.
+      DetailLevel dl_CmpEQ64_CmpNE64;
+      DetailLevel dl_CmpEQ32_CmpNE32;
+      DetailLevel dl_CmpEQ16_CmpNE16;
+      DetailLevel dl_CmpEQ8_CmpNE8;
+   }
+   DetailLevelByOp;
 
 static void DetailLevelByOp__set_all ( /*OUT*/DetailLevelByOp* dlbo,
                                        DetailLevel dl )
@@ -203,6 +258,104 @@ static UInt DetailLevelByOp__count ( const DetailLevelByOp* dlbo,
 }
 
 
+/* Carries info about a particular tmp.  The tmp's number is not
+   recorded, as this is implied by (equal to) its index in the tmpMap
+   in MCEnv.  The tmp's type is also not recorded, as this is present
+   in MCEnv.sb->tyenv.
+
+   When .kind is Orig, .shadowV and .shadowB may give the identities
+   of the temps currently holding the associated definedness (shadowV)
+   and origin (shadowB) values, or these may be IRTemp_INVALID if code
+   to compute such values has not yet been emitted.
+
+   When .kind is VSh or BSh then the tmp is holds a V- or B- value,
+   and so .shadowV and .shadowB must be IRTemp_INVALID, since it is
+   illogical for a shadow tmp itself to be shadowed.
+*/
+typedef
+   enum { Orig=1, VSh=2, BSh=3, DC=4 /* Fjalar: DynComp tags */ }
+   TempKind;
+
+typedef
+   struct {
+      TempKind kind;
+      IRTemp   shadowV;
+      IRTemp   shadowB;
+   }
+   TempMapEnt;
+
+
+/* A |HowUsed| value carries analysis results about how values are used,
+   pertaining to whether we need to instrument integer adds expensively or
+   not.  The running state carries a (readonly) mapping from original tmp to
+   a HowUsed value for it.  A usage value can be one of three values,
+   forming a 3-point chain lattice.
+
+      HuOth   ("Other") used in some arbitrary way
+       |
+      HuPCa   ("PCast") used *only* in effectively a PCast, in which all
+       |      we care about is the all-defined vs not-all-defined distinction
+       |
+      HuUnU   ("Unused") not used at all.
+
+   The "safe" (don't-know) end of the lattice is "HuOth".  See comments
+   below in |preInstrumentationAnalysis| for further details.
+*/
+/* DECLARED ABOVE:
+typedef
+   enum __attribute__((packed)) { HuUnU=0, HuPCa=1, HuOth=2 }
+   HowUsed;
+*/
+
+// Not actually necessary, but we don't want to waste D1 space.
+STATIC_ASSERT(sizeof(HowUsed) == 1);
+
+
+/* Carries around state during memcheck instrumentation. */
+typedef
+   struct _MCEnv {
+      /* MODIFIED: the superblock being constructed.  IRStmts are
+         added. */
+      IRSB* sb;
+      Bool  trace;
+
+      /* MODIFIED: a table [0 .. #temps_in_sb-1] which gives the
+         current kind and possibly shadow temps for each temp in the
+         IRSB being constructed.  Note that it does not contain the
+         type of each tmp.  If you want to know the type, look at the
+         relevant entry in sb->tyenv.  It follows that at all times
+         during the instrumentation process, the valid indices for
+         tmpMap and sb->tyenv are identical, being 0 .. N-1 where N is
+         total number of Orig, V- and B- temps allocated so far.
+
+         The reason for this strange split (types in one place, all
+         other info in another) is that we need the types to be
+         attached to sb so as to make it possible to do
+         "typeOfIRExpr(mce->bb->tyenv, ...)" at various places in the
+         instrumentation process. */
+      XArray* /* of TempMapEnt */ tmpMap;
+
+      /* READONLY: contains details of which ops should be expensively
+         instrumented. */
+      DetailLevelByOp dlbo;
+
+      /* READONLY: for each original tmp, how the tmp is used.  This is
+         computed by |preInstrumentationAnalysis|.  Valid indices are
+         0 .. #temps_in_sb-1 (same as for tmpMap). */
+      HowUsed* tmpHowUsed;
+
+      /* READONLY: the guest layout.  This indicates which parts of
+         the guest state should be regarded as 'always defined'. */
+      const VexGuestLayout* layout;
+
+      /* READONLY: the host word type.  Needed for constructing
+         arguments of type 'HWord' to be passed to helper functions.
+         Ity_I32 or Ity_I64 only. */
+      IRType hWordTy;
+   }
+   MCEnv;
+
+
 /* SHADOW TMP MANAGEMENT.  Shadow tmps are allocated lazily (on
    demand), as they are encountered.  This is for two reasons.
 
@@ -231,7 +384,7 @@ static UInt DetailLevelByOp__count ( const DetailLevelByOp* dlbo,
    both the table in mce->sb and to our auxiliary mapping.  Note that
    newTemp may cause mce->tmpMap to resize, hence previous results
    from VG_(indexXA)(mce->tmpMap) are invalidated. */
-IRTemp newTemp ( MCEnv* mce, IRType ty, TempKind kind )
+static IRTemp newTemp ( MCEnv* mce, IRType ty, TempKind kind )
 {
    Word       newIx;
    TempMapEnt ent;
@@ -307,6 +460,8 @@ static void newShadowTmpV ( MCEnv* mce, IRTemp orig )
    by constants, and temps are shadowed by the corresponding shadow
    temporary. */
 
+typedef  IRExpr  IRAtom;
+
 /* (used for sanity checks only): is this an atom which looks
    like it's from original code? */
 static Bool isOriginalAtom ( MCEnv* mce, IRAtom* a1 )
@@ -335,8 +490,7 @@ static Bool isShadowAtom ( MCEnv* mce, IRAtom* a1 )
 
 /* (used for sanity checks only): check that both args are atoms and
    are identically-kinded. */
-// pgbovine - made non-static
-Bool sameKindedAtoms ( IRAtom* a1, IRAtom* a2 )
+static Bool sameKindedAtoms ( IRAtom* a1, IRAtom* a2 )
 {
    if (a1->tag == Iex_RdTmp && a2->tag == Iex_RdTmp)
       return True;
@@ -355,14 +509,7 @@ Bool sameKindedAtoms ( IRAtom* a1, IRAtom* a2 )
    given type.  The only valid shadow types are Bit, I8, I16, I32,
    I64, I128, V128, V256. */
 
-// PG - pgbovine - dyncomp - This function seems okay to use for
-// DynComp because it returns the integer type with the matching size
-// as the input type 'ty'. It seems safe to use this return value for
-// size calculations and comparisons, but NOT to create new tags.  The
-// thing is that all tags are 32-bit integers whereas shadow memory
-// chunks were as big as the original chunks which they shadow
-// (made it non-static)
-IRType shadowTypeV ( IRType ty )
+static IRType shadowTypeV ( IRType ty )
 {
    switch (ty) {
       case Ity_I1:
@@ -405,6 +552,36 @@ static IRExpr* definedOfType ( IRType ty ) {
 /*------------------------------------------------------------*/
 /*--- Constructing IR fragments                            ---*/
 /*------------------------------------------------------------*/
+
+/* add stmt to a bb */
+static inline void stmt ( HChar cat, MCEnv* mce, IRStmt* st ) {
+   if (mce->trace) {
+      VG_(printf)("  %c: ", cat);
+      ppIRStmt(st);
+      VG_(printf)("\n");
+   }
+   addStmtToIRSB(mce->sb, st);
+}
+
+/* assign value to tmp */
+static inline 
+void assign ( HChar cat, MCEnv* mce, IRTemp tmp, IRExpr* expr ) {
+   stmt(cat, mce, IRStmt_WrTmp(tmp,expr));
+}
+
+/* build various kinds of expressions */
+#define triop(_op, _arg1, _arg2, _arg3) \
+                                 IRExpr_Triop((_op),(_arg1),(_arg2),(_arg3))
+#define binop(_op, _arg1, _arg2) IRExpr_Binop((_op),(_arg1),(_arg2))
+#define unop(_op, _arg)          IRExpr_Unop((_op),(_arg))
+#define mkU1(_n)                 IRExpr_Const(IRConst_U1(_n))
+#define mkU8(_n)                 IRExpr_Const(IRConst_U8(_n))
+#define mkU16(_n)                IRExpr_Const(IRConst_U16(_n))
+#define mkU32(_n)                IRExpr_Const(IRConst_U32(_n))
+#define mkU64(_n)                IRExpr_Const(IRConst_U64(_n))
+#define mkV128(_n)               IRExpr_Const(IRConst_V128(_n))
+#define mkexpr(_tmp)             IRExpr_RdTmp((_tmp))
+#include "fjalar_mc_translate.h"  // Fjalar functions that use Memcheck internals
 
 /* Bind the given expression to a new temporary, and return the
    temporary.  This effectively converts an arbitrary expression into

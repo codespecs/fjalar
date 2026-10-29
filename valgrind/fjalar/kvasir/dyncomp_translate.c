@@ -55,10 +55,9 @@ IRTemp findShadowTmp_DC ( DCEnv* dce, IRTemp orig )
   tl_assert(orig < dce->n_originalTmps);
    if (dce->tmpMap[orig] == IRTemp_INVALID) {
       dce->tmpMap[orig]
-         = newTemp(dce->mce,
+         = newTemp_DC(dce->mce,
                      //shadowType_DC(dce->bb->tyenv->types[orig]));
-                     Ity_Word,
-                   DC); // PG - tags are always word-sized
+                     Ity_Word); // PG - tags are always word-sized
    }
 
    return dce->tmpMap[orig];
@@ -87,7 +86,7 @@ static Bool isShadowAtom_DC ( DCEnv* dce, IRAtom* a1 )
 }
 
 static IRAtom* assignNew_DC ( DCEnv* dce, IRType ty, IRExpr* e ) {
-   IRTemp t = newTemp(dce->mce, Ity_Word, DC);
+   IRTemp t = newTemp_DC(dce->mce, Ity_Word);
    assign_DC('V', dce, t, e);
    return mkexpr(t);
 }
@@ -3157,7 +3156,7 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
       tl_assert(slot < 0);
       regparms = 1;
       args     = mkIRExprVec_1( addrAct );
-      ty = shadowTypeV(ty);
+      ty = shadowTypeV_DC(ty);
       switch (ty) {
          case Ity_I64: helper = &MC_(helperc_LOAD_TAG_8);
                        hname = "MC_(helperc_LOAD_TAG_8)";
@@ -3179,7 +3178,7 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
    /* We need to have a place to park the tag we're just about to
       read. */
    //   datatag = newIRTemp(dce->bb->tyenv, tyS);
-   datatag = newTemp(dce->mce, Ity_Word, DC); // PG - tags are word-sized
+   datatag = newTemp_DC(dce->mce, Ity_Word); // PG - tags are word-sized
    di = unsafeIRDirty_1_N( datatag,
                            regparms, hname, helper, args );
    setHelperAnns_DC( dce, di );
@@ -3221,7 +3220,7 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias,
    }
    tl_assert(slot < 0);
 
-   switch (shadowTypeV(ty)) {
+   switch (shadowTypeV_DC(ty)) {
       case Ity_I8:
       case Ity_I16:
       case Ity_I32:
@@ -3519,7 +3518,7 @@ void do_shadow_STle_DC ( DCEnv* dce,
    // V-bits, which is always guaranteed to be the same byte size as 'data'
    // Also, we must use shadowType to translate all type sizes
    // to integral sizes
-   ty = shadowTypeV(typeOfIRExpr(dce->bb->tyenv, data));
+   ty = shadowTypeV_DC(typeOfIRExpr(dce->bb->tyenv, data));
 
    // If data was loaded in this superblock, write the tags of the
    // loaded bytes; see expr2tags_WrTmp_DC.
@@ -3670,7 +3669,7 @@ static void do_shadow_CAS_single_DC ( DCEnv* dce, IRCAS* cas ) {
    /* 1. fetch data# (the proposed new value) */
    tl_assert(isOriginalAtom_DC(dce, cas->dataLo));
 
-   ty = shadowTypeV(typeOfIRExpr(dce->bb->tyenv, cas->dataLo));
+   ty = shadowTypeV_DC(typeOfIRExpr(dce->bb->tyenv, cas->dataLo));
 
    vdataLo
       = assignNew_DC(dce, ty, expr2tags_DC(dce, cas->dataLo));
@@ -3833,7 +3832,7 @@ static void do_shadow_CAS_double_DC ( DCEnv* dce, IRCAS* cas )
    vdataLo
       = assignNew_DC(dce, elemTy, expr2tags_DC(dce, cas->dataLo));
 
-   ty = shadowTypeV(typeOfIRExpr(dce->bb->tyenv, cas->dataLo));
+   ty = shadowTypeV_DC(typeOfIRExpr(dce->bb->tyenv, cas->dataLo));
 
 
    tl_assert(isShadowAtom_DC(dce, vdataHi));
@@ -4065,11 +4064,8 @@ Bool begin_instrument_DC ( DCEnv* dce, VgCallbackClosure* closure,
        || VG_(strcmp)(soname, VG_U_LD_LINUX_SO_2) == 0)
       return False;
 
-   dce->mce = mce;
-   dce->bb             = mce->sb;
-   dce->layout         = mce->layout;
-   dce->n_originalTmps = mce->sb->tyenv->types_used;
-   dce->hWordTy        = mce->hWordTy;
+   init_DCEnv_from_MCEnv(dce, mce);
+   dce->n_originalTmps = dce->bb->tyenv->types_used;
    dce->sb_in          = sb_in;
    // Only this mode uses the flags-carrying analysis.
    dce->tmpCarriesFlags =
