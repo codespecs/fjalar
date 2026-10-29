@@ -95,7 +95,7 @@ FunctionExecutionState* returnFunctionExecutionStateWithAddress(Addr a)
   //  with lowestSP, but at least it'll give us some info.)
   cur_fn = fnStackTop(tid);
 
-  if ((cur_fn->FP >= a) && (cur_fn->lowestSP <= a)) {
+  if (cur_fn && (cur_fn->FP >= a) && (cur_fn->lowestSP <= a)) {
     FJALAR_DPRINTF("Returning functionEntry: %zx\n", (size_t)cur_fn);
     return cur_fn;
   }
