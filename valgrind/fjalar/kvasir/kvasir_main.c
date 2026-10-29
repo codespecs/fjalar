@@ -824,32 +824,6 @@ void fjalar_tool_handle_function_entrance(FunctionExecutionState* f_state) {
 }
 
 void fjalar_tool_handle_function_exit(FunctionExecutionState* f_state) {
-
-  if (kvasir_with_dyncomp) {
-    ThreadId currentTID = VG_(get_running_tid)();
-
-    // For DynComp, update tags of saved register values
-    int i;
-
-    UInt xAXtag = 0;
-    UInt xDXtag = 0;
-    UInt FPUtag = 0;
-
-    xAXtag = read_xAX_tag(currentTID);
-    xDXtag = read_xDX_tag(currentTID);
-    FPUtag = read_float_return_tag(currentTID);
-
-    for (i = 0; i < sizeof(UWord); i++) {
-      set_tag((Addr)(&(f_state->xAX)) + (Addr)i, xAXtag);
-      set_tag((Addr)(&(f_state->xDX)) + (Addr)i, xDXtag);
-      set_tag((Addr)(&(f_state->FPU)) + (Addr)i, FPUtag);
-    }
-
-    for (i = 4; i < 8; i++) {
-      set_tag((Addr)(&(f_state->FPU)) + (Addr)i, FPUtag);
-    }
-  }
-
   printDtraceForFunction(f_state, 0);
 }
 
