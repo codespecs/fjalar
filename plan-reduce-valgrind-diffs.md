@@ -39,7 +39,7 @@ Daikon's `Makefile` matches no line of `kvasir_main.c`.
 | Step 5 | #192 | Landed |
 | Step 6a | #193 | Landed |
 | Step 6b | #194 | Landed |
-| Step 6c | — | In progress |
+| Step 6c | #221 | Open |
 | Step 6d | #197 | Landed |
 | Step 7a | #195 | Landed |
 | Step 7b | #196 | Landed |
