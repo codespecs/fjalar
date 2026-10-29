@@ -963,10 +963,11 @@ static void pop_frame(ThreadId tid)
 // A thread can run on several stacks:  its own stack, an alternate
 // signal stack, and stacks that it switches to, as for coroutines.
 // Fjalar identifies a stack by the address-space segment that contains
-// it.  Addresses on different stacks are unrelated, so whether a frame
-// on one stack has been unwound cannot be decided from a stack pointer
-// on another stack.  Such a frame is kept, because it may be suspended,
-// unless it lies on the alternate signal stack (see
+// it, and also distinguishes the alternate signal stack from the rest of
+// its segment.  Addresses on different stacks are unrelated, so whether
+// a frame on one stack has been unwound cannot be decided from a stack
+// pointer on another stack.  Such a frame is kept, because it may be
+// suspended, unless it lies on the alternate signal stack (see
 // frame_is_on_altstack).
 
 // Sets *start and *end to the lowest and highest addresses of the stack
@@ -980,15 +981,28 @@ static void get_stack_bounds(Addr sp, Addr* start, Addr* end)
   *end = seg ? seg->end : ~(Addr)0;
 }
 
-// Returns True if the given frame lies on the stack with the given
-// bounds, as set by get_stack_bounds.
-static Bool frame_is_on_stack(FunctionExecutionState* state,
-                              Addr start, Addr end)
+// Returns True if address a lies on the alternate signal stack of
+// thread tid.
+static Bool addr_is_on_altstack(ThreadId tid, Addr a)
+{
+  Addr min = VG_(thread_get_altstack_min)(tid);
+  return min <= a && a - min < VG_(thread_get_altstack_size)(tid);
+}
+
+// Returns True if the given frame of thread tid lies on the same stack as
+// sp, a stack pointer, where start and end are the bounds of sp's stack,
+// as set by get_stack_bounds.  The alternate signal stack is distinct
+// from the rest of its segment, as when a program allocates it on the
+// thread's stack.
+static Bool frame_is_on_stack(ThreadId tid, FunctionExecutionState* state,
+                              Addr sp, Addr start, Addr end)
 {
   // The return address lies on the frame's stack; the CFA can be just
   // past the end of that stack.
   Addr retAddrSlot = state->CFA - sizeof(Addr);
-  return start <= retAddrSlot && retAddrSlot <= end;
+  return start <= retAddrSlot && retAddrSlot <= end
+         && addr_is_on_altstack(tid, retAddrSlot)
+            == addr_is_on_altstack(tid, sp - 1);
 }
 
 // Returns True if the given frame of thread tid lies on the thread's
@@ -996,10 +1010,7 @@ static Bool frame_is_on_stack(FunctionExecutionState* state,
 // a frame has been unwound, as by a siglongjmp out of a signal handler.
 static Bool frame_is_on_altstack(ThreadId tid, FunctionExecutionState* state)
 {
-  Addr retAddrSlot = state->CFA - sizeof(Addr);
-  Addr min = VG_(thread_get_altstack_min)(tid);
-  return min <= retAddrSlot
-         && retAddrSlot - min < VG_(thread_get_altstack_size)(tid);
+  return addr_is_on_altstack(tid, state->CFA - sizeof(Addr));
 }
 
 // Returns True if the stack of the given frame has been unwound, where
@@ -1045,7 +1056,7 @@ static int exiting_frame_index(ThreadId tid, FunctionEntry* f, Addr currentSP)
   get_stack_bounds(currentSP, &stackStart, &stackEnd);
   for (i = fn_stack_first_free_index[tid] - 1; i >= 0; i--) {
     FunctionExecutionState* state = &FunctionExecutionStateStack[tid][i];
-    if (!frame_is_on_stack(state, stackStart, stackEnd)) {
+    if (!frame_is_on_stack(tid, state, currentSP, stackStart, stackEnd)) {
       if (seenFrameOnStack) {
         break;
       }
@@ -1074,7 +1085,7 @@ static void pop_unwound_frames(ThreadId tid, Addr sp)
   get_stack_bounds(sp, &stackStart, &stackEnd);
   while (fn_stack_first_free_index[tid] > 0) {
     FunctionExecutionState* top = fnStackTop(tid);
-    if (frame_is_on_stack(top, stackStart, stackEnd)
+    if (frame_is_on_stack(tid, top, sp, stackStart, stackEnd)
         ? !frame_is_unwound(top, sp)
         : !frame_is_on_altstack(tid, top)) {
       break;
@@ -1102,7 +1113,6 @@ void exit_function(FunctionEntry* f)
   extern FunctionExecutionState* curFunctionExecutionStatePtr;
   Addr currentSP = VG_(get_SP)(currentTID);
   int exitingIndex;
-  int i;
   double fpuReturnVal;
   Addr xAX, xDX;
 
