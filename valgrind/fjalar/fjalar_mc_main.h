@@ -24,7 +24,7 @@ compiled on its own.  No other file may include it, because it defines
 functions.
 
 This file relies on mc_main.c's #includes and definitions, such as DEBUG,
-kvasir_with_dyncomp, and set_tag.  It includes only the headers that
+kvasir_with_dyncomp, and set_tag_in_range.  It includes only the headers that
 mc_main.c needs for this file's functions and for nothing else.
 
 */
@@ -32,24 +32,20 @@ mc_main.c needs for this file's functions and for nothing else.
 #include "pub_tool_vki.h"  // needed for VKI_PROT_ defines
 #include "fjalar_core_decls.h"  // for VG_(am_is_valid_for_valgrind), VG_(get_tag_ptr_for_guest_offset)
 
-void set_abit_and_vbyte (Addr a, UWord abit, UWord vbyte )
+// Marks the len bytes at a addressable, and gives them the V bits in
+// the low-order len bytes of vbits.  The V bits are laid out in the
+// host's byte order, as a store of a len-byte value to a lays out the
+// value.  len must be 1, 2, 4, or 8.
+static void mc_set_addressable_vbytes ( Addr a, ULong vbits, SizeT len )
 {
-  UChar vabits2 = VA_BITS2_UNDEFINED;
-
-  if(abit == VGM_BIT_VALID) {
-    if      ( V_BITS8_DEFINED   == vbyte ) { vabits2 = VA_BITS2_DEFINED;   }
-    else if ( V_BITS8_UNDEFINED == vbyte ) { vabits2 = VA_BITS2_UNDEFINED; }
-    else                                    { vabits2 = VA_BITS2_PARTDEFINED;}
-  } else {
-    vabits2 = VA_BITS2_UNDEFINED;
-  }
-
-  set_vabits2(a, vabits2);
-
-  if(vabits2 == VA_BITS2_PARTDEFINED) {
-    set_sec_vbits8(a, vbyte);
-  }
-
+#if defined(VG_BIGENDIAN)
+  Bool bigendian = True;
+#else
+  Bool bigendian = False;
+#endif
+  // mc_STOREVn_slow reports an error for a byte that is not addressable.
+  make_mem_undefined(a, len);
+  mc_STOREVn_slow(a, len * 8, vbits, bigendian);
 }
 
 Bool mc_check_writable (Addr a, SizeT len, Addr* bad_addr) {
@@ -86,20 +82,23 @@ char mc_are_some_bytes_initialized(Addr a, SizeT len) {
 // Marks the bytes at dst addressable, gives each one the V bits of the
 // corresponding byte of the register, and gives all of them the
 // register's DynComp tag.
-void mc_copy_guest_reg_state ( ThreadId tid, Int guestOffset, Addr dst )
+void mc_copy_guest_reg_state ( ThreadId tid, Int guestOffset, Addr dst,
+                               SizeT len )
 {
-  UWord vbits;
-  SizeT b;
-  VG_(get_shadow_regs_area)(tid, (UChar*)&vbits, 1/*shadowNo*/,
-                            guestOffset, sizeof(Addr));
-  for (b = 0; b < sizeof(Addr); b++) {
-    set_abit_and_vbyte(dst + b, VGM_BIT_VALID, (vbits >> (b * 8)) & 0xff);
-  }
+  ULong vbits = 0;
+  // Where the register's V bits go, so that they are the low-order len
+  // bytes of vbits.
+  UChar* vbitsLowBytes = (UChar*)&vbits;
+  tl_assert(len <= sizeof(vbits));
+#if defined(VG_BIGENDIAN)
+  vbitsLowBytes += sizeof(vbits) - len;
+#endif
+  VG_(get_shadow_regs_area)(tid, vbitsLowBytes, 1/*shadowNo*/,
+                            guestOffset, len);
+  mc_set_addressable_vbytes(dst, vbits, len);
   if (kvasir_with_dyncomp) {
     // DynComp keeps one tag per register, at the register's offset.
     UInt tag = *VG_(get_tag_ptr_for_guest_offset)(tid, guestOffset);
-    for (b = 0; b < sizeof(Addr); b++) {
-      set_tag(dst + b, tag);
-    }
+    set_tag_in_range(dst, len, tag);
   }
 }

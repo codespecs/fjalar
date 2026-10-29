@@ -32,6 +32,11 @@ fjalar_core_decls.stamp rule in Makefile.am).
 // owns, which VG_(am_is_valid_for_client) rejects.
 extern Bool VG_(am_is_valid_for_valgrind)(Addr start, SizeT len, UInt prot);
 
+// From coregrind/pub_core_libcfile.h.
+// Kvasir uses this to keep the pipe to gzip from leaking into the
+// processes that the client starts.
+extern Int VG_(fcntl)   ( Int fd, Int cmd, Addr arg );
+
 // From coregrind/pub_core_machine.h.
 // enter_function uses the frame pointer when a function's debugging
 // information gives no frame base.
@@ -48,5 +53,13 @@ extern UInt* VG_(get_tag_ptr_for_guest_offset) ( ThreadId tid, UInt offset );
 // VG_AR_DEMANGLE arena.  ArenaId is a typedef for Int.
 extern void VG_(arena_free)(Int arena, void* ptr);
 #define VG_AR_DEMANGLE 3
+
+// From coregrind/pub_core_syscall.h.
+// mkdir in my_libc.c uses this, because Valgrind gives tools no function
+// that creates a directory.
+extern SysRes VG_(do_syscall) ( UWord sysno,
+                                RegWord, RegWord, RegWord,
+                                RegWord, RegWord, RegWord,
+                                RegWord, RegWord );
 
 #endif /* FJALAR_CORE_DECLS_H */
