@@ -1,10 +1,11 @@
 #!/bin/bash
 
 # Tests that a 128-bit or 256-bit store writes the tag of the stored value to
-# every byte that it writes, and that, under --dyncomp-interactions=all, a
-# 128-bit or 256-bit load merges nothing.  The expected comparability is in
-# dyncomp-wide-move.goal.  The dyncomp-wide-move-*-test.sh scripts test the
-# other values of --dyncomp-interactions.
+# every byte that it writes, that, under --dyncomp-interactions=all, a 128-bit
+# or 256-bit load merges nothing, and that a 256-bit load and store in one
+# superblock give each copied byte the tag of its source byte.  The expected
+# comparability is in dyncomp-wide-move.goal.  The dyncomp-wide-move-*-test.sh
+# scripts test the other values of --dyncomp-interactions.
 #
 # The test also checks that the IR of the test program stores a V256
 # temporary and contains a 256-bit load, so that it is not vacuous.

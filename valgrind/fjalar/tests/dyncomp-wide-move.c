@@ -8,7 +8,9 @@
 // the bytes that a load read.
 //
 // A 128-bit or 256-bit load is not an interaction under any value of
-// --dyncomp-interactions, so it merges nothing.
+// --dyncomp-interactions, so it merges nothing.  A store of a vector that was
+// loaded in the same superblock writes the tag of each byte that the load
+// read.
 
 // Stores a 256-bit vector whose tag is the tag of a to dst, after storing b
 // to element I of dst.  a and b should not be comparable; the return value
@@ -69,6 +71,28 @@ void load_128(int a, int b, int c) {
   __asm__ volatile ("vmovdqu %0, %%xmm0" : : "m" (src) : "xmm0");
 }
 
+// Copies a 32-byte array that holds a, b, c, and d, one in each 8-byte chunk,
+// with one 256-bit load and one 256-bit store in the same superblock, and
+// returns element I of the copy.  No two of a, b, c, and d should be
+// comparable; the return value should be comparable to element I.
+#define COPY_256(I)                                             \
+  long copy_256_##I(long a, long b, long c, long d) {           \
+    long src[4], dst[4];                                        \
+    src[0] = a;                                                 \
+    src[1] = b;                                                 \
+    src[2] = c;                                                 \
+    src[3] = d;                                                 \
+    __asm__ volatile ("vmovdqu %1, %%ymm0\n\t"                  \
+                      "vmovdqu %%ymm0, %0"                      \
+                      : "=m" (dst) : "m" (src) : "xmm0");       \
+    return dst[I];                                              \
+  }
+
+COPY_256(0)
+COPY_256(1)
+COPY_256(2)
+COPY_256(3)
+
 int main(void) {
   store_256_0(1, 2);
   store_256_1(1, 2);
@@ -82,5 +106,9 @@ int main(void) {
   store_128_4(1, 2);
   load_256(1, 2, 3, 4);
   load_128(1, 2, 3);
+  copy_256_0(1, 2, 3, 4);
+  copy_256_1(1, 2, 3, 4);
+  copy_256_2(1, 2, 3, 4);
+  copy_256_3(1, 2, 3, 4);
   return 0;
 }
