@@ -1525,7 +1525,7 @@ Add VG_ version of mkdir and fcntl
 @item $INV/fjalar/valgrind/include/pub_tool_machine.h
 Add get and set functions for additional machine registers
 @item $INV/fjalar/valgrind/Makefile.am
-Add fjalar to the list of tools; add files to clean-local target
+Add fjalar to the list of tools
 @item $INV/fjalar/valgrind/none/tests/Makefile.am
 Add @nospellcheck{coregrind/libcoregrind-amd64-linux.a to libvex} tests
 @item $INV/fjalar/valgrind/tests/check_headers_and_includes
@@ -1533,6 +1533,8 @@ Add fjalar to @nospellcheck{tool_dirs and inst to dirs_to_ignore}
 @item $INV/fjalar/valgrind/VEX/priv/host_amd64_defs.c
 Add function name to debug dump of call instruction
 @item $INV/fjalar/valgrind/VEX/priv/host_generic_reg_alloc2.c
+Modify memory calculation using the shadow size
+@item $INV/fjalar/valgrind/VEX/priv/host_generic_reg_alloc3.c
 Modify memory calculation using the shadow size
 @end table
 
@@ -1550,8 +1552,10 @@ Other modifications include:
 
 @table @asis
 @item $INV/fjalar/valgrind/fjalar/mc_main.c
-Run-time arguments and versioning information for Kvasir to replace
-the default Memcheck ones.  Also, an @code{#include} of
+Run-time arguments for Fjalar.  (Fjalar does not change Memcheck's
+details, such as its name and version, in @code{mc_pre_clo_init}; instead,
+@code{fjalar_pre_clo_init} in @file{fjalar_main.c} and each tool's
+@code{fjalar_tool_pre_clo_init} override them.)  Also, an @code{#include} of
 @file{fjalar_mc_main.h}, which defines the functions that Fjalar adds to
 Memcheck (@file{mc_fjalar.h} declares them).  Those functions call
 static functions of @file{mc_main.c}, such as @code{set_vabits2},

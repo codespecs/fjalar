@@ -26,6 +26,10 @@
 
 // Runs before processing command-line options:
 void fjalar_tool_pre_clo_init() {
+  // These override the defaults that fjalar_pre_clo_init sets.
+  VG_(details_name)            ("basic-tool");
+  VG_(details_description)     ("a basic tool built upon Fjalar");
+
   VG_(printf)("\nfjalar_tool_pre_clo_init()\n\n");
 }
 

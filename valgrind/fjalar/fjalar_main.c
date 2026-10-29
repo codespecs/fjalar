@@ -40,6 +40,7 @@
 #include "pub_tool_replacemalloc.h"
 #include "pub_tool_stacktrace.h"
 #include "pub_tool_clientstate.h"
+#include "pub_tool_tooliface.h"
 
 #include "generate_fjalar_entries.h"
 #include "fjalar_main.h"
@@ -219,26 +220,6 @@ static Addr read_xDI(ThreadId tid)
   return read_guest_word(tid, 0, offsetof(VexGuestArchState, GUEST_xDI));
 }
 
-UWord read_shadow_xAX(ThreadId tid)
-{
-  return read_guest_word(tid, 1, offsetof(VexGuestArchState, GUEST_xAX));
-}
-
-UWord read_shadow_xDX(ThreadId tid)
-{
-  return read_guest_word(tid, 1, offsetof(VexGuestArchState, GUEST_xDX));
-}
-
-UInt read_xAX_tag(ThreadId tid)
-{
-  return *VG_(get_tag_ptr_for_guest_offset)(tid, offsetof(VexGuestArchState, GUEST_xAX));
-}
-
-UInt read_xDX_tag(ThreadId tid)
-{
-  return *VG_(get_tag_ptr_for_guest_offset)(tid, offsetof(VexGuestArchState, GUEST_xDX));
-}
-
 // Returns the guest-state offset of the 8 bytes that hold a function's
 // floating-point return value:  the low 64 bits of %xmm0 on amd64, and
 // the top of the x87 FPU stack on x86.
@@ -260,19 +241,6 @@ double read_float_return(ThreadId tid)
   VG_(get_shadow_regs_area)(tid, (UChar*)&value, 0/*shadowNo*/,
                             float_return_guest_offset(tid), sizeof(double));
   return value;
-}
-
-ULong read_shadow_float_return(ThreadId tid)
-{
-  ULong vbits;
-  VG_(get_shadow_regs_area)(tid, (UChar*)&vbits, 1/*shadowNo*/,
-                            float_return_guest_offset(tid), sizeof(ULong));
-  return vbits;
-}
-
-UInt read_float_return_tag(ThreadId tid)
-{
-  return *VG_(get_tag_ptr_for_guest_offset)(tid, float_return_guest_offset(tid));
 }
 
 // If atom is DW_OP_regN (the value is in register N) or DW_OP_bregN
@@ -304,7 +272,8 @@ static void save_param_regs(FunctionExecutionState* f_state, ThreadId tid)
     if (f_state->func->entryRegsMask & (1U << regNum)) {
       f_state->entryRegs[regNum] = read_dwarf_reg(tid, regNum);
       mc_copy_guest_reg_state(tid, dwarf_reg_guest_offset(regNum),
-                              (Addr)&f_state->entryRegs[regNum]);
+                              (Addr)&f_state->entryRegs[regNum],
+                              sizeof(f_state->entryRegs[regNum]));
     }
   }
 }
@@ -980,17 +949,15 @@ static void pop_frame(ThreadId tid)
 {
   FunctionExecutionState* state = fnStackPop(tid);
 
-  if (state->virtualStack) {
-    /* The V bits of the virtual stack hold the guest's V bits, but
-       Memcheck doesn't normally expect VG_(malloc)'ed memory to be
-       client accessible, so we have to make it inaccessible again
-       before allowing Valgrind's malloc to use it, lest assertions
-       fail later. */
-    MC_(make_mem_noaccess)((Addr)state->virtualStack, state->allocByteSize);
-    VG_(free)(state->virtualStack);
-    state->virtualStack = NULL;
-    state->entryRegs = NULL;
-  }
+  /* The V bits of the virtual stack hold the guest's V bits, but
+     Memcheck doesn't normally expect VG_(malloc)'ed memory to be
+     client accessible, so we have to make it inaccessible again
+     before allowing Valgrind's malloc to use it, lest assertions
+     fail later. */
+  MC_(make_mem_noaccess)((Addr)state->virtualStack, state->allocByteSize);
+  VG_(free)(state->virtualStack);
+  state->virtualStack = NULL;
+  state->entryRegs = NULL;
 }
 
 // A thread can run on several stacks:  its own stack, an alternate
@@ -1136,14 +1103,12 @@ void exit_function(FunctionEntry* f)
   Addr currentSP = VG_(get_SP)(currentTID);
   int exitingIndex;
   int i;
-  ULong FPUshadow;
   double fpuReturnVal;
-  Addr xAX, xDX, xAXshadow, xDXshadow;
+  Addr xAX, xDX;
 
   FJALAR_DPRINTF("Exit function: %s\n", f->fjalar_name);
 
   fpuReturnVal = read_float_return(currentTID);
-  FPUshadow = read_shadow_float_return(currentTID);
 
 
   // Get the value at the simulated %EAX (integer and pointer return
@@ -1154,23 +1119,17 @@ void exit_function(FunctionEntry* f)
   // long int return value is stored here upon function exit)
   xDX = read_xDX(currentTID);
 
-
-  // 64 bits
-  // Use SHADOW values of Valgrind simulated registers to get V-bits
-  xAXshadow = read_shadow_xAX(currentTID);
-  xDXshadow = read_shadow_xDX(currentTID);
-
   FJALAR_DPRINTF("Value of eax: %lx, edx: %lx\n",xAX, xDX);
 
+  top = fnStackTop(currentTID);
   // Do nothing if the function stack is empty.
-  if (fn_stack_first_free_index[currentTID] == 0) {
+  if (!top) {
     printf("More exit_function()s than entry_function()s!\n");
     // RUDD EXCEPTION
     VG_(get_and_pp_StackTrace) (currentTID, 15);
     return;
   }
 
-  top = fnStackTop(currentTID);
   exitingIndex = exiting_frame_index(currentTID, f, currentSP);
   if (exitingIndex != fn_stack_first_free_index[currentTID] - 1) {
     // The frame at the top of the Function Execution State Stack
@@ -1221,17 +1180,14 @@ void exit_function(FunctionEntry* f)
   top->xDX = xDX;
   top->FPU = fpuReturnVal;
 
-  // Very important!  Set the A and V bits of the appropriate
-  // FunctionExecutionState object and the tags from the (x86) guest
-  // state as well:
-  for (i = 0; i < sizeof(Addr); i++) {
-    mc_set_addressable_vbyte((Addr)(&top->xAX) + (Addr)i, xAXshadow >> (i * 8));
-    mc_set_addressable_vbyte((Addr)(&top->xDX) + (Addr)i, xDXshadow >> (i * 8));
-  }
-
-  for (i = 0; i < 8; i++) {
-    mc_set_addressable_vbyte((Addr)(&top->FPU) + (Addr)i, FPUshadow >> (i * 8));
-  }
+  // Very important!  Set the A and V bits and the DynComp tags of the
+  // appropriate FunctionExecutionState object from the guest state.
+  mc_copy_guest_reg_state(currentTID, offsetof(VexGuestArchState, GUEST_xAX),
+                          (Addr)(&top->xAX), sizeof(top->xAX));
+  mc_copy_guest_reg_state(currentTID, offsetof(VexGuestArchState, GUEST_xDX),
+                          (Addr)(&top->xDX), sizeof(top->xDX));
+  mc_copy_guest_reg_state(currentTID, float_return_guest_offset(currentTID),
+                          (Addr)(&top->FPU), sizeof(top->FPU));
 
   curFunctionExecutionStatePtr = top;
   top->func->nonce = top->invocation_nonce;
@@ -1247,6 +1203,32 @@ void exit_function(FunctionEntry* f)
   // it that a non-local exit left behind and that "ret N" unwound.
   pop_unwound_frames(currentTID, currentSP);
 
+}
+
+// Pops and frees every frame of thread tid.
+static void pop_all_frames(ThreadId tid)
+{
+  while (fn_stack_first_free_index[tid] > 0) {
+    pop_frame(tid);
+  }
+}
+
+// Pops and frees every frame of thread tid, which is exiting.  The
+// frames of a thread that exits from inside instrumented functions,
+// such as by calling pthread_exit, never reach exit_function.
+static void fjalar_pre_thread_ll_exit(ThreadId tid)
+{
+  pop_all_frames(tid);
+}
+
+// Pops and frees every frame of thread child, which is being created,
+// so that it does not inherit the frames of an earlier thread that had
+// the same ThreadId.  Such frames remain when Valgrind empties a thread
+// slot without calling the pre_thread_ll_exit callback, as it does for
+// all but the calling thread in the child process of a fork.
+static void fjalar_pre_thread_ll_create(ThreadId parent, ThreadId child)
+{
+  pop_all_frames(child);
 }
 
 
@@ -1360,12 +1342,28 @@ void fjalar_pre_clo_init()
   VG_(memset)(fn_stack_first_free_index, 0, VG_N_THREADS * sizeof fn_stack_first_free_index[0]);
   VG_(memset)(FunctionExecutionStateStack, 0, VG_N_THREADS * FN_STACK_SIZE * sizeof FunctionExecutionStateStack[0][0]);
 
+  VG_(track_pre_thread_ll_create)(fjalar_pre_thread_ll_create);
+  VG_(track_pre_thread_ll_exit)(fjalar_pre_thread_ll_exit);
+
   // (comment added 2005)
   // TODO: Do we need to clear all global variables before processing
   // command-line options?  We don't need to as long as this function
   // is only run once at the beginning of program execution.
 
-  // Make sure to execute this last!
+  // Defaults for every Fjalar tool.  They override the details that
+  // mc_pre_clo_init sets, which are Memcheck's.  Without them, a tool
+  // that sets no name would be "Memcheck", which Valgrind's core treats
+  // specially.
+  VG_(details_name)            ("fjalar");
+  /* This next line is automatically updated by the toplevel Daikon
+     distribution Makefile; be careful with its formatting -SMcC */
+  VG_(details_version)         ("5.9.1");
+  VG_(details_description)     ("a tool built upon Fjalar");
+  VG_(details_copyright_author)(
+     "Copyright (C) 2007-2026, University of Washington CSE PLSE Group");
+  VG_(details_bug_reports_to)  ("daikon-developers@googlegroups.com");
+
+  // Make sure to execute this last!  It may override the details above.
   fjalar_tool_pre_clo_init();
 }
 

@@ -32,6 +32,7 @@
 
 #include "mc_fjalar.h"
 #include "pub_tool_debuginfo.h"
+#include "pub_tool_redir.h"
 #include "kvasir_main.h"
 #include "dyncomp_translate.h"
 #include "dyncomp_main.h"
@@ -4024,15 +4025,16 @@ static void do_shadow_LoadG_DC ( DCEnv* dce, IRLoadG* lg )
    sb_in.  Returns True if DynComp instruments sb_in, and in that case
    initializes dce, with mce as Memcheck's environment; DynComp adds its
    statements to the same block as Memcheck, mce->sb.  DynComp does not
-   instrument the blocks of the dynamic loader:  with libc-2.21 and
-   ld-2.21, doing so put large sections of libc data, and with them
-   unrelated user variables, into the same comparability set. */
+   instrument the blocks of the dynamic loader, which it recognizes by its
+   soname:  with libc-2.21 and ld-2.21, doing so put large sections of
+   libc data, and with them unrelated user variables, into the same
+   comparability set. */
 Bool begin_instrument_DC ( DCEnv* dce, VgCallbackClosure* closure,
                            const IRSB* sb_in, MCEnv* mce )
 {
-   static Bool first_time = True;
-   static const HChar* loader_name = "GaRbAgE";
-   Bool do_dyncomp = False;
+   const HChar* objname = "UNKNOWN_OBJECT";
+   const HChar* soname = "NONE";
+   DebugInfo* di;
    Int i;
 
    if (!kvasir_with_dyncomp)
@@ -4052,26 +4054,15 @@ Bool begin_instrument_DC ( DCEnv* dce, VgCallbackClosure* closure,
       DYNCOMP_DPRINTF("address: %p fnname: %s\n", (void*)closure->readdr, fnname);
    }
 
-   if (first_time) {
-      DebugInfo* di = VG_(find_DebugInfo)(cur_ep, closure->readdr);
-      tl_assert(di);
-      loader_name = VG_(DebugInfo_get_filename)(di);
-      DYNCOMP_DPRINTF("loader_name: %s\n", loader_name);
-      first_time = False;
-   } else {
-      const HChar* objname = "UNKNOWN_OBJECT";
-      DebugInfo* di = VG_(find_DebugInfo)(cur_ep, closure->readdr);
-      if (di) {
-         objname = VG_(DebugInfo_get_filename)(di);
-      }
-      DYNCOMP_DPRINTF("objname: %s\n\n", objname);
-      // if its not part of the loader, go ahead and process
-      if (VG_(strcmp)(objname, loader_name)) {
-         do_dyncomp = True;
-      }
+   di = VG_(find_DebugInfo)(cur_ep, closure->readdr);
+   if (di) {
+      objname = VG_(DebugInfo_get_filename)(di);
+      soname = VG_(DebugInfo_get_soname)(di);
    }
+   DYNCOMP_DPRINTF("objname: %s soname: %s\n\n", objname, soname);
 
-   if (!do_dyncomp)
+   if (VG_(strcmp)(soname, VG_U_LD_LINUX_X86_64_SO_2) == 0
+       || VG_(strcmp)(soname, VG_U_LD_LINUX_SO_2) == 0)
       return False;
 
    dce->mce = mce;
