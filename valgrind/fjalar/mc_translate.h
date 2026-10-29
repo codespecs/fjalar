@@ -31,150 +31,9 @@
 #include "pub_tool_mallocfree.h"
 #include "pub_tool_libcbase.h"
 
-// See below for comments explaining what this is for.
-typedef
-   enum __attribute__((packed)) { HuUnU=0, HuPCa=1, HuOth=2 }
-   HowUsed;
-
-/*------------------------------------------------------------*/
-/*--- Memcheck running state, and tmp management.          ---*/
-/*------------------------------------------------------------*/
-
-/* For a few (maybe 1%) IROps, we have both a cheaper, less exact vbit
-   propagation scheme, and a more expensive, more precise vbit propagation
-   scheme.  This enum describes, for such an IROp, which scheme to use. */
-typedef
-   enum {
-      // Use the cheaper, less-exact variant.
-      DLcheap=4,
-      // Choose between cheap and expensive based on analysis of the block
-      // to be instrumented.  Note that the choice may be done on a
-      // per-instance basis of the IROp that this DetailLevel describes.
-      DLauto,
-      // Use the more expensive, more-exact variant.
-      DLexpensive
-   }
-   DetailLevel;
-
-
-/* A readonly part of the running state.  For IROps that have both a
-   less-exact and more-exact interpretation, records which interpretation is
-   to be used.  */
-typedef
-   struct {
-      // For Add32/64 and Sub32/64, all 3 settings are allowed.  For the
-      // DLauto case, a per-instance decision is to be made by inspecting
-      // the associated tmp's entry in MCEnv.tmpHowUsed.
-      DetailLevel dl_Add32;
-      DetailLevel dl_Add64;
-      DetailLevel dl_Sub32;
-      DetailLevel dl_Sub64;
-      // For Cmp{EQ,NE}{64,32,16,8}, only DLcheap and DLexpensive are
-      // allowed.
-      DetailLevel dl_CmpEQ64_CmpNE64;
-      DetailLevel dl_CmpEQ32_CmpNE32;
-      DetailLevel dl_CmpEQ16_CmpNE16;
-      DetailLevel dl_CmpEQ8_CmpNE8;
-   }
-   DetailLevelByOp;
-
-
-/* Carries info about a particular tmp.  The tmp's number is not
-   recorded, as this is implied by (equal to) its index in the tmpMap
-   in MCEnv.  The tmp's type is also not recorded, as this is present
-   in MCEnv.sb->tyenv.
-
-   When .kind is Orig, .shadowV and .shadowB may give the identities
-   of the temps currently holding the associated definedness (shadowV)
-   and origin (shadowB) values, or these may be IRTemp_INVALID if code
-   to compute such values has not yet been emitted.
-
-   When .kind is VSh or BSh then the tmp is holds a V- or B- value,
-   and so .shadowV and .shadowB must be IRTemp_INVALID, since it is
-   illogical for a shadow tmp itself to be shadowed.
-*/
-typedef
-   enum { Orig=1, VSh=2, BSh=3, DC=4 }
-   TempKind;
-
-typedef
-   struct {
-      TempKind kind;
-      IRTemp   shadowV;
-      IRTemp   shadowB;
-   }
-   TempMapEnt;
-
-
-/* A |HowUsed| value carries analysis results about how values are used,
-   pertaining to whether we need to instrument integer adds expensively or
-   not.  The running state carries a (readonly) mapping from original tmp to
-   a HowUsed value for it.  A usage value can be one of three values,
-   forming a 3-point chain lattice.
-
-      HuOth   ("Other") used in some arbitrary way
-       |
-      HuPCa   ("PCast") used *only* in effectively a PCast, in which all
-       |      we care about is the all-defined vs not-all-defined distinction
-       |
-      HuUnU   ("Unused") not used at all.
-
-   The "safe" (don't-know) end of the lattice is "HuOth".  See comments
-   below in |preInstrumentationAnalysis| for further details.
-*/
-/* DECLARED ABOVE:
-typedef
-   enum __attribute__((packed)) { HuUnU=0, HuPCa=1, HuOth=2 }
-   HowUsed;
-*/
-
-// Not actually necessary, but we don't want to waste D1 space.
-STATIC_ASSERT(sizeof(HowUsed) == 1);
-
-
-/* Carries around state during memcheck instrumentation. */
-typedef
-   struct _MCEnv {
-      /* MODIFIED: the superblock being constructed.  IRStmts are
-         added. */
-      IRSB* sb;
-      Bool  trace;
-
-      /* MODIFIED: a table [0 .. #temps_in_sb-1] which gives the
-         current kind and possibly shadow temps for each temp in the
-         IRSB being constructed.  Note that it does not contain the
-         type of each tmp.  If you want to know the type, look at the
-         relevant entry in sb->tyenv.  It follows that at all times
-         during the instrumentation process, the valid indices for
-         tmpMap and sb->tyenv are identical, being 0 .. N-1 where N is
-         total number of Orig, V- and B- temps allocated so far.
-
-         The reason for this strange split (types in one place, all
-         other info in another) is that we need the types to be
-         attached to sb so as to make it possible to do
-         "typeOfIRExpr(mce->bb->tyenv, ...)" at various places in the
-         instrumentation process. */
-      XArray* /* of TempMapEnt */ tmpMap;
-
-      /* READONLY: contains details of which ops should be expensively
-         instrumented. */
-      DetailLevelByOp dlbo;
-
-      /* READONLY: for each original tmp, how the tmp is used.  This is
-         computed by |preInstrumentationAnalysis|.  Valid indices are
-         0 .. #temps_in_sb-1 (same as for tmpMap). */
-      HowUsed* tmpHowUsed;
-
-      /* READONLY: the guest layout.  This indicates which parts of
-         the guest state should be regarded as 'always defined'. */
-      const VexGuestLayout* layout;
-
-      /* READONLY: the host word type.  Needed for constructing
-         arguments of type 'HWord' to be passed to helper functions.
-         Ity_I32 or Ity_I64 only. */
-      IRType hWordTy;
-   }
-   MCEnv;
+/* Memcheck's state during instrumentation, which mc_translate.c defines.
+   Fjalar code uses it only through the functions declared below. */
+typedef struct _MCEnv MCEnv;
 
 /* Carries around state during DynComp instrumentation. */
 struct _DCEnv;
@@ -212,6 +71,9 @@ typedef
       IRType hWordTy;
 
       MCEnv* mce;
+      /* READONLY: whether to print the statements that DynComp adds
+         (Memcheck's trace flag). */
+      Bool trace;
 
       /* MODIFIED: Original address of guest instruction whose IR
          we're now processing, as taken from the last IMark we saw. */
@@ -247,17 +109,8 @@ typedef
 /*------------------------------------------------------------*/
 
 /* add stmt to a bb */
-static inline void stmt ( HChar cat, MCEnv* mce, IRStmt* st ) {
-   if (mce->trace) {
-      VG_(printf)("  %c: ", cat);
-      ppIRStmt(st);
-      VG_(printf)("\n");
-   }
-   addStmtToIRSB(mce->sb, st);
-}
-
 static inline void stmt_DC ( HChar cat, DCEnv* dce, IRStmt* st ) {
-   if (dce->mce->trace) {
+   if (dce->trace) {
       VG_(printf)("D %c: ", cat);
       ppIRStmt(st);
       VG_(printf)("\n");
@@ -266,10 +119,6 @@ static inline void stmt_DC ( HChar cat, DCEnv* dce, IRStmt* st ) {
 }
 
 /* assign value to tmp */
-static inline void assign ( HChar cat, MCEnv* mce, IRTemp tmp, IRExpr* expr ) {
-  stmt(cat, mce, IRStmt_WrTmp(tmp,expr));
-}
-
 static inline void assign_DC ( HChar cat, DCEnv* dce, IRTemp tmp, IRExpr* expr ) {
   stmt_DC(cat, dce, IRStmt_WrTmp(tmp,expr));
 }
@@ -296,9 +145,10 @@ static inline void assign_DC ( HChar cat, DCEnv* dce, IRTemp tmp, IRExpr* expr )
 
 typedef  IRExpr  IRAtom;
 
-IRTemp newTemp ( MCEnv* mce, IRType ty, TempKind kind );
-
-Bool sameKindedAtoms ( IRAtom* a1, IRAtom* a2 );
-IRType  shadowTypeV ( IRType ty );
+/* Defined in fjalar_mc_translate.h. */
+void mc_stmt ( HChar cat, MCEnv* mce, IRStmt* st );
+IRTemp newTemp_DC ( MCEnv* mce, IRType ty );
+IRType shadowTypeV_DC ( IRType ty );
+void init_DCEnv_from_MCEnv ( DCEnv* dce, MCEnv* mce );
 
 #endif

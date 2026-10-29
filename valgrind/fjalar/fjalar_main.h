@@ -124,10 +124,13 @@ static __inline__ FunctionExecutionState* fnStackPop(ThreadId tid) {
   return &(FunctionExecutionStateStack[tid][fn_stack_first_free_index[tid]]);
 }
 
-// Returns the top element of the stack
+// Returns the top element of the stack, or NULL if the stack is empty
 static __inline__ FunctionExecutionState* fnStackTop(ThreadId tid) {
   tl_assert(tid != VG_INVALID_THREADID);
   tl_assert(fn_stack_first_free_index[tid] >= 0);
+  if (fn_stack_first_free_index[tid] == 0) {
+    return NULL;
+  }
   return &(FunctionExecutionStateStack[tid][fn_stack_first_free_index[tid] - 1]);
 }
 

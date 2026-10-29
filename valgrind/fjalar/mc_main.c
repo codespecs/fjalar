@@ -8664,16 +8664,12 @@ static Bool mc_mark_unaddressable_for_watchpoint (PointKind kind, Bool insert,
 
 static void mc_pre_clo_init(void)
 {
-   VG_(details_name)            ("kvasir");
-   /* This next line is automatically updated by the toplevel Daikon
-      distribution Makefile; be careful with its formatting -SMcC */
-   VG_(details_version)         ("5.9.1");
-   VG_(details_description)     ("C/C++ Language Front-End for Daikon with DynComp comparability analysis tool.");
+   VG_(details_name)            ("Memcheck");
+   VG_(details_version)         (NULL);
+   VG_(details_description)     ("a memory error detector");
    VG_(details_copyright_author)(
-      "Copyright (C) 2007-2026, University of Washington CSE PLSE Group");
-   VG_(details_bug_reports_to)  ("daikon-developers@googlegroups.com");
-   // PG - pgbovine - customize the fields above for each Fjalar tool
-
+      "Copyright (C) 2002-2024, and GNU GPL'd, by Julian Seward et al.");
+   VG_(details_bug_reports_to)  (VG_BUGS_TO);
    VG_(details_avg_translation_sizeB) ( 640 );
 
    VG_(basic_tool_funcs)          (mc_post_clo_init,

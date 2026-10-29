@@ -38,13 +38,11 @@ mc_include.h.
 
 #include "mc_include.h"
 
-// Marks the byte at a addressable and gives it the V bits vbyte.
-void mc_set_addressable_vbyte ( Addr a, UChar vbyte );
-
-// Copies the A and V bits and the DynComp tag of the pointer-sized
-// guest register at guestOffset in thread tid's guest state to the
-// sizeof(Addr) bytes of memory at dst.
-void mc_copy_guest_reg_state ( ThreadId tid, Int guestOffset, Addr dst );
+// Copies the A and V bits and the DynComp tag of the len-byte guest
+// register at guestOffset in thread tid's guest state to the len bytes
+// of memory at dst.  len must be 1, 2, 4, or 8.
+void mc_copy_guest_reg_state ( ThreadId tid, Int guestOffset, Addr dst,
+                               SizeT len );
 
 char mc_are_some_bytes_initialized ( Addr a, SizeT len );
 Bool mc_check_writable ( Addr a, SizeT len, Addr* bad_addr );

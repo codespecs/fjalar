@@ -219,22 +219,15 @@ UInt val_uf_tag_union(UInt tag1, UInt tag2) {
   }
 }
 
-// Write tag into all addresses in the range [a, a+len)
+// Write the union-find leader of tag into all addresses in the range
+// [a, a+len)
 static __inline__ void set_tag_for_range(Addr a, SizeT len, UInt tag) {
-  Addr curAddr;
-  UInt leader = val_uf_find_leader(tag);
-
-  for (curAddr = a; curAddr < (a+len); curAddr++) {
-    set_tag(curAddr, leader);
-  }
+  set_tag_in_range(a, len, val_uf_find_leader(tag));
 }
 
 // Write the special GOT tag into all addresses in the range [a, a+len)
 void set_tag_for_GOT(Addr a, SizeT len) {
-  Addr curAddr;
-  for (curAddr = a; curAddr < (a+len); curAddr++) {
-    set_tag(curAddr, WEAK_FRESH_TAG);
-  }
+  set_tag_in_range(a, len, WEAK_FRESH_TAG);
 }
 
 // Helper functions called from dyncomp_translate.c:
@@ -423,9 +416,7 @@ UInt val_uf_union_tags_in_range(Addr a, SizeT len) {
                   (void *)a, (void *)(a+len), canonicalTag);
 
     // Set all the tags in this range to the canonical tag
-    for (curAddr = a; curAddr < (a + len); curAddr++) {
-      set_tag(curAddr, canonicalTag);
-    }
+    set_tag_in_range(a, len, canonicalTag);
 
     print_merge = 1;
     return canonicalTag;

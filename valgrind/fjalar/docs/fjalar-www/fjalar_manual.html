@@ -224,9 +224,11 @@ that point in execution (as well as array sizes, if relevant).
 <p>Here are some tips related to executing Fjalar tools:</p>
 
     <ul>
-      <li>To change what messages are displayed when your tool starts up, you
-	can edit some strings within the <tt>mc_pre_clo_init()</tt> function
-	in <tt>mc_main.c</tt>.
+      <li>To change what messages are displayed when your tool starts up,
+	call <tt>VG_(details_name)</tt>, <tt>VG_(details_description)</tt>,
+	and the other <tt>VG_(details_*)</tt> functions within your tool's
+	<tt>fjalar_tool_pre_clo_init()</tt> function.  They override the
+	defaults that Fjalar sets.
 
       <li>The standard Valgrind terminal printing functions,
 	most notably <tt>VG_(printf)</tt>, output to standard error (file descriptor
