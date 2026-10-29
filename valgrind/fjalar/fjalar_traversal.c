@@ -1518,7 +1518,7 @@ void visitReturnValue(FunctionExecutionState* e,
       visitVariable(cur_node->var,
                     basePtr,
                     0, /* registers, no guest location */
-                    1, // e->xAXvalid,
+                    0, // e->xAXvalid,
                     0,
                     performAction,
                     FUNCTION_RETURN_VAR,
