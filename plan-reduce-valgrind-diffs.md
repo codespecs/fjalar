@@ -31,7 +31,8 @@ the function-name printing in VEX), and #205 (Step 8, the changes that
 must remain), with its companion codespecs/daikon#955.  So did PR #181,
 which restored upstream's `AC_INIT` version string.
 
-Only Step 9 (documentation) remains.  It is open as #225.
+Only Step 9 (documentation) remains.  It is open as #225.  "Follow-up"
+below lists the edits that no step covered.
 
 ## The remaining differences
 
@@ -63,13 +64,8 @@ What remains is Fjalar's essential hooks:
   `valgrind.h`, as `tests/check_headers_and_includes` requires of a file in
   a tool directory.
 
-Edits that no step covered, in `mc_main.c` and `mc_translate.c` (about 70
-lines):  a Fjalar header comment at the top of each file; in `mc_main.c`, a
-`DEBUG` macro that `MAX_DEBUG_INFO` enables, casts to `void *` in its
-calls, extra `DEBUG` calls, `#undef`s of `SM_OFF`, `SM_OFF_16`, and
-`INLINE`, and the renaming of a parameter `str` to `astr`; and in
-`MC_(instrument)`, 2 copies of a 9-line block that prints registers when
-`fjalar_print_IR` is set.  A later PR could remove them.
+Some edits in `mc_main.c` and `mc_translate.c`, about 70 lines, are not
+hooks; see "Follow-up" below.
 
 ## Principles
 
@@ -95,6 +91,38 @@ calls, extra `DEBUG` calls, `#undef`s of `SM_OFF`, `SM_OFF_16`, and
   `fxState` range partly overlaps an always-defined part of the guest
   state.  In 3.23.0, the range `guest_RAX` through `guest_R15` that
   `fjalar_main.c` passes overlaps none.
+
+## Follow-up
+
+Steps 0-9 leave about 70 lines of edits in `mc_main.c` and
+`mc_translate.c` that are not hooks.  One PR could remove most of them.
+Record `diff-from-valgrind.sh --shortstat` before and after in the PR
+description.  Verify with `make build`, `./check-regtest.sh`,
+`make fjalar-test`, and `./test-kvasir.sh` (output identical to the
+output before the PR), and compare the warnings of a full build before
+and after with `./compare-warnings.sh BEFORE.log AFTER.log`.
+
+- **Register printing in `MC_(instrument)`.**  2 copies of a 9-line block
+  print registers when `fjalar_print_IR` is set.  Move the block to a
+  Fjalar function, so that each copy becomes a one-line call, or remove
+  it.
+- **`#undef`s in `mc_main.c`.**  `SM_OFF` and `SM_OFF_16` are `#undef`ed
+  because `kvasir/dyncomp_main.h` defines a different `SM_OFF`.  Rename
+  DynComp's macro (for example, to `SM_OFF_DC`) and remove both
+  `#undef`s.  Also check why `mc_main.c` `#undef`s `INLINE` before
+  upstream's definition:  no Fjalar header defines `INLINE`.
+- **The renaming of `str` to `astr`** in `check_mem_is_defined_asciiz`.
+  It avoids shadowing the enumerator `str` of `dwarf.h`, but
+  `mc_main.c` now disables `-Wshadow` for that reason, so restore
+  upstream's name.
+- **`DEBUG` in `mc_main.c`.**  The macro, which `MAX_DEBUG_INFO`
+  enables, the casts to `void *` in its calls, and the extra calls.
+  `MAX_DEBUG_INFO` is off by default.  Remove them, unless a developer
+  still uses that output.
+- **The Fjalar header comments** at the top of `mc_main.c` and
+  `mc_translate.c`.  Keep a notice that the file is modified, because
+  the GPL requires modified files to carry one, but it could shrink to a
+  line or two.
 
 ## Not recommended
 
