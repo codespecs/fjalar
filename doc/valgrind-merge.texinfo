@@ -217,6 +217,27 @@ Continuous integration (GitHub Actions, configured in
 @file{.github/workflows/ci.yml}) runs these tests on Ubuntu and Rocky Linux;
 see that file for the exact operating system versions.
 
+For a Valgrind update, also run Valgrind's @command{regtest} tests on the
+current sources, and save the failures that they observe, outside the
+Fjalar tree:
+
+@example
+$INV/fjalar/check-regtest.sh
+cp $INV/fjalar/regtest-<os>-observed.txt $INV/regtest-before-merge.txt
+@end example
+
+@noindent
+where @file{regtest-<os>.log} is the log that @command{check-regtest.sh}
+names when it starts, such as @file{regtest-ubuntu-26.04.log}.
+@command{check-regtest.sh} must report no
+unexpected failures; see
+@ref{Get Current Valgrind Regtest Baseline Results}, which also says what
+to do if this operating system has no expected-failures file.
+@ref{Testing Valgrind} compares the failures after the merge with
+@file{regtest-before-merge.txt}.  It cannot use
+@file{regtest-expected/<os>.txt} for that, because that file may list
+tests that no longer fail.
+
 At this point, the source trees are ready for the merge.
 Remove the build products, including the files that
 @command{automake} and @command{autoconf} generated, so that the build
@@ -344,7 +365,8 @@ Memcheck files that Fjalar's copy of Memcheck, in @file{valgrind/fjalar},
 has but that the base Valgrind release does not have.  These are the files
 in @file{valgrind/fjalar} whose names start with @file{mc_} or
 @file{memcheck}; the other files there are Fjalar's own.
-Fjalar created some of them, such as @file{mc_translate.h}; keep those.
+Fjalar created some of them, such as @file{mc_fjalar.h} and
+@file{mc_translate.h}; keep those.
 Remove the others with @command{git rm}.
 
 @item
@@ -586,9 +608,6 @@ $INV/fjalar/list-file-discrepancies.sh $INV/valgrind-new
 Each list should contain only the files that Fjalar created and the
 files that you decided to keep or to omit.
 
-One bit of confusion is that a portion of the original @file{mc_translate.c}
-has been relocated to @file{fjalar/mc_translate.h} so it can be shared.
-
 The largest modification to Memcheck is in @file{mc_translate.c} and special
 care should be made to ensure it is present and up to date.
 The function @code{MC_(instrument)} handles the instrumentation of calls for
@@ -619,9 +638,6 @@ editing @file{fjalar/kvasir/dyncomp_translate.c} by hand:
 @smallexample
 git -C $INV/fjalar diff valgrind-merge/base valgrind-merge/new -- valgrind/fjalar/mc_translate.c
 @end smallexample
-
-One bit of confusion is that a portion of the original @file{mc_translate.c}
-has been relocated to @file{fjalar/mc_translate.h} so it can be shared.
 
 Additionally Fjalar/Kvasir need to be updated to properly handle any
 changes in Valgrind API/functionality. For the most part Valgrind
@@ -675,31 +691,34 @@ some failures. Rather, it is important to capture the results
 as they should be similar after the source merge. They may not be
 identical due to Valgrind improvements or the addition of new test cases.
 
-To run the @command{regtest} verification tests, build a copy of
-@file{valgrind-new}, so that @file{valgrind-new} stays a clean clone,
-which becomes @file{valgrind-old} for the next merge.
+To run the @command{regtest} verification tests, run
+@command{upstream-regtest.sh}, giving it the file to write the list of
+failing tests to:
 
 @example
-rm -rf $INV/valgrind-new-build
-git clone -q $INV/valgrind-new $INV/valgrind-new-build
-cd $INV/valgrind-new-build
-./autogen.sh
-./configure --prefix=`pwd`/inst
-make all install
-make regtest > test.log 2>&1
+$INV/fjalar/upstream-regtest.sh $INV/regtest-upstream-$VNEWTAG.txt
 @end example
 
 @noindent
-Do not delete @file{valgrind-new-build} until you have compared its
-@command{regtest} results, in @file{$INV/valgrind-new-build/test.log}, in
-@ref{Testing Valgrind}.
+The script checks that @file{valgrind-new} is at @code{$VNEWTAG}, which
+must be set.  It builds a copy of @file{valgrind-new}, in
+@file{$INV/valgrind-new-build}, and runs the tests there.  It never builds
+in @file{valgrind-new} itself, so that @file{valgrind-new} stays a clean
+clone, which becomes @file{valgrind-old} for the next merge.
 
 @noindent
-This will take about 10-15 minutes.  A summary of the @command{regtest}
-results will be at the end of the log file.  We will use these results in
-@ref{Testing Valgrind}.
+This will take about 10-15 minutes.  The test output is in
+@file{$INV/valgrind-new-build/test.log}; a summary of the @command{regtest}
+results is at the end of it.  @file{$INV/regtest-upstream-$VNEWTAG.txt} lists the
+failing tests, in the expected-failures format that
+@command{check-regtest.sh} describes.  We will use these results in
+@ref{Testing Valgrind}.  Keep @file{valgrind-new-build} until the merge
+has landed (@pxref{Testing Valgrind}).  @ref{Testing Valgrind} also
+compares the failures after the merge with the failures in Fjalar's tree
+before the merge, which you saved in
+@ref{Verify current sources pass the regression tests}.
 
-Here is a copy of the last few lines from the latest run of these tests (01/21/2026)
+Here is a copy of the last few lines from the latest run of these tests (2026-01-21)
 running Valgrind 3.23 on a UW/CSE Rocky Linux (9.7) based system:
 
 @smallexample
@@ -731,10 +750,12 @@ make: *** [Makefile:1440: regtest] Error 1
 
 (Note that the failure of all the gdbserver tests indicates that the system does not
 have the proper glibc-debuginfo installed.)
-(Note the final include file failure - this is expected behavior.)
-(Note that the unknown directory failure is expected behavior.)
+(The unknown directory failure is from a build that installed into
+@file{inst} in the source tree, which upstream's header check does not
+know.  @command{upstream-regtest.sh} does not install, so it does not
+have that failure.)
 
-Here is another example from the latest run of these tests (01/21/2026)
+Here is another example from the latest run of these tests (2026-01-21)
 running Valgrind 3.23 on a Ubuntu Linux (25.10) based system:
 
 @smallexample
@@ -800,34 +821,39 @@ Just as is done for a Valgrind source update
 (@ref{Get New Valgrind Regtest Baseline Results}),
 we want to run the Valgrind @command{regtest} regression tests to
 establish a baseline set of results for partial verification of the
-@command{readelf} update process.  However, in this case we want
-to run the tests prior to the source update as we will use the
-current Fjalar sources.
+@command{readelf} update process.  However, these tests use the current
+Fjalar sources rather than upstream's, so run them prior to the source
+update.  (A Valgrind update runs them prior to the merge too;
+@pxref{Verify current sources pass the regression tests}.)
 
 @smallexample
-make -C $INV/fjalar --no-print-directory clean build && \
-  make -C $INV/fjalar --no-print-directory test 2>&1 | tee $INV/fjalar/test.log
+if [ -f $INV/fjalar/valgrind/Makefile ]; then make -C $INV/fjalar clean; fi \
+  && (set -o pipefail; make -C $INV/fjalar build 2>&1 | tee $INV/fjalar/build-before.log) \
+  && $INV/fjalar/check-regtest.sh
 @end smallexample
+
+@noindent
+@file{build-before.log} is for comparing compiler warnings after the
+merge (@pxref{Hints to modifying dwarf.c and readelf.c}).
+The @code{clean} makes the build recompile every file, so that the log
+contains all the warnings.  It is skipped in a tree that has never been
+built, where it would fail because @command{make build} has not yet
+created @file{valgrind/Makefile}.
 
 @noindent
 As noted in @ref{Get New Valgrind Regtest Baseline Results},
-we do not expect all the tests to pass.  We will use the results in
-@ref{Testing Valgrind}.
-
-@noindent
-Note: If there have been no operating system updates, we would expect
-the results to be identical to the ones obtained the last time a
-full Valgrind update was done.
-
-To compare compiler warnings before and after the merge
-(@pxref{Hints to modifying dwarf.c and readelf.c}), save the output of a
-build of Fjalar.  An incremental build prints no warnings for the files
-that it does not recompile, so these commands rebuild all of Fjalar:
+we do not expect all the tests to pass.  @command{check-regtest.sh}
+compares the failures with the expected failures for this operating
+system, in @file{regtest-expected/<os>.txt}, and must report no
+unexpected failures.  If this operating system has no such file, create
+a local one, which you should not commit:
 
 @smallexample
-make -C $INV/fjalar/valgrind/fjalar clean
-(set -o pipefail; make -C $INV/fjalar/valgrind/fjalar 2>&1 | tee $INV/fjalar/build-before.log)
+$INV/fjalar/check-regtest.sh --log $INV/fjalar/regtest-<os>.log --update
 @end smallexample
+
+@noindent
+@ref{Testing Valgrind} compares against it.
 
 
 @node Merging the binutils changes
@@ -851,10 +877,33 @@ instructions in that section).
 
 Set @env{BUNEWVER} to the Binutils version to merge; find the latest one
 at @uref{https://ftp.gnu.org/gnu/binutils/?C=M;O=D}.  The old version is
-the one in @file{$INV/fjalar/valgrind/REVISION}.  Then merge:
+the one in @file{$INV/fjalar/valgrind/REVISION}.
 
 @example
 export BUNEWVER=2.42
+@end example
+
+To see how hard the merge will be without doing it, pass @option{--trial}:
+
+@example
+$INV/fjalar/merge-binutils.sh --trial $BUNEWVER
+@end example
+
+@noindent
+For each file of the old release that Fjalar changed, it prints the number
+of changes (runs of consecutive changed lines), added lines, and removed
+lines in Fjalar's version.  Then it prints the number of conflicts that the
+merge would have in each file.  It merges in memory, so it changes neither
+the tree, the index, nor any ref, and it allows uncommitted changes, which
+it includes in the measurement.  It requires Git 2.40 or later, or 2.43 or
+later with a cherry-pick option.  With @option{--trial}, the only
+cherry-pick options are strategy options, such as @option{-Xpatience}.  If
+the merge would have too many conflicts to resolve by hand, merge an
+intermediate Binutils release first, as described below.
+
+Then merge:
+
+@example
 $INV/fjalar/merge-binutils.sh $BUNEWVER
 @end example
 
@@ -915,10 +964,10 @@ Now, handle the conflicts.  @file{merge-binutils.sh} lists the files with
 conflicts, and @command{git status} lists them as unmerged.  Each conflict
 in a file is marked by @samp{<<<<<<<}, @samp{|||||||}, @samp{=======}, and
 @samp{>>>>>>>} lines, which surround Fjalar's version, the old Binutils
-version, and the new Binutils version.  (The old Binutils version is
-omitted if your Git configuration sets @code{merge.conflictStyle} to
-@samp{merge}.)  Mark each file as resolved with @command{git add}.  When
-you are done, this command produces no output:
+version, and the new Binutils version.  (The script uses this conflict
+style regardless of your Git configuration's @code{merge.conflictStyle}.)
+Mark each file as resolved with @command{git add}.  When you are done, this
+command produces no output:
 
 @example
 git -C $INV/fjalar diff --name-only --diff-filter=U
@@ -1024,6 +1073,22 @@ docker run --rm --pull=always $IMAGE:latest \
   grep -w NAME /usr/include/bfd.h
 @end example
 @end itemize
+
+After you have resolved the conflicts, check that no call of a Fjalar
+hook was lost or duplicated.  The hooks are the functions declared in
+@file{typedata.h}, @file{fjalar_dwarf.h}, @file{fjalar_include.h},
+@file{fjalar_main.h}, and @file{GenericHashtable.h}, which build Fjalar's
+DWARF entries, symbol tables, and line-number table, either before the merge
+or now.  This command
+prints each hook whose number of calls in @file{dwarf.c} or
+@file{readelf.c} changed, outside @code{#if 0} regions and comments:
+
+@example
+$INV/fjalar/check-hook-counts.sh
+@end example
+
+@noindent
+Explain each difference.  The script's header comment gives the details.
 
 After you have completed the source merge,
 update the ``@code{export BINUTILS_VERSION=}'' line in @file{fjalar/valgrind/REVISION}.
@@ -1222,22 +1287,57 @@ run the installed Fjalar under @file{valgrind/inst}, so without
 @section Testing Valgrind
 
 Before we test Fjalar, it is a good idea to verify we haven't
-broken the underlying Valgrind:
+broken the underlying Valgrind.  @command{check-regtest.sh} runs
+Valgrind's @command{regtest} tests and compares the failures with the
+expected failures for this operating system, in
+@file{regtest-expected/<os>.txt}:
 
 @smallexample
-make -C $INV/fjalar --no-print-directory test 2>&1 | tee $INV/fjalar/test-after.log
+$INV/fjalar/check-regtest.sh
 @end smallexample
 
 @noindent
-While a few tests may not pass, the results at the end of
-@file{test-after.log} should be identical to
-the results obtained when running these tests
-as described in @ref{Get New Valgrind Regtest Baseline Results}
-(for a Valgrind update, in @file{$INV/valgrind-new-build/test.log})
-or @ref{Get Current Valgrind Regtest Baseline Results}
-(for a Binutils update, in @file{$INV/fjalar/test.log}).
-For a Valgrind update, once the comparison is done, delete the build copy:
-@code{rm -rf $INV/valgrind-new-build}.
+For a Binutils update, which does not change Valgrind, it must report no
+unexpected failures.  A new failure is a bug in the merge, or the result
+of an operating system or compiler update; to tell which, run the tests
+on the old sources.
+
+For a Valgrind update, the expected failures change, because the new
+release adds, removes, and fixes tests.  First compare the failures with
+the list that @command{upstream-regtest.sh} wrote
+(@pxref{Get New Valgrind Regtest Baseline Results}):
+
+@smallexample
+$INV/fjalar/check-regtest.sh --log $INV/fjalar/regtest-<os>.log \
+  --expected $INV/regtest-upstream-$VNEWTAG.txt --report-only
+@end smallexample
+
+@noindent
+Each failure that it reports is not an upstream failure.  If it is in
+@file{$INV/regtest-before-merge.txt}
+(@pxref{Verify current sources pass the regression tests}), it failed
+before the merge too, and is specific to Fjalar; otherwise it was probably
+caused by the merge, so fix it.  A test that
+@file{regtest-expected/<os>.txt} marks with @samp{?} may fail only
+sometimes, so if such a test is not in
+@file{regtest-before-merge.txt}, run the tests again before you conclude
+that the merge broke it.  Only when no failure of the second kind remains, rewrite the
+expected failures, which adds the new upstream failures and removes the
+tests that now pass, and review the diff:
+
+@smallexample
+$INV/fjalar/check-regtest.sh --log $INV/fjalar/regtest-<os>.log --update
+@end smallexample
+
+@noindent
+Commit the diff only if the list is committed, not if you created it
+locally.
+
+For a Valgrind update, keep the build copy until the merge has landed,
+because a failure that appears only in CI may need to be compared with
+upstream's results; then delete it and the list of failures before the
+merge:
+@code{rm -rf $INV/valgrind-new-build $INV/regtest-before-merge.txt}.
 
 
 @node Testing Fjalar
@@ -1268,7 +1368,7 @@ address ranges in @file{$DAIKONDIR/tests/kvasir-tests/clean-output.pl}
 with those in the new binaries and see if changes to
 @file{clean-output.pl} are required.
 
-After a Binutils merge, also run Kvasir with @option{--fjalar-debug-dump=yes},
+After a Binutils merge, also run Kvasir with @option{--fjalar-debug-dump},
 which mimics @samp{readelf --debug-dump}, on a program compiled with
 @option{-gdwarf-5}, and compare its output with that of the new Binutils'
 @command{readelf}.  The system's @command{readelf} may be older, so build
@@ -1279,6 +1379,25 @@ path:
 READELF=$($INV/fjalar/build-binutils-readelf.sh $BUNEWVER)
 $READELF --debug-dump @var{program}
 @end example
+
+The Kvasir tests check only the @file{.decls} and @file{.dtrace} files, not
+the output of @option{--fjalar-debug-dump} and @option{--fjalar-debug}.
+@command{compare-debug-output.sh} checks all of them: it runs Fjalar on
+programs compiled from Fjalar's tests and compares the output with a
+baseline.  Its first run saves the baseline, and later runs compare with
+it.  Save the baseline with a built Fjalar tree that does not contain the
+merge, such as a clone of the master branch, and then compare with the
+merged tree:
+
+@example
+@var{unmerged-fjalar}/compare-debug-output.sh /tmp/$USER/debug-output
+$INV/fjalar/compare-debug-output.sh /tmp/$USER/debug-output
+@end example
+
+@noindent
+A Valgrind or Binutils merge may change the output intentionally; review
+each difference.  See the comments at the top of
+@file{compare-debug-output.sh} for details.
 
 
 @node Documenting Changes
@@ -1355,12 +1474,32 @@ include additional information specific to the amd64 and x86 platforms.
 Finally, we had to extend Valgrind's implementation of the C library
 with a few extra functions.
 
+To see all of Fjalar's modifications to the Valgrind release that
+@file{valgrind/REVISION} names, run:
+
+@example
+$INV/fjalar/diff-from-valgrind.sh
+@end example
+
+@noindent
+It accepts the options of @command{git diff}, such as @option{--stat} and
+@option{-w}.  It compares with @file{$INV/valgrind-old}; to compare with
+another clone of that release, such as @file{$INV/valgrind-new} after a
+merge, give @option{--valgrind=@var{dir}}.  Every modification is a
+potential conflict in the next merge, so keep them few:  put Fjalar's code
+in Fjalar's own files where possible, and keep upstream's whitespace.
+Continuous integration runs @command{check-valgrind-whitespace.sh}, which
+fails if Fjalar's copy of an upstream file has a change of whitespace
+alone, such as removed trailing whitespace or an added blank line.  On a line
+whose text Fjalar also changed, a change of whitespace adds no conflict, so
+the check ignores it.
+
 (Remember that we assume @env{$INV} points to a parent directory that
 contains both the Daikon and Fjalar source trees.)
 
 @table @asis
 @item $INV/fjalar/valgrind/configure.ac
-Change id to Fjalar; add fjalar/Makefile to list of targets
+Add fjalar/Makefile to list of targets
 @item $INV/fjalar/valgrind/coregrind/m_libcbase.c
 Add VG_ version of strnlen
 @item $INV/fjalar/valgrind/coregrind/m_libcfile.c
@@ -1380,23 +1519,17 @@ Add VG_ version of mkdir and fcntl
 @item $INV/fjalar/valgrind/include/pub_tool_machine.h
 Add get and set functions for additional machine registers
 @item $INV/fjalar/valgrind/Makefile.am
-Add fjalar to the list of tools; add files to clean-local target
+Add fjalar to the list of tools
 @item $INV/fjalar/valgrind/none/tests/Makefile.am
 Add @nospellcheck{coregrind/libcoregrind-amd64-linux.a to libvex} tests
 @item $INV/fjalar/valgrind/tests/check_headers_and_includes
 Add fjalar to @nospellcheck{tool_dirs and inst to dirs_to_ignore}
-@item $INV/fjalar/valgrind/VEX/priv/guest_amd64_helpers.c
-Add additional general purpose registers to the guest state
-@item $INV/fjalar/valgrind/VEX/priv/guest_x86_helpers.c
-Add additional general purpose registers to the guest state
 @item $INV/fjalar/valgrind/VEX/priv/host_amd64_defs.c
 Add function name to debug dump of call instruction
 @item $INV/fjalar/valgrind/VEX/priv/host_generic_reg_alloc2.c
 Modify memory calculation using the shadow size
-@item $INV/fjalar/valgrind/VEX/pub/libvex.h
-Add additional general purpose registers to the guest state
-@item $INV/fjalar/valgrind/VEX/pub/libvex_ir.h
-Add additional general purpose registers to the guest state
+@item $INV/fjalar/valgrind/VEX/priv/host_generic_reg_alloc3.c
+Modify memory calculation using the shadow size
 @end table
 
 
@@ -1404,19 +1537,35 @@ Add additional general purpose registers to the guest state
 @appendix Memcheck modifications
 
 The modifications made to Memcheck are more organizational in nature.
-A few functions from @file{mc_main.c} and @file{mc_translate.c} have been made
-non-static. An extra header has also been created and filled with their
-signatures for use by Fjalar.  Several changes to remove compile warnings
+Fjalar code that uses static functions of @file{mc_main.c} or
+@file{mc_translate.c} is in a file that each of them includes, and
+@file{mc_fjalar.h} and @file{mc_translate.h} declare that code for the
+rest of Fjalar.  Several changes to remove compile warnings
 for use of function name as variable.
 
 Other modifications include:
 
 @table @asis
 @item $INV/fjalar/valgrind/fjalar/mc_main.c
-Run-time arguments and versioning information for Kvasir to replace
-the default Memcheck ones
+Run-time arguments for Fjalar.  (Fjalar does not change Memcheck's
+details, such as its name and version, in @code{mc_pre_clo_init}; instead,
+@code{fjalar_pre_clo_init} in @file{fjalar_main.c} and each tool's
+@code{fjalar_tool_pre_clo_init} override them.)  Also, an @code{#include} of
+@file{fjalar_mc_main.h}, which defines the functions that Fjalar adds to
+Memcheck (@file{mc_fjalar.h} declares them).  Those functions call
+static functions of @file{mc_main.c}, such as @code{set_vabits2},
+@code{set_sec_vbits8}, @code{get_vabits2},
+@code{is_mem_defined}, and @code{is_mem_addressable}, so the
+@code{#include} must follow the definitions of those functions.
 @item $INV/fjalar/valgrind/fjalar/mc_translate.c
 In Memcheck's instrumentation block, duplicate each case for DynComp.
+Also, a @code{DC} kind of @code{TempKind}, for DynComp's temporaries,
+and an @code{#include} of @file{fjalar_mc_translate.h}, which defines
+the functions through which the rest of Fjalar uses Memcheck's
+instrumenter (@file{mc_translate.h} declares them).  Those functions
+use @code{MCEnv} and static functions of @file{mc_translate.c}, such as
+@code{stmt}, @code{newTemp}, and @code{shadowTypeV}, so the
+@code{#include} must follow the definitions of those.
 @end table
 
 
@@ -1454,11 +1603,37 @@ layout is very similar to Memcheck's, so mirroring functionality should
 be fairly straightforward.
 
 New VEX IR operations (@code{Iop_*} values) are added in many Valgrind
-releases.  @code{expr2tags_Binop_DC}, @code{expr2tags_Triop_DC}, and
-@code{expr2tags_Qop_DC} panic when they encounter an operation that they
-do not handle, and @code{expr2tags_Unop_DC} passes the operand's tag
-through unchanged.  So, every new operation must be considered, even if
-the regression tests do not exercise it.
+releases.  @code{expr2tags_Unop_DC}, @code{expr2tags_Binop_DC},
+@code{expr2tags_Triop_DC}, and @code{expr2tags_Qop_DC} panic when they
+encounter an operation that they do not handle.  So, every new operation
+must be considered, even if the regression tests do not exercise it.
+
+The test @file{valgrind/fjalar/tests/dyncomp-op-coverage-test.sh}, which
+@code{make fjalar-test} runs, finds the operations to consider.  It takes
+each operation's arity from @code{typeOfPrimop} in
+@file{VEX/priv/ir_defs.c}, and it checks that each operation either has a
+case label in the function for its arity or is listed in the comment of
+@file{dyncomp_translate.c} that begins ``The following opcodes are not
+implemented'', in the subsection for that function.  The comment lists the
+operations that the supported guests, amd64 and x86, do not use, so the
+test also checks that the amd64 and x86 front ends
+(@file{VEX/priv/guest_amd64_*.c}, @file{VEX/priv/guest_x86_*.c}, and
+@file{VEX/priv/guest_generic_*.c}) use none of them.  Finally, it checks
+that no listed operation also has a case label, that every listed
+operation still exists and has the arity of its subsection, and that no
+case label falls through to the @code{default} case.
+
+When the test fails after a merge, give each operation that it reports a
+case label in the function for its arity, with the same tag behavior as
+similar operations (Memcheck's treatment in
+@file{memcheck/mc_translate.c} is a good guide).  If no supported guest
+uses the operation, you may instead list it in the comment.  Remove a
+listed operation that VEX no longer has.
+
+To find the unhandled operations that a program reaches without stopping
+at the first one, run it with @option{--dyncomp-unhandled-ops=warn}, which
+prints a warning the first time that DynComp encounters each unhandled
+operation and approximates its tag behavior.
 
 Another type of addition that will need to be supported are added
 "IR Expressions." Most VEX IR instructions are implemented as a set

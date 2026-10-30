@@ -26,7 +26,7 @@
 #include "fjalar_select.h"
 #include "generate_fjalar_entries.h"
 #include "disambig.h"
-#include "mc_include.h"
+#include "mc_fjalar.h"
 
 #include "pub_tool_threadstate.h"
 
@@ -852,6 +852,128 @@ void visitClassMemberVariables(VisitArgs* args) {
   FJALAR_DPRINTF("Exit  visitClassMemberVariables\n");
 }
 
+// Returns true if all of the size bytes at guest address guestAddr are
+// within the guest stack that enter_function copied to funcPtr's
+// virtual stack, [guestStackStart, guestStackEnd).  The virtual stack
+// holds nothing for the bytes at or past guestStackEnd.  The size is
+// compared with the bytes that remain after guestAddr, rather than added to
+// guestAddr, so that the check cannot overflow.
+static Bool isInCopiedStack(FunctionEntry* funcPtr, Addr guestAddr, int size)
+{
+  return ((guestAddr >= funcPtr->guestStackStart) &&
+          (guestAddr < funcPtr->guestStackEnd) &&
+          ((Addr)size <= funcPtr->guestStackEnd - guestAddr));
+}
+
+// Returns the address in funcPtr's virtual stack that corresponds to
+// guest address guestAddr, which must be within the copied guest stack.
+static Addr virtualStackAddr(FunctionEntry* funcPtr, Addr guestAddr)
+{
+  return funcPtr->lowestVirtSP + (guestAddr - funcPtr->guestStackStart);
+}
+
+// Returns true if Fjalar cannot read formal parameter var's location,
+// so visitVariableGroup omits var.
+Bool formalParamIsOmitted(VariableEntry* var)
+{
+  // A heuristic may set validLoc even if the location is unsupported.
+  return !var->validLoc || var->locationUnsupported;
+}
+
+// Returns the guest address of formal parameter var of an invocation
+// of funcPtr, computed from var's DWARF location expression.
+// stackBaseAddrGuest is the invocation's frame base, and entryRegs
+// holds the registers' values at function entrance (such as
+// FunctionExecutionState.FP and .entryRegs).  For a register
+// location, the result is the address of the register's entrance value
+// in entryRegs, which has no guest address.  Returns 0 if the location
+// uses a register that was not saved at function entrance.
+Addr formalParamLocation(VariableEntry* var, FunctionEntry* funcPtr,
+                         Addr stackBaseAddrGuest, Addr* entryRegs)
+{
+  Addr var_loc = (Addr) NULL;
+  unsigned int i = 0;
+
+  // Dwarf Locations are implemented as a sequence of operations to be performed.
+  for(i = 0; i < var->location_expression_size; i++ ) {
+    dwarf_location *dloc  = &(var->location_expression[i]);
+    unsigned int  op = dloc->atom;
+    location_op_kind kind = location_op_kind_of(op);
+
+    if(kind == LOC_OP_DEREF) {
+      // Dereference result of last DWARF operation.  If the
+      // address is within the copied stack, read it from the
+      // virtual stack, which holds its value at function
+      // entrance, for the same reason that Fjalar reads a
+      // variable from there:  at function exit, the function
+      // body may have overwritten the memory that holds the
+      // address.
+      tl_assert(var_loc);
+      if (isInCopiedStack(funcPtr, var_loc, sizeof(Addr))) {
+        var_loc = virtualStackAddr(funcPtr, var_loc);
+      } else if (!addressIsAllocated(var_loc, sizeof(Addr))) {
+        // The address is not allocated, so dereferencing it
+        // could crash Fjalar.  This can happen if some
+        // heuristic marked the location valid.
+        FJALAR_DPRINTF("\tDW_OP_deref of unallocated address %p; value is nonsensical\n",
+                       (void *)var_loc);
+        var_loc = 0;
+        break;
+      }
+      var_loc = *(Addr *)var_loc;
+
+    } else if(kind == LOC_OP_PLUS_UCONST) {
+      // Add DWARF supplied constant to value to result of last DWARF operation
+      var_loc += dloc->atom_offset;
+
+    } else if((kind == LOC_OP_REG) || (kind == LOC_OP_BREG)) {
+      // DW_OP_regN: the value is in register N.
+      // DW_OP_bregN: the value is at an offset from register N's value.
+      // Either way, use the value that the register held at
+      // function entrance (after the prologue), which is saved
+      // (with its A and V bits and tags) in the
+      // FunctionExecutionState.  At function exit, the body may
+      // have overwritten the register and the epilogue has
+      // already restored or popped it.
+      Bool isBreg = (kind == LOC_OP_BREG);
+      UInt regNum = op - (isBreg ? DW_OP_breg0 : DW_OP_reg0);
+      if (!entryRegs || !(funcPtr->entryRegsMask & (1U << regNum))) {
+        // extractOneFormalParameterVar() saves every register that
+        // a valid location uses, but some heuristic marked the
+        // location valid anyway.
+        FJALAR_DPRINTF("\tRegister %s was not saved at entrance; value is nonsensical\n",
+                       dwarf_reg_name(regNum));
+        var_loc = 0;
+        break;
+      }
+      if (isBreg) {
+        Addr reg_val = entryRegs[regNum];
+        FJALAR_DPRINTF("\tObtaining entrance register value: [%%%s]: %p\n", dwarf_reg_name(regNum),
+                       (void *)reg_val);
+        var_loc = reg_val + dloc->atom_offset;
+        FJALAR_DPRINTF("\tAdding %lld to the register value for %p\n", dloc->atom_offset, (void *)var_loc);
+        tl_assert(var_loc);
+      } else {
+        FJALAR_DPRINTF("\tObtaining entrance value of register: [%%%s]\n", dwarf_reg_name(regNum));
+        var_loc = (Addr)&entryRegs[regNum];
+      }
+
+    } else if(kind == LOC_OP_FBREG) {
+      // Get value located at an offset from the FRAME_BASE.
+      FJALAR_DPRINTF("atom offset: %lld vs. byteOffset: %d\n", dloc->atom_offset, var->byteOffset);
+      var_loc = stackBaseAddrGuest + dloc->atom_offset;
+
+    } else {
+      // decode_location_expression marked the location unsupported.
+      FJALAR_DPRINTF("\tUnsupported DWARF stack OP: %s\n", location_expression_to_string(op));
+      tl_assert(0);
+    }
+    FJALAR_DPRINTF("\tApplying DWARF Stack Operation %s - %p\n",location_expression_to_string(op), (void *)var_loc);
+  }
+
+  return var_loc;
+}
+
 // Visits an entire group of variables, depending on the value of varOrigin:
 // If varOrigin == GLOBAL_VAR, then visit all global variables
 // If varOrigin == FUNCTION_FORMAL_PARAM, then visit all formal parameters
@@ -930,13 +1052,10 @@ void visitVariableGroup(VariableOrigin varOrigin,
       continue;
     }
 
-    // Omit a formal parameter whose location Fjalar cannot read.  This
-    // test does not depend on stackBaseAddr, so that the .decls file
-    // (which is written without a stack) declares exactly the
+    // This test does not depend on stackBaseAddr, so that the .decls
+    // file (which is written without a stack) declares exactly the
     // variables that the .dtrace file contains.
-    // A heuristic may set validLoc even if the location is unsupported.
-    if ((varOrigin == FUNCTION_FORMAL_PARAM)
-        && (!var->validLoc || var->locationUnsupported)) {
+    if ((varOrigin == FUNCTION_FORMAL_PARAM) && formalParamIsOmitted(var)) {
       FJALAR_DPRINTF("\t[visitVariableGroup] invalid loc, punting\n");
       continue;
     }
@@ -950,7 +1069,6 @@ void visitVariableGroup(VariableOrigin varOrigin,
 
       if(var->location_expression_size) {
         Addr var_loc = (Addr) NULL;
-        unsigned int i = 0;
 
         // MAIN STACK LAYOUT
         // (comment added 2009)  
@@ -1006,80 +1124,11 @@ void visitVariableGroup(VariableOrigin varOrigin,
         }
         else {
 
-          // Dwarf Locations are implemented as a sequence of operations to be performed.
-          for(i = 0; i < var->location_expression_size; i++ ) {
-            dwarf_location *dloc  = &(var->location_expression[i]);
-            unsigned int  op = dloc->atom;
-            location_op_kind kind = location_op_kind_of(op);
-
-            if(kind == LOC_OP_DEREF) {
-              // Dereference result of last DWARF operation
-              tl_assert(var_loc);
-              var_loc = *(Addr *)var_loc;
-
-            } else if(kind == LOC_OP_CONST) {
-              // DWARF supplied constant
-              var_loc = dloc->atom_offset;
-
-            } else if(kind == LOC_OP_PLUS_UCONST) {
-              // Add DWARF supplied constant to value to result of last DWARF operation
-              var_loc += dloc->atom_offset;
-
-            } else if((kind == LOC_OP_REG) || (kind == LOC_OP_BREG)) {
-              // DW_OP_regN: the value is in register N.
-              // DW_OP_bregN: the value is at an offset from register N's value.
-              // Either way, use the value that the register held at
-              // function entrance (after the prologue), which is saved
-              // (with its A and V bits and tags) in the
-              // FunctionExecutionState.  At function exit, the body may
-              // have overwritten the register and the epilogue has
-              // already restored or popped it.
-              Bool isBreg = (kind == LOC_OP_BREG);
-              UInt regNum = op - (isBreg ? DW_OP_breg0 : DW_OP_reg0);
-              if (!entryRegs || !(funcPtr->entryRegsMask & (1U << regNum))) {
-                // extractOneFormalParameterVar() did not accept the
-                // register location, so the register was not saved,
-                // but some heuristic marked the location valid anyway.
-                FJALAR_DPRINTF("\tRegister %s was not saved at entrance; value is nonsensical\n",
-                               dwarf_reg_name(regNum));
-                var_loc = 0;
-                break;
-              }
-              if (isBreg) {
-                Addr reg_val = entryRegs[regNum];
-                FJALAR_DPRINTF("\tObtaining entrance register value: [%%%s]: %p\n", dwarf_reg_name(regNum),
-                               (void *)reg_val);
-                var_loc = reg_val + dloc->atom_offset;
-                FJALAR_DPRINTF("\tAdding %lld to the register value for %p\n", dloc->atom_offset, (void *)var_loc);
-                tl_assert(var_loc);
-              } else {
-                FJALAR_DPRINTF("\tObtaining entrance value of register: [%%%s]\n", dwarf_reg_name(regNum));
-                var_loc = (Addr)&entryRegs[regNum];
-              }
-
-            } else if(kind == LOC_OP_FBREG) {
-              // Get value located at an offset from the FRAME_BASE.
-              FJALAR_DPRINTF("atom offset: %lld vs. byteOffset: %d\n", dloc->atom_offset, var->byteOffset);
-              var_loc = stackBaseAddrGuest + dloc->atom_offset;
-
-            } else {
-              // decode_location_expression marked the location unsupported.
-              FJALAR_DPRINTF("\tUnsupported DWARF stack OP: %s\n", location_expression_to_string(op));
-              tl_assert(0);
-            }
-            FJALAR_DPRINTF("\tApplying DWARF Stack Operation %s - %p\n",location_expression_to_string(op), (void *)var_loc);
-          }
+          var_loc = formalParamLocation(var, funcPtr, stackBaseAddrGuest, entryRegs);
 
           // Read the variable from the virtual stack only if all of it
-          // is within the copied guest stack, [guestStackStart,
-          // guestStackEnd).  The virtual stack holds nothing for the
-          // bytes at or past guestStackEnd.  The size is compared with
-          // the bytes that remain after var_loc, rather than added to
-          // var_loc, so that the check cannot overflow.
-          if((var_loc >= funcPtr->guestStackStart) &&
-              (var_loc < funcPtr->guestStackEnd) &&
-              ((Addr)formalParamByteSize(var)
-               <= funcPtr->guestStackEnd - var_loc)) {
+          // is within the copied guest stack.
+          if(isInCopiedStack(funcPtr, var_loc, formalParamByteSize(var))) {
 
 #if defined(VGA_amd64)
           if(!isEnter) {
@@ -1180,6 +1229,12 @@ void visitVariableGroup(VariableOrigin varOrigin,
 }
 
 
+// visitReturnValue() reads a value that spans xAX and xDX, such as a
+// small struct on amd64 or a long long on x86, at (Addr)&(e->xAX).
+// (Valgrind's offsetof is not an integer constant expression.)
+STATIC_ASSERT(__builtin_offsetof(FunctionExecutionState, xDX) ==
+              __builtin_offsetof(FunctionExecutionState, xAX) + sizeof(Word));
+
 // Grabs the appropriate return value of the function denoted by the
 // execution state 'e' from Valgrind simulated registers and visits
 // the variables to perform some action.  This differs from calling
@@ -1214,50 +1269,27 @@ void visitReturnValue(FunctionExecutionState* e,
 
   stringStackPush(&fullNameStack, cur_node->var->name);
 
-  // Struct/union type - use xAX but remember that xAX holds
-  // a POINTER to the struct/union so we must dereference appropriately
-  // WE NEED TO CHECK THAT declaredPtrLevels == 0 since we need a
-  // real struct/union, not just a pointer to one
-  // BE CAREFUL WITH declaredType - it may be misleading since all
-  // pointers share the same declaredType
-  // RUDD - Need an extra indirection level for references.
+  // Struct/union type, returned by value.  The test must check
+  // ptrLevels, because varType is the same for a struct/union and for
+  // every pointer to it.  A reference to a struct/union is handled
+  // by the int/pointer case below, because it needs an extra
+  // indirection level.
   if ((cur_node->var->ptrLevels == 0) &&
       (IS_AGGREGATE_TYPE(cur_node->var->varType)) && !cur_node->var->referenceLevels) {
 
 
-    // AMD64 special case: If the size of the the struct is <= the size
-    // of 2 architectural registers, it is passed via RAX and RDX.
-    // We're going to express this by creating a 16 byte buffer and
-    // copying the contents of RAX and EDX to it and passing a pointer
-    // to it.
+    // AMD64 special case: If the size of the struct is <= the size
+    // of 2 architectural registers, it is returned in RAX and RDX.
+    // e->xAX and e->xDX are adjacent, so the struct is at &(e->xAX),
+    // with its shadow state.
 #if defined(VGA_amd64)
-    if(cur_node->var->varType->byteSize <= 16) {
-      char returnBuffer[16];
-
-      VG_(memcpy)(returnBuffer                       ,  &e->xAX, 8);
-      VG_(memcpy)(returnBuffer + (Addr)sizeof(e->xAX),  &e->xDX, 8);
-
-      unsigned long long int uLong = (e->xAX);
+    if(cur_node->var->varType->byteSize <= sizeof(e->xAX) + sizeof(e->xDX)) {
       FJALAR_DPRINTF("tiny struct\n");
 
-      // Copy A and V bits over:
-      mc_copy_address_range_state((Addr)(&(e->xAX)),
-                                  (Addr)(&returnBuffer),
-                                  sizeof(e->xAX));
-
-      mc_copy_address_range_state((Addr)(&(e->xDX)),
-                                  (Addr)(&returnBuffer) + (Addr)sizeof(e->xAX),
-                                  sizeof(e->xDX));
-
-      // Remember to copy A and V-bits over:
-      mc_copy_address_range_state((Addr)(&(e->xAX)),
-                                  (Addr)(&uLong),
-                                  sizeof(e->xAX));
-
       visitVariable(cur_node->var,
-                    (Addr) returnBuffer,
-                    0,
-                    1, // e->xAXvalid,
+                    (Addr)&(e->xAX),
+                    0, /* registers, no guest location */
+                    0, // e->xAXvalid,
                     0,
                     performAction,
                     FUNCTION_RETURN_VAR,
@@ -1288,7 +1320,8 @@ void visitReturnValue(FunctionExecutionState* e,
   else if ((cur_node->var->ptrLevels == 0) &&
            ((cur_node->var->varType->decType == D_FLOAT) ||
             (cur_node->var->varType->decType == D_DOUBLE) ||
-            (cur_node->var->varType->decType == D_LONG_DOUBLE))) {
+            (cur_node->var->varType->decType == D_FLOAT16) ||
+            (cur_node->var->varType->decType == D_BFLOAT16))) {
     // SPECIAL CASE: The value in FPU must be interpreted as a double
     // even if its true type may be a float
     FJALAR_DPRINTF("RETURN - floating point: cur_node=%p, basePtr=%p, value=%.16g\n",
@@ -1303,60 +1336,11 @@ void visitReturnValue(FunctionExecutionState* e,
                   funcPtr,
                   0);
   }
-  // Remember that x86 long long int types use xAX as the low 4 bytes
-  // and xDX as the high 4 bytes
-  // long long ints - create a long long int and pass its address
-  /* XXX shouldn't do this for 64-bit long long on AMD64 */
-  // UNDONE: rust support for U128
-  else if ((sizeof(UWord) == 4) && (cur_node->var->ptrLevels == 0) &&
-           (cur_node->var->varType->decType == D_UNSIGNED_LONG_LONG_INT)) {
-    unsigned long long int uLong = (e->xAX) | (((unsigned long long int)(e->xDX)) << 32);
-    FJALAR_DPRINTF("long long int type\n");
-
-    // Remember to copy A and V-bits over:
-    mc_copy_address_range_state((Addr)(&(e->xAX)),
-                                (Addr)(&uLong),
-                                sizeof(e->xAX));
-
-    mc_copy_address_range_state((Addr)(&(e->xDX)),
-                                (Addr)(&uLong) + (Addr)sizeof(e->xAX),
-                                sizeof(e->xDX));
-
-    visitVariable(cur_node->var,
-                  (Addr)&uLong,
-                  0, /* registers, no guest location */
-                  0,
-                  0,
-                  performAction,
-                  FUNCTION_RETURN_VAR,
-                  funcPtr,
-                  0);
-  }
-  // UNDONE: rust support for I128
-  else if ((sizeof(UWord) == 4) && (cur_node->var->ptrLevels == 0) &&
-           (cur_node->var->varType->decType == D_LONG_LONG_INT)) {
-    long long int signedLong = (e->xAX) | (((long long int)(e->xDX)) << 32);
-
-    // Remember to copy A and V-bits over:
-    mc_copy_address_range_state((Addr)(&(e->xAX)),
-                                (Addr)(&signedLong),
-                                sizeof(e->xAX));
-
-    mc_copy_address_range_state((Addr)(&(e->xDX)),
-                                (Addr)(&signedLong) + (Addr)sizeof(e->xAX),
-                                sizeof(e->xDX));
-
-    visitVariable(cur_node->var,
-                  (Addr)&signedLong,
-                  0, /* registers, no guest location */
-                  0,
-                  0,
-                  performAction,
-                  FUNCTION_RETURN_VAR,
-                  funcPtr,
-                  0);
-  }
-  // All other types (integer and pointer) - use xAX
+  // All other types (integer and pointer) - use xAX.  On x86, a
+  // long long is returned with its low 4 bytes in EAX and its high 4
+  // bytes in EDX; e->xAX and e->xDX are adjacent, so the long long
+  // is at &(e->xAX).
+  // UNDONE: rust support for U128 and I128
   else {
     FJALAR_DPRINTF("int or pointer type\n");
     // Need an additional indirection level
@@ -1420,13 +1404,18 @@ static char interestedInVar(const HChar* fullFjalarName, char* trace_vars_tree) 
 // nothing to read: Rust gives a ZST a fabricated dangling address rather than
 // real storage, so reporting one yields "nonsensical" at best.
 //
-// A 128-bit integer (Rust's u128 and i128) has no C type wide enough to print
-// it with, so Fjalar cannot yet write its value.  Printing the low 64 bits
-// would emit a plausible-looking wrong number that Daikon would infer
-// invariants from, which is worse than omitting the variable, so suppress
-// these until 128-bit printing is implemented.
+// An integer wider than 64 bits (Rust's u128 and i128, and C's __int128 and
+// _BitInt(N) for N > 64) has no C type that Fjalar can print it with, so
+// Fjalar cannot yet write its value.  Printing the low 64 bits would emit a
+// plausible-looking wrong number that Daikon would infer invariants from,
+// which is worse than omitting the variable, so suppress these until wide
+// integer printing is implemented.
 //
-// Both of those reasons concern printing a value *of* the type, so they apply
+// A _Complex number and a decimal floating-point number (_Decimal64 and
+// the like) have no Daikon representation, so Fjalar does not report their
+// values.
+//
+// Those reasons concern printing a value *of* the type, so they apply
 // only when every pointer layer has been dereferenced, which is what
 // layersBeforeBase == 0 means.  A `*const u128` or `*const ()` is printed as a
 // hashcode, which Fjalar handles like any other pointer, so report it.
@@ -1458,8 +1447,14 @@ static char varHasReportableValue(VariableEntry* var, UInt layersBeforeBase) {
     return 0;
   }
 
-  // A 128-bit integer, which Fjalar cannot yet print.
+  // An integer wider than 64 bits, which Fjalar cannot yet print.
   if ((D_U128 == t->decType) || (D_I128 == t->decType)) {
+    return 0;
+  }
+
+  // A _Complex or decimal floating-point number, which Daikon cannot
+  // represent.
+  if ((D_COMPLEX == t->decType) || (D_DECIMAL == t->decType)) {
     return 0;
   }
 

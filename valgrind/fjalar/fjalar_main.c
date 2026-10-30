@@ -26,6 +26,7 @@
 
 
 #include "pub_tool_basics.h"
+#include "pub_tool_vki.h"            // For VKI_PROT_READ
 #include "pub_tool_aspacemgr.h"
 #include "pub_tool_hashtable.h"     // For mc_include.h
 #include "pub_tool_xarray.h" //for clientstate
@@ -39,14 +40,17 @@
 #include "pub_tool_replacemalloc.h"
 #include "pub_tool_stacktrace.h"
 #include "pub_tool_clientstate.h"
+#include "pub_tool_tooliface.h"
 
 #include "generate_fjalar_entries.h"
 #include "fjalar_main.h"
 #include "fjalar_runtime.h"
 #include "fjalar_tool.h"
 #include "fjalar_select.h"
+#include "fjalar_traversal.h"
 #include "disambig.h"
-#include "mc_include.h"
+#include "mc_fjalar.h"
+#include "fjalar_core_decls.h"
 #include "typedata.h"
 #include "vex_common.h"
 #include "kvasir/kvasir_main.h"
@@ -162,12 +166,80 @@ Int dwarf_reg_guest_offset(UInt regNum)
   return dwarf_reg_guest_offsets[regNum];
 }
 
+// Returns the word at the given offset in thread tid's guest state
+// (shadowNo 0) or in its V bits (shadowNo 1).
+static UWord read_guest_word(ThreadId tid, Int shadowNo, Int offset)
+{
+  UWord value;
+  VG_(get_shadow_regs_area)(tid, (UChar*)&value, shadowNo, offset, sizeof(UWord));
+  return value;
+}
+
 Addr read_dwarf_reg(ThreadId tid, UInt regNum)
 {
-  Addr value;
   tl_assert(dwarf_reg_is_readable(regNum));
+  return read_guest_word(tid, 0, dwarf_reg_guest_offsets[regNum]);
+}
+
+#if defined(VGA_amd64)
+#define GUEST_xAX guest_RAX
+#define GUEST_xCX guest_RCX
+#define GUEST_xDX guest_RDX
+#define GUEST_xSI guest_RSI
+#define GUEST_xDI guest_RDI
+#else
+#define GUEST_xAX guest_EAX
+#define GUEST_xCX guest_ECX
+#define GUEST_xDX guest_EDX
+#define GUEST_xSI guest_ESI
+#define GUEST_xDI guest_EDI
+#endif
+
+Addr read_xAX(ThreadId tid)
+{
+  return read_guest_word(tid, 0, offsetof(VexGuestArchState, GUEST_xAX));
+}
+
+static Addr read_xCX(ThreadId tid)
+{
+  return read_guest_word(tid, 0, offsetof(VexGuestArchState, GUEST_xCX));
+}
+
+Addr read_xDX(ThreadId tid)
+{
+  return read_guest_word(tid, 0, offsetof(VexGuestArchState, GUEST_xDX));
+}
+
+static Addr read_xSI(ThreadId tid)
+{
+  return read_guest_word(tid, 0, offsetof(VexGuestArchState, GUEST_xSI));
+}
+
+static Addr read_xDI(ThreadId tid)
+{
+  return read_guest_word(tid, 0, offsetof(VexGuestArchState, GUEST_xDI));
+}
+
+// Returns the guest-state offset of the 8 bytes that hold a function's
+// floating-point return value:  the low 64 bits of %xmm0 on amd64, and
+// the top of the x87 FPU stack on x86.
+static Int float_return_guest_offset(ThreadId tid)
+{
+#if defined(VGA_amd64)
+  return offsetof(VexGuestArchState, guest_YMM0);
+#else
+  UInt ftop;
+  VG_(get_shadow_regs_area)(tid, (UChar*)&ftop, 0/*shadowNo*/,
+                            offsetof(VexGuestArchState, guest_FTOP), sizeof(UInt));
+  return offsetof(VexGuestArchState, guest_FPREG) + (ftop & 7) * sizeof(ULong);
+#endif
+}
+
+double read_float_return(ThreadId tid)
+{
+  double value;
   VG_(get_shadow_regs_area)(tid, (UChar*)&value, 0/*shadowNo*/,
-                            dwarf_reg_guest_offsets[regNum], sizeof(Addr));
+                            float_return_guest_offset(tid), sizeof(double));
   return value;
 }
 
@@ -200,9 +272,75 @@ static void save_param_regs(FunctionExecutionState* f_state, ThreadId tid)
     if (f_state->func->entryRegsMask & (1U << regNum)) {
       f_state->entryRegs[regNum] = read_dwarf_reg(tid, regNum);
       mc_copy_guest_reg_state(tid, dwarf_reg_guest_offset(regNum),
-                              (Addr)&f_state->entryRegs[regNum]);
+                              (Addr)&f_state->entryRegs[regNum],
+                              sizeof(f_state->entryRegs[regNum]));
     }
   }
+}
+
+// The most bytes past the part of the guest stack that enter_function
+// copies by default that it also copies to cover formal parameters.
+#define MAX_VIRTUAL_STACK_EXTENSION (64 * 1024)
+
+// Returns the guest address just past the formal parameters of an
+// invocation of f that lie on the guest stack at or above stackStart,
+// or copyEnd if that is greater.  frameBase is the invocation's frame
+// base.  The result is at most copyEnd + MAX_VIRTUAL_STACK_EXTENSION,
+// and all the guest memory between copyEnd and the result is readable
+// client memory.  Call this at function entrance, before copying the
+// guest stack to the virtual stack.
+static Addr formal_params_stack_end(FunctionEntry* f, ThreadId tid,
+                                    Addr frameBase, Addr stackStart,
+                                    Addr copyEnd)
+{
+  Addr limit = copyEnd + MAX_VIRTUAL_STACK_EXTENSION;
+  Addr end = copyEnd;
+  Addr regs[FJALAR_NUM_DWARF_REGS];
+  UInt regNum;
+  VarNode* node;
+
+  for (regNum = 0; regNum < FJALAR_NUM_DWARF_REGS; regNum++) {
+    if (f->entryRegsMask & (1U << regNum)) {
+      regs[regNum] = read_dwarf_reg(tid, regNum);
+    }
+  }
+  // At function entrance, the guest stack holds what the virtual stack
+  // will hold, so formalParamLocation can read the guest stack.  An
+  // empty copied stack makes it do so.
+  f->guestStackStart = 0;
+  f->guestStackEnd = 0;
+
+  for (node = f->formalParameters.first; node != NULL; node = node->next) {
+    VariableEntry* var = node->var;
+    Addr paramLoc;
+    Addr paramSize;
+    // visitVariableGroup does not read these formal parameters, or
+    // reads them from the virtual stack at a fixed offset, or reads them
+    // from a register.
+    if (formalParamIsOmitted(var)
+        || var->location_expression_size == 0
+        || (location_op_kind_of(var->location_expression[0].atom)
+            == LOC_OP_REG)) {
+      continue;
+    }
+    paramLoc = formalParamLocation(var, f, frameBase,
+                                   f->entryRegsMask != 0 ? regs : NULL);
+    paramSize = formalParamByteSize(var);
+    // The subtraction, rather than an addition, cannot overflow.
+    if (paramLoc < stackStart || paramLoc > limit
+        || paramSize > limit - paramLoc
+        || paramLoc + paramSize <= end) {
+      continue;
+    }
+    // The parameter might not be on the guest stack, if a program uses
+    // an alternate stack or a location is bogus.
+    if (!VG_(am_is_valid_for_client)(copyEnd, paramLoc + paramSize - copyEnd,
+                                     VKI_PROT_READ)) {
+      continue;
+    }
+    end = paramLoc + paramSize;
+  }
+  return end;
 }
 
 // located in VEX/priv/main_util.c
@@ -230,6 +368,39 @@ int *fn_stack_first_free_index;
 // FunctionExecutionStateStack[fn_stack_first_free_index - 1]
 
 typedef VG_REGPARM(1) void entry_func(FunctionEntry *);
+
+// Appends to di->fxState an entry recording that the helper call di
+// reads size bytes of the guest state, starting at offset.
+static void add_fxState_read(IRDirty* di, Int offset, Int size) {
+  tl_assert(di->nFxState < VEX_N_FXSTATE);
+  di->fxState[di->nFxState].fx        = Ifx_Read;
+  di->fxState[di->nFxState].offset    = offset;
+  di->fxState[di->nFxState].size      = size;
+  di->fxState[di->nFxState].nRepeats  = 0;
+  di->fxState[di->nFxState].repeatLen = 0;
+  di->nFxState++;
+}
+
+// Appends to di->fxState entries recording that the helper call di
+// reads all the general-purpose integer registers (including the stack
+// and frame pointers) and the instruction pointer.
+static void add_fxState_read_GPRs_and_IP(IRDirty* di) {
+  // The general-purpose integer registers are contiguous in the guest
+  // state, so one fxState entry describes all of them.
+#if defined(VGA_amd64)
+  tl_assert(offsetof(VexGuestArchState, guest_R15)
+            == offsetof(VexGuestArchState, guest_RAX) + 15 * sizeof(ULong));
+  add_fxState_read(di, offsetof(VexGuestArchState, guest_RAX),
+                   16 * sizeof(ULong));
+  add_fxState_read(di, offsetof(VexGuestArchState, guest_RIP), sizeof(ULong));
+#else
+  tl_assert(offsetof(VexGuestArchState, guest_EDI)
+            == offsetof(VexGuestArchState, guest_EAX) + 7 * sizeof(UInt));
+  add_fxState_read(di, offsetof(VexGuestArchState, guest_EAX),
+                   8 * sizeof(UInt));
+  add_fxState_read(di, offsetof(VexGuestArchState, guest_EIP), sizeof(UInt));
+#endif
+}
 
 // This inserts an IR Statement responsible for calling a helper
 // function before the instruction at addr is executed. This is primarily
@@ -262,59 +433,16 @@ static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
     di = unsafeIRDirty_0_N(1/*regparms*/, func_name, func,
 			 mkIRExprVec_1(IRExpr_Const(IRConst_UWord(entry_w))));
 
-    // For function entry, we are interested in observing the stack
-    // and frame pointers so make sure that they're updated by setting
-    // the proper annotations:
-
     entry->entryPC = addr;
 
     FJALAR_DPRINTF("Found a valid entry point at %x for\n", (UInt)addr);
 
-    // We need all general purpose registers.
-#if defined(VGA_amd64)
-    di->nFxState = 10;
-#else
-    di->nFxState = 9;
-#endif
-    vex_bzero(&di->fxState, sizeof(di->fxState));
+    // For function entry, we are interested in observing all general
+    // purpose integer registers, so make sure that they are updated by
+    // setting the proper annotations.
+    add_fxState_read_GPRs_and_IP(di);
 
-    di->fxState[0].fx     = Ifx_Read;
-    di->fxState[0].offset = mce->layout->offset_SP;
-    di->fxState[0].size   = mce->layout->sizeof_SP;
-    di->fxState[1].fx     = Ifx_Read;
-    di->fxState[1].offset = mce->layout->offset_FP;
-    di->fxState[1].size   = mce->layout->sizeof_FP;
-    di->fxState[2].fx     = Ifx_Read;
-    di->fxState[2].offset = mce->layout->offset_IP;
-    di->fxState[2].size   = mce->layout->sizeof_IP;
-
-    di->fxState[3].fx     = Ifx_Read;
-    di->fxState[3].offset = mce->layout->offset_xAX;
-    di->fxState[3].size   = mce->layout->sizeof_xAX;
-    di->fxState[4].fx     = Ifx_Read;
-    di->fxState[4].offset = mce->layout->offset_xBX;
-    di->fxState[4].size   = mce->layout->sizeof_xBX;
-    di->fxState[5].fx     = Ifx_Read;
-    di->fxState[5].offset = mce->layout->offset_xCX;
-    di->fxState[5].size   = mce->layout->sizeof_xCX;
-
-    di->fxState[6].fx     = Ifx_Read;
-    di->fxState[6].offset = mce->layout->offset_xDX;
-    di->fxState[6].size   = mce->layout->sizeof_xDX;
-    di->fxState[7].fx     = Ifx_Read;
-    di->fxState[7].offset = mce->layout->offset_xSI;
-    di->fxState[7].size   = mce->layout->sizeof_xSI;
-    di->fxState[8].fx     = Ifx_Read;
-    di->fxState[8].offset = mce->layout->offset_xDI;
-    di->fxState[8].size   = mce->layout->sizeof_xDI;
-#if defined(VGA_amd64)
-    // R8 through R15, which are contiguous in the guest state
-    di->fxState[9].fx     = Ifx_Read;
-    di->fxState[9].offset = offsetof(VexGuestArchState, guest_R8);
-    di->fxState[9].size   = 8 * sizeof(ULong);
-#endif
-
-    stmt('V',  mce, IRStmt_Dirty(di) );
+    mc_stmt('V',  mce, IRStmt_Dirty(di) );
   }
 }
 
@@ -338,13 +466,25 @@ static struct  genhashtable *funcs_handled = NULL;
    confused. Instead, we want to only do enter_function() once per
    invocation of the function, where we define an invocation to be an
    execution of the very first instruction. To accomplish that, we put
-   a call to the prime_function() hook there; when executed, it sets
-   the first_time flag. In enter_function(), we check the flag before
-   doing anything, and then clear it. */
-static Bool first_time = False;
+   a call to the prime_function() hook there; when executed, it records
+   the function and the thread. In enter_function(), we check that they
+   match before doing anything, and then clear the record. A mismatch
+   means that the thread did not execute the function's first
+   instruction just before (for example, it jumped back to the entry
+   point), or that another thread did. prime_function() also records
+   the function's canonical frame address, which enter_function()
+   cannot compute because the prolog may have moved the stack
+   pointer. */
+static FunctionEntry* primed_func = NULL;
+static ThreadId primed_tid = VG_INVALID_THREADID;
+static Addr primed_CFA = 0;
 VG_REGPARM(1) void prime_function(FunctionEntry *f)
 {
-  first_time = True;
+  ThreadId tid = VG_(get_running_tid)();
+  primed_func = f;
+  primed_tid = tid;
+  // The stack pointer points to the return address.
+  primed_CFA = VG_(get_SP)(tid) + sizeof(Addr);
   return;
 }
 
@@ -506,67 +646,26 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
       // For function exit, we are interested in observing  all general purpose
       // integer registers,  FTOP, and FPREG[], so make sure that they are
       // updated by setting the proper annotations.
-#if defined(VGA_amd64)
-      di->nFxState = 12;
-#else
-      di->nFxState = 11;
-#endif
-      vex_bzero(&di->fxState, sizeof(di->fxState));
+      add_fxState_read_GPRs_and_IP(di);
+      add_fxState_read(di, offsetof(VexGuestArchState, guest_FTOP),
+                       sizeof(UInt)); /* FTOP is 4 bytes even on x64 */
+      add_fxState_read(di, offsetof(VexGuestArchState, guest_FPREG),
+                       8 * sizeof(ULong));
 
-      di->fxState[0].fx     = Ifx_Read;
-      di->fxState[0].offset = mce->layout->offset_SP;
-      di->fxState[0].size   = mce->layout->sizeof_SP;
-      di->fxState[1].fx     = Ifx_Read;
-      di->fxState[1].offset = mce->layout->offset_FP;
-      di->fxState[1].size   = mce->layout->sizeof_FP;
-      di->fxState[2].fx     = Ifx_Read;
-      di->fxState[2].offset = mce->layout->offset_IP;
-      di->fxState[2].size   = mce->layout->sizeof_IP;
-
-      di->fxState[3].fx     = Ifx_Read;
-      di->fxState[3].offset = mce->layout->offset_xAX;
-      di->fxState[3].size   = mce->layout->sizeof_xAX;
-      di->fxState[4].fx     = Ifx_Read;
-      di->fxState[4].offset = mce->layout->offset_xBX;
-      di->fxState[4].size   = mce->layout->sizeof_xBX;
-      di->fxState[5].fx     = Ifx_Read;
-      di->fxState[5].offset = mce->layout->offset_xCX;
-      di->fxState[5].size   = mce->layout->sizeof_xCX;
-
-      di->fxState[6].fx     = Ifx_Read;
-      di->fxState[6].offset = mce->layout->offset_xDX;
-      di->fxState[6].size   = mce->layout->sizeof_xDX;
-      di->fxState[7].fx     = Ifx_Read;
-      di->fxState[7].offset = mce->layout->offset_xSI;
-      di->fxState[7].size   = mce->layout->sizeof_xSI;
-      di->fxState[8].fx     = Ifx_Read;
-      di->fxState[8].offset = mce->layout->offset_xDI;
-      di->fxState[8].size   = mce->layout->sizeof_xDI;
-
-      di->fxState[9].fx     = Ifx_Read;
-      di->fxState[9].offset = offsetof(VexGuestArchState, guest_FTOP);
-      di->fxState[9].size   = sizeof(UInt); /* FTOP is 4 bytes even on x64 */
-      di->fxState[10].fx     = Ifx_Read;
-      di->fxState[10].offset = offsetof(VexGuestArchState, guest_FPREG);
-      di->fxState[10].size   = 8 * sizeof(ULong);
-#if defined(VGA_amd64)
-      // R8 through R15, which are contiguous in the guest state
-      di->fxState[11].fx     = Ifx_Read;
-      di->fxState[11].offset = offsetof(VexGuestArchState, guest_R8);
-      di->fxState[11].size   = 8 * sizeof(ULong);
-#endif
-
-      stmt('V',  mce, IRStmt_Dirty(di) );
+      mc_stmt('V',  mce, IRStmt_Dirty(di) );
     }
   }
 }
 
 
+static void pop_unwound_frames(ThreadId tid, Addr sp);
+
 static UInt cur_nonce = 0;
 /*
 This is the hook into Valgrind that is called whenever the target
-program enters a function.  Pushes an entry onto the top of
-FunctionExecutionStateStack and calls out to a handler function
+program enters a function.  Pops and frees the frames whose stack the
+new frame occupies, pushes an entry onto the top of
+FunctionExecutionStateStack, and calls out to a handler function
 implemented by the Fjalar tool.
 */
 VG_REGPARM(1)
@@ -574,15 +673,15 @@ void enter_function(FunctionEntry* f)
 {
   FunctionExecutionState* newEntry;
   extern FunctionExecutionState* curFunctionExecutionStatePtr;
+  ThreadId tid = VG_(get_running_tid)();
 
-  // Only do enter_function if this is the first time we have
+  // Only do enter_function if this is the first time this thread has
   // reached the preferred entry point after entering the function.
-  if (!first_time) {
+  if (primed_func != f || primed_tid != tid) {
     return;
   }
-  first_time = False;
+  primed_func = NULL;
 
-  ThreadId tid = VG_(get_running_tid)();
   Addr stack_ptr= VG_(get_SP)(tid);
   Addr frame_ptr = 0; /* E.g., %ebp */
   int local_stack, size;
@@ -591,7 +690,7 @@ void enter_function(FunctionEntry* f)
   FJALAR_DPRINTF("[enter_function] startPC is: %x, entryPC is: %x, cu_base: %p\n",
                  (UInt)f->startPC, (UInt)f->entryPC,(void *)f->cuBase);
   FJALAR_DPRINTF("Value of edi: %lx, esi: %lx, edx: %lx, ecx: %lx\n",
-      (UWord)VG_(get_xDI)(tid), (UWord)VG_(get_xSI)(tid), (UWord)VG_(get_xDX)(tid), (UWord)VG_(get_xCX)(tid));
+      read_xDI(tid), read_xSI(tid), read_xDX(tid), read_xCX(tid));
   FJALAR_DPRINTF("frame_base_atom: %x, frame_base_offset: %lx\n", f->frame_base_atom, (unsigned long int) f->frame_base_offset);
 
   // Determine the frame pointer for this function using DWARF
@@ -716,12 +815,17 @@ void enter_function(FunctionEntry* f)
   FJALAR_DPRINTF("\tEnter function: %s - StartPC: %p, EntryPC: %p, frame_ptr: %p\n",
 		 f->fjalar_name, (void *)f->startPC, (void *)f->entryPC, (void *)frame_ptr);
 
+  // The frames whose stack the new frame occupies are a frame that made
+  // a tail call to f, and frames that a non-local exit left behind.
+  pop_unwound_frames(tid, primed_CFA);
+
   newEntry  = fnStackPush(tid);
   newEntry->func = f;
   newEntry->func->FP = frame_ptr;
   newEntry->func->lowestSP = stack_ptr;
   newEntry->FP = frame_ptr;
   newEntry->lowSP = stack_ptr;
+  newEntry->CFA = primed_CFA;
   newEntry->lowestSP = stack_ptr;
   newEntry->xAX = 0;
   newEntry->xDX = 0;
@@ -765,11 +869,32 @@ void enter_function(FunctionEntry* f)
 
   tl_assert(size >= 0);
   if (size != 0) {
+    Int entryRegsOffset;
+    Int entryRegsSize;
+
+    // A formal parameter can lie on the stack beyond the part that the
+    // above size covers.  An example is a C++ object passed by
+    // invisible reference, which is in the caller's frame.  Copy the
+    // stack through the end of every such formal parameter, so that at
+    // function exit Fjalar reads it from the virtual stack too, and so
+    // visits its value at function entrance.  Fjalar does not visit
+    // the formal parameters of a function that it does not print.
+    if (!f->doNotPrint) {
+      Addr stackStart = stack_ptr - VG_STACK_REDZONE_SZB;
+      Addr paramsEnd = formal_params_stack_end(f, tid, frame_ptr, stackStart,
+                                               stackStart + size);
+      if (paramsEnd > stackStart + size) {
+        FJALAR_DPRINTF("Extending the virtual stack of %s from %d to %d bytes\n",
+                       f->fjalar_name, size, (int)(paramsEnd - stackStart));
+        size = (int)(paramsEnd - stackStart);
+      }
+    }
+
     // entryRegs follows the virtual stack in the same allocation.
-    Int entryRegsOffset = VG_ROUNDUP(size, sizeof(Addr));
-    Int entryRegsSize = (f->entryRegsMask != 0
-                         ? FJALAR_NUM_DWARF_REGS * sizeof(Addr)
-                         : 0);
+    entryRegsOffset = VG_ROUNDUP(size, sizeof(Addr));
+    entryRegsSize = (f->entryRegsMask != 0
+                     ? FJALAR_NUM_DWARF_REGS * sizeof(Addr)
+                     : 0);
     newEntry->allocByteSize = entryRegsOffset + entryRegsSize;
     newEntry->virtualStack = VG_(calloc)("fjalar_main.c: enter_func",
                                          newEntry->allocByteSize,
@@ -793,8 +918,8 @@ void enter_function(FunctionEntry* f)
     // elegant to copy the metadata to an inaccessible place, but that
     // would be more work.
     FJALAR_DPRINTF("Copying over stack [%p] -> [%p] %d bytes\n",(void *)(stack_ptr - VG_STACK_REDZONE_SZB),  (void *)newEntry->virtualStack, size);
-    mc_copy_address_range_state(stack_ptr - VG_STACK_REDZONE_SZB,
-				(Addr)(newEntry->virtualStack), size);
+    MC_(copy_address_range_state)(stack_ptr - VG_STACK_REDZONE_SZB,
+				  (Addr)(newEntry->virtualStack), size);
 
 
     newEntry->func->guestStackStart = stack_ptr - VG_STACK_REDZONE_SZB;
@@ -816,97 +941,218 @@ void enter_function(FunctionEntry* f)
   fjalar_tool_handle_function_entrance(newEntry);
 }
 
+// Pops the top frame off the function stack of thread tid, and frees the
+// frame's virtual stack, together with its entryRegs, which share the
+// same allocation.  First marks that memory noaccess, which also clears
+// its DynComp tags.  Sets the frame's virtualStack and entryRegs to NULL.
+static void pop_frame(ThreadId tid)
+{
+  FunctionExecutionState* state = fnStackPop(tid);
+
+  /* The V bits of the virtual stack hold the guest's V bits, but
+     Memcheck doesn't normally expect VG_(malloc)'ed memory to be
+     client accessible, so we have to make it inaccessible again
+     before allowing Valgrind's malloc to use it, lest assertions
+     fail later. */
+  MC_(make_mem_noaccess)((Addr)state->virtualStack, state->allocByteSize);
+  VG_(free)(state->virtualStack);
+  state->virtualStack = NULL;
+  state->entryRegs = NULL;
+}
+
+// A thread can run on several stacks:  its own stack, an alternate
+// signal stack, and stacks that it switches to, as for coroutines.
+// Fjalar identifies a stack by the address-space segment that contains
+// it, and also distinguishes the alternate signal stack from the rest of
+// its segment.  Addresses on different stacks are unrelated, so whether
+// a frame on one stack has been unwound cannot be decided from a stack
+// pointer on another stack.  Such a frame is kept, because it may be
+// suspended, unless it lies on the alternate signal stack (see
+// frame_is_on_altstack).
+
+// Sets *start and *end to the lowest and highest addresses of the stack
+// that contains sp, a stack pointer.  The byte just below sp determines
+// the stack, because sp can be just past the end of the stack.  If no
+// segment contains that byte, then the bounds are all of memory.
+static void get_stack_bounds(Addr sp, Addr* start, Addr* end)
+{
+  NSegment const* seg = VG_(am_find_nsegment)(sp - 1);
+  *start = seg ? seg->start : 0;
+  *end = seg ? seg->end : ~(Addr)0;
+}
+
+// Returns True if address a lies on the alternate signal stack of
+// thread tid.
+static Bool addr_is_on_altstack(ThreadId tid, Addr a)
+{
+  Addr min = VG_(thread_get_altstack_min)(tid);
+  return min <= a && a - min < VG_(thread_get_altstack_size)(tid);
+}
+
+// Returns True if the given frame of thread tid lies on the same stack as
+// sp, a stack pointer, where start and end are the bounds of sp's stack,
+// as set by get_stack_bounds.  The alternate signal stack is distinct
+// from the rest of its segment, as when a program allocates it on the
+// thread's stack.
+static Bool frame_is_on_stack(ThreadId tid, FunctionExecutionState* state,
+                              Addr sp, Addr start, Addr end)
+{
+  // The return address lies on the frame's stack; the CFA can be just
+  // past the end of that stack.
+  Addr retAddrSlot = state->CFA - sizeof(Addr);
+  return start <= retAddrSlot && retAddrSlot <= end
+         && addr_is_on_altstack(tid, retAddrSlot)
+            == addr_is_on_altstack(tid, sp - 1);
+}
+
+// Returns True if the given frame of thread tid lies on the thread's
+// alternate signal stack.  When the thread runs on another stack, such
+// a frame has been unwound, as by a siglongjmp out of a signal handler.
+static Bool frame_is_on_altstack(ThreadId tid, FunctionExecutionState* state)
+{
+  return addr_is_on_altstack(tid, state->CFA - sizeof(Addr));
+}
+
+// Returns True if the stack of the given frame has been unwound, where
+// the frame lies on the same stack as sp, the stack pointer in the
+// caller of a frame that
+// is exiting or entering:  at an exit, the stack pointer after the
+// return instruction; at an entry, the new frame's CFA.
+//
+// The exit hook runs after the return instruction has popped the
+// return address (and, for "ret N", N more bytes), so sp is at or above
+// the CFA of the exiting frame, and above the CFA of every frame that it
+// called.  At an entry, the new frame's return address lies just below
+// sp, so the stack of every frame whose CFA is at or below sp has been
+// reused.  The return address of every frame that is still live is on
+// the stack, so the CFA of such a frame is above sp.
+static Bool frame_is_unwound(FunctionExecutionState* state, Addr sp)
+{
+  return state->CFA <= sp;
+}
+
+// Returns the index, in the function stack of thread tid, of the frame
+// of f that is exiting, or -1 if there is none.  The exiting frame lies
+// among the unwound frames, on the stack of currentSP, at the top of the
+// stack.  Several of them can be frames of f, if an earlier call of f
+// exited non-locally.  The exiting frame is the bottommost of them.
+// enter_function pops every frame on the same stack whose CFA is at or
+// below the new frame's CFA, so every frame below the exiting frame on
+// its stack has a CFA above the exiting frame's CFA, which is currentSP
+// (after a return instruction other than "ret N").
+//
+// Frames on other stacks that lie above those frames were entered
+// later, and have exited non-locally or are suspended; they are skipped.
+// A frame on another stack that lies below them called into the stack
+// of currentSP, as a signal handler or a stack switch does, so it is
+// live.
+static int exiting_frame_index(ThreadId tid, FunctionEntry* f, Addr currentSP)
+{
+  Addr stackStart, stackEnd;
+  Bool seenFrameOnStack = False;
+  int result = -1;
+  int i;
+
+  get_stack_bounds(currentSP, &stackStart, &stackEnd);
+  for (i = fn_stack_first_free_index[tid] - 1; i >= 0; i--) {
+    FunctionExecutionState* state = &FunctionExecutionStateStack[tid][i];
+    if (!frame_is_on_stack(tid, state, currentSP, stackStart, stackEnd)) {
+      if (seenFrameOnStack) {
+        break;
+      }
+      continue;
+    }
+    seenFrameOnStack = True;
+    if (!frame_is_unwound(state, currentSP)) {
+      break;
+    }
+    if (state->func == f) {
+      result = i;
+    }
+  }
+  return result;
+}
+
+// Pops and frees the frames at the top of the function stack of thread
+// tid whose stack has been unwound:  those that lie on the stack of sp
+// and are unwound according to frame_is_unwound (where sp is as for
+// frame_is_unwound), and those that lie on the alternate signal stack
+// when sp does not.
+static void pop_unwound_frames(ThreadId tid, Addr sp)
+{
+  Addr stackStart, stackEnd;
+
+  get_stack_bounds(sp, &stackStart, &stackEnd);
+  while (fn_stack_first_free_index[tid] > 0) {
+    FunctionExecutionState* top = fnStackTop(tid);
+    if (frame_is_on_stack(tid, top, sp, stackStart, stackEnd)
+        ? !frame_is_unwound(top, sp)
+        : !frame_is_on_altstack(tid, top)) {
+      break;
+    }
+    pop_frame(tid);
+  }
+}
+
 /*
 This is the hook into Valgrind that is called whenever the target
-program exits a function.  Initializes the top entry of
+program exits a function.  Does nothing if the function stack is empty.
+Finds the exiting frame of f (see exiting_frame_index).  If there is
+none, pops and frees the unwound frames and does nothing else.  If it is
+not at the top of the stack, because of a non-local exit, pops and frees
+the frames above it.  Initializes the top entry of
 FunctionExecutionStateStack with return values from EAX, EDX, and FPU,
-then calls out to a handler function implemented by the Fjalar tool.
+calls out to a handler function implemented by the Fjalar tool, and
+then pops and frees the top entry and any unwound frames below it.
 */
 VG_REGPARM(1)
 void exit_function(FunctionEntry* f)
 {
   ThreadId currentTID = VG_(get_running_tid)();
-  FunctionExecutionState* top = fnStackTop(currentTID);
+  FunctionExecutionState* top;
   extern FunctionExecutionState* curFunctionExecutionStatePtr;
-  int i;
-  ULong FPUshadow;
+  Addr currentSP = VG_(get_SP)(currentTID);
+  int exitingIndex;
   double fpuReturnVal;
-  Addr xAX, xDX, xAXshadow, xDXshadow;
+  Addr xAX, xDX;
 
   FJALAR_DPRINTF("Exit function: %s\n", f->fjalar_name);
 
-  top->func->guestStackStart = top->lowSP - VG_STACK_REDZONE_SZB;
-  top->func->guestStackEnd = top->func->guestStackStart + top->virtualStackByteSize;
-  top->func->lowestVirtSP = (Addr)top->virtualStack;
-  top->func->FP  = top->FP;
-  top->func->lowestSP  = top->func->guestStackStart;
-
-  FJALAR_DPRINTF("\tState of Guest Stack [%p - %p] \n", (void *)top->lowestSP, (void *)(top->lowestSP + top->virtualStackByteSize));
-
-  // Ok, in Valgrind 2.X, we needed to directly code some assembly to
-  // grab the top of the floating-point stack, but Valgrind 3.0
-  // provides a virtual FPU stack, so we can just grab that.  Plus, we
-  // now have shadow V-bits for the FPU stack.
-
-#if defined(VGA_amd64)
-  // VG_(get_XMM_N) and VG_(get_shadow_XMM_N) return the whole 256-bit
-  // YMM register, as an array of 8 32-bit integers.  A double occupies
-  // the low 2 of them, so reinterpret cast the register as a double
-  // and its shadow as a 64-bit integer.
-  FPUshadow = *(ULong *)VG_(get_shadow_XMM_N)(currentTID, 0);
-  fpuReturnVal = *(double *)VG_(get_XMM_N)(currentTID, 0);
-  //RUDD DEBUG
-  /* for(i=0 ; i < 4; i++) { */
-  /*   printf("Testing %d\n", test[i]); */
-  /*   printf("shadow: %x\n", testing[i]); */
-  /* }    */
-
-#else
-  fpuReturnVal = VG_(get_FPU_stack_top)(currentTID);
-  FPUshadow = VG_(get_shadow_FPU_stack_top)(currentTID);
-#endif
+  fpuReturnVal = read_float_return(currentTID);
 
 
-  //RUDD DEBUG
-  /* printf("%.16g\n", fpuReturnVal); */
-  /* printf("shadow: %x\n", FPUshadow); */
   // Get the value at the simulated %EAX (integer and pointer return
   // values are stored here upon function exit)
-  xAX = VG_(get_xAX)(currentTID);
+  xAX = read_xAX(currentTID);
 
   // Get the value of the simulated %EDX (the high 32-bits of the long
   // long int return value is stored here upon function exit)
-  xDX = VG_(get_xDX)(currentTID);
-
-
-  // 64 bits
-  // Use SHADOW values of Valgrind simulated registers to get V-bits
-  xAXshadow = VG_(get_shadow_xAX)(currentTID);
-  xDXshadow = VG_(get_shadow_xDX)(currentTID);
+  xDX = read_xDX(currentTID);
 
   FJALAR_DPRINTF("Value of eax: %lx, edx: %lx\n",xAX, xDX);
 
-  // Only do something if top->func matches func
-  if (!top->func) {
+  top = fnStackTop(currentTID);
+  // Do nothing if the function stack is empty.
+  if (!top) {
     printf("More exit_function()s than entry_function()s!\n");
     // RUDD EXCEPTION
     VG_(get_and_pp_StackTrace) (currentTID, 15);
     return;
-  } else if (!(top->func->fjalar_name) || (top->func != f)) {
-    // There are a couple reasons why the function at the top
-    // of the Function Execution State Stack would not be the
-    // function we expected. All of them are related to a non-
-    // local exit of the function. Situations where this might
-    // come up include:
+  }
+
+  exitingIndex = exiting_frame_index(currentTID, f, currentSP);
+  if (exitingIndex != fn_stack_first_free_index[currentTID] - 1) {
+    // The frame at the top of the Function Execution State Stack
+    // is not the exiting frame of f.  Either the frames above the
+    // exiting frame exited non-locally, or no frame of f is exiting.
+    // Non-local exits come from:
 
     // (1) C++ Exceptions
     // (2) setjmp/longjmp
 
     // For Fjalar to resume normal operation, we need to pop
-    // off functions off the Function Execution State Stack
-    // (these would be all the functions that had non-local
-    // exits) until we encounter the Function Execution State
-    // Stack corresponding to our function.
+    // off the Function Execution State Stack the frames that
+    // exited non-locally.
     printf("MISMATCHED on exit_function! f: %s !=  %s\nDetectedEntryIP: %p - AssumedEntryIP: %p\nDetctedExitIP: %p - AssumedExitIp: %p\n",
                 f->fjalar_name,
                 top->func->fjalar_name,
@@ -916,72 +1162,83 @@ void exit_function(FunctionEntry* f)
                 (void *)f->endPC);
 
 
-    // This is probably being overconservative. However let's revert
-    // to Fjalar's old behavior (do nothing) if we can't find an
-    // instance of our function in the function stack.
-    for(i = fn_stack_first_free_index[currentTID] - 1; i >= 0; i-- ) {
-      FunctionExecutionState* curFuncExecPtr = &FunctionExecutionStateStack[currentTID][i];
-      if(curFuncExecPtr->func == f) {
-        break;
-      }
-    }
-
-    if(i < 0) {
+    // No frame of f is exiting if f's entry was not observed, or if
+    // the return instruction did not return from f (for example, a
+    // "push; ret" sequence that jumps within f).  Discard only the
+    // frames whose stack has been unwound.
+    if (exitingIndex < 0) {
+      pop_unwound_frames(currentTID, currentSP);
       VG_(get_and_pp_StackTrace) (currentTID, 15);
       return;
     }
 
-    while(fn_stack_first_free_index[currentTID] > i + 1) {
-      fnStackPop(currentTID);
+    while(fn_stack_first_free_index[currentTID] > exitingIndex + 1) {
+      pop_frame(currentTID);
     }
     top = fnStackTop(currentTID);
   }
+
+  top->func->guestStackStart = top->lowSP - VG_STACK_REDZONE_SZB;
+  top->func->guestStackEnd = top->func->guestStackStart + top->virtualStackByteSize;
+  top->func->lowestVirtSP = (Addr)top->virtualStack;
+  top->func->FP  = top->FP;
+  top->func->lowestSP  = top->func->guestStackStart;
+
+  FJALAR_DPRINTF("\tState of Guest Stack [%p - %p] \n", (void *)top->func->guestStackStart, (void *)top->func->guestStackEnd);
 
   top->xAX = xAX;
   top->xDX = xDX;
   top->FPU = fpuReturnVal;
 
-  // Very important!  Set the A and V bits of the appropriate
-  // FunctionExecutionState object and the tags from the (x86) guest
-  // state as well:
-  for (i = 0; i < sizeof(Addr); i++) {
-    set_abit_and_vbyte((Addr)(&top->xAX) + (Addr)i, VGM_BIT_VALID,
-                      (xAXshadow >> (i * 8)) & 0xff);
-    set_abit_and_vbyte((Addr)(&top->xDX) + (Addr)i, VGM_BIT_VALID,
-                      (xDXshadow >> (i * 8)) & 0xff);
-  }
-
-  for (i = 0; i < 8; i++) {
-    set_abit_and_vbyte((Addr)(&top->FPU) + (Addr)i, VGM_BIT_VALID,
-                       (FPUshadow >> (i * 8)) & 0xff);
-  }
+  // Very important!  Set the A and V bits and the DynComp tags of the
+  // appropriate FunctionExecutionState object from the guest state.
+  mc_copy_guest_reg_state(currentTID, offsetof(VexGuestArchState, GUEST_xAX),
+                          (Addr)(&top->xAX), sizeof(top->xAX));
+  mc_copy_guest_reg_state(currentTID, offsetof(VexGuestArchState, GUEST_xDX),
+                          (Addr)(&top->xDX), sizeof(top->xDX));
+  mc_copy_guest_reg_state(currentTID, float_return_guest_offset(currentTID),
+                          (Addr)(&top->FPU), sizeof(top->FPU));
 
   curFunctionExecutionStatePtr = top;
   top->func->nonce = top->invocation_nonce;
 
   fjalar_tool_handle_function_exit(top);
 
-  // Destroy the memory allocated by virtualStack
-  // AFTER the tool has handled the exit
-  if (top->virtualStack) {
-    /* We were previously using the V bits associated with the area to
-       store guest V bits, but Memcheck doesn't normally expect
-       VG_(malloc)'ed memory to be client accessible, so we have to
-       make it inaccessible again before allowing Valgrind's malloc to
-       use it, lest assertions fail later. */
-    mc_make_noaccess((Addr)top->virtualStack, top->allocByteSize);
-    VG_(free)(top->virtualStack);
-  }
-
-  // Pop at the VERY end after the tool is done handling the exit.
+  // Pop, and destroy the memory allocated by virtualStack, at the VERY
+  // end after the tool is done handling the exit.
   // This is subtle but important - this must be done AFTER the tool
-  // runs all of it's function exit code, as functions in fjalar_traversal
-  // and fjalar_runtime may make use of the function stack. If we fail to
-  // pop the function, however, the stack will be left in an inconsistent
-  // state and the "!top->func == f" check will fail causing no more
-  // program points to be printed.
-  fnStackPop(currentTID);
+  // runs all of its function exit code, as functions in fjalar_traversal
+  // and fjalar_runtime may make use of the function stack.
+  // This pops the exiting frame, which is unwound, and any frames below
+  // it that a non-local exit left behind and that "ret N" unwound.
+  pop_unwound_frames(currentTID, currentSP);
 
+}
+
+// Pops and frees every frame of thread tid.
+static void pop_all_frames(ThreadId tid)
+{
+  while (fn_stack_first_free_index[tid] > 0) {
+    pop_frame(tid);
+  }
+}
+
+// Pops and frees every frame of thread tid, which is exiting.  The
+// frames of a thread that exits from inside instrumented functions,
+// such as by calling pthread_exit, never reach exit_function.
+static void fjalar_pre_thread_ll_exit(ThreadId tid)
+{
+  pop_all_frames(tid);
+}
+
+// Pops and frees every frame of thread child, which is being created,
+// so that it does not inherit the frames of an earlier thread that had
+// the same ThreadId.  Such frames remain when Valgrind empties a thread
+// slot without calling the pre_thread_ll_exit callback, as it does for
+// all but the calling thread in the child process of a fork.
+static void fjalar_pre_thread_ll_create(ThreadId parent, ThreadId child)
+{
+  pop_all_frames(child);
 }
 
 
@@ -1095,12 +1352,28 @@ void fjalar_pre_clo_init()
   VG_(memset)(fn_stack_first_free_index, 0, VG_N_THREADS * sizeof fn_stack_first_free_index[0]);
   VG_(memset)(FunctionExecutionStateStack, 0, VG_N_THREADS * FN_STACK_SIZE * sizeof FunctionExecutionStateStack[0][0]);
 
+  VG_(track_pre_thread_ll_create)(fjalar_pre_thread_ll_create);
+  VG_(track_pre_thread_ll_exit)(fjalar_pre_thread_ll_exit);
+
   // (comment added 2005)
   // TODO: Do we need to clear all global variables before processing
   // command-line options?  We don't need to as long as this function
   // is only run once at the beginning of program execution.
 
-  // Make sure to execute this last!
+  // Defaults for every Fjalar tool.  They override the details that
+  // mc_pre_clo_init sets, which are Memcheck's.  Without them, a tool
+  // that sets no name would be "Memcheck", which Valgrind's core treats
+  // specially.
+  VG_(details_name)            ("fjalar");
+  /* This next line is automatically updated by the toplevel Daikon
+     distribution Makefile; be careful with its formatting -SMcC */
+  VG_(details_version)         ("5.9.1");
+  VG_(details_description)     ("a tool built upon Fjalar");
+  VG_(details_copyright_author)(
+     "Copyright (C) 2007-2026, University of Washington CSE PLSE Group");
+  VG_(details_bug_reports_to)  ("daikon-developers@googlegroups.com");
+
+  // Make sure to execute this last!  It may override the details above.
   fjalar_tool_pre_clo_init();
 }
 

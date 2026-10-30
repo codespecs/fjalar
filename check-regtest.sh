@@ -48,7 +48,7 @@
 # Expected-failures file format: one failure per line, as vg_regtest prints
 # it, such as "gdbserver_tests/mcleak (stdoutB)".  Blank lines and lines
 # starting with "#" are ignored.  A line starting with "?" (such as
-# "? helgrind/tests/tc22_exit_w_lock (stderr)") is a test that may or may not
+# "? drd/tests/tls_threads (stderr)") is a test that may or may not
 # fail, for example because it is timing-dependent or CPU-dependent.
 # Two other kinds of entry record failures that are not tied to one test:
 #  * "post_regtest_checks: MESSAGE" is one error message from the checks that
@@ -66,8 +66,8 @@
 set -e
 set -o pipefail
 # sort and comm run with LC_ALL=C, so that they order lines the same way on
-# every machine.  The tests themselves run in the caller's locale, as the
-# upstream baseline in plan-upgrade-valgrind.md does.
+# every machine.  The tests themselves run in the caller's locale, as
+# upstream-regtest.sh does for the upstream baseline.
 
 # Resolve symbolic links, so that paths that are compared with each other
 # (such as $EXPECTED_FILE, which goes through realpath) are in the same form.
@@ -179,7 +179,10 @@ if [ "$RUN_TESTS" = true ]; then
   # tests read it:  memcheck/tests/null_socket calls recvfrom() on it, which
   # waits forever if standard input is an idle socket.  So run the tests with
   # standard input from /dev/null.
-  make -j"$(nproc)" test XMLLINT=xmllint-skipped-by-check-regtest \
+  # Unless TERM is unset or "dumb", gdb 17 prefixes its error and warning
+  # messages with an emoji.  ("env -u TERM" would fail where the PATH has
+  # another "env", such as the one that uv's installer puts in ~/.local/bin.)
+  (unset TERM; make -j"$(nproc)" test XMLLINT=xmllint-skipped-by-check-regtest) \
     < /dev/null > "$LOG_FILE" 2>&1 || true
   # "make test" ends by running the post-test checks, but in $LOG_FILE their
   # error messages are mixed with make's output.  Run them again by themselves.

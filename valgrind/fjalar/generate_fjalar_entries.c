@@ -111,7 +111,12 @@ const int DecTypeByteSizes[] = {
 
   sizeof(float),                  // D_FLOAT,
   sizeof(double),                 // D_DOUBLE,
-  sizeof(long double),            // D_LONG_DOUBLE,
+  10,                             // D_LONG_DOUBLE, // the x87 value; the rest is padding
+  2,                              // D_FLOAT16,
+  2,                              // D_BFLOAT16,
+  16,                             // D_FLOAT128,
+  16,                             // D_COMPLEX, // never read; size varies
+  8,                              // D_DECIMAL, // never read; size varies
 
   sizeof(int),                    // D_ENUMERATION,
 
@@ -147,6 +152,13 @@ TypeEntry Int128Type = {D_I128, 0, 16, 0};          // Rust
 TypeEntry FloatType = {D_FLOAT, 0, sizeof(float), 0};
 TypeEntry DoubleType = {D_DOUBLE, 0, sizeof(double), 0};
 TypeEntry LongDoubleType = {D_LONG_DOUBLE, 0, sizeof(long double), 0};
+TypeEntry Float16Type = {D_FLOAT16, 0, 2, 0};
+TypeEntry BFloat16Type = {D_BFLOAT16, 0, 2, 0};
+TypeEntry Float128Type = {D_FLOAT128, 0, 16, 0};
+// Fjalar never reads a value of these types, which come in several sizes;
+// see sizedBasicType.
+TypeEntry ComplexType = {D_COMPLEX, 0, 16, 0};      // _Complex double
+TypeEntry DecimalType = {D_DECIMAL, 0, 8, 0};       // _Decimal64
 TypeEntry FunctionType = {D_FUNCTION, 0, sizeof(void*), 0};
 TypeEntry VoidType = {D_VOID, 0, sizeof(void*), 0};
 TypeEntry Char8Type = {D_CHAR8, 0, 1, 0};
@@ -177,6 +189,11 @@ TypeEntry* BasicTypesArray[] = {
   &FloatType,               //  D_FLOAT,
   &DoubleType,              //  D_DOUBLE,
   &LongDoubleType,          //  D_LONG_DOUBLE,
+  &Float16Type,             //  D_FLOAT16,
+  &BFloat16Type,            //  D_BFLOAT16,
+  &Float128Type,            //  D_FLOAT128,
+  &ComplexType,             //  D_COMPLEX, // or see sizedBasicType
+  &DecimalType,             //  D_DECIMAL, // or see sizedBasicType
 
   0,                        //  D_ENUMERATION,
 
@@ -214,6 +231,11 @@ const char* DeclaredTypeString[] = {
   "float",                  // D_FLOAT,
   "double",                 // D_DOUBLE,
   "long double",            // D_LONG_DOUBLE,
+  "_Float16",               // D_FLOAT16,
+  "__bf16",                 // D_BFLOAT16,
+  "_Float128",              // D_FLOAT128,
+  "_Complex",               // D_COMPLEX,
+  "_Decimal",               // D_DECIMAL,
 
   // This should NOT be used unless you created an unnamed struct/union!
   // Use TypeEntry::typeName instead
@@ -285,6 +307,11 @@ const char* DeclaredTypeNames[] = {"D_NO_TYPE", // Create padding
                              "D_FLOAT",
                              "D_DOUBLE",
                              "D_LONG_DOUBLE",
+                             "D_FLOAT16",
+                             "D_BFLOAT16",
+                             "D_FLOAT128",
+                             "D_COMPLEX",
+                             "D_DECIMAL",
                              "D_ENUMERATION",
                              "D_STRUCT_CLASS",
                              "D_UNION",
@@ -1653,6 +1680,9 @@ void initializeFunctionTable(void)
   dwarf_entry* cur_entry = 0;
   FunctionEntry* cur_func_entry = 0;
   unsigned long num_functions_added = 0;
+  const char* dwarf_version_hint =
+    "Fjalar reads DWARF versions 2, 3, and 4.  Did you compile your program\n"
+    "with -gdwarf-4 -no-pie?\n";
 
   FJALAR_DPRINTF("ENTER initializeFunctionTable\n");
 
@@ -1816,9 +1846,21 @@ void initializeFunctionTable(void)
     }
 
   if (!num_functions_added) {
-    printf( "\nError - No functions were found, probably due to a lack of debugging information.\n");
-    printf( "Did you compile your program with DWARF2 debugging info?  The option is -gdwarf-2 on gcc.\n");
-    my_abort();
+    if (num_unsupported_version_comp_units) {
+      printf( "\nError - No functions were found, because Fjalar does not read the DWARF\n"
+              "version of the program's debugging information.\n");
+    } else {
+      printf( "\nError - No functions were found, probably due to a lack of debugging information.\n");
+    }
+    printf( "%s", dwarf_version_hint);
+    VG_(exit)(1);
+  }
+
+  if (num_unsupported_version_comp_units) {
+    printf( "\nWarning - Fjalar omits the functions of %lu compilation unit(s), because\n"
+            "Fjalar does not read their DWARF version.\n",
+            num_unsupported_version_comp_units);
+    printf( "%s", dwarf_version_hint);
   }
 
   FJALAR_DPRINTF("EXIT  initializeFunctionTable\n");
@@ -1858,6 +1900,48 @@ static dwarf_entry* extractArrayType(VariableEntry* varPtr, array_type* arrayPtr
   return arrayPtr->type_ptr;
 }
 
+// The TypeEntry objects that sizedBasicType has created.
+static TypeEntry** sizedBasicTypes = NULL;
+static int numSizedBasicTypes = 0;
+static int maxSizedBasicTypes = 0;
+
+// Returns a TypeEntry for the basic type decType whose values occupy
+// byteSize bytes.  Fjalar uses a type's size to lay out the stack and
+// structs, but a DeclaredType whose values Fjalar never reads may come in
+// many sizes:  for example, D_I128 includes _BitInt(N) for every N > 64.
+// The TypeEntry in BasicTypesArray serves its own size; each other size
+// gets its own TypeEntry, created on first use.
+static TypeEntry* sizedBasicType(DeclaredType decType, int byteSize)
+{
+  TypeEntry* t = BasicTypesArray[decType];
+  int i;
+
+  if (t->byteSize == byteSize) {
+    return t;
+  }
+  for (i = 0; i < numSizedBasicTypes; i++) {
+    if ((sizedBasicTypes[i]->decType == decType) &&
+        (sizedBasicTypes[i]->byteSize == byteSize)) {
+      return sizedBasicTypes[i];
+    }
+  }
+
+  if (numSizedBasicTypes == maxSizedBasicTypes) {
+    maxSizedBasicTypes = (maxSizedBasicTypes == 0) ? 8 : 2 * maxSizedBasicTypes;
+    sizedBasicTypes = (sizedBasicTypes == NULL)
+      ? VG_(malloc)("generate_fjalar_entries.c: sizedBasicType.1",
+                    maxSizedBasicTypes * sizeof(TypeEntry*))
+      : VG_(realloc)("generate_fjalar_entries.c: sizedBasicType.2",
+                     sizedBasicTypes, maxSizedBasicTypes * sizeof(TypeEntry*));
+  }
+  t = VG_(malloc)("generate_fjalar_entries.c: sizedBasicType.3",
+                  sizeof(TypeEntry));
+  *t = *BasicTypesArray[decType];
+  t->byteSize = byteSize;
+  sizedBasicTypes[numSizedBasicTypes++] = t;
+  return t;
+}
+
 // Extracts base type information by assigning var->varType to a basic
 // type TypeEntry in BasicTypesArray
 // Modifies: var->varType
@@ -1875,9 +1959,37 @@ static void extractBaseType(VariableEntry* var, base_type* basePtr)
     else if (basePtr->byte_size == sizeof(double)) {
       var->varType = BasicTypesArray[D_DOUBLE];
     }
+    // _Float128 (named __float128 in C++) has the size of a long double
+    // on amd64, so only its name distinguishes it.
+    else if ((basePtr->byte_size == 16) && (basePtr->name != NULL) &&
+             (VG_STREQ(basePtr->name, "_Float128") ||
+              VG_STREQ(basePtr->name, "__float128"))) {
+      var->varType = BasicTypesArray[D_FLOAT128];
+    }
     else if (basePtr->byte_size == sizeof(long double)) {
       var->varType = BasicTypesArray[D_LONG_DOUBLE];
     }
+    // _Float16 and __bf16 have the same size and encoding, so only their
+    // names distinguish them.
+    else if (basePtr->byte_size == 2) {
+      if ((basePtr->name != NULL) && VG_STREQ(basePtr->name, "__bf16")) {
+        var->varType = BasicTypesArray[D_BFLOAT16];
+      }
+      else {
+        var->varType = BasicTypesArray[D_FLOAT16];
+      }
+    }
+    break;
+
+  // Fjalar never reads a value of these types; see varHasReportableValue.
+  case DW_ATE_complex_float:
+  // GCC encodes a complex integer type (a GNU extension) as DW_ATE_lo_user.
+  case DW_ATE_lo_user:
+    var->varType = sizedBasicType(D_COMPLEX, basePtr->byte_size);
+    break;
+
+  case DW_ATE_decimal_float:
+    var->varType = sizedBasicType(D_DECIMAL, basePtr->byte_size);
     break;
 
   case DW_ATE_signed:
@@ -1902,6 +2014,10 @@ static void extractBaseType(VariableEntry* var, base_type* basePtr)
     // Rust native type i128
     else if (basePtr->byte_size == 16) {
       var->varType = BasicTypesArray[D_I128];
+    }
+    // _BitInt(N) for N > 128
+    else if (basePtr->byte_size > 16) {
+      var->varType = sizedBasicType(D_I128, basePtr->byte_size);
     }
     // Rust Zero Sized Type
     else if (basePtr->byte_size == 0) {
@@ -1931,6 +2047,10 @@ static void extractBaseType(VariableEntry* var, base_type* basePtr)
     // Rust native type u128
     else if (basePtr->byte_size == 16) {
       var->varType = BasicTypesArray[D_U128];
+    }
+    // unsigned _BitInt(N) for N > 128
+    else if (basePtr->byte_size > 16) {
+      var->varType = sizedBasicType(D_U128, basePtr->byte_size);
     }
     // Rust Zero Sized Type
     else if (basePtr->byte_size == 0) {
@@ -2646,20 +2766,23 @@ static Bool isSupportedRegisterLocation(VariableEntry* varPtr)
   return 0 < byteSize && byteSize <= (int)sizeof(Addr);
 }
 
-// Adds to f->entryRegsMask each register that the formal parameter's
-// location uses, so that Fjalar saves the register at function
-// entrance.  Every such register is readable, because a location that
-// uses an unreadable register is unsupported (see location_op_kind_of).
-static void recordEntryRegs(FunctionEntry* f, VariableEntry* varPtr)
+// Returns the set of the registers that the formal parameter's location uses
+// (in DW_OP_reg* or DW_OP_breg*).  The set is represented as a bit mask indexed
+// by DWARF register number.  Every such register is readable, because a
+// location that uses an unreadable register is unsupported (see
+// location_op_kind_of).
+static UInt locationRegisterMask(VariableEntry* varPtr)
 {
   unsigned int i;
+  UInt mask = 0;
   for (i = 0; i < varPtr->location_expression_size; i++) {
     UInt regNum;
     if (dwarf_op_reg_num(varPtr->location_expression[i].atom, &regNum)) {
       tl_assert(dwarf_reg_is_readable(regNum));
-      f->entryRegsMask |= 1U << regNum;
+      mask |= 1U << regNum;
     }
   }
+  return mask;
 }
 
 // Returns true if the formal parameter's location contains DW_OP_fbreg,
@@ -2740,7 +2863,11 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     varPtr->location_expression_size = paramPtr->dwarf_stack_size;
   }
 
-  if (paramPtr->location_has_unsupported_op) {
+  if (paramPtr->location_has_unsupported_op
+      || ((paramPtr->location_piece_size != 0)
+          && ((paramPtr->dwarf_stack_size == 0)
+              || (paramPtr->location_piece_size
+                  != (unsigned long)formalParamByteSize(varPtr))))) {
     // varPtr->validLoc remains 0, so Fjalar omits the formal parameter.
     FJALAR_DPRINTF(" location contains an unsupported operation\n");
     varPtr->locationUnsupported = 1;
@@ -2757,15 +2884,25 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     // which runs earlier, shows that byteOffset.  The stack sizes come
     // from formalParamFrameOffsetRange, which uses the location, not
     // that byteOffset.
-    recordEntryRegs(f, varPtr);
+    // Save at function entrance each register that the location uses.
+    f->entryRegsMask |= locationRegisterMask(varPtr);
 
     FJALAR_DPRINTF(" location_type: %u, byteOffset: %x\n", varPtr->locationType, (unsigned int)varPtr->byteOffset);
   } else if (isSupportedRegisterLocation(varPtr)) {
     UInt regNum = varPtr->location_expression[0].atom - DW_OP_reg0;
     varPtr->validLoc = 1;
     varPtr->locationType = REGISTER_LOCATION;
-    recordEntryRegs(f, varPtr);
+    f->entryRegsMask |= 1U << regNum;
     FJALAR_DPRINTF(" location is register %s\n", dwarf_reg_name(regNum));
+  } else if (locationRegisterMask(varPtr) != 0) {
+    // A register location that Fjalar cannot read, such as a register
+    // combined with other operations or a value larger than a register.
+    // Fjalar did not save the register at entrance, so the location must
+    // not become valid; locationUnsupported prevents the heuristics in
+    // processFunctions and initConstructorsAndDestructors from making it
+    // valid.
+    FJALAR_DPRINTF(" location is a register that Fjalar cannot read\n");
+    varPtr->locationUnsupported = 1;
   }
 
   FJALAR_DPRINTF("EXIT  extractOneFormalParameterVar\n");
@@ -2902,6 +3039,19 @@ static void extractReturnVar(FunctionEntry* f,
                      0,
                      0,
                      0,0,0,0,0,0,0,0,0);
+
+  // Fjalar reads a floating-point return value from the low 8 bytes of
+  // xmm0, but a long double is returned in the x87 register st(0), and a
+  // _Float128 in all 16 bytes of xmm0, so Fjalar cannot read it.  Omit such
+  // a return value, as for a void function.
+  if (f->returnValue.first) {
+    VariableEntry* returnVar = f->returnValue.first->var;
+    if ((returnVar->ptrLevels == 0) && (returnVar->referenceLevels == 0) &&
+        ((returnVar->varType->decType == D_LONG_DOUBLE) ||
+         (returnVar->varType->decType == D_FLOAT128))) {
+      deleteTailNode(&(f->returnValue));
+    }
+  }
 
   FJALAR_DPRINTF("EXIT  extractReturnVar - %s\n", dwarfFunctionEntry->name);
 }
