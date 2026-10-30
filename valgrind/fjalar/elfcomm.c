@@ -178,7 +178,6 @@ byte_get_little_endian (const unsigned char *field, unsigned int size)
     default:
       error (_("Unhandled data length: %d\n"), size);
       abort ();
-      return 0;     // stop compiler warning
     }
 }
 
@@ -249,7 +248,6 @@ byte_get_big_endian (const unsigned char *field, unsigned int size)
     default:
       error (_("Unhandled data length: %d\n"), size);
       abort ();
-      return 0;     // stop compiler warning
     }
 }
 
@@ -279,7 +277,6 @@ byte_get_signed (const unsigned char *field, unsigned int size)
       return x;
     default:
       abort ();
-      return 0;     // stop compiler warning
     }
 }
 

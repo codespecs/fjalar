@@ -73,4 +73,12 @@
 
 #define abort() my_abort ()
 
+/* Warnings that only the copies of Binutils files trigger.  Fixing them
+   would change the copies, and each change makes merging a newer version of
+   Binutils harder.  fjalar.am disables -Wformat-signedness for them, because
+   a pragma cannot.  */
+
+#pragma GCC diagnostic ignored "-Wdiscarded-qualifiers"
+#pragma GCC diagnostic ignored "-Wunused-variable"
+
 #endif /* FJALAR_BINUTILS_SYSDEP_H */

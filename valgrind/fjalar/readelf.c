@@ -462,7 +462,7 @@ valid_dynamic_name (const Filedata *filedata, uint64_t offset)
 			    filedata->dynamic_strings_length, offset);
 }
 
-/* GET_DYNAMIC_NAME assumes that VALID_DYNAMIC_NAME has
+/* GET_DYNAMIC_NAME asssumes that VALID_DYNAMIC_NAME has
    already been called and verified that the string exists.  */
 static inline const char *
 get_dynamic_name (const Filedata *filedata, size_t offset)
@@ -486,7 +486,7 @@ get_dynamic_name (const Filedata *filedata, size_t offset)
    BFD_FMA_FMT can't be used in translated strings.  */
 
 static const char *
-bfd_vmatoa (const char *fmtch, bfd_vma value)  // Fjalar: const added to remove compile warning
+bfd_vmatoa (char *fmtch, bfd_vma value)
 {
   /* bfd_vmatoa is used more then once in a printf call for output.
      Cycle through an array of buffers.  */
@@ -663,7 +663,7 @@ print_vma (bfd_vma vma, print_mode mode)
 
 
 /* Display a symbol on stdout.  Handles the display of control characters and
-   multibyte characters (assuming the host environment supports them).
+   multibye characters (assuming the host environment supports them).
 
    Display at most abs(WIDTH) characters, truncating as necessary, unless do_wide is true.
 
@@ -2875,7 +2875,7 @@ get_machine_name (unsigned e_machine)
     case EM_MMA:		return "Fujitsu Multimedia Accelerator";
     case EM_PCP:		return "Siemens PCP";
     case EM_NCPU:		return "Sony nCPU embedded RISC processor";
-    case EM_NDR1:		return "Denso NDR1 microprocessor";
+    case EM_NDR1:		return "Denso NDR1 microprocesspr";
     case EM_STARCORE:		return "Motorola Star*Core processor";
     case EM_ME16:		return "Toyota ME16 processor";
       /* 60 */
@@ -3062,7 +3062,7 @@ get_machine_name (unsigned e_machine)
     case EM_KF32:		return "ChipON KungFu32";
 
       /* Large numbers...  */
-    case EM_MT:                 return "Morpho Technologies MT processor";
+    case EM_MT:                 return "Morpho Techologies MT processor";
     case EM_ALPHA:		return "Alpha";
     case EM_WEBASSEMBLY:	return "Web Assembly";
     case EM_DLX:		return "OpenDLX";
@@ -7207,7 +7207,7 @@ process_section_headers (Filedata * filedata)
       if (! filedata->is_separate || process_links)
         FJALAR_DPRINTF (ngettext ("There is %u section header, "
 			  "starting at offset 0x%lx:\n",
-			  "There are %u section headers, "
+			  "There are %d section headers, "
 			  "starting at offset 0x%lx:\n",
 			  filedata->file_header.e_shnum),
 		filedata->file_header.e_shnum,
@@ -8278,7 +8278,7 @@ dump_ia64_vms_dynamic_fixups (Filedata *                  filedata,
     }
 
   printf (_("\nImage fixups for needed library #%d: %s - ident: %lx\n"),
-	  (int) fixup->fixup_needed, lib_name, (long unsigned int) fixup->needed_ident);
+	  (int) fixup->fixup_needed, lib_name, (long) fixup->needed_ident);
   printf
     (_("Seg Offset           Type                             SymVec DataType\n"));
 
@@ -8481,11 +8481,11 @@ process_relocs (Filedata * filedata)
 	    {
 	      if (filedata->is_separate)
 		FJALAR_DPRINTF
-		  (_("\nIn linked file '%s' section '%s' at offset 0x%lx contains %lu bytes:\n"),
+		  (_("\nIn linked file '%s' section '%s' at offset 0x%lx contains %ld bytes:\n"),
 		   filedata->file_name, name, rel_offset, rel_size);
 	      else
                 FJALAR_DPRINTF
-		  (_("\n'%s' relocation section at offset 0x%lx contains %lu bytes:\n"),
+		  (_("\n'%s' relocation section at offset 0x%lx contains %ld bytes:\n"),
 		   name, rel_offset, rel_size);
 
 	      dump_relocations (filedata,
@@ -12744,17 +12744,17 @@ get_symbol_binding (Filedata * filedata, unsigned int binding)
     case STB_WEAK:	return "WEAK";
     default:
       if (binding >= STB_LOPROC && binding <= STB_HIPROC)
-	snprintf (buff, sizeof (buff), _("<processor specific>: %u"),
+	snprintf (buff, sizeof (buff), _("<processor specific>: %d"),
 		  binding);
       else if (binding >= STB_LOOS && binding <= STB_HIOS)
 	{
 	  if (binding == STB_GNU_UNIQUE
 	      && filedata->file_header.e_ident[EI_OSABI] == ELFOSABI_GNU)
 	    return "UNIQUE";
-	  snprintf (buff, sizeof (buff), _("<OS specific>: %u"), binding);
+	  snprintf (buff, sizeof (buff), _("<OS specific>: %d"), binding);
 	}
       else
-	snprintf (buff, sizeof (buff), _("<unknown>: %u"), binding);
+	snprintf (buff, sizeof (buff), _("<unknown>: %d"), binding);
       return buff;
     }
 }
@@ -12787,7 +12787,7 @@ get_symbol_type (Filedata * filedata, unsigned int type)
 	  if (filedata->file_header.e_machine == EM_PARISC && type == STT_PARISC_MILLI)
 	    return "PARISC_MILLI";
 
-	  snprintf (buff, sizeof (buff), _("<processor specific>: %u"), type);
+	  snprintf (buff, sizeof (buff), _("<processor specific>: %d"), type);
 	}
       else if (type >= STT_LOOS && type <= STT_HIOS)
 	{
@@ -12804,10 +12804,10 @@ get_symbol_type (Filedata * filedata, unsigned int type)
 		  || filedata->file_header.e_ident[EI_OSABI] == ELFOSABI_FREEBSD))
 	    return "IFUNC";
 
-	  snprintf (buff, sizeof (buff), _("<OS specific>: %u"), type);
+	  snprintf (buff, sizeof (buff), _("<OS specific>: %d"), type);
 	}
       else
-	snprintf (buff, sizeof (buff), _("<unknown>: %u"), type);
+	snprintf (buff, sizeof (buff), _("<unknown>: %d"), type);
       return buff;
     }
 }
@@ -13072,9 +13072,9 @@ get_symbol_index_type (Filedata * filedata, unsigned int type)
 	sprintf (buff, "RSV[0x%04x]", type & 0xffff);
       else if (filedata->file_header.e_shnum != 0
 	       && type >= filedata->file_header.e_shnum)
-	sprintf (buff, _("bad section index[%3u]"), type);
+	sprintf (buff, _("bad section index[%3d]"), type);
       else
-	sprintf (buff, "%3u", type);
+	sprintf (buff, "%3d", type);
       break;
     }
 
@@ -13318,7 +13318,7 @@ print_dynamic_symbol (Filedata *filedata, unsigned long si,
 // END FJALAR CODE
 
   if (fjalar_debug) {
-  printf ("%6lu: ", si);
+  printf ("%6ld: ", si);
   print_vma (psym->st_value, LONG_HEX);
   putchar (' ');
   print_dynamic_symbol_size (psym->st_size, sym_base);
@@ -14019,16 +14019,16 @@ process_syminfo (Filedata * filedata)
 
   if (filedata->is_separate)
     FJALAR_DPRINTF (ngettext ("\nIn linked file '%s: the dynamic info segment at offset 0x%lx contains %u entry:\n",
-		      "\nIn linked file '%s: the dynamic info segment at offset 0x%lx contains %u entries:\n",
+		      "\nIn linked file '%s: the dynamic info segment at offset 0x%lx contains %d entries:\n",
 		      filedata->dynamic_syminfo_nent),
 	    filedata->file_name,
 	    filedata->dynamic_syminfo_offset,
 	    filedata->dynamic_syminfo_nent);
   else
     FJALAR_DPRINTF (ngettext ("\nDynamic info segment at offset 0x%lx "
-		      "contains %u entry:\n",
+		      "contains %d entry:\n",
 		      "\nDynamic info segment at offset 0x%lx "
-		      "contains %u entries:\n",
+		      "contains %d entries:\n",
 		      filedata->dynamic_syminfo_nent),
 	    filedata->dynamic_syminfo_offset,
 	    filedata->dynamic_syminfo_nent);
@@ -16045,9 +16045,9 @@ load_specific_debug_section (enum dwarf_section_display_enum  debug,
     section->size = 0;
   else
     {
-      // unsigned char *start = section->start; // unused in Fjalar
+      unsigned char *start = section->start;
       dwarf_size_type size = sec->sh_size;
-      // dwarf_size_type uncompressed_size = 0; // unused in Fjalar
+      dwarf_size_type uncompressed_size = 0;
 
 #if 0 // Not needed for Fjalar??
       if ((sec->sh_flags & SHF_COMPRESSED) != 0)
@@ -21875,7 +21875,7 @@ process_notes_at (Filedata *           filedata,
      specifies that notes should be aligned to 4 bytes in 32-bit
      objects and to 8 bytes in 64-bit objects.  As a Linux extension,
      we also support 4 byte alignment in 64-bit objects.  If section
-     alignment is less than 4, we treat alignment as 4 bytes.   */
+     alignment is less than 4, we treate alignment as 4 bytes.   */
   if (align < 4)
     align = 4;
   else if (align != 4 && align != 8)
