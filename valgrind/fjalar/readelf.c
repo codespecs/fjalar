@@ -13404,7 +13404,7 @@ print_dynamic_symbol (Filedata *filedata, unsigned long si,
       /* Solaris binaries have been found to violate this requirement as
 	 well.  Not sure if this is a bug or an ABI requirement.  */
       && filedata->file_header.e_ident[EI_OSABI] != ELFOSABI_SOLARIS)
-    warn (_("local symbol %u found at index >= %s's sh_info value of %u\n"),
+    warn (_("local symbol %lu found at index >= %s's sh_info value of %u\n"),
 	  si, printable_section_name (filedata, section), section->sh_info);
 }
 
