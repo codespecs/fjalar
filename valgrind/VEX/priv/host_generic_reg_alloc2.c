@@ -864,14 +864,13 @@ HInstrArray* doRegisterAllocation_v2 (
             ss_busy_until_before[ss_no] = vreg_lrs[j].dead_before;
             break;
 
-      } /* switch (vreg_lrs[j].reg_class) { */
+      } /* switch (vreg_lrs[j].reg_class) */
 
       /* This reflects LibVEX's hard-wired knowledge of the baseBlock
          layout: the guest state, then two equal sized areas following
          it for two sets of shadow state, and then the spill area. */
-      // PG - pgbovine - changed from 2 to 6 to account for vex_extra_shadow in ThreadArchState
-      // Rudd - 3->7 times
-      vreg_lrs[j].spill_offset = toShort(con->guest_sizeB * 7 + ss_no * 8);
+      // Fjalar: + 4 for vex_extra_shadow
+      vreg_lrs[j].spill_offset = toShort(con->guest_sizeB * (3 + 4) + ss_no * 8);
 
       /* Independent check that we've made a sane choice of slot */
       sanity_check_spill_offset( &vreg_lrs[j] );

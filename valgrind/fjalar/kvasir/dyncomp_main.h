@@ -31,11 +31,12 @@
 #include "pub_tool_libcbase.h"
 #include "pub_tool_machine.h"
 #include "pub_tool_threadstate.h"
+#include "libvex_guest_amd64.h"   // for PENDING_CARRY_TAG1_OFFSET
 
 //RUDD-REMOVE
 //#include "../mac_shared.h"
 //#include "../mc_translate.h"
-#include "../mc_include.h"
+#include "../mc_fjalar.h"
 #include "union_find.h"
 #include "kvasir/dyncomp_runtime.h"
 
@@ -198,14 +199,19 @@ static __inline__ UInt get_tag ( Addr a )
 }
 #endif
 
-// Clear all tags for all bytes in range [a, a + len)
-static __inline__ void clear_all_tags_in_range( Addr a, SizeT len ) {
+// Set the tag of all bytes in range [a, a + len) to tag, as is.  A
+// caller that wants the union-find leader of tag must pass the leader.
+static __inline__ void set_tag_in_range( Addr a, SizeT len, UInt tag ) {
   Addr curAddr;
 
   for (curAddr = a; curAddr < (a+len); curAddr++) {
-    // Set the tag to 0
-    set_tag(curAddr, 0);
+    set_tag(curAddr, tag);
   }
+}
+
+// Clear all tags for all bytes in range [a, a + len)
+static __inline__ void clear_all_tags_in_range( Addr a, SizeT len ) {
+  set_tag_in_range(a, len, 0);
 }
 
 // Return a fresh tag and create a singleton set
@@ -283,20 +289,43 @@ extern VG_REGPARM(1) void MC_(helperc_STORE_TAG_8) ( Addr, UInt );
 extern VG_REGPARM(2) void MC_(helperc_STORE_TAG_4) ( Addr, UInt );
 extern VG_REGPARM(2) void MC_(helperc_STORE_TAG_2) ( Addr, UInt );
 extern VG_REGPARM(2) void MC_(helperc_STORE_TAG_1) ( Addr, UInt );
+extern VG_REGPARM(3) void MC_(helperc_STORE_TAG_N) ( Addr, UWord, UInt );
 
 extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_8) ( Addr );
 extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_4) ( Addr );
 extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_2) ( Addr );
 extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_1) ( Addr );
 
-extern VG_REGPARM(2) UInt MC_(helperc_LOAD_TAG_N) ( Addr, UWord );
+// The number of slots of MC_(helperc_LOAD_TAG_N), and the size in
+// bytes of the largest load whose tags a slot can hold.
+#define DC_N_LOAD_TAG_SNAPSHOTS 128
+#define DC_LOAD_TAG_SNAPSHOT_BYTES 32
+
+extern UInt load_tag_snapshots[DC_N_LOAD_TAG_SNAPSHOTS][DC_LOAD_TAG_SNAPSHOT_BYTES];
+
+extern VG_REGPARM(3) UInt MC_(helperc_LOAD_TAG_N) ( Addr, UWord, Word );
+extern VG_REGPARM(3) void MC_(helperc_STORE_TAG_SNAPSHOT) ( Addr, UWord, UWord );
 
 extern VG_REGPARM(1) UInt MC_(helperc_CREATE_TAG) ( Addr static_id );
 
 extern VG_REGPARM(2) UInt MC_(helperc_MERGE_TAGS) ( UInt, UInt );
 extern VG_REGPARM(2) UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt, UInt );
-extern VG_REGPARM(2) UWord MC_(helperc_SUB_OPERAND_TAG) ( UWord, UWord );
+extern VG_REGPARM(3) UWord MC_(helperc_SUB_OPERAND_TAG) ( UWord, UWord, UWord );
 Bool dyncomp_cc_op_is_sub(UWord cc_op);
+Bool dyncomp_cc_op_is_sbb(UWord cc_op);
+Bool dyncomp_cc_op_preserves_carry(UWord cc_op);
+
+// The guest state offsets whose tags are the pending carry tags of the
+// CC_NDEP field; see notePendingCarryTags_DC.  Each is inside CC_NDEP, so
+// it is not the offset of any register, and the tags of offsets inside
+// CC_NDEP are not otherwise used.  The tag of an offset occupies 4 bytes
+// per byte of guest state starting at 4 times the offset (see
+// tagOffset_DC), and tags in the guest state are word-sized, so these
+// tags do not overlap one another or the tag of CC_NDEP itself.
+#define PENDING_CARRY_TAG1_OFFSET \
+  (offsetof(VexGuestAMD64State, guest_CC_NDEP) + 2)
+#define PENDING_CARRY_TAG2_OFFSET \
+  (offsetof(VexGuestAMD64State, guest_CC_NDEP) + 4)
 
 extern VG_REGPARM(3) UInt MC_(helperc_MERGE_3_TAGS) ( UInt, UInt, UInt );
 extern VG_REGPARM(3) UInt MC_(helperc_MERGE_4_TAGS) ( UInt, UInt, UInt, UInt );

@@ -1,0 +1,18 @@
+..main():::ENTER ::record.count 9
+..total():::ENTER count 3
+..total():::EXIT0 count 3
+..main():::EXIT0 ::record.count 9
+..main():::EXIT0 return 0
+..main():::ENTER ::prices _Decimal* hashcode
+..main():::ENTER ::pricep _Decimal* hashcode
+..main():::ENTER ::bigs u128* hashcode
+..main():::ENTER ::record record hashcode
+..main():::ENTER ::record.count int int
+..main():::EXIT0 ::prices _Decimal* hashcode
+..main():::EXIT0 ::pricep _Decimal* hashcode
+..main():::EXIT0 ::bigs u128* hashcode
+..main():::EXIT0 ::record record hashcode
+..main():::EXIT0 ::record.count int int
+..main():::EXIT0 return int int
+..total():::ENTER count int int
+..total():::EXIT0 count int int

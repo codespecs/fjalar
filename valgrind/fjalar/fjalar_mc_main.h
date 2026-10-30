@@ -1,0 +1,104 @@
+/*
+   This file is part of Fjalar, a dynamic analysis framework for C/C++
+   programs.
+
+   Copyright (C) 2007-2026 University of Washington Computer Science & Engineering Department,
+   Programming Languages and Software Engineering Group
+
+   Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
+   Copyright (C) 2008-2009 Robert Rudd (rudd@csail.mit.edu),
+   MIT CSAIL Program Analysis Group
+
+   This program is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 2 of the
+   License, or (at your option) any later version.
+*/
+
+/* fjalar_mc_main.h:
+
+The functions that Fjalar adds to Memcheck, which mc_fjalar.h declares.
+They use mc_main.c's static functions and macros, so mc_main.c includes
+this file, after the definitions of those, rather than this file being
+compiled on its own.  No other file may include it, because it defines
+functions.
+
+This file relies on mc_main.c's #includes and definitions, such as DEBUG,
+kvasir_with_dyncomp, and set_tag_in_range.  It includes only the headers that
+mc_main.c needs for this file's functions and for nothing else.
+
+*/
+
+#include "pub_tool_vki.h"  // needed for VKI_PROT_ defines
+#include "fjalar_core_decls.h"  // for VG_(am_is_valid_for_valgrind), VG_(get_tag_ptr_for_guest_offset)
+
+// Marks the len bytes at a addressable, and gives them the V bits in
+// the low-order len bytes of vbits.  The V bits are laid out in the
+// host's byte order, as a store of a len-byte value to a lays out the
+// value.  len must be 1, 2, 4, or 8.
+static void mc_set_addressable_vbytes ( Addr a, ULong vbits, SizeT len )
+{
+#if defined(VG_BIGENDIAN)
+  Bool bigendian = True;
+#else
+  Bool bigendian = False;
+#endif
+  // mc_STOREVn_slow reports an error for a byte that is not addressable.
+  make_mem_undefined(a, len);
+  mc_STOREVn_slow(a, len * 8, vbits, bigendian);
+}
+
+Bool mc_check_writable (Addr a, SizeT len, Addr* bad_addr) {
+  return is_mem_addressable (a, len, bad_addr) ;
+}
+
+Bool mc_check_readable ( Addr a, SizeT len, Addr* bad_addr ) {
+  if (is_mem_defined( a, len, bad_addr, NULL) != MC_Ok) return False;
+  // Unfortunately, the test above lets through references to memory
+  // marked executable.  Thanks to Philippe Waroquiers of the Valgrind
+  // team for a way to detect this case.
+  int vResult = VG_(am_is_valid_for_client)(a, len, VKI_PROT_READ) |
+                VG_(am_is_valid_for_valgrind)(a, len, VKI_PROT_READ);
+  return vResult != 0;
+}
+
+// PG - pgbovine - Returns true if ANY of the v-bits are set for the
+// bytes in question.  (Less stringent than mc_check_readable)
+char mc_are_some_bytes_initialized(Addr a, SizeT len) {
+  SizeT i;
+  UChar abit;
+
+  DEBUG("mc_are_some_bytes_initialized\n");
+  for (i = 0; i < len; i++) {
+    abit = get_vabits2 (a);
+    if((abit == VA_BITS2_PARTDEFINED) || (abit == VA_BITS2_DEFINED)) {
+      return 1;
+    }
+    a++;
+  }
+  return 0;
+ }
+
+// Marks the bytes at dst addressable, gives each one the V bits of the
+// corresponding byte of the register, and gives all of them the
+// register's DynComp tag.
+void mc_copy_guest_reg_state ( ThreadId tid, Int guestOffset, Addr dst,
+                               SizeT len )
+{
+  ULong vbits = 0;
+  // Where the register's V bits go, so that they are the low-order len
+  // bytes of vbits.
+  UChar* vbitsLowBytes = (UChar*)&vbits;
+  tl_assert(len <= sizeof(vbits));
+#if defined(VG_BIGENDIAN)
+  vbitsLowBytes += sizeof(vbits) - len;
+#endif
+  VG_(get_shadow_regs_area)(tid, vbitsLowBytes, 1/*shadowNo*/,
+                            guestOffset, len);
+  mc_set_addressable_vbytes(dst, vbits, len);
+  if (kvasir_with_dyncomp) {
+    // DynComp keeps one tag per register, at the register's offset.
+    UInt tag = *VG_(get_tag_ptr_for_guest_offset)(tid, guestOffset);
+    set_tag_in_range(dst, len, tag);
+  }
+}

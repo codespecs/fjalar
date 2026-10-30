@@ -396,6 +396,9 @@ DaikonRepType decTypeToDaikonRepType(DeclaredType decType,
   case D_FLOAT:
   case D_DOUBLE:
   case D_LONG_DOUBLE:
+  case D_FLOAT16:
+  case D_BFLOAT16:
+  case D_FLOAT128:
     return R_DOUBLE;
 
   case D_STRUCT_CLASS:
@@ -413,6 +416,14 @@ DaikonRepType decTypeToDaikonRepType(DeclaredType decType,
     // pointer's rep type is hashcode without consulting this function, so a
     // ZST never reaches here.
     tl_assert(0 && "decTypeToDaikonRepType() - D_ZST");
+    return R_NO_TYPE;
+
+  case D_COMPLEX:
+  case D_DECIMAL:
+    // Daikon has no rep type for a complex or decimal floating-point
+    // number.  As for D_ZST, the traversal reports one only through a
+    // pointer.
+    tl_assert(0 && "decTypeToDaikonRepType() - D_COMPLEX or D_DECIMAL");
     return R_NO_TYPE;
 
   default:

@@ -42,6 +42,10 @@
 // For VG_(arena_free), to release the demanglers' results.
 #include "fjalar_core_decls.h"
 
+// Defined in dwarf.c and declared in bucomm.h, which typedata.c cannot
+// include
+void *xcalloc (size_t, size_t);
+
 // Most of the following information is taken from "DWARF Debugging
 // Information Format Version 4". Published by the DWARF Debugging
 // Information Format Committee and may be found at http://www.dwarfstd.org.
@@ -125,6 +129,10 @@ static unsigned long comp_unit_info_idx = 0;
 
 // The size of this array
 unsigned long dwarf_entry_array_size = 0;
+
+// The number of compilation units that dwarf.c skips because Fjalar does not
+// read their DWARF version
+unsigned long num_unsupported_version_comp_units = 0;
 
 // Global hash table containing a mapping between
 // Location list offsets and a linked list representing
@@ -438,7 +446,8 @@ char entry_is_listening_for_attribute(dwarf_entry* e, unsigned long attr)
       return (tag_is_function(tag) ||
               tag_is_variable(tag));
     case DW_AT_name:
-      return (tag_is_collection_type(tag) ||
+      return (tag_is_base_type(tag) ||
+              tag_is_collection_type(tag) ||
               tag_is_compile_unit(tag) ||
               tag_is_enumerator(tag) ||
               tag_is_formal_parameter(tag) ||
@@ -907,7 +916,12 @@ char harvest_name(dwarf_entry* e, const char* str1)
 
   tag = e->tag_name;
 
-  if (tag_is_enumerator(tag))
+  if (tag_is_base_type(tag))
+    {
+      ((base_type*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.10", str1);
+      return 1;
+    }
+  else if (tag_is_enumerator(tag))
     {
       ((enumerator*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.1", str1);
       return 1;
@@ -1204,9 +1218,10 @@ char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom
   if (paramPtr == 0)
     return 0;
 
-  paramPtr->loc_atom = atom;
-
-  tl_assert(paramPtr->dwarf_stack_size < MAX_DWARF_OPS);
+  if (paramPtr->dwarf_stack_size == MAX_DWARF_OPS) {
+    paramPtr->location_has_unsupported_op = 1;
+    return 1;
+  }
   paramPtr->dwarf_stack[paramPtr->dwarf_stack_size].atom = atom;
   paramPtr->dwarf_stack[paramPtr->dwarf_stack_size].atom_offset = value;
   paramPtr->dwarf_stack_size++;
@@ -1214,15 +1229,32 @@ char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom
   return 1;
 }
 
-char harvest_formal_param_location_offset(dwarf_entry* e, long value)
+// If e is a formal parameter, records that Fjalar cannot read its location
+// (sets location_has_unsupported_op), so Fjalar omits the parameter from the
+// .decls and .dtrace files.  Returns 1 if e is a formal parameter, 0
+// otherwise.
+char harvest_formal_param_location_unsupported(dwarf_entry* e)
 {
   formal_parameter* paramPtr = formal_parameter_of(e);
   if (paramPtr == 0)
     return 0;
 
-  paramPtr->location_type = LT_FP_OFFSET;
-  paramPtr->location = value;
-  paramPtr->valid_loc = 1;
+  paramPtr->location_has_unsupported_op = 1;
+  return 1;
+}
+
+// If e is a formal parameter, records that its location expression ends
+// with "DW_OP_piece size" (sets location_piece_size).
+// extractOneFormalParameterVar omits the parameter unless the piece is the
+// whole parameter and some operation precedes it.  Returns 1 if e is a
+// formal parameter, 0 otherwise.
+char harvest_formal_param_location_piece(dwarf_entry* e, unsigned long size)
+{
+  formal_parameter* paramPtr = formal_parameter_of(e);
+  if (paramPtr == 0)
+    return 0;
+
+  paramPtr->location_piece_size = size;
   return 1;
 }
 
@@ -2823,13 +2855,11 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
     case DW_TAG_formal_parameter:
       {
         formal_parameter* formal_param_ptr = (formal_parameter*)(e->entry_ptr);
-        FJALAR_DPRINTF("  Name: %s, Type ID: 0x%lx, num-ops: %u, atom: %x, loc_type: %u, offset: %ld\n",
+        FJALAR_DPRINTF("  Name: %s, Type ID: 0x%lx, num-ops: %u, unsupported op: %u\n",
                formal_param_ptr->name,
                formal_param_ptr->type_ID,
                formal_param_ptr->dwarf_stack_size,
-               formal_param_ptr->loc_atom,
-               formal_param_ptr->location_type,
-               formal_param_ptr->location);
+               (UInt)formal_param_ptr->location_has_unsupported_op);
         break;
       }
     case DW_TAG_template_type_param:
@@ -3025,8 +3055,9 @@ Effects: Initializes sets up dwarf_entry_array to hold num_entries components
 */
 void initialize_dwarf_entry_array(unsigned long num_entries)
 {
-  // use calloc to blank everything upon initialization
-  dwarf_entry_array = VG_(calloc)("typedata.c: initialize_dwarf_entry_array", num_entries, sizeof *dwarf_entry_array);
+  // use calloc to blank everything upon initialization.  xcalloc, unlike
+  // VG_(calloc), permits num_entries to be 0.
+  dwarf_entry_array = xcalloc(num_entries, sizeof *dwarf_entry_array);
 
   // Also initialize typedef_names_map at this time
   typedef_names_map = genallocatehashtable(0,
@@ -3041,7 +3072,8 @@ Effects: Initializes and sets up an array of the dwarf entries for all compile u
 */
 void initialize_compile_unit_array(unsigned long num_entries)
 {
-  comp_unit_info = VG_(calloc)("typedata.c: initialize_compile_unit_info", num_entries, sizeof *comp_unit_info);
+  // xcalloc, unlike VG_(calloc), permits num_entries to be 0.
+  comp_unit_info = xcalloc(num_entries, sizeof *comp_unit_info);
 } 
 
 

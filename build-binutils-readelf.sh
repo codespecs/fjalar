@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # This script builds the readelf program of a Binutils release, for comparing
-# its output with that of "--fjalar-debug-dump=yes".  See chapter "Updating
+# its output with that of "--fjalar-debug-dump".  See chapter "Updating
 # Readelf from Binutils" of doc/valgrind-merge.texinfo.
 #
 # Usage: ./build-binutils-readelf.sh VERSION

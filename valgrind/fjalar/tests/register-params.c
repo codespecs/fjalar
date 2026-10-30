@@ -12,8 +12,10 @@
 */
 
 // A C program that, when compiled with optimization, has formal parameters
-// whose location is a register (DW_OP_reg*) throughout the function.
-// See register-params-test.sh.
+// whose location is a register (DW_OP_reg*) throughout the function, which
+// Fjalar traces, and formal parameters whose locations Fjalar cannot read,
+// which Fjalar omits from both the .decls and .dtrace files.  Together with
+// stack-params.c.  See register-params-test.sh.
 
 // a and b are comparable to each other and to the result.
 __attribute__((noinline)) int add(int a, int b) {
@@ -42,6 +44,15 @@ __attribute__((noinline)) double identity(double d) {
   return d;
 }
 
+// Defined in stack-params.c, which register-params-test.sh compiles without
+// optimization.  See register-params-test.sh.
+void stack_value(long v);
+void kept(long y);
+void whole_piece(long w__);
+void part_piece(long p__);
+void constant_value(long c);
+void literal_value(long l);
+
 int main(void) {
   int t = 0;
   for (int i = 1; i < 4; i++) {
@@ -50,6 +61,12 @@ int main(void) {
   }
   struct pair p = {5, 2};
   split(p);
+  stack_value(17);
+  kept(13);
+  whole_piece(14);
+  part_piece(15);
+  constant_value(17);
+  literal_value(5);
   t += (int)identity(1.5);
   return t == 12345;
 }

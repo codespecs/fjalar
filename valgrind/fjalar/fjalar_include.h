@@ -54,12 +54,19 @@ typedef enum _DeclaredType {
   D_UNSIGNED_LONG_LONG_INT,
   D_LONG_LONG_INT,
 
-  D_U128,  // Rust native type
-  D_I128,  // Rust native type
+  // An integer wider than 64 bits:  Rust's u128 and i128, and C's __int128
+  // and _BitInt(N) for N > 64.  Never printed.
+  D_U128,
+  D_I128,
 
   D_FLOAT,
   D_DOUBLE,
   D_LONG_DOUBLE,
+  D_FLOAT16,          // _Float16, an IEEE 754 binary16 value
+  D_BFLOAT16,         // __bf16, a bfloat16 value
+  D_FLOAT128,         // _Float128, an IEEE 754 binary128 value
+  D_COMPLEX,          // a _Complex type; never printed
+  D_DECIMAL,          // _Decimal32, _Decimal64, or _Decimal128; never printed
 
   D_ENUMERATION,
 
@@ -399,8 +406,15 @@ typedef struct _VariableEntry {
   // Occasionally the DWARF information will name a variable but not
   // provide a location for it. This means there is no way to obtain
   // a value for this variable. Variables which do not have valid
-  // location information will have validLoc = False
+  // location information will have validLoc = False.  A formal
+  // parameter is readable only if validLoc is true and
+  // locationUnsupported is false.
   Bool validLoc;
+
+  // True if the DWARF information gives a location that Fjalar cannot
+  // read (see location_has_unsupported_op in typedata.h).  Then Fjalar
+  // omits the formal parameter, even if a heuristic sets validLoc.
+  Bool locationUnsupported;
 
   // In some situations (The primary one being dealing with the
   // formal parameters to main - see the MAIN STACK LAYOUT comment
@@ -765,6 +779,16 @@ Int dwarf_reg_guest_offset(UInt regNum);
 // dwarf_reg_is_readable in fjalar_dwarf.h).
 Addr read_dwarf_reg(ThreadId tid, UInt regNum);
 
+// Return the current value of a register of thread tid.  xAX is %rax
+// on amd64 and %eax on x86, and so on.
+Addr read_xAX(ThreadId tid);
+Addr read_xDX(ThreadId tid);
+
+// Return the floating-point return value of a function that has just
+// returned in thread tid (the low 64 bits of %xmm0 on amd64, and the
+// top of the x87 FPU stack on x86).
+double read_float_return(ThreadId tid);
+
 // Returns the name of the register with the given DWARF register
 // number, for debugging output (defined in dwarf.c).
 const HChar* dwarf_reg_name(UInt regNum);
@@ -842,6 +866,13 @@ typedef struct {
 
 
   Addr lowSP;
+
+  // The canonical frame address:  the stack pointer at the first
+  // instruction of the function, plus the size of the return address.
+  // It is the stack pointer just before the call instruction (or,
+  // after a tail call, the caller's canonical frame address).  While
+  // the function is live, the stack pointer is below it.
+  Addr CFA;
 } FunctionExecutionState;
 
 

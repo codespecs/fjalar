@@ -48,6 +48,7 @@ static void processFunctions(void);
 int determineFormalParametersStackByteSize(FunctionEntry* f);
 int determineFormalParametersLowerStackByteSize(FunctionEntry* f);
 int determineVariableByteSize(VariableEntry* var);
+int formalParamByteSize(VariableEntry* varPtr);
 
 static void extractFormalParameterVars(FunctionEntry* f, function* dwarfFunctionEntry);
 static void extractLocalArrayAndStructVariables(FunctionEntry* f, function* dwarfFunctionEntry);
@@ -110,7 +111,12 @@ const int DecTypeByteSizes[] = {
 
   sizeof(float),                  // D_FLOAT,
   sizeof(double),                 // D_DOUBLE,
-  sizeof(long double),            // D_LONG_DOUBLE,
+  10,                             // D_LONG_DOUBLE, // the x87 value; the rest is padding
+  2,                              // D_FLOAT16,
+  2,                              // D_BFLOAT16,
+  16,                             // D_FLOAT128,
+  16,                             // D_COMPLEX, // never read; size varies
+  8,                              // D_DECIMAL, // never read; size varies
 
   sizeof(int),                    // D_ENUMERATION,
 
@@ -146,6 +152,13 @@ TypeEntry Int128Type = {D_I128, 0, 16, 0};          // Rust
 TypeEntry FloatType = {D_FLOAT, 0, sizeof(float), 0};
 TypeEntry DoubleType = {D_DOUBLE, 0, sizeof(double), 0};
 TypeEntry LongDoubleType = {D_LONG_DOUBLE, 0, sizeof(long double), 0};
+TypeEntry Float16Type = {D_FLOAT16, 0, 2, 0};
+TypeEntry BFloat16Type = {D_BFLOAT16, 0, 2, 0};
+TypeEntry Float128Type = {D_FLOAT128, 0, 16, 0};
+// Fjalar never reads a value of these types, which come in several sizes;
+// see sizedBasicType.
+TypeEntry ComplexType = {D_COMPLEX, 0, 16, 0};      // _Complex double
+TypeEntry DecimalType = {D_DECIMAL, 0, 8, 0};       // _Decimal64
 TypeEntry FunctionType = {D_FUNCTION, 0, sizeof(void*), 0};
 TypeEntry VoidType = {D_VOID, 0, sizeof(void*), 0};
 TypeEntry Char8Type = {D_CHAR8, 0, 1, 0};
@@ -176,6 +189,11 @@ TypeEntry* BasicTypesArray[] = {
   &FloatType,               //  D_FLOAT,
   &DoubleType,              //  D_DOUBLE,
   &LongDoubleType,          //  D_LONG_DOUBLE,
+  &Float16Type,             //  D_FLOAT16,
+  &BFloat16Type,            //  D_BFLOAT16,
+  &Float128Type,            //  D_FLOAT128,
+  &ComplexType,             //  D_COMPLEX, // or see sizedBasicType
+  &DecimalType,             //  D_DECIMAL, // or see sizedBasicType
 
   0,                        //  D_ENUMERATION,
 
@@ -213,6 +231,11 @@ const char* DeclaredTypeString[] = {
   "float",                  // D_FLOAT,
   "double",                 // D_DOUBLE,
   "long double",            // D_LONG_DOUBLE,
+  "_Float16",               // D_FLOAT16,
+  "__bf16",                 // D_BFLOAT16,
+  "_Float128",              // D_FLOAT128,
+  "_Complex",               // D_COMPLEX,
+  "_Decimal",               // D_DECIMAL,
 
   // This should NOT be used unless you created an unnamed struct/union!
   // Use TypeEntry::typeName instead
@@ -284,6 +307,11 @@ const char* DeclaredTypeNames[] = {"D_NO_TYPE", // Create padding
                              "D_FLOAT",
                              "D_DOUBLE",
                              "D_LONG_DOUBLE",
+                             "D_FLOAT16",
+                             "D_BFLOAT16",
+                             "D_FLOAT128",
+                             "D_COMPLEX",
+                             "D_DECIMAL",
                              "D_ENUMERATION",
                              "D_STRUCT_CLASS",
                              "D_UNION",
@@ -1652,6 +1680,9 @@ void initializeFunctionTable(void)
   dwarf_entry* cur_entry = 0;
   FunctionEntry* cur_func_entry = 0;
   unsigned long num_functions_added = 0;
+  const char* dwarf_version_hint =
+    "Fjalar reads DWARF versions 2, 3, and 4.  Did you compile your program\n"
+    "with -gdwarf-4 -no-pie?\n";
 
   FJALAR_DPRINTF("ENTER initializeFunctionTable\n");
 
@@ -1815,9 +1846,21 @@ void initializeFunctionTable(void)
     }
 
   if (!num_functions_added) {
-    printf( "\nError - No functions were found, probably due to a lack of debugging information.\n");
-    printf( "Did you compile your program with DWARF2 debugging info?  The option is -gdwarf-2 on gcc.\n");
-    my_abort();
+    if (num_unsupported_version_comp_units) {
+      printf( "\nError - No functions were found, because Fjalar does not read the DWARF\n"
+              "version of the program's debugging information.\n");
+    } else {
+      printf( "\nError - No functions were found, probably due to a lack of debugging information.\n");
+    }
+    printf( "%s", dwarf_version_hint);
+    VG_(exit)(1);
+  }
+
+  if (num_unsupported_version_comp_units) {
+    printf( "\nWarning - Fjalar omits the functions of %lu compilation unit(s), because\n"
+            "Fjalar does not read their DWARF version.\n",
+            num_unsupported_version_comp_units);
+    printf( "%s", dwarf_version_hint);
   }
 
   FJALAR_DPRINTF("EXIT  initializeFunctionTable\n");
@@ -1857,6 +1900,48 @@ static dwarf_entry* extractArrayType(VariableEntry* varPtr, array_type* arrayPtr
   return arrayPtr->type_ptr;
 }
 
+// The TypeEntry objects that sizedBasicType has created.
+static TypeEntry** sizedBasicTypes = NULL;
+static int numSizedBasicTypes = 0;
+static int maxSizedBasicTypes = 0;
+
+// Returns a TypeEntry for the basic type decType whose values occupy
+// byteSize bytes.  Fjalar uses a type's size to lay out the stack and
+// structs, but a DeclaredType whose values Fjalar never reads may come in
+// many sizes:  for example, D_I128 includes _BitInt(N) for every N > 64.
+// The TypeEntry in BasicTypesArray serves its own size; each other size
+// gets its own TypeEntry, created on first use.
+static TypeEntry* sizedBasicType(DeclaredType decType, int byteSize)
+{
+  TypeEntry* t = BasicTypesArray[decType];
+  int i;
+
+  if (t->byteSize == byteSize) {
+    return t;
+  }
+  for (i = 0; i < numSizedBasicTypes; i++) {
+    if ((sizedBasicTypes[i]->decType == decType) &&
+        (sizedBasicTypes[i]->byteSize == byteSize)) {
+      return sizedBasicTypes[i];
+    }
+  }
+
+  if (numSizedBasicTypes == maxSizedBasicTypes) {
+    maxSizedBasicTypes = (maxSizedBasicTypes == 0) ? 8 : 2 * maxSizedBasicTypes;
+    sizedBasicTypes = (sizedBasicTypes == NULL)
+      ? VG_(malloc)("generate_fjalar_entries.c: sizedBasicType.1",
+                    maxSizedBasicTypes * sizeof(TypeEntry*))
+      : VG_(realloc)("generate_fjalar_entries.c: sizedBasicType.2",
+                     sizedBasicTypes, maxSizedBasicTypes * sizeof(TypeEntry*));
+  }
+  t = VG_(malloc)("generate_fjalar_entries.c: sizedBasicType.3",
+                  sizeof(TypeEntry));
+  *t = *BasicTypesArray[decType];
+  t->byteSize = byteSize;
+  sizedBasicTypes[numSizedBasicTypes++] = t;
+  return t;
+}
+
 // Extracts base type information by assigning var->varType to a basic
 // type TypeEntry in BasicTypesArray
 // Modifies: var->varType
@@ -1874,9 +1959,37 @@ static void extractBaseType(VariableEntry* var, base_type* basePtr)
     else if (basePtr->byte_size == sizeof(double)) {
       var->varType = BasicTypesArray[D_DOUBLE];
     }
+    // _Float128 (named __float128 in C++) has the size of a long double
+    // on amd64, so only its name distinguishes it.
+    else if ((basePtr->byte_size == 16) && (basePtr->name != NULL) &&
+             (VG_STREQ(basePtr->name, "_Float128") ||
+              VG_STREQ(basePtr->name, "__float128"))) {
+      var->varType = BasicTypesArray[D_FLOAT128];
+    }
     else if (basePtr->byte_size == sizeof(long double)) {
       var->varType = BasicTypesArray[D_LONG_DOUBLE];
     }
+    // _Float16 and __bf16 have the same size and encoding, so only their
+    // names distinguish them.
+    else if (basePtr->byte_size == 2) {
+      if ((basePtr->name != NULL) && VG_STREQ(basePtr->name, "__bf16")) {
+        var->varType = BasicTypesArray[D_BFLOAT16];
+      }
+      else {
+        var->varType = BasicTypesArray[D_FLOAT16];
+      }
+    }
+    break;
+
+  // Fjalar never reads a value of these types; see varHasReportableValue.
+  case DW_ATE_complex_float:
+  // GCC encodes a complex integer type (a GNU extension) as DW_ATE_lo_user.
+  case DW_ATE_lo_user:
+    var->varType = sizedBasicType(D_COMPLEX, basePtr->byte_size);
+    break;
+
+  case DW_ATE_decimal_float:
+    var->varType = sizedBasicType(D_DECIMAL, basePtr->byte_size);
     break;
 
   case DW_ATE_signed:
@@ -1901,6 +2014,10 @@ static void extractBaseType(VariableEntry* var, base_type* basePtr)
     // Rust native type i128
     else if (basePtr->byte_size == 16) {
       var->varType = BasicTypesArray[D_I128];
+    }
+    // _BitInt(N) for N > 128
+    else if (basePtr->byte_size > 16) {
+      var->varType = sizedBasicType(D_I128, basePtr->byte_size);
     }
     // Rust Zero Sized Type
     else if (basePtr->byte_size == 0) {
@@ -1930,6 +2047,10 @@ static void extractBaseType(VariableEntry* var, base_type* basePtr)
     // Rust native type u128
     else if (basePtr->byte_size == 16) {
       var->varType = BasicTypesArray[D_U128];
+    }
+    // unsigned _BitInt(N) for N > 128
+    else if (basePtr->byte_size > 16) {
+      var->varType = sizedBasicType(D_U128, basePtr->byte_size);
     }
     // Rust Zero Sized Type
     else if (basePtr->byte_size == 0) {
@@ -2375,6 +2496,19 @@ static Bool isInRegister(VariableEntry* var)
   return atom >= DW_OP_reg0 && atom <= DW_OP_reg31;
 }
 
+// Returns true if the recorded DWARF location of var uses the frame base
+// (DW_OP_fbreg).
+static Bool usesFrameBase(VariableEntry* var)
+{
+  UInt i;
+  for (i = 0; i < var->location_expression_size; i++) {
+    if (var->location_expression[i].atom == DW_OP_fbreg) {
+      return True;
+    }
+  }
+  return False;
+}
+
 // MUST BE RUN AFTER the return value for a function has been initialized!!!
 // Otherwise it cannot tell whether the function returns a struct type!!!
 //
@@ -2419,11 +2553,20 @@ static void verifyStackParamWordAlignment(FunctionEntry* f, int replace)
     {
       int cur_byteSize = 0;
       // A parameter in a register occupies no stack slot, even if
-      // Fjalar cannot read the register.
-      if (isInRegister(cur_node->var)) {
+      // Fjalar cannot read the register.  A parameter whose location
+      // Fjalar cannot read occupies a stack slot only if its location
+      // uses the frame base; otherwise, as for
+      // "DW_OP_entry_value(DW_OP_reg5); DW_OP_stack_value", the caller
+      // probably passed it in a register.
+      if (isInRegister(cur_node->var)
+          || (cur_node->var->locationUnsupported
+              && !usesFrameBase(cur_node->var))) {
         continue;
       }
-      if (cur_node->var->locationType == NO_LOCATION || replace) {
+      // A parameter whose location Fjalar cannot read gets no location,
+      // because Fjalar omits it.
+      if ((cur_node->var->locationType == NO_LOCATION || replace)
+          && !cur_node->var->locationUnsupported) {
         FJALAR_DPRINTF("MODIFY VAR LOCATION! was:\n");
         FJALAR_DPRINTF(" decType is: %s, size is: %d\n", DeclaredTypeString[cur_node->var->varType->decType],
                                                          cur_node->var->varType->byteSize);
@@ -2487,6 +2630,68 @@ int determineVariableByteSize(VariableEntry* var)
 }
 
 
+// Sets *lo and *hi to the offsets of the lowest byte and one past the
+// highest byte of the stack memory that a formal parameter occupies or
+// that its location reads, relative to the frame base.  This is
+// computed before visitVariableGroup evaluates the location at run
+// time, so it uses the location's operations.  It treats DW_OP_breg*
+// as if the register held the frame base.  For the stack pointer, that
+// gives an upper bound relative to the higher of the frame base and the
+// stack pointer, and enter_function copies the stack up to that bound.
+// For other registers, it is an estimate.
+//
+// It uses the byteOffset only for a formal parameter with no location,
+// which visitVariableGroup reads at the byteOffset.  For a location
+// other than a lone DW_OP_fbreg, the byteOffset is a placeholder, and
+// using it would extend the range past the stack memory that the
+// location reads.  Then enter_function would copy more of the caller's
+// stack, and visitVariableGroup could read an object in the caller's
+// frame from the end of the copy instead of from the caller's frame.
+static void formalParamFrameOffsetRange(VariableEntry* var, int* lo, int* hi)
+{
+  int byteSize = formalParamByteSize(var);
+  // The offset of the address that the operations so far compute, if
+  // offsetKnown is true.
+  int offset = 0;
+  Bool offsetKnown = False;
+  unsigned int i;
+
+  if (var->location_expression_size == 0) {
+    *lo = var->byteOffset;
+    *hi = var->byteOffset + byteSize;
+  } else {
+    *lo = 0;
+    *hi = 0;
+  }
+  for (i = 0; i < var->location_expression_size; i++) {
+    dwarf_location* dloc = &(var->location_expression[i]);
+    switch (location_op_kind_of(dloc->atom)) {
+    case LOC_OP_FBREG:
+    case LOC_OP_BREG:
+      offset = dloc->atom_offset;
+      offsetKnown = True;
+      break;
+    case LOC_OP_PLUS_UCONST:
+      offset += dloc->atom_offset;
+      break;
+    case LOC_OP_DEREF:
+      if (offsetKnown) {
+        *lo = MIN(*lo, offset);
+        *hi = MAX(*hi, offset + (int)sizeof(Addr));
+      }
+      offsetKnown = False;
+      break;
+    default:
+      offsetKnown = False;
+      break;
+    }
+  }
+  if (offsetKnown) {
+    *lo = MIN(*lo, offset);
+    *hi = MAX(*hi, offset + byteSize);
+  }
+}
+
 // Determines the number of bytes needed above the frame pointer in
 // the stack to hold the values of all function formal parameters for
 // a particular function
@@ -2503,13 +2708,10 @@ int determineFormalParametersStackByteSize(FunctionEntry* f)
        cur_node != NULL;
        cur_node = cur_node->next)
     {
-      int this_end = cur_node->var->byteOffset +
-        determineVariableByteSize(cur_node->var);
-      totalByteSize = MAX(totalByteSize, this_end);
+      int lo, hi;
+      formalParamFrameOffsetRange(cur_node->var, &lo, &hi);
+      totalByteSize = MAX(totalByteSize, hi);
     }
-  // PG comment said "Just to be safe, round UP to the next multiple
-  // of 4". For the moment, live dangerously and see if anything
-  // breaks. -SMcC
   return totalByteSize;
 }
 
@@ -2530,7 +2732,9 @@ int determineFormalParametersLowerStackByteSize(FunctionEntry* f)
        cur_node != NULL;
        cur_node = cur_node->next)
     {
-      totalByteSize = MIN(totalByteSize, cur_node->var->byteOffset);
+      int lo, hi;
+      formalParamFrameOffsetRange(cur_node->var, &lo, &hi);
+      totalByteSize = MIN(totalByteSize, lo);
     }
   return -totalByteSize;
 }
@@ -2538,7 +2742,7 @@ int determineFormalParametersLowerStackByteSize(FunctionEntry* f)
 
 // Returns the number of bytes that the formal parameter's location
 // holds.  A C++ reference is passed as a pointer.
-static int formalParamByteSize(VariableEntry* varPtr)
+int formalParamByteSize(VariableEntry* varPtr)
 {
   return (varPtr->referenceLevels > 0
           ? (int)sizeof(Addr)
@@ -2546,36 +2750,58 @@ static int formalParamByteSize(VariableEntry* varPtr)
 }
 
 // Returns true if the formal parameter's location is a register
-// whose entrance value Fjalar can save and from which Fjalar can read
-// the whole value.  The location must be a single DW_OP_reg operation:
-// Fjalar does not support any other operation (such as DW_OP_lit*)
-// that is not a memory location.  Call this after copying the DWARF
-// location into varPtr->location_expression.
+// from which Fjalar can read the whole value.  The location must be a
+// single DW_OP_reg operation.  The
+// register is readable, because a location that uses an unreadable
+// register is unsupported (see location_op_kind_of).  Call this after
+// copying the DWARF location into varPtr->location_expression.
 static Bool isSupportedRegisterLocation(VariableEntry* varPtr)
 {
   int byteSize;
 
-  if (varPtr->location_expression_size != 1 || !isInRegister(varPtr) ||
-      !dwarf_reg_is_readable(varPtr->location_expression[0].atom - DW_OP_reg0)) {
+  if (varPtr->location_expression_size != 1 || !isInRegister(varPtr)) {
     return False;
   }
   byteSize = formalParamByteSize(varPtr);
   return 0 < byteSize && byteSize <= (int)sizeof(Addr);
 }
 
-// Adds to f->entryRegsMask each readable register that the formal
-// parameter's location uses, so that Fjalar saves the register at
-// function entrance.
-static void recordEntryRegs(FunctionEntry* f, formal_parameter* paramPtr)
+// Returns the set of the registers that the formal parameter's location uses
+// (in DW_OP_reg* or DW_OP_breg*).  The set is represented as a bit mask indexed
+// by DWARF register number.  Every such register is readable, because a
+// location that uses an unreadable register is unsupported (see
+// location_op_kind_of).
+static UInt locationRegisterMask(VariableEntry* varPtr)
 {
   unsigned int i;
-  for (i = 0; i < paramPtr->dwarf_stack_size; i++) {
+  UInt mask = 0;
+  for (i = 0; i < varPtr->location_expression_size; i++) {
     UInt regNum;
-    if (dwarf_op_reg_num(paramPtr->dwarf_stack[i].atom, &regNum)
-        && dwarf_reg_is_readable(regNum)) {
-      f->entryRegsMask |= 1U << regNum;
+    if (dwarf_op_reg_num(varPtr->location_expression[i].atom, &regNum)) {
+      tl_assert(dwarf_reg_is_readable(regNum));
+      mask |= 1U << regNum;
     }
   }
+  return mask;
+}
+
+// Returns true if the formal parameter's location contains DW_OP_fbreg,
+// DW_OP_breg*, or DW_OP_plus_uconst.  Fjalar treats such a location as
+// the address of the formal parameter, which visitVariableGroup
+// computes.  Call this only for a location with no unsupported
+// operation (see location_op_kind_of), such as DW_OP_stack_value, and
+// after copying the DWARF location into varPtr->location_expression.
+static Bool locationHasAddressOp(VariableEntry* varPtr)
+{
+  unsigned int i;
+  for (i = 0; i < varPtr->location_expression_size; i++) {
+    location_op_kind kind = location_op_kind_of(varPtr->location_expression[i].atom);
+    if ((kind == LOC_OP_FBREG) || (kind == LOC_OP_BREG)
+        || (kind == LOC_OP_PLUS_UCONST)) {
+      return True;
+    }
+  }
+  return False;
 }
 
 // dwarfParamEntry->tag_name == DW_TAG_formal_parameter
@@ -2624,6 +2850,8 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
                               0,0,0,0,0,0,0,1,
                               0);
 
+  // isInRegister uses the location expression even if Fjalar cannot
+  // read the location.
   if (paramPtr->dwarf_stack_size > 0) {
     unsigned int i;
     FJALAR_DPRINTF("\tCopying over DWARF Location stack\n");
@@ -2635,20 +2863,46 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     varPtr->location_expression_size = paramPtr->dwarf_stack_size;
   }
 
-  if (paramPtr->location_type == LT_FP_OFFSET) {
+  if (paramPtr->location_has_unsupported_op
+      || ((paramPtr->location_piece_size != 0)
+          && ((paramPtr->dwarf_stack_size == 0)
+              || (paramPtr->location_piece_size
+                  != (unsigned long)formalParamByteSize(varPtr))))) {
+    // varPtr->validLoc remains 0, so Fjalar omits the formal parameter.
+    FJALAR_DPRINTF(" location contains an unsupported operation\n");
+    varPtr->locationUnsupported = 1;
+  } else if (locationHasAddressOp(varPtr)) {
     varPtr->validLoc = paramPtr->valid_loc;
     varPtr->locationType = FP_OFFSET_LOCATION;
-    varPtr->byteOffset = paramPtr->location;
-    //    varPtr->atom = paramPtr->loc_atom;
-    recordEntryRegs(f, paramPtr);
+    if (varPtr->location_expression_size == 1
+        && location_op_kind_of(varPtr->location_expression[0].atom) == LOC_OP_FBREG) {
+      varPtr->byteOffset = varPtr->location_expression[0].atom_offset;
+    }
+    // Otherwise, byteOffset is 0 (unless verifyStackParamWordAlignment
+    // replaces it) until visitVariableGroup evaluates the location and
+    // finds the formal parameter in the copied stack.  The XML output,
+    // which runs earlier, shows that byteOffset.  The stack sizes come
+    // from formalParamFrameOffsetRange, which uses the location, not
+    // that byteOffset.
+    // Save at function entrance each register that the location uses.
+    f->entryRegsMask |= locationRegisterMask(varPtr);
 
     FJALAR_DPRINTF(" location_type: %u, byteOffset: %x\n", varPtr->locationType, (unsigned int)varPtr->byteOffset);
   } else if (isSupportedRegisterLocation(varPtr)) {
     UInt regNum = varPtr->location_expression[0].atom - DW_OP_reg0;
     varPtr->validLoc = 1;
     varPtr->locationType = REGISTER_LOCATION;
-    recordEntryRegs(f, paramPtr);
+    f->entryRegsMask |= 1U << regNum;
     FJALAR_DPRINTF(" location is register %s\n", dwarf_reg_name(regNum));
+  } else if (locationRegisterMask(varPtr) != 0) {
+    // A register location that Fjalar cannot read, such as a register
+    // combined with other operations or a value larger than a register.
+    // Fjalar did not save the register at entrance, so the location must
+    // not become valid; locationUnsupported prevents the heuristics in
+    // processFunctions and initConstructorsAndDestructors from making it
+    // valid.
+    FJALAR_DPRINTF(" location is a register that Fjalar cannot read\n");
+    varPtr->locationUnsupported = 1;
   }
 
   FJALAR_DPRINTF("EXIT  extractOneFormalParameterVar\n");
@@ -2785,6 +3039,19 @@ static void extractReturnVar(FunctionEntry* f,
                      0,
                      0,
                      0,0,0,0,0,0,0,0,0);
+
+  // Fjalar reads a floating-point return value from the low 8 bytes of
+  // xmm0, but a long double is returned in the x87 register st(0), and a
+  // _Float128 in all 16 bytes of xmm0, so Fjalar cannot read it.  Omit such
+  // a return value, as for a void function.
+  if (f->returnValue.first) {
+    VariableEntry* returnVar = f->returnValue.first->var;
+    if ((returnVar->ptrLevels == 0) && (returnVar->referenceLevels == 0) &&
+        ((returnVar->varType->decType == D_LONG_DOUBLE) ||
+         (returnVar->varType->decType == D_FLOAT128))) {
+      deleteTailNode(&(f->returnValue));
+    }
+  }
 
   FJALAR_DPRINTF("EXIT  extractReturnVar - %s\n", dwarfFunctionEntry->name);
 }

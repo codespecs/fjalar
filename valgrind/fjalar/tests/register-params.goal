@@ -8,6 +8,10 @@
 ..scale():::EXIT0 x 1
 ..scale():::EXIT0 factor 7
 ..scale():::EXIT0 return 14
+..kept():::ENTER y 13
+..kept():::EXIT0 y 13
+..whole_piece():::ENTER w 14
+..whole_piece():::EXIT0 w 14
 ..identity():::EXIT0 return 1.5
 ..add():::ENTER a comparability 2
 ..add():::ENTER b comparability 2
@@ -15,8 +19,12 @@
 ..add():::EXIT0 b comparability 2
 ..add():::EXIT0 return comparability 2
 ..identity():::EXIT0 return comparability 2
+..kept():::ENTER y comparability 1
+..kept():::EXIT0 y comparability 1
 ..scale():::ENTER x comparability 2
 ..scale():::ENTER factor comparability 3
 ..scale():::EXIT0 x comparability 2
 ..scale():::EXIT0 factor comparability 3
 ..scale():::EXIT0 return comparability 3
+..whole_piece():::ENTER w comparability 1
+..whole_piece():::EXIT0 w comparability 1
