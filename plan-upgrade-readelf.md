@@ -328,7 +328,10 @@ small.
    iterate with `make -C $FJALAR/valgrind/fjalar`.  Fix "undefined
    reference" errors, from libc functions that the shim `sysdep.h` does
    not map yet, by adding a macro there.
-   Reduce new warnings from Valgrind's stricter flags where practical.
+   Do not edit the copies to remove new warnings from Valgrind's stricter
+   flags; disable each such warning with a pragma in the shim `sysdep.h`,
+   or in `fjalar.am` if a pragma cannot disable it.  Do fix a warning that
+   reveals a bug.
    To list them, recompile the Binutils-derived files, from `$FJALAR`.
    The incremental builds have already compiled those files, so a build
    that does not first remove Fjalar's object files prints none of their
