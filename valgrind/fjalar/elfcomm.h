@@ -24,14 +24,10 @@
 #ifndef _ELFCOMM_H
 #define _ELFCOMM_H
 
-#if 0  // ARCHIVE Fjalar doesn't need any of the archive code
-
 #include "aout/ar.h"
 
 extern void error (const char *, ...) ATTRIBUTE_PRINTF_1;
 extern void warn (const char *, ...) ATTRIBUTE_PRINTF_1;
-
-#endif // ARCHIVE
 
 typedef unsigned HOST_WIDEST_INT elf_vma;
 

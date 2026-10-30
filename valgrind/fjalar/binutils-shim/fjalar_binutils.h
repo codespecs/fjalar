@@ -23,4 +23,10 @@
 /* Binutils' sysdep.h defines it as long long if that is wider than long.  */
 #define HOST_WIDEST_INT long
 
+/* elfcomm.c defines error and warn, which print a message.  Valgrind's core
+   defines a global error function too, in coregrind/m_gdbserver/utils.c,
+   so rename them.  */
+#define error fjalar_binutils_error
+#define warn fjalar_binutils_warn
+
 #endif /* FJALAR_BINUTILS_H */

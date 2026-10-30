@@ -482,32 +482,6 @@ get_dynamic_name (const Filedata *filedata, size_t offset)
 #define GNU_HASH_SECTION_NAME(filedata)		\
   filedata->dynamic_info_DT_MIPS_XHASH ? ".MIPS.xhash" : ".gnu.hash"
 
-// versions of error and warn needed by Fjalar
-
-static void
-error VPARAMS ((const char *message, ...))
-{
-  VA_OPEN (args, message);
-  VA_FIXEDARG (args, const char *, message);
-
-  fprintf (stderr, _("%s: Error: "), "readelf.c");
-  vfprintf (stderr, message, args);
-  VA_CLOSE (args);
-}
-
-static void
-warn VPARAMS ((const char *message, ...))
-{
-  VA_OPEN (args, message);
-  VA_FIXEDARG (args, const char *, message);
-
-  fprintf (stderr, _("%s: Warning: "), "readelf.c");
-  vfprintf (stderr, message, args);
-  VA_CLOSE (args);
-}
-
-// end of Fjalar code
-
 /* Print a BFD_VMA to an internal buffer, for use in error messages.
    BFD_FMA_FMT can't be used in translated strings.  */
 
