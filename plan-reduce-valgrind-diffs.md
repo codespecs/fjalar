@@ -31,7 +31,7 @@ the function-name printing in VEX), and #205 (Step 8, the changes that
 must remain), with its companion codespecs/daikon#955.  So did PR #181,
 which restored upstream's `AC_INIT` version string.
 
-Only Step 9 (documentation) remains.  It is unblocked.
+Only Step 9 (documentation) remains.  It is open as #225.
 
 ## The remaining differences
 
@@ -45,9 +45,8 @@ files).
 Measured at commit 23bfcf99 (after Step 4), the differences were in 26
 files, with 1054 lines added and 266 removed.  Measured at commit 8efd1baa
 (after Steps 7 and 8, before Step 6c), they were in 15 files, with 226
-lines added and 203 removed.  Step 6c restored about 180 lines to
-`mc_translate.c`; measure again (`diff-from-valgrind.sh --shortstat`) as
-part of Step 9.
+lines added and 203 removed.  Measured at commit fd1482f9 (after all of
+Steps 0-8), they are in 15 files, with 218 lines added and 18 removed.
 
 What remains is Fjalar's essential hooks:
 
