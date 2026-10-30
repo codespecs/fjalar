@@ -442,7 +442,7 @@ static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
     // setting the proper annotations.
     add_fxState_read_GPRs_and_IP(di);
 
-    stmt('V',  mce, IRStmt_Dirty(di) );
+    mc_stmt('V',  mce, IRStmt_Dirty(di) );
   }
 }
 
@@ -466,13 +466,25 @@ static struct  genhashtable *funcs_handled = NULL;
    confused. Instead, we want to only do enter_function() once per
    invocation of the function, where we define an invocation to be an
    execution of the very first instruction. To accomplish that, we put
-   a call to the prime_function() hook there; when executed, it sets
-   the first_time flag. In enter_function(), we check the flag before
-   doing anything, and then clear it. */
-static Bool first_time = False;
+   a call to the prime_function() hook there; when executed, it records
+   the function and the thread. In enter_function(), we check that they
+   match before doing anything, and then clear the record. A mismatch
+   means that the thread did not execute the function's first
+   instruction just before (for example, it jumped back to the entry
+   point), or that another thread did. prime_function() also records
+   the function's canonical frame address, which enter_function()
+   cannot compute because the prolog may have moved the stack
+   pointer. */
+static FunctionEntry* primed_func = NULL;
+static ThreadId primed_tid = VG_INVALID_THREADID;
+static Addr primed_CFA = 0;
 VG_REGPARM(1) void prime_function(FunctionEntry *f)
 {
-  first_time = True;
+  ThreadId tid = VG_(get_running_tid)();
+  primed_func = f;
+  primed_tid = tid;
+  // The stack pointer points to the return address.
+  primed_CFA = VG_(get_SP)(tid) + sizeof(Addr);
   return;
 }
 
@@ -640,17 +652,20 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
       add_fxState_read(di, offsetof(VexGuestArchState, guest_FPREG),
                        8 * sizeof(ULong));
 
-      stmt('V',  mce, IRStmt_Dirty(di) );
+      mc_stmt('V',  mce, IRStmt_Dirty(di) );
     }
   }
 }
 
 
+static void pop_unwound_frames(ThreadId tid, Addr sp);
+
 static UInt cur_nonce = 0;
 /*
 This is the hook into Valgrind that is called whenever the target
-program enters a function.  Pushes an entry onto the top of
-FunctionExecutionStateStack and calls out to a handler function
+program enters a function.  Pops and frees the frames whose stack the
+new frame occupies, pushes an entry onto the top of
+FunctionExecutionStateStack, and calls out to a handler function
 implemented by the Fjalar tool.
 */
 VG_REGPARM(1)
@@ -658,15 +673,15 @@ void enter_function(FunctionEntry* f)
 {
   FunctionExecutionState* newEntry;
   extern FunctionExecutionState* curFunctionExecutionStatePtr;
+  ThreadId tid = VG_(get_running_tid)();
 
-  // Only do enter_function if this is the first time we have
+  // Only do enter_function if this is the first time this thread has
   // reached the preferred entry point after entering the function.
-  if (!first_time) {
+  if (primed_func != f || primed_tid != tid) {
     return;
   }
-  first_time = False;
+  primed_func = NULL;
 
-  ThreadId tid = VG_(get_running_tid)();
   Addr stack_ptr= VG_(get_SP)(tid);
   Addr frame_ptr = 0; /* E.g., %ebp */
   int local_stack, size;
@@ -800,12 +815,17 @@ void enter_function(FunctionEntry* f)
   FJALAR_DPRINTF("\tEnter function: %s - StartPC: %p, EntryPC: %p, frame_ptr: %p\n",
 		 f->fjalar_name, (void *)f->startPC, (void *)f->entryPC, (void *)frame_ptr);
 
+  // The frames whose stack the new frame occupies are a frame that made
+  // a tail call to f, and frames that a non-local exit left behind.
+  pop_unwound_frames(tid, primed_CFA);
+
   newEntry  = fnStackPush(tid);
   newEntry->func = f;
   newEntry->func->FP = frame_ptr;
   newEntry->func->lowestSP = stack_ptr;
   newEntry->FP = frame_ptr;
   newEntry->lowSP = stack_ptr;
+  newEntry->CFA = primed_CFA;
   newEntry->lowestSP = stack_ptr;
   newEntry->xAX = 0;
   newEntry->xDX = 0;
@@ -940,15 +960,150 @@ static void pop_frame(ThreadId tid)
   state->entryRegs = NULL;
 }
 
+// A thread can run on several stacks:  its own stack, an alternate
+// signal stack, and stacks that it switches to, as for coroutines.
+// Fjalar identifies a stack by the address-space segment that contains
+// it, and also distinguishes the alternate signal stack from the rest of
+// its segment.  Addresses on different stacks are unrelated, so whether
+// a frame on one stack has been unwound cannot be decided from a stack
+// pointer on another stack.  Such a frame is kept, because it may be
+// suspended, unless it lies on the alternate signal stack (see
+// frame_is_on_altstack).
+
+// Sets *start and *end to the lowest and highest addresses of the stack
+// that contains sp, a stack pointer.  The byte just below sp determines
+// the stack, because sp can be just past the end of the stack.  If no
+// segment contains that byte, then the bounds are all of memory.
+static void get_stack_bounds(Addr sp, Addr* start, Addr* end)
+{
+  NSegment const* seg = VG_(am_find_nsegment)(sp - 1);
+  *start = seg ? seg->start : 0;
+  *end = seg ? seg->end : ~(Addr)0;
+}
+
+// Returns True if address a lies on the alternate signal stack of
+// thread tid.
+static Bool addr_is_on_altstack(ThreadId tid, Addr a)
+{
+  Addr min = VG_(thread_get_altstack_min)(tid);
+  return min <= a && a - min < VG_(thread_get_altstack_size)(tid);
+}
+
+// Returns True if the given frame of thread tid lies on the same stack as
+// sp, a stack pointer, where start and end are the bounds of sp's stack,
+// as set by get_stack_bounds.  The alternate signal stack is distinct
+// from the rest of its segment, as when a program allocates it on the
+// thread's stack.
+static Bool frame_is_on_stack(ThreadId tid, FunctionExecutionState* state,
+                              Addr sp, Addr start, Addr end)
+{
+  // The return address lies on the frame's stack; the CFA can be just
+  // past the end of that stack.
+  Addr retAddrSlot = state->CFA - sizeof(Addr);
+  return start <= retAddrSlot && retAddrSlot <= end
+         && addr_is_on_altstack(tid, retAddrSlot)
+            == addr_is_on_altstack(tid, sp - 1);
+}
+
+// Returns True if the given frame of thread tid lies on the thread's
+// alternate signal stack.  When the thread runs on another stack, such
+// a frame has been unwound, as by a siglongjmp out of a signal handler.
+static Bool frame_is_on_altstack(ThreadId tid, FunctionExecutionState* state)
+{
+  return addr_is_on_altstack(tid, state->CFA - sizeof(Addr));
+}
+
+// Returns True if the stack of the given frame has been unwound, where
+// the frame lies on the same stack as sp, the stack pointer in the
+// caller of a frame that
+// is exiting or entering:  at an exit, the stack pointer after the
+// return instruction; at an entry, the new frame's CFA.
+//
+// The exit hook runs after the return instruction has popped the
+// return address (and, for "ret N", N more bytes), so sp is at or above
+// the CFA of the exiting frame, and above the CFA of every frame that it
+// called.  At an entry, the new frame's return address lies just below
+// sp, so the stack of every frame whose CFA is at or below sp has been
+// reused.  The return address of every frame that is still live is on
+// the stack, so the CFA of such a frame is above sp.
+static Bool frame_is_unwound(FunctionExecutionState* state, Addr sp)
+{
+  return state->CFA <= sp;
+}
+
+// Returns the index, in the function stack of thread tid, of the frame
+// of f that is exiting, or -1 if there is none.  The exiting frame lies
+// among the unwound frames, on the stack of currentSP, at the top of the
+// stack.  Several of them can be frames of f, if an earlier call of f
+// exited non-locally.  The exiting frame is the bottommost of them.
+// enter_function pops every frame on the same stack whose CFA is at or
+// below the new frame's CFA, so every frame below the exiting frame on
+// its stack has a CFA above the exiting frame's CFA, which is currentSP
+// (after a return instruction other than "ret N").
+//
+// Frames on other stacks that lie above those frames were entered
+// later, and have exited non-locally or are suspended; they are skipped.
+// A frame on another stack that lies below them called into the stack
+// of currentSP, as a signal handler or a stack switch does, so it is
+// live.
+static int exiting_frame_index(ThreadId tid, FunctionEntry* f, Addr currentSP)
+{
+  Addr stackStart, stackEnd;
+  Bool seenFrameOnStack = False;
+  int result = -1;
+  int i;
+
+  get_stack_bounds(currentSP, &stackStart, &stackEnd);
+  for (i = fn_stack_first_free_index[tid] - 1; i >= 0; i--) {
+    FunctionExecutionState* state = &FunctionExecutionStateStack[tid][i];
+    if (!frame_is_on_stack(tid, state, currentSP, stackStart, stackEnd)) {
+      if (seenFrameOnStack) {
+        break;
+      }
+      continue;
+    }
+    seenFrameOnStack = True;
+    if (!frame_is_unwound(state, currentSP)) {
+      break;
+    }
+    if (state->func == f) {
+      result = i;
+    }
+  }
+  return result;
+}
+
+// Pops and frees the frames at the top of the function stack of thread
+// tid whose stack has been unwound:  those that lie on the stack of sp
+// and are unwound according to frame_is_unwound (where sp is as for
+// frame_is_unwound), and those that lie on the alternate signal stack
+// when sp does not.
+static void pop_unwound_frames(ThreadId tid, Addr sp)
+{
+  Addr stackStart, stackEnd;
+
+  get_stack_bounds(sp, &stackStart, &stackEnd);
+  while (fn_stack_first_free_index[tid] > 0) {
+    FunctionExecutionState* top = fnStackTop(tid);
+    if (frame_is_on_stack(tid, top, sp, stackStart, stackEnd)
+        ? !frame_is_unwound(top, sp)
+        : !frame_is_on_altstack(tid, top)) {
+      break;
+    }
+    pop_frame(tid);
+  }
+}
+
 /*
 This is the hook into Valgrind that is called whenever the target
 program exits a function.  Does nothing if the function stack is empty.
-If the function at the top of the stack is not f, because of a non-local
-exit, pops and frees the frames above the topmost frame of f, or does
-nothing if there is no frame of f.  Initializes the top entry of
+Finds the exiting frame of f (see exiting_frame_index).  If there is
+none, pops and frees the unwound frames and does nothing else.  If it is
+not at the top of the stack, because of a non-local exit, pops and frees
+the frames above it.  Initializes the top entry of
 FunctionExecutionStateStack with return values from EAX, EDX, and FPU,
 calls out to a handler function implemented by the Fjalar tool, and
-then pops and frees the top entry.
+then pops and frees the top entry and any unwound frames below it.
 */
 VG_REGPARM(1)
 void exit_function(FunctionEntry* f)
@@ -956,7 +1111,8 @@ void exit_function(FunctionEntry* f)
   ThreadId currentTID = VG_(get_running_tid)();
   FunctionExecutionState* top;
   extern FunctionExecutionState* curFunctionExecutionStatePtr;
-  int i;
+  Addr currentSP = VG_(get_SP)(currentTID);
+  int exitingIndex;
   double fpuReturnVal;
   Addr xAX, xDX;
 
@@ -984,21 +1140,19 @@ void exit_function(FunctionEntry* f)
     return;
   }
 
-  if (!(top->func->fjalar_name) || (top->func != f)) {
-    // There are a couple reasons why the function at the top
-    // of the Function Execution State Stack would not be the
-    // function we expected. All of them are related to a non-
-    // local exit of the function. Situations where this might
-    // come up include:
+  exitingIndex = exiting_frame_index(currentTID, f, currentSP);
+  if (exitingIndex != fn_stack_first_free_index[currentTID] - 1) {
+    // The frame at the top of the Function Execution State Stack
+    // is not the exiting frame of f.  Either the frames above the
+    // exiting frame exited non-locally, or no frame of f is exiting.
+    // Non-local exits come from:
 
     // (1) C++ Exceptions
     // (2) setjmp/longjmp
 
     // For Fjalar to resume normal operation, we need to pop
-    // off functions off the Function Execution State Stack
-    // (these would be all the functions that had non-local
-    // exits) until we encounter the Function Execution State
-    // Stack corresponding to our function.
+    // off the Function Execution State Stack the frames that
+    // exited non-locally.
     printf("MISMATCHED on exit_function! f: %s !=  %s\nDetectedEntryIP: %p - AssumedEntryIP: %p\nDetctedExitIP: %p - AssumedExitIp: %p\n",
                 f->fjalar_name,
                 top->func->fjalar_name,
@@ -1008,22 +1162,17 @@ void exit_function(FunctionEntry* f)
                 (void *)f->endPC);
 
 
-    // This is probably being overconservative. However let's revert
-    // to Fjalar's old behavior (do nothing) if we can't find an
-    // instance of our function in the function stack.
-    for(i = fn_stack_first_free_index[currentTID] - 1; i >= 0; i-- ) {
-      FunctionExecutionState* curFuncExecPtr = &FunctionExecutionStateStack[currentTID][i];
-      if(curFuncExecPtr->func == f) {
-        break;
-      }
-    }
-
-    if(i < 0) {
+    // No frame of f is exiting if f's entry was not observed, or if
+    // the return instruction did not return from f (for example, a
+    // "push; ret" sequence that jumps within f).  Discard only the
+    // frames whose stack has been unwound.
+    if (exitingIndex < 0) {
+      pop_unwound_frames(currentTID, currentSP);
       VG_(get_and_pp_StackTrace) (currentTID, 15);
       return;
     }
 
-    while(fn_stack_first_free_index[currentTID] > i + 1) {
+    while(fn_stack_first_free_index[currentTID] > exitingIndex + 1) {
       pop_frame(currentTID);
     }
     top = fnStackTop(currentTID);
@@ -1059,11 +1208,10 @@ void exit_function(FunctionEntry* f)
   // end after the tool is done handling the exit.
   // This is subtle but important - this must be done AFTER the tool
   // runs all of its function exit code, as functions in fjalar_traversal
-  // and fjalar_runtime may make use of the function stack. If we fail to
-  // pop the function, however, the stack will be left in an inconsistent
-  // state and the "top->func != f" check will fail causing no more
-  // program points to be printed.
-  pop_frame(currentTID);
+  // and fjalar_runtime may make use of the function stack.
+  // This pops the exiting frame, which is unwound, and any frames below
+  // it that a non-local exit left behind and that "ret N" unwound.
+  pop_unwound_frames(currentTID, currentSP);
 
 }
 

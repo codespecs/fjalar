@@ -1,10 +1,12 @@
-// Test input for dyncomp-copy-none-test.sh,
+// Test input for dyncomp-copy-all-test.sh, dyncomp-copy-none-test.sh,
 // dyncomp-copy-comparisons-test.sh, and dyncomp-copy-units-test.sh.
 
 // Under --dyncomp-interactions=none, comparisons, and units, a load is not
 // an interaction, so copying a struct with wide loads and wide stores should
 // not make its fields comparable, and each copied field should keep the
-// comparability of its source field.
+// comparability of its source field.  Under --dyncomp-interactions=all, the
+// same holds for a 128-bit load, but a 64-bit load is an interaction, which
+// makes the fields that it reads comparable.
 
 struct pair {
   long a;
