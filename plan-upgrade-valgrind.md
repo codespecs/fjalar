@@ -211,9 +211,14 @@ Memcheck and DynComp depend tightly on Valgrind core:
      `vex_extra_shadow` must remain aligned on `LibVEX_GUEST_STATE_ALIGN`,
      and the size/alignment assertions in `scheduler.c` must still account
      for it.  If upstream added fields to `VexGuestAMD64State`, recheck that
-     the guest state size remains a multiple of the alignment, and that
-     Fjalar's extra guest registers are still at the offsets that DynComp
-     and `mc_machine.c` expect.
+     the guest state size remains a multiple of the alignment.
+   - Check `.alwaysDefd` in `guest_amd64_helpers.c` and
+     `guest_x86_helpers.c`.  Memcheck's `isAlwaysDefd` panics if an
+     `fxState` entry that `fjalar_main.c` adds (`add_fxState_read` and
+     `add_fxState_read_GPRs_and_IP`) partly overlaps an always-defined
+     field.  In 3.23.0, the entry for `guest_RAX` through `guest_R15`
+     overlaps none (the nearest, `guest_CC_OP`, follows `guest_R15`).  See
+     section "Updating Fjalar/Kvasir" of `doc/valgrind-merge.texinfo`.
 
 6. **Memcheck conflicts** in `valgrind/fjalar/`.
    - Resolve the conflicts (as for Coregrind), using

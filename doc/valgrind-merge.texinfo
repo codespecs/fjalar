@@ -661,6 +661,19 @@ If the build fails in the rule for
 Update the copy in @file{valgrind/fjalar/fjalar_core_decls.h} to match
 the core header that it names.
 
+Fjalar's calls to the helpers that run at function entry and exit tell
+VEX which parts of the guest state they read, through the
+@code{fxState} entries that @code{add_fxState_read} and
+@code{add_fxState_read_GPRs_and_IP} in @file{fjalar_main.c} add.
+Memcheck's @code{isAlwaysDefd} panics if such an entry partly overlaps an
+always-defined part of the guest state, which the @code{.alwaysDefd}
+list in @file{VEX/priv/guest_amd64_helpers.c} (and, for x86,
+@file{guest_x86_helpers.c}) names.  An entry can cover an always-defined
+field entirely, as the entry for @code{guest_RIP} does.  In 3.23.0, the
+entry for @code{guest_RAX} through @code{guest_R15} overlaps no
+always-defined field.  After the merge, check @code{.alwaysDefd} and the
+guest-state layout again.
+
 A somewhat more problematic area are changes in the VEX IR. DynComp
 makes heavy use of the VEX IR, so any changes in it need to be
 reflected. Most of the changes to the public VEX IR can be discovered
