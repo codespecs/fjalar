@@ -35,4 +35,4 @@ if ! readelf --debug-dump=info "${output_dir}/dyncomp-red-zone-param" \
   unsuitable_environment "$0" "the locations of leaf's a and b are not \"DW_OP_breg7 (rsp): N\" with N < 0"
 fi
 
-exec "${test_dir}/dyncomp-comparability-driver.sh" dyncomp-red-zone-param ''
+"${test_dir}/dyncomp-comparability-driver.sh" dyncomp-red-zone-param ''
