@@ -119,10 +119,9 @@ Verification for every later PR:
 
 ## Phase 1: shim headers and mechanical reverts (low risk, high payoff)
 
-Status: done, in three stacked branches that have no pull requests yet:
-`binutils-shim` (PR 2: steps 1 and 2), `binutils-error-warn` (PR 3:
-step 3), and `binutils-warning-reverts` (PR 4: steps 4 and 5).  It chose
-option 3 for `bfd.h`.  Lessons:
+Status: done, in three stacked pull requests:  #226 (PR 2: steps 1 and
+2), #227 (PR 3: step 3), and #228 (PR 4: steps 4 and 5).  It chose option 3
+for `bfd.h`.  Lessons:
 
 - GCC's `#pragma GCC diagnostic ignored "-Wformat-signedness"` has no
   effect; only `-Wformat` can be ignored, which would disable all format
@@ -434,16 +433,16 @@ hoist side-effecting arguments) become unnecessary.
 
 ## Order and expected payoff
 
-| PR | Content                                        | Risk   | Lines saved |
-| -- | ---------------------------------------------- | ------ | ----------: |
-| 1  | Phase 0 tools (done: #185, #188)               | none   |           0 |
-| 2  | Shim headers (incl. `bfd.h`), libc reverts     | low    |         220 |
-| 3  | One `error`/`warn` (fixes the LEB message bug) | low    |          70 |
-| 4  | Warning and cosmetic reverts                   | low    |          80 |
-| 5  | `printf` redirection                           | medium |         300 |
-| 6  | Wrapper translation units                      | medium |         330 |
-| 7  | Replaced functions, compact hooks              | medium |         200 |
-| 8  | `#if 0` blocks, parameter threading            | higher |           ? |
+| PR | Content                                               | Risk   | Lines saved |
+| -- | ----------------------------------------------------- | ------ | ----------: |
+| 1  | Phase 0 tools (done: #185, #188)                      | none   |           0 |
+| 2  | Shim headers (incl. `bfd.h`), libc reverts (#226)     | low    |         220 |
+| 3  | One `error`/`warn` (fixes the LEB message bug) (#227) | low    |          70 |
+| 4  | Warning and cosmetic reverts (#228)                   | low    |          80 |
+| 5  | `printf` redirection                                  | medium |         300 |
+| 6  | Wrapper translation units                             | medium |         330 |
+| 7  | Replaced functions, compact hooks                     | medium |         200 |
+| 8  | `#if 0` blocks, parameter threading                   | higher |           ? |
 
 "Lines saved" is a rough estimate of the changed lines that each PR removes
 from the diff; together they are about half of Fjalar's current diff.  Re-run
