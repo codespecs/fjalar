@@ -455,6 +455,19 @@ Fjalar contains two copies of Memcheck:  an unmodified one in
 ``Coregrind''.  Our changes to Memcheck are much more substantial than our
 changes to Coregrind.
 
+Before the merge, list the files that Fjalar modifies:
+
+@example
+$INV/fjalar/diff-from-valgrind.sh --stat
+@end example
+
+@noindent
+Check that it lists only the files that @ref{Valgrind modifications} and
+@ref{Memcheck modifications} list, and that the full output
+(without @option{--stat}) shows only the modifications that they
+describe.  Document any other modification there, so that the appendices
+are a complete checklist for resolving conflicts.
+
 Run:
 
 @example
@@ -608,16 +621,15 @@ $INV/fjalar/list-file-discrepancies.sh $INV/valgrind-new
 Each list should contain only the files that Fjalar created and the
 files that you decided to keep or to omit.
 
-The largest modification to Memcheck is in @file{mc_translate.c} and special
-care should be made to ensure it is present and up to date.
-The function @code{MC_(instrument)} handles the instrumentation of calls for
-DynComp.
-It is primarily contained in a switch statement; each case handles one
-instruction type, and the body contains both the original code for
-Memcheck and also the code for DynComp. After the update, you should
-double-check that each clause contains corresponding code: any changes
-to the Memcheck versions are reflected in the DynComp versions, and
-any new clause has a DynComp version.
+The function @code{MC_(instrument)} in @file{mc_translate.c} instruments
+each statement for Memcheck, in a switch statement with one case for each
+kind of statement, and then calls @code{instrument_stmt_DC}, in
+@file{kvasir/dyncomp_translate.c}, which instruments the statement for
+DynComp in a switch statement of the same form.  DynComp's
+instrumentation is derived from Memcheck's, but the merge does not
+change it.  After the merge, double-check that the two correspond:  any
+change to a case of Memcheck's switch, or to a function that it calls,
+is reflected in DynComp's, and any new case has a DynComp version.
 
 
 @node Updating Fjalar/Kvasir
@@ -1453,6 +1465,25 @@ git -C $INV/fjalar diff -b "$(git -C $INV/fjalar merge-base FETCH_HEAD HEAD)" | 
 git -C $INV/fjalar commit -a -m "Valgrind merge from $@{VOLDTAG@} to $@{VNEWTAG@}"
 @end smallexample
 
+Then check that Fjalar modifies only the files that it modified before the
+merge:
+
+@example
+$INV/fjalar/diff-from-valgrind.sh --valgrind=$INV/valgrind-new --stat
+@end example
+
+@noindent
+The script compares the committed Fjalar tree with the Valgrind release
+that the committed @file{valgrind/REVISION} names, so run it after you
+commit.  Compare its output with its output before the merge
+(@pxref{Merging Valgrind}).  A file can drop out of the list when the
+Valgrind developers made Fjalar's change too.  For a file that is new in
+the list, or whose count of changed lines grew, check the full output:
+the merge or a conflict resolution can add a modification, such as a
+change of whitespace.  Remove each modification that Fjalar does not
+need, and document the others in @ref{Valgrind modifications} or
+@ref{Memcheck modifications}.
+
 Note: We recommend saving Fjalar's changes to the base Valgrind
 (@pxref{Merging Valgrind}) to further document the process.
 
@@ -1469,10 +1500,9 @@ state in Coregrind and VEX. The shadow area is an area of memory that
 Valgrind provides for tools to use. Unfortunately, it is of a fixed
 size, and Memcheck uses all of it. We've had to increase the size of
 the shadow area.
-Additionally, we had to modify some of the VEX architecture files to
-include additional information specific to the amd64 and x86 platforms.
-Finally, we had to extend Valgrind's implementation of the C library
-with a few extra functions.
+The other changes add the @code{fjalar} tool to the build, give Fjalar
+access to the extra shadow area, and fix the build of three upstream
+tests with newer compilers.
 
 To see all of Fjalar's modifications to the Valgrind release that
 @file{valgrind/REVISION} names, run:
@@ -1499,51 +1529,57 @@ contains both the Daikon and Fjalar source trees.)
 
 @table @asis
 @item $INV/fjalar/valgrind/configure.ac
-Add fjalar/Makefile to list of targets
-@item $INV/fjalar/valgrind/coregrind/m_libcbase.c
-Add VG_ version of strnlen
-@item $INV/fjalar/valgrind/coregrind/m_libcfile.c
-Add VG_ version of mkdir
+Add @file{fjalar/Makefile} to the list of files that @command{configure}
+creates
 @item $INV/fjalar/valgrind/coregrind/m_machine.c
-Add get and set functions for additional machine registers
+Add @code{VG_(get_tag_ptr_for_guest_offset)}, which returns the address
+of the DynComp tag of a guest-state byte.  The tags are in
+@code{vex_extra_shadow}, which a tool cannot reach, so this function must
+be in Coregrind.
 @item $INV/fjalar/valgrind/coregrind/m_scheduler/scheduler.c
-Modify an assertion that triggers based on shadow size
+In @code{do_pre_run_checks}, count @code{vex_extra_shadow} in the
+assertion that the spill area follows the shadow areas
 @item $INV/fjalar/valgrind/coregrind/pub_core_machine.h
-Add additional general purpose registers to the guest state
+Declare @code{VG_(get_tag_ptr_for_guest_offset)}.
+@file{fjalar_core_decls.h} declares it again for Fjalar, and the
+@file{fjalar_core_decls.stamp} rule in @file{fjalar.am} checks that the
+two declarations agree.
 @item $INV/fjalar/valgrind/coregrind/pub_core_threadstate.h
-The declaration of the extra shadow space
-@item $INV/fjalar/valgrind/include/pub_tool_libcbase.h
-Add VG_ version of strnlen
-@item $INV/fjalar/valgrind/include/pub_tool_libcfile.h
-Add VG_ version of mkdir and fcntl
-@item $INV/fjalar/valgrind/include/pub_tool_machine.h
-Add get and set functions for additional machine registers
+Declare the extra shadow area, @code{vex_extra_shadow}, which holds a
+4-byte DynComp tag for each guest-state byte.  It must directly follow
+@code{vex_shadow2}.
+@item $INV/fjalar/valgrind/drd/tests/swapcontext.c
+@itemx $INV/fjalar/valgrind/helgrind/tests/tc17_sembar.c
+@itemx $INV/fjalar/valgrind/none/tests/bug234814.c
+Fix the build with GCC 15.  These are backports of upstream fixes, so
+take upstream's version when merging a release that has them.
+@item $INV/fjalar/valgrind/fjalar/mc_main.c
+@itemx $INV/fjalar/valgrind/fjalar/mc_translate.c
+@itemx $INV/fjalar/valgrind/fjalar/memcheck.h
+@xref{Memcheck modifications}.
 @item $INV/fjalar/valgrind/Makefile.am
 Add fjalar to the list of tools
-@item $INV/fjalar/valgrind/none/tests/Makefile.am
-Add @nospellcheck{coregrind/libcoregrind-amd64-linux.a to libvex} tests
 @item $INV/fjalar/valgrind/tests/check_headers_and_includes
-Add fjalar to @nospellcheck{tool_dirs and inst to dirs_to_ignore}
-@item $INV/fjalar/valgrind/VEX/priv/host_amd64_defs.c
-Add function name to debug dump of call instruction
+Add fjalar to @nospellcheck{tool_dirs, and inst} (where Fjalar installs
+Valgrind) to @nospellcheck{dirs_to_ignore}
 @item $INV/fjalar/valgrind/VEX/priv/host_generic_reg_alloc2.c
-Modify memory calculation using the shadow size
-@item $INV/fjalar/valgrind/VEX/priv/host_generic_reg_alloc3.c
-Modify memory calculation using the shadow size
+@itemx $INV/fjalar/valgrind/VEX/priv/host_generic_reg_alloc3.c
+Count @code{vex_extra_shadow} in the spill offset.  Version 3 is the
+default register allocator.
 @end table
 
 
 @node Memcheck modifications
 @appendix Memcheck modifications
 
-The modifications made to Memcheck are more organizational in nature.
 Fjalar code that uses static functions of @file{mc_main.c} or
 @file{mc_translate.c} is in a file that each of them includes, and
 @file{mc_fjalar.h} and @file{mc_translate.h} declare that code for the
-rest of Fjalar.  Several changes to remove compile warnings
-for use of function name as variable.
+rest of Fjalar.  Elsewhere, @file{mc_main.c} and @file{mc_translate.c}
+have mostly one-line hooks that call Fjalar.  Each of the two files also
+starts with a Fjalar header comment and includes Fjalar's headers.
 
-Other modifications include:
+The modifications are:
 
 @table @asis
 @item $INV/fjalar/valgrind/fjalar/mc_main.c
@@ -1557,15 +1593,42 @@ static functions of @file{mc_main.c}, such as @code{set_vabits2},
 @code{set_sec_vbits8}, @code{get_vabits2},
 @code{is_mem_defined}, and @code{is_mem_addressable}, so the
 @code{#include} must follow the definitions of those functions.
+Calls to Fjalar at Memcheck's entry points:  @code{mc_pre_clo_init},
+@code{mc_process_cmd_line_options}, @code{mc_print_usage},
+@code{mc_post_clo_init}, and @code{mc_fini}, which returns after it
+calls @code{fjalar_finish}, so that Fjalar skips Memcheck's end-of-run
+reports.  DynComp calls in the @code{make_mem_*} functions and in
+@code{MC_(copy_address_range_state)}, which clear, allocate, or copy the
+tags of the bytes whose state changes.  A @code{CHECK_SP} call in each of
+the @code{mc_new_mem_stack*} functions.
+Smaller edits:  @code{DEBUG} calls that @code{MAX_DEBUG_INFO} enables,
+@code{#undef}s of @code{SM_OFF} and @code{SM_OFF_16}, which
+@file{kvasir/dyncomp_main.h} also defines, and of @code{INLINE}; and a parameter of
+@code{check_mem_is_defined_asciiz} renamed from @code{str} to
+@code{astr}.
 @item $INV/fjalar/valgrind/fjalar/mc_translate.c
-In Memcheck's instrumentation block, duplicate each case for DynComp.
-Also, a @code{DC} kind of @code{TempKind}, for DynComp's temporaries,
+In @code{MC_(instrument)}, calls to @code{begin_instrument_DC},
+@code{instrument_stmt_DC} (after Memcheck instruments each statement),
+and @code{end_instrument_DC}, which @file{kvasir/dyncomp_translate.c}
+defines; calls to @code{handle_possible_entry} and
+@code{handle_possible_exit}, which detect function entries and exits; and
+code that prints registers when @option{--fjalar-print-ir} is given.
+An early return in @code{complainIfUndefined}, because Fjalar does not
+check definedness.  Also, a @code{DC} kind of @code{TempKind}, for DynComp's temporaries,
 and an @code{#include} of @file{fjalar_mc_translate.h}, which defines
 the functions through which the rest of Fjalar uses Memcheck's
 instrumenter (@file{mc_translate.h} declares them).  Those functions
 use @code{MCEnv} and static functions of @file{mc_translate.c}, such as
 @code{stmt}, @code{newTemp}, and @code{shadowTypeV}, so the
 @code{#include} must follow the definitions of those.
+@file{mc_translate.h} repeats the @code{IRAtom} typedef and the
+IR-building macros (such as @code{binop}, @code{mkU32}, and
+@code{mkexpr}) of @file{mc_translate.c}, which DynComp uses; if the
+Valgrind developers change them, change @file{mc_translate.h} to match.
+@item $INV/fjalar/valgrind/fjalar/memcheck.h
+Include @file{pub_tool_clreq.h} instead of @file{valgrind.h}, as
+@file{tests/check_headers_and_includes} requires of a file in a tool
+directory.
 @end table
 
 
