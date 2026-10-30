@@ -25,8 +25,14 @@
 
 #include "pub_tool_basics.h"
 
+#include "fjalar_binutils.h"
+#include "bfd.h"
 #include "elfcomm.h"
+// readelf.c and dwarf.c include dwarf.h themselves, after sysdep.h, and
+// dwarf.h has no include guard.
+#ifndef FJALAR_BINUTILS_SYSDEP_H
 #include "dwarf.h"
+#endif
 #include "dwarf2.h"
 
 // Vendor specific extensions to the DWARF spec

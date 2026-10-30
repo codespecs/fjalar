@@ -212,15 +212,4 @@ int mkfifo(const char *fn, __mode_t mode);
 
 int mkdir(const char *path, __mode_t mode);
 
-/* bfd/bfd-in.h */
-
-#include "pub_tool_basics.h"
-#include "pub_tool_libcbase.h"
-/* Return TRUE if the start of STR matches PREFIX, FALSE otherwise.  */
-static inline bool
-startswith (const char *str, const char *prefix)
-{
-  return VG_(strncmp) (str, prefix, VG_(strlen) (prefix)) == 0;
-}
-
 #endif /* MY_LIBC_H */

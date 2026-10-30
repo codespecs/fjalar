@@ -30,7 +30,9 @@ SUBDIRS = .
 # AM_CFLAGS_AMD64_LINUX += -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall
 
 # get all binutil .h files from include; get config.h from .. (markro)
-EXTRA_CFLAGS =  -Iinclude -I../VEX/pub -I../include -I..
+# binutils-shim holds Fjalar's replacements for some Binutils headers, so it
+# precedes include.
+EXTRA_CFLAGS =  -Ibinutils-shim -Iinclude -I../VEX/pub -I../include -I..
 
 # for debugging versions
 #EXTRA_CFLAGS +=  -O0 -finstrument-functions

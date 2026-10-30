@@ -34,8 +34,6 @@
    License, or (at your option) any later version.
 */
 
-#if 0 // This code is not needed for Fjalar.
-
 /* Do not include bfd.h in this file.  Functions in this file are used
    by readelf.c and elfedit.c which define BFD64, and by objdump.c
    which doesn't.  */
@@ -45,12 +43,8 @@
 #include "bfd.h"
 #include "filenames.h"
 #include "aout/ar.h"
-
-#endif // This code is not needed for Fjalar.
-
-#include "my_libc.h"
-#include "pub_tool_basics.h"
 #include "elfcomm.h"
+#include <assert.h>
 
 extern char *program_name;
 
@@ -94,7 +88,7 @@ byte_put_little_endian (unsigned char * field, elf_vma value, unsigned int size)
   if (size > sizeof (elf_vma))
     {
       error (_("Unhandled data length: %d\n"), size);
-      my_abort ();
+      abort ();
     }
   while (size--)
     {
@@ -109,7 +103,7 @@ byte_put_big_endian (unsigned char * field, elf_vma value, unsigned int size)
   if (size > sizeof (elf_vma))
     {
       error (_("Unhandled data length: %d\n"), size);
-      my_abort ();
+      abort ();
     }
   while (size--)
     {
@@ -187,7 +181,7 @@ byte_get_little_endian (const unsigned char *field, unsigned int size)
 
     default:
       error (_("Unhandled data length: %d\n"), size);
-      my_abort ();
+      abort ();
       return 0;     // stop compiler warning
     }
 }
@@ -258,7 +252,7 @@ byte_get_big_endian (const unsigned char *field, unsigned int size)
 
     default:
       error (_("Unhandled data length: %d\n"), size);
-      my_abort ();
+      abort ();
       return 0;     // stop compiler warning
     }
 }
@@ -288,7 +282,7 @@ byte_get_signed (const unsigned char *field, unsigned int size)
          the sign in these cases.  */
       return x;
     default:
-      my_abort ();
+      abort ();
       return 0;     // stop compiler warning
     }
 }
