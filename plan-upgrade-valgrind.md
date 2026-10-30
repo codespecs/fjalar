@@ -36,8 +36,7 @@ Memcheck and DynComp depend tightly on Valgrind core:
    add the `fjalar` tool.
 2. **Memcheck -> Fjalar**: `valgrind/fjalar/mc_*.c`, `mc_include.h`,
    `memcheck.h` are derived from `valgrind/memcheck/`.  `mc_translate.c`
-   contains a DynComp counterpart for each case of `MC_(instrument)`; part of
-   the original is in `fjalar/mc_translate.h`.
+   contains a DynComp counterpart for each case of `MC_(instrument)`.
 3. **Memcheck -> DynComp**: `valgrind/fjalar/kvasir/dyncomp_translate.c` is
    derived from `memcheck/mc_translate.c` with `_DC` renaming; it must be
    updated by hand, using upstream's changes to `mc_translate.c` as a guide
@@ -227,10 +226,17 @@ Memcheck and DynComp depend tightly on Valgrind core:
      `git diff valgrind-merge/base valgrind-merge/new -- valgrind/fjalar/mc_translate.c`
      hunk by hunk, checking off each hunk as
      applied, not applicable, or ported to DynComp (step 7).
-   - Check `mc_main.c` still has Fjalar's options/version info.
+   - Check that `mc_pre_clo_init` in `mc_main.c` still sets upstream
+     Memcheck's details (name, version, and so on), unchanged.  Fjalar's
+     defaults, including the version that Kvasir reports, are set in
+     `fjalar_pre_clo_init` in `fjalar_main.c`, and Kvasir's other details
+     in `kvasir/kvasir_main.c`.
    - Check that `mc_main.c` still has `#include "fjalar_mc_main.h"`, after
      the definitions of the static functions that `fjalar_mc_main.h` calls
      (see "Memcheck modifications" in `doc/valgrind-merge.texinfo`).
+     Likewise, check that `mc_translate.c` still has
+     `#include "fjalar_mc_translate.h"`, after the definitions of `MCEnv`
+     and of the static functions that `fjalar_mc_translate.h` calls.
    - `merge-valgrind.sh` runs `generate-fjalar-makefile.sh`, which regenerates
      `valgrind/fjalar/Makefile.am` from `valgrind/memcheck/Makefile.am`, so
      Fjalar builds every new Memcheck source file.  If

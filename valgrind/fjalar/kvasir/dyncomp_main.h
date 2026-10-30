@@ -199,14 +199,19 @@ static __inline__ UInt get_tag ( Addr a )
 }
 #endif
 
-// Clear all tags for all bytes in range [a, a + len)
-static __inline__ void clear_all_tags_in_range( Addr a, SizeT len ) {
+// Set the tag of all bytes in range [a, a + len) to tag, as is.  A
+// caller that wants the union-find leader of tag must pass the leader.
+static __inline__ void set_tag_in_range( Addr a, SizeT len, UInt tag ) {
   Addr curAddr;
 
   for (curAddr = a; curAddr < (a+len); curAddr++) {
-    // Set the tag to 0
-    set_tag(curAddr, 0);
+    set_tag(curAddr, tag);
   }
+}
+
+// Clear all tags for all bytes in range [a, a + len)
+static __inline__ void clear_all_tags_in_range( Addr a, SizeT len ) {
+  set_tag_in_range(a, len, 0);
 }
 
 // Return a fresh tag and create a singleton set
@@ -284,6 +289,7 @@ extern VG_REGPARM(1) void MC_(helperc_STORE_TAG_8) ( Addr, UInt );
 extern VG_REGPARM(2) void MC_(helperc_STORE_TAG_4) ( Addr, UInt );
 extern VG_REGPARM(2) void MC_(helperc_STORE_TAG_2) ( Addr, UInt );
 extern VG_REGPARM(2) void MC_(helperc_STORE_TAG_1) ( Addr, UInt );
+extern VG_REGPARM(3) void MC_(helperc_STORE_TAG_N) ( Addr, UWord, UInt );
 
 extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_8) ( Addr );
 extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_4) ( Addr );

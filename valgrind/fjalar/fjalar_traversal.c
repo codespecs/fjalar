@@ -1229,6 +1229,12 @@ void visitVariableGroup(VariableOrigin varOrigin,
 }
 
 
+// visitReturnValue() reads a value that spans xAX and xDX, such as a
+// small struct on amd64 or a long long on x86, at (Addr)&(e->xAX).
+// (Valgrind's offsetof is not an integer constant expression.)
+STATIC_ASSERT(__builtin_offsetof(FunctionExecutionState, xDX) ==
+              __builtin_offsetof(FunctionExecutionState, xAX) + sizeof(Word));
+
 // Grabs the appropriate return value of the function denoted by the
 // execution state 'e' from Valgrind simulated registers and visits
 // the variables to perform some action.  This differs from calling
@@ -1263,50 +1269,27 @@ void visitReturnValue(FunctionExecutionState* e,
 
   stringStackPush(&fullNameStack, cur_node->var->name);
 
-  // Struct/union type - use xAX but remember that xAX holds
-  // a POINTER to the struct/union so we must dereference appropriately
-  // WE NEED TO CHECK THAT declaredPtrLevels == 0 since we need a
-  // real struct/union, not just a pointer to one
-  // BE CAREFUL WITH declaredType - it may be misleading since all
-  // pointers share the same declaredType
-  // RUDD - Need an extra indirection level for references.
+  // Struct/union type, returned by value.  The test must check
+  // ptrLevels, because varType is the same for a struct/union and for
+  // every pointer to it.  A reference to a struct/union is handled
+  // by the int/pointer case below, because it needs an extra
+  // indirection level.
   if ((cur_node->var->ptrLevels == 0) &&
       (IS_AGGREGATE_TYPE(cur_node->var->varType)) && !cur_node->var->referenceLevels) {
 
 
-    // AMD64 special case: If the size of the the struct is <= the size
-    // of 2 architectural registers, it is passed via RAX and RDX.
-    // We're going to express this by creating a 16 byte buffer and
-    // copying the contents of RAX and EDX to it and passing a pointer
-    // to it.
+    // AMD64 special case: If the size of the struct is <= the size
+    // of 2 architectural registers, it is returned in RAX and RDX.
+    // e->xAX and e->xDX are adjacent, so the struct is at &(e->xAX),
+    // with its shadow state.
 #if defined(VGA_amd64)
-    if(cur_node->var->varType->byteSize <= 16) {
-      char returnBuffer[16];
-
-      VG_(memcpy)(returnBuffer                       ,  &e->xAX, 8);
-      VG_(memcpy)(returnBuffer + (Addr)sizeof(e->xAX),  &e->xDX, 8);
-
-      unsigned long long int uLong = (e->xAX);
+    if(cur_node->var->varType->byteSize <= sizeof(e->xAX) + sizeof(e->xDX)) {
       FJALAR_DPRINTF("tiny struct\n");
 
-      // Copy A and V bits over:
-      MC_(copy_address_range_state)((Addr)(&(e->xAX)),
-                                    (Addr)(&returnBuffer),
-                                    sizeof(e->xAX));
-
-      MC_(copy_address_range_state)((Addr)(&(e->xDX)),
-                                    (Addr)(&returnBuffer) + (Addr)sizeof(e->xAX),
-                                    sizeof(e->xDX));
-
-      // Remember to copy A and V-bits over:
-      MC_(copy_address_range_state)((Addr)(&(e->xAX)),
-                                    (Addr)(&uLong),
-                                    sizeof(e->xAX));
-
       visitVariable(cur_node->var,
-                    (Addr) returnBuffer,
-                    0,
-                    1, // e->xAXvalid,
+                    (Addr)&(e->xAX),
+                    0, /* registers, no guest location */
+                    0, // e->xAXvalid,
                     0,
                     performAction,
                     FUNCTION_RETURN_VAR,
@@ -1353,60 +1336,11 @@ void visitReturnValue(FunctionExecutionState* e,
                   funcPtr,
                   0);
   }
-  // Remember that x86 long long int types use xAX as the low 4 bytes
-  // and xDX as the high 4 bytes
-  // long long ints - create a long long int and pass its address
-  /* XXX shouldn't do this for 64-bit long long on AMD64 */
-  // UNDONE: rust support for U128
-  else if ((sizeof(UWord) == 4) && (cur_node->var->ptrLevels == 0) &&
-           (cur_node->var->varType->decType == D_UNSIGNED_LONG_LONG_INT)) {
-    unsigned long long int uLong = (e->xAX) | (((unsigned long long int)(e->xDX)) << 32);
-    FJALAR_DPRINTF("long long int type\n");
-
-    // Remember to copy A and V-bits over:
-    MC_(copy_address_range_state)((Addr)(&(e->xAX)),
-                                  (Addr)(&uLong),
-                                  sizeof(e->xAX));
-
-    MC_(copy_address_range_state)((Addr)(&(e->xDX)),
-                                  (Addr)(&uLong) + (Addr)sizeof(e->xAX),
-                                  sizeof(e->xDX));
-
-    visitVariable(cur_node->var,
-                  (Addr)&uLong,
-                  0, /* registers, no guest location */
-                  0,
-                  0,
-                  performAction,
-                  FUNCTION_RETURN_VAR,
-                  funcPtr,
-                  0);
-  }
-  // UNDONE: rust support for I128
-  else if ((sizeof(UWord) == 4) && (cur_node->var->ptrLevels == 0) &&
-           (cur_node->var->varType->decType == D_LONG_LONG_INT)) {
-    long long int signedLong = (e->xAX) | (((long long int)(e->xDX)) << 32);
-
-    // Remember to copy A and V-bits over:
-    MC_(copy_address_range_state)((Addr)(&(e->xAX)),
-                                  (Addr)(&signedLong),
-                                  sizeof(e->xAX));
-
-    MC_(copy_address_range_state)((Addr)(&(e->xDX)),
-                                  (Addr)(&signedLong) + (Addr)sizeof(e->xAX),
-                                  sizeof(e->xDX));
-
-    visitVariable(cur_node->var,
-                  (Addr)&signedLong,
-                  0, /* registers, no guest location */
-                  0,
-                  0,
-                  performAction,
-                  FUNCTION_RETURN_VAR,
-                  funcPtr,
-                  0);
-  }
-  // All other types (integer and pointer) - use xAX
+  // All other types (integer and pointer) - use xAX.  On x86, a
+  // long long is returned with its low 4 bytes in EAX and its high 4
+  // bytes in EDX; e->xAX and e->xDX are adjacent, so the long long
+  // is at &(e->xAX).
+  // UNDONE: rust support for U128 and I128
   else {
     FJALAR_DPRINTF("int or pointer type\n");
     // Need an additional indirection level

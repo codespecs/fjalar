@@ -76,8 +76,9 @@ int print_merge = 1;
    it to memory, a fresh tag is stored instead (that's the fresh
    part). When you load it from memory, the result depends on
    --dyncomp-interactions: under all, MC_(helperc_LOAD_TAG_4) gives a
-   fresh tag; under none, comparisons, and units,
-   MC_(helperc_LOAD_TAG_N) gives WEAK_FRESH_TAG itself. This tag is
+   fresh tag; under none, comparisons, and units, and for a load of
+   more than 8 bytes under all, MC_(helperc_LOAD_TAG_N) gives
+   WEAK_FRESH_TAG itself. This tag is
    used for the stack pointer, the frame pointer, the contents of the
    GOT, and literals when
    dyncomp-approximate-literals is enabled. */
@@ -219,22 +220,15 @@ UInt val_uf_tag_union(UInt tag1, UInt tag2) {
   }
 }
 
-// Write tag into all addresses in the range [a, a+len)
+// Write the union-find leader of tag into all addresses in the range
+// [a, a+len)
 static __inline__ void set_tag_for_range(Addr a, SizeT len, UInt tag) {
-  Addr curAddr;
-  UInt leader = val_uf_find_leader(tag);
-
-  for (curAddr = a; curAddr < (a+len); curAddr++) {
-    set_tag(curAddr, leader);
-  }
+  set_tag_in_range(a, len, val_uf_find_leader(tag));
 }
 
 // Write the special GOT tag into all addresses in the range [a, a+len)
 void set_tag_for_GOT(Addr a, SizeT len) {
-  Addr curAddr;
-  for (curAddr = a; curAddr < (a+len); curAddr++) {
-    set_tag(curAddr, WEAK_FRESH_TAG);
-  }
+  set_tag_in_range(a, len, WEAK_FRESH_TAG);
 }
 
 // Helper functions called from dyncomp_translate.c:
@@ -259,49 +253,37 @@ UInt MC_(helperc_TAG_NOP) ( UInt tag ) {
 // regardless of whether dyncomp_approximate_literals is on or not.
 // Real tags are in the range of [1, LARGEST_REAL_TAG])
 
+// Writes the tag into the len bytes [a, a+len).  A WEAK_FRESH_TAG is
+// replaced by a distinct fresh tag for each 8-byte chunk.
+VG_REGPARM(3)
+void MC_(helperc_STORE_TAG_N) ( Addr a, UWord len, UInt tag ) {
+  UWord i;
+
+  if (WEAK_FRESH_TAG == tag) {
+    for (i = 0; i < len; i += 8) {
+      set_tag_for_range(a + i, (len - i < 8) ? len - i : 8, grab_fresh_tag());
+    }
+  }
+  else {
+    set_tag_for_range(a, len, tag);
+  }
+}
+
 // For some reason, 64-bit stuff needs REGPARM(1) (Look in
 // mc_translate.c) - this is very important for some reason
 VG_REGPARM(1)
 void MC_(helperc_STORE_TAG_8) ( Addr a, UInt tag ) {
-  UInt tagToWrite;
-
-  if (WEAK_FRESH_TAG == tag) {
-    tagToWrite = grab_fresh_tag();
-  }
-  else {
-    tagToWrite = tag;
-  }
-
-  set_tag_for_range(a, 8, tagToWrite);
+  MC_(helperc_STORE_TAG_N)(a, 8, tag);
 }
 
 VG_REGPARM(2)
 void MC_(helperc_STORE_TAG_4) ( Addr a, UInt tag ) {
-  UInt tagToWrite;
-
-
-  if (WEAK_FRESH_TAG == tag) {
-    tagToWrite = grab_fresh_tag();
-  }
-  else {
-    tagToWrite = tag;
-  }
-
-  set_tag_for_range(a, 4, tagToWrite);
+  MC_(helperc_STORE_TAG_N)(a, 4, tag);
 }
 
 VG_REGPARM(2)
 void MC_(helperc_STORE_TAG_2) ( Addr a, UInt tag ) {
-  UInt tagToWrite;
-
-  if (WEAK_FRESH_TAG == tag) {
-    tagToWrite = grab_fresh_tag();
-  }
-  else {
-    tagToWrite = tag;
-  }
-
-  set_tag_for_range(a, 2, tagToWrite);
+  MC_(helperc_STORE_TAG_N)(a, 2, tag);
 }
 
 VG_REGPARM(2)
@@ -423,9 +405,7 @@ UInt val_uf_union_tags_in_range(Addr a, SizeT len) {
                   (void *)a, (void *)(a+len), canonicalTag);
 
     // Set all the tags in this range to the canonical tag
-    for (curAddr = a; curAddr < (a + len); curAddr++) {
-      set_tag(curAddr, canonicalTag);
-    }
+    set_tag_in_range(a, len, canonicalTag);
 
     print_merge = 1;
     return canonicalTag;
@@ -482,10 +462,11 @@ UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
 // garbage_collect_tags() renumbers these tags too.
 UInt load_tag_snapshots[DC_N_LOAD_TAG_SNAPSHOTS][DC_LOAD_TAG_SNAPSHOT_BYTES];
 
-// Returns the tag of the value loaded from the range [a, a+len), in
+// Returns the tag of the value loaded from the range [a, a+len), for a
+// load that is not an interaction:  every load in
 // dyncomp_dataflow_only_mode, dyncomp_dataflow_comparisons_mode, and
-// dyncomp_units_mode.  In those modes, a load is not an interaction, so
-// unlike the other MC_(helperc_LOAD_TAG_*) functions, this does not merge
+// dyncomp_units_mode, and a load of more than 8 bytes in every mode.
+// Unlike the other MC_(helperc_LOAD_TAG_*) functions, this does not merge
 // the tags of the addresses in the range.  It returns the leader of the
 // first non-zero tag in the range, WEAK_FRESH_TAG if that tag is
 // WEAK_FRESH_TAG, or 0 if every tag in the range is 0.
