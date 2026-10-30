@@ -175,8 +175,9 @@ Memcheck and DynComp depend tightly on Valgrind core:
    themselves, so that `valgrind-new` stays a clean clone, which becomes
    `valgrind-old` for the next merge.
 
-4. **Merge.**  First run `$FJALAR/diff-from-valgrind.sh --stat`, and
-   save its output.  Check that the files that it lists, and the changes
+4. **Merge.**  First run `$FJALAR/diff-from-valgrind.sh --stat` and
+   `$FJALAR/diff-from-valgrind.sh`, and save their output (step 10
+   compares with it).  Check that the files that it lists, and the changes
    that its full output shows, are the ones that the appendices "Valgrind
    modifications" and "Memcheck modifications" of
    `doc/valgrind-merge.texinfo` describe.  Then run
@@ -215,10 +216,15 @@ Memcheck and DynComp depend tightly on Valgrind core:
    - Check `.alwaysDefd` in `guest_amd64_helpers.c` and
      `guest_x86_helpers.c`.  Memcheck's `isAlwaysDefd` panics if an
      `fxState` entry that `fjalar_main.c` adds (`add_fxState_read` and
-     `add_fxState_read_GPRs_and_IP`) partly overlaps an always-defined
-     field.  In 3.23.0, the entry for `guest_RAX` through `guest_R15`
-     overlaps none (the nearest, `guest_CC_OP`, follows `guest_R15`).  See
-     section "Updating Fjalar/Kvasir" of `doc/valgrind-merge.texinfo`.
+     `add_fxState_read_GPRs_and_IP`) overlaps an always-defined field
+     without lying entirely inside it, even if the entry covers the whole
+     field.  In 3.23.0, the entries for the instruction pointer and for
+     `guest_FTOP` are exactly always-defined fields, and the entries for
+     the general-purpose registers and for `guest_FPREG` overlap none,
+     though always-defined fields directly follow them (`guest_CC_OP` and
+     `guest_FPTAG`).  Check both amd64 and x86, especially the sizes and
+     order of the x87 fields.  See section "Updating Fjalar/Kvasir" of
+     `doc/valgrind-merge.texinfo`.
 
 6. **Memcheck conflicts** in `valgrind/fjalar/`.
    - Resolve the conflicts (as for Coregrind), using
@@ -226,12 +232,14 @@ Memcheck and DynComp depend tightly on Valgrind core:
      Fjalar modified; `git rm`
      any that Fjalar does not need.  `fjalar/mc_translate.h` repeats
      `IRAtom` and the IR-building macros of `mc_translate.c`; if upstream
-     changes them, change `mc_translate.h` to match.  Preserve the #73 edits to `mc_translate.c`
-     and `memcheck.h`.
-   - In `mc_translate.c`'s `MC_(instrument)` and every helper that it
-     calls, check that every case has matching DynComp code, that new cases
-     get a DynComp counterpart, and that upstream changes to a Memcheck case
-     are mirrored in its DynComp case.  Go through
+     changes them, change `mc_translate.h` to match.  Preserve the #73
+     edits to `mc_translate.c` and `memcheck.h`.
+   - For each case of the switch in `mc_translate.c`'s `MC_(instrument)`,
+     and each helper that it calls, check that DynComp's corresponding
+     case of `instrument_stmt_DC` in `kvasir/dyncomp_translate.c` still
+     matches it, that new cases get a DynComp counterpart there, and that
+     upstream changes to a Memcheck case are mirrored in its DynComp case.
+     Go through
      `git diff valgrind-merge/base valgrind-merge/new -- valgrind/fjalar/mc_translate.c`
      hunk by hunk, checking off each hunk as
      applied, not applicable, or ported to DynComp (step 7).
@@ -436,11 +444,16 @@ Memcheck and DynComp depend tightly on Valgrind core:
     - After committing, run
       `$FJALAR/diff-from-valgrind.sh --valgrind=$INV/valgrind-new --stat`
       (it reads `valgrind/REVISION` from the commit), and compare its
-      output with the output that step 4 saved.  For a file that is new in
-      the list or whose count of changed lines grew, check the full output
-      for modifications that the merge or a conflict resolution added.
-      Remove those that Fjalar does not need, and document the others in
-      the appendices.
+      output with the `--stat` output that step 4 saved.  For a file that
+      is new in the list or whose count of changed lines grew, check the
+      full output for modifications that the merge or a conflict
+      resolution added.  For a file that dropped out of the list or whose
+      count shrank, check each of its modifications in the full output
+      that step 4 saved:  either upstream made the same change, or a
+      conflict resolution discarded Fjalar's change and it must be
+      restored.  Remove the modifications that Fjalar does not need,
+      document the others in the appendices, commit, and rerun
+      `diff-from-valgrind.sh` to confirm.
     - Commit as one PR.
     - After the PR has landed, keep `valgrind-new` as the next merge's
       `valgrind-old` (step 2 reuses it), and delete `valgrind-new-build`

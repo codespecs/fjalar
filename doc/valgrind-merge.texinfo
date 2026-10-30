@@ -455,18 +455,20 @@ Fjalar contains two copies of Memcheck:  an unmodified one in
 ``Coregrind''.  Our changes to Memcheck are much more substantial than our
 changes to Coregrind.
 
-Before the merge, list the files that Fjalar modifies:
+Before the merge, list the files that Fjalar modifies, and the
+modifications themselves, and save both lists:
 
 @example
-$INV/fjalar/diff-from-valgrind.sh --stat
+$INV/fjalar/diff-from-valgrind.sh --stat > $INV/diff-from-valgrind-before-merge.stat
+$INV/fjalar/diff-from-valgrind.sh > $INV/diff-from-valgrind-before-merge.diff
 @end example
 
 @noindent
-Check that it lists only the files that @ref{Valgrind modifications} and
-@ref{Memcheck modifications} list, and that the full output
-(without @option{--stat}) shows only the modifications that they
-describe.  Document any other modification there, so that the appendices
-are a complete checklist for resolving conflicts.
+The check after the merge (@pxref{Commit commands}) compares with them.
+Check that the first lists only the files that @ref{Valgrind modifications}
+and @ref{Memcheck modifications} list, and that the second shows only the
+modifications that they describe.  Document any other modification there,
+so that the appendices are a complete checklist for resolving conflicts.
 
 Run:
 
@@ -665,14 +667,36 @@ Fjalar's calls to the helpers that run at function entry and exit tell
 VEX which parts of the guest state they read, through the
 @code{fxState} entries that @code{add_fxState_read} and
 @code{add_fxState_read_GPRs_and_IP} in @file{fjalar_main.c} add.
-Memcheck's @code{isAlwaysDefd} panics if such an entry partly overlaps an
-always-defined part of the guest state, which the @code{.alwaysDefd}
-list in @file{VEX/priv/guest_amd64_helpers.c} (and, for x86,
-@file{guest_x86_helpers.c}) names.  An entry can cover an always-defined
-field entirely, as the entry for @code{guest_RIP} does.  In 3.23.0, the
-entry for @code{guest_RAX} through @code{guest_R15} overlaps no
-always-defined field.  After the merge, check @code{.alwaysDefd} and the
-guest-state layout again.
+The always-defined fields of the guest state are the ones that the
+@code{.alwaysDefd} list in @file{VEX/priv/guest_amd64_helpers.c} (and,
+for x86, @file{guest_x86_helpers.c}) names.  Memcheck's
+@code{isAlwaysDefd} panics if an entry overlaps an always-defined field
+without lying entirely inside it.  So each entry must either lie inside
+one always-defined field or overlap none; an entry that covers an
+always-defined field and also other bytes causes a panic.  In 3.23.0:
+
+@itemize @bullet
+@item
+The entries for the instruction pointer (@code{guest_RIP} or
+@code{guest_EIP}) and for @code{guest_FTOP} are exactly always-defined
+fields.
+
+@item
+The entry for the general-purpose registers (@code{guest_RAX} through
+@code{guest_R15}, or @code{guest_EAX} through @code{guest_EDI}) overlaps
+no always-defined field.  @code{guest_CC_OP}, which is always defined,
+directly follows it.
+
+@item
+The entry for @code{guest_FPREG} overlaps no always-defined field.
+@code{guest_FPTAG}, which is always defined, directly follows it, and on
+x86, @code{guest_EIP} directly precedes it.
+@end itemize
+
+@noindent
+After the merge, check @code{.alwaysDefd} and the guest-state layout
+(@file{VEX/pub/libvex_guest_amd64.h} and @file{libvex_guest_x86.h})
+again, especially the sizes and order of the x87 fields.
 
 A somewhat more problematic area are changes in the VEX IR. DynComp
 makes heavy use of the VEX IR, so any changes in it need to be
@@ -1488,14 +1512,29 @@ $INV/fjalar/diff-from-valgrind.sh --valgrind=$INV/valgrind-new --stat
 @noindent
 The script compares the committed Fjalar tree with the Valgrind release
 that the committed @file{valgrind/REVISION} names, so run it after you
-commit.  Compare its output with its output before the merge
-(@pxref{Merging Valgrind}).  A file can drop out of the list when the
-Valgrind developers made Fjalar's change too.  For a file that is new in
-the list, or whose count of changed lines grew, check the full output:
-the merge or a conflict resolution can add a modification, such as a
-change of whitespace.  Remove each modification that Fjalar does not
-need, and document the others in @ref{Valgrind modifications} or
-@ref{Memcheck modifications}.
+commit.  Compare its output with
+@file{$INV/diff-from-valgrind-before-merge.stat}, which you saved before
+the merge (@pxref{Merging Valgrind}).
+
+@itemize @bullet
+@item
+For a file that is new in the list, or whose count of changed lines grew,
+check the full output (without @option{--stat}):  the merge or a conflict
+resolution can add a modification, such as a change of whitespace.
+
+@item
+For a file that dropped out of the list, or whose count of changed lines
+shrank, check each of its modifications in
+@file{$INV/diff-from-valgrind-before-merge.diff}.  Either the Valgrind
+developers made the same change, or a conflict resolution discarded
+Fjalar's change and you must restore it.
+@end itemize
+
+@noindent
+Remove each modification that Fjalar does not need, and document the
+others in @ref{Valgrind modifications} or @ref{Memcheck modifications}.
+Commit those changes, and run @file{diff-from-valgrind.sh} again to
+confirm them.
 
 Note: We recommend saving Fjalar's changes to the base Valgrind
 (@pxref{Merging Valgrind}) to further document the process.
@@ -1596,10 +1635,7 @@ The modifications are:
 
 @table @asis
 @item $INV/fjalar/valgrind/fjalar/mc_main.c
-Run-time arguments for Fjalar.  (Fjalar does not change Memcheck's
-details, such as its name and version, in @code{mc_pre_clo_init}; instead,
-@code{fjalar_pre_clo_init} in @file{fjalar_main.c} and each tool's
-@code{fjalar_tool_pre_clo_init} override them.)  Also, an @code{#include} of
+An @code{#include} of
 @file{fjalar_mc_main.h}, which defines the functions that Fjalar adds to
 Memcheck (@file{mc_fjalar.h} declares them).  Those functions call
 static functions of @file{mc_main.c}, such as @code{set_vabits2},
@@ -1610,22 +1646,40 @@ Calls to Fjalar at Memcheck's entry points:  @code{mc_pre_clo_init},
 @code{mc_process_cmd_line_options}, @code{mc_print_usage},
 @code{mc_post_clo_init}, and @code{mc_fini}, which returns after it
 calls @code{fjalar_finish}, so that Fjalar skips Memcheck's end-of-run
-reports.  DynComp calls in the @code{make_mem_*} functions and in
-@code{MC_(copy_address_range_state)}, which clear, allocate, or copy the
-tags of the bytes whose state changes.  A @code{CHECK_SP} call in each of
-the @code{mc_new_mem_stack*} functions.
-Smaller edits:  @code{DEBUG} calls that @code{MAX_DEBUG_INFO} enables,
-@code{#undef}s of @code{SM_OFF} and @code{SM_OFF_16}, which
-@file{kvasir/dyncomp_main.h} also defines, and of @code{INLINE}; and a parameter of
-@code{check_mem_is_defined_asciiz} renamed from @code{str} to
-@code{astr}.
+reports.  (Fjalar does not change Memcheck's details, such as its name and
+version, in @code{mc_pre_clo_init}; instead, @code{fjalar_pre_clo_init} in
+@file{fjalar_main.c} and each tool's @code{fjalar_tool_pre_clo_init}
+override them.)  The definition of @code{kvasir_with_dyncomp}, and
+DynComp calls, guarded by it, that clear, allocate, or copy the tags of
+the bytes whose state changes:  in the @code{make_mem_*} functions, in
+@code{make_aligned_word32_noaccess} and
+@code{make_aligned_word64_noaccess}, and in
+@code{MC_(copy_address_range_state)}, which saves the original length in
+@code{orig_size} for the call.  A @code{CHECK_SP} call in each of the
+@code{mc_new_mem_stack_@var{N}} and @code{mc_new_mem_stack_@var{N}_w_ECU}
+functions, and a @code{CHECK_SP_SLOW} call in @code{mc_new_mem_stack} and
+@code{mc_new_mem_stack_w_ECU}.
+Smaller edits:  @code{DEBUG} calls that @code{MAX_DEBUG_INFO} enables, and
+casts of their pointer arguments to @code{void *}; a
+@code{#pragma GCC diagnostic ignored "-Wshadow"}, because Memcheck's
+locals named @code{line} and @code{str} shadow enumerators that
+@file{dwarf.h} declares; @code{#undef}s of @code{SM_OFF} and
+@code{SM_OFF_16}, which @file{kvasir/dyncomp_main.h} also defines, and of
+@code{INLINE}; and a parameter of @code{check_mem_is_defined_asciiz}
+renamed from @code{str} to @code{astr}.
 @item $INV/fjalar/valgrind/fjalar/mc_translate.c
 In @code{MC_(instrument)}, calls to @code{begin_instrument_DC},
 @code{instrument_stmt_DC} (after Memcheck instruments each statement),
 and @code{end_instrument_DC}, which @file{kvasir/dyncomp_translate.c}
 defines; calls to @code{handle_possible_entry} and
 @code{handle_possible_exit}, which detect function entries and exits; and
-code that prints registers when @option{--fjalar-print-ir} is given.
+code that prints registers at the start of each superblock and at each
+instruction.  That code, like Memcheck's own tracing of the IR (through
+@code{mce.trace}) and its printing of the statements, runs when
+@code{verboze} is true; Fjalar initializes @code{verboze} to
+@code{fjalar_debug && fjalar_print_IR} instead of @code{0||False}, so
+@option{--fjalar-debug} and @option{--fjalar-print-ir} together turn all
+of it on.
 An early return in @code{complainIfUndefined}, because Fjalar does not
 check definedness.  Also, a @code{DC} kind of @code{TempKind}, for DynComp's temporaries,
 and an @code{#include} of @file{fjalar_mc_translate.h}, which defines
