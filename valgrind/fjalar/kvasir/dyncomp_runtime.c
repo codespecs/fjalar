@@ -1012,12 +1012,23 @@ static void reassign_val_tag(UInt* addr, UInt* p_newTagNumber) {
 }
 
 
+// Sets to 0 the guest-state tags of every thread slot strictly between
+// lowTid and highTid.  Each of those slots must be empty.
+static void clear_empty_thread_slot_tags(ThreadId lowTid, ThreadId highTid) {
+  ThreadId tid;
+
+  for (tid = lowTid + 1; tid < highTid; tid++) {
+    VG_(memset)(VG_(get_tag_ptr_for_guest_offset)(tid, 0), 0,
+                4 * sizeof(VexGuestArchState));
+  }
+}
+
 // Runs the tag garbage collector.  It must run only at a safe point;
 // see dyncomp_gc_at_safe_point().
 static void garbage_collect_tags(void) {
   UInt primaryIndex, secondaryIndex;
   FuncIterator* funcIt;
-  ThreadId tid;
+  ThreadId tid, prevTid;
   Addr stack_min, stack_max;
   UInt curTag, i;
 
@@ -1189,13 +1200,21 @@ static void garbage_collect_tags(void) {
   // holds a tag or 0, so scan all of them.  (On AMD64 a tag is stored
   // as a 64-bit word, and the slot after it holds the upper half of
   // that word, which is 0.)
+  //
+  // The tags of an empty thread slot are not renumbered, so set them to
+  // 0.  Otherwise a new thread that Valgrind puts in that slot would
+  // start with tags that no longer denote the sets they did.
+  prevTid = VG_INVALID_THREADID;
   VG_(thread_stack_reset_iter)(&tid);
   while (VG_(thread_stack_next)(&tid, &stack_min, &stack_max)) {
+    clear_empty_thread_slot_tags(prevTid, tid);
     for (i = 0; i < sizeof(VexGuestArchState); i++) {
       reassign_val_tag(VG_(get_tag_ptr_for_guest_offset)(tid, i),
                        &newTagNumber);
     }
+    prevTid = tid;
   }
+  clear_empty_thread_slot_tags(prevTid, VG_N_THREADS);
 
   // 4.) Load tag snapshots:
 
@@ -1247,18 +1266,6 @@ void dyncomp_gc_at_safe_point(ThreadId tid, ULong blocks_dispatched) {
        >= (UInt)dyncomp_gc_after_n_tags)) {
     totalNumTagsAssignedAtLastGC = totalNumTagsAssigned;
     garbage_collect_tags();
-  }
-}
-
-// Clears the guest-state tags of a new thread.  Valgrind reuses the
-// slot of a thread that has exited, and the tag garbage collector does
-// not scan an empty slot, so without this the new thread would start
-// with stale tags of the slot's previous thread.
-void dyncomp_clear_thread_tags(ThreadId parent, ThreadId child) {
-  UInt i;
-
-  for (i = 0; i < sizeof(VexGuestArchState); i++) {
-    *VG_(get_tag_ptr_for_guest_offset)(child, i) = 0;
   }
 }
 
