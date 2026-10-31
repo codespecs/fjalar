@@ -367,6 +367,13 @@ static char ignore_function_with_name(char* name, Bool quiet) {
 // UNDONE: should we only check list if C/C++?
 // We check Rust names in typedata.c.
 //
+// Returns true if name is that of a C++ class's virtual function
+// table pointer.
+static Bool is_vtable_pointer_name(const char* name) {
+  return ((0 == VG_(strncmp)(name, "_vptr.", 6)) ||  // gcc
+          (0 == VG_(strncmp)(name, "_vptr$", 6)));   // clang
+}
+
 // Ignores some weirdo C++ variables such as vtable function pointers
 // and friends
 // g++-3.4 seems to create variable names prefixed with '__gnu_cxx'
@@ -382,8 +389,7 @@ static char ignore_variable_with_name(const char* name) {
   }
 
   if (VG_STREQ(name, "__ioinit") ||
-      (0 == VG_(strncmp)(name, "_vptr.", 6)) ||  // gcc
-      (0 == VG_(strncmp)(name, "_vptr$", 6)) ||  // clang
+      is_vtable_pointer_name(name) ||
       (0 == VG_(strncmp)(name, "_ZTI", 4)) ||
       (0 == VG_(strncmp)(name, "_ZTS", 4)) ||
       // libstdc++ stuff (demangled is something like '__gnu_cxx::')
@@ -2283,6 +2289,9 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
     for (i = 0; i < collectionPtr->num_member_vars; i++) {
       member* memberPtr = (member*)((collectionPtr->member_vars[i])->entry_ptr);
+      if (memberPtr->name && is_vtable_pointer_name(memberPtr->name)) {
+        t->aggType->hasVtablePointer = True;
+      }
       extractOneVariable(t->aggType->memberVarList,
                          memberPtr->type_ptr,
                          memberPtr->name,
