@@ -1256,19 +1256,58 @@ void dyncomp_gc_at_safe_point(ThreadId tid, ULong blocks_dispatched) {
   }
 }
 
-// Gives new thread child the guest-state tags of thread parent, because
-// child starts with a copy of parent's guest state.  If parent is
-// VG_INVALID_THREADID, sets child's guest-state tags to 0.
-void dyncomp_copy_thread_tags(ThreadId parent, ThreadId child) {
-  UInt* childTags = VG_(get_tag_ptr_for_guest_offset)(child, 0);
+#if defined(VGA_amd64)
+#define GUEST_xAX guest_RAX
+#define GUEST_xSP guest_RSP
+#else
+#define GUEST_xAX guest_EAX
+#define GUEST_xSP guest_ESP
+#endif
 
+// Returns the number of bytes that hold the tags of the len guest-state
+// bytes of thread tid that start at offset.
+static SizeT guest_tags_size(ThreadId tid, UInt offset, UInt len) {
+  return (char*)VG_(get_tag_ptr_for_guest_offset)(tid, offset + len)
+    - (char*)VG_(get_tag_ptr_for_guest_offset)(tid, offset);
+}
+
+// Sets to 0 the tags of the len guest-state bytes of thread tid that
+// start at offset.
+static void clear_guest_tags(ThreadId tid, UInt offset, UInt len) {
+  VG_(memset)(VG_(get_tag_ptr_for_guest_offset)(tid, offset), 0,
+              guest_tags_size(tid, offset, len));
+}
+
+// Gives new thread child the guest-state tags of thread parent, because
+// child starts with a copy of parent's guest state.  Sets to 0 the tags
+// of the registers in which Valgrind gives child a value of its own.
+// If parent is VG_INVALID_THREADID, sets all of child's guest-state
+// tags to 0.
+void dyncomp_copy_thread_tags(ThreadId parent, ThreadId child) {
   if (parent == VG_INVALID_THREADID) {
-    VG_(memset)(childTags, 0, 4 * sizeof(VexGuestArchState));
+    clear_guest_tags(child, 0, sizeof(VexGuestArchState));
+    return;
   }
-  else {
-    VG_(memcpy)(childTags, VG_(get_tag_ptr_for_guest_offset)(parent, 0),
-                4 * sizeof(VexGuestArchState));
+
+  VG_(memcpy)(VG_(get_tag_ptr_for_guest_offset)(child, 0),
+              VG_(get_tag_ptr_for_guest_offset)(parent, 0),
+              guest_tags_size(child, 0, sizeof(VexGuestArchState)));
+
+  // clone returns 0 in the child.
+  clear_guest_tags(child, offsetof(VexGuestArchState, GUEST_xAX),
+                   sizeof(((VexGuestArchState*)0)->GUEST_xAX));
+  // The child gets its own stack unless clone's stack argument is 0.
+  if (VG_(get_SP)(child) != VG_(get_SP)(parent)) {
+    clear_guest_tags(child, offsetof(VexGuestArchState, GUEST_xSP),
+                     sizeof(((VexGuestArchState*)0)->GUEST_xSP));
   }
+#if defined(VGA_amd64)
+  // The child gets its own thread-local storage if clone's flags
+  // include CLONE_SETTLS.  The flags are not known here, so this clears
+  // the tag even when the child shares the parent's value.
+  clear_guest_tags(child, offsetof(VexGuestArchState, guest_FS_CONST),
+                   sizeof(((VexGuestArchState*)0)->guest_FS_CONST));
+#endif
 }
 
 
