@@ -193,6 +193,7 @@ long ftell(FILE *stream);
 /* stdlib.h */
 
 // rename from abort to avoid conflict with coregrind::abort (markro)
+__attribute__ ((__noreturn__))
 void my_abort(void);
 
 long int strtol(const char *nptr, char **endptr, int base);
@@ -211,16 +212,5 @@ int mkfifo(const char *fn, __mode_t mode);
 /* sys/stat.h */
 
 int mkdir(const char *path, __mode_t mode);
-
-/* bfd/bfd-in.h */
-
-#include "pub_tool_basics.h"
-#include "pub_tool_libcbase.h"
-/* Return TRUE if the start of STR matches PREFIX, FALSE otherwise.  */
-static inline bool
-startswith (const char *str, const char *prefix)
-{
-  return VG_(strncmp) (str, prefix, VG_(strlen) (prefix)) == 0;
-}
 
 #endif /* MY_LIBC_H */
