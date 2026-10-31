@@ -33,12 +33,6 @@ extern void warn (const char *, ...) ATTRIBUTE_PRINTF_1;
 
 #endif // ARCHIVE
 
-// start of Fjalar code
-// This definition used to be in elfcomm.h but was moved to sysdep.h.
-// We need it back as many of the fjalar files do not include sysdep.h
-#define HOST_WIDEST_INT long
-// end of Fjalar code
-
 typedef unsigned HOST_WIDEST_INT elf_vma;
 
 extern void (*byte_put) (unsigned char *, elf_vma, unsigned int);
@@ -55,7 +49,7 @@ extern elf_vma byte_get_big_endian (const unsigned char *, unsigned int);
 #define BYTE_GET_SIGNED(field)	byte_get_signed (field, sizeof (field))
 
 /* This is just a bit of syntatic sugar.  */
-#define streq(a,b)	  (VG_(strcmp) ((a), (b)) == 0)
+#define streq(a,b)	  (strcmp ((a), (b)) == 0)
 
 #if 0  // ARCHIVE Fjalar doesn't need any of the archive code
 
