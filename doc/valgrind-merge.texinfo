@@ -455,18 +455,19 @@ Fjalar contains two copies of Memcheck:  an unmodified one in
 ``Coregrind''.  Our changes to Memcheck are much more substantial than our
 changes to Coregrind.
 
-Before the merge, list the files that Fjalar modifies, and save the list:
+Before the merge, list Fjalar's modifications to Valgrind:
 
 @example
-$INV/fjalar/diff-from-valgrind.sh --stat > $INV/diff-from-valgrind-before-merge.stat
+$INV/fjalar/diff-from-valgrind.sh --stat
+$INV/fjalar/diff-from-valgrind.sh
 @end example
 
 @noindent
-The check after the merge (@pxref{Commit commands}) compares with it.
-Check that it lists only the files that @ref{Valgrind modifications} and
-@ref{Memcheck modifications} list, and that the full output (without
-@option{--stat}) shows only the modifications that they describe.  Document any other modification there,
-so that the appendices are a complete checklist for resolving conflicts.
+Check that the files that the first command lists, and the modifications
+that the second shows, are the ones that the appendices describe
+(@pxref{Valgrind modifications}, and @ref{Memcheck modifications}).
+Document any other modification there, so that the appendices are a
+complete checklist for resolving conflicts.
 
 Run:
 
@@ -1465,53 +1466,24 @@ git -C $INV/fjalar diff -b "$(git -C $INV/fjalar merge-base FETCH_HEAD HEAD)" | 
 git -C $INV/fjalar commit -a -m "Valgrind merge from $@{VOLDTAG@} to $@{VNEWTAG@}"
 @end smallexample
 
-Then check that Fjalar modifies only the files that it modified before the
-merge:
-
-@example
-$INV/fjalar/diff-from-valgrind.sh --valgrind=$INV/valgrind-new --stat
-@end example
-
-@noindent
-The script compares the committed Fjalar tree with the Valgrind release
-that the committed @file{valgrind/REVISION} names, so run it after you
-commit.  Compare its output with
-@file{$INV/diff-from-valgrind-before-merge.stat}, which you saved before
-the merge (@pxref{Merging Valgrind}).
-
-@itemize @bullet
-@item
-For a file that is new in the list, or whose count of changed lines grew,
-check the full output (without @option{--stat}):  the merge or a conflict
-resolution can add a modification, such as a change of whitespace.
-
-@item
-For a file that dropped out of the list, or whose count of changed lines
-shrank, check each of its modifications before the merge, which
-@code{git -C $INV/fjalar diff valgrind-merge/base valgrind-merge/fjalar --
-@var{file}} shows.  Either the Valgrind developers made the same change,
-or a conflict resolution discarded Fjalar's change and you must restore
-it.  A file also drops out of the list if the Valgrind developers removed
-it and you kept Fjalar's version (@pxref{Resolving Conflicts}), because
-@file{diff-from-valgrind.sh} omits the files that only Fjalar has.
-@end itemize
-
-@noindent
-A file can lose one of Fjalar's modifications and gain another without
-any change to its count of changed lines, which the comparison above
-misses.  So also run @file{compare-fjalar-changes.sh} again
-(@pxref{Resolving Conflicts}), which compares the changes themselves and
-includes the changes that you made since you last ran it:
+Then run @file{compare-fjalar-changes.sh} again (@pxref{Resolving
+Conflicts}).  After the commit, the index equals the commit, so the
+command compares all of Fjalar's modifications before and after the
+merge, including the changes that you made since you last ran it.  It
+shows each modification that the merge or a conflict resolution lost or
+added, such as a change of whitespace:
 
 @example
 $INV/fjalar/compare-fjalar-changes.sh
 @end example
 
 @noindent
-Remove each modification that Fjalar does not need, and document the
-others in @ref{Valgrind modifications} or @ref{Memcheck modifications}.
-Commit those changes, and run @file{diff-from-valgrind.sh} and
-@file{compare-fjalar-changes.sh} again to confirm them.
+Restore each of Fjalar's modifications that was lost, unless the Valgrind
+developers made the same change.  Remove each added modification that
+Fjalar does not need, and document the others in the appendices
+(@pxref{Valgrind modifications}, and @ref{Memcheck modifications}).
+Commit those changes, and run @file{compare-fjalar-changes.sh} again to
+confirm them.
 
 Note: We recommend saving Fjalar's changes to the base Valgrind
 (@pxref{Merging Valgrind}) to further document the process.
@@ -1605,8 +1577,9 @@ Fjalar code that uses static functions of @file{mc_main.c} or
 @file{mc_translate.c} is in a file that each of them includes, and
 @file{mc_fjalar.h} and @file{mc_translate.h} declare that code for the
 rest of Fjalar.  Elsewhere, @file{mc_main.c} and @file{mc_translate.c}
-have mostly one-line hooks that call Fjalar.  Each of the two files also
-starts with a Fjalar header comment and includes Fjalar's headers.
+have mostly one-line hooks that call Fjalar.  In each of the two files,
+a Fjalar header comment and @code{#include}s of Fjalar's headers follow
+upstream's license comment.
 
 The modifications are:
 
@@ -1655,8 +1628,10 @@ instruction.  That code, like Memcheck's own tracing of the IR (through
 that it instruments, runs when @code{verboze} is true; Fjalar initializes
 @code{verboze} to @code{fjalar_debug && fjalar_print_IR} instead of
 @code{0||False}, so @option{--fjalar-debug} and @option{--fjalar-print-ir}
-together turn them on.  (Memcheck's printing of the instrumented
-statements is guarded by @code{0 && verboze}, so it stays off.)
+together turn them on.  (Kvasir turns them on only when execution
+reaches the program's entry point, unless @option{--dyncomp-trace-startup}
+is given.  Memcheck's printing of the instrumented statements is guarded
+by @code{0 && verboze}, so it stays off.)
 An early return in @code{complainIfUndefined}, because Fjalar does not
 check definedness.  Also, a @code{DC} kind of @code{TempKind}, for DynComp's temporaries,
 and an @code{#include} of @file{fjalar_mc_translate.h}, which defines

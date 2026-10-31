@@ -33,7 +33,9 @@ Memcheck and DynComp depend tightly on Valgrind core:
    `host_generic_reg_alloc3.c`), the accessor
    `VG_(get_tag_ptr_for_guest_offset)` for it in `coregrind/m_machine.c`
    and `coregrind/pub_core_machine.h`, and `configure.ac` / `Makefile.am`
-   changes that add the `fjalar` tool.
+   changes that add the `fjalar` tool.  Fjalar also changes
+   `tests/check_headers_and_includes` and backports fixes from upstream
+   to three tests that newer compilers fail to build.
 2. **Memcheck -> Fjalar**: `valgrind/fjalar/mc_*.c`, `mc_include.h`,
    `memcheck.h` are derived from `valgrind/memcheck/`.  `MC_(instrument)`
    in `mc_translate.c` calls DynComp's `instrument_stmt_DC` after each
@@ -176,10 +178,9 @@ Memcheck and DynComp depend tightly on Valgrind core:
    `valgrind-old` for the next merge.
 
 4. **Merge.**  First run `$FJALAR/diff-from-valgrind.sh --stat` and
-   save its output (step 10 compares with it).  Check that the files that
-   it lists, and the changes that its full output shows, are the ones that
-   the appendices "Valgrind
-   modifications" and "Memcheck modifications" of
+   `$FJALAR/diff-from-valgrind.sh`.  Check that the files that the first
+   lists, and the changes that the second shows, are the ones that the
+   appendices "Valgrind modifications" and "Memcheck modifications" of
    `doc/valgrind-merge.texinfo` describe.  Then run
    `$FJALAR/merge-valgrind.sh`.  It checks that
    `valgrind-old` and `valgrind-new` are at `$VOLDTAG` and `$VNEWTAG`,
@@ -429,24 +430,9 @@ Memcheck and DynComp depend tightly on Valgrind core:
       before committing:  git does not ignore it, so `git add -A` would
       commit it.
     - Use the commit message "Upgrade Valgrind from 3.23.0 to 3.27.1".
-    - After committing, run
-      `$FJALAR/diff-from-valgrind.sh --valgrind=$INV/valgrind-new --stat`
-      (it reads `valgrind/REVISION` from the commit), and compare its
-      output with the `--stat` output that step 4 saved.  For a file that
-      is new in the list or whose count of changed lines grew, check the
-      full output for modifications that the merge or a conflict
-      resolution added.  For a file that dropped out of the list or whose
-      count shrank, check each of its modifications before the merge
-      (`git diff valgrind-merge/base valgrind-merge/fjalar -- FILE`):
-      either upstream made the same change, or a conflict resolution
-      discarded Fjalar's change and it must be restored.  A file that
-      upstream removed and Fjalar kept also drops out of the list.  A file can lose one Fjalar change and gain another
-      without any change to its count, so also rerun
-      `$FJALAR/compare-fjalar-changes.sh`, which compares the changes
-      themselves and includes the changes made since its earlier run.
-      Remove the modifications that Fjalar does not need, document the
-      others in the appendices, commit, and rerun `diff-from-valgrind.sh`
-      and `compare-fjalar-changes.sh` to confirm.
+    - After committing, rerun `$FJALAR/compare-fjalar-changes.sh`, and
+      handle the modifications that it reports, as section "Commit
+      commands" of `doc/valgrind-merge.texinfo` describes.
     - Commit as one PR.
     - After the PR has landed, keep `valgrind-new` as the next merge's
       `valgrind-old` (step 2 reuses it), and delete `valgrind-new-build`
