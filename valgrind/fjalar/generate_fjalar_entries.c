@@ -2823,14 +2823,12 @@ static Bool locationHasAddressOp(VariableEntry* varPtr)
 // Sets the location of formal parameter paramPtr, whose location is a
 // location list, to the list's entry for address pc.  If no entry covers
 // pc, or if that entry is not a single DW_OP_reg*, DW_OP_breg*, or
-// DW_OP_fbreg operation, marks the location unsupported.
+// DW_OP_fbreg operation, marks the location unsupported.  Modifies the
+// DWARF entry paramPtr, so call it at most once per formal parameter.
 static void useLocationListEntry(formal_parameter* paramPtr, Addr pc)
 {
-  location_list* ll = NULL;
+  location_list* ll = gengettable(loc_list_map, (void*)paramPtr->location_list_offset);
 
-  if (gencontains(loc_list_map, (void*)paramPtr->location_list_offset)) {
-    ll = gengettable(loc_list_map, (void*)paramPtr->location_list_offset);
-  }
   while (ll && !((ll->begin <= pc) && (pc < ll->end))) {
     ll = ll->next;
   }

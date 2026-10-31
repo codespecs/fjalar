@@ -339,7 +339,8 @@ typedef struct
   // Fjalar cannot read or DW_OP_stack_value, or contains a DW_OP_piece that
   // is not the last operation or that has size 0, or contains more than
   // MAX_DWARF_OPS operations.  Fjalar cannot read such a location.  A
-  // location list does not set this flag.
+  // location list sets this flag if no entry that Fjalar can read covers
+  // the function's entry point (see useLocationListEntry).
   char location_has_unsupported_op;
 
   // True if the location is a location list, whose offset in .debug_loc
