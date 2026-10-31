@@ -82,18 +82,11 @@ hooks; see "Follow-up" below.
 
 ## Step 9: documentation
 
-- Update the "Valgrind modifications" appendix of
-  `doc/valgrind-merge.texinfo` and step 5 of `plan-upgrade-valgrind.md`,
-  which list Fjalar's changes to Coregrind, to match what remains (see
-  "The remaining differences" above).
-- Add `diff-from-valgrind.sh` to the merge procedure:  run it before the
-  merge with its default clone, and after the merge commit with
-  `--valgrind=$INV/valgrind-new`.  Expect only the documented changes.
-- After each Valgrind merge, check `.alwaysDefd` in
-  `guest_amd64_helpers.c`:  Memcheck's `isAlwaysDefd` panics if an
-  `fxState` range partly overlaps an always-defined part of the guest
-  state.  In 3.23.0, the range `guest_RAX` through `guest_R15` that
-  `fjalar_main.c` passes overlaps none.
+Add a step to the merge procedure in `doc/valgrind-merge.texinfo`:  after
+each Valgrind merge, check `.alwaysDefd` in `guest_amd64_helpers.c`.
+Memcheck's `isAlwaysDefd` panics if an `fxState` range partly overlaps an
+always-defined part of the guest state.  In 3.23.0, the range `guest_RAX`
+through `guest_R15` that `fjalar_main.c` passes overlaps none.
 
 ## Follow-up
 
