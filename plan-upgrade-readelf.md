@@ -326,7 +326,8 @@ small.
 6. **Build and fix warnings/errors.**  `make -C $FJALAR build`, then
    iterate with `make -C $FJALAR/valgrind/fjalar`.  Fix "implicit
    declaration" and "undefined reference" errors, from libc functions that
-   the shim `sysdep.h` does not map yet, by adding a macro there.
+   the shim `sysdep.h` does not map yet, by adding a macro there (or, if
+   Valgrind has no equivalent, by defining the function in `my_libc.c`).
    Reduce new warnings from Valgrind's stricter flags where practical.
    To list them, recompile the Binutils-derived files, from `$FJALAR`.
    The incremental builds have already compiled those files, so a build

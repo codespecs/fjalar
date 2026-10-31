@@ -137,7 +137,6 @@ git clone https://github.com/codespecs/daikon.git
 git clone https://github.com/codespecs/fjalar.git
 @end example
 
-
 @node Ensure your source is up to date
 @section Ensure your source is up to date
 
@@ -944,8 +943,9 @@ such as @file{/tmp/$USER/binutils/2.39-2.42/binutils-Fjalar.diff}.  It is a
 checklist for verifying that the merge kept each of Fjalar's changes.  A
 conflict shows Fjalar's side, but a merge can lose a change without
 reporting a conflict:  for example, if upstream moved or rewrote the code,
-the new copy lacks Fjalar's @code{#if 0} or @code{printf} guard.  For each hunk in the diff, find the corresponding
-code in the merged file and check that it still has Fjalar's change.
+the new copy lacks Fjalar's @code{#if 0} or @code{printf} guard.  For each
+hunk in the diff, find the corresponding code in the merged file and check
+that it still has Fjalar's change.
 
 If the conflicts are too many to merge by hand, undo the merge and merge
 an intermediate Binutils release first.  Complete that merge, including
@@ -1134,7 +1134,8 @@ code.  If new code calls a C library function that @file{sysdep.h} does
 not map and that @file{my_libc.c} does not define, the compiler reports an
 "implicit declaration" error (or, if some header declares the function,
 the linker reports an "undefined reference" error); then add a macro for
-the function to @file{sysdep.h}.
+the function to @file{sysdep.h}, or, if Valgrind has no equivalent, define
+the function in @file{my_libc.c}.
 
 The other major area of difficulty when doing the source merge
 is with the @code{printf} calls

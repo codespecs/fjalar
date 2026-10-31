@@ -30,9 +30,13 @@ SUBDIRS = .
 # AM_CFLAGS_AMD64_LINUX += -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall
 
 # get all binutil .h files from include; get config.h from .. (markro)
+EXTRA_CFLAGS =  -Iinclude -I../VEX/pub -I../include -I..
+
 # binutils-shim holds Fjalar's replacements for some Binutils headers, so it
-# precedes include.
-EXTRA_CFLAGS =  -Ibinutils-shim -Iinclude -I../VEX/pub -I../include -I..
+# precedes include.  It also holds replacements for some C library headers,
+# such as assert.h, that suit only code that runs in the tool, so the
+# preload library does not use it.
+BINUTILS_SHIM_CFLAGS = -Ibinutils-shim
 
 # for debugging versions
 #EXTRA_CFLAGS +=  -O0 -finstrument-functions
@@ -75,10 +79,10 @@ FJALAR_SOURCES_COMMON += \
 VGPRELOAD_FJALAR_SOURCES_COMMON += kvasir/dyncomp_wrappers.c
 
 # The -O0 in EXTRA_CFLAGS overrides the -O2 or -O earlier in these flags.
-fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CFLAGS += $(EXTRA_CFLAGS)
+fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CFLAGS += $(BINUTILS_SHIM_CFLAGS) $(EXTRA_CFLAGS)
 vgpreload_fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_CFLAGS += $(EXTRA_CFLAGS)
 if VGCONF_HAVE_PLATFORM_SEC
-fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CFLAGS += $(EXTRA_CFLAGS)
+fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CFLAGS += $(BINUTILS_SHIM_CFLAGS) $(EXTRA_CFLAGS)
 vgpreload_fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_CFLAGS += $(EXTRA_CFLAGS)
 endif
 

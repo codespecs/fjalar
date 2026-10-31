@@ -37,9 +37,15 @@
 #define BFD64
 #endif
 
-/* bucomm.h declares functions that take a pointer to one.  Binutils' bfd.h
-   includes <sys/stat.h>, which conflicts with Valgrind's headers.  */
+/* bucomm.h declares functions that take a pointer to one.  Nothing uses
+   its definition.  */
 struct stat;
+
+/* elfcomm.h and dwarf.h use it.  Binutils' sysdep.h defines it, as long
+   long if that is wider than long, but Fjalar's own files include those
+   headers without sysdep.h.  Every file that includes them includes this
+   file first.  */
+#define HOST_WIDEST_INT long
 
 typedef struct bfd bfd;
 typedef struct bfd_section asection;
