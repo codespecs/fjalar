@@ -724,58 +724,34 @@ void enter_function(FunctionEntry* f)
   // that after the function prolog, EBP will be the frame pointer.
 
   if (f->frame_base_atom != 0) {
-    Addr eip = f->entryPC;
-    eip =  eip - f->cuBase;
-    FJALAR_DPRINTF("\tCurrent EIP is: %x\n", (UInt)eip);
-
     if (f->frame_base_atom == DW_OP_list) {
-      location_list *ll;
+      location_list *ll = find_location_list_entry(f->frame_base_offset, f->entryPC);
 
-      FJALAR_DPRINTF("\tLocation list based function(offset from base: %x). offset is %ld\n", (UInt)eip, f->frame_base_offset);
+      FJALAR_DPRINTF("\tLocation list based function at %lx. offset is %ld\n", (unsigned long)f->entryPC, f->frame_base_offset);
 
-      if (gencontains(loc_list_map, (void *)f->frame_base_offset)) {
-        ll = gengettable(loc_list_map, (void *)f->frame_base_offset);
+      if(ll) {
+        FJALAR_DPRINTF("\tFound location list entry, finding location corresponding to dwarf #: %x with offset: %lx\n", ll->atom, (unsigned long int) ll->atom_offset);
 
-        // TODO: I don't think this is true anymore. The addresses stored in the
-        // location_list are always offsets.
-
-        // (comment added 2009)
-        // HACK. g++ and GCC handle location lists differently. GCC puts lists offsets
-        // relative to the compilation unit, g++ uses the actual address. I'm going to
-        // compare the location list ranges both to the cu_base offset, as well as
-        // the function's entry point. This might break if there's every a case
-        // where the compilation unit offset is a valid address in the program
-        while(ll &&
-              !(((ll->begin <= eip) && (ll->end >= eip)) ||
-                ((ll->begin <= f->entryPC) && (ll->end >= f->entryPC)))) {
-          FJALAR_DPRINTF("\tExamining loc list entry: %x - %x - %x\n", (UInt)ll->offset, (UInt)ll->begin, (UInt)ll->end);
-          ll = ll->next;
+        // (comment added 2013)
+        // It turns out it might not be just the contents of a register.  Some
+        // 32bit x86 code does some tricky stack alignment and has to save a
+        // pointer to the original stack frame.  This means we get passed a
+        // DW_OP_deref instead of a DW_OP_breg.  The tricky bit is we don't
+        // want to go back to that address because it probably won't be equal
+        // to the local frame pointer due to the stack alignment.  So the HACK
+        // is to just assume the frame base is just above the saved frame
+        // pointer and the return address, as is normal:  EBP+8 on x86 and
+        // RBP+16 on amd64.  (markro)
+        if (ll->atom == DW_OP_deref) {
+            ll->atom = DW_OP_breg0 + DWARF_FP_REG;
+            ll->atom_offset = 2 * sizeof(Addr);
         }
-
-        if(ll) {
-          FJALAR_DPRINTF("\tFound location list entry, finding location corresponding to dwarf #: %x with offset: %lx\n", ll->atom, (unsigned long int) ll->atom_offset);
-
-          // (comment added 2013)
-          // It turns out it might not be just the contents of a register.  Some
-          // 32bit x86 code does some tricky stack alignment and has to save a
-          // pointer to the original stack frame.  This means we get passed a
-          // DW_OP_deref instead of a DW_OP_breg.  The tricky bit is we don't
-          // want to go back to that address because it probably won't be equal
-          // to the local frame pointer due to the stack alignment.  So the HACK
-          // is to just assume the frame base is just above the saved frame
-          // pointer and the return address, as is normal:  EBP+8 on x86 and
-          // RBP+16 on amd64.  (markro)
-          if (ll->atom == DW_OP_deref) {
-              ll->atom = DW_OP_breg0 + DWARF_FP_REG;
-              ll->atom_offset = 2 * sizeof(Addr);
-          }
-          // For DW_OP_regN, the offset is 0.
-          if (dwarf_op_reg_num(ll->atom, &regNum) && dwarf_reg_is_readable(regNum)) {
-            frame_ptr = read_dwarf_reg(tid, regNum) + ll->atom_offset;
-          } else {
-            FJALAR_DPRINTF("\tCannot compute frame base from location list entry with atom %s\n",
-                           location_expression_to_string(ll->atom));
-          }
+        // For DW_OP_regN, the offset is 0.
+        if (dwarf_op_reg_num(ll->atom, &regNum) && dwarf_reg_is_readable(regNum)) {
+          frame_ptr = read_dwarf_reg(tid, regNum) + ll->atom_offset;
+        } else {
+          FJALAR_DPRINTF("\tCannot compute frame base from location list entry with atom %s\n",
+                         location_expression_to_string(ll->atom));
         }
       }
     } else if (f->frame_base_atom == DW_OP_call_frame_cfa) {

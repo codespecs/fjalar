@@ -2827,11 +2827,8 @@ static Bool locationHasAddressOp(VariableEntry* varPtr)
 // DWARF entry paramPtr, so call it at most once per formal parameter.
 static void useLocationListEntry(formal_parameter* paramPtr, Addr pc)
 {
-  location_list* ll = gengettable(loc_list_map, (void*)paramPtr->location_list_offset);
+  location_list* ll = find_location_list_entry(paramPtr->location_list_offset, pc);
 
-  while (ll && !((ll->begin <= pc) && (pc < ll->end))) {
-    ll = ll->next;
-  }
   if (ll && (ll->num_ops == 1)) {
     location_op_kind kind = location_op_kind_of(ll->atom);
     if ((kind == LOC_OP_REG) || (kind == LOC_OP_BREG) || (kind == LOC_OP_FBREG)) {

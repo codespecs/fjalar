@@ -3429,6 +3429,19 @@ char harvest_location_list_entry(location_list* ll, unsigned long offset){
   return 1;
 }
 
+// Returns the entry of the location list at the given offset in
+// .debug_loc (its key in loc_list_map) whose address range contains pc,
+// or NULL if there is no such entry.
+location_list* find_location_list_entry(unsigned long offset, unsigned long pc)
+{
+  location_list* ll = gengettable(loc_list_map, (void*)offset);
+  while (ll && !((ll->begin <= pc) && (pc < ll->end))) {
+    FJALAR_DPRINTF("	Examining loc list entry: %lx - %lx - %lx\n", ll->offset, ll->begin, ll->end);
+    ll = ll->next;
+  }
+  return ll;
+}
+
 // Initialize FunctionSymbolTable and VariableSymbolTable:
 void initialize_typedata_structures() {
 

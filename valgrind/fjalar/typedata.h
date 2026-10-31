@@ -595,6 +595,7 @@ char harvest_specification_value(dwarf_entry* e, unsigned long value);
 char harvest_abstract_origin_value(dwarf_entry* e, unsigned long value);
 char harvest_accessibility(dwarf_entry* e, char a);
 char harvest_location_list_entry(location_list* ll, unsigned long offset);
+location_list* find_location_list_entry(unsigned long offset, unsigned long pc);
 char harvest_debug_frame_entry(debug_frame* df);
 char harvest_frame_base(dwarf_entry* e, enum dwarf_location_atom a, long offset);
 char harvest_decl_file(dwarf_entry* e, unsigned long value);
