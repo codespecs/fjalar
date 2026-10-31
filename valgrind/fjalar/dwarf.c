@@ -12177,7 +12177,7 @@ xcmalloc (size_t nmemb, size_t size)
       fprintf (stderr,
 	       _("Attempt to allocate an array with an excessive number of elements: 0x%lx\n"),
 	       nmemb);
-      VG_(exit) (1);
+      xexit (1);
     }
 
   return xmalloc (nmemb * size);
@@ -12196,7 +12196,7 @@ xcrealloc (void *ptr, size_t nmemb, size_t size)
       fprintf (stderr,
 	       _("Attempt to re-allocate an array with an excessive number of elements: 0x%lx\n"),
 	       nmemb);
-      VG_(exit) (1);
+      xexit (1);
     }
 
   return xrealloc (ptr, nmemb * size);

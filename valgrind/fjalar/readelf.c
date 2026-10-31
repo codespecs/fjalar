@@ -16412,7 +16412,7 @@ display_debug_section (int shndx, Elf_Internal_Shdr * section, Filedata * fileda
 // START OF CODE ADDED FOR FJALAR
 
   for (i = 0; i < max; i++)
-    if (VG_(strcmp) (debug_displays[i].section.uncompressed_name, name) == 0)
+    if (streq (debug_displays[i].section.uncompressed_name, name))
       {
 	struct dwarf_section * sec = &debug_displays [i].section;
 	if (i == line && startswith (name, ".debug_line."))
