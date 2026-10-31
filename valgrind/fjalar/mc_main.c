@@ -289,13 +289,11 @@ static void ocache_sarp_Clear_Origins ( Addr, UWord ); /* fwds */
 
 // These definitons conflict with the ones in kvasir/dyncomp_main.h. (markro)
 #undef  SM_OFF
-#undef  SM_OFF_16
 
 #define SM_CHUNKS             16384    // Each SM covers 64k of memory.
 #define SM_OFF(aaa)           (((aaa) & 0xffff) >> 2)
 #define SM_OFF_16(aaa)        (((aaa) & 0xffff) >> 3)
 
-#undef INLINE
 // Paranoia:  it's critical for performance that the requested inlining
 // occurs.  So try extra hard.
 #define INLINE    inline __attribute__((always_inline))
@@ -4579,14 +4577,14 @@ void check_mem_is_defined ( CorePart part, ThreadId tid, const HChar* s,
 
 static
 void check_mem_is_defined_asciiz ( CorePart part, ThreadId tid,
-                                   const HChar* s, Addr astr )
+                                   const HChar* s, Addr str )
 {
    MC_ReadResult res;
    Addr bad_addr = 0;   // shut GCC up
    UInt otag = 0;
 
    tl_assert(part == Vg_CoreSysCall);
-   res = mc_is_defined_asciiz ( (Addr)astr, &bad_addr, &otag );
+   res = mc_is_defined_asciiz ( (Addr)str, &bad_addr, &otag );
    if (MC_Ok != res) {
       Bool isAddrErr = ( MC_AddrErr == res ? True : False );
       MC_(record_memparam_error) ( tid, bad_addr, isAddrErr, s,
