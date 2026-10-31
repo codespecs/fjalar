@@ -1417,7 +1417,7 @@ decode_location_expression (unsigned char * data,
     {
       op = *data++;
 
-      if(ll) {ll->atom = op;}
+      if(ll) {ll->atom = op; ll->num_ops++;}
 
       /* An op that Fjalar's evaluator cannot apply, such as an unreadable register,
 	 DW_OP_stack_value, or DW_OP_plus (the evaluator has no operand
@@ -3749,6 +3749,8 @@ read_and_display_attr_value (unsigned long           attribute,
           if (ok_to_harvest) {
               // frame base location list
               harvest_frame_base(entry, DW_OP_list, uvalue);
+              if (attribute == DW_AT_location)
+                harvest_formal_param_location_list(entry, uvalue);
           }
           printf ("(");
           printf ("location list");

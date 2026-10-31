@@ -1243,6 +1243,20 @@ char harvest_formal_param_location_unsupported(dwarf_entry* e)
   return 1;
 }
 
+// If e is a formal parameter, records that its location is the location
+// list at the given offset in .debug_loc.  Returns 1 if e is a formal
+// parameter, 0 otherwise.
+char harvest_formal_param_location_list(dwarf_entry* e, unsigned long offset)
+{
+  formal_parameter* paramPtr = formal_parameter_of(e);
+  if (paramPtr == 0)
+    return 0;
+
+  paramPtr->has_location_list = 1;
+  paramPtr->location_list_offset = offset;
+  return 1;
+}
+
 // If e is a formal parameter, records that its location expression ends
 // with "DW_OP_piece size" (sets location_piece_size).
 // extractOneFormalParameterVar omits the parameter unless the piece is the

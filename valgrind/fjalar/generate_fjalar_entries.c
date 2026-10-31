@@ -1723,6 +1723,7 @@ void initializeFunctionTable(void)
           function* dwarfFunctionPtr = (function*)(cur_entry->entry_ptr);
           // This is non-null only if we have successfully demangled a name:
           char* demangled_name = 0;
+          Bool prologueSkipped;
 
           // Remember to use the tool's constructor,
           // constructFunctionEntry(), in order to properly support
@@ -1800,6 +1801,15 @@ void initializeFunctionTable(void)
             }
           }
 
+          // extractOneFormalParameterVar uses entryPC.
+          prologueSkipped = gencontains(next_line_addr, (void*)cur_func_entry->startPC);
+          if (prologueSkipped) {
+            cur_func_entry->entryPC = (Addr)
+              gengettable(next_line_addr, (void*)cur_func_entry->startPC);
+          } else {
+            cur_func_entry->entryPC = cur_func_entry->startPC;
+          }
+
           // Extract all formal parameter variables
           extractFormalParameterVars(cur_func_entry, dwarfFunctionPtr);
 
@@ -1816,9 +1826,7 @@ void initializeFunctionTable(void)
 
           // FJALAR_DPRINTF("  call gencontains %p %p\n", next_line_addr, (void*)cur_func_entry->startPC);
 
-          if (gencontains(next_line_addr, (void*)cur_func_entry->startPC)) {
-            cur_func_entry->entryPC = (Addr)
-              gengettable(next_line_addr, (void*)cur_func_entry->startPC);
+          if (prologueSkipped) {
             FJALAR_DPRINTF("Entering %s at 0x%08x instead of 0x%08x\n",
                            cur_func_entry->name, (unsigned int)cur_func_entry->entryPC,
                            (unsigned int)cur_func_entry->startPC);
@@ -1832,7 +1840,6 @@ void initializeFunctionTable(void)
             // Should only be needed when we weren't able to skip the
             // prolog, and so can't rely on the DWARF information to
             // have the correct parameter locations.
-            cur_func_entry->entryPC = cur_func_entry->startPC;
             FJALAR_DPRINTF("Entering %s at 0x%08x \n",
                            cur_func_entry->name, (unsigned int)cur_func_entry->entryPC);
             verifyStackParamWordAlignment(cur_func_entry, 1);
@@ -2816,6 +2823,31 @@ static Bool locationHasAddressOp(VariableEntry* varPtr)
   return False;
 }
 
+// Sets the location of formal parameter paramPtr, whose location is a
+// location list, to the list's entry for address pc.  If no entry covers
+// pc, or if that entry is not a single DW_OP_reg*, DW_OP_breg*, or
+// DW_OP_fbreg operation, marks the location unsupported.  Modifies the
+// DWARF entry paramPtr, so call it at most once per formal parameter.
+static void useLocationListEntry(formal_parameter* paramPtr, Addr pc)
+{
+  location_list* ll = gengettable(loc_list_map, (void*)paramPtr->location_list_offset);
+
+  while (ll && !((ll->begin <= pc) && (pc < ll->end))) {
+    ll = ll->next;
+  }
+  if (ll && (ll->num_ops == 1)) {
+    location_op_kind kind = location_op_kind_of(ll->atom);
+    if ((kind == LOC_OP_REG) || (kind == LOC_OP_BREG) || (kind == LOC_OP_FBREG)) {
+      paramPtr->dwarf_stack[0].atom = ll->atom;
+      paramPtr->dwarf_stack[0].atom_offset = ll->atom_offset;
+      paramPtr->dwarf_stack_size = 1;
+      paramPtr->valid_loc = 1;
+      return;
+    }
+  }
+  paramPtr->location_has_unsupported_op = 1;
+}
+
 // dwarfParamEntry->tag_name == DW_TAG_formal_parameter
 static void extractOneFormalParameterVar(FunctionEntry* f,
                                          dwarf_entry* dwarfParamEntry)
@@ -2861,6 +2893,12 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
                               0,
                               0,0,0,0,0,0,0,1,
                               0);
+
+  // Fjalar reads a formal parameter at function entrance, so it uses the
+  // location list's entry for the entry point.
+  if (paramPtr->has_location_list) {
+    useLocationListEntry(paramPtr, f->entryPC);
+  }
 
   // isInRegister uses the location expression even if Fjalar cannot
   // read the location.
