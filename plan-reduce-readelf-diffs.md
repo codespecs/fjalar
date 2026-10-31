@@ -93,8 +93,10 @@ Status: done.  Both tools have landed, in #188 and #185.
    to the old version (as in the table above) and the number of conflicts
    that a merge of NEWVER would have, per file.  It merges in memory with
    `git merge-tree`, so it changes neither the work tree nor any ref, and it
-   measures uncommitted changes too.  It takes a few seconds.  With NEWVER
-   equal to the old version, it reports only the size of the changes.
+   measures uncommitted changes to tracked files too.  It ignores untracked
+   files, so `git add` a newly vendored file (such as `ansidecl.h` in Phase 1)
+   before measuring.  It takes a few seconds.  With NEWVER equal to the old
+   version, it reports only the size of the changes.
 2. `./compare-debug-output.sh DIR` compiles the C and C++ programs in
    `valgrind/fjalar/tests/` several ways, runs Fjalar with `--no-dyncomp` and
    `--decls-only` on each of them with no debugging option, with
@@ -106,11 +108,13 @@ Status: done.  Both tools have landed, in #188 and #185.
 
 Verification for every later PR:
 
-- `./compare-warnings.sh --binutils` reports no new warnings.
+- `./compare-warnings.sh --binutils BEFORE.log AFTER.log` reports no new
+  warnings, where the two logs are from full builds before and after the
+  change.
 - `./test-kvasir.sh` results are unchanged.
-- `./compare-debug-output.sh`, with a baseline saved before the change,
-  shows no differences, except intended ones.  If it shows intended ones,
-  check that it shows nothing else, then run
+- `./compare-debug-output.sh DIR`, with a baseline saved in DIR before the
+  change, shows no differences, except intended ones.  If it shows intended
+  ones, check that it shows nothing else, then run
   `./compare-debug-output.sh --update DIR` to make the new output the
   baseline for the next PR.
 - `./check-hook-counts.sh` reports no changes, or each one is explained (the
@@ -313,8 +317,11 @@ function rather than a guarded statement, it evaluates its arguments
 whether or not it prints, so side effects inside upstream `printf` arguments
 happen as upstream intends, and no hoisting is needed.
 `FJALAR_BINUTILS_PRINTING` is `fjalar_debug` for `readelf.c` and a global
-flag for `dwarf.c` that is `fjalar_debug_dump && pass2`; one line in
-`process_debug_info` sets the flag for each pass.
+flag for `dwarf.c` that is `fjalar_debug_dump && pass2` within
+`process_debug_info` and `fjalar_debug_dump` elsewhere.  `process_debug_info`
+sets the flag for each pass and restores its previous value on return,
+because callers such as `display_debug_aranges` call `load_debug_info`, which
+can run the first pass, and then print.
 
 This removes the `FJALAR_DPRINTF` substitutions, the `if (fjalar_debug_dump)`
 guards, the hoisted arguments, the `ok_to_print` parameters, and the existing
