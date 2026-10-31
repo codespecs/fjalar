@@ -904,6 +904,28 @@ static void dump_all_function_exit_var_map() {
 
 #endif // debugging
 
+// The number of stale tags that the current run of the tag garbage
+// collector has found.  A stale tag is one that the previous run did
+// not renumber.  Every place that holds tags is renumbered, so this
+// number should be 0.
+static UInt numStaleTags = 0;
+
+// Returns the leader of tag in the value union-find, for use by the tag
+// garbage collector.  Returns 0 if no set contains tag, which is the
+// case for 0, WEAK_FRESH_TAG, and any other tag that is at least
+// nextTag, which is stale.  The uf_object of a stale tag can hold stale
+// data, so this does not look at it.  Every tag in [1, nextTag) is in a
+// set.
+static UInt gc_val_uf_find_leader(UInt tag) {
+  if (tag < nextTag) {
+    return val_uf_find_leader(tag);
+  }
+  if (tag != WEAK_FRESH_TAG) {
+    numStaleTags++;
+  }
+  return 0;
+}
+
 // Pre: the ppt_entry/exit_var_tags array has been updated to reflect
 // the changes in the val tag numbers.
 // Now we must rebuild the ppt_entry/exit_var_uf_map in a similar
@@ -936,13 +958,13 @@ static struct genhashtable* regenerate_var_uf_map(UInt num_daikon_vars,
     // if leader, then already done
     if (uf_obj != uf_obj->parent) {
       //printf("process var map tag: %lu %p %p\n", (long unsigned int)current_var_item->src, uf_obj, uf_obj->parent);
-      reassign_tag(&new_tag, val_uf_find_leader(uf_obj->tag), p_newTagNumber);
+      reassign_tag(&new_tag, gc_val_uf_find_leader(uf_obj->tag), p_newTagNumber);
       // I don't think we need to call reassign_tag, the argument has already
       // been processed in the reasign_tag loop above. The following
       // should work, I will test later.
       // new_parent_tag = g_oldToNewMap[val_uf_find_leader(var_uf_map_find_leader(ppt_var_uf_map, uf_obj->parent->tag))];
       reassign_tag(&new_parent_tag,
-                   val_uf_find_leader(var_uf_map_find_leader(ppt_var_uf_map, uf_obj->parent->tag)),
+                   gc_val_uf_find_leader(var_uf_map_find_leader(ppt_var_uf_map, uf_obj->parent->tag)),
                    p_newTagNumber);
       //printf("new tag: %u, new parent tag: %u\n", new_tag, new_parent_tag);
       var_uf_map_union(new_var_uf_map, new_tag, new_parent_tag);
@@ -975,13 +997,17 @@ static struct genhashtable* regenerate_var_uf_map(UInt num_daikon_vars,
 // overwrite the contents of the address addr the new tag associated
 // with leaderTag, thus effectively re-assigning the tag held at that
 // address to a newer, smaller tag.
-
-// Pre: leaderTag != 0
+//
+// If leaderTag is 0, which means that no set contains the tag at addr,
+// sets the tag at addr to 0 instead.
 static void reassign_tag(UInt* addr,
                          UInt leaderTag,
                          UInt* p_newTagNumber) {
 
-  if (g_oldToNewMap[leaderTag]) {
+  if (leaderTag == 0) {
+    *addr = 0;
+  }
+  else if (g_oldToNewMap[leaderTag]) {
     *addr = g_oldToNewMap[leaderTag];
   }
   else {
@@ -993,34 +1019,18 @@ static void reassign_tag(UInt* addr,
 }
 
 // Reassigns the value tag at addr to the new tag for its leader.
-// Leaves 0 and WEAK_FRESH_TAG unchanged, because they have no
-// uf_object and are not real tags.
+// Leaves 0 and WEAK_FRESH_TAG unchanged, because they are not real
+// tags.  Sets any other tag that no set contains to 0.
 static void reassign_val_tag(UInt* addr, UInt* p_newTagNumber) {
   if ((*addr != 0) && (*addr != WEAK_FRESH_TAG)) {
-    reassign_tag(addr, val_uf_find_leader(*addr), p_newTagNumber);
+    reassign_tag(addr, gc_val_uf_find_leader(*addr), p_newTagNumber);
   }
 }
 
 
-// The value of totalNumTagsAssigned when the tag garbage collector
-// last ran.
-static UInt totalNumTagsAssignedAtLastGC = 0;
-
-// Runs the tag garbage collector if at least dyncomp_gc_after_n_tags
-// tags have been assigned since it last ran.  Called when a thread is
-// about to run client code, which is between superblocks, so no tag is
-// live in an IR temporary.
-void dyncomp_gc_at_safe_point(ThreadId tid, ULong blocks_dispatched) {
-  if ((!dyncomp_no_gc) &&
-      (totalNumTagsAssigned - totalNumTagsAssignedAtLastGC
-       >= (UInt)dyncomp_gc_after_n_tags)) {
-    totalNumTagsAssignedAtLastGC = totalNumTagsAssigned;
-    garbage_collect_tags();
-  }
-}
-
-// Runs the tag garbage collector
-void garbage_collect_tags() {
+// Runs the tag garbage collector.  It must run only at a safe point;
+// see dyncomp_gc_at_safe_point().
+static void garbage_collect_tags(void) {
   UInt primaryIndex, secondaryIndex;
   FuncIterator* funcIt;
   ThreadId tid;
@@ -1042,6 +1052,7 @@ void garbage_collect_tags() {
 
   printf("  Start garbage collecting (next tag = %u, total assigned = %u)\n",
               nextTag, totalNumTagsAssigned);
+  numStaleTags = 0;
 
   //debug_print_decls();
   //dump_all_function_exit_var_map();
@@ -1058,10 +1069,11 @@ void garbage_collect_tags() {
 
   // There are 4 places where tags can be kept ... we need to scan
   // through all of these places looking for tags that are in use and
-  // run reassign_tag() on every non-zero tag encountered in order to
-  // canonicalize every tag to its leader and, more importantly, to
-  // 'compress' the range of leader tags to a range from [1, nextTag)
-  // to a smaller range of [1, newTagNumber).
+  // run reassign_tag() on every tag encountered (other than 0 and
+  // WEAK_FRESH_TAG, which are not real tags) in order to canonicalize
+  // every tag to its leader and, more importantly, to 'compress' the
+  // range of leader tags to a range from [1, nextTag) to a smaller
+  // range of [1, newTagNumber).
   //
   // 1.) Shadow memory - for each byte of memory in the address space,
   // there is a corresponding 32-bit tag (0 for no tag assigned to
@@ -1133,7 +1145,7 @@ void garbage_collect_tags() {
           reassign_tag(p_entry_tag,
                        // We need to first find the leader in var_uf_map,
                        // then find the leader of that in val_uf:
-                       val_uf_find_leader(var_uf_map_find_leader(cur_entry->ppt_entry_var_uf_map, *p_entry_tag)),
+                       gc_val_uf_find_leader(var_uf_map_find_leader(cur_entry->ppt_entry_var_uf_map, *p_entry_tag)),
                        &newTagNumber);
         }
       }
@@ -1147,7 +1159,7 @@ void garbage_collect_tags() {
         reassign_tag(p_exit_tag,
                      // We need to first find the leader in var_uf_map,
                      // then find the leader of that in val_uf:
-                     val_uf_find_leader(var_uf_map_find_leader(cur_entry->ppt_exit_var_uf_map, *p_exit_tag)),
+                     gc_val_uf_find_leader(var_uf_map_find_leader(cur_entry->ppt_exit_var_uf_map, *p_exit_tag)),
                      &newTagNumber);
       }
     }
@@ -1189,8 +1201,13 @@ void garbage_collect_tags() {
   // are being used - these cannot be garbage collected
 
   // (Remember the offset * 4 hack thing (see do_shadow_PUT_DC() in
-  // dyncomp_translate.c) - eek!)  Every byte of the guest state has a
-  // tag (see VG_(get_tag_ptr_for_guest_offset)), so scan all of them.
+  // dyncomp_translate.c) - eek!)  Each byte offset of the guest state
+  // has a 4-byte slot (see VG_(get_tag_ptr_for_guest_offset)), which
+  // holds a tag or 0, so scan all of them.  (On AMD64 a tag is stored
+  // as a 64-bit word, and the slot after it holds the upper half of
+  // that word, which is 0.)  An empty thread slot is not scanned, and
+  // its stale tags are never read, because dyncomp_copy_thread_tags()
+  // overwrites them when Valgrind puts a new thread in the slot.
   VG_(thread_stack_reset_iter)(&tid);
   while (VG_(thread_stack_next)(&tid, &stack_min, &stack_max)) {
     for (i = 0; i < sizeof(VexGuestArchState); i++) {
@@ -1230,9 +1247,83 @@ void garbage_collect_tags() {
 
   printf("   Done garbage collecting (next tag = %u, total assigned = %u)\n",
               nextTag, totalNumTagsAssigned);
+  if (numStaleTags != 0) {
+    printf("   Garbage collection set %u stale tags to 0\n", numStaleTags);
+  }
 
   //debug_print_decls();
   //dump_all_function_exit_var_map();
+}
+
+// The value of totalNumTagsAssigned when the tag garbage collector
+// last ran.
+static UInt totalNumTagsAssignedAtLastGC = 0;
+
+// Runs the tag garbage collector if at least dyncomp_gc_after_n_tags
+// tags have been assigned since it last ran.  Called when a thread is
+// about to run client code, which is between superblocks, so no tag is
+// live in an IR temporary.
+void dyncomp_gc_at_safe_point(ThreadId tid, ULong blocks_dispatched) {
+  if ((!dyncomp_no_gc) &&
+      (totalNumTagsAssigned - totalNumTagsAssignedAtLastGC
+       >= (UInt)dyncomp_gc_after_n_tags)) {
+    totalNumTagsAssignedAtLastGC = totalNumTagsAssigned;
+    garbage_collect_tags();
+  }
+}
+
+#if defined(VGA_amd64)
+#define GUEST_xAX guest_RAX
+#define GUEST_xSP guest_RSP
+#else
+#define GUEST_xAX guest_EAX
+#define GUEST_xSP guest_ESP
+#endif
+
+// Returns the number of bytes that hold the tags of the len guest-state
+// bytes of thread tid that start at offset.
+static SizeT guest_tags_size(ThreadId tid, UInt offset, UInt len) {
+  return (char*)VG_(get_tag_ptr_for_guest_offset)(tid, offset + len)
+    - (char*)VG_(get_tag_ptr_for_guest_offset)(tid, offset);
+}
+
+// Sets to 0 the tags of the len guest-state bytes of thread tid that
+// start at offset.
+static void clear_guest_tags(ThreadId tid, UInt offset, UInt len) {
+  VG_(memset)(VG_(get_tag_ptr_for_guest_offset)(tid, offset), 0,
+              guest_tags_size(tid, offset, len));
+}
+
+// Gives new thread child the guest-state tags of thread parent, because
+// child starts with a copy of parent's guest state.  Sets to 0 the tags
+// of the registers in which Valgrind gives child a value of its own.
+// If parent is VG_INVALID_THREADID, sets all of child's guest-state
+// tags to 0.
+void dyncomp_copy_thread_tags(ThreadId parent, ThreadId child) {
+  if (parent == VG_INVALID_THREADID) {
+    clear_guest_tags(child, 0, sizeof(VexGuestArchState));
+    return;
+  }
+
+  VG_(memcpy)(VG_(get_tag_ptr_for_guest_offset)(child, 0),
+              VG_(get_tag_ptr_for_guest_offset)(parent, 0),
+              guest_tags_size(child, 0, sizeof(VexGuestArchState)));
+
+  // clone returns 0 in the child.
+  clear_guest_tags(child, offsetof(VexGuestArchState, GUEST_xAX),
+                   sizeof(((VexGuestArchState*)0)->GUEST_xAX));
+  // The child gets its own stack unless clone's stack argument is 0.
+  if (VG_(get_SP)(child) != VG_(get_SP)(parent)) {
+    clear_guest_tags(child, offsetof(VexGuestArchState, GUEST_xSP),
+                     sizeof(((VexGuestArchState*)0)->GUEST_xSP));
+  }
+#if defined(VGA_amd64)
+  // The child gets its own thread-local storage if clone's flags
+  // include CLONE_SETTLS.  The flags are not known here, so this clears
+  // the tag even when the child shares the parent's value.
+  clear_guest_tags(child, offsetof(VexGuestArchState, guest_FS_CONST),
+                   sizeof(((VexGuestArchState*)0)->guest_FS_CONST));
+#endif
 }
 
 

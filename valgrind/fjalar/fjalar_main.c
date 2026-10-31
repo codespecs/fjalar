@@ -1258,10 +1258,12 @@ static void fjalar_pre_thread_ll_exit(ThreadId tid)
 // so that it does not inherit the frames of an earlier thread that had
 // the same ThreadId.  Such frames remain when Valgrind empties a thread
 // slot without calling the pre_thread_ll_exit callback, as it does for
-// all but the calling thread in the child process of a fork.
+// all but the calling thread in the child process of a fork.  Then
+// lets the tool initialize its own state for child.
 static void fjalar_pre_thread_ll_create(ThreadId parent, ThreadId child)
 {
   pop_all_frames(child);
+  fjalar_tool_pre_thread_ll_create(parent, child);
 }
 
 
