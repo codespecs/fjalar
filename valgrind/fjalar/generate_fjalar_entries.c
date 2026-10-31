@@ -2509,6 +2509,22 @@ static Bool usesFrameBase(VariableEntry* var)
   return False;
 }
 
+// Returns the number of bytes of the stack slot in which the caller
+// passes the formal parameter.  If the location dereferences an
+// address, the caller passes the formal parameter by invisible
+// reference (as for a C++ object that is not trivially copyable), so
+// the stack slot holds a pointer.
+static int formalParamStackSlotByteSize(VariableEntry* var)
+{
+  unsigned int i;
+  for (i = 0; i < var->location_expression_size; i++) {
+    if (location_op_kind_of(var->location_expression[i].atom) == LOC_OP_DEREF) {
+      return (int)sizeof(Addr);
+    }
+  }
+  return formalParamByteSize(var);
+}
+
 // MUST BE RUN AFTER the return value for a function has been initialized!!!
 // Otherwise it cannot tell whether the function returns a struct type!!!
 //
@@ -2517,11 +2533,11 @@ static Bool usesFrameBase(VariableEntry* var)
 // function, the parameters are not guaranteed to be at those
 // locations yet. We have devised our own calculation that
 // word-aligns everything in the caller's stack frame (positive offsets
-// from EBP):  each formal parameter occupies formalParamByteSize bytes
-// (a pointer, for a C++ reference), rounded up to a multiple of 4
-// bytes.  formalParamFrameOffsetRange and formal_params_stack_end use the
-// same size.  We always use this computed value if the DWARF information
-// didn't provide a location (which can happen for instance if the parameter
+// from EBP):  each formal parameter occupies
+// formalParamStackSlotByteSize bytes, rounded up to a multiple of 4
+// bytes.  formalParamFrameOffsetRange computes the same size.  We
+// always use this computed value if the DWARF information didn't
+// provide a location (which can happen for instance if the parameter
 // is unused), or if replace == 1.
 // This code will need a major rewrite to support AMD64.
 // UNDONE AMD64!!!
@@ -2579,7 +2595,7 @@ static void verifyStackParamWordAlignment(FunctionEntry* f, int replace)
         FJALAR_DPRINTF("MODIFY VAR LOCATION! now:\n");
         FJALAR_DPRINTF(" location_type: %u, byteOffset: %x\n", cur_node->var->locationType, (unsigned int)cur_node->var->byteOffset);
       }
-      cur_byteSize = formalParamByteSize(cur_node->var);
+      cur_byteSize = formalParamStackSlotByteSize(cur_node->var);
       // WORD ALIGNED!!!
       if (cur_byteSize > 0)
         {
