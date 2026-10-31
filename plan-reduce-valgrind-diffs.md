@@ -4,8 +4,9 @@ The goal is to make the next Valgrind merges (`merge-valgrind.sh`, see
 `doc/valgrind-merge.texinfo` and `plan-upgrade-valgrind.md`) produce fewer
 conflicts and fewer silently lost changes.  Every line in which Fjalar's
 copy of an upstream file differs from upstream is a potential conflict and
-an item that `compare-fjalar-changes.sh` reports and that a person must
-check.  This plan reduces the differences between Fjalar and the Valgrind
+a change that a merge can lose or alter without a conflict, which a person
+must check (`compare-fjalar-changes.sh` reports such losses and
+alterations).  This plan reduces the differences between Fjalar and the Valgrind
 version that Fjalar is based on, **3.23.0** (`valgrind/REVISION`), not the
 latest Valgrind.
 
@@ -84,8 +85,9 @@ hooks; see "Follow-up" below.
   `doc/valgrind-merge.texinfo` and step 5 of `plan-upgrade-valgrind.md`,
   which list Fjalar's changes to Coregrind, to match what remains (see
   "The remaining differences" above).
-- Add `diff-from-valgrind.sh` to the merge procedure:  run it before and
-  after a merge, and expect only the documented changes.
+- Add `diff-from-valgrind.sh` to the merge procedure:  run it before the
+  merge with its default clone, and after the merge commit with
+  `--valgrind=$INV/valgrind-new`.  Expect only the documented changes.
 - After each Valgrind merge, check `.alwaysDefd` in
   `guest_amd64_helpers.c`:  Memcheck's `isAlwaysDefd` panics if an
   `fxState` range partly overlaps an always-defined part of the guest
