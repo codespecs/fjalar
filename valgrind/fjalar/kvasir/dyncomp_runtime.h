@@ -72,10 +72,8 @@ void DC_extra_propagate_val_to_var_sets(void);
 void debugPrintTagsInRange(Addr low, Addr high);
 
 // Tag garbage collector
-void check_whether_to_garbage_collect(void);
-
-void garbage_collect_tags(void);
 void dyncomp_gc_at_safe_point(ThreadId tid, ULong blocks_dispatched);
+void dyncomp_copy_thread_tags(ThreadId parent, ThreadId child);
 
 // DynComp detailed mode (--dyncomp-detailed-mode):
 UInt bitarraySize(UInt n);

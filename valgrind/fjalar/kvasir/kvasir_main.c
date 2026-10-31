@@ -813,6 +813,12 @@ void fjalar_tool_finish() {
   }
 }
 
+void fjalar_tool_pre_thread_ll_create(ThreadId parent, ThreadId child) {
+  if (kvasir_with_dyncomp) {
+    dyncomp_copy_thread_tags(parent, child);
+  }
+}
+
 Bool kvasir_late_init_done = False;
 
 void fjalar_tool_handle_function_entrance(FunctionExecutionState* f_state) {
