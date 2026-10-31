@@ -439,9 +439,13 @@ Memcheck and DynComp depend tightly on Valgrind core:
       count shrank, check each of its modifications in the full output
       that step 4 saved:  either upstream made the same change, or a
       conflict resolution discarded Fjalar's change and it must be
-      restored.  Remove the modifications that Fjalar does not need,
-      document the others in the appendices, commit, and rerun
-      `diff-from-valgrind.sh` to confirm.
+      restored.  A file can lose one Fjalar change and gain another
+      without any change to its count, so also rerun
+      `$FJALAR/compare-fjalar-changes.sh`, which compares the changes
+      themselves and includes the changes made since its earlier run.
+      Remove the modifications that Fjalar does not need, document the
+      others in the appendices, commit, and rerun `diff-from-valgrind.sh`
+      and `compare-fjalar-changes.sh` to confirm.
     - Commit as one PR.
     - After the PR has landed, keep `valgrind-new` as the next merge's
       `valgrind-old` (step 2 reuses it), and delete `valgrind-new-build`
