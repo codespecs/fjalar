@@ -37,9 +37,22 @@
 #define BFD64
 #endif
 
-/* bucomm.h declares functions that take a pointer to one.  Binutils' bfd.h
-   includes <sys/stat.h>, which conflicts with Valgrind's headers.  */
+/* bucomm.h declares functions that take a pointer to one.  Nothing uses
+   its definition.  */
 struct stat;
+
+/* elfcomm.h and dwarf.h use it.  Binutils' sysdep.h defines it, as long
+   long if that is wider than long, but Fjalar's own files include those
+   headers without sysdep.h.  Every file that includes them includes this
+   file first.  */
+#define HOST_WIDEST_INT long
+
+/* elfcomm.c defines error and warn, which print a message.  Valgrind's core
+   defines a global error function too, in coregrind/m_gdbserver/utils.c,
+   so rename them.  elfcomm.h declares them, so every file that includes it
+   must see these macros; each includes this file first.  */
+#define error fjalar_binutils_error
+#define warn fjalar_binutils_warn
 
 typedef struct bfd bfd;
 typedef struct bfd_section asection;

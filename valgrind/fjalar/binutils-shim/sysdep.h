@@ -18,8 +18,12 @@
    form that works in a Valgrind tool, so that the copies need fewer
    changes.  A Valgrind tool cannot call the C library, so this file maps
    each C library function that the copies call to its Valgrind equivalent.
-   The macros are function-like, so they do not affect a use of the name
-   that is not a call, such as VG_(malloc) or a structure field.
+   The macros are function-like, so they affect only a use of the name that
+   is followed by "(".  They do not affect VG_(malloc), but they do affect a
+   call through a structure field of the same name, such as p->free (q),
+   which then fails to compile.  A use of the name that is not a call, such
+   as passing free as an argument, refers to the C library function, which
+   a Valgrind tool cannot use.
 
    The directory that contains this file precedes "include" on the include
    path, so this file and the others in the directory hide the Binutils
@@ -38,7 +42,6 @@
 #include "pub_tool_mallocfree.h"
 #include <limits.h>
 
-#include "fjalar_binutils.h"
 #include "ansidecl.h"
 
 #define ngettext(Msgid1, Msgid2, n) \
