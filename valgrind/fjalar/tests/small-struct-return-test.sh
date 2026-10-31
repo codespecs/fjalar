@@ -3,8 +3,10 @@
 # Tests that Fjalar reports the fields of a returned struct, and reports a
 # field as uninitialized if any of its bytes is uninitialized.
 #
-# On amd64, a struct of at most 16 bytes is returned in RAX and RDX, and a
-# larger struct is returned in memory, at the address in RAX.
+# On amd64, the System V ABI returns a struct of at most 16 bytes in RAX,
+# RDX, XMM0, and XMM1, according to the types of its fields, unless it has an
+# unaligned field.  It returns a larger struct in memory, at the address in
+# RAX.
 
 set -e
 
