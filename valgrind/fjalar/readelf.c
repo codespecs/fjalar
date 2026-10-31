@@ -62,31 +62,11 @@
   ELF file than is provided by objdump.  In particular it can display DWARF
   debugging information which (at the moment) objdump cannot.  */
 
-#if 0  // causes compile problems and not needed for Fjalar
 #include "sysdep.h"
-#endif
-#define PATH_MAX 1024  // all that Fjalar needs from sysdep.h
-// also from sysdep.h
-# define ngettext(Msgid1, Msgid2, n) \
-  (n == 1 ? Msgid1 : Msgid2)
-
-//#include <assert.h>  // Valgrind tools use tl_assert instead
+#include <assert.h>
 #include <time.h>
 #include <zlib.h>
-#ifdef HAVE_WCHAR_H
 #include <wchar.h>
-#endif
-
-// includes needed by Fjalar
-#include "my_libc.h"
-#include "pub_tool_basics.h"
-#include "pub_tool_libcassert.h"
-#include "pub_tool_libcbase.h"
-#include "pub_tool_libcfile.h"
-#include "pub_tool_libcprint.h"
-#include "pub_tool_mallocfree.h"
-#include <limits.h>
-// end of includes needed by Fjalar
 
 #if defined HAVE_MSGPACK
 #include <msgpack.h>
@@ -100,37 +80,18 @@
 #define BFD64
 #endif
 
-// Newer versions of bfd.h include a startswith function.  We cannot
-// use it as it references strncmp and strlen (we need VG_ versions).
-// The define changes its name to keep us from using it.
-#define startswith startswith_BFD_H
 #include "bfd.h"
-#undef startswith
-
-// some versions of bfd.h do not include stat.h (markro)
-#include <sys/stat.h>
 #include "bucomm.h"
 #include "elfcomm.h"
-// includes not needed by fjalar
-//#include "demanguse.h"
-//#include "dwarf.h"
-//#include "ctf-api.h"
-//#include "demangle.h"
+#include "demanguse.h"
+#include "dwarf.h"
+#include "ctf-api.h"
+#include "demangle.h"
 
-// includes needed by Fjalar (replaces "dwarf.h")
+// includes needed by Fjalar
 #include "fjalar_main.h"
 #include "fjalar_dwarf.h"
 #include "typedata.h"
-
-// Newer versions of bfd.h no longer define BFD_VMA_FMT.
-// This is a temporary fix until we upgrade to binutils-2.40.
-#ifndef BFD_VMA_FMT
-#define BFD_VMA_FMT "l"
-#define fprintf_vma(f,x) fprintf (f, "%016" BFD_VMA_FMT "x", x)
-#define sprintf_vma(s,x) sprintf (s, "%016" BFD_VMA_FMT "x", x)
-#define printf_vma(x) fprintf_vma(stdout,x)
-#endif
-
 // end of includes needed by Fjalar
 
 #include "elf/common.h"
@@ -236,18 +197,14 @@
 #include "elf/z80.h"
 #include "elf/loongarch.h"
 
-#if 0 // This code is not needed for Fjalar.
 #include "getopt.h"
 #include "libiberty.h"
-#endif // This code is not needed for Fjalar.
 #include "safe-ctype.h"
-#if 0 // This code is not needed for Fjalar.
 #include "filenames.h"
 
 #ifndef offsetof
 #define offsetof(TYPE, MEMBER) ((size_t) &(((TYPE *) 0)->MEMBER))
 #endif
-#endif // This code is not needed for Fjalar.
 
 typedef struct elf_section_list
 {
@@ -525,32 +482,6 @@ get_dynamic_name (const Filedata *filedata, size_t offset)
 #define GNU_HASH_SECTION_NAME(filedata)		\
   filedata->dynamic_info_DT_MIPS_XHASH ? ".MIPS.xhash" : ".gnu.hash"
 
-// versions of error and warn needed by Fjalar
-
-static void
-error VPARAMS ((const char *message, ...))
-{
-  VA_OPEN (args, message);
-  VA_FIXEDARG (args, const char *, message);
-
-  fprintf (stderr, _("%s: Error: "), "readelf.c");
-  vfprintf (stderr, message, args);
-  VA_CLOSE (args);
-}
-
-static void
-warn VPARAMS ((const char *message, ...))
-{
-  VA_OPEN (args, message);
-  VA_FIXEDARG (args, const char *, message);
-
-  fprintf (stderr, _("%s: Warning: "), "readelf.c");
-  vfprintf (stderr, message, args);
-  VA_CLOSE (args);
-}
-
-// end of Fjalar code
-
 /* Print a BFD_VMA to an internal buffer, for use in error messages.
    BFD_FMA_FMT can't be used in translated strings.  */
 
@@ -646,7 +577,7 @@ get_data (void *         var,
   if (mvar == NULL)
     {
       /* + 1 so that we can '\0' terminate invalid string table sections.  */
-      mvar = VG_(malloc) ("readelf.c: get_data", (size_t) amt + 1);
+      mvar = malloc ((size_t) amt + 1);
 
       if (mvar == NULL)
 	{
@@ -665,7 +596,7 @@ get_data (void *         var,
 	error (_("Unable to read in %s bytes of %s\n"),
 	       bfd_vmatoa ("u", amt), reason);
       if (mvar != var)
-	VG_(free) (mvar);
+	free (mvar);
       return NULL;
     }
 
@@ -773,7 +704,7 @@ print_symbol (signed int width, const char * symbol)
     {
       width_remaining = width;
       if (! do_not_show_symbol_truncation
-	  && (int) VG_(strlen) (symbol) > width)
+	  && (int) strlen (symbol) > width)
 	{
 	  width_remaining -= 5;
 	  if ((int) width_remaining < 0)
@@ -784,7 +715,7 @@ print_symbol (signed int width, const char * symbol)
 
 #ifdef HAVE_MBSTATE_T
   /* Initialise the multibyte conversion state.  */
-  VG_(memset) (& state, 0, sizeof (state));
+  memset (& state, 0, sizeof (state));
 #endif
 
 #if 0 // This code is not needed for Fjalar.
@@ -993,7 +924,7 @@ print_symbol (signed int width, const char * symbol)
       num_printed = width;
     }
 
-  VG_(free) ((void *) alloced_symbol);
+  free ((void *) alloced_symbol);
   return num_printed;
 }
 
@@ -1326,7 +1257,7 @@ slurp_rela_relocs (Filedata *            filedata,
 
       if (relas == NULL)
 	{
-	  VG_(free) (erelas);
+	  free (erelas);
 	  error (_("out of memory parsing relocs\n"));
 	  return false;
 	}
@@ -1338,7 +1269,7 @@ slurp_rela_relocs (Filedata *            filedata,
 	  relas[i].r_addend = BYTE_GET_SIGNED (erelas[i].r_addend);
 	}
 
-      VG_(free) (erelas);
+      free (erelas);
     }
   else
     {
@@ -1356,7 +1287,7 @@ slurp_rela_relocs (Filedata *            filedata,
 
       if (relas == NULL)
 	{
-	  VG_(free) (erelas);
+	  free (erelas);
 	  error (_("out of memory parsing relocs\n"));
 	  return false;
 	}
@@ -1390,7 +1321,7 @@ slurp_rela_relocs (Filedata *            filedata,
 #endif /* BFD64 */
 	}
 
-      VG_(free) (erelas);
+      free (erelas);
     }
 
   *relasp = relas;
@@ -1430,7 +1361,7 @@ slurp_rel_relocs (Filedata *            filedata,
 
       if (rels == NULL)
 	{
-	  VG_(free) (erels);
+	  free (erels);
 	  error (_("out of memory parsing relocs\n"));
 	  return false;
 	}
@@ -1442,7 +1373,7 @@ slurp_rel_relocs (Filedata *            filedata,
 	  rels[i].r_addend = 0;
 	}
 
-      VG_(free) (erels);
+      free (erels);
     }
   else
     {
@@ -1459,7 +1390,7 @@ slurp_rel_relocs (Filedata *            filedata,
 
       if (rels == NULL)
 	{
-	  VG_(free) (erels);
+	  free (erels);
 	  error (_("out of memory parsing relocs\n"));
 	  return false;
 	}
@@ -1493,7 +1424,7 @@ slurp_rel_relocs (Filedata *            filedata,
 #endif /* BFD64 */
 	}
 
-      VG_(free) (erels);
+      free (erels);
     }
 
   *relsp = rels;
@@ -1535,10 +1466,10 @@ slurp_relr_relocs (Filedata * filedata,
 	    size++;
     }
 
-  *relrsp = (bfd_vma *) VG_(malloc) ("readelf.c: slurp_relr_relocs", size * sizeof (bfd_vma));
+  *relrsp = (bfd_vma *) malloc (size * sizeof (bfd_vma));
   if (*relrsp == NULL)
     {
-      VG_(free) (relrs);
+      free (relrs);
       error (_("out of memory parsing relocs\n"));
       return false;
     }
@@ -1567,7 +1498,7 @@ slurp_relr_relocs (Filedata * filedata,
     }
 
   *nrelrsp = size;
-  VG_(free) (relrs);
+  free (relrs);
   return true;
 }
 
@@ -1656,7 +1587,7 @@ dump_relocations (Filedata *          filedata,
       printf (ngettext ("  %lu offset\n", "  %lu offsets\n", rel_size), rel_size);
       for (i = 0; i < rel_size; i++)
 	printf (format, relrs[i]);
-      VG_(free) (relrs);
+      free (relrs);
       return true;
     }
 
@@ -2278,7 +2209,7 @@ dump_relocations (Filedata *          filedata,
 #endif /* BFD64 */
     }
 
-  VG_(free) (rels);
+  free (rels);
 
   return res;
 }
@@ -5504,7 +5435,7 @@ request_dump_bynumber (struct dump_data *dumpdata,
     {
       dump_type * new_dump_sects;
 
-      new_dump_sects = (dump_type *) VG_(calloc) ("readelf.c: request_dump", section + 1,
+      new_dump_sects = (dump_type *) calloc (section + 1,
                                              sizeof (* new_dump_sects));
 
       if (new_dump_sects == NULL)
@@ -5514,10 +5445,10 @@ request_dump_bynumber (struct dump_data *dumpdata,
 	  if (dumpdata->dump_sects)
 	    {
 	      /* Copy current flag settings.  */
-              VG_(memcpy) (new_dump_sects, dumpdata->dump_sects,
+	      memcpy (new_dump_sects, dumpdata->dump_sects,
 		      dumpdata->num_dump_sects * sizeof (* new_dump_sects));
 
-	      VG_(free) (dumpdata->dump_sects);
+	      free (dumpdata->dump_sects);
 	    }
 
 	  dumpdata->dump_sects = new_dump_sects;
@@ -6005,7 +5936,7 @@ process_file_header (Filedata * filedata)
 	  && filedata->section_headers[0].sh_info != 0)
 	{
 	  /* Throw away any cached read of PN_XNUM headers.  */
-	  VG_(free) (filedata->program_headers);
+	  free (filedata->program_headers);
 	  filedata->program_headers = NULL;
 	  header->e_phnum = filedata->section_headers[0].sh_info;
 	}
@@ -6063,7 +5994,7 @@ get_32bit_program_headers (Filedata * filedata, Elf_Internal_Phdr * pheaders)
       internal->p_align  = BYTE_GET (external->p_align);
     }
 
-  VG_(free) (phdrs);
+  free (phdrs);
   return true;
 }
 
@@ -6110,7 +6041,7 @@ get_64bit_program_headers (Filedata * filedata, Elf_Internal_Phdr * pheaders)
       internal->p_align  = BYTE_GET (external->p_align);
     }
 
-  VG_(free) (phdrs);
+  free (phdrs);
   return true;
 }
 
@@ -6153,7 +6084,7 @@ get_program_headers (Filedata * filedata)
       return true;
     }
 
-  VG_(free) (phdrs);
+  free (phdrs);
   return false;
 }
 
@@ -6540,7 +6471,7 @@ get_32bit_section_headers (Filedata * filedata, bool probe)
     {
       if (!probe)
 	error (_("Out of memory reading %u section headers\n"), num);
-      VG_(free) (shdrs);
+      free (shdrs);
       return false;
     }
 
@@ -6564,7 +6495,7 @@ get_32bit_section_headers (Filedata * filedata, bool probe)
 	warn (_("Section %u has an out of range sh_info value of %u\n"), i, internal->sh_info);
     }
 
-  VG_(free) (shdrs);
+  free (shdrs);
   return true;
 }
 
@@ -6606,7 +6537,7 @@ get_64bit_section_headers (Filedata * filedata, bool probe)
     {
       if (! probe)
 	error (_("Out of memory reading %u section headers\n"), num);
-      VG_(free) (shdrs);
+      free (shdrs);
       return false;
     }
 
@@ -6630,7 +6561,7 @@ get_64bit_section_headers (Filedata * filedata, bool probe)
 	warn (_("Section %u has an out of range sh_info value of %u\n"), i, internal->sh_info);
     }
 
-  VG_(free) (shdrs);
+  free (shdrs);
   return true;
 }
 
@@ -6708,7 +6639,7 @@ get_32bit_elf_symbols (Filedata *           filedata,
       if (shndx != NULL)
 	{
 	  error (_("Multiple symbol table index sections associated with the same symbol section\n"));
-	  VG_(free) (shndx);
+	  free (shndx);
 	}
 
       shndx = (Elf_External_Sym_Shndx *) get_data (NULL, filedata,
@@ -6754,8 +6685,8 @@ get_32bit_elf_symbols (Filedata *           filedata,
     }
 
  exit_point:
-  VG_(free) (shndx);
-  VG_(free) (esyms);
+  free (shndx);
+  free (esyms);
 
   if (num_syms_return != NULL)
     * num_syms_return = isyms == NULL ? 0 : number;
@@ -6825,7 +6756,7 @@ get_64bit_elf_symbols (Filedata *           filedata,
       if (shndx != NULL)
 	{
 	  error (_("Multiple symbol table index sections associated with the same symbol section\n"));
-	  VG_(free) (shndx);
+	  free (shndx);
 	}
 
       shndx = (Elf_External_Sym_Shndx *) get_data (NULL, filedata,
@@ -6873,8 +6804,8 @@ get_64bit_elf_symbols (Filedata *           filedata,
     }
 
  exit_point:
-  VG_(free) (shndx);
-  VG_(free) (esyms);
+  free (shndx);
+  free (esyms);
 
   if (num_syms_return != NULL)
     * num_syms_return = isyms == NULL ? 0 : number;
@@ -7480,7 +7411,7 @@ process_section_headers (Filedata * filedata)
 	      || (do_debug_info     && startswith (name, "info"))
 	      || (do_debug_info     && startswith (name, "types"))
 	      || (do_debug_abbrevs  && startswith (name, "abbrev"))
-	      || (do_debug_lines    && streq (name, "line"))  // Fjalar: use simpler version
+	      || (do_debug_lines    && strcmp (name, "line") == 0)
 	      || (do_debug_lines    && startswith (name, "line."))
 	      || (do_debug_pubnames && startswith (name, "pubnames"))
 	      || (do_debug_pubtypes && startswith (name, "pubtypes"))
@@ -7968,7 +7899,7 @@ get_symtab (Filedata *filedata, Elf_Internal_Shdr *symsec,
       if (symsec->sh_link >= filedata->file_header.e_shnum)
 	{
 	  error (_("Bad sh_link in symbol table section\n"));
-      VG_(free) (*symtab);
+	  free (*symtab);
 	  *symtab = NULL;
 	  *nsyms = 0;
 	  return false;
@@ -7980,7 +7911,7 @@ get_symtab (Filedata *filedata, Elf_Internal_Shdr *symsec,
 				   1, strsec->sh_size, _("string table"));
       if (*strtab == NULL)
 	{
-      VG_(free) (*symtab);
+	  free (*symtab);
 	  *symtab = NULL;
 	  *nsyms = 0;
 	  return false;
@@ -8368,7 +8299,7 @@ dump_ia64_vms_dynamic_fixups (Filedata *                  filedata,
       printf ("0x%08x\n", (unsigned) BYTE_GET (imfs [i].data_type));
     }
 
-  VG_(free) (imfs);
+  free (imfs);
   return true;
 }
 
@@ -8411,7 +8342,7 @@ dump_ia64_vms_dynamic_relocs (Filedata * filedata, struct ia64_vms_dynimgrela *i
               (bfd_vma) BYTE_GET (imrs [i].sym_offset));
     }
 
-  VG_(free) (imrs);
+  free (imrs);
   return true;
 }
 
@@ -8428,8 +8359,8 @@ process_ia64_vms_dynamic_relocs (Filedata * filedata)
   char *strtab = NULL;
   bool res = true;
 
-  VG_(memset) (&fixup, 0, sizeof (fixup));
-  VG_(memset) (&imgrela, 0, sizeof (imgrela));
+  memset (&fixup, 0, sizeof (fixup));
+  memset (&imgrela, 0, sizeof (imgrela));
 
   /* Note: the order of the entries is specified by the OpenVMS specs.  */
   for (entry = filedata->dynamic_section;
@@ -8482,7 +8413,7 @@ process_ia64_vms_dynamic_relocs (Filedata * filedata)
 	}
     }
 
-  VG_(free) (strtab);
+  free (strtab);
 
   return res;
 }
@@ -8646,8 +8577,8 @@ process_relocs (Filedata * filedata)
 				    symtab, nsyms, strtab, strtablen,
 				    rel_type,
 				    symsec->sh_type == SHT_DYNSYM);
-		  VG_(free) (strtab);
-		  VG_(free) (symtab);
+		  free (strtab);
+		  free (symtab);
 		}
 	      else
 		dump_relocations (filedata, rel_offset, rel_size,
@@ -13442,7 +13373,7 @@ print_dynamic_symbol (Filedata *filedata, unsigned long si,
     {
       char buffer[16];
 
-      len_avail -= 1 + VG_(strlen) (version_string);
+      len_avail -= 1 + strlen (version_string);
 
       if (sym_info == symbol_undefined)
 	len_avail -= sprintf (buffer," (%d)", vna_other);
@@ -13473,7 +13404,7 @@ print_dynamic_symbol (Filedata *filedata, unsigned long si,
       /* Solaris binaries have been found to violate this requirement as
 	 well.  Not sure if this is a bug or an ABI requirement.  */
       && filedata->file_header.e_ident[EI_OSABI] != ELFOSABI_SOLARIS)
-    warn (_("local symbol %u found at index >= %s's sh_info value of %u\n"),
+    warn (_("local symbol %lu found at index >= %s's sh_info value of %u\n"),
 	  si, printable_section_name (filedata, section), section->sh_info);
 }
 
@@ -13883,9 +13814,9 @@ process_symbol_table (Filedata * filedata)
 	    print_dynamic_symbol (filedata, si, symtab, section,
 				  strtab, strtab_size);
 
-	  VG_(free) (symtab);
+	  free (symtab);
 	  if (strtab != filedata->string_table)
-	    VG_(free) (strtab);
+	    free (strtab);
 	}
     }
   else if (do_syms)
@@ -13910,7 +13841,7 @@ process_symbol_table (Filedata * filedata)
 			(unsigned long) filedata->nbuckets),
 	      (unsigned long) filedata->nbuckets);
 
-      lengths = (unsigned long *) VG_(calloc) ("readelf.c: process_symbol_table.1", filedata->nbuckets,
+      lengths = (unsigned long *) calloc (filedata->nbuckets,
 					  sizeof (*lengths));
       if (lengths == NULL)
 	{
@@ -13918,7 +13849,7 @@ process_symbol_table (Filedata * filedata)
 	  goto err_out;
 	}
       visited = xcmalloc (filedata->nchains, 1);
-      VG_(memset) (visited, 0, filedata->nchains);
+      memset (visited, 0, filedata->nchains);
 
       FJALAR_DPRINTF (_(" Length  Number     %% of total  Coverage\n"));
       for (hn = 0; hn < filedata->nbuckets; ++hn)
@@ -13936,12 +13867,12 @@ process_symbol_table (Filedata * filedata)
 	      visited[si] = 1;
 	    }
 	}
-      VG_(free) (visited);
+      free (visited);
 
-      counts = (unsigned long *) VG_(calloc) ("readelf.c: process_symbol_table.2", maxlength + 1, sizeof (*counts));
+      counts = (unsigned long *) calloc (maxlength + 1, sizeof (*counts));
       if (counts == NULL)
 	{
-	  VG_(free) (lengths);
+	  free (lengths);
 	  error (_("Out of memory allocating space for histogram counts\n"));
 	  goto err_out;
 	}
@@ -13963,14 +13894,14 @@ process_symbol_table (Filedata * filedata)
 	    }
 	}
 
-      VG_(free) (counts);
-      VG_(free) (lengths);
+      free (counts);
+      free (lengths);
     }
 
-  VG_(free) (filedata->buckets);
+  free (filedata->buckets);
   filedata->buckets = NULL;
   filedata->nbuckets = 0;
-  VG_(free) (filedata->chains);
+  free (filedata->chains);
   filedata->chains = NULL;
 
   if (do_histogram && filedata->gnubuckets != NULL)
@@ -13990,7 +13921,7 @@ process_symbol_table (Filedata * filedata)
 	      GNU_HASH_SECTION_NAME (filedata),
 	      (unsigned long) filedata->ngnubuckets);
 
-      lengths = (unsigned long *) VG_(calloc) ("readelf.c: process_symbol_table.3", filedata->ngnubuckets,
+      lengths = (unsigned long *) calloc (filedata->ngnubuckets,
 					  sizeof (*lengths));
       if (lengths == NULL)
 	{
@@ -14017,10 +13948,10 @@ process_symbol_table (Filedata * filedata)
 	    nsyms += length;
 	  }
 
-      counts = (unsigned long *) VG_(calloc) ("readelf.c: process_symbol_table.4", maxlength + 1, sizeof (*counts));
+      counts = (unsigned long *) calloc (maxlength + 1, sizeof (*counts));
       if (counts == NULL)
 	{
-	  VG_(free) (lengths);
+	  free (lengths);
 	  error (_("Out of memory allocating space for gnu histogram counts\n"));
 	  goto err_out;
 	}
@@ -14042,32 +13973,32 @@ process_symbol_table (Filedata * filedata)
 	    }
 	}
 
-      VG_(free) (counts);
-      VG_(free) (lengths);
+      free (counts);
+      free (lengths);
     }
-  VG_(free) (filedata->gnubuckets);
+  free (filedata->gnubuckets);
   filedata->gnubuckets = NULL;
   filedata->ngnubuckets = 0;
-  VG_(free) (filedata->gnuchains);
+  free (filedata->gnuchains);
   filedata->gnuchains = NULL;
   filedata->ngnuchains = 0;
-  VG_(free) (filedata->mipsxlat);
+  free (filedata->mipsxlat);
   filedata->mipsxlat = NULL;
   return true;
 
  err_out:
-  VG_(free) (filedata->gnubuckets);
+  free (filedata->gnubuckets);
   filedata->gnubuckets = NULL;
   filedata->ngnubuckets = 0;
-  VG_(free) (filedata->gnuchains);
+  free (filedata->gnuchains);
   filedata->gnuchains = NULL;
   filedata->ngnuchains = 0;
-  VG_(free) (filedata->mipsxlat);
+  free (filedata->mipsxlat);
   filedata->mipsxlat = NULL;
-  VG_(free) (filedata->buckets);
+  free (filedata->buckets);
   filedata->buckets = NULL;
   filedata->nbuckets = 0;
-  VG_(free) (filedata->chains);
+  free (filedata->chains);
   filedata->chains = NULL;
   return false;
 }
@@ -15385,7 +15316,7 @@ apply_relocations (Filedata *                 filedata,
 	    byte_put (rloc, addend + sym->st_value, reloc_size);
 	}
 
-      VG_(free) (symtab);
+      free (symtab);
       /* Let the target specific reloc processing code know that
 	 we have finished with these relocs.  */
       target_specific_reloc_handling (filedata, NULL, NULL, NULL, NULL, 0);
@@ -15396,7 +15327,7 @@ apply_relocations (Filedata *                 filedata,
 	  * num_relocs_return = num_relocs;
 	}
       else
-	VG_(free) (relocs);
+	free (relocs);
 
       break;
     }
@@ -16101,7 +16032,7 @@ load_specific_debug_section (enum dwarf_section_display_enum  debug,
       /* If it is already loaded, do nothing.  */
       if (streq (section->filename, filedata->file_name))
 	return true;
-      VG_(free) (section->start);
+      free (section->start);
     }
 
   snprintf (buf, sizeof (buf), _("%s section data"), section->name);
@@ -16243,7 +16174,7 @@ get_build_id (void * data)
         align = 4;
       else if (align != 4 && align != 8)
 	{
-	  VG_(free) (enote);
+	  free (enote);
 	  continue;
 	}
 
@@ -16258,7 +16189,7 @@ get_build_id (void * data)
 	      warn (_("\
 malformed note encountered in section %s whilst scanning for build-id note\n"),
 		    printable_section_name (filedata, shdr));
-	      VG_(free) (enote);
+	      free (enote);
               continue;
             }
           data_remaining -= min_notesz;
@@ -16285,7 +16216,7 @@ malformed note encountered in section %s whilst scanning for build-id note\n"),
 	      warn (_("\
 malformed note encountered in section %s whilst scanning for build-id note\n"),
 		    printable_section_name (filedata, shdr));
-	      VG_(free) (enote);
+	      free (enote);
               continue;
             }
           data_remaining -= min_notesz;
@@ -16310,7 +16241,7 @@ malformed note encountered in section %s whilst scanning for build-id note\n"),
 	  warn (_("\
 malformed note encountered in section %s whilst scanning for build-id note\n"),
 		printable_section_name (filedata, shdr));
-	  VG_(free) (enote);
+	  free (enote);
           continue;
         }
 
@@ -16326,18 +16257,18 @@ malformed note encountered in section %s whilst scanning for build-id note\n"),
           build_id = malloc (inote.descsz * 2 + 1);
           if (build_id == NULL)
 	    {
-	      VG_(free) (enote);
+	      free (enote);
 	      return NULL;
 	    }
 
           for (j = 0; j < inote.descsz; ++j)
             sprintf (build_id + (j * 2), "%02x", inote.descdata[j] & 0xff);
           build_id[inote.descsz * 2] = '\0';
-	  VG_(free) (enote);
+	  free (enote);
 
           return (unsigned char *) build_id;
         }
-      VG_(free) (enote);
+      free (enote);
     }
 
   return NULL;
@@ -16412,12 +16343,12 @@ free_debug_section (enum dwarf_section_display_enum debug)
   if (section->start == NULL)
     return;
 
-  VG_(free) ((char *) section->start);
+  free ((char *) section->start);
   section->start = NULL;
   section->address = 0;
   section->size = 0;
 
-  VG_(free) (section->reloc_info);
+  free (section->reloc_info);
   section->reloc_info = NULL;
   section->num_relocs = 0;
 }
@@ -16455,7 +16386,7 @@ display_debug_section (int shndx, Elf_Internal_Shdr * section, Filedata * fileda
 // START OF CODE ADDED FOR FJALAR
 
   for (i = 0; i < max; i++)
-    if (VG_(strcmp) (debug_displays[i].section.uncompressed_name, name) == 0)
+    if (streq (debug_displays[i].section.uncompressed_name, name))
       {
 	struct dwarf_section * sec = &debug_displays [i].section;
 	if (i == line && startswith (name, ".debug_line."))
@@ -22556,7 +22487,7 @@ fjalar_process_file (const char * file_name)
       return false;
     }
 
-  if (! S_ISREG (statbuf.mode))
+  if (! VKI_S_ISREG (statbuf.mode))
     {
       error (_("'%s' is not an ordinary file\n"), file_name);
       return false;
