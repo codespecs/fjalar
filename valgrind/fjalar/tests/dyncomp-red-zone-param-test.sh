@@ -23,7 +23,8 @@ gcc -gdwarf-4 -no-pie -O0 -o "${output_dir}/dyncomp-red-zone-param" \
 
 # leaf's a and b must have the location "DW_OP_breg7 (rsp): N" with N < 0.
 if ! readelf --debug-dump=info "${output_dir}/dyncomp-red-zone-param" \
-    | awk '/DW_TAG_subprogram/ { insub = 1; fname = ""; next }
+    | awk '/DW_TAG_/ { inparam = 0 }
+           /DW_TAG_subprogram/ { insub = 1; fname = ""; next }
            /DW_TAG_/ { insub = 0 }
            insub && /DW_AT_name/ { fname = $NF; insub = 0 }
            fname == "leaf" && /DW_TAG_formal_parameter/ { inparam = 1; next }
