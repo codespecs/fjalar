@@ -138,7 +138,6 @@ small.
      `FJALAR=$INV/fjalar-branch-binutils-2.47`; the commands below use it.
    - `git pull` in `daikon`, and ensure that it has no local changes.  (The
      new Fjalar clone is already up to date.)
-   - Make sure the system has `binutils-dev` / `binutils-devel` (for `bfd.h`).
 
 2. **Baselines** (before touching any source).  Run these from the new
    clone (`cd $FJALAR`).
@@ -254,25 +253,18 @@ small.
    - Binutils 2.40+ can decompress zstd-compressed debug sections, in code
      guarded by `#ifdef HAVE_ZSTD`.  Fjalar's build never defines
      `HAVE_ZSTD`:  Binutils' `configure` defines it in Binutils'
-     `config.h`, which Fjalar does not use (`readelf.c` disables its
-     `#include "sysdep.h"`, which would include `config.h`).  Make sure that
+     `config.h`, which Fjalar does not use (Fjalar's `sysdep.h`, in
+     `valgrind/fjalar/binutils-shim/`, includes Valgrind's `config.h`
+     instead).  Make sure that
      code compiles out cleanly with `HAVE_ZSTD` undefined, rather than
      pulling in libzstd.
-   - `dwarf.c` and `readelf.c` include the *system* `bfd.h`
-     (from `binutils-devel`/`binutils-dev`), which on the CI distros is
-     older than 2.47.  Grep 2.47's versions of those files for bfd macros
-     and functions (`bfd_*`, `BFD_*`, `startswith`, ...) and check that
-     each exists in the oldest `bfd.h` used in CI.  On 2026-10-17, the CI
-     containers had these versions (the regtest jobs' "System information"
-     step logs them):
-     - Ubuntu 26.04 (`daikon-ubuntu-jdk11-plus`): `binutils-dev`
-       2.46-3ubuntu2.
-     - Rocky Linux 10 (`daikon-rockylinux-jdk25-plus`): `binutils-devel`
-       2.41-63.el10.
-
-     So the oldest `bfd.h` in CI is from Binutils 2.41.
-     2.47's code may use bfd definitions newer than that version.
-     Anything missing needs a local definition, as #63 did.
+   - `dwarf.c`, `readelf.c`, and `elfcomm.c` include Fjalar's minimal
+     `bfd.h`, `sysdep.h`, and `libiberty.h`, in
+     `valgrind/fjalar/binutils-shim/`.  If 2.47's code uses a definition
+     that one of them lacks, compilation fails; add the definition, taken
+     from 2.47.  2.47 no longer uses `BFD_VMA_FMT`, so remove it, and
+     `fprintf_vma` and its relatives, from the shim `bfd.h` if nothing uses
+     them.
 
 5. **Resolve conflicts** (expected mostly in `dwarf.c` and `readelf.c`),
    following "Hints to modifying dwarf.c and readelf.c".  A visual merge
@@ -285,8 +277,8 @@ small.
      `fjalar_debug_dump` (or `FJALAR_DPRINTF`); hoist side-effecting
      arguments (e.g. `read_uleb128`, `READ_ULEB`, `SAFE_BYTE_GET_AND_INC`)
      out of guarded `printf`s.
-   - Replace libc calls with `VG_(...)` equivalents and `assert` with
-     `tl_assert`.
+   - Do not replace libc calls with `VG_(...)` equivalents or `assert`
+     with `tl_assert`; the shim `sysdep.h` and `assert.h` do that.
    - Make sure Fjalar's hooks in `dwarf.c` and `readelf.c` still run on
      every path.  The hooks are the calls to functions declared in
      `typedata.h`, `fjalar_dwarf.h`, `fjalar_include.h`, `fjalar_main.h`,
@@ -333,8 +325,14 @@ small.
 
 6. **Build and fix warnings/errors.**  `make -C $FJALAR build`, then
    iterate with `make -C $FJALAR/valgrind/fjalar`.  Fix "implicit
-   declaration" and "undefined reference" errors (missed `VG_()` wrappers).
-   Reduce new warnings from Valgrind's stricter flags where practical.
+   declaration" warnings or errors (warnings before GCC 14) and "undefined
+   reference" errors, from libc functions that the shim `sysdep.h` does
+   not map yet, by adding a macro there (or, if Valgrind has no
+   equivalent, by defining the function in `my_libc.c`).
+   Do not edit the copies to remove new warnings from Valgrind's stricter
+   flags; disable each such warning with a pragma in the shim `sysdep.h`,
+   or in `fjalar.am` if a pragma cannot disable it.  Do fix a warning that
+   reveals a bug.
    To list them, recompile the Binutils-derived files, from `$FJALAR`.
    The incremental builds have already compiled those files, so a build
    that does not first remove Fjalar's object files prints none of their
@@ -349,8 +347,6 @@ small.
    `compare-warnings.sh` prints the warnings for the Binutils-derived files
    that are new (`>` lines) or gone (`<` lines), ignoring line numbers,
    which the merge changes.
-   Also build against the system `bfd.h` on both Rocky Linux and Ubuntu
-   (see step 4; the #63 workaround may need to change).
    Finally, run `make -C $FJALAR/valgrind/fjalar install`.
    `make -C valgrind/fjalar` does not install the tool, but
    `make fjalar-test` (step 7) runs the installed one,
@@ -446,9 +442,6 @@ small.
 - Large upstream refactorings in `dwarf.c` (DWARF 5 / split-DWARF / debuginfod
   handling) could make the merge produce many conflicts; this is the main
   reason for the stepwise upgrade.
-- 2.47's `readelf.c`/`dwarf.c` may use bfd macros or functions that the
-  older system `bfd.h` on the CI distros lacks (see step 4).  This may show
-  up only on one distro, so CI on both Ubuntu and Rocky Linux matters.
 - Silent loss of a Fjalar hook in a conflicted hunk would show up only as
   missing variables in Kvasir output.  `check-hook-counts.sh` (step 7)
   catches a lost or duplicated call, but not a call that a merge moved onto

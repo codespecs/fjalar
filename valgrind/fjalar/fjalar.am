@@ -32,6 +32,12 @@ SUBDIRS = .
 # get all binutil .h files from include; get config.h from .. (markro)
 EXTRA_CFLAGS =  -Iinclude -I../VEX/pub -I../include -I..
 
+# binutils-shim holds Fjalar's replacements for some Binutils headers, so it
+# precedes include.  It also holds replacements for some C library headers,
+# such as assert.h, that suit only code that runs in the tool, so the
+# preload library does not use it.
+BINUTILS_SHIM_CFLAGS = -Ibinutils-shim
+
 # for debugging versions
 #EXTRA_CFLAGS +=  -O0 -finstrument-functions
 EXTRA_CFLAGS +=  -O0
@@ -73,11 +79,26 @@ FJALAR_SOURCES_COMMON += \
 VGPRELOAD_FJALAR_SOURCES_COMMON += kvasir/dyncomp_wrappers.c
 
 # The -O0 in EXTRA_CFLAGS overrides the -O2 or -O earlier in these flags.
-fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CFLAGS += $(EXTRA_CFLAGS)
+fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CFLAGS += $(BINUTILS_SHIM_CFLAGS) $(EXTRA_CFLAGS)
 vgpreload_fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_CFLAGS += $(EXTRA_CFLAGS)
 if VGCONF_HAVE_PLATFORM_SEC
-fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CFLAGS += $(EXTRA_CFLAGS)
+fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CFLAGS += $(BINUTILS_SHIM_CFLAGS) $(EXTRA_CFLAGS)
 vgpreload_fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_CFLAGS += $(EXTRA_CFLAGS)
+endif
+
+# The copies of Binutils files print unsigned values with signed formats and
+# vice versa.  binutils-shim/sysdep.h cannot disable -Wformat-signedness for
+# them, because GCC's pragma cannot, so disable it for their object files.
+# These are GNU make target-specific variables.
+fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@-readelf.$(OBJEXT) \
+fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@-dwarf.$(OBJEXT) \
+fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@-elfcomm.$(OBJEXT): \
+	CFLAGS += -Wno-format-signedness
+if VGCONF_HAVE_PLATFORM_SEC
+fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@-readelf.$(OBJEXT) \
+fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@-dwarf.$(OBJEXT) \
+fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@-elfcomm.$(OBJEXT): \
+	CFLAGS += -Wno-format-signedness
 endif
 
 

@@ -25,8 +25,13 @@
 
 #include "pub_tool_basics.h"
 
+#include "bfd.h"
 #include "elfcomm.h"
+// dwarf.h has no include guard, and readelf.c and dwarf.c include it
+// before this file.  dwarf.h defines READ_ULEB.
+#ifndef READ_ULEB
 #include "dwarf.h"
+#endif
 #include "dwarf2.h"
 
 // Vendor specific extensions to the DWARF spec
