@@ -2519,7 +2519,7 @@ static Bool usesFrameBase(VariableEntry* var)
 }
 
 // MUST BE RUN AFTER the return value for a function has been initialized!!!
-// Otherwise it cannot tell whether the function returns a struct type!!!
+// Otherwise it cannot tell whether the function returns a struct or union type!!!
 //
 // We potentially want to ignore the offsets that DWARF2 provides for
 // us because if Valgrind gains control at the beginning of a
@@ -2541,14 +2541,15 @@ static void verifyStackParamWordAlignment(FunctionEntry* f, int replace)
                  f->fjalar_name, firstNode);
 
   // Start with default offset of 8 from EBP (*EBP = old EBP, *(EBP+4) = return addr)
-  // unless the function returns a struct by value - then we start
-  // with an offset of 12 since *(EBP+8) = pointer to the place to put the struct)
+  // unless the function returns a struct or union by value - then we start
+  // with an offset of 12 since *(EBP+8) = pointer to the place to put the struct or union)
 
   if (firstNode) {
     VariableEntry* firstReturnVar = firstNode->var;
-    // See if the function seturn a struct by value:
+    // See if the function returns a struct or union by value:
     if (firstReturnVar &&
-        (D_STRUCT_CLASS == firstReturnVar->varType->decType) &&
+        ((D_STRUCT_CLASS == firstReturnVar->varType->decType)
+         || (D_UNION == firstReturnVar->varType->decType)) &&
         (0 == firstReturnVar->ptrLevels) &&
         // Don't forget C++ reference variables!
         (0 == firstReturnVar->referenceLevels)) {
