@@ -213,18 +213,6 @@ Memcheck and DynComp depend tightly on Valgrind core:
      and the size/alignment assertions in `scheduler.c` must still account
      for it.  If upstream added fields to `VexGuestAMD64State`, recheck that
      the guest state size remains a multiple of the alignment.
-   - Check `.alwaysDefd` in `guest_amd64_helpers.c` and
-     `guest_x86_helpers.c`.  Memcheck's `isAlwaysDefd` panics if an
-     `fxState` entry that `fjalar_main.c` adds (`add_fxState_read` and
-     `add_fxState_read_GPRs_and_IP`) overlaps an always-defined field
-     without lying entirely inside it, even if the entry covers the whole
-     field.  In 3.23.0, the entries for the instruction pointer and for
-     `guest_FTOP` are exactly always-defined fields, and the entries for
-     the general-purpose registers and for `guest_FPREG` overlap none,
-     though always-defined fields directly follow them (`guest_CC_OP` and
-     `guest_FPTAG`).  Check both amd64 and x86, especially the sizes and
-     order of the x87 fields.  See section "Updating Fjalar/Kvasir" of
-     `doc/valgrind-merge.texinfo`.
 
 6. **Memcheck conflicts** in `valgrind/fjalar/`.
    - Resolve the conflicts (as for Coregrind), using

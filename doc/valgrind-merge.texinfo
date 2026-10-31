@@ -663,41 +663,6 @@ If the build fails in the rule for
 Update the copy in @file{valgrind/fjalar/fjalar_core_decls.h} to match
 the core header that it names.
 
-Fjalar's calls to the helpers that run at function entry and exit tell
-VEX which parts of the guest state they read, through the
-@code{fxState} entries that @code{add_fxState_read} and
-@code{add_fxState_read_GPRs_and_IP} in @file{fjalar_main.c} add.
-The always-defined fields of the guest state are the ones that the
-@code{.alwaysDefd} list in @file{VEX/priv/guest_amd64_helpers.c} (and,
-for x86, @file{guest_x86_helpers.c}) names.  Memcheck's
-@code{isAlwaysDefd} panics if an entry overlaps an always-defined field
-without lying entirely inside it.  So each entry must either lie inside
-one always-defined field or overlap none; an entry that covers an
-always-defined field and also other bytes causes a panic.  In 3.23.0:
-
-@itemize @bullet
-@item
-The entries for the instruction pointer (@code{guest_RIP} or
-@code{guest_EIP}) and for @code{guest_FTOP} are exactly always-defined
-fields.
-
-@item
-The entry for the general-purpose registers (@code{guest_RAX} through
-@code{guest_R15}, or @code{guest_EAX} through @code{guest_EDI}) overlaps
-no always-defined field.  @code{guest_CC_OP}, which is always defined,
-directly follows it.
-
-@item
-The entry for @code{guest_FPREG} overlaps no always-defined field.
-@code{guest_FPTAG}, which is always defined, directly follows it, and on
-x86, @code{guest_EIP} directly precedes it.
-@end itemize
-
-@noindent
-After the merge, check @code{.alwaysDefd} and the guest-state layout
-(@file{VEX/pub/libvex_guest_amd64.h} and @file{libvex_guest_x86.h})
-again, especially the sizes and order of the x87 fields.
-
 A somewhat more problematic area are changes in the VEX IR. DynComp
 makes heavy use of the VEX IR, so any changes in it need to be
 reflected. Most of the changes to the public VEX IR can be discovered
