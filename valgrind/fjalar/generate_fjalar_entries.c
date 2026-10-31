@@ -2526,7 +2526,10 @@ static Bool usesFrameBase(VariableEntry* var)
 // function, the parameters are not guaranteed to be at those
 // locations yet. We have devised our own calculation that
 // word-aligns everything in the caller's stack frame (positive offsets
-// from EBP). We always use this computed value if the DWARF information
+// from EBP):  each formal parameter occupies formalParamByteSize bytes
+// (a pointer, for a C++ reference), rounded up to a multiple of 4
+// bytes.  formalParamFrameOffsetRange and formal_params_stack_end use the
+// same size.  We always use this computed value if the DWARF information
 // didn't provide a location (which can happen for instance if the parameter
 // is unused), or if replace == 1.
 // This code will need a major rewrite to support AMD64.
@@ -2585,7 +2588,7 @@ static void verifyStackParamWordAlignment(FunctionEntry* f, int replace)
         FJALAR_DPRINTF("MODIFY VAR LOCATION! now:\n");
         FJALAR_DPRINTF(" location_type: %u, byteOffset: %x\n", cur_node->var->locationType, (unsigned int)cur_node->var->byteOffset);
       }
-      cur_byteSize = determineVariableByteSize(cur_node->var);
+      cur_byteSize = formalParamByteSize(cur_node->var);
       // WORD ALIGNED!!!
       if (cur_byteSize > 0)
         {
