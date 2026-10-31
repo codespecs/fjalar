@@ -176,9 +176,9 @@ Memcheck and DynComp depend tightly on Valgrind core:
    `valgrind-old` for the next merge.
 
 4. **Merge.**  First run `$FJALAR/diff-from-valgrind.sh --stat` and
-   `$FJALAR/diff-from-valgrind.sh`, and save their output (step 10
-   compares with it).  Check that the files that it lists, and the changes
-   that its full output shows, are the ones that the appendices "Valgrind
+   save its output (step 10 compares with it).  Check that the files that
+   it lists, and the changes that its full output shows, are the ones that
+   the appendices "Valgrind
    modifications" and "Memcheck modifications" of
    `doc/valgrind-merge.texinfo` describe.  Then run
    `$FJALAR/merge-valgrind.sh`.  It checks that
@@ -436,10 +436,11 @@ Memcheck and DynComp depend tightly on Valgrind core:
       is new in the list or whose count of changed lines grew, check the
       full output for modifications that the merge or a conflict
       resolution added.  For a file that dropped out of the list or whose
-      count shrank, check each of its modifications in the full output
-      that step 4 saved:  either upstream made the same change, or a
-      conflict resolution discarded Fjalar's change and it must be
-      restored.  A file can lose one Fjalar change and gain another
+      count shrank, check each of its modifications before the merge
+      (`git diff valgrind-merge/base valgrind-merge/fjalar -- FILE`):
+      either upstream made the same change, or a conflict resolution
+      discarded Fjalar's change and it must be restored.  A file that
+      upstream removed and Fjalar kept also drops out of the list.  A file can lose one Fjalar change and gain another
       without any change to its count, so also rerun
       `$FJALAR/compare-fjalar-changes.sh`, which compares the changes
       themselves and includes the changes made since its earlier run.

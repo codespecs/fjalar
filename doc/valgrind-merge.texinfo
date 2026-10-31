@@ -455,19 +455,17 @@ Fjalar contains two copies of Memcheck:  an unmodified one in
 ``Coregrind''.  Our changes to Memcheck are much more substantial than our
 changes to Coregrind.
 
-Before the merge, list the files that Fjalar modifies, and the
-modifications themselves, and save both lists:
+Before the merge, list the files that Fjalar modifies, and save the list:
 
 @example
 $INV/fjalar/diff-from-valgrind.sh --stat > $INV/diff-from-valgrind-before-merge.stat
-$INV/fjalar/diff-from-valgrind.sh > $INV/diff-from-valgrind-before-merge.diff
 @end example
 
 @noindent
-The check after the merge (@pxref{Commit commands}) compares with them.
-Check that the first lists only the files that @ref{Valgrind modifications}
-and @ref{Memcheck modifications} list, and that the second shows only the
-modifications that they describe.  Document any other modification there,
+The check after the merge (@pxref{Commit commands}) compares with it.
+Check that it lists only the files that @ref{Valgrind modifications} and
+@ref{Memcheck modifications} list, and that the full output (without
+@option{--stat}) shows only the modifications that they describe.  Document any other modification there,
 so that the appendices are a complete checklist for resolving conflicts.
 
 Run:
@@ -1489,10 +1487,13 @@ resolution can add a modification, such as a change of whitespace.
 
 @item
 For a file that dropped out of the list, or whose count of changed lines
-shrank, check each of its modifications in
-@file{$INV/diff-from-valgrind-before-merge.diff}.  Either the Valgrind
-developers made the same change, or a conflict resolution discarded
-Fjalar's change and you must restore it.
+shrank, check each of its modifications before the merge, which
+@code{git -C $INV/fjalar diff valgrind-merge/base valgrind-merge/fjalar --
+@var{file}} shows.  Either the Valgrind developers made the same change,
+or a conflict resolution discarded Fjalar's change and you must restore
+it.  A file also drops out of the list if the Valgrind developers removed
+it and you kept Fjalar's version (@pxref{Resolving Conflicts}), because
+@file{diff-from-valgrind.sh} omits the files that only Fjalar has.
 @end itemize
 
 @noindent
@@ -1627,7 +1628,8 @@ version, in @code{mc_pre_clo_init}; instead, @code{fjalar_pre_clo_init} in
 @file{fjalar_main.c} and each tool's @code{fjalar_tool_pre_clo_init}
 override them.)  The definition of @code{kvasir_with_dyncomp}, and
 DynComp calls, guarded by it, that clear, allocate, or copy the tags of
-the bytes whose state changes:  in the @code{make_mem_*} functions, in
+the bytes whose state changes:  in @code{MC_(make_mem_noaccess)} and
+@code{MC_(make_mem_defined)}, in
 @code{make_aligned_word32_noaccess} and
 @code{make_aligned_word64_noaccess}, and in
 @code{MC_(copy_address_range_state)}, which saves the original length in
@@ -1651,11 +1653,12 @@ defines; calls to @code{handle_possible_entry} and
 @code{handle_possible_exit}, which detect function entries and exits; and
 code that prints registers at the start of each superblock and at each
 instruction.  That code, like Memcheck's own tracing of the IR (through
-@code{mce.trace}) and its printing of the statements, runs when
-@code{verboze} is true; Fjalar initializes @code{verboze} to
-@code{fjalar_debug && fjalar_print_IR} instead of @code{0||False}, so
-@option{--fjalar-debug} and @option{--fjalar-print-ir} together turn all
-of it on.
+@code{mce.trace}) and its printing of each statement of the superblock
+that it instruments, runs when @code{verboze} is true; Fjalar initializes
+@code{verboze} to @code{fjalar_debug && fjalar_print_IR} instead of
+@code{0||False}, so @option{--fjalar-debug} and @option{--fjalar-print-ir}
+together turn them on.  (Memcheck's printing of the instrumented
+statements is guarded by @code{0 && verboze}, so it stays off.)
 An early return in @code{complainIfUndefined}, because Fjalar does not
 check definedness.  Also, a @code{DC} kind of @code{TempKind}, for DynComp's temporaries,
 and an @code{#include} of @file{fjalar_mc_translate.h}, which defines
