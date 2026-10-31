@@ -18,7 +18,7 @@ merge.
 
 ## Status
 
-Steps 0-8 have landed:  #190 (Step 0, a script that measures the
+Steps 0-9 have landed:  #190 (Step 0, a script that measures the
 differences, and a CI check that upstream files keep upstream's
 whitespace), #182 (Step 1, file types and modes), #183 (Step 2,
 whitespace), #184 (Step 3, cosmetic edits), #191 (Step 4, unneeded changes
@@ -28,12 +28,13 @@ functions in `mc_main.c`), #221 (Step 6c, Memcheck's definitions restored
 to `mc_translate.c`), #197 (Step 6d, DynComp in `MC_(instrument)`), #195
 (Step 7a, the guest-layout fields and `VEX_N_FXSTATE`), #196 (Step 7b, the
 register accessors), #220 (Step 7c, the file functions), #206 (Step 7d,
-the function-name printing in VEX), and #205 (Step 8, the changes that
-must remain), with its companion codespecs/daikon#955.  So did PR #181,
-which restored upstream's `AC_INIT` version string.
+the function-name printing in VEX), #205 (Step 8, the changes that must
+remain), with its companion codespecs/daikon#955, and #225 (Step 9,
+documentation).  So did PR #181, which restored upstream's `AC_INIT`
+version string.
 
-Only Step 9 (documentation) remains.  It is open as #225.  "Follow-up"
-below lists the edits that no step covered.
+The `.alwaysDefd` check of Step 9 remains; #225 did not document it.
+"Follow-up" below lists the edits that no step covered.
 
 ## The remaining differences
 
