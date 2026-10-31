@@ -2526,18 +2526,21 @@ static Bool usesFrameBase(VariableEntry* var)
 // function, the parameters are not guaranteed to be at those
 // locations yet. We have devised our own calculation that
 // word-aligns everything in the caller's stack frame (positive offsets
-// from EBP):  each formal parameter occupies formalParamByteSize bytes
-// (a pointer, for a C++ reference), rounded up to a multiple of 4
-// bytes.  formalParamFrameOffsetRange and formal_params_stack_end use the
-// same size.  We always use this computed value if the DWARF information
-// didn't provide a location (which can happen for instance if the parameter
-// is unused), or if replace == 1.
-// This code will need a major rewrite to support AMD64.
-// UNDONE AMD64!!!
+// from EBP or RBP):  each formal parameter occupies formalParamByteSize
+// bytes (a pointer, for a C++ reference), rounded up to a multiple of
+// sizeof(Addr).  formalParamFrameOffsetRange and formal_params_stack_end
+// use the same size.  We always use this computed value if the DWARF
+// information didn't provide a location (which can happen for instance
+// if the parameter is unused), or if replace == 1.
+// UNDONE AMD64:  The caller passes most formal parameters in registers,
+// but this function does not classify formal parameters as the ABI
+// does.  It assumes that the caller passed on the stack each formal
+// parameter whose location is not a register, including one that the
+// function copies from a register to its own frame.
 static void verifyStackParamWordAlignment(FunctionEntry* f, int replace)
 {
   VarNode* cur_node;
-  int offset = 8;
+  int offset = 2 * sizeof(Addr);
   VarNode* firstNode = f->returnValue.first;
 
   FJALAR_DPRINTF("ENTER verifyStackParamWordAlignment(%s): %p\n",
@@ -2546,7 +2549,10 @@ static void verifyStackParamWordAlignment(FunctionEntry* f, int replace)
   // Start with default offset of 8 from EBP (*EBP = old EBP, *(EBP+4) = return addr)
   // unless the function returns a struct or union by value - then we start
   // with an offset of 12 since *(EBP+8) = pointer to the place to put the struct or union)
+  // On AMD64, start at RBP+16; the caller passes the pointer to the
+  // place to put the struct or union in RDI, not on the stack.
 
+#if defined(VGA_x86)
   if (firstNode) {
     VariableEntry* firstReturnVar = firstNode->var;
     // See if the function returns a struct or union by value:
@@ -2559,6 +2565,7 @@ static void verifyStackParamWordAlignment(FunctionEntry* f, int replace)
       offset = 12;
     }
   }
+#endif
 
   for (cur_node = f->formalParameters.first;
        cur_node != NULL;
@@ -2593,8 +2600,8 @@ static void verifyStackParamWordAlignment(FunctionEntry* f, int replace)
       // WORD ALIGNED!!!
       if (cur_byteSize > 0)
         {
-          // Round offset up to the nearest word (4 bytes)
-          offset += (((cur_byteSize + 3) >> 2) << 2);
+          // Round offset up to the nearest word
+          offset += VG_ROUNDUP(cur_byteSize, sizeof(Addr));
         }
     }
 
