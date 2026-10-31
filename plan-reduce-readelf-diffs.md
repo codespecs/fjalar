@@ -108,9 +108,10 @@ Status: done.  Both tools have landed, in #188 and #185.
 
 Verification for every later PR:
 
-- `./compare-warnings.sh --binutils BEFORE.log AFTER.log` reports no new
-  warnings, where the two logs are from full builds before and after the
-  change.
+- `./compare-warnings.sh --binutils BEFORE.log AFTER.log` and
+  `./compare-warnings.sh BEFORE.log AFTER.log` report no new warnings, where
+  the two logs are from full builds before and after the change.  (The
+  `--binutils` run alone misses some warnings; see Phase 1.)
 - `./test-kvasir.sh` results are unchanged.
 - `./compare-debug-output.sh DIR`, with a baseline saved in DIR before the
   change, shows no differences, except intended ones.  If it shows intended
@@ -179,10 +180,11 @@ for `bfd.h`.  Lessons:
 3. **One `error`/`warn`** (category 7); see "The duplicate `error`
    definition" below.  This needs only the shim, not the wrapper files of
    Phase 3.
-4. **Warnings** (category 3).  Disable, in the shim, the warnings that only
-   vendored code triggers, such as
-   `#pragma GCC diagnostic ignored "-Wformat-signedness"`, and revert the
-   warning-only edits.  Declare `my_abort` with `__attribute__((noreturn))` so
+4. **Warnings** (category 3).  Disable the warnings that only vendored code
+   triggers, and revert the warning-only edits.  The shim disables
+   `-Wdiscarded-qualifiers` and `-Wunused-variable` with pragmas, but a
+   pragma cannot disable `-Wformat-signedness`, so `fjalar.am` adds
+   `-Wno-format-signedness` to the vendored object files.  Declare `my_abort` with `__attribute__((noreturn))` so
    the `return 0;` lines can go.  Check each format change before reverting
    it: a few are real fixes.  For example, `%*s` -> `%.*s` in the
    `DW_MACINFO_*` output fixes an upstream bug that 2.47 still has; keep that
