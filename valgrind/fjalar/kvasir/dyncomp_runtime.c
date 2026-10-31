@@ -904,14 +904,26 @@ static void dump_all_function_exit_var_map() {
 
 #endif // debugging
 
+// The number of stale tags that the current run of the tag garbage
+// collector has found.  A stale tag is one that the previous run did
+// not renumber.  Every place that holds tags is renumbered, so this
+// number should be 0.
+static UInt numStaleTags = 0;
+
 // Returns the leader of tag in the value union-find, for use by the tag
 // garbage collector.  Returns 0 if no set contains tag, which is the
 // case for 0, WEAK_FRESH_TAG, and any other tag that is at least
-// nextTag (such as a tag that the previous collection did not
-// renumber).  The uf_object of such a tag can hold stale data, so this
-// does not look at it.  Every tag in [1, nextTag) is in a set.
+// nextTag, which is stale.  The uf_object of a stale tag can hold stale
+// data, so this does not look at it.  Every tag in [1, nextTag) is in a
+// set.
 static UInt gc_val_uf_find_leader(UInt tag) {
-  return (tag < nextTag) ? val_uf_find_leader(tag) : 0;
+  if (tag < nextTag) {
+    return val_uf_find_leader(tag);
+  }
+  if (tag != WEAK_FRESH_TAG) {
+    numStaleTags++;
+  }
+  return 0;
 }
 
 // Pre: the ppt_entry/exit_var_tags array has been updated to reflect
@@ -1040,6 +1052,7 @@ static void garbage_collect_tags(void) {
 
   printf("  Start garbage collecting (next tag = %u, total assigned = %u)\n",
               nextTag, totalNumTagsAssigned);
+  numStaleTags = 0;
 
   //debug_print_decls();
   //dump_all_function_exit_var_map();
@@ -1234,6 +1247,9 @@ static void garbage_collect_tags(void) {
 
   printf("   Done garbage collecting (next tag = %u, total assigned = %u)\n",
               nextTag, totalNumTagsAssigned);
+  if (numStaleTags != 0) {
+    printf("   Garbage collection set %u stale tags to 0\n", numStaleTags);
+  }
 
   //debug_print_decls();
   //dump_all_function_exit_var_map();
