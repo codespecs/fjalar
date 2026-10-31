@@ -1531,10 +1531,21 @@ Fjalar's change and you must restore it.
 @end itemize
 
 @noindent
+A file can lose one of Fjalar's modifications and gain another without
+any change to its count of changed lines, which the comparison above
+misses.  So also run @file{compare-fjalar-changes.sh} again
+(@pxref{Resolving Conflicts}), which compares the changes themselves and
+includes the changes that you made since you last ran it:
+
+@example
+$INV/fjalar/compare-fjalar-changes.sh
+@end example
+
+@noindent
 Remove each modification that Fjalar does not need, and document the
 others in @ref{Valgrind modifications} or @ref{Memcheck modifications}.
-Commit those changes, and run @file{diff-from-valgrind.sh} again to
-confirm them.
+Commit those changes, and run @file{diff-from-valgrind.sh} and
+@file{compare-fjalar-changes.sh} again to confirm them.
 
 Note: We recommend saving Fjalar's changes to the base Valgrind
 (@pxref{Merging Valgrind}) to further document the process.
