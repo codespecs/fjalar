@@ -46,7 +46,6 @@ static void updateAllVarTypes(void);
 static void processFunctions(void);
 
 int determineFormalParametersStackByteSize(FunctionEntry* f);
-int determineFormalParametersLowerStackByteSize(FunctionEntry* f);
 int determineVariableByteSize(VariableEntry* var);
 int formalParamByteSize(VariableEntry* varPtr);
 
@@ -1844,9 +1843,6 @@ void initializeFunctionTable(void)
           cur_func_entry->formalParamStackByteSize
             = determineFormalParametersStackByteSize(cur_func_entry);
 
-          cur_func_entry->formalParamLowerStackByteSize
-            = determineFormalParametersLowerStackByteSize(cur_func_entry);
-
           num_functions_added++;
         }
     }
@@ -2722,30 +2718,6 @@ int determineFormalParametersStackByteSize(FunctionEntry* f)
       totalByteSize = MAX(totalByteSize, hi);
     }
   return totalByteSize;
-}
-
-
-// Determines the number of bytes needed below the frame pointer in
-// the stack to hold the values of all function formal parameters for
-// a particular function.
-int determineFormalParametersLowerStackByteSize(FunctionEntry* f)
-{
-  VarNode* cur_node;
-  int totalByteSize = 0;
-
-  if(!f){
-    return 0;
-  }
-
-  for (cur_node = f->formalParameters.first;
-       cur_node != NULL;
-       cur_node = cur_node->next)
-    {
-      int lo, hi;
-      formalParamFrameOffsetRange(cur_node->var, &lo, &hi);
-      totalByteSize = MIN(totalByteSize, lo);
-    }
-  return -totalByteSize;
 }
 
 
