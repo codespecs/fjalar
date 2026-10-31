@@ -143,9 +143,6 @@ struct genhashtable* loc_list_map = 0;
 debug_frame* debug_frame_HEAD = 0;
 debug_frame* debug_frame_TAIL = 0;
 
-// Base of the current compilation unit
-unsigned int comp_unit_base = 0;
-
 // Target program producer info
 bool clang_c_producer = false;
 bool clang_rust_producer = false;
@@ -1374,17 +1371,6 @@ char harvest_address_value(dwarf_entry* e, unsigned long attr,
           if (value == 0) {
               ((function*)e->entry_ptr)->is_inline = 1;
           }
-          ((function*)e->entry_ptr)->comp_pc = comp_unit_base;
-#if 0
-          FJALAR_DPRINTF("Harvest: start_pc: %lx  comp_pc: %lx  name: %s %s\n",
-                         ((function*)e->entry_ptr)->start_pc,
-                         ((function*)e->entry_ptr)->comp_pc,
-                         ((function*)e->entry_ptr)->name,
-                         ((function*)e->entry_ptr)->mangled_name);
-#endif
-          return 1;
-      } else if (tag_is_compile_unit(tag)) {
-          comp_unit_base = value;
           return 1;
       }
     } else if (tag_is_function(tag) && attr == DW_AT_high_pc) {
@@ -3436,7 +3422,7 @@ location_list* find_location_list_entry(unsigned long offset, unsigned long pc)
 {
   location_list* ll = gengettable(loc_list_map, (void*)offset);
   while (ll && !((ll->begin <= pc) && (pc < ll->end))) {
-    FJALAR_DPRINTF("	Examining loc list entry: %lx - %lx - %lx\n", ll->offset, ll->begin, ll->end);
+    FJALAR_DPRINTF("\tExamining loc list entry: %lx - %lx - %lx\n", ll->offset, ll->begin, ll->end);
     ll = ll->next;
   }
   return ll;

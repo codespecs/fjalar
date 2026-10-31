@@ -614,11 +614,6 @@ typedef struct _FunctionEntry {
   Addr startPC;
   Addr endPC;
 
-  // The instruction base of the compile unit. This is necessary because
-  // certain offsets in the debugging information (namely location lists)
-  // are relative to the base of the compilation unit.
-  Addr cuBase;
-
   // The address of the instruction before which we do entry
   // instrumentation for this function. Usually a bit past startPC,
   // since we don't want to look at the parameters until the function
@@ -652,6 +647,15 @@ typedef struct _FunctionEntry {
   // otherwise, the frame_base_offset is an offset from the register
   // indicated by frame_base_atom.
   long frame_base_offset;
+
+  // If frame_base_atom == DW_OP_list, enter_function caches here the
+  // frame base that the location list gives at frameBaseListPC, in the
+  // same form as frame_base_atom and frame_base_offset.
+  // frameBaseListAtom is 0 if Fjalar cannot use the list there, and
+  // frameBaseListPC is 0 if nothing is cached.
+  Addr frameBaseListPC;
+  enum dwarf_location_atom frameBaseListAtom;
+  long frameBaseListOffset;
 
   VarList formalParameters;        // List of formal parameter variables
 

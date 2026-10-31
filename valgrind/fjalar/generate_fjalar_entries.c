@@ -1753,7 +1753,6 @@ void initializeFunctionTable(void)
           }
 
           cur_func_entry->startPC = dwarfFunctionPtr->start_pc;
-          cur_func_entry->cuBase = dwarfFunctionPtr->comp_pc;
           cur_func_entry->endPC = dwarfFunctionPtr->end_pc;
 
           FJALAR_DPRINTF("Frame base exp is: %u + %ld\n", dwarfFunctionPtr->frame_base_expression,
@@ -1768,8 +1767,6 @@ void initializeFunctionTable(void)
                          (void *)cur_func_entry->startPC,
                          cur_func_entry->name,
                          cur_func_entry->mangled_name);
-          FJALAR_DPRINTF("cur_func_entry->cuBase: %p\n",
-                         (void *)cur_func_entry->cuBase);
 
           // This seems to happen with class constructors.  If there
           // is NO C++ mangled name but there is a startPC, then

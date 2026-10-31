@@ -296,7 +296,6 @@ typedef struct
   */
 
   unsigned long frame_pc;
-  unsigned long comp_pc;  /* Top of the current compilation unit */
   unsigned long start_pc; /* Location of the function in memory */
   unsigned long end_pc;   /* Location of the highest address of an
                              instruction in the function */
