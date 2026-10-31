@@ -904,6 +904,16 @@ static void dump_all_function_exit_var_map() {
 
 #endif // debugging
 
+// Returns the leader of tag in the value union-find, for use by the tag
+// garbage collector.  Returns 0 if no set contains tag, which is the
+// case for 0, WEAK_FRESH_TAG, and any other tag that is at least
+// nextTag (such as a tag that the previous collection did not
+// renumber).  The uf_object of such a tag can hold stale data, so this
+// does not look at it.  Every tag in [1, nextTag) is in a set.
+static UInt gc_val_uf_find_leader(UInt tag) {
+  return (tag < nextTag) ? val_uf_find_leader(tag) : 0;
+}
+
 // Pre: the ppt_entry/exit_var_tags array has been updated to reflect
 // the changes in the val tag numbers.
 // Now we must rebuild the ppt_entry/exit_var_uf_map in a similar
@@ -936,13 +946,13 @@ static struct genhashtable* regenerate_var_uf_map(UInt num_daikon_vars,
     // if leader, then already done
     if (uf_obj != uf_obj->parent) {
       //printf("process var map tag: %lu %p %p\n", (long unsigned int)current_var_item->src, uf_obj, uf_obj->parent);
-      reassign_tag(&new_tag, val_uf_find_leader(uf_obj->tag), p_newTagNumber);
+      reassign_tag(&new_tag, gc_val_uf_find_leader(uf_obj->tag), p_newTagNumber);
       // I don't think we need to call reassign_tag, the argument has already
       // been processed in the reasign_tag loop above. The following
       // should work, I will test later.
       // new_parent_tag = g_oldToNewMap[val_uf_find_leader(var_uf_map_find_leader(ppt_var_uf_map, uf_obj->parent->tag))];
       reassign_tag(&new_parent_tag,
-                   val_uf_find_leader(var_uf_map_find_leader(ppt_var_uf_map, uf_obj->parent->tag)),
+                   gc_val_uf_find_leader(var_uf_map_find_leader(ppt_var_uf_map, uf_obj->parent->tag)),
                    p_newTagNumber);
       //printf("new tag: %u, new parent tag: %u\n", new_tag, new_parent_tag);
       var_uf_map_union(new_var_uf_map, new_tag, new_parent_tag);
@@ -975,13 +985,17 @@ static struct genhashtable* regenerate_var_uf_map(UInt num_daikon_vars,
 // overwrite the contents of the address addr the new tag associated
 // with leaderTag, thus effectively re-assigning the tag held at that
 // address to a newer, smaller tag.
-
-// Pre: leaderTag != 0
+//
+// If leaderTag is 0, which means that no set contains the tag at addr,
+// sets the tag at addr to 0 instead.
 static void reassign_tag(UInt* addr,
                          UInt leaderTag,
                          UInt* p_newTagNumber) {
 
-  if (g_oldToNewMap[leaderTag]) {
+  if (leaderTag == 0) {
+    *addr = 0;
+  }
+  else if (g_oldToNewMap[leaderTag]) {
     *addr = g_oldToNewMap[leaderTag];
   }
   else {
@@ -993,21 +1007,11 @@ static void reassign_tag(UInt* addr,
 }
 
 // Reassigns the value tag at addr to the new tag for its leader.
-// Leaves 0 and WEAK_FRESH_TAG unchanged, because they have no
-// uf_object and are not real tags.  Sets any other tag that has no
-// uf_object to 0, because no set contains it.
+// Leaves 0 and WEAK_FRESH_TAG unchanged, because they are not real
+// tags.  Sets any other tag that no set contains to 0.
 static void reassign_val_tag(UInt* addr, UInt* p_newTagNumber) {
-  UInt leaderTag;
-
-  if ((*addr == 0) || (*addr == WEAK_FRESH_TAG)) {
-    return;
-  }
-  leaderTag = val_uf_find_leader(*addr);
-  if (leaderTag == 0) {
-    *addr = 0;
-  }
-  else {
-    reassign_tag(addr, leaderTag, p_newTagNumber);
+  if ((*addr != 0) && (*addr != WEAK_FRESH_TAG)) {
+    reassign_tag(addr, gc_val_uf_find_leader(*addr), p_newTagNumber);
   }
 }
 
@@ -1128,7 +1132,7 @@ static void garbage_collect_tags(void) {
           reassign_tag(p_entry_tag,
                        // We need to first find the leader in var_uf_map,
                        // then find the leader of that in val_uf:
-                       val_uf_find_leader(var_uf_map_find_leader(cur_entry->ppt_entry_var_uf_map, *p_entry_tag)),
+                       gc_val_uf_find_leader(var_uf_map_find_leader(cur_entry->ppt_entry_var_uf_map, *p_entry_tag)),
                        &newTagNumber);
         }
       }
@@ -1142,7 +1146,7 @@ static void garbage_collect_tags(void) {
         reassign_tag(p_exit_tag,
                      // We need to first find the leader in var_uf_map,
                      // then find the leader of that in val_uf:
-                     val_uf_find_leader(var_uf_map_find_leader(cur_entry->ppt_exit_var_uf_map, *p_exit_tag)),
+                     gc_val_uf_find_leader(var_uf_map_find_leader(cur_entry->ppt_exit_var_uf_map, *p_exit_tag)),
                      &newTagNumber);
       }
     }
