@@ -193,6 +193,7 @@ long ftell(FILE *stream);
 /* stdlib.h */
 
 // rename from abort to avoid conflict with coregrind::abort (markro)
+__attribute__ ((__noreturn__))
 void my_abort(void);
 
 long int strtol(const char *nptr, char **endptr, int base);
