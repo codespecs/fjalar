@@ -111,8 +111,6 @@ jobs:
         run: |
           grep -m1 '^model name' /proc/cpuinfo; grep -m1 '^flags' /proc/cpuinfo
           gdb --version || echo "gdb is not installed"
-          # The version of bfd.h that dwarf.c, readelf.c, and elfcomm.c use.
-          rpm -q binutils-devel 2>/dev/null || dpkg-query -W binutils-dev 2>/dev/null || echo "binutils-dev(el) version unknown"
       - name: Build
         run: make build
       - name: check-regtest.sh
@@ -146,8 +144,6 @@ jobs:
         run: |
           grep -m1 '^model name' /proc/cpuinfo; grep -m1 '^flags' /proc/cpuinfo
           gdb --version || echo "gdb is not installed"
-          # The version of bfd.h that dwarf.c, readelf.c, and elfcomm.c use.
-          rpm -q binutils-devel 2>/dev/null || dpkg-query -W binutils-dev 2>/dev/null || echo "binutils-dev(el) version unknown"
       - name: Build
         run: make build
       - name: check-regtest.sh

@@ -21,7 +21,7 @@
 #define _ELF_LOONGARCH_H
 
 #include "elf/reloc-macros.h"
-//#include "libiberty.h"  // not used for Fjalar
+#include "libiberty.h"
 
 START_RELOC_NUMBERS (elf_loongarch_reloc_type)
 /* Used by the dynamic linker.  */

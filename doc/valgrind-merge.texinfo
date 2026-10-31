@@ -137,12 +137,6 @@ git clone https://github.com/codespecs/daikon.git
 git clone https://github.com/codespecs/fjalar.git
 @end example
 
-If your operating system is Ubuntu, run
-@example
-sudo apt -yqq install binutils-dev
-@end example
-
-
 @node Ensure your source is up to date
 @section Ensure your source is up to date
 
@@ -962,9 +956,9 @@ such as @file{/tmp/$USER/binutils/2.39-2.42/binutils-Fjalar.diff}.  It is a
 checklist for verifying that the merge kept each of Fjalar's changes.  A
 conflict shows Fjalar's side, but a merge can lose a change without
 reporting a conflict:  for example, if upstream moved or rewrote the code,
-the new copy lacks Fjalar's @code{#if 0}, @code{printf} guard, or
-@code{VG_(..)} wrapper.  For each hunk in the diff, find the corresponding
-code in the merged file and check that it still has Fjalar's change.
+the new copy lacks Fjalar's @code{#if 0} or @code{printf} guard.  For each
+hunk in the diff, find the corresponding code in the merged file and check
+that it still has Fjalar's change.
 
 If the conflicts are too many to merge by hand, undo the merge and merge
 an intermediate Binutils release first.  Complete that merge, including
@@ -1054,37 +1048,13 @@ rather than adding the libraries it needs.
 Support for zstd-compressed debug sections (Binutils 2.40 and later):
 make sure that it compiles away when @code{HAVE_ZSTD} is not defined.
 @item
-Newer @file{bfd.h} definitions: @file{dwarf.c} and @file{readelf.c}
-include the @emph{system} @file{bfd.h} (from the
-@file{binutils-dev} or @file{binutils-devel} package), which may be older
-than the Binutils being merged.  Check that every bfd macro and function
-the new code uses exists in the oldest @file{bfd.h} that continuous
-integration uses, and add local definitions for any that do not.
-To find that @file{bfd.h}, run the following for each Docker image named
-in @file{.github/workflows/ci.yml} or @file{azure-pipelines.yml}.
-@option{--pull=always} makes @command{docker} use the current image rather
-than an older copy cached on your machine.  (As of October 2026, the
-oldest is Binutils 2.41, in @samp{mdernst/daikon-rockylinux-jdk25-plus},
-which is Rocky Linux 10.)
-
-@example
-# Ubuntu images
-docker run --rm --pull=always \
-  mdernst/daikon-ubuntu-jdk11-plus:latest dpkg-query -W binutils-dev
-# Rocky Linux images
-docker run --rm --pull=always \
-  mdernst/daikon-rockylinux-jdk25-plus:latest rpm -q binutils-devel
-@end example
-
-@noindent
-To check whether that @file{bfd.h} defines a given name, set
-@code{IMAGE} to the image that has the oldest @file{bfd.h}:
-
-@example
-IMAGE=mdernst/daikon-rockylinux-jdk25-plus
-docker run --rm --pull=always $IMAGE:latest \
-  grep -w NAME /usr/include/bfd.h
-@end example
+Definitions from Binutils headers that Fjalar replaces:  the copies
+include Fjalar's own @file{sysdep.h}, @file{bfd.h}, @file{libiberty.h},
+and a few other headers, in @file{valgrind/fjalar/binutils-shim/}, rather
+than Binutils' or the system's.  Each defines only what the copies use.
+If the new code uses a definition that one of them lacks, compilation
+fails; add the definition, taken from the same Binutils release as the new
+code.  (Binutils' @file{bfd.h} is generated from @file{bfd/bfd-in2.h}.)
 @end itemize
 
 After you have resolved the conflicts, check that no call of a Fjalar
@@ -1166,19 +1136,20 @@ $INV/fjalar/compare-warnings.sh --binutils $INV/fjalar/build-before.log $INV/fja
 @file{build-before.log}.)  It is a good idea to modify the code to remove as
 many of these new warnings as possible to make subsequent merges easier.
 
-Programs written to run under the Valgrind tool must obey certain
-requirements with respect to the use of the C runtime library.
-In particular, most of those routines have been replaced
-with Valgrind equivalents. Thus, a call to @code{assert} must be replaced
-with a call to @code{tl_assert}.  The most common changes you will see
-are for the memory allocation, string manipulation and file output
-routines.  The name of the routine must be wrapped in @code{VG_(..)}.
-For example: @code{VG_(malloc)} or @code{VG_(strlen)}.
-It is not
-critical to find and correct all of these changes in your first
-pass over the modified code.  They will be identified via an
-"implicit declaration" warning from the compiler and an
-"undefined reference" error from the linker.
+A Valgrind tool cannot call the C runtime library.  Fjalar's
+@file{sysdep.h}, in @file{valgrind/fjalar/binutils-shim/}, which the
+copies of Binutils files include first, maps each C library function that
+they call, such as @code{malloc} or @code{strlen}, to its Valgrind
+equivalent, such as @code{VG_(malloc)} or @code{VG_(strlen)}.  Fjalar's
+@file{assert.h}, in the same directory, maps @code{assert} to
+@code{tl_assert}.  So do not edit a call of a C library function in new
+code.  If new code calls a C library function that @file{sysdep.h} does
+not map and that @file{my_libc.c} does not define, the compiler reports an
+"implicit declaration" error (GCC before version 14 reports only a
+warning) or, if some header declares the function, the linker reports an
+"undefined reference" error; then add a macro for
+the function to @file{sysdep.h}, or, if Valgrind has no equivalent, define
+the function in @file{my_libc.c}.
 
 The other major area of difficulty when doing the source merge
 is with the @code{printf} calls
@@ -1248,8 +1219,7 @@ TODO:  This trick could be applied elsewhere.  For instance,
 the routine @code{display_loc_list} in @file{dwarf.c} could use the #define trick (for 3 output
 routines, not just @code{printf}).
 
-A missed @code{VG_(..)} wrapper or a missing @code{printf}
-that needs to be protected should not be a big problem.  Typically, the
+A missing @code{printf} guard should not be a big problem.  Typically, the
 Fjalar tool will operate as expected but contain superfluous information
 in its output.  This will likely be caught as a diff in a @file{.out}
 file when running the kvasir-tests regressions.

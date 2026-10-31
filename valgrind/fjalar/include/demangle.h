@@ -29,7 +29,7 @@
 #if !defined (DEMANGLE_H)
 #define DEMANGLE_H
 
-//#include "libiberty.h"  // not used for Fjalar
+#include "libiberty.h"
 
 #ifdef __cplusplus
 extern "C" {
