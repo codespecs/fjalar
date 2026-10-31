@@ -99,6 +99,11 @@ Bool fjalar_tool_process_cmd_line_option(const HChar* arg);
 // Runs when the program is about to exit:
 void fjalar_tool_finish(void);
 
+// Runs when Valgrind creates thread child, before child runs.  Thread
+// parent created child, and child starts with a copy of parent's guest
+// state.  For the program's first thread, parent is VG_INVALID_THREADID.
+void fjalar_tool_pre_thread_ll_create(ThreadId parent, ThreadId child);
+
 // These functions are called during every instance of a function
 // entrance and exit, respectively:
 void fjalar_tool_handle_function_entrance(FunctionExecutionState* f_state);

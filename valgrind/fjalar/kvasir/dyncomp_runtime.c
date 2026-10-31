@@ -1012,23 +1012,12 @@ static void reassign_val_tag(UInt* addr, UInt* p_newTagNumber) {
 }
 
 
-// Sets to 0 the guest-state tags of every thread slot strictly between
-// lowTid and highTid.  Each of those slots must be empty.
-static void clear_empty_thread_slot_tags(ThreadId lowTid, ThreadId highTid) {
-  ThreadId tid;
-
-  for (tid = lowTid + 1; tid < highTid; tid++) {
-    VG_(memset)(VG_(get_tag_ptr_for_guest_offset)(tid, 0), 0,
-                4 * sizeof(VexGuestArchState));
-  }
-}
-
 // Runs the tag garbage collector.  It must run only at a safe point;
 // see dyncomp_gc_at_safe_point().
 static void garbage_collect_tags(void) {
   UInt primaryIndex, secondaryIndex;
   FuncIterator* funcIt;
-  ThreadId tid, prevTid;
+  ThreadId tid;
   Addr stack_min, stack_max;
   UInt curTag, i;
 
@@ -1199,22 +1188,16 @@ static void garbage_collect_tags(void) {
   // has a 4-byte slot (see VG_(get_tag_ptr_for_guest_offset)), which
   // holds a tag or 0, so scan all of them.  (On AMD64 a tag is stored
   // as a 64-bit word, and the slot after it holds the upper half of
-  // that word, which is 0.)
-  //
-  // The tags of an empty thread slot are not renumbered, so set them to
-  // 0.  Otherwise a new thread that Valgrind puts in that slot would
-  // start with tags that no longer denote the sets they did.
-  prevTid = VG_INVALID_THREADID;
+  // that word, which is 0.)  An empty thread slot is not scanned, and
+  // its stale tags are never read, because dyncomp_copy_thread_tags()
+  // overwrites them when Valgrind puts a new thread in the slot.
   VG_(thread_stack_reset_iter)(&tid);
   while (VG_(thread_stack_next)(&tid, &stack_min, &stack_max)) {
-    clear_empty_thread_slot_tags(prevTid, tid);
     for (i = 0; i < sizeof(VexGuestArchState); i++) {
       reassign_val_tag(VG_(get_tag_ptr_for_guest_offset)(tid, i),
                        &newTagNumber);
     }
-    prevTid = tid;
   }
-  clear_empty_thread_slot_tags(prevTid, VG_N_THREADS);
 
   // 4.) Load tag snapshots:
 
@@ -1266,6 +1249,21 @@ void dyncomp_gc_at_safe_point(ThreadId tid, ULong blocks_dispatched) {
        >= (UInt)dyncomp_gc_after_n_tags)) {
     totalNumTagsAssignedAtLastGC = totalNumTagsAssigned;
     garbage_collect_tags();
+  }
+}
+
+// Gives new thread child the guest-state tags of thread parent, because
+// child starts with a copy of parent's guest state.  If parent is
+// VG_INVALID_THREADID, sets child's guest-state tags to 0.
+void dyncomp_copy_thread_tags(ThreadId parent, ThreadId child) {
+  UInt* childTags = VG_(get_tag_ptr_for_guest_offset)(child, 0);
+
+  if (parent == VG_INVALID_THREADID) {
+    VG_(memset)(childTags, 0, 4 * sizeof(VexGuestArchState));
+  }
+  else {
+    VG_(memcpy)(childTags, VG_(get_tag_ptr_for_guest_offset)(parent, 0),
+                4 * sizeof(VexGuestArchState));
   }
 }
 
