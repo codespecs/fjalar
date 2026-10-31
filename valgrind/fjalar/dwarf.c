@@ -38,45 +38,19 @@
    the ELF binary and then calls functions in typedata.c
 */
 
-// Fjalar code
-
-#include "my_libc.h"
-
-#include "pub_tool_basics.h"
-#include "pub_tool_libcassert.h"
-#include "pub_tool_libcbase.h"
-#include "pub_tool_libcprint.h"
-#include "pub_tool_mallocfree.h"
-
-// end Fjalar code
-
-//#include <execinfo.h>  // for backtrace
-#include <limits.h> // for LONG_MIN
-
-//#include "sysdep.h"
-// from sysdep.h
-# define ngettext(Msgid1, Msgid2, n) \
-  (n == 1 ? Msgid1 : Msgid2)
-//#include "libiberty.h"
-
-// Newer versions of bfd.h include a startswith function.  We cannot
-// use it as it references strncmp and strlen (we need VG_ versions).
-// The define changes its name to keep us from using it.
-#define startswith startswith_BFD_H
+#include "sysdep.h"
+#include "libiberty.h"
 #include "bfd.h"
-#undef startswith
-
 #include <stdint.h>
 #include "bucomm.h"
 #include "elfcomm.h"
 #include "elf/common.h"
-// includes not needed by fjalar
-//#include "dwarf2.h"
-//#include "dwarf.h"
-//#include "gdb/gdb-index.h"
-//#include "filenames.h"
-//#include "safe-ctype.h"
-//#include <assert.h>  // Valgrind tools use tl_assert instead
+#include "dwarf2.h"
+#include "dwarf.h"
+#include "gdb/gdb-index.h"
+#include "filenames.h"
+#include "safe-ctype.h"
+#include <assert.h>
 
 #ifdef HAVE_LIBDEBUGINFOD
 #include <elfutils/debuginfod.h>
@@ -495,7 +469,7 @@ print_dwarf_view (dwarf_vma value, unsigned num_bytes, int force)
   else
     len = num_bytes * 2;
 
-  tl_assert (value == (unsigned long) value);
+  assert (value == (unsigned long) value);
   if (value || force)
     printf ("v%0*lx ", len - 1, (unsigned long) value);
   else
@@ -586,7 +560,7 @@ read_leb128 (unsigned char *data,
 	  amount = sizeof (VAL);					\
 	}								\
       if (ENABLE_CHECKING)						\
-	tl_assert ((PTR) <= (END));					\
+	assert ((PTR) <= (END));					\
       size_t avail = (END) - (PTR);					\
       if ((PTR) > (END))						\
 	avail = 0;							\
@@ -712,7 +686,7 @@ process_extended_line_op (unsigned char * data,
 	size_t l;
 
 	name = data;
-	l = VG_(strnlen) ((char *) data, end - data);
+	l = strnlen ((char *) data, end - data);
 	data += l;
 	if (data < end)
 	  data++;
@@ -859,7 +833,7 @@ fetch_indirect_string (dwarf_vma offset)
   /* Unfortunately we cannot rely upon the .debug_str section ending with a
      NUL byte.  Since our caller is expecting to receive a well formed C
      string we test for the lack of a terminating byte here.  */
-  if (VG_(strnlen) ((const char *) ret, section->size - offset)
+  if (strnlen ((const char *) ret, section->size - offset)
       == section->size - offset)
     ret = (const unsigned char *)
       _("<no NUL byte at end of .debug_str section>");
@@ -887,7 +861,7 @@ fetch_indirect_line_string (dwarf_vma offset)
   /* Unfortunately we cannot rely upon the .debug_line_str section ending
      with a NUL byte.  Since our caller is expecting to receive a well formed
      C string we test for the lack of a terminating byte here.  */
-  if (VG_(strnlen) ((const char *) ret, section->size - offset)
+  if (strnlen ((const char *) ret, section->size - offset)
       == section->size - offset)
     ret = (const unsigned char *)
       _("<no NUL byte at end of .debug_line_str section>");
@@ -955,7 +929,7 @@ fetch_indexed_string (dwarf_vma           idx,
   /* Unfortunately we cannot rely upon str_section ending with a NUL byte.
      Since our caller is expecting to receive a well formed C string we test
      for the lack of a terminating byte here.  */
-  if (VG_(strnlen) (ret, str_section->size - str_offset)
+  if (strnlen (ret, str_section->size - str_offset)
       == str_section->size - str_offset)
     return _("<no NUL byte at end of section>");
 
@@ -1126,15 +1100,15 @@ free_all_abbrevs (void)
 	    {
 	      abbrev_attr *next_attr = attr->next;
 
-	      VG_(free) (attr);
+	      free (attr);
 	      attr = next_attr;
 	    }
 
-	  VG_(free) (abbrv);
+	  free (abbrv);
 	  abbrv = next_abbrev;
 	}
 
-      VG_(free) (list);
+      free (list);
       list = next;
     }
 
@@ -1195,10 +1169,7 @@ add_abbrev (unsigned long  number,
 {
   abbrev_entry *  entry;
 
-  entry = (abbrev_entry *) VG_(malloc) ("dwarf.c: add_abbrev", sizeof (*entry));
-  if (entry == NULL)
-    /* ugg */
-    return;
+  entry = (abbrev_entry *) xmalloc (sizeof (*entry));
 
   entry->number     = number;
   entry->tag        = tag;
@@ -1207,7 +1178,7 @@ add_abbrev (unsigned long  number,
   entry->last_attr  = NULL;
   entry->next       = NULL;
 
-  tl_assert (list != NULL);
+  assert (list != NULL);
 
   if (list->first_abbrev == NULL)
     list->first_abbrev = entry;
@@ -1225,17 +1196,14 @@ add_abbrev_attr (unsigned long    attribute,
 {
   abbrev_attr *attr;
 
-  attr = (abbrev_attr *) VG_(malloc) ("dwarf.c: add_abbrev_attr", sizeof (*attr));
-  if (attr == NULL)
-    /* ugg */
-    return;
+  attr = (abbrev_attr *) xmalloc (sizeof (*attr));
 
   attr->attribute      = attribute;
   attr->form           = form;
   attr->implicit_const = implicit_const;
   attr->next           = NULL;
 
-  tl_assert (list != NULL && list->last_abbrev != NULL);
+  assert (list != NULL && list->last_abbrev != NULL);
 
   if (list->last_abbrev->first_attr == NULL)
     list->last_abbrev->first_attr = attr;
@@ -1449,7 +1417,7 @@ decode_location_expression (unsigned char * data,
     {
       op = *data++;
 
-      if(ll) {ll->atom = op;}
+      if(ll) {ll->atom = op; ll->num_ops++;}
 
       /* An op that Fjalar's evaluator cannot apply, such as an unreadable register,
 	 DW_OP_stack_value, or DW_OP_plus (the evaluator has no operand
@@ -2111,7 +2079,7 @@ fetch_alt_indirect_string (dwarf_vma offset)
       /* Unfortunately we cannot rely upon the .debug_str section ending with a
 	 NUL byte.  Since our caller is expecting to receive a well formed C
 	 string we test for the lack of a terminating byte here.  */
-      if (VG_(strnlen) ((const char *) ret, section->size - offset)
+      if (strnlen ((const char *) ret, section->size - offset)
 	  == section->size - offset)
 	return _("<no NUL byte at end of alt .debug_str section>");
 
@@ -2317,7 +2285,7 @@ skip_attr_bytes (unsigned long form,
       break;
 
     case DW_FORM_string:
-      inc = VG_(strnlen) ((char *) data, end - data) + 1;
+      inc = strnlen ((char *) data, end - data) + 1;
       break;
 
     case DW_FORM_block:
@@ -2960,7 +2928,7 @@ read_and_display_attr_value (unsigned long           attribute,
          harvest_string(entry, attribute, (const char*)data);
       if (!do_loc)
 	printf ("%c%.*s", delimiter, (int) (end - data), data);
-      data += VG_(strnlen) ((char *) data, end - data);
+      data += strnlen ((char *) data, end - data);
       if (data < end)
 	data++;
       break;
@@ -3046,8 +3014,8 @@ read_and_display_attr_value (unsigned long           attribute,
     case DW_FORM_strx4:
       if (!do_loc)
 	{
-	  const char *suffix = section ? VG_(strrchr) (section->name, '.') : NULL;
-	  bool dwo = suffix && VG_(strcmp) (suffix, ".dwo") == 0;
+	  const char *suffix = section ? strrchr (section->name, '.') : NULL;
+	  bool dwo = suffix && strcmp (suffix, ".dwo") == 0;
 	  const char *strng;
 
 	  strng = fetch_indexed_string (uvalue, this_set, offset_size, dwo,
@@ -3098,8 +3066,8 @@ read_and_display_attr_value (unsigned long           attribute,
       if (!do_loc)
 	{
 	  dwarf_vma base, index;
-	  const char *suffix = VG_(strrchr) (section->name, '.');
-	  bool dwo = suffix && VG_(strcmp) (suffix, ".dwo") == 0;
+	  const char *suffix = strrchr (section->name, '.');
+	  bool dwo = suffix && strcmp (suffix, ".dwo") == 0;
 
 	  if (form == DW_FORM_loclistx)
 	    {
@@ -3781,6 +3749,8 @@ read_and_display_attr_value (unsigned long           attribute,
           if (ok_to_harvest) {
               // frame base location list
               harvest_frame_base(entry, DW_OP_list, uvalue);
+              if (attribute == DW_AT_location)
+                harvest_formal_param_location_list(entry, uvalue);
           }
           printf ("(");
           printf ("location list");
@@ -4039,7 +4009,7 @@ process_debug_info (struct dwarf_section * section,
 	 before it is used.  A corrupt file could easily contain references
 	 to a unit for which information has not been made available.  So
 	 we ensure that the array is zeroed here.  */
-      VG_(memset) (debug_information, 0, num_units * sizeof (*debug_information));
+      memset (debug_information, 0, num_units * sizeof (*debug_information));
 
       alloc_num_debug_info_entries = num_units;
     }
@@ -4071,7 +4041,7 @@ process_debug_info (struct dwarf_section * section,
     introduce (section, false);
 
   free_all_abbrevs ();
-  VG_(free) (cu_abbrev_map);
+  free (cu_abbrev_map);
   cu_abbrev_map = NULL;
   next_free_abbrev_map_entry = 0;
 
@@ -4568,7 +4538,7 @@ process_debug_info (struct dwarf_section * section,
 	    (debug_information && unit < alloc_num_debug_info_entries)
 	    ? debug_information + unit : NULL;
 
-	  tl_assert (!debug_info_p
+	  assert (!debug_info_p
 		  || (debug_info_p->num_loc_offsets
 		      == debug_info_p->num_loc_views));
 
@@ -4608,7 +4578,7 @@ process_debug_info (struct dwarf_section * section,
 	      case 1:
 		//debug_info_p->loc_views [debug_info_p->num_loc_views] = vm1;  // Fjalar doesn't need
 		debug_info_p->num_loc_views++;
-		tl_assert (debug_info_p->num_loc_views
+		assert (debug_info_p->num_loc_views
 			== debug_info_p->num_loc_offsets);
 		break;
 
@@ -4621,7 +4591,7 @@ process_debug_info (struct dwarf_section * section,
 		break;
 
 	      default:
-		tl_assert (0);
+		assert (0);
 	    }
 
 	  if (entry->children)
@@ -5041,7 +5011,7 @@ display_debug_lines_raw (struct dwarf_section *  section,
       if (startswith (section->name, ".debug_line.")
 	  /* Note: the following does not apply to .debug_line.dwo sections.
 	     These are full debug_line sections.  */
-	  && VG_(strcmp) (section->name, ".debug_line.dwo") != 0)
+	  && strcmp (section->name, ".debug_line.dwo") != 0)
 	{
 	  /* Sections named .debug_line.<foo> are fragments of a .debug_line
 	     section containing just the Line Number Statements.  They are
@@ -5158,7 +5128,7 @@ display_debug_lines_raw (struct dwarf_section *  section,
 		      dir_table_index++;
 		      // end of Fjalar code
 
-		      data += VG_(strnlen) ((char *) data, end - data);
+		      data += strnlen ((char *) data, end - data);
 		      if (data < end)
 			data++;
 		    }
@@ -5204,7 +5174,7 @@ display_debug_lines_raw (struct dwarf_section *  section,
 		      if (fjalar_debug_dump)
 		      printf ("  %u\t", state_machine_regs.last_file_entry);
 		      file_name = (char*)data;  // fjalar code
-		      data += VG_(strnlen) ((char *) data, end - data);
+		      data += strnlen ((char *) data, end - data);
 		      if (data < end)
 			data++;
 
@@ -6557,7 +6527,7 @@ display_debug_pubnames_worker (struct dwarf_section *section,
 	    printf ("    %-6lx\t%.*s\n",
 		    (unsigned long) offset, (int) maxprint, data);
 
-	  data += VG_(strnlen) ((char *) data, maxprint);
+	  data += strnlen ((char *) data, maxprint);
 	  if (data < start)
 	    data++;
 	  if (data >= start)
@@ -6628,7 +6598,7 @@ display_debug_macinfo (struct dwarf_section *section,
 	case DW_MACINFO_define:
 	  READ_ULEB (lineno, curr, end);
 	  string = curr;
-	  curr += VG_(strnlen) ((char *) string, end - string);
+	  curr += strnlen ((char *) string, end - string);
 	  printf (_(" DW_MACINFO_define - lineno : %u macro : %.*s\n"),
 		  lineno, (int) (curr - string), string);
 	  if (curr < end)
@@ -6638,7 +6608,7 @@ display_debug_macinfo (struct dwarf_section *section,
 	case DW_MACINFO_undef:
 	  READ_ULEB (lineno, curr, end);
 	  string = curr;
-	  curr += VG_(strnlen) ((char *) string, end - string);
+	  curr += strnlen ((char *) string, end - string);
 	  printf (_(" DW_MACINFO_undef - lineno : %u macro : %.*s\n"),
 		  lineno, (int) (curr - string), string);
 	  if (curr < end)
@@ -6651,7 +6621,7 @@ display_debug_macinfo (struct dwarf_section *section,
 
 	    READ_ULEB (constant, curr, end);
 	    string = curr;
-	    curr += VG_(strnlen) ((char *) string, end - string);
+	    curr += strnlen ((char *) string, end - string);
 	    printf (_(" DW_MACINFO_vendor_ext - constant : %u string : %.*s\n"),
 		    constant, (int) (curr - string), string);
 	    if (curr < end)
@@ -9721,7 +9691,7 @@ frame_display_row (Frame_Chunk *fc, int *need_col_headers, unsigned int *max_reg
   if (fjalar_debug_dump)
   print_dwarf_vma (fc->pc_begin, eh_addr_size);
   if (fc->cfa_exp)
-    VG_(strcpy) (tmp, "exp");
+    strcpy (tmp, "exp");
   else
     sprintf (tmp, "%s%+d", regname (fc->cfa_reg, 1), (int) fc->cfa_offset);
   if (fjalar_debug_dump)
@@ -9734,10 +9704,10 @@ frame_display_row (Frame_Chunk *fc, int *need_col_headers, unsigned int *max_reg
 	  switch (fc->col_type[r])
 	    {
 	    case DW_CFA_undefined:
-	      VG_(strcpy) (tmp, "u");
+	      strcpy (tmp, "u");
 	      break;
 	    case DW_CFA_same_value:
-	      VG_(strcpy) (tmp, "s");
+	      strcpy (tmp, "s");
 	      break;
 	    case DW_CFA_offset:
 	      sprintf (tmp, "c%+d", fc->col_offset[r]);
@@ -9749,13 +9719,13 @@ frame_display_row (Frame_Chunk *fc, int *need_col_headers, unsigned int *max_reg
 	      sprintf (tmp, "%s", regname (fc->col_offset[r], 0));
 	      break;
 	    case DW_CFA_expression:
-	      VG_(strcpy) (tmp, "exp");
+	      strcpy (tmp, "exp");
 	      break;
 	    case DW_CFA_val_expression:
-	      VG_(strcpy) (tmp, "vexp");
+	      strcpy (tmp, "vexp");
 	      break;
 	    default:
-	      VG_(strcpy) (tmp, "n/a");
+	      strcpy (tmp, "n/a");
 	      break;
 	    }
 	  if (fjalar_debug_dump)
@@ -9784,7 +9754,7 @@ read_cie (unsigned char *start, unsigned char *end,
     return end;
 
   fc = (Frame_Chunk *) xmalloc (sizeof (Frame_Chunk));
-  VG_(memset) (fc, 0, sizeof (Frame_Chunk));
+  memset (fc, 0, sizeof (Frame_Chunk));
 
   fc->col_type = (short int *) xmalloc (sizeof (short int));
   fc->col_offset = (int *) xmalloc (sizeof (int));
@@ -9803,7 +9773,7 @@ read_cie (unsigned char *start, unsigned char *end,
       goto fail;
     }
 
-  if (VG_(strcmp) (fc->augmentation, "eh") == 0)
+  if (strcmp (fc->augmentation, "eh") == 0)
     {
       if (eh_addr_size > (size_t) (end - start))
 	goto fail;
@@ -9910,9 +9880,9 @@ read_cie (unsigned char *start, unsigned char *end,
   return start;
 
  fail:
-  VG_(free) (fc->col_offset);
-  VG_(free) (fc->col_type);
-  VG_(free) (fc);
+  free (fc->col_offset);
+  free (fc->col_type);
+  free (fc);
   return end;
 }
 
@@ -9962,7 +9932,7 @@ display_debug_frames (struct dwarf_section *section,
   Frame_Chunk *chunks = NULL, *forward_refs = NULL;
   Frame_Chunk *remembered_state = NULL;
   Frame_Chunk *rs;
-  bool is_eh = VG_(strcmp) (section->name, ".eh_frame") == 0;
+  bool is_eh = strcmp (section->name, ".eh_frame") == 0;
   unsigned int max_regs = 0;
   const char *bad_reg = _("bad register: ");
   unsigned int saved_eh_addr_size = eh_addr_size;
@@ -10169,7 +10139,7 @@ display_debug_frames (struct dwarf_section *section,
 	    }
 
 	  fc = &fde_fc;
-	  VG_(memset) (fc, 0, sizeof (Frame_Chunk));
+	  memset (fc, 0, sizeof (Frame_Chunk));
 
 	  if (!cie)
 	    {
@@ -10192,8 +10162,8 @@ display_debug_frames (struct dwarf_section *section,
 	      fc->ncols = cie->ncols;
 	      fc->col_type = (short int *) xcmalloc (fc->ncols, sizeof (short int));
 	      fc->col_offset =  (int *) xcmalloc (fc->ncols, sizeof (int));
-	      VG_(memcpy) (fc->col_type, cie->col_type, fc->ncols * sizeof (short int));
-	      VG_(memcpy) (fc->col_offset, cie->col_offset, fc->ncols * sizeof (int));
+	      memcpy (fc->col_type, cie->col_type, fc->ncols * sizeof (short int));
+	      memcpy (fc->col_offset, cie->col_offset, fc->ncols * sizeof (int));
 	      fc->augmentation = cie->augmentation;
 	      fc->ptr_size = cie->ptr_size;
 	      eh_addr_size = cie->ptr_size;
@@ -10750,8 +10720,8 @@ display_debug_frames (struct dwarf_section *section,
 	      rs->col_type = (short int *) xcmalloc (rs->ncols,
 						     sizeof (* rs->col_type));
 	      rs->col_offset = (int *) xcmalloc (rs->ncols, sizeof (* rs->col_offset));
-	      VG_(memcpy) (rs->col_type, fc->col_type, rs->ncols * sizeof (* fc->col_type));
-	      VG_(memcpy) (rs->col_offset, fc->col_offset, rs->ncols * sizeof (* fc->col_offset));
+	      memcpy (rs->col_type, fc->col_type, rs->ncols * sizeof (* fc->col_type));
+	      memcpy (rs->col_offset, fc->col_offset, rs->ncols * sizeof (* fc->col_offset));
 	      rs->next = remembered_state;
 	      remembered_state = rs;
 	      break;
@@ -10774,12 +10744,12 @@ display_debug_frames (struct dwarf_section *section,
 		      fc->ncols = 0;
 		      break;
 		    }
-		  VG_(memcpy) (fc->col_type, rs->col_type, rs->ncols * sizeof (* rs->col_type));
-		  VG_(memcpy) (fc->col_offset, rs->col_offset,
+		  memcpy (fc->col_type, rs->col_type, rs->ncols * sizeof (* rs->col_type));
+		  memcpy (fc->col_offset, rs->col_offset,
 			  rs->ncols * sizeof (* rs->col_offset));
-		  VG_(free) (rs->col_type);
-		  VG_(free) (rs->col_offset);
-		  VG_(free) (rs);
+		  free (rs->col_type);
+		  free (rs->col_offset);
+		  free (rs);
 		}
 	      else if (do_debug_frames_interp)
 	       if (fjalar_debug_dump)
@@ -11024,12 +10994,12 @@ display_debug_frames (struct dwarf_section *section,
 
       if (fde_fc.col_type != NULL)
 	{
-	  VG_(free) (fde_fc.col_type);
+	  free (fde_fc.col_type);
 	  fde_fc.col_type = NULL;
 	}
       if (fde_fc.col_offset != NULL)
 	{
-	  VG_(free) (fde_fc.col_offset);
+	  free (fde_fc.col_offset);
 	  fde_fc.col_offset = NULL;
 	}
 
@@ -11044,30 +11014,30 @@ display_debug_frames (struct dwarf_section *section,
     {
       rs = remembered_state;
       remembered_state = rs->next;
-      VG_(free) (rs->col_type);
-      VG_(free) (rs->col_offset);
+      free (rs->col_type);
+      free (rs->col_offset);
       rs->next = NULL; /* Paranoia.  */
-      VG_(free) (rs);
+      free (rs);
     }
 
   while (chunks != NULL)
     {
       rs = chunks;
       chunks = rs->next;
-      VG_(free) (rs->col_type);
-      VG_(free) (rs->col_offset);
+      free (rs->col_type);
+      free (rs->col_offset);
       rs->next = NULL; /* Paranoia.  */
-      VG_(free) (rs);
+      free (rs);
     }
 
   while (forward_refs != NULL)
     {
       rs = forward_refs;
       forward_refs = rs->next;
-      VG_(free) (rs->col_type);
-      VG_(free) (rs->col_offset);
+      free (rs->col_type);
+      free (rs->col_offset);
       rs->next = NULL; /* Paranoia.  */
-      VG_(free) (rs);
+      free (rs);
     }
 
   return 1;
@@ -12209,7 +12179,7 @@ xcmalloc (size_t nmemb, size_t size)
       fprintf (stderr,
 	       _("Attempt to allocate an array with an excessive number of elements: 0x%lx\n"),
 	       nmemb);
-      VG_(exit) (1);
+      xexit (1);
     }
 
   return xmalloc (nmemb * size);
@@ -12228,7 +12198,7 @@ xcrealloc (void *ptr, size_t nmemb, size_t size)
       fprintf (stderr,
 	       _("Attempt to re-allocate an array with an excessive number of elements: 0x%lx\n"),
 	       nmemb);
-      VG_(exit) (1);
+      xexit (1);
     }
 
   return xrealloc (ptr, nmemb * size);
@@ -13151,15 +13121,15 @@ free_debug_memory (void)
 	{
 	  if (debug_information [i].max_loc_offsets)
 	    {
-	      VG_(free) (debug_information [i].loc_offsets);
+	      free (debug_information [i].loc_offsets);
 #if 0 // This code is not needed for Fjalar.
-	      VG_(free) (debug_information [i].have_frame_base);
+	      free (debug_information [i].have_frame_base);
 #endif // This code is not needed for Fjalar.
 	    }
 	  if (debug_information [i].max_range_lists)
-	    VG_(free) (debug_information [i].range_lists);
+	    free (debug_information [i].range_lists);
 	}
-      VG_(free) (debug_information);
+      free (debug_information);
       debug_information = NULL;
       alloc_num_debug_info_entries = num_debug_info_entries = 0;
     }

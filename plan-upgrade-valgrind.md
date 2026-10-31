@@ -30,13 +30,16 @@ Memcheck and DynComp depend tightly on Valgrind core:
    (`vex_extra_shadow[4]` in `coregrind/pub_core_threadstate.h`, plus the
    alignment assertions in `coregrind/m_scheduler/scheduler.c` and the
    spill-area size calculations in `VEX/priv/host_generic_reg_alloc2.c` and
-   `host_generic_reg_alloc3.c`), extra guest registers in
-   `VEX/pub/libvex*.h` and `VEX/priv/guest_{amd64,x86}_helpers.c`, extra
-   `VG_()` libc functions, and `configure.ac` / `Makefile.am` changes that
-   add the `fjalar` tool.
+   `host_generic_reg_alloc3.c`), the accessor
+   `VG_(get_tag_ptr_for_guest_offset)` for it in `coregrind/m_machine.c`
+   and `coregrind/pub_core_machine.h`, and `configure.ac` / `Makefile.am`
+   changes that add the `fjalar` tool.  Fjalar also changes
+   `tests/check_headers_and_includes` and backports fixes from upstream
+   to three tests that newer compilers fail to build.
 2. **Memcheck -> Fjalar**: `valgrind/fjalar/mc_*.c`, `mc_include.h`,
-   `memcheck.h` are derived from `valgrind/memcheck/`.  `mc_translate.c`
-   contains a DynComp counterpart for each case of `MC_(instrument)`.
+   `memcheck.h` are derived from `valgrind/memcheck/`.  `MC_(instrument)`
+   in `mc_translate.c` calls DynComp's `instrument_stmt_DC` after each
+   statement.
 3. **Memcheck -> DynComp**: `valgrind/fjalar/kvasir/dyncomp_translate.c` is
    derived from `memcheck/mc_translate.c` with `_DC` renaming; it must be
    updated by hand, using upstream's changes to `mc_translate.c` as a guide
@@ -68,8 +71,7 @@ Memcheck and DynComp depend tightly on Valgrind core:
   - Memcheck-derived files, such as `mc_translate.c`, `mc_main.c`, and
     `memcheck.h`, can conflict in step 6.
   - Coregrind and other upstream files can conflict in step 5.  Where
-    Fjalar backported an upstream fix (such as `$(nproc)` in
-    `auxprogs/Makefile.am`, and the GCC 15 fixes to
+    Fjalar backported an upstream fix (the GCC 15 fixes to
     `drd/tests/swapcontext.c`, `helgrind/tests/tc17_sembar.c`, and
     `none/tests/bug234814.c`), take upstream's version.
   - DynComp changes, in `kvasir/`, cause no conflict, because upstream has
@@ -175,7 +177,12 @@ Memcheck and DynComp depend tightly on Valgrind core:
    themselves, so that `valgrind-new` stays a clean clone, which becomes
    `valgrind-old` for the next merge.
 
-4. **Merge.**  Run `$FJALAR/merge-valgrind.sh`.  It checks that
+4. **Merge.**  First run `$FJALAR/diff-from-valgrind.sh --stat` and
+   `$FJALAR/diff-from-valgrind.sh`.  Check that the files that the first
+   lists, and the changes that the second shows, are the ones that the
+   appendices "Valgrind modifications" and "Memcheck modifications" of
+   `doc/valgrind-merge.texinfo` describe.  Then run
+   `$FJALAR/merge-valgrind.sh`.  It checks that
    `valgrind-old` and `valgrind-new` are at `$VOLDTAG` and `$VNEWTAG`,
    records Fjalar before the merge as `valgrind-merge/fjalar`, merges
    upstream's changes into Coregrind and into both copies of Memcheck
@@ -193,14 +200,12 @@ Memcheck and DynComp depend tightly on Valgrind core:
      `git rm` each file, using Fjalar's changes outside `valgrind/fjalar`
      and the "Valgrind modifications" appendix as a checklist.  In particular, verify each
      Fjalar change still exists after the merge:
-     `configure.ac`, top-level `Makefile.am`, `m_libcbase.c`/`pub_tool_libcbase.h`
-     (`strnlen`), `m_libcfile.c`/`pub_tool_libcfile.h` (`mkdir`, `fcntl`),
-     `m_machine.c`/`pub_tool_machine.h`/`pub_core_machine.h` (extra registers),
+     `configure.ac`, top-level `Makefile.am`,
+     `m_machine.c`/`pub_core_machine.h` (`VG_(get_tag_ptr_for_guest_offset)`),
      `pub_core_threadstate.h` (extra shadow area), `m_scheduler/scheduler.c`
-     (shadow-size assertion), VEX `host_amd64_defs.c`,
+     (shadow-size assertion), VEX
      `host_generic_reg_alloc2.c` and `host_generic_reg_alloc3.c` (spill-area
-     size; v3 is the default allocator, and the doc's "Valgrind
-     modifications" appendix omits it), `none/tests/Makefile.am`,
+     size; v3 is the default allocator), and
      `tests/check_headers_and_includes`.
    - Pay special attention to any upstream change to guest-state layout
      (`libvex_guest_amd64.h`, `libvex_guest_x86.h`) or to the shadow-area
@@ -208,21 +213,22 @@ Memcheck and DynComp depend tightly on Valgrind core:
      `vex_extra_shadow` must remain aligned on `LibVEX_GUEST_STATE_ALIGN`,
      and the size/alignment assertions in `scheduler.c` must still account
      for it.  If upstream added fields to `VexGuestAMD64State`, recheck that
-     the guest state size remains a multiple of the alignment, and that
-     Fjalar's extra guest registers are still at the offsets that DynComp
-     and `mc_machine.c` expect.
+     the guest state size remains a multiple of the alignment.
 
 6. **Memcheck conflicts** in `valgrind/fjalar/`.
    - Resolve the conflicts (as for Coregrind), using
      Fjalar's changes in `valgrind/fjalar`, including files that upstream removed but
      Fjalar modified; `git rm`
-     any that Fjalar does not need.  Remember part of `mc_translate.c`
-     lives in `fjalar/mc_translate.h`.  Preserve the #73 edits to `mc_translate.c`
-     and `memcheck.h`.
-   - In `mc_translate.c`'s `MC_(instrument)` and every helper that it
-     calls, check that every case has matching DynComp code, that new cases
-     get a DynComp counterpart, and that upstream changes to a Memcheck case
-     are mirrored in its DynComp case.  Go through
+     any that Fjalar does not need.  `fjalar/mc_translate.h` repeats
+     `IRAtom` and the IR-building macros of `mc_translate.c`; if upstream
+     changes them, change `mc_translate.h` to match.  Preserve the #73
+     edits to `mc_translate.c` and `memcheck.h`.
+   - For each case of the switch in `mc_translate.c`'s `MC_(instrument)`,
+     and each helper that it calls, check that DynComp's corresponding
+     case of `instrument_stmt_DC` in `kvasir/dyncomp_translate.c` still
+     matches it, that new cases get a DynComp counterpart there, and that
+     upstream changes to a Memcheck case are mirrored in its DynComp case.
+     Go through
      `git diff valgrind-merge/base valgrind-merge/new -- valgrind/fjalar/mc_translate.c`
      hunk by hunk, checking off each hunk as
      applied, not applicable, or ported to DynComp (step 7).
@@ -236,7 +242,9 @@ Memcheck and DynComp depend tightly on Valgrind core:
      (see "Memcheck modifications" in `doc/valgrind-merge.texinfo`).
      Likewise, check that `mc_translate.c` still has
      `#include "fjalar_mc_translate.h"`, after the definitions of `MCEnv`
-     and of the static functions that `fjalar_mc_translate.h` calls.
+     and of the static functions that `fjalar_mc_translate.h` calls, and
+     that `MC_(instrument)` still calls `begin_instrument_DC`,
+     `instrument_stmt_DC`, and `end_instrument_DC`.
    - `merge-valgrind.sh` runs `generate-fjalar-makefile.sh`, which regenerates
      `valgrind/fjalar/Makefile.am` from `valgrind/memcheck/Makefile.am`, so
      Fjalar builds every new Memcheck source file.  If
@@ -408,10 +416,10 @@ Memcheck and DynComp depend tightly on Valgrind core:
       - working in a new clone (step 1);
       - reading NEWS for every intermediate release (step 7);
       - the list of Coregrind files that need special attention (step 5),
-        especially the shadow-state layout and `host_generic_reg_alloc3.c`;
-        and, in appendix "Valgrind modifications", add
-        `host_generic_reg_alloc3.c` and make the entries match Fjalar's
-        changes outside `valgrind/fjalar` after this merge;
+        especially the shadow-state layout;
+      - in appendices "Valgrind modifications" and "Memcheck
+        modifications", entries that match Fjalar's changes after this
+        merge;
       - the `Iop_` coverage tests that `make fjalar-test` runs (step 7),
         in appendix "Supporting new VEX IR Instruction";
       - the hunk-by-hunk checkoff of `mc_translate.c` (step 6);
@@ -422,6 +430,9 @@ Memcheck and DynComp depend tightly on Valgrind core:
       before committing:  git does not ignore it, so `git add -A` would
       commit it.
     - Use the commit message "Upgrade Valgrind from 3.23.0 to 3.27.1".
+    - After committing, rerun `$FJALAR/compare-fjalar-changes.sh`, and
+      handle the modifications that it reports, as section "Commit
+      commands" of `doc/valgrind-merge.texinfo` describes.
     - Commit as one PR.
     - After the PR has landed, keep `valgrind-new` as the next merge's
       `valgrind-old` (step 2 reuses it), and delete `valgrind-new-build`

@@ -77,9 +77,9 @@ Do all the reductions before the 2.47 upgrade, as a series of small PRs
 against the current 2.39-based code.  Each PR is a refactoring that is
 verifiable on its own, whereas merge conflicts can only be verified all
 together.  Each PR preserves behavior, except for any output change that it
-intends and its description states, such as PR 3's fix of the LEB128 messages
-(see "Order and expected payoff").  Each PR also lowers the conflict count of the 2.47
-merge and of every later merge.
+intends and its description states, such as PR 3's fix of the LEB128
+messages (see "Order and expected payoff").  Each PR also lowers the
+conflict count of the 2.47 merge and of every later merge.
 
 Measure after each PR.  The trial-merge numbers decide only how far to take
 Phase 4 and the parameter-threading step of Phase 3, not whether to do the
@@ -87,28 +87,35 @@ other phases.
 
 ## Phase 0: measurement and verification tools
 
+Status: done.  Both tools have landed, in #188 and #185.
+
 1. `./merge-binutils.sh --trial NEWVER` reports the size of Fjalar's changes
    to the old version (as in the table above) and the number of conflicts
    that a merge of NEWVER would have, per file.  It merges in memory with
    `git merge-tree`, so it changes neither the work tree nor any ref, and it
-   measures uncommitted changes too.  It takes a few seconds.  With NEWVER
-   equal to the old version, it reports only the size of the changes.
+   measures uncommitted changes to tracked files too.  It ignores untracked
+   files, so `git add` a newly vendored file (such as `ansidecl.h` in Phase 1)
+   before measuring.  It takes a few seconds.  With NEWVER equal to the old
+   version, it reports only the size of the changes.
 2. `./compare-debug-output.sh DIR` compiles the C and C++ programs in
    `valgrind/fjalar/tests/` several ways, runs Fjalar with `--no-dyncomp` and
    `--decls-only` on each of them with no debugging option, with
-   `--fjalar-debug-dump`, and with `--fjalar-debug`, and compares the output with a baseline that an earlier
-   run saved.  Category 2 changes in particular must leave this output
-   identical, and `./test-kvasir.sh` only checks the `.decls` and `.dtrace`
-   output.  Running each configuration separately catches a `printf` that
-   is now guarded by the wrong flag.
+   `--fjalar-debug-dump`, and with `--fjalar-debug`, and compares the
+   output with a baseline that an earlier run saved.  Category 2 changes in
+   particular must leave this output identical, and `./test-kvasir.sh` only
+   checks the `.decls` and `.dtrace` output.  Running each configuration
+   separately catches a `printf` that is now guarded by the wrong flag.
 
 Verification for every later PR:
 
-- `./compare-warnings.sh --binutils` reports no new warnings.
+- `./compare-warnings.sh --binutils BEFORE.log AFTER.log` and
+  `./compare-warnings.sh BEFORE.log AFTER.log` report no new warnings, where
+  the two logs are from full builds before and after the change.  (The
+  `--binutils` run alone misses some warnings; see Phase 1.)
 - `./test-kvasir.sh` results are unchanged.
-- `./compare-debug-output.sh`, with a baseline saved before the change,
-  shows no differences, except intended ones.  If it shows intended ones,
-  check that it shows nothing else, then run
+- `./compare-debug-output.sh DIR`, with a baseline saved in DIR before the
+  change, shows no differences, except intended ones.  If it shows intended
+  ones, check that it shows nothing else, then run
   `./compare-debug-output.sh --update DIR` to make the new output the
   baseline for the next PR.
 - `./check-hook-counts.sh` reports no changes, or each one is explained (the
@@ -116,6 +123,35 @@ Verification for every later PR:
 - CI passes on Ubuntu and Rocky Linux.
 
 ## Phase 1: shim headers and mechanical reverts (low risk, high payoff)
+
+Status: done, in three stacked pull requests:  #226 (PR 2: steps 1 and
+2), #227 (PR 3: step 3), and #228 (PR 4: steps 4 and 5).  It chose option 3
+for `bfd.h`.  Lessons:
+
+- GCC's `#pragma GCC diagnostic ignored "-Wformat-signedness"` has no
+  effect; only `-Wformat` can be ignored, which would disable all format
+  checking.  So `fjalar.am` adds `-Wno-format-signedness` to the vendored
+  object files, with GNU make target-specific variables.  The shim
+  disables `-Wdiscarded-qualifiers` and `-Wunused-variable` with pragmas.
+- Upstream's `error` and `warn` are declared `ATTRIBUTE_PRINTF_1`, so PR 3
+  turns on format checking of all their calls.  That found one real bug,
+  a Fjalar `%lu` -> `%u` change, and showed that another Fjalar format
+  change (in `SAFE_BYTE_GET`) was wrong.
+- `compare-warnings.sh --binutils` misses a warning whose location is a
+  macro defined in a non-Binutils header, such as `_` in `my_libc.h`.
+  Run it without `--binutils` too.
+- The system `<wchar.h>` conflicts with `my_libc.h`, and `<sys/stat.h>`
+  conflicts with Valgrind's `vki` headers if it is included first, so the
+  shim has its own `wchar.h`, and its `bfd.h` declares `struct stat`
+  instead of including `<sys/stat.h>`.
+- `dwarf.h` has no include guard, so `fjalar_dwarf.h` includes it only when
+  the shim `sysdep.h` has not been included.
+- PR 3 shifts the heap addresses in the `--fjalar-debug` output by 0x1000,
+  so `compare-debug-output.sh` reports differences there that are not
+  behavior changes.
+- PR 4 does not revert a format change in a line that Phase 2 also changes
+  (a `printf` that became `FJALAR_DPRINTF`), nor the `entry` -> `ab_entry`
+  rename, which avoids shadowing Fjalar's `entry` parameter (Phase 3).
 
 1. **Shim headers.**  Create `valgrind/fjalar/binutils-shim/` and put it
    before `include` on the `-I` path in `fjalar.am`.  It must not be under
@@ -144,10 +180,11 @@ Verification for every later PR:
 3. **One `error`/`warn`** (category 7); see "The duplicate `error`
    definition" below.  This needs only the shim, not the wrapper files of
    Phase 3.
-4. **Warnings** (category 3).  Disable, in the shim, the warnings that only
-   vendored code triggers, such as
-   `#pragma GCC diagnostic ignored "-Wformat-signedness"`, and revert the
-   warning-only edits.  Declare `my_abort` with `__attribute__((noreturn))` so
+4. **Warnings** (category 3).  Disable the warnings that only vendored code
+   triggers, and revert the warning-only edits.  The shim disables
+   `-Wdiscarded-qualifiers` and `-Wunused-variable` with pragmas, but a
+   pragma cannot disable `-Wformat-signedness`, so `fjalar.am` adds
+   `-Wno-format-signedness` to the vendored object files.  Declare `my_abort` with `__attribute__((noreturn))` so
    the `return 0;` lines can go.  Check each format change before reverting
    it: a few are real fixes.  For example, `%*s` -> `%.*s` in the
    `DW_MACINFO_*` output fixes an upstream bug that 2.47 still has; keep that
@@ -282,8 +319,11 @@ function rather than a guarded statement, it evaluates its arguments
 whether or not it prints, so side effects inside upstream `printf` arguments
 happen as upstream intends, and no hoisting is needed.
 `FJALAR_BINUTILS_PRINTING` is `fjalar_debug` for `readelf.c` and a global
-flag for `dwarf.c` that is `fjalar_debug_dump && pass2`; one line in
-`process_debug_info` sets the flag for each pass.
+flag for `dwarf.c` that is `fjalar_debug_dump && pass2` within
+`process_debug_info` and `fjalar_debug_dump` elsewhere.  `process_debug_info`
+sets the flag for each pass and restores its previous value on return,
+because callers such as `display_debug_aranges` call `load_debug_info`, which
+can run the first pass, and then print.
 
 This removes the `FJALAR_DPRINTF` substitutions, the `if (fjalar_debug_dump)`
 guards, the hoisted arguments, the `ok_to_print` parameters, and the existing
@@ -402,18 +442,27 @@ hoist side-effecting arguments) become unnecessary.
 
 ## Order and expected payoff
 
-| PR | Content                                        | Risk   | Lines saved |
-| -- | ---------------------------------------------- | ------ | ----------: |
-| 1  | Phase 0 tools                                  | none   |           0 |
-| 2  | Shim headers (incl. `bfd.h`), libc reverts     | low    |         220 |
-| 3  | One `error`/`warn` (fixes the LEB message bug) | low    |          70 |
-| 4  | Warning and cosmetic reverts                   | low    |          80 |
-| 5  | `printf` redirection                           | medium |         300 |
-| 6  | Wrapper translation units                      | medium |         330 |
-| 7  | Replaced functions, compact hooks              | medium |         200 |
-| 8  | `#if 0` blocks, parameter threading            | higher |           ? |
+| PR | Content                                               | Risk   | Lines saved |
+| -- | ----------------------------------------------------- | ------ | ----------: |
+| 1  | Phase 0 tools (done: #185, #188)                      | none   |           0 |
+| 2  | Shim headers (incl. `bfd.h`), libc reverts (#226)     | low    |         220 |
+| 3  | One `error`/`warn` (fixes the LEB message bug) (#227) | low    |          70 |
+| 4  | Warning and cosmetic reverts (#228)                   | low    |          80 |
+| 5  | `printf` redirection                                  | medium |         300 |
+| 6  | Wrapper translation units                             | medium |         330 |
+| 7  | Replaced functions, compact hooks                     | medium |         200 |
+| 8  | `#if 0` blocks, parameter threading                   | higher |           ? |
 
 "Lines saved" is a rough estimate of the changed lines that each PR removes
 from the diff; together they are about half of Fjalar's current diff.  Re-run
 the trial merge after each PR and record the conflict counts here.  Then do
 the 2.47 upgrade.
+
+Trial merges of 2.47 (`./merge-binutils.sh --trial 2.47`), cumulative:
+
+| After      | Changes | Added | Removed | Conflicts |
+| ---------- | ------: | ----: | ------: | --------: |
+| (baseline) |     713 |  2212 |     535 |       191 |
+| PR 2       |     570 |  1956 |     361 |       174 |
+| PR 3       |     560 |  1876 |     357 |       172 |
+| PR 4       |     509 |  1799 |     283 |       160 |

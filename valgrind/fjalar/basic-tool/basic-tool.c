@@ -54,6 +54,9 @@ void fjalar_tool_finish() {
   VG_(printf)("\nfjalar_tool_finish()\n");
 }
 
+void fjalar_tool_pre_thread_ll_create(ThreadId parent, ThreadId child) {
+}
+
 // This simple callback function prints out variable names, and if
 // it's a sequence, the number of elements
 static TraversalResult basicAction(VariableEntry* var,

@@ -246,10 +246,8 @@ extern void init_dwarf_regnames_i386 (void);
 extern void init_dwarf_regnames_iamcu (void);
 extern void init_dwarf_regnames_x86_64 (void);
 extern void init_dwarf_regnames_by_elf_machine_code (unsigned int);
-#if 0  // This code is not needed for Fjalar.
 extern void init_dwarf_regnames_by_bfd_arch_and_mach (enum bfd_architecture arch,
 						      unsigned long mach);
-#endif // This code is not needed for Fjalar.
 
 extern bool load_debug_section (enum dwarf_section_display_enum, void *);
 extern void free_debug_section (enum dwarf_section_display_enum);
