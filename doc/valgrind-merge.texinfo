@@ -1640,11 +1640,9 @@ functions, and a @code{CHECK_SP_SLOW} call in @code{mc_new_mem_stack} and
 Smaller edits:  @code{DEBUG} calls that @code{MAX_DEBUG_INFO} enables, and
 casts of their pointer arguments to @code{void *}; a
 @code{#pragma GCC diagnostic ignored "-Wshadow"}, because Memcheck's
-locals named @code{line} and @code{str} shadow enumerators that
-@file{dwarf.h} declares; @code{#undef}s of @code{SM_OFF} and
-@code{SM_OFF_16}, which @file{kvasir/dyncomp_main.h} also defines, and of
-@code{INLINE}; and a parameter of @code{check_mem_is_defined_asciiz}
-renamed from @code{str} to @code{astr}.
+local variables and parameters named @code{line} and @code{str} shadow
+enumerators that @file{dwarf.h} declares; and an @code{#undef} of
+@code{SM_OFF}, which @file{kvasir/dyncomp_main.h} also defines.
 @item $INV/fjalar/valgrind/fjalar/mc_translate.c
 In @code{MC_(instrument)}, calls to @code{begin_instrument_DC},
 @code{instrument_stmt_DC} (after Memcheck instruments each statement),
