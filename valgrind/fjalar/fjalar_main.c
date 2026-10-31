@@ -243,6 +243,16 @@ double read_float_return(ThreadId tid)
   return value;
 }
 
+#if defined(VGA_amd64)
+double read_float_return2(ThreadId tid)
+{
+  double value;
+  VG_(get_shadow_regs_area)(tid, (UChar*)&value, 0/*shadowNo*/,
+                            offsetof(VexGuestArchState, guest_YMM1), sizeof(double));
+  return value;
+}
+#endif
+
 // If atom is DW_OP_regN (the value is in register N) or DW_OP_bregN
 // (the value is at an offset from the address in register N), sets
 // *regNum to N and returns True.  Otherwise, returns False and leaves
@@ -1114,11 +1124,17 @@ void exit_function(FunctionEntry* f)
   Addr currentSP = VG_(get_SP)(currentTID);
   int exitingIndex;
   double fpuReturnVal;
+#if defined(VGA_amd64)
+  double fpuReturnVal2;
+#endif
   Addr xAX, xDX;
 
   FJALAR_DPRINTF("Exit function: %s\n", f->fjalar_name);
 
   fpuReturnVal = read_float_return(currentTID);
+#if defined(VGA_amd64)
+  fpuReturnVal2 = read_float_return2(currentTID);
+#endif
 
 
   // Get the value at the simulated %EAX (integer and pointer return
@@ -1189,6 +1205,9 @@ void exit_function(FunctionEntry* f)
   top->xAX = xAX;
   top->xDX = xDX;
   top->FPU = fpuReturnVal;
+#if defined(VGA_amd64)
+  top->FPU2 = fpuReturnVal2;
+#endif
 
   // Very important!  Set the A and V bits and the DynComp tags of the
   // appropriate FunctionExecutionState object from the guest state.
@@ -1198,6 +1217,10 @@ void exit_function(FunctionEntry* f)
                           (Addr)(&top->xDX), sizeof(top->xDX));
   mc_copy_guest_reg_state(currentTID, float_return_guest_offset(currentTID),
                           (Addr)(&top->FPU), sizeof(top->FPU));
+#if defined(VGA_amd64)
+  mc_copy_guest_reg_state(currentTID, offsetof(VexGuestArchState, guest_YMM1),
+                          (Addr)(&top->FPU2), sizeof(top->FPU2));
+#endif
 
   curFunctionExecutionStatePtr = top;
   top->func->nonce = top->invocation_nonce;

@@ -41,10 +41,6 @@
 #include "fjalar_binutils.h"
 #include "ansidecl.h"
 
-#ifndef PATH_MAX
-#define PATH_MAX 1024
-#endif
-
 #define ngettext(Msgid1, Msgid2, n) \
   (n == 1 ? Msgid1 : Msgid2)
 

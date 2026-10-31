@@ -19,7 +19,11 @@
 #define FJALAR_BINUTILS_LIBIBERTY_H
 
 #include "ansidecl.h"
+#include "pub_tool_basics.h"
+#include "pub_tool_libcassert.h"
 
 #define ARRAY_SIZE(a) (sizeof (a) / sizeof ((a)[0]))
+
+#define xexit(status) VG_(exit) (status)
 
 #endif /* FJALAR_BINUTILS_LIBIBERTY_H */

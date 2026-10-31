@@ -1135,9 +1135,10 @@ equivalent, such as @code{VG_(malloc)} or @code{VG_(strlen)}.  Fjalar's
 @file{assert.h}, in the same directory, maps @code{assert} to
 @code{tl_assert}.  So do not edit a call of a C library function in new
 code.  If new code calls a C library function that @file{sysdep.h} does
-not map and that @file{my_libc.c} does not define, the linker reports an
-"undefined reference" error; then add a macro for the function to
-@file{sysdep.h}.
+not map and that @file{my_libc.c} does not define, the compiler reports an
+"implicit declaration" error (or, if some header declares the function,
+the linker reports an "undefined reference" error); then add a macro for
+the function to @file{sysdep.h}.
 
 The other major area of difficulty when doing the source merge
 is with the @code{printf} calls

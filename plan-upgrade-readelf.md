@@ -138,7 +138,6 @@ small.
      `FJALAR=$INV/fjalar-branch-binutils-2.47`; the commands below use it.
    - `git pull` in `daikon`, and ensure that it has no local changes.  (The
      new Fjalar clone is already up to date.)
-   - Make sure the system has `binutils-dev` / `binutils-devel` (for `bfd.h`).
 
 2. **Baselines** (before touching any source).  Run these from the new
    clone (`cd $FJALAR`).
@@ -325,9 +324,9 @@ small.
      prints nothing), and mark each file as resolved with `git add`.
 
 6. **Build and fix warnings/errors.**  `make -C $FJALAR build`, then
-   iterate with `make -C $FJALAR/valgrind/fjalar`.  Fix "undefined
-   reference" errors, from libc functions that the shim `sysdep.h` does
-   not map yet, by adding a macro there.
+   iterate with `make -C $FJALAR/valgrind/fjalar`.  Fix "implicit
+   declaration" and "undefined reference" errors, from libc functions that
+   the shim `sysdep.h` does not map yet, by adding a macro there.
    Do not edit the copies to remove new warnings from Valgrind's stricter
    flags; disable each such warning with a pragma in the shim `sysdep.h`,
    or in `fjalar.am` if a pragma cannot disable it.  Do fix a warning that
@@ -346,8 +345,6 @@ small.
    `compare-warnings.sh` prints the warnings for the Binutils-derived files
    that are new (`>` lines) or gone (`<` lines), ignoring line numbers,
    which the merge changes.
-   Also build against the system `bfd.h` on both Rocky Linux and Ubuntu
-   (see step 4; the #63 workaround may need to change).
    Finally, run `make -C $FJALAR/valgrind/fjalar install`.
    `make -C valgrind/fjalar` does not install the tool, but
    `make fjalar-test` (step 7) runs the installed one,
@@ -443,9 +440,6 @@ small.
 - Large upstream refactorings in `dwarf.c` (DWARF 5 / split-DWARF / debuginfod
   handling) could make the merge produce many conflicts; this is the main
   reason for the stepwise upgrade.
-- 2.47's `readelf.c`/`dwarf.c` may use bfd macros or functions that the
-  older system `bfd.h` on the CI distros lacks (see step 4).  This may show
-  up only on one distro, so CI on both Ubuntu and Rocky Linux matters.
 - Silent loss of a Fjalar hook in a conflicted hunk would show up only as
   missing variables in Kvasir output.  `check-hook-counts.sh` (step 7)
   catches a lost or duplicated call, but not a call that a merge moved onto
