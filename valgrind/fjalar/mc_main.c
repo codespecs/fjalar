@@ -70,7 +70,8 @@
 #include "fjalar_main.h"
 #include "mc_fjalar.h"
 // dwarf.h, which the Fjalar headers above include, declares enumerators
-// named "line" and "str", which Memcheck's locals of those names shadow.
+// named "line" and "str", which Memcheck's locals and parameters of those
+// names shadow.
 #pragma GCC diagnostic ignored "-Wshadow"
 
 #include "mc_include.h"
@@ -287,7 +288,7 @@ static void ocache_sarp_Clear_Origins ( Addr, UWord ); /* fwds */
 // These represent 128 bits of memory.
 #define VA_BITS32_UNDEFINED   0x55555555  // 01_01_01_01b x 4
 
-// These definitons conflict with the ones in kvasir/dyncomp_main.h. (markro)
+// This definition of SM_OFF conflicts with the one in kvasir/dyncomp_main.h. (markro)
 #undef  SM_OFF
 
 #define SM_CHUNKS             16384    // Each SM covers 64k of memory.
