@@ -290,30 +290,6 @@ xrealloc (PTR oldmem, size_t size)
 
 // Fjalar - end custom libiberty.a functions
 
-static void
-error VPARAMS ((const char *message, ...))
-{
-  VA_OPEN (args, message);
-  VA_FIXEDARG (args, const char *, message);
-
-  fprintf (stderr, _("%s: Error: "), "dwarf.c");
-  vfprintf (stderr, message, args);
-  VA_CLOSE (args);
-}
-
-static void
-warn VPARAMS ((const char *message, ...))
-{
-  VA_OPEN (args, message);
-  VA_FIXEDARG (args, const char *, message);
-
-  fprintf (stderr, _("%s: Warning: "), "dwarf.c");
-  vfprintf (stderr, message, args);
-  VA_CLOSE (args);
-}
-
-// end of Fjalar code
-
 /* An array that indicates for a given level of CU nesting whether
    the latest DW_AT_type seen for that level was a signed type or
    an unsigned type.  */
@@ -551,9 +527,9 @@ read_leb128 (unsigned char *data,
       size_t amount = (AMOUNT);						\
       if (sizeof (VAL) < amount)					\
 	{								\
-	  error (ngettext ("internal error: attempt to read %u byte "	\
+	  error (ngettext ("internal error: attempt to read %d byte "	\
 			   "of data in to %d sized variable",		\
-			   "internal error: attempt to read %u bytes "	\
+			   "internal error: attempt to read %d bytes "	\
 			   "of data in to %d sized variable",		\
 			   amount),					\
 		 (int) amount, (int) sizeof (VAL));			\

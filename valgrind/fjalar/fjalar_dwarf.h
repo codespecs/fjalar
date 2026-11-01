@@ -25,6 +25,8 @@
 
 #include "pub_tool_basics.h"
 
+// dwarf.h's report_leb_status uses _ and elfcomm.h's error.
+#include "my_libc.h"
 #include "bfd.h"
 #include "elfcomm.h"
 // dwarf.h has no include guard, and readelf.c and dwarf.c include it

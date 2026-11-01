@@ -482,32 +482,6 @@ get_dynamic_name (const Filedata *filedata, size_t offset)
 #define GNU_HASH_SECTION_NAME(filedata)		\
   filedata->dynamic_info_DT_MIPS_XHASH ? ".MIPS.xhash" : ".gnu.hash"
 
-// versions of error and warn needed by Fjalar
-
-static void
-error VPARAMS ((const char *message, ...))
-{
-  VA_OPEN (args, message);
-  VA_FIXEDARG (args, const char *, message);
-
-  fprintf (stderr, _("%s: Error: "), "readelf.c");
-  vfprintf (stderr, message, args);
-  VA_CLOSE (args);
-}
-
-static void
-warn VPARAMS ((const char *message, ...))
-{
-  VA_OPEN (args, message);
-  VA_FIXEDARG (args, const char *, message);
-
-  fprintf (stderr, _("%s: Warning: "), "readelf.c");
-  vfprintf (stderr, message, args);
-  VA_CLOSE (args);
-}
-
-// end of Fjalar code
-
 /* Print a BFD_VMA to an internal buffer, for use in error messages.
    BFD_FMA_FMT can't be used in translated strings.  */
 
@@ -13430,7 +13404,7 @@ print_dynamic_symbol (Filedata *filedata, unsigned long si,
       /* Solaris binaries have been found to violate this requirement as
 	 well.  Not sure if this is a bug or an ABI requirement.  */
       && filedata->file_header.e_ident[EI_OSABI] != ELFOSABI_SOLARIS)
-    warn (_("local symbol %u found at index >= %s's sh_info value of %u\n"),
+    warn (_("local symbol %lu found at index >= %s's sh_info value of %u\n"),
 	  si, printable_section_name (filedata, section), section->sh_info);
 }
 
