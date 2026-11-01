@@ -47,13 +47,6 @@ struct stat;
    file first.  */
 #define HOST_WIDEST_INT long
 
-/* elfcomm.c defines error and warn, which print a message.  Valgrind's core
-   defines a global error function too, in coregrind/m_gdbserver/utils.c,
-   so rename them.  elfcomm.h declares them, so every file that includes it
-   must see these macros; each includes this file first.  */
-#define error fjalar_binutils_error
-#define warn fjalar_binutils_warn
-
 typedef struct bfd bfd;
 typedef struct bfd_section asection;
 
