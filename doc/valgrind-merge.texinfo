@@ -1448,9 +1448,10 @@ $INV/fjalar/compare-fjalar-changes.sh
 @end example
 
 @noindent
-Restore each of Fjalar's modifications that was lost, unless the Valgrind
-developers made the same change.  Remove each added modification that
-Fjalar does not need, and document the others in the appendices
+Restore each of Fjalar's modifications that the command reports as lost
+or altered, unless the Valgrind developers made the same change or you
+adapted the modification to the Valgrind developers' changes.  Remove
+each added modification that Fjalar does not need, and document the others in the appendices
 (@pxref{Valgrind modifications}, and @ref{Memcheck modifications}).
 Commit those changes, and run @file{compare-fjalar-changes.sh} again to
 confirm them.
