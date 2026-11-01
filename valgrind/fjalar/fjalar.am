@@ -36,7 +36,14 @@ EXTRA_CFLAGS =  -Iinclude -I../VEX/pub -I../include -I..
 # precedes include.  It also holds replacements for some C library headers,
 # such as assert.h, that suit only code that runs in the tool, so the
 # preload library does not use it.
-BINUTILS_SHIM_CFLAGS = -Ibinutils-shim
+#
+# elfcomm.c defines a global error function, and so does Valgrind's core, in
+# coregrind/m_gdbserver/utils.c, so -D renames the one in elfcomm.c.  The
+# core defines no warn, so elfcomm.c's warn keeps its name.  A macro in a
+# header would rename error only in the files that include that header
+# before elfcomm.h; a file that declared error without seeing the macro
+# would compile, link, and silently call the core's error.
+BINUTILS_SHIM_CFLAGS = -Ibinutils-shim -Derror=fjalar_binutils_error
 
 # for debugging versions
 #EXTRA_CFLAGS +=  -O0 -finstrument-functions
@@ -84,6 +91,29 @@ vgpreload_fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_CFLAGS += $(EXTRA_CFLAGS)
 if VGCONF_HAVE_PLATFORM_SEC
 fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CFLAGS += $(BINUTILS_SHIM_CFLAGS) $(EXTRA_CFLAGS)
 vgpreload_fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_CFLAGS += $(EXTRA_CFLAGS)
+endif
+
+# The copies of Binutils files print unsigned values with signed formats and
+# vice versa.  binutils-shim/sysdep.h cannot disable -Wformat-signedness for
+# them, because GCC's pragma cannot, so disable it for their object files.
+# That also disables it for Fjalar's own code in readelf.c and dwarf.c,
+# until Phase 3 of plan-reduce-readelf-diffs.md (at the top of the
+# repository) moves that code out of them.
+# These are GNU make target-specific variables.  They append to the
+# per-program variable, not to CFLAGS, so that a CFLAGS given on the make
+# command line does not discard the option.  They add the option only if
+# configure found that the compiler supports -Wformat-signedness.
+fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@-readelf.$(OBJEXT) \
+fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@-dwarf.$(OBJEXT) \
+fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@-elfcomm.$(OBJEXT): \
+	fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CFLAGS += \
+	$(if $(FLAG_W_FORMAT_SIGNEDNESS),-Wno-format-signedness)
+if VGCONF_HAVE_PLATFORM_SEC
+fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@-readelf.$(OBJEXT) \
+fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@-dwarf.$(OBJEXT) \
+fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@-elfcomm.$(OBJEXT): \
+	fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CFLAGS += \
+	$(if $(FLAG_W_FORMAT_SIGNEDNESS),-Wno-format-signedness)
 endif
 
 
