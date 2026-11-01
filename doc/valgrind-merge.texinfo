@@ -1440,18 +1440,22 @@ Then run @file{compare-fjalar-changes.sh} again (@pxref{Resolving
 Conflicts}).  After the commit, the index equals the commit, so the
 command compares all of Fjalar's modifications before and after the
 merge, including the changes that you made since you last ran it.  It
-shows each modification that the merge or a conflict resolution lost or
-added, such as a change of whitespace:
+shows each modification that the merge or a conflict resolution lost,
+altered, or added, such as a change of whitespace:
 
 @example
 $INV/fjalar/compare-fjalar-changes.sh
 @end example
 
 @noindent
-Restore each of Fjalar's modifications that was lost, unless the Valgrind
-developers made the same change.  Remove each added modification that
+Restore each of Fjalar's modifications that the command reports as lost
+or altered, unless the Valgrind developers made the same change or made
+the modification unnecessary, or you adapted the modification to the
+Valgrind developers' changes.  Remove each added modification that
 Fjalar does not need, and document the others in the appendices
-(@pxref{Valgrind modifications}, and @ref{Memcheck modifications}).
+(@pxref{Valgrind modifications}, and @ref{Memcheck modifications}).  The
+command also reports an adapted modification as added; update its
+existing appendix entry instead of adding a new one.
 Commit those changes, and run @file{compare-fjalar-changes.sh} again to
 confirm them.
 
