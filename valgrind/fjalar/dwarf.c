@@ -3714,7 +3714,7 @@ read_and_display_attr_value (unsigned long           attribute,
 	  printf (")");
           if (ok_to_harvest) {
               // frame base expression
-              harvest_frame_base(entry, ll->atom, ll->atom_offset);
+              harvest_frame_base_expression(entry, ll);
           }
 	  if (need_frame_base && !have_frame_base)
 	    printf (_(" [without DW_AT_frame_base]"));
