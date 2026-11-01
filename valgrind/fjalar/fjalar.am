@@ -96,6 +96,9 @@ endif
 # The copies of Binutils files print unsigned values with signed formats and
 # vice versa.  binutils-shim/sysdep.h cannot disable -Wformat-signedness for
 # them, because GCC's pragma cannot, so disable it for their object files.
+# That also disables it for Fjalar's own code in readelf.c and dwarf.c,
+# until Phase 3 of plan-reduce-readelf-diffs.md (at the top of the
+# repository) moves that code out of them.
 # These are GNU make target-specific variables.  They append to the
 # per-program variable, not to CFLAGS, so that a CFLAGS given on the make
 # command line does not discard the option.  They add the option only if
