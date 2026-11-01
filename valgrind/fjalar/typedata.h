@@ -597,6 +597,9 @@ char harvest_location_list_entry(location_list* ll, unsigned long offset);
 location_list* find_location_list_entry(unsigned long offset, unsigned long pc);
 char harvest_debug_frame_entry(debug_frame* df);
 char harvest_frame_base(dwarf_entry* e, enum dwarf_location_atom a, long offset);
+void frame_base_of_location_expression(location_list* ll,
+                                       enum dwarf_location_atom* atom, long* offset);
+char harvest_frame_base_expression(dwarf_entry* e, location_list* ll);
 char harvest_decl_file(dwarf_entry* e, unsigned long value);
 char harvest_stmt_list(dwarf_entry* e, unsigned long value);
 char harvest_file_name_table(unsigned long debug_line_offset, XArray* table);
