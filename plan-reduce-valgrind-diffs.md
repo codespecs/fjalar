@@ -33,7 +33,18 @@ remain), with its companion codespecs/daikon#955, and #225 (Step 9,
 documentation).  So did PR #181, which restored upstream's `AC_INIT`
 version string.
 
-The `.alwaysDefd` check of Step 9 remains; #225 did not document it.
+Step 9 also proposed a step in the merge procedure that checks
+`.alwaysDefd` in `guest_amd64_helpers.c`, because Memcheck's
+`isAlwaysDefd` panics if a range in a dirty call's `fxState` partly
+overlaps an always-defined part of the guest state.  That check is not
+needed.  Memcheck calls `isAlwaysDefd` only from `do_shadow_Dirty` and
+`do_origins_Dirty`, which `MC_(instrument)` calls only on the statements
+of the input superblock.  `fjalar_main.c` adds its dirty calls (at
+function entry and exit) directly to the output superblock with
+`mc_stmt`, so Memcheck never examines their `fxState` ranges, on any
+architecture.  DynComp's `do_shadow_Dirty_DC` does not use the
+always-defined list.
+
 "Follow-up" below lists the edits that no step covered.
 
 ## The remaining differences
@@ -48,10 +59,10 @@ files).
 Measured at commit 23bfcf99 (after Step 4), the differences were in 26
 files, with 1054 lines added and 266 removed.  Measured at commit 8efd1baa
 (after Steps 7 and 8, before Step 6c), they were in 15 files, with 226
-lines added and 203 removed.  Measured at commit fd1482f9 (after all of
-Steps 0-8), they are in 15 files, with 218 lines added and 18 removed.
+lines added and 203 removed.  Measured at commit 00b48406 (after all of
+Steps 0-9), they were in 15 files, with 218 lines added and 18 removed.
 
-What remains is Fjalar's essential hooks:
+What remains is Fjalar's essential hooks and 3 backported test fixes:
 
 - the extra shadow area for DynComp tags (`pub_core_threadstate.h`, the
   spill offset in `host_generic_reg_alloc2.c` and
@@ -64,7 +75,11 @@ What remains is Fjalar's essential hooks:
   including the `CHECK_SP` calls in the `mc_new_mem_stack_*` functions;
 - `memcheck.h`, which includes `pub_tool_clreq.h` instead of upstream's
   `valgrind.h`, as `tests/check_headers_and_includes` requires of a file in
-  a tool directory.
+  a tool directory;
+- the GCC 15 build fixes in `drd/tests/swapcontext.c`,
+  `helgrind/tests/tc17_sembar.c`, and `none/tests/bug234814.c`.  These are
+  backports of upstream fixes, not hooks; a merge of a release that has
+  them takes upstream's version, and the differences disappear.
 
 Some edits in `mc_main.c` and `mc_translate.c`, about 70 lines, are not
 hooks; see "Follow-up" below.
@@ -79,14 +94,6 @@ hooks; see "Follow-up" below.
    upstream bugs or typos upstream instead.
 3. Fjalar supports only amd64-linux (#121), but keep the functionality of
    its x86-only changes.
-
-## Step 9: documentation
-
-Add a step to the merge procedure in `doc/valgrind-merge.texinfo`:  after
-each Valgrind merge, check `.alwaysDefd` in `guest_amd64_helpers.c`.
-Memcheck's `isAlwaysDefd` panics if an `fxState` range partly overlaps an
-always-defined part of the guest state.  In 3.23.0, the range `guest_RAX`
-through `guest_R15` that `fjalar_main.c` passes overlaps none.
 
 ## Follow-up
 
@@ -105,8 +112,9 @@ and after with `./compare-warnings.sh BEFORE.log AFTER.log`.
 - **`#undef`s in `mc_main.c`.**  `SM_OFF` and `SM_OFF_16` are `#undef`ed
   because `kvasir/dyncomp_main.h` defines a different `SM_OFF`.  Rename
   DynComp's macro (for example, to `SM_OFF_DC`) and remove both
-  `#undef`s.  Also check why `mc_main.c` `#undef`s `INLINE` before
-  upstream's definition:  no Fjalar header defines `INLINE`.
+  `#undef`s.  Also remove the `#undef INLINE` before upstream's
+  definition of `INLINE`:  no header that `mc_main.c` includes defines
+  `INLINE`.
 - **The renaming of `str` to `astr`** in `check_mem_is_defined_asciiz`.
   It avoids shadowing the enumerator `str` of `dwarf.h`, but
   `mc_main.c` now disables `-Wshadow` for that reason, so restore
@@ -118,7 +126,8 @@ and after with `./compare-warnings.sh BEFORE.log AFTER.log`.
 - **The Fjalar header comments** at the top of `mc_main.c` and
   `mc_translate.c`.  Keep a notice that the file is modified, because
   the GPL requires modified files to carry one, but it could shrink to a
-  line or two.
+  line or two.  The short notice must keep a date or year range, because
+  GPLv2 section 2(a) requires the date of any change.
 
 ## Not recommended
 
