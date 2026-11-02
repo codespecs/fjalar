@@ -687,10 +687,6 @@ typedef struct _FunctionEntry {
   // memory is copied so that we can see the pre-states of the parameters at exit.
   int formalParamStackByteSize;
 
-  // Estimate of the amount of stack space allocated below the frame for
-  // the function's formal parameters that are passed in registers.
-  int formalParamLowerStackByteSize;
-
   // GCC 4.0+ Complicates things as it will not use Frame offsets for
   // all formal parameters. If we want to mimic the behavior achieved
   // for GCC 3.3 we'll have to keep track of the mapping between
