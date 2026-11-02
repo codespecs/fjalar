@@ -37,13 +37,13 @@ Step 9 also proposed a step in the merge procedure that checks
 `.alwaysDefd` in `guest_amd64_helpers.c`, because Memcheck's
 `isAlwaysDefd` panics if a range in a dirty call's `fxState` partly
 overlaps an always-defined part of the guest state.  That check is not
-needed.  Memcheck calls `isAlwaysDefd` only from `do_shadow_Dirty` and
-`do_origins_Dirty`, which `MC_(instrument)` calls only on the statements
-of the input superblock.  `fjalar_main.c` adds its dirty calls (at
-function entry and exit) directly to the output superblock with
-`mc_stmt`, so Memcheck never examines their `fxState` ranges, on any
-architecture.  DynComp's `do_shadow_Dirty_DC` does not use the
-always-defined list.
+needed.  Memcheck checks a dirty call's `fxState` ranges with
+`isAlwaysDefd` only in `do_shadow_Dirty` and `do_origins_Dirty`, which
+`MC_(instrument)` calls only on the statements of the input superblock.
+`fjalar_main.c` adds its dirty calls (at function entry and exit)
+directly to the output superblock with `mc_stmt`, so Memcheck never
+examines their `fxState` ranges, on any architecture.  DynComp's
+`do_shadow_Dirty_DC` does not use the always-defined list.
 
 "Follow-up" below lists the edits that no step covered.
 
