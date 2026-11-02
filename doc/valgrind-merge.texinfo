@@ -1133,8 +1133,12 @@ $INV/fjalar/compare-warnings.sh --binutils $INV/fjalar/build-before.log $INV/fja
 
 @noindent
 (@ref{Get Current Valgrind Regtest Baseline Results} saves
-@file{build-before.log}.)  It is a good idea to modify the code to remove as
-many of these new warnings as possible to make subsequent merges easier.
+@file{build-before.log}.)  Do not edit a copy of a Binutils file to remove a
+warning, because each change to a copy makes subsequent merges harder.
+Instead, disable the warning for the copies:  with a @code{#pragma GCC
+diagnostic} in @file{valgrind/fjalar/binutils-shim/sysdep.h}, or, for a
+warning that a pragma cannot disable, such as @option{-Wformat-signedness},
+in @file{valgrind/fjalar/fjalar.am}.  Do fix a warning that reveals a bug.
 
 A Valgrind tool cannot call the C runtime library.  Fjalar's
 @file{sysdep.h}, in @file{valgrind/fjalar/binutils-shim/}, which the
