@@ -6414,11 +6414,7 @@ static void mc_print_usage(void)
 "    --show-mismatched-frees=no|yes   show frees that don't match the allocator? [yes]\n"
 "    --show-realloc-size-zero=no|yes  show realocs with a size of zero? [yes]\n"
    );
-
-   // pgbovine
    fjalar_print_usage();
-
-
 }
 
 static void mc_print_debug_usage(void)
