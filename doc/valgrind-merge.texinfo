@@ -1587,7 +1587,13 @@ the bytes whose state changes:  in @code{MC_(make_mem_noaccess)} and
 @code{orig_size} for the call.  A @code{CHECK_SP} call in each of the
 @code{mc_new_mem_stack_@var{N}} and @code{mc_new_mem_stack_@var{N}_w_ECU}
 functions, and a @code{CHECK_SP_SLOW} call in @code{mc_new_mem_stack} and
-@code{mc_new_mem_stack_w_ECU}.  A
+@code{mc_new_mem_stack_w_ECU}.  @code{DEBUG} calls, which (like
+upstream's) expand to nothing unless a developer uncomments the
+@code{VG_(printf)} in the definition of @code{DEBUG}, in
+@code{make_aligned_word64_undefined}, @code{make_aligned_word64_noaccess},
+@code{mc_new_mem_stack_8}, @code{mc_die_mem_stack_8},
+@code{mc_new_mem_stack_16}, @code{mc_die_mem_stack}, @code{mc_LOADV64},
+@code{mc_STOREV64}, and @code{mc_STOREV32}.  A
 @code{#pragma GCC diagnostic ignored "-Wshadow"}, because Memcheck's
 local variables and parameters named @code{line} and @code{str} shadow
 enumerators that @file{dwarf.h} declares.
