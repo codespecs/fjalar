@@ -614,11 +614,6 @@ typedef struct _FunctionEntry {
   Addr startPC;
   Addr endPC;
 
-  // The instruction base of the compile unit. This is necessary because
-  // certain offsets in the debugging information (namely location lists)
-  // are relative to the base of the compilation unit.
-  Addr cuBase;
-
   // The address of the instruction before which we do entry
   // instrumentation for this function. Usually a bit past startPC,
   // since we don't want to look at the parameters until the function
@@ -646,6 +641,7 @@ typedef struct _FunctionEntry {
   // DW_OP_call_frame_cfa frame base calculated from call frames found in .eh_frame section
   // DW_OP_list           frame base calculated from location lists found in .debug_loc section
   // DW_OP_fbreg          frame base = architectural frame pointer
+  // 0                    no frame base that Fjalar can use
   // If frame_base_atom == DW_OP_list, then frame_base_offset is used to search the
   // indicated location list; if frame_base_atom == DW_OP_call_frame_cfa, then the
   // function entry address is used to search the debug frame list;
@@ -690,10 +686,6 @@ typedef struct _FunctionEntry {
   // parameters that are actually pushed onto the stack. This amount of
   // memory is copied so that we can see the pre-states of the parameters at exit.
   int formalParamStackByteSize;
-
-  // Estimate of the amount of stack space allocated below the frame for
-  // the function's formal parameters that are passed in registers.
-  int formalParamLowerStackByteSize;
 
   // GCC 4.0+ Complicates things as it will not use Frame offsets for
   // all formal parameters. If we want to mimic the behavior achieved

@@ -280,8 +280,6 @@ extern dwarf_vma read_leb128 (unsigned char *, const unsigned char *const,
 extern unsigned char * get_build_id (void *);
 #endif
 
-#if 0  // This code is not needed for Fjalar.
-
 static inline void
 report_leb_status (int status)
 {
@@ -290,22 +288,6 @@ report_leb_status (int status)
   else if ((status & 2) != 0)
     error (_("read LEB value is too large to store in destination variable\n"));
 }
-
-#endif // This code is not needed for Fjalar.
-
-// start of Fjalar code
-// convert report_leb_status to macro to solve duplicate 'error' definition problem
-
-#define report_leb_status(status)                               \
-  do                                                            \
-    {                                                           \
-      if ((status & 1) != 0)                                    \
-        error (_("%s:%lu: end of data encountered whilst reading LEB\n")); \
-      else if ((status & 2) != 0)                               \
-        error (_("%s:%lu: read LEB value is too large to store in destination variable\n")); \
-    } while (0)                                                 \
-
-// end of Fjalar code
 
 #define SKIP_ULEB(start, end)					\
   do								\

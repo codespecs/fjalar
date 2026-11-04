@@ -46,7 +46,6 @@ static void updateAllVarTypes(void);
 static void processFunctions(void);
 
 int determineFormalParametersStackByteSize(FunctionEntry* f);
-int determineFormalParametersLowerStackByteSize(FunctionEntry* f);
 int determineVariableByteSize(VariableEntry* var);
 int formalParamByteSize(VariableEntry* varPtr);
 
@@ -1753,7 +1752,6 @@ void initializeFunctionTable(void)
           }
 
           cur_func_entry->startPC = dwarfFunctionPtr->start_pc;
-          cur_func_entry->cuBase = dwarfFunctionPtr->comp_pc;
           cur_func_entry->endPC = dwarfFunctionPtr->end_pc;
 
           FJALAR_DPRINTF("Frame base exp is: %u + %ld\n", dwarfFunctionPtr->frame_base_expression,
@@ -1768,8 +1766,6 @@ void initializeFunctionTable(void)
                          (void *)cur_func_entry->startPC,
                          cur_func_entry->name,
                          cur_func_entry->mangled_name);
-          FJALAR_DPRINTF("cur_func_entry->cuBase: %p\n",
-                         (void *)cur_func_entry->cuBase);
 
           // This seems to happen with class constructors.  If there
           // is NO C++ mangled name but there is a startPC, then
@@ -1850,9 +1846,6 @@ void initializeFunctionTable(void)
 
           cur_func_entry->formalParamStackByteSize
             = determineFormalParametersStackByteSize(cur_func_entry);
-
-          cur_func_entry->formalParamLowerStackByteSize
-            = determineFormalParametersLowerStackByteSize(cur_func_entry);
 
           num_functions_added++;
         }
@@ -2735,30 +2728,6 @@ int determineFormalParametersStackByteSize(FunctionEntry* f)
 }
 
 
-// Determines the number of bytes needed below the frame pointer in
-// the stack to hold the values of all function formal parameters for
-// a particular function.
-int determineFormalParametersLowerStackByteSize(FunctionEntry* f)
-{
-  VarNode* cur_node;
-  int totalByteSize = 0;
-
-  if(!f){
-    return 0;
-  }
-
-  for (cur_node = f->formalParameters.first;
-       cur_node != NULL;
-       cur_node = cur_node->next)
-    {
-      int lo, hi;
-      formalParamFrameOffsetRange(cur_node->var, &lo, &hi);
-      totalByteSize = MIN(totalByteSize, lo);
-    }
-  return -totalByteSize;
-}
-
-
 // Returns the number of bytes that the formal parameter's location
 // holds.  A C++ reference is passed as a pointer.
 int formalParamByteSize(VariableEntry* varPtr)
@@ -2830,11 +2799,8 @@ static Bool locationHasAddressOp(VariableEntry* varPtr)
 // DWARF entry paramPtr, so call it at most once per formal parameter.
 static void useLocationListEntry(formal_parameter* paramPtr, Addr pc)
 {
-  location_list* ll = gengettable(loc_list_map, (void*)paramPtr->location_list_offset);
+  location_list* ll = find_location_list_entry(paramPtr->location_list_offset, pc);
 
-  while (ll && !((ll->begin <= pc) && (pc < ll->end))) {
-    ll = ll->next;
-  }
   if (ll && (ll->num_ops == 1)) {
     location_op_kind kind = location_op_kind_of(ll->atom);
     if ((kind == LOC_OP_REG) || (kind == LOC_OP_BREG) || (kind == LOC_OP_FBREG)) {

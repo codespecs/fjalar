@@ -227,12 +227,16 @@ Investigation results:
 
 Fix:
 
-1. In the shim, rename the symbols with `#define error fjalar_binutils_error`
-   and `#define warn fjalar_binutils_warn`.  Then nothing clashes with the
-   gdbserver's `error`.
-2. Make `fjalar_dwarf.h` include the shim (or a small header that contains
-   only the renames) before `elfcomm.h` and `dwarf.h`, so that Fjalar's own
-   files see the same names.
+1. Rename the symbol with `-Derror=fjalar_binutils_error` in
+   `BINUTILS_SHIM_CFLAGS` in `fjalar.am`.  Then nothing clashes with the
+   gdbserver's `error`.  A `#define` in a shim header would rename `error`
+   only in the files that include that header before `elfcomm.h`; a file
+   that declared `error` without the macro would link silently to the
+   gdbserver's `error`.  The core defines no `warn`, so `warn` keeps its
+   name.
+2. Make `fjalar_dwarf.h` include `my_libc.h` before `dwarf.h`, because
+   upstream's `report_leb_status` uses `_` and `error`, and Fjalar's own
+   files include `dwarf.h` through `fjalar_dwarf.h`.
 3. Use upstream's global `error` and `warn` in `elfcomm.c`, which work
    through `my_libc`'s `fprintf` and `vfprintf`.  Delete the copies in
    `readelf.c` and `dwarf.c`.  Restore upstream's declarations in

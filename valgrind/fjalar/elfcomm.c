@@ -48,7 +48,7 @@
 
 extern char *program_name;
 
-static void
+void
 error (const char *message, ...)
 {
   va_list args;
@@ -62,9 +62,7 @@ error (const char *message, ...)
   va_end (args);
 }
 
-#if 0 // This code is not needed for Fjalar.
-
-static void
+void
 warn (const char *message, ...)
 {
   va_list args;
@@ -77,8 +75,6 @@ warn (const char *message, ...)
   vfprintf (stderr, message, args);
   va_end (args);
 }
-
-#endif // This code is not needed for Fjalar.
 
 void (*byte_put) (unsigned char *, elf_vma, unsigned int);
 

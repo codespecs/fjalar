@@ -292,6 +292,63 @@ static void save_param_regs(FunctionExecutionState* f_state, ThreadId tid)
 // copies by default that it also copies to cover formal parameters.
 #define MAX_VIRTUAL_STACK_EXTENSION (64 * 1024)
 
+// Sets regs to the values of the registers in f->entryRegsMask, and makes
+// formalParamLocation read the guest stack, so that formalParamLocation
+// with regs gives the locations of the formal parameters of an invocation
+// of f.  Call this at function entrance, before copying the guest stack to
+// the virtual stack.
+static void prepare_entrance_param_locations(FunctionEntry* f, ThreadId tid,
+                                             Addr regs[FJALAR_NUM_DWARF_REGS])
+{
+  UInt regNum;
+
+  for (regNum = 0; regNum < FJALAR_NUM_DWARF_REGS; regNum++) {
+    if (f->entryRegsMask & (1U << regNum)) {
+      regs[regNum] = read_dwarf_reg(tid, regNum);
+    }
+  }
+  // At function entrance, the guest stack holds what the virtual stack
+  // will hold, so formalParamLocation can read the guest stack.  An
+  // empty copied stack makes it do so.
+  f->guestStackStart = 0;
+  f->guestStackEnd = 0;
+}
+
+// Returns the lowest guest address in [stackStart, stackEnd) at which a
+// formal parameter of an invocation of f lies, or stackEnd if none lies
+// there.  frameBase is the invocation's frame base.  Call this at function
+// entrance, before copying the guest stack to the virtual stack.
+static Addr formal_params_stack_start(FunctionEntry* f, ThreadId tid,
+                                      Addr frameBase, Addr stackStart,
+                                      Addr stackEnd)
+{
+  Addr start = stackEnd;
+  Addr regs[FJALAR_NUM_DWARF_REGS];
+  VarNode* node;
+
+  prepare_entrance_param_locations(f, tid, regs);
+  for (node = f->formalParameters.first; node != NULL; node = node->next) {
+    VariableEntry* var = node->var;
+    Addr paramLoc;
+    if (formalParamIsOmitted(var)) {
+      continue;
+    }
+    if (var->location_expression_size == 0) {
+      paramLoc = frameBase + var->byteOffset;
+    } else if (location_op_kind_of(var->location_expression[0].atom)
+               == LOC_OP_REG) {
+      continue;
+    } else {
+      paramLoc = formalParamLocation(var, f, frameBase,
+                                     f->entryRegsMask != 0 ? regs : NULL);
+    }
+    if (paramLoc >= stackStart && paramLoc < start) {
+      start = paramLoc;
+    }
+  }
+  return start;
+}
+
 // Returns the guest address just past the formal parameters of an
 // invocation of f that lie on the guest stack at or above stackStart,
 // or copyEnd if that is greater.  frameBase is the invocation's frame
@@ -306,20 +363,9 @@ static Addr formal_params_stack_end(FunctionEntry* f, ThreadId tid,
   Addr limit = copyEnd + MAX_VIRTUAL_STACK_EXTENSION;
   Addr end = copyEnd;
   Addr regs[FJALAR_NUM_DWARF_REGS];
-  UInt regNum;
   VarNode* node;
 
-  for (regNum = 0; regNum < FJALAR_NUM_DWARF_REGS; regNum++) {
-    if (f->entryRegsMask & (1U << regNum)) {
-      regs[regNum] = read_dwarf_reg(tid, regNum);
-    }
-  }
-  // At function entrance, the guest stack holds what the virtual stack
-  // will hold, so formalParamLocation can read the guest stack.  An
-  // empty copied stack makes it do so.
-  f->guestStackStart = 0;
-  f->guestStackEnd = 0;
-
+  prepare_entrance_param_locations(f, tid, regs);
   for (node = f->formalParameters.first; node != NULL; node = node->next) {
     VariableEntry* var = node->var;
     Addr paramLoc;
@@ -671,6 +717,7 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
 static void pop_unwound_frames(ThreadId tid, Addr sp);
 
 static UInt cur_nonce = 0;
+
 /*
 This is the hook into Valgrind that is called whenever the target
 program enters a function.  Pops and frees the frames whose stack the
@@ -696,9 +743,11 @@ void enter_function(FunctionEntry* f)
   Addr frame_ptr = 0; /* E.g., %ebp */
   int local_stack, size;
   UInt regNum;
+  enum dwarf_location_atom frame_base_atom;
+  long frame_base_offset;
 
-  FJALAR_DPRINTF("[enter_function] startPC is: %x, entryPC is: %x, cu_base: %p\n",
-                 (UInt)f->startPC, (UInt)f->entryPC,(void *)f->cuBase);
+  FJALAR_DPRINTF("[enter_function] startPC is: %x, entryPC is: %x\n",
+                 (UInt)f->startPC, (UInt)f->entryPC);
   FJALAR_DPRINTF("Value of edi: %lx, esi: %lx, edx: %lx, ecx: %lx\n",
       read_xDI(tid), read_xSI(tid), read_xDX(tid), read_xCX(tid));
   FJALAR_DPRINTF("frame_base_atom: %x, frame_base_offset: %lx\n", f->frame_base_atom, (unsigned long int) f->frame_base_offset);
@@ -723,87 +772,47 @@ void enter_function(FunctionEntry* f)
   // using the location list data, then we assume
   // that after the function prolog, EBP will be the frame pointer.
 
-  if (f->frame_base_atom != 0) {
-    Addr eip = f->entryPC;
-    eip =  eip - f->cuBase;
-    FJALAR_DPRINTF("\tCurrent EIP is: %x\n", (UInt)eip);
+  frame_base_atom = f->frame_base_atom;
+  frame_base_offset = f->frame_base_offset;
+  if (frame_base_atom == DW_OP_list) {
+    location_list* ll = find_location_list_entry(f->frame_base_offset, f->entryPC);
 
-    if (f->frame_base_atom == DW_OP_list) {
-      location_list *ll;
-
-      FJALAR_DPRINTF("\tLocation list based function(offset from base: %x). offset is %ld\n", (UInt)eip, f->frame_base_offset);
-
-      if (gencontains(loc_list_map, (void *)f->frame_base_offset)) {
-        ll = gengettable(loc_list_map, (void *)f->frame_base_offset);
-
-        // TODO: I don't think this is true anymore. The addresses stored in the
-        // location_list are always offsets.
-
-        // (comment added 2009)
-        // HACK. g++ and GCC handle location lists differently. GCC puts lists offsets
-        // relative to the compilation unit, g++ uses the actual address. I'm going to
-        // compare the location list ranges both to the cu_base offset, as well as
-        // the function's entry point. This might break if there's every a case
-        // where the compilation unit offset is a valid address in the program
-        while(ll &&
-              !(((ll->begin <= eip) && (ll->end >= eip)) ||
-                ((ll->begin <= f->entryPC) && (ll->end >= f->entryPC)))) {
-          FJALAR_DPRINTF("\tExamining loc list entry: %x - %x - %x\n", (UInt)ll->offset, (UInt)ll->begin, (UInt)ll->end);
-          ll = ll->next;
-        }
-
-        if(ll) {
-          FJALAR_DPRINTF("\tFound location list entry, finding location corresponding to dwarf #: %x with offset: %lx\n", ll->atom, (unsigned long int) ll->atom_offset);
-
-          // (comment added 2013)
-          // It turns out it might not be just the contents of a register.  Some
-          // 32bit x86 code does some tricky stack alignment and has to save a
-          // pointer to the original stack frame.  This means we get passed a
-          // DW_OP_deref instead of a DW_OP_breg.  The tricky bit is we don't
-          // want to go back to that address because it probably won't be equal
-          // to the local frame pointer due to the stack alignment.  So the HACK
-          // is to just assume the frame base is just above the saved frame
-          // pointer and the return address, as is normal:  EBP+8 on x86 and
-          // RBP+16 on amd64.  (markro)
-          if (ll->atom == DW_OP_deref) {
-              ll->atom = DW_OP_breg0 + DWARF_FP_REG;
-              ll->atom_offset = 2 * sizeof(Addr);
-          }
-          // For DW_OP_regN, the offset is 0.
-          if (dwarf_op_reg_num(ll->atom, &regNum) && dwarf_reg_is_readable(regNum)) {
-            frame_ptr = read_dwarf_reg(tid, regNum) + ll->atom_offset;
-          } else {
-            FJALAR_DPRINTF("\tCannot compute frame base from location list entry with atom %s\n",
-                           location_expression_to_string(ll->atom));
-          }
-        }
-      }
-    } else if (f->frame_base_atom == DW_OP_call_frame_cfa) {
-      // Search the debug_frame list for entryPC. A debug_frame contains information
-      // extracted from the CFA data in the .eh_frame section.
-      debug_frame *df = debug_frame_HEAD;
-      while (df) {
-        FJALAR_DPRINTF("\tExamining frame: %lx - %lx\n", df->begin, df->end);
-        if (f->entryPC >= df->begin && f->entryPC < df->end) {
-          FJALAR_DPRINTF("\tFound debug frame with reg %x and offset %lx\n", df->cfa_reg, df->cfa_offset);
-          if (dwarf_reg_is_readable(df->cfa_reg)) {
-            frame_ptr = read_dwarf_reg(tid, df->cfa_reg) + df->cfa_offset;
-          } else {
-            FJALAR_DPRINTF("\tCannot compute frame base from CFA register %s\n",
-                           dwarf_reg_name(df->cfa_reg));
-          }
-          break;
-        }
-        df = df->next;
-      }
+    FJALAR_DPRINTF("\tLocation list based function at %lx. offset is %ld\n", (unsigned long)f->entryPC, f->frame_base_offset);
+    if (ll) {
+      FJALAR_DPRINTF("\tFound location list entry, finding location corresponding to dwarf #: %x with offset: %lx\n", ll->atom, (unsigned long int) ll->atom_offset);
+      frame_base_of_location_expression(ll, &frame_base_atom, &frame_base_offset);
     } else {
-      FJALAR_DPRINTF("\tsimple location expression\n");
-      if (dwarf_op_reg_num(f->frame_base_atom, &regNum) && dwarf_reg_is_readable(regNum)) {
-        frame_ptr = read_dwarf_reg(tid, regNum) + f->frame_base_offset;
-      } else {
-        FJALAR_DPRINTF("\tCannot compute frame base from atom %s\n",
-                       location_expression_to_string(f->frame_base_atom));
+      FJALAR_DPRINTF("\tNo location list entry covers %lx\n", (unsigned long)f->entryPC);
+      frame_base_atom = 0;
+    }
+  }
+
+  if (frame_base_atom == DW_OP_call_frame_cfa) {
+    // Search the debug_frame list for entryPC. A debug_frame contains information
+    // extracted from the CFA data in the .eh_frame section.
+    debug_frame *df = debug_frame_HEAD;
+    while (df) {
+      FJALAR_DPRINTF("\tExamining frame: %lx - %lx\n", df->begin, df->end);
+      if (f->entryPC >= df->begin && f->entryPC < df->end) {
+        FJALAR_DPRINTF("\tFound debug frame with reg %x and offset %lx\n", df->cfa_reg, df->cfa_offset);
+        if (dwarf_reg_is_readable(df->cfa_reg)) {
+          frame_ptr = read_dwarf_reg(tid, df->cfa_reg) + df->cfa_offset;
+        } else {
+          FJALAR_DPRINTF("\tCannot compute frame base from CFA register %s\n",
+                         dwarf_reg_name(df->cfa_reg));
+        }
+        break;
       }
+      df = df->next;
+    }
+  } else if (frame_base_atom != 0) {
+    FJALAR_DPRINTF("\tsimple location expression\n");
+    // For DW_OP_regN, the offset is 0.
+    if (dwarf_op_reg_num(frame_base_atom, &regNum) && dwarf_reg_is_readable(regNum)) {
+      frame_ptr = read_dwarf_reg(tid, regNum) + frame_base_offset;
+    } else {
+      FJALAR_DPRINTF("\tCannot compute frame base from atom %s\n",
+                     location_expression_to_string(frame_base_atom));
     }
   }
 
@@ -871,12 +880,6 @@ void enter_function(FunctionEntry* f)
   // stack alignment operations in main, we may need  as much as 16 bytes over the above.
   size = MAX(local_stack, VG_STACK_REDZONE_SZB)
     + f->formalParamStackByteSize + sizeof(Addr)*2 + 32;/* plus stuff in caller's*/
-  FJALAR_DPRINTF("local_stack: %p, arg_size: %d\n", (void *)(frame_ptr - f->formalParamLowerStackByteSize),
-                                                    f->formalParamLowerStackByteSize);
-  int delta = stack_ptr - (frame_ptr - f->formalParamLowerStackByteSize);
-  if (delta < 0 )
-      delta = 0;
-
   tl_assert(size >= 0);
   if (size != 0) {
     Int entryRegsOffset;
@@ -915,7 +918,16 @@ void enter_function(FunctionEntry* f)
     newEntry->virtualStackByteSize = size;
     newEntry->virtualStackFPOffset = local_stack;
 
-    clear_all_tags_in_range(stack_ptr - VG_STACK_REDZONE_SZB, VG_STACK_REDZONE_SZB - delta);
+    // The tags of the red zone below the formal parameters that lie in
+    // it are stale.  The location of a formal parameter may be relative
+    // to the stack pointer rather than to the frame base, so compute
+    // each location.
+    {
+      Addr redZoneStart = stack_ptr - VG_STACK_REDZONE_SZB;
+      Addr paramsStart = formal_params_stack_start(f, tid, frame_ptr,
+                                                   redZoneStart, stack_ptr);
+      clear_all_tags_in_range(redZoneStart, paramsStart - redZoneStart);
+    }
 
     VG_(memcpy)(newEntry->virtualStack,
 		(char*)stack_ptr - VG_STACK_REDZONE_SZB, size);

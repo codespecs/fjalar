@@ -1133,8 +1133,12 @@ $INV/fjalar/compare-warnings.sh --binutils $INV/fjalar/build-before.log $INV/fja
 
 @noindent
 (@ref{Get Current Valgrind Regtest Baseline Results} saves
-@file{build-before.log}.)  It is a good idea to modify the code to remove as
-many of these new warnings as possible to make subsequent merges easier.
+@file{build-before.log}.)  Do not edit a copy of a Binutils file to remove a
+warning, because each change to a copy makes subsequent merges harder.
+Instead, disable the warning for the copies:  with a @code{#pragma GCC
+diagnostic} in @file{valgrind/fjalar/binutils-shim/sysdep.h}, or, for a
+warning that a pragma cannot disable, such as @option{-Wformat-signedness},
+in @file{valgrind/fjalar/fjalar.am}.  Do fix a warning that reveals a bug.
 
 A Valgrind tool cannot call the C runtime library.  Fjalar's
 @file{sysdep.h}, in @file{valgrind/fjalar/binutils-shim/}, which the
@@ -1440,18 +1444,22 @@ Then run @file{compare-fjalar-changes.sh} again (@pxref{Resolving
 Conflicts}).  After the commit, the index equals the commit, so the
 command compares all of Fjalar's modifications before and after the
 merge, including the changes that you made since you last ran it.  It
-shows each modification that the merge or a conflict resolution lost or
-added, such as a change of whitespace:
+shows each modification that the merge or a conflict resolution lost,
+altered, or added, such as a change of whitespace:
 
 @example
 $INV/fjalar/compare-fjalar-changes.sh
 @end example
 
 @noindent
-Restore each of Fjalar's modifications that was lost, unless the Valgrind
-developers made the same change.  Remove each added modification that
+Restore each of Fjalar's modifications that the command reports as lost
+or altered, unless the Valgrind developers made the same change or made
+the modification unnecessary, or you adapted the modification to the
+Valgrind developers' changes.  Remove each added modification that
 Fjalar does not need, and document the others in the appendices
-(@pxref{Valgrind modifications}, and @ref{Memcheck modifications}).
+(@pxref{Valgrind modifications}, and @ref{Memcheck modifications}).  The
+command also reports an adapted modification as added; update its
+existing appendix entry instead of adding a new one.
 Commit those changes, and run @file{compare-fjalar-changes.sh} again to
 confirm them.
 
@@ -1583,11 +1591,9 @@ functions, and a @code{CHECK_SP_SLOW} call in @code{mc_new_mem_stack} and
 Smaller edits:  @code{DEBUG} calls that @code{MAX_DEBUG_INFO} enables, and
 casts of their pointer arguments to @code{void *}; a
 @code{#pragma GCC diagnostic ignored "-Wshadow"}, because Memcheck's
-locals named @code{line} and @code{str} shadow enumerators that
-@file{dwarf.h} declares; @code{#undef}s of @code{SM_OFF} and
-@code{SM_OFF_16}, which @file{kvasir/dyncomp_main.h} also defines, and of
-@code{INLINE}; and a parameter of @code{check_mem_is_defined_asciiz}
-renamed from @code{str} to @code{astr}.
+local variables and parameters named @code{line} and @code{str} shadow
+enumerators that @file{dwarf.h} declares; and an @code{#undef} of
+@code{SM_OFF}, which @file{kvasir/dyncomp_main.h} also defines.
 @item $INV/fjalar/valgrind/fjalar/mc_translate.c
 In @code{MC_(instrument)}, calls to @code{begin_instrument_DC},
 @code{instrument_stmt_DC} (after Memcheck instruments each statement),
