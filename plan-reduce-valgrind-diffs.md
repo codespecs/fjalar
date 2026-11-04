@@ -33,6 +33,14 @@ remain), with its companion codespecs/daikon#955, and #225 (Step 9,
 documentation).  So did PR #181, which restored upstream's `AC_INIT`
 version string.
 
+The follow-up edits, which no step covered, are done:  #232 (landed)
+removed 3 of them, and #236 (open) removes the rest.  #236 moves the
+register printing in `MC_(instrument)` to `fjalar_print_registers`,
+renames DynComp's `SM_OFF` to `SM_OFF_DC` so that `mc_main.c` need not
+`#undef` it, restores upstream's `DEBUG` macro and calls, shortens the
+Fjalar header comments of `mc_main.c` and `mc_translate.c`, and reduces
+the `fjalar_print_usage` hook to one line.
+
 Step 9 also proposed a step in the merge procedure that checks
 `.alwaysDefd` in `guest_amd64_helpers.c`, because Memcheck's
 `isAlwaysDefd` panics if a range in a dirty call's `fxState` partly
@@ -44,8 +52,6 @@ needed.  Memcheck checks a dirty call's `fxState` ranges with
 directly to the output superblock with `mc_stmt`, so Memcheck never
 examines their `fxState` ranges, on any architecture.  DynComp's
 `do_shadow_Dirty_DC` does not use the always-defined list.
-
-"Follow-up" below lists the edits that no step covered.
 
 ## The remaining differences
 
@@ -61,6 +67,7 @@ files, with 1054 lines added and 266 removed.  Measured at commit 8efd1baa
 (after Steps 7 and 8, before Step 6c), they were in 15 files, with 226
 lines added and 203 removed.  Measured at commit 00b48406 (after all of
 Steps 0-9), they were in 15 files, with 218 lines added and 18 removed.
+With #236, they are in 15 files, with 166 lines added and 11 removed.
 
 What remains is Fjalar's essential hooks and 3 backported test fixes:
 
@@ -81,9 +88,6 @@ What remains is Fjalar's essential hooks and 3 backported test fixes:
   backports of upstream fixes, not hooks; a merge of a release that has
   them takes upstream's version, and the differences disappear.
 
-Some edits in `mc_main.c` and `mc_translate.c`, about 70 lines, are not
-hooks; see "Follow-up" below.
-
 ## Principles
 
 1. Prefer, in order:  no change to the upstream file; Fjalar code in a
@@ -94,40 +98,6 @@ hooks; see "Follow-up" below.
    upstream bugs or typos upstream instead.
 3. Fjalar supports only amd64-linux (#121), but keep the functionality of
    its x86-only changes.
-
-## Follow-up
-
-Steps 0-9 leave about 70 lines of edits in `mc_main.c` and
-`mc_translate.c` that are not hooks.  One PR could remove most of them.
-Record `diff-from-valgrind.sh --shortstat` before and after in the PR
-description.  Verify with `make build`, `./check-regtest.sh`,
-`make fjalar-test`, and `./test-kvasir.sh` (output identical to the
-output before the PR), and compare the warnings of a full build before
-and after with `./compare-warnings.sh BEFORE.log AFTER.log`.
-
-- **Register printing in `MC_(instrument)`.**  2 copies of a 9-line block
-  print registers when `fjalar_print_IR` is set.  Move the block to a
-  Fjalar function, so that each copy becomes a one-line call, or remove
-  it.
-- **`#undef`s in `mc_main.c`.**  `SM_OFF` and `SM_OFF_16` are `#undef`ed
-  because `kvasir/dyncomp_main.h` defines a different `SM_OFF`.  Rename
-  DynComp's macro (for example, to `SM_OFF_DC`) and remove both
-  `#undef`s.  Also remove the `#undef INLINE` before upstream's
-  definition of `INLINE`:  no header that `mc_main.c` includes defines
-  `INLINE`.
-- **The renaming of `str` to `astr`** in `check_mem_is_defined_asciiz`.
-  It avoids shadowing the enumerator `str` of `dwarf.h`, but
-  `mc_main.c` now disables `-Wshadow` for that reason, so restore
-  upstream's name.
-- **`DEBUG` in `mc_main.c`.**  The macro, which `MAX_DEBUG_INFO`
-  enables, the casts to `void *` in its calls, and the extra calls.
-  `MAX_DEBUG_INFO` is off by default.  Remove them, unless a developer
-  still uses that output.
-- **The Fjalar header comments** at the top of `mc_main.c` and
-  `mc_translate.c`.  Keep a notice that the file is modified, because
-  the GPL requires modified files to carry one, but it could shrink to a
-  line or two.  The short notice must keep a date or year range, because
-  GPLv2 section 2(a) requires the date of any change.
 
 ## Not recommended
 
