@@ -80,6 +80,10 @@
 void handle_possible_entry(MCEnv* mce, Addr64 addr, IRSB* sb_orig);
 void handle_possible_exit(MCEnv* mce, IRJumpKind jk);
 
+// Print a blank line, then a line with the instruction pointer, stack
+// pointer, frame pointer, and xAX register of the running thread, in hex.
+void fjalar_print_registers(void);
+
 // The master location_list. This is explained in typedata.h
 extern struct genhashtable* loc_list_map;
 

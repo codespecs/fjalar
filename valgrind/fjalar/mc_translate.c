@@ -27,18 +27,14 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-/* mc_translate.c
-
-   This file has been modified for Fjalar, a dynamic analysis framework
-   for C/C++ programs.
+/* This file has been modified for Fjalar; the "Memcheck modifications"
+   appendix of doc/valgrind-merge.texinfo describes the changes.
 
    Copyright (C) 2007-2026 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
    MIT CSAIL Program Analysis Group
-
-   Most of the Fjalar changes are denoted by // PG or RUDD marks
 */
 
 #include "my_libc.h"
@@ -8713,15 +8709,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
    DCEnv   dce;
    IRSB*   sb_out;
 
-   if (verboze) {
-      ThreadId tid = VG_(get_running_tid)();
-      VG_(printf)("\n");
-      VG_(printf)("0x%lx ", VG_(get_IP)(tid));
-      VG_(printf)("0x%lx ", VG_(get_SP)(tid));
-      VG_(printf)("0x%lx ", VG_(get_FP)(tid));
-      VG_(printf)("0x%lx ", read_xAX(tid));
-      VG_(printf)("\n");
-   }
+   if (verboze) fjalar_print_registers();
 
    if (gWordTy != hWordTy) {
       /* We don't currently support this case. */
@@ -8994,16 +8982,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
             break;
 
          case Ist_IMark:
-            if (verboze) {
-               ThreadId tid = VG_(get_running_tid)();
-               VG_(printf)("\n");
-               VG_(printf)("0x%lx ", VG_(get_IP)(tid));
-               VG_(printf)("0x%lx ", VG_(get_SP)(tid));
-               VG_(printf)("0x%lx ", VG_(get_FP)(tid));
-               VG_(printf)("0x%lx ", read_xAX(tid));
-               VG_(printf)("\n");
-            }
-
+            if (verboze) fjalar_print_registers();
             handle_possible_entry( &mce, st->Ist.IMark.addr, sb_in); // pgbovine
             break;
 

@@ -60,7 +60,7 @@
 
 #define SECONDARY_MASK (SECONDARY_SIZE-1)  /* DO NOT CHANGE */
 
-#define SM_OFF(addr)	((addr) & SECONDARY_MASK)
+#define SM_OFF_DC(addr)	((addr) & SECONDARY_MASK)
 #define PM_IDX(addr)	((addr) >> SECONDARY_SHIFT)
 
 
@@ -92,7 +92,7 @@ UInt n_primary_val_uf_object_map_init_entries;
 
 // Make sure to check that !IS_SECONDARY_UF_NULL(tag) before
 // calling this macro or else you may segfault
-#define GET_UF_OBJECT_PTR(tag) (&(primary_val_uf_object_map[PM_IDX(tag)][SM_OFF(tag)]))
+#define GET_UF_OBJECT_PTR(tag) (&(primary_val_uf_object_map[PM_IDX(tag)][SM_OFF_DC(tag)]))
 
 #if VG_WORDSIZE == 4
 #define IS_SECONDARY_TAG_MAP_NULL(a) (primary_tag_map[PM_IDX(a)] == NULL)
@@ -172,7 +172,7 @@ static __inline__ void set_tag ( Addr a, UInt tag )
 #else
   printf("[DynComp] set_tag: %u for loc: %p\n", tag, (void *)a);
 #endif
-  primary_tag_map[PM_IDX(a)][SM_OFF(a)] = tag;
+  primary_tag_map[PM_IDX(a)][SM_OFF_DC(a)] = tag;
 }
 
 #ifndef MAX_DEBUG_INFO
@@ -181,7 +181,7 @@ static __inline__ UInt get_tag ( Addr a )
   if (IS_SECONDARY_TAG_MAP_NULL(a)) {
     return 0; // 0 means NO tag for that byte
   }
-  return primary_tag_map[PM_IDX(a)][SM_OFF(a)];
+  return primary_tag_map[PM_IDX(a)][SM_OFF_DC(a)];
 }
 #else
 static __inline__ UInt get_tag ( Addr a )
@@ -191,7 +191,7 @@ static __inline__ UInt get_tag ( Addr a )
   if (IS_SECONDARY_TAG_MAP_NULL(a)) {
     tag = 0; // 0 means NO tag for that byte
   } else {
-    tag = primary_tag_map[PM_IDX(a)][SM_OFF(a)];
+    tag = primary_tag_map[PM_IDX(a)][SM_OFF_DC(a)];
   }
   printf("[DynComp] Fetching tag %d for %p at %s\n", tag, (void*)a,
          current_IP_description());
