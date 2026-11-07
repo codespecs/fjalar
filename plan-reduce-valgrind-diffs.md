@@ -33,13 +33,13 @@ remain), with its companion codespecs/daikon#955, and #225 (Step 9,
 documentation).  So did PR #181, which restored upstream's `AC_INIT`
 version string.
 
-The follow-up edits, which no step covered, are done:  #232 (landed)
-removed 3 of them, and #236 (open) removes the rest.  #236 moves the
-register printing in `MC_(instrument)` to `fjalar_print_registers`,
-renames DynComp's `SM_OFF` to `SM_OFF_DC` so that `mc_main.c` need not
-`#undef` it, restores upstream's `DEBUG` macro and calls, shortens the
-Fjalar header comments of `mc_main.c` and `mc_translate.c`, and reduces
-the `fjalar_print_usage` hook to one line.
+The follow-up edits, which no step covered, are done:  #232 removed 3 of
+them, and #236 removed the rest.  #236 moved the register printing in
+`MC_(instrument)` to `fjalar_print_registers`, renamed DynComp's `SM_OFF`
+to `SM_OFF_DC` so that `mc_main.c` need not `#undef` it, restored
+upstream's `DEBUG` macro and calls (keeping the 9 `DEBUG` calls that only
+Fjalar has), shortened the Fjalar header comments of `mc_main.c` and
+`mc_translate.c`, and reduced the `fjalar_print_usage` hook to one line.
 
 Step 9 also proposed a step in the merge procedure that checks
 `.alwaysDefd` in `guest_amd64_helpers.c`, because Memcheck's
@@ -67,7 +67,8 @@ files, with 1054 lines added and 266 removed.  Measured at commit 8efd1baa
 (after Steps 7 and 8, before Step 6c), they were in 15 files, with 226
 lines added and 203 removed.  Measured at commit 00b48406 (after all of
 Steps 0-9), they were in 15 files, with 218 lines added and 18 removed.
-With #236, they are in 15 files, with 166 lines added and 11 removed.
+Measured at commit 265fd112 (after #236), they are in 15 files, with 175
+lines added and 11 removed.
 
 What remains is Fjalar's essential hooks and 3 backported test fixes:
 
@@ -79,7 +80,8 @@ What remains is Fjalar's essential hooks and 3 backported test fixes:
 - the extra-shadow tag accessor `VG_(get_tag_ptr_for_guest_offset)`
   (`m_machine.c` and `pub_core_machine.h`);
 - the DynComp and Fjalar hooks in `mc_main.c` and `mc_translate.c`,
-  including the `CHECK_SP` calls in the `mc_new_mem_stack_*` functions;
+  including the `CHECK_SP` calls in the `mc_new_mem_stack_*` functions,
+  and the 9 `DEBUG` calls in `mc_main.c` that only Fjalar has;
 - `memcheck.h`, which includes `pub_tool_clreq.h` instead of upstream's
   `valgrind.h`, as `tests/check_headers_and_includes` requires of a file in
   a tool directory;
