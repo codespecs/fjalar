@@ -546,6 +546,17 @@ VG_REGPARM(1) void prime_function(FunctionEntry *f)
 
 static void find_entry_point(IRSB* bb_orig, FunctionEntry *f);
 
+void fjalar_print_registers(void)
+{
+  ThreadId tid = VG_(get_running_tid)();
+  VG_(printf)("\n");
+  VG_(printf)("0x%lx ", VG_(get_IP)(tid));
+  VG_(printf)("0x%lx ", VG_(get_SP)(tid));
+  VG_(printf)("0x%lx ", VG_(get_FP)(tid));
+  VG_(printf)("0x%lx ", read_xAX(tid));
+  VG_(printf)("\n");
+}
+
 // This is called whenever we encounter an IMark statement.  From the
 // IR documentation (Copyright (c) 2004-2005 OpenWorks LLP):
 //

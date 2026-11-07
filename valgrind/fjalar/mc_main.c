@@ -29,18 +29,14 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-/* mc_main.c
-
-   This file has been modified for Fjalar, a dynamic analysis framework
-   for C/C++ programs.
+/* This file has been modified for Fjalar; the "Memcheck modifications"
+   appendix of doc/valgrind-merge.texinfo describes the changes.
 
    Copyright (C) 2007-2026 University of Washington Computer Science & Engineering Department,
    Programming Languages and Software Engineering Group
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
    MIT CSAIL Program Analysis Group
-
-   Most of the Fjalar changes are denoted by // PG or RUDD marks
 */
 
 #include "my_libc.h"
@@ -81,11 +77,7 @@ Bool kvasir_with_dyncomp; // PG - pgbovine - dyncomp
 /* Set to 1 to do a little more sanity checking */
 #define VG_DEBUG_MEMORY 0
 
-#ifdef MAX_DEBUG_INFO
-#define DEBUG(fmt, args...) VG_(printf)(fmt, ## args)
-#else
-#define DEBUG(fmt, args...)
-#endif
+#define DEBUG(fmt, args...) //VG_(printf)(fmt, ## args)
 
 static void ocache_sarp_Set_Origins ( Addr, UWord, UInt ); /* fwds */
 static void ocache_sarp_Clear_Origins ( Addr, UWord ); /* fwds */
@@ -288,8 +280,6 @@ static void ocache_sarp_Clear_Origins ( Addr, UWord ); /* fwds */
 // These represent 128 bits of memory.
 #define VA_BITS32_UNDEFINED   0x55555555  // 01_01_01_01b x 4
 
-// This definition of SM_OFF conflicts with the one in kvasir/dyncomp_main.h. (markro)
-#undef  SM_OFF
 
 #define SM_CHUNKS             16384    // Each SM covers 64k of memory.
 #define SM_OFF(aaa)           (((aaa) & 0xffff) >> 2)
@@ -1933,7 +1923,7 @@ static void set_address_range_perms ( Addr a, SizeT lenT, UWord vabits16,
 void MC_(make_mem_noaccess) ( Addr a, SizeT len )
 {
    PROF_EVENT(MCPE_MAKE_MEM_NOACCESS);
-   DEBUG("MC_(make_mem_noaccess)(%p, %lu)\n", (void *)a, len);
+   DEBUG("MC_(make_mem_noaccess)(%p, %lu)\n", a, len);
    set_address_range_perms ( a, len, VA_BITS16_NOACCESS, SM_DIST_NOACCESS );
 
    // PG - pgbovine - dyncomp - Anytime you make a whole range of
@@ -2024,7 +2014,7 @@ static void make_mem_defined_if_addressable ( Addr a, SizeT len )
 {
    SizeT i;
    UChar vabits2;
-   DEBUG("make_mem_defined_if_addressable(%p, %llu)\n", (void *)a, (ULong)len);
+   DEBUG("make_mem_defined_if_addressable(%p, %llu)\n", a, (ULong)len);
    for (i = 0; i < len; i++) {
       vabits2 = get_vabits2( a+i );
       if (LIKELY(VA_BITS2_NOACCESS != vabits2)) {
@@ -2041,7 +2031,7 @@ static void make_mem_defined_if_noaccess ( Addr a, SizeT len )
 {
    SizeT i;
    UChar vabits2;
-   DEBUG("make_mem_defined_if_noaccess(%p, %llu)\n", (void *)a, (ULong)len);
+   DEBUG("make_mem_defined_if_noaccess(%p, %llu)\n", a, (ULong)len);
    for (i = 0; i < len; i++) {
       vabits2 = get_vabits2( a+i );
       if (LIKELY(VA_BITS2_NOACCESS == vabits2)) {
@@ -2064,7 +2054,7 @@ void MC_(copy_address_range_state) ( Addr src, Addr dst, SizeT len )
    UChar vabits2, vabits8;
    Bool  aligned, nooverlap;
 
-   DEBUG("MC_(copy_address_range_state)(%p, %p, %lu)\n", (void *)src, (void *)dst, len);
+   DEBUG("MC_(copy_address_range_state)\n");
    PROF_EVENT(MCPE_COPY_ADDRESS_RANGE_STATE);
 
    if (len == 0 || src == dst)
@@ -6433,11 +6423,7 @@ static void mc_print_usage(void)
 "    --show-mismatched-frees=no|yes   show frees that don't match the allocator? [yes]\n"
 "    --show-realloc-size-zero=no|yes  show realocs with a size of zero? [yes]\n"
    );
-
-   // pgbovine
    fjalar_print_usage();
-
-
 }
 
 static void mc_print_debug_usage(void)
