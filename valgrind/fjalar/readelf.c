@@ -244,29 +244,28 @@ static struct dump_list_entry * dump_sects_byname;
 
 char * program_name = (char*) "fjalar";
 
-// these variables cannot be static as they are shared with Fjalar's version of dwarf.c
-int show_name;		// always true for Fjalar
-int do_dynamic;		// never true for Fjalar
-int do_syms;		// always true for Fjalar
-int do_dyn_syms;	// never true for Fjalar
-int do_lto_syms;        // never true for Fjalar
-int do_reloc;		// never true for Fjalar
-int do_sections;	// never true for Fjalar
-int do_section_groups;	// never true for Fjalar
-int do_section_details;	// never true for Fjalar
-int do_segments;	// never true for Fjalar
-int do_unwind;		// never true for Fjalar
-int do_using_dynamic;	// never true for Fjalar
-int do_header;		// never true for Fjalar
-int do_dump;		// always true for Fjalar
-int do_version;		// never true for Fjalar
-int do_histogram;	// never true for Fjalar
-int do_debugging;	// never true for Fjalar
-int do_ctf;             // never true for Fjalar
-int do_arch;		// never true for Fjalar
-int do_notes;		// never true for Fjalar
-int do_archive_index;	// never true for Fjalar
-int check_all;          // never true for FJalar
+static bool show_name = false;
+static bool do_dynamic = false;
+static bool do_syms = false;
+static bool do_dyn_syms = false;
+static bool do_lto_syms = false;
+static bool do_reloc = false;
+static bool do_sections = false;
+static bool do_section_groups = false;
+static bool do_section_details = false;
+static bool do_segments = false;
+static bool do_unwind = false;
+static bool do_using_dynamic = false;
+static bool do_header = false;
+static bool do_dump = false;
+static bool do_version = false;
+static bool do_histogram = false;
+static bool do_debugging = false;
+static bool do_ctf = false;
+static bool do_arch = false;
+static bool do_notes = false;
+static bool do_archive_index = false;
+static bool check_all = false;
 static bool is_32bit_elf = false;
 static bool do_not_show_symbol_truncation = true;
 static bool process_links = false;
@@ -282,20 +281,6 @@ static char *dump_ctf_parent_name;
 static char *dump_ctf_symtab_name;
 static char *dump_ctf_strtab_name;
 #endif
-
-// added declarations for Fjalar
-
-int do_debug_info;	// always true for Fjalar
-int do_debug_lines;	// always true for Fjalar
-int do_debug_loc;	// always true for Fjalar
-int do_debug_frames;	// always true for Fjalar
-int do_debug_abbrevs;	// true if --fjalar-debug-dump
-int do_debug_aranges;	// true if --fjalar-debug-dump
-int do_debug_pubnames;	// true if --fjalar-debug-dump
-int do_debug_macinfo;	// true if --fjalar-debug-dump
-int do_debug_str;	// true if --fjalar-debug-dump
-
-// end of Fjalar declarations
 
 struct group_list
 {
@@ -23324,13 +23309,13 @@ process_elf_binary_data (const HChar* filename)
   bool err;
   // FJALAR_DPRINTF("Entry: process_elf_binary_data\n");
 
-  do_syms++;
-  do_dump++;
+  do_syms = true;
+  do_dump = true;
   do_debug_info++;
   do_debug_lines++;
   do_debug_loc++;
   do_debug_frames++;
-  show_name = 1;
+  show_name = true;
   dump_any_debugging = true;
 
   // These sections are not needed to harvest data for Fjalar/Kvasir,
