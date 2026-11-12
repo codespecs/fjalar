@@ -179,7 +179,6 @@ int do_debug_cu_index;
 int do_wide;
 int do_debug_links;
 int do_follow_links = DEFAULT_FOR_FOLLOW_LINKS;
-
 #ifdef HAVE_LIBDEBUGINFOD
 int use_debuginfod = 1;
 #endif
