@@ -8,18 +8,17 @@ conflict.
 
 ## Current state (against pristine 2.39)
 
-Output of `./merge-binutils.sh --trial 2.47` on 2026-11-11, at `265fd112`
-(after Phase 1):
+Output of `./merge-binutils.sh --trial 2.47` on 2026-11-11, after PR 5:
 
 | File        | Changes | Added | Removed | Conflicts |
 | ----------- | ------: | ----: | ------: | --------: |
-| `dwarf.c`   |     347 |  1163 |     171 |       112 |
-| `readelf.c` |     153 |   610 |     110 |        45 |
+| `dwarf.c`   |     347 |  1140 |     149 |       112 |
+| `readelf.c` |     152 |   573 |      88 |        44 |
 | `elfcomm.c` |       3 |    17 |       0 |         0 |
 | `elfcomm.h` |       2 |     4 |       0 |         0 |
 | `dwarf.h`   |       1 |     3 |       0 |         1 |
 | `bucomm.h`  |       1 |     2 |       0 |         1 |
-| total       |     507 |  1799 |     281 |       159 |
+| total       |     506 |  1739 |     237 |       158 |
 
 "Changes" is the number of runs of consecutive changed lines.  "Conflicts"
 is the number of conflicts in a merge of 2.47.  The `include/` files no
@@ -47,7 +46,7 @@ Whitespace differences were already removed (#134).
 The baseline's changed lines fell into these categories, roughly in
 decreasing order of how cheaply they can be eliminated.  Phase 1 removed
 categories 1 and 5 and most of 3, 4, and 7; each category says what
-remains.
+remains.  PR 5 removed the part of category 6 that concerns flags.
 
 1. **libc -> Valgrind substitutions**: `malloc`/`free`/`strlen`/`strnlen`/
    `strcmp`/`strrchr`/`memset`/`memcpy` -> `VG_(...)`, `assert` ->
@@ -78,7 +77,8 @@ remains.
 6. **Visibility changes**: `static` removed from functions that Fjalar calls
    (`slurp_rela_relocs`, `get_32bit_elf_symbols`, `get_TAG_name`, the
    `init_dwarf_regnames_*` functions, ...) and from the `do_*` flags, plus
-   forward declarations to avoid `-Wmissing-prototypes`.
+   forward declarations to avoid `-Wmissing-prototypes`.  PR 5 restored
+   the flags' declarations.
 7. **Duplicated infrastructure**: `error`/`warn` reimplemented in each of
    `readelf.c`, `dwarf.c`, and `elfcomm.c` (and `report_leb_status` turned into
    a macro in `dwarf.h`); `xmalloc`/`xcalloc`/`xrealloc` defined in `dwarf.c`.
@@ -334,7 +334,13 @@ Risks and checks:
    other than `readelf.c` refers to these flags, so this step needs neither
    a wrapper (step 2) nor setters, and it can be done before the rest of the
    phase.  Upstream's own flags in `dwarf.c` (`do_debug_info`, ...) are
-   declared in `dwarf.h` and need no change.
+   declared in `dwarf.h`, so `readelf.c` needs no definitions of them.
+
+   Status: done, in PR 5 (#238).  It also removed `readelf.c`'s
+   duplicate definitions of the `dwarf.c` flags, and the "for Fjalar"
+   comments on their definitions in `dwarf.c`, and it restored upstream's
+   initializer `DEFAULT_FOR_FOLLOW_LINKS` of `do_follow_links`, which the
+   shim `sysdep.h` defines as 0.
 2. **Wrapper translation units.**  Compile `fjalar_readelf.c`, which
    `#include`s `readelf.c`, instead of compiling `readelf.c` directly; do the
    same for `dwarf.c` and `elfcomm.c`.  Edit `FJALAR_SOURCES_COMMON` in
@@ -439,7 +445,7 @@ instruction in `plan-upgrade-readelf.md` ("Guard every new
 | 2  | Shim headers (incl. `bfd.h`), libc reverts (#226)     | low    |      220 |    430 |
 | 3  | One `error`/`warn` (fixes the LEB message bug) (#227) | low    |       70 |     84 |
 | 4  | Warning and cosmetic reverts (#228)                   | low    |       80 |    151 |
-| 5  | `readelf.c`'s flags `static` again (Phase 3 step 1)   | low    |       25 |        |
+| 5  | `readelf.c`'s flags `static` again (#238)             | low    |       25 |    104 |
 | 6  | `printf` redirection                                  | medium |      300 |        |
 | 7  | Wrapper translation units                             | medium |      330 |        |
 | 8  | Replaced functions, compact hooks                     | medium |      200 |        |
@@ -462,3 +468,4 @@ Trial merges of 2.47 (`./merge-binutils.sh --trial 2.47`), cumulative:
 | PR 3                |     560 |  1876 |     357 |       172 |
 | PR 4                |     509 |  1799 |     283 |       160 |
 | master (`265fd112`) |     507 |  1799 |     281 |       159 |
+| PR 5                |     506 |  1739 |     237 |       158 |
