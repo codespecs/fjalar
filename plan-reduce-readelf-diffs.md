@@ -336,7 +336,7 @@ Risks and checks:
    phase.  Upstream's own flags in `dwarf.c` (`do_debug_info`, ...) are
    declared in `dwarf.h`, so `readelf.c` needs no definitions of them.
 
-   Status: done, in PR 5 (#PRNUM).  It also removed `readelf.c`'s
+   Status: done, in PR 5 (#238).  It also removed `readelf.c`'s
    duplicate definitions of the `dwarf.c` flags, and the "for Fjalar"
    comments on their definitions in `dwarf.c`, and it restored upstream's
    initializer `DEFAULT_FOR_FOLLOW_LINKS` of `do_follow_links`, which the
@@ -445,7 +445,7 @@ instruction in `plan-upgrade-readelf.md` ("Guard every new
 | 2  | Shim headers (incl. `bfd.h`), libc reverts (#226)     | low    |      220 |    430 |
 | 3  | One `error`/`warn` (fixes the LEB message bug) (#227) | low    |       70 |     84 |
 | 4  | Warning and cosmetic reverts (#228)                   | low    |       80 |    151 |
-| 5  | `readelf.c`'s flags `static` again (#PRNUM)           | low    |       25 |    104 |
+| 5  | `readelf.c`'s flags `static` again (#238)             | low    |       25 |    104 |
 | 6  | `printf` redirection                                  | medium |      300 |        |
 | 7  | Wrapper translation units                             | medium |      330 |        |
 | 8  | Replaced functions, compact hooks                     | medium |      200 |        |
