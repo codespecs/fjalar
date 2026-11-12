@@ -157,28 +157,28 @@ static bool ignore_die_entries;
 
 // end Fjalar code
 
-int do_debug_info;		// always true for Fjalar
-int do_debug_abbrevs;		// true if --fjalar-debug-dump
-int do_debug_lines;		// always true for Fjalar
-int do_debug_pubnames;		// true if --fjalar-debug-dump
-int do_debug_pubtypes;		// never true for Fjalar
-int do_debug_aranges;		// never true for Fjalar
-int do_debug_ranges;		// true if --fjalar-debug-dump
-int do_debug_frames;		// always true for Fjalar
-int do_debug_frames_interp;	// never true for Fjalar
-int do_debug_macinfo;		// true if --fjalar-debug-dump
-int do_debug_str;		// true if --fjalar-debug-dump
-int do_debug_str_offsets;	// never true for Fjalar
-int do_debug_loc;		// always true for Fjalar
-int do_gdb_index;		// never true for Fjalar
-int do_trace_info;		// never true for Fjalar
-int do_trace_abbrevs;		// never true for Fjalar
-int do_trace_aranges;		// never true for Fjalar
-int do_debug_addr;		// never true for Fjalar
-int do_debug_cu_index;		// never true for Fjalar
-int do_wide;			// never true for Fjalar
-int do_debug_links;             // never true for Fjalar
-int do_follow_links;            // never true for Fjalar
+int do_debug_info;
+int do_debug_abbrevs;
+int do_debug_lines;
+int do_debug_pubnames;
+int do_debug_pubtypes;
+int do_debug_aranges;
+int do_debug_ranges;
+int do_debug_frames;
+int do_debug_frames_interp;
+int do_debug_macinfo;
+int do_debug_str;
+int do_debug_str_offsets;
+int do_debug_loc;
+int do_gdb_index;
+int do_trace_info;
+int do_trace_abbrevs;
+int do_trace_aranges;
+int do_debug_addr;
+int do_debug_cu_index;
+int do_wide;
+int do_debug_links;
+int do_follow_links = DEFAULT_FOR_FOLLOW_LINKS;
 
 #ifdef HAVE_LIBDEBUGINFOD
 int use_debuginfod = 1;

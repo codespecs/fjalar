@@ -47,6 +47,10 @@
 #define ngettext(Msgid1, Msgid2, n) \
   (n == 1 ? Msgid1 : Msgid2)
 
+/* Binutils' configure defines this in config.h, which its sysdep.h
+   includes.  Fjalar never follows links to separate debug info files.  */
+#define DEFAULT_FOR_FOLLOW_LINKS 0
+
 /* C library functions.  */
 
 #define malloc(size) VG_(malloc) (__FILE__, size)
