@@ -88,6 +88,8 @@ static const char *regname (unsigned int regno, int row);
 static const char *regname_internal_by_table_only (unsigned int regno);
 
 static int have_frame_base;
+static int have_call_frame_cfa; // fjalar code
+static int call_frame_cfa_offset; // fjalar code
 static int need_base_address;
 
 static unsigned int num_debug_info_entries = 0;
@@ -1456,6 +1458,7 @@ decode_location_expression (unsigned char * data,
 	  break;
 	case DW_OP_consts:
 	  READ_SLEB (svalue, data, end);
+          call_frame_cfa_offset = svalue; // fjalar code
 	  printf ("DW_OP_consts: %s", dwarf_vmatoa ("d", svalue));
 	  break;
 	case DW_OP_dup:
@@ -1767,6 +1770,7 @@ decode_location_expression (unsigned char * data,
 	  printf ("DW_OP_form_tls_address");
 	  break;
 	case DW_OP_call_frame_cfa:
+	  have_call_frame_cfa = 1; // fjalar code
 	  printf ("DW_OP_call_frame_cfa");
 	  break;
 	case DW_OP_bit_piece:
@@ -3696,7 +3700,27 @@ read_and_display_attr_value (unsigned long           attribute,
     case DW_AT_lower_bound:
     case DW_AT_count:
     case DW_AT_rank:
-    printf("block_start: %p\n", block_start);
+      // A DW_AT_frame_base may contain either an experloc or a loclistptr operand.
+      // The first is a DWARF location description and the second is a pointer into the
+      // .debug_loc section of the binary. To date, we have only seen frame bases with
+      // experloc operands.
+      //
+      // A DWARF location description is a DWARF expression that computes where a value
+      // is found. It is a stream of opcodes that should be evaluated by postfix operations
+      // on a simple stack machine. Originally, Fjalar/Kvasir only supported C and C++
+      // programs and the DWARF location descriptions for these was only a single opcode:
+      // either a DW_OP_reg6 meaning rbp or a DW_OP_reg7 meaning rsp. Consequently, there
+      // was no need for a DWARF expression evaluator. We have now added support for the
+      // Rust programming language and its compiler does generate frame base expressions
+      // with multiple opcodes. So far we have only seen a single pattern:
+      // (DW_OP_call_frame_cfa; DW_OP_consts: <constant value>; DW_OP_plus)
+      // Since decode_location_expression only records the last operation in the DWARF
+      // expression it does not support this use of call_frame_cfa. We have worked
+      // around this by having decode_location_expression record the occurrence of a
+      // call_frame_cfa and its operand in two global variables:
+      // have_call_frame_cfa and call_frame_cfa_offset.
+      // If, at some point in the future, we see more complicated location descriptors
+      // this will need to be changed and improved.
       if (block_start)
 	{
 	  int need_frame_base;
@@ -3712,8 +3736,12 @@ read_and_display_attr_value (unsigned long           attribute,
 							section, pass2, ok_to_harvest, entry, ll);
 	  printf (")");
           if (ok_to_harvest) {
+            if (have_call_frame_cfa) {
+              harvest_frame_base(entry, DW_OP_call_frame_cfa, call_frame_cfa_offset);
+            } else {
               // frame base expression
               harvest_frame_base_expression(entry, ll);
+            }
           }
 	  if (need_frame_base && !have_frame_base)
 	    printf (_(" [without DW_AT_frame_base]"));
@@ -4452,6 +4480,8 @@ process_debug_info (struct dwarf_section * section,
 	      need_base_address = 0;
 	      /* Assuming that there is no DW_AT_frame_base.  */
 	      have_frame_base = 0;
+	      have_call_frame_cfa = 0; // fjalar code
+	      call_frame_cfa_offset = 0; // fjalar code
 	      break;
 
             // start of Fjalar code
