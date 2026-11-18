@@ -23,18 +23,7 @@ fi
 output_dir="$(mktemp -d)"
 trap 'rm -rf "${output_dir}"' EXIT
 
-# Fails in continuous integration (GitHub Actions sets CI, and Azure Pipelines
-# sets TF_BUILD), and otherwise skips this test, because this compiler cannot
-# run it.  Failing in continuous integration ensures that a compiler change
-# that makes this test vacuous does not go unnoticed.  $1 is the reason.
-unsuitable_compiler() {
-  if [ -n "${CI:-}" ] || [ -n "${TF_BUILD:-}" ]; then
-    echo "$0: FAILED: $1" >&2
-    exit 1
-  fi
-  echo "$0: SKIPPED: $1" >&2
-  exit 0
-}
+. "${test_dir}/environment-checks.sh"
 
 # Fjalar does not read DWARF 5, and it recognizes a function's entry point
 # only at the address in the debugging information, so the executable must not
@@ -53,7 +42,7 @@ if ! readelf --debug-dump=info "${output_dir}/caller-frame-param" \
              if (/\(DW_OP_fbreg: -?[0-9]+; DW_OP_deref\)/) found++
            }
            END { exit found != 2 }'; then
-  unsuitable_compiler "the locations of mutate's a and b are not \"DW_OP_fbreg N; DW_OP_deref\""
+  unsuitable_environment "$0" "the locations of mutate's a and b are not \"DW_OP_fbreg N; DW_OP_deref\""
 fi
 
 decls="${output_dir}/caller-frame-param.decls"

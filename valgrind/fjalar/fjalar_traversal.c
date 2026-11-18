@@ -26,7 +26,7 @@
 #include "fjalar_select.h"
 #include "generate_fjalar_entries.h"
 #include "disambig.h"
-#include "mc_include.h"
+#include "mc_fjalar.h"
 
 #include "pub_tool_threadstate.h"
 
@@ -1229,6 +1229,208 @@ void visitVariableGroup(VariableOrigin varOrigin,
 }
 
 
+// visitReturnValue() reads a value that spans xAX and xDX, such as a
+// long long on x86, at (Addr)&(e->xAX).
+// (Valgrind's offsetof is not an integer constant expression.)
+STATIC_ASSERT(__builtin_offsetof(FunctionExecutionState, xDX) ==
+              __builtin_offsetof(FunctionExecutionState, xAX) + sizeof(Word));
+
+#if defined(VGA_amd64)
+// The System V AMD64 ABI returns a struct or union of at most 16
+// bytes according to the class of each of its 8-byte halves, or
+// "eightbytes".  See section 3.2.3 of the ABI.
+typedef enum {
+  RETURN_CLASS_NONE,       // The eightbyte holds only padding.
+  RETURN_CLASS_INTEGER,    // It is returned in RAX, or in RDX if it is
+                           // the second INTEGER eightbyte.
+  RETURN_CLASS_SSE,        // It is returned in the low 8 bytes of XMM0,
+                           // or of XMM1 if it is the second SSE eightbyte.
+  RETURN_CLASS_UNREADABLE, // It is returned in a register that Fjalar
+                           // does not read:  %st(0) for a long double,
+                           // or the high 8 bytes of XMM0 for a
+                           // _Float128.  This is Fjalar's class, not
+                           // the ABI's.
+  RETURN_CLASS_MEMORY      // The whole value is returned in memory, at
+                           // the address in RAX.
+} ReturnClass;
+
+// Returns the class of an eightbyte that holds data of classes a and b.
+static ReturnClass mergeReturnClasses(ReturnClass a, ReturnClass b) {
+  if ((a == b) || (b == RETURN_CLASS_NONE)) {
+    return a;
+  }
+  if (a == RETURN_CLASS_NONE) {
+    return b;
+  }
+  // The ABI's order is MEMORY, then INTEGER, then SSE.  Mixing x87
+  // data with other data makes the value MEMORY, but Fjalar treats
+  // any mixture that involves UNREADABLE data as UNREADABLE.
+  if ((a == RETURN_CLASS_MEMORY) || (b == RETURN_CLASS_MEMORY)) {
+    return RETURN_CLASS_MEMORY;
+  }
+  if ((a == RETURN_CLASS_UNREADABLE) || (b == RETURN_CLASS_UNREADABLE)) {
+    return RETURN_CLASS_UNREADABLE;
+  }
+  return RETURN_CLASS_INTEGER;
+}
+
+// Merges class c into the class of each eightbyte of a 16-byte value
+// that the size bytes starting at offset overlap.
+static void classifyBytes(ReturnClass classes[2], unsigned long offset,
+                          unsigned long size, ReturnClass c) {
+  unsigned long i;
+  if (size == 0) {
+    return;
+  }
+  for (i = offset / 8; (i <= (offset + size - 1) / 8) && (i < 2); i++) {
+    classes[i] = mergeReturnClasses(classes[i], c);
+  }
+}
+
+static void classifyAggregate(TypeEntry* t, unsigned long offset,
+                              ReturnClass classes[2]);
+
+// Merges into classes the classes of a value of type t at the given
+// offset, after ptrLevels levels of pointers.
+static void classifyType(TypeEntry* t, UInt ptrLevels, unsigned long offset,
+                         ReturnClass classes[2]) {
+  unsigned long size = (ptrLevels > 0) ? sizeof(Addr) : (unsigned long)t->byteSize;
+  unsigned long align = size;
+  ReturnClass c;
+
+  if (ptrLevels > 0) {
+    c = RETURN_CLASS_INTEGER;
+  } else if (IS_AGGREGATE_TYPE(t)) {
+    classifyAggregate(t, offset, classes);
+    return;
+  } else {
+    switch (t->decType) {
+    case D_FLOAT:
+    case D_DOUBLE:
+    case D_FLOAT16:
+    case D_BFLOAT16:
+      c = RETURN_CLASS_SSE;
+      break;
+    case D_DECIMAL:
+      // _Decimal128 is returned in all 16 bytes of XMM0.
+      c = (size <= 8) ? RETURN_CLASS_SSE : RETURN_CLASS_UNREADABLE;
+      break;
+    case D_COMPLEX:
+      // Each part of a complex value is aligned like its type.  A
+      // _Complex long double is returned in %st(0) and %st(1).  Fjalar
+      // treats a complex integer, a GNU extension, as floating-point.
+      align = size / 2;
+      c = (size <= 16) ? RETURN_CLASS_SSE : RETURN_CLASS_UNREADABLE;
+      break;
+    case D_LONG_DOUBLE:
+    case D_FLOAT128:
+      align = 16;
+      c = RETURN_CLASS_UNREADABLE;
+      break;
+    case D_ZST:
+      c = RETURN_CLASS_NONE;
+      break;
+    case D_NO_TYPE:
+    case D_VOID:
+    case D_FUNCTION:
+      // A type that Fjalar does not know, such as a vector type.
+      c = RETURN_CLASS_UNREADABLE;
+      break;
+    default:
+      // Integers, characters, booleans, and enumerations
+      c = RETURN_CLASS_INTEGER;
+      break;
+    }
+  }
+
+  // A value that has an unaligned field is returned in memory.
+  if ((align > 1) && (offset % align != 0)) {
+    c = RETURN_CLASS_MEMORY;
+  }
+  classifyBytes(classes, offset, size, c);
+}
+
+// Merges into classes the classes of member variable var of a struct,
+// union, or class at the given offset.
+static void classifyMemberVar(VariableEntry* var, unsigned long offset,
+                              ReturnClass classes[2]) {
+  if (var->referenceLevels > 0) {
+    classifyBytes(classes, offset, sizeof(Addr), RETURN_CLASS_INTEGER);
+  } else if (var->memberVar->internalBitSize > 0) {
+    // A bit-field of an integer type
+    classifyBytes(classes, offset, var->varType->byteSize, RETURN_CLASS_INTEGER);
+  } else if (IS_STATIC_ARRAY_VAR(var)) {
+    UInt numElts = 1;
+    UInt bytesBetweenElts = getBytesBetweenElts(var);
+    UInt dim;
+    UInt i;
+    for (dim = 0; dim < var->staticArr->numDimensions; dim++) {
+      numElts *= (1 + var->staticArr->upperBounds[dim]);
+    }
+    for (i = 0; i < numElts; i++) {
+      classifyType(var->varType, var->ptrLevels - 1,
+                   offset + i * bytesBetweenElts, classes);
+    }
+  } else {
+    classifyType(var->varType, var->ptrLevels, offset, classes);
+  }
+}
+
+// Returns True if t is a C++ class that has a copy constructor, move
+// constructor, or destructor of its own, or a virtual function table
+// pointer.  The ABI returns such a class in memory.  A member's or a
+// superclass's special member functions also make t's non-trivial;
+// classifyAggregate() checks those classes too.  Fjalar knows only the
+// constructors and destructors that are defined in the program.
+static Bool hasNonTrivialSpecialMember(TypeEntry* t) {
+  SimpleNode* n;
+
+  if (t->aggType->destructorList || t->aggType->hasVtablePointer) {
+    return True;
+  }
+  if (t->aggType->constructorList) {
+    for (n = t->aggType->constructorList->first; n; n = n->next) {
+      FunctionEntry* f = (FunctionEntry*)n->elt;
+      // The first parameter is 'this'.
+      if ((f->formalParameters.numVars == 2) &&
+          (f->formalParameters.last->var->referenceLevels > 0) &&
+          (f->formalParameters.last->var->ptrLevels == 0) &&
+          (f->formalParameters.last->var->varType == t)) {
+        return True;
+      }
+    }
+  }
+  return False;
+}
+
+// Merges into classes the classes of a value of struct, union, or
+// class type t at the given offset.
+static void classifyAggregate(TypeEntry* t, unsigned long offset,
+                              ReturnClass classes[2]) {
+  SimpleNode* n;
+  VarNode* v;
+
+  if (hasNonTrivialSpecialMember(t)) {
+    classifyBytes(classes, offset, t->byteSize, RETURN_CLASS_MEMORY);
+    return;
+  }
+  if (t->aggType->superclassList) {
+    for (n = t->aggType->superclassList->first; n; n = n->next) {
+      Superclass* super = (Superclass*)n->elt;
+      if (super->class && IS_AGGREGATE_TYPE(super->class)) {
+        classifyAggregate(super->class, offset + super->member_var_offset, classes);
+      }
+    }
+  }
+  if (t->aggType->memberVarList) {
+    for (v = t->aggType->memberVarList->first; v; v = v->next) {
+      classifyMemberVar(v->var, offset + v->var->memberVar->data_member_location,
+                        classes);
+    }
+  }
+}
+#endif
+
 // Grabs the appropriate return value of the function denoted by the
 // execution state 'e' from Valgrind simulated registers and visits
 // the variables to perform some action.  This differs from calling
@@ -1263,50 +1465,60 @@ void visitReturnValue(FunctionExecutionState* e,
 
   stringStackPush(&fullNameStack, cur_node->var->name);
 
-  // Struct/union type - use xAX but remember that xAX holds
-  // a POINTER to the struct/union so we must dereference appropriately
-  // WE NEED TO CHECK THAT declaredPtrLevels == 0 since we need a
-  // real struct/union, not just a pointer to one
-  // BE CAREFUL WITH declaredType - it may be misleading since all
-  // pointers share the same declaredType
-  // RUDD - Need an extra indirection level for references.
+  // Struct/union type, returned by value.  The test must check
+  // ptrLevels, because varType is the same for a struct/union and for
+  // every pointer to it.  A reference to a struct/union is handled
+  // by the int/pointer case below, because it needs an extra
+  // indirection level.
   if ((cur_node->var->ptrLevels == 0) &&
       (IS_AGGREGATE_TYPE(cur_node->var->varType)) && !cur_node->var->referenceLevels) {
 
 
-    // AMD64 special case: If the size of the the struct is <= the size
-    // of 2 architectural registers, it is passed via RAX and RDX.
-    // We're going to express this by creating a 16 byte buffer and
-    // copying the contents of RAX and EDX to it and passing a pointer
-    // to it.
+    // AMD64 special case: A struct of at most 16 bytes is returned in
+    // registers, unless its class is MEMORY.  Copy each eightbyte, and
+    // its shadow state, from its register into a buffer, and pass the
+    // buffer's address.
 #if defined(VGA_amd64)
-    if(cur_node->var->varType->byteSize <= 16) {
+    TypeEntry* t = cur_node->var->varType;
+    ReturnClass classes[2] = { RETURN_CLASS_NONE, RETURN_CLASS_NONE };
+    if (t->byteSize > 16) {
+      classes[0] = RETURN_CLASS_MEMORY;
+    } else {
+      classifyAggregate(t, 0, classes);
+    }
+    if ((classes[0] != RETURN_CLASS_MEMORY) && (classes[1] != RETURN_CLASS_MEMORY)) {
       char returnBuffer[16];
+      Addr basePtr = (Addr)returnBuffer;
+      // The registers that hold the INTEGER and the SSE eightbytes, in order
+      Addr intRegs[2] = { (Addr)&(e->xAX), (Addr)&(e->xDX) };
+      Addr sseRegs[2] = { (Addr)&(e->FPU), (Addr)&(e->FPU2) };
+      int numIntRegs = 0;
+      int numSseRegs = 0;
+      int i;
 
-      VG_(memcpy)(returnBuffer                       ,  &e->xAX, 8);
-      VG_(memcpy)(returnBuffer + (Addr)sizeof(e->xAX),  &e->xDX, 8);
+      FJALAR_DPRINTF("tiny struct - classes %d %d\n", (int)classes[0], (int)classes[1]);
 
-      unsigned long long int uLong = (e->xAX);
-      FJALAR_DPRINTF("tiny struct\n");
-
-      // Copy A and V bits over:
-      mc_copy_address_range_state((Addr)(&(e->xAX)),
-                                  (Addr)(&returnBuffer),
-                                  sizeof(e->xAX));
-
-      mc_copy_address_range_state((Addr)(&(e->xDX)),
-                                  (Addr)(&returnBuffer) + (Addr)sizeof(e->xAX),
-                                  sizeof(e->xDX));
-
-      // Remember to copy A and V-bits over:
-      mc_copy_address_range_state((Addr)(&(e->xAX)),
-                                  (Addr)(&uLong),
-                                  sizeof(e->xAX));
+      for (i = 0; i < (t->byteSize + 7) / 8; i++) {
+        Addr src;
+        if (classes[i] == RETURN_CLASS_INTEGER) {
+          src = intRegs[numIntRegs++];
+        } else if (classes[i] == RETURN_CLASS_SSE) {
+          src = sseRegs[numSseRegs++];
+        } else if (classes[i] == RETURN_CLASS_UNREADABLE) {
+          // Visiting address 0 makes every field nonsensical.
+          basePtr = 0;
+          break;
+        } else {
+          continue;
+        }
+        VG_(memcpy)(returnBuffer + 8 * i, (void*)src, 8);
+        MC_(copy_address_range_state)(src, (Addr)returnBuffer + 8 * i, 8);
+      }
 
       visitVariable(cur_node->var,
-                    (Addr) returnBuffer,
-                    0,
-                    1, // e->xAXvalid,
+                    basePtr,
+                    0, /* registers, no guest location */
+                    0, // e->xAXvalid,
                     0,
                     performAction,
                     FUNCTION_RETURN_VAR,
@@ -1353,60 +1565,11 @@ void visitReturnValue(FunctionExecutionState* e,
                   funcPtr,
                   0);
   }
-  // Remember that x86 long long int types use xAX as the low 4 bytes
-  // and xDX as the high 4 bytes
-  // long long ints - create a long long int and pass its address
-  /* XXX shouldn't do this for 64-bit long long on AMD64 */
-  // UNDONE: rust support for U128
-  else if ((sizeof(UWord) == 4) && (cur_node->var->ptrLevels == 0) &&
-           (cur_node->var->varType->decType == D_UNSIGNED_LONG_LONG_INT)) {
-    unsigned long long int uLong = (e->xAX) | (((unsigned long long int)(e->xDX)) << 32);
-    FJALAR_DPRINTF("long long int type\n");
-
-    // Remember to copy A and V-bits over:
-    mc_copy_address_range_state((Addr)(&(e->xAX)),
-                                (Addr)(&uLong),
-                                sizeof(e->xAX));
-
-    mc_copy_address_range_state((Addr)(&(e->xDX)),
-                                (Addr)(&uLong) + (Addr)sizeof(e->xAX),
-                                sizeof(e->xDX));
-
-    visitVariable(cur_node->var,
-                  (Addr)&uLong,
-                  0, /* registers, no guest location */
-                  0,
-                  0,
-                  performAction,
-                  FUNCTION_RETURN_VAR,
-                  funcPtr,
-                  0);
-  }
-  // UNDONE: rust support for I128
-  else if ((sizeof(UWord) == 4) && (cur_node->var->ptrLevels == 0) &&
-           (cur_node->var->varType->decType == D_LONG_LONG_INT)) {
-    long long int signedLong = (e->xAX) | (((long long int)(e->xDX)) << 32);
-
-    // Remember to copy A and V-bits over:
-    mc_copy_address_range_state((Addr)(&(e->xAX)),
-                                (Addr)(&signedLong),
-                                sizeof(e->xAX));
-
-    mc_copy_address_range_state((Addr)(&(e->xDX)),
-                                (Addr)(&signedLong) + (Addr)sizeof(e->xAX),
-                                sizeof(e->xDX));
-
-    visitVariable(cur_node->var,
-                  (Addr)&signedLong,
-                  0, /* registers, no guest location */
-                  0,
-                  0,
-                  performAction,
-                  FUNCTION_RETURN_VAR,
-                  funcPtr,
-                  0);
-  }
-  // All other types (integer and pointer) - use xAX
+  // All other types (integer and pointer) - use xAX.  On x86, a
+  // long long is returned with its low 4 bytes in EAX and its high 4
+  // bytes in EDX; e->xAX and e->xDX are adjacent, so the long long
+  // is at &(e->xAX).
+  // UNDONE: rust support for U128 and I128
   else {
     FJALAR_DPRINTF("int or pointer type\n");
     // Need an additional indirection level

@@ -44,16 +44,6 @@
 #define INSTR_PTR(regs)    ((regs).vex.VG_INSTR_PTR)
 #define STACK_PTR(regs)    ((regs).vex.VG_STACK_PTR)
 #define FRAME_PTR(regs)    ((regs).vex.VG_FRAME_PTR)
-#define INT_RET_REG(regs)  ((regs).vex.VG_INT_RET_REG)
-#define INT_RET2_REG(regs) ((regs).vex.VG_INT_RET2_REG)
-#define INT_XCX(regs)      ((regs).vex.VG_XCX)
-#define INT_XBX(regs)      ((regs).vex.VG_XBX)
-#define INT_XSI(regs)      ((regs).vex.VG_XSI)
-#define INT_XDI(regs)      ((regs).vex.VG_XDI)
-#if defined(VGA_amd64)
-#define CASE_XMM(regs, N)        case N: return (regs).vex.guest_YMM##N; break;
-#define CASE_SHADOW_XMM(regs, N) case N: return (regs).vex_shadow1.guest_YMM##N; break;
-#endif
 
 #define STACK_PTR_S1(regs)    ((regs).vex_shadow1.VG_STACK_PTR)
 
@@ -81,164 +71,11 @@ void VG_(set_SP) ( ThreadId tid, Addr sp ) {
    STACK_PTR( VG_(threads)[tid].arch ) = sp;
 }
 
-// BEGIN - pgbovine
-
-Addr VG_(get_xCX) ( ThreadId tid )
-{
-  return INT_XCX( VG_(threads)[tid].arch );
-}
-
-Addr VG_(get_xBX) ( ThreadId tid )
-{
-  return INT_XBX( VG_(threads)[tid].arch );
-}
-
-Addr VG_(get_xSI) ( ThreadId tid )
-{
-  return INT_XSI( VG_(threads)[tid].arch );
-}
-
-Addr VG_(get_xDI) ( ThreadId tid )
-{
-  return INT_XDI( VG_(threads)[tid].arch );
-}
-
-#if defined(VGA_amd64)
-UInt* VG_(get_XMM_N)( ThreadId tid, UInt num )  
-{
-  switch(num) {
-    CASE_XMM(VG_(threads)[tid].arch, 0);
-    CASE_XMM(VG_(threads)[tid].arch, 1);
-  default:
-    vg_assert(0 && "xmm2-15 not yet implemented");   
-  }
-}
-
-Addr VG_(get_R8)  ( ThreadId tid ){ return VG_(threads)[tid].arch.vex.guest_R8;}
-Addr VG_(get_R9)  ( ThreadId tid ){ return VG_(threads)[tid].arch.vex.guest_R9;}
-Addr VG_(get_R10) ( ThreadId tid ){ return VG_(threads)[tid].arch.vex.guest_R10;}
-Addr VG_(get_R11) ( ThreadId tid ){ return VG_(threads)[tid].arch.vex.guest_R11;}
-Addr VG_(get_R12) ( ThreadId tid ){ return VG_(threads)[tid].arch.vex.guest_R12;}
-Addr VG_(get_R13) ( ThreadId tid ){ return VG_(threads)[tid].arch.vex.guest_R13;}
-Addr VG_(get_R14) ( ThreadId tid ){ return VG_(threads)[tid].arch.vex.guest_R14;}
-Addr VG_(get_R15) ( ThreadId tid ){ return VG_(threads)[tid].arch.vex.guest_R15;}
-#endif
-
-Addr VG_(get_LR) ( ThreadId tid )
-{
-#  if defined(VGA_ppc32) || defined(VGA_ppc64)
-   return VG_(threads)[tid].arch.vex.guest_LR;
-#  elif defined(VGA_x86) || defined(VGA_amd64)
-   return 0;
-#  elif defined(VGA_arm)
-   return VG_(threads)[tid].arch.vex.guest_R14;
-#  else
-#    error "Unknown arch"
-#  endif
-}
-
-Addr VG_(get_xAX) ( ThreadId tid )
-{
-   return INT_RET_REG( VG_(threads)[tid].arch );
-}
-
-Addr VG_(get_xDX) ( ThreadId tid )
-{
-   return INT_RET2_REG( VG_(threads)[tid].arch );
-}
-
-// PG begin - Hacked to provide useful return value information for
-// Kvasir (we really need a more elegant solution)
-
-#if defined(VGA_x86)
-double VG_(get_FPU_stack_top) ( ThreadId tid ) // 64-bit read
-{
-   // Remember to re-interpret cast this as a double instead of a ULong
-   return *((double*)(&(VG_(threads)[tid].arch.vex.guest_FPREG
-                        [VG_(threads)[tid].arch.vex.guest_FTOP & 7])));
-}
-#endif
-
-UWord VG_(get_shadow_xAX) ( ThreadId tid )
-{
-   return VG_(threads)[tid].arch.vex_shadow1.VG_INT_RET_REG;
-}
-
-UWord VG_(get_shadow_xDX) ( ThreadId tid )
-{
-   return VG_(threads)[tid].arch.vex_shadow1.VG_INT_RET2_REG;
-}
-
-#if defined(VGA_amd64)
-UInt* VG_(get_shadow_XMM_N)( ThreadId tid, UInt num )  
-{
-  
-  /* VG_(printf)("Location of xmm0 %x - index %x\n", VG_(threads)[tid].arch.vex_shadow1.guest_XMM0, (UWord)(VG_(threads)[tid].arch.vex_shadow1.guest_XMM0) - (UWord)(&VG_(threads)[tid].arch.vex.guest_RAX)); */
-
-  /* VG_(printf)("Shadow? %x\n", VG_(threads)[tid].arch.vex_shadow1.guest_XMM0[0]); */
-  /* VG_(printf)("Shadow? %x\n", VG_(threads)[tid].arch.vex_shadow1.guest_XMM0[1]); */
-  switch(num) {
-    CASE_SHADOW_XMM(VG_(threads)[tid].arch, 0);
-    CASE_SHADOW_XMM(VG_(threads)[tid].arch, 1);
-  default:
-    vg_assert(0 && "xmm2-15 not yet implemented");   
-  }
-}
-#else
-ULong VG_(get_shadow_FPU_stack_top) ( ThreadId tid ) // 64-bit read
-{
-   return VG_(threads)[tid].arch.
-      vex_shadow1.guest_FPREG[VG_(threads)[tid].arch.vex.guest_FTOP & 7];
-}
-#endif
-
-// Ok, if the stuff before were hacks, then these are SUPER HACKS
-// because it relies on our ad-hoc (4 * offset) reference into
-// VexGuestX86State vex_extra_shadow[4] within TheadArchState:
-UWord VG_(get_xAX_tag) ( ThreadId tid )
-{
-   return *(VG_(get_tag_ptr_for_guest_offset)(tid, offsetof(VexGuestArchState,
-                                              VG_INT_RET_REG)));
-}
-
-UWord VG_(get_xDX_tag) ( ThreadId tid )
-{
-   return *(VG_(get_tag_ptr_for_guest_offset)(tid, offsetof(VexGuestArchState,
-                                              VG_INT_RET2_REG)));
-}
-
-#if defined(VGA_amd64)
-UWord VG_(get_XMM_N_tag)( ThreadId tid, UInt num )  
-{
-
-   return *(VG_(get_tag_ptr_for_guest_offset)(tid, offsetof(VexGuestArchState,
-                                              guest_YMM0)));
-}
-#else
-UWord VG_(get_FPU_stack_top_tag) ( ThreadId tid )
-{
-   int FPUoffset = VG_(threads)[tid].arch.vex.guest_FTOP & 7;
-
-   // The start of the FPU stack is at offset 64 so an added offset
-   // from that tells us where the top of the FPU stack is
-   int offset = FPUoffset + 64;
-
-   return *(VG_(get_tag_ptr_for_guest_offset)(tid, offset));
-}
-#endif
-
-// This is a generalization of all the other tag getter functions,
-// which takes in an offset from the guest state (as denoted by
-// the member variable locations in vex/pub/libvex_guest_x86.h)
-// and performs the (4 * offset) hack and returns the address of
-// the associated tag
+// Fjalar:  each guest-state byte has a 4-byte DynComp tag in vex_extra_shadow.
 UInt* VG_(get_tag_ptr_for_guest_offset) ( ThreadId tid, UInt offset )
 {
-   return ((UInt*)((char*)(VG_(threads)[tid].arch.vex_extra_shadow) +
-                          (4 * offset)));
+   return (UInt*)((char*)VG_(threads)[tid].arch.vex_extra_shadow + 4 * offset);
 }
-
-// END - pgbovine
 
 void VG_(get_UnwindStartRegs) ( /*OUT*/UnwindStartRegs* regs,
                                 ThreadId tid )
@@ -327,7 +164,7 @@ void VG_(get_UnwindStartRegs) ( /*OUT*/UnwindStartRegs* regs,
 }
 
 void
-VG_(get_shadow_regs_area) ( ThreadId tid,
+VG_(get_shadow_regs_area) ( ThreadId tid, 
                             /*DST*/UChar* dst,
                             /*SRC*/Int shadowNo, PtrdiffT offset, SizeT size )
 {
@@ -351,7 +188,7 @@ VG_(get_shadow_regs_area) ( ThreadId tid,
 }
 
 void
-VG_(set_shadow_regs_area) ( ThreadId tid,
+VG_(set_shadow_regs_area) ( ThreadId tid, 
                             /*DST*/Int shadowNo, PtrdiffT offset, SizeT size,
                             /*SRC*/const UChar* src )
 {
@@ -564,7 +401,7 @@ void VG_(thread_stack_reset_iter)(/*OUT*/ThreadId* tid)
 }
 
 Bool VG_(thread_stack_next)(/*MOD*/ThreadId* tid,
-                            /*OUT*/Addr* stack_min,
+                            /*OUT*/Addr* stack_min, 
                             /*OUT*/Addr* stack_max)
 {
    ThreadId i;
@@ -1115,7 +952,7 @@ Bool VG_(machine_get_hwcaps)( void )
      if (have_sse1)
         have_mmxext = True;
 
-        va          = VexArchX86;
+     va = VexArchX86;
      vai.endness = VexEndnessLE;
 
      if (have_sse3 && have_sse2 && have_sse1 && have_mmxext) {
@@ -1141,8 +978,8 @@ Bool VG_(machine_get_hwcaps)( void )
         vai.hwcaps  = VEX_HWCAPS_X86_MMXEXT; /*integer only sse1 subset*/
         VG_(machine_x86_have_mxcsr) = 0;
      } else {
-     vai.hwcaps = 0; /*baseline - no sse at all*/
-     VG_(machine_x86_have_mxcsr) = 0;
+       vai.hwcaps = 0; /*baseline - no sse at all*/
+       VG_(machine_x86_have_mxcsr) = 0;
      }
 
      VG_(machine_get_cache_info)(&vai);
@@ -1281,15 +1118,15 @@ Bool VG_(machine_get_hwcaps)( void )
         have_rdseed = False;
      }
 
-     va         = VexArchAMD64;
+     va          = VexArchAMD64;
      vai.endness = VexEndnessLE;
-     vai.hwcaps = (have_sse3 ? VEX_HWCAPS_AMD64_SSE3 : 0)
+     vai.hwcaps  = (have_sse3   ? VEX_HWCAPS_AMD64_SSE3   : 0)
                  | (have_ssse3  ? VEX_HWCAPS_AMD64_SSSE3  : 0)
-                | (have_cx16  ? VEX_HWCAPS_AMD64_CX16  : 0)
-                | (have_lzcnt ? VEX_HWCAPS_AMD64_LZCNT : 0)
-                | (have_avx    ? VEX_HWCAPS_AMD64_AVX    : 0)
-                | (have_bmi    ? VEX_HWCAPS_AMD64_BMI    : 0)
-                | (have_avx2   ? VEX_HWCAPS_AMD64_AVX2   : 0)
+                 | (have_cx16   ? VEX_HWCAPS_AMD64_CX16   : 0)
+                 | (have_lzcnt  ? VEX_HWCAPS_AMD64_LZCNT  : 0)
+                 | (have_avx    ? VEX_HWCAPS_AMD64_AVX    : 0)
+                 | (have_bmi    ? VEX_HWCAPS_AMD64_BMI    : 0)
+                 | (have_avx2   ? VEX_HWCAPS_AMD64_AVX2   : 0)
                  | (have_rdtscp ? VEX_HWCAPS_AMD64_RDTSCP : 0)
                  | (have_f16c   ? VEX_HWCAPS_AMD64_F16C   : 0)
                  | (have_rdrand ? VEX_HWCAPS_AMD64_RDRAND : 0)
@@ -2574,7 +2411,7 @@ void* VG_(fnptr_to_fnentry)( void* f )
    UWord* descr = (UWord*)f;
    return (void*)(descr[0]);
 #  else
-#  error "Unknown platform"
+#    error "Unknown platform"
 #  endif
 }
 

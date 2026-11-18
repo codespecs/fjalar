@@ -27,7 +27,7 @@
 #define _ELF_RISCV_H
 
 #include "elf/reloc-macros.h"
-//#include "libiberty.h"  // not used for Fjalar
+#include "libiberty.h"
 
 /* Relocation types.  */
 START_RELOC_NUMBERS (elf_riscv_reloc_type)

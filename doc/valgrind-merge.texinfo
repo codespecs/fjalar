@@ -137,12 +137,6 @@ git clone https://github.com/codespecs/daikon.git
 git clone https://github.com/codespecs/fjalar.git
 @end example
 
-If your operating system is Ubuntu, run
-@example
-sudo apt -yqq install binutils-dev
-@end example
-
-
 @node Ensure your source is up to date
 @section Ensure your source is up to date
 
@@ -365,7 +359,8 @@ Memcheck files that Fjalar's copy of Memcheck, in @file{valgrind/fjalar},
 has but that the base Valgrind release does not have.  These are the files
 in @file{valgrind/fjalar} whose names start with @file{mc_} or
 @file{memcheck}; the other files there are Fjalar's own.
-Fjalar created some of them, such as @file{mc_translate.h}; keep those.
+Fjalar created some of them, such as @file{mc_fjalar.h} and
+@file{mc_translate.h}; keep those.
 Remove the others with @command{git rm}.
 
 @item
@@ -453,6 +448,20 @@ Fjalar contains two copies of Memcheck:  an unmodified one in
 @file{memcheck.h}) in @file{valgrind/fjalar}.  We call the rest of Valgrind
 ``Coregrind''.  Our changes to Memcheck are much more substantial than our
 changes to Coregrind.
+
+Before the merge, list Fjalar's modifications to Valgrind:
+
+@example
+$INV/fjalar/diff-from-valgrind.sh --stat
+$INV/fjalar/diff-from-valgrind.sh
+@end example
+
+@noindent
+Check that the files that the first command lists, and the modifications
+that the second shows, are the ones that the appendices describe
+(@pxref{Valgrind modifications}, and @ref{Memcheck modifications}).
+Document any other modification there, so that the appendices are a
+complete checklist for resolving conflicts.
 
 Run:
 
@@ -607,19 +616,15 @@ $INV/fjalar/list-file-discrepancies.sh $INV/valgrind-new
 Each list should contain only the files that Fjalar created and the
 files that you decided to keep or to omit.
 
-One bit of confusion is that a portion of the original @file{mc_translate.c}
-has been relocated to @file{fjalar/mc_translate.h} so it can be shared.
-
-The largest modification to Memcheck is in @file{mc_translate.c} and special
-care should be made to ensure it is present and up to date.
-The function @code{MC_(instrument)} handles the instrumentation of calls for
-DynComp.
-It is primarily contained in a switch statement; each case handles one
-instruction type, and the body contains both the original code for
-Memcheck and also the code for DynComp. After the update, you should
-double-check that each clause contains corresponding code: any changes
-to the Memcheck versions are reflected in the DynComp versions, and
-any new clause has a DynComp version.
+The function @code{MC_(instrument)} in @file{mc_translate.c} instruments
+each statement for Memcheck, in a switch statement with one case for each
+kind of statement, and then calls @code{instrument_stmt_DC}, in
+@file{kvasir/dyncomp_translate.c}, which instruments the statement for
+DynComp in a switch statement of the same form.  DynComp's
+instrumentation is derived from Memcheck's, but the merge does not
+change it.  After the merge, double-check that the two correspond:  any
+change to a case of Memcheck's switch, or to a function that it calls,
+is reflected in DynComp's, and any new case has a DynComp version.
 
 
 @node Updating Fjalar/Kvasir
@@ -640,9 +645,6 @@ editing @file{fjalar/kvasir/dyncomp_translate.c} by hand:
 @smallexample
 git -C $INV/fjalar diff valgrind-merge/base valgrind-merge/new -- valgrind/fjalar/mc_translate.c
 @end smallexample
-
-One bit of confusion is that a portion of the original @file{mc_translate.c}
-has been relocated to @file{fjalar/mc_translate.h} so it can be shared.
 
 Additionally Fjalar/Kvasir need to be updated to properly handle any
 changes in Valgrind API/functionality. For the most part Valgrind
@@ -882,10 +884,33 @@ instructions in that section).
 
 Set @env{BUNEWVER} to the Binutils version to merge; find the latest one
 at @uref{https://ftp.gnu.org/gnu/binutils/?C=M;O=D}.  The old version is
-the one in @file{$INV/fjalar/valgrind/REVISION}.  Then merge:
+the one in @file{$INV/fjalar/valgrind/REVISION}.
 
 @example
 export BUNEWVER=2.42
+@end example
+
+To see how hard the merge will be without doing it, pass @option{--trial}:
+
+@example
+$INV/fjalar/merge-binutils.sh --trial $BUNEWVER
+@end example
+
+@noindent
+For each file of the old release that Fjalar changed, it prints the number
+of changes (runs of consecutive changed lines), added lines, and removed
+lines in Fjalar's version.  Then it prints the number of conflicts that the
+merge would have in each file.  It merges in memory, so it changes neither
+the tree, the index, nor any ref, and it allows uncommitted changes, which
+it includes in the measurement.  It requires Git 2.40 or later, or 2.43 or
+later with a cherry-pick option.  With @option{--trial}, the only
+cherry-pick options are strategy options, such as @option{-Xpatience}.  If
+the merge would have too many conflicts to resolve by hand, merge an
+intermediate Binutils release first, as described below.
+
+Then merge:
+
+@example
 $INV/fjalar/merge-binutils.sh $BUNEWVER
 @end example
 
@@ -931,9 +956,9 @@ such as @file{/tmp/$USER/binutils/2.39-2.42/binutils-Fjalar.diff}.  It is a
 checklist for verifying that the merge kept each of Fjalar's changes.  A
 conflict shows Fjalar's side, but a merge can lose a change without
 reporting a conflict:  for example, if upstream moved or rewrote the code,
-the new copy lacks Fjalar's @code{#if 0}, @code{printf} guard, or
-@code{VG_(..)} wrapper.  For each hunk in the diff, find the corresponding
-code in the merged file and check that it still has Fjalar's change.
+the new copy lacks Fjalar's @code{#if 0} or @code{printf} guard.  For each
+hunk in the diff, find the corresponding code in the merged file and check
+that it still has Fjalar's change.
 
 If the conflicts are too many to merge by hand, undo the merge and merge
 an intermediate Binutils release first.  Complete that merge, including
@@ -946,10 +971,10 @@ Now, handle the conflicts.  @file{merge-binutils.sh} lists the files with
 conflicts, and @command{git status} lists them as unmerged.  Each conflict
 in a file is marked by @samp{<<<<<<<}, @samp{|||||||}, @samp{=======}, and
 @samp{>>>>>>>} lines, which surround Fjalar's version, the old Binutils
-version, and the new Binutils version.  (The old Binutils version is
-omitted if your Git configuration sets @code{merge.conflictStyle} to
-@samp{merge}.)  Mark each file as resolved with @command{git add}.  When
-you are done, this command produces no output:
+version, and the new Binutils version.  (The script uses this conflict
+style regardless of your Git configuration's @code{merge.conflictStyle}.)
+Mark each file as resolved with @command{git add}.  When you are done, this
+command produces no output:
 
 @example
 git -C $INV/fjalar diff --name-only --diff-filter=U
@@ -1023,37 +1048,13 @@ rather than adding the libraries it needs.
 Support for zstd-compressed debug sections (Binutils 2.40 and later):
 make sure that it compiles away when @code{HAVE_ZSTD} is not defined.
 @item
-Newer @file{bfd.h} definitions: @file{dwarf.c} and @file{readelf.c}
-include the @emph{system} @file{bfd.h} (from the
-@file{binutils-dev} or @file{binutils-devel} package), which may be older
-than the Binutils being merged.  Check that every bfd macro and function
-the new code uses exists in the oldest @file{bfd.h} that continuous
-integration uses, and add local definitions for any that do not.
-To find that @file{bfd.h}, run the following for each Docker image named
-in @file{.github/workflows/ci.yml} or @file{azure-pipelines.yml}.
-@option{--pull=always} makes @command{docker} use the current image rather
-than an older copy cached on your machine.  (As of October 2026, the
-oldest is Binutils 2.41, in @samp{mdernst/daikon-rockylinux-jdk25-plus},
-which is Rocky Linux 10.)
-
-@example
-# Ubuntu images
-docker run --rm --pull=always \
-  mdernst/daikon-ubuntu-jdk11-plus:latest dpkg-query -W binutils-dev
-# Rocky Linux images
-docker run --rm --pull=always \
-  mdernst/daikon-rockylinux-jdk25-plus:latest rpm -q binutils-devel
-@end example
-
-@noindent
-To check whether that @file{bfd.h} defines a given name, set
-@code{IMAGE} to the image that has the oldest @file{bfd.h}:
-
-@example
-IMAGE=mdernst/daikon-rockylinux-jdk25-plus
-docker run --rm --pull=always $IMAGE:latest \
-  grep -w NAME /usr/include/bfd.h
-@end example
+Definitions from Binutils headers that Fjalar replaces:  the copies
+include Fjalar's own @file{sysdep.h}, @file{bfd.h}, @file{libiberty.h},
+and a few other headers, in @file{valgrind/fjalar/binutils-shim/}, rather
+than Binutils' or the system's.  Each defines only what the copies use.
+If the new code uses a definition that one of them lacks, compilation
+fails; add the definition, taken from the same Binutils release as the new
+code.  (Binutils' @file{bfd.h} is generated from @file{bfd/bfd-in2.h}.)
 @end itemize
 
 After you have resolved the conflicts, check that no call of a Fjalar
@@ -1132,22 +1133,27 @@ $INV/fjalar/compare-warnings.sh --binutils $INV/fjalar/build-before.log $INV/fja
 
 @noindent
 (@ref{Get Current Valgrind Regtest Baseline Results} saves
-@file{build-before.log}.)  It is a good idea to modify the code to remove as
-many of these new warnings as possible to make subsequent merges easier.
+@file{build-before.log}.)  Do not edit a copy of a Binutils file to remove a
+warning, because each change to a copy makes subsequent merges harder.
+Instead, disable the warning for the copies:  with a @code{#pragma GCC
+diagnostic} in @file{valgrind/fjalar/binutils-shim/sysdep.h}, or, for a
+warning that a pragma cannot disable, such as @option{-Wformat-signedness},
+in @file{valgrind/fjalar/fjalar.am}.  Do fix a warning that reveals a bug.
 
-Programs written to run under the Valgrind tool must obey certain
-requirements with respect to the use of the C runtime library.
-In particular, most of those routines have been replaced
-with Valgrind equivalents. Thus, a call to @code{assert} must be replaced
-with a call to @code{tl_assert}.  The most common changes you will see
-are for the memory allocation, string manipulation and file output
-routines.  The name of the routine must be wrapped in @code{VG_(..)}.
-For example: @code{VG_(malloc)} or @code{VG_(strlen)}.
-It is not
-critical to find and correct all of these changes in your first
-pass over the modified code.  They will be identified via an
-"implicit declaration" warning from the compiler and an
-"undefined reference" error from the linker.
+A Valgrind tool cannot call the C runtime library.  Fjalar's
+@file{sysdep.h}, in @file{valgrind/fjalar/binutils-shim/}, which the
+copies of Binutils files include first, maps each C library function that
+they call, such as @code{malloc} or @code{strlen}, to its Valgrind
+equivalent, such as @code{VG_(malloc)} or @code{VG_(strlen)}.  Fjalar's
+@file{assert.h}, in the same directory, maps @code{assert} to
+@code{tl_assert}.  So do not edit a call of a C library function in new
+code.  If new code calls a C library function that @file{sysdep.h} does
+not map and that @file{my_libc.c} does not define, the compiler reports an
+"implicit declaration" error (GCC before version 14 reports only a
+warning) or, if some header declares the function, the linker reports an
+"undefined reference" error; then add a macro for
+the function to @file{sysdep.h}, or, if Valgrind has no equivalent, define
+the function in @file{my_libc.c}.
 
 The other major area of difficulty when doing the source merge
 is with the @code{printf} calls
@@ -1217,8 +1223,7 @@ TODO:  This trick could be applied elsewhere.  For instance,
 the routine @code{display_loc_list} in @file{dwarf.c} could use the #define trick (for 3 output
 routines, not just @code{printf}).
 
-A missed @code{VG_(..)} wrapper or a missing @code{printf}
-that needs to be protected should not be a big problem.  Typically, the
+A missing @code{printf} guard should not be a big problem.  Typically, the
 Fjalar tool will operate as expected but contain superfluous information
 in its output.  This will likely be caught as a diff in a @file{.out}
 file when running the kvasir-tests regressions.
@@ -1350,7 +1355,7 @@ address ranges in @file{$DAIKONDIR/tests/kvasir-tests/clean-output.pl}
 with those in the new binaries and see if changes to
 @file{clean-output.pl} are required.
 
-After a Binutils merge, also run Kvasir with @option{--fjalar-debug-dump=yes},
+After a Binutils merge, also run Kvasir with @option{--fjalar-debug-dump},
 which mimics @samp{readelf --debug-dump}, on a program compiled with
 @option{-gdwarf-5}, and compare its output with that of the new Binutils'
 @command{readelf}.  The system's @command{readelf} may be older, so build
@@ -1361,6 +1366,25 @@ path:
 READELF=$($INV/fjalar/build-binutils-readelf.sh $BUNEWVER)
 $READELF --debug-dump @var{program}
 @end example
+
+The Kvasir tests check only the @file{.decls} and @file{.dtrace} files, not
+the output of @option{--fjalar-debug-dump} and @option{--fjalar-debug}.
+@command{compare-debug-output.sh} checks all of them: it runs Fjalar on
+programs compiled from Fjalar's tests and compares the output with a
+baseline.  Its first run saves the baseline, and later runs compare with
+it.  Save the baseline with a built Fjalar tree that does not contain the
+merge, such as a clone of the master branch, and then compare with the
+merged tree:
+
+@example
+@var{unmerged-fjalar}/compare-debug-output.sh /tmp/$USER/debug-output
+$INV/fjalar/compare-debug-output.sh /tmp/$USER/debug-output
+@end example
+
+@noindent
+A Valgrind or Binutils merge may change the output intentionally; review
+each difference.  See the comments at the top of
+@file{compare-debug-output.sh} for details.
 
 
 @node Documenting Changes
@@ -1416,6 +1440,29 @@ git -C $INV/fjalar diff -b "$(git -C $INV/fjalar merge-base FETCH_HEAD HEAD)" | 
 git -C $INV/fjalar commit -a -m "Valgrind merge from $@{VOLDTAG@} to $@{VNEWTAG@}"
 @end smallexample
 
+Then run @file{compare-fjalar-changes.sh} again (@pxref{Resolving
+Conflicts}).  After the commit, the index equals the commit, so the
+command compares all of Fjalar's modifications before and after the
+merge, including the changes that you made since you last ran it.  It
+shows each modification that the merge or a conflict resolution lost,
+altered, or added, such as a change of whitespace:
+
+@example
+$INV/fjalar/compare-fjalar-changes.sh
+@end example
+
+@noindent
+Restore each of Fjalar's modifications that the command reports as lost
+or altered, unless the Valgrind developers made the same change or made
+the modification unnecessary, or you adapted the modification to the
+Valgrind developers' changes.  Remove each added modification that
+Fjalar does not need, and document the others in the appendices
+(@pxref{Valgrind modifications}, and @ref{Memcheck modifications}).  The
+command also reports an adapted modification as added; update its
+existing appendix entry instead of adding a new one.
+Commit those changes, and run @file{compare-fjalar-changes.sh} again to
+confirm them.
+
 Note: We recommend saving Fjalar's changes to the base Valgrind
 (@pxref{Merging Valgrind}) to further document the process.
 
@@ -1432,73 +1479,157 @@ state in Coregrind and VEX. The shadow area is an area of memory that
 Valgrind provides for tools to use. Unfortunately, it is of a fixed
 size, and Memcheck uses all of it. We've had to increase the size of
 the shadow area.
-Additionally, we had to modify some of the VEX architecture files to
-include additional information specific to the amd64 and x86 platforms.
-Finally, we had to extend Valgrind's implementation of the C library
-with a few extra functions.
+The other changes add the @code{fjalar} tool to the build, give Fjalar
+access to the extra shadow area, and fix the build of three upstream
+tests with newer compilers.
+
+To see all of Fjalar's modifications to the Valgrind release that
+@file{valgrind/REVISION} names, run:
+
+@example
+$INV/fjalar/diff-from-valgrind.sh
+@end example
+
+@noindent
+It accepts the options of @command{git diff}, such as @option{--stat} and
+@option{-w}.  It compares with @file{$INV/valgrind-old}; to compare with
+another clone of that release, such as @file{$INV/valgrind-new} after a
+merge, give @option{--valgrind=@var{dir}}.  Every modification is a
+potential conflict in the next merge, so keep them few:  put Fjalar's code
+in Fjalar's own files where possible, and keep upstream's whitespace.
+Continuous integration runs @command{check-valgrind-whitespace.sh}, which
+fails if Fjalar's copy of an upstream file has a change of whitespace
+alone, such as removed trailing whitespace or an added blank line.  On a line
+whose text Fjalar also changed, a change of whitespace adds no conflict, so
+the check ignores it.
 
 (Remember that we assume @env{$INV} points to a parent directory that
 contains both the Daikon and Fjalar source trees.)
 
 @table @asis
 @item $INV/fjalar/valgrind/configure.ac
-Add fjalar/Makefile to list of targets
-@item $INV/fjalar/valgrind/coregrind/m_libcbase.c
-Add VG_ version of strnlen
-@item $INV/fjalar/valgrind/coregrind/m_libcfile.c
-Add VG_ version of mkdir
+Add @file{fjalar/Makefile} to the list of files that @command{configure}
+creates
 @item $INV/fjalar/valgrind/coregrind/m_machine.c
-Add get and set functions for additional machine registers
+Add @code{VG_(get_tag_ptr_for_guest_offset)}, which returns the address
+of the DynComp tag of a guest-state byte.  The tags are in
+@code{vex_extra_shadow}, which a tool cannot reach, so this function must
+be in Coregrind.
 @item $INV/fjalar/valgrind/coregrind/m_scheduler/scheduler.c
-Modify an assertion that triggers based on shadow size
+In @code{do_pre_run_checks}, count @code{vex_extra_shadow} in the
+assertion that the spill area follows the shadow areas
 @item $INV/fjalar/valgrind/coregrind/pub_core_machine.h
-Add additional general purpose registers to the guest state
+Declare @code{VG_(get_tag_ptr_for_guest_offset)}.
+@file{fjalar_core_decls.h} declares it again for Fjalar, and the
+@file{fjalar_core_decls.stamp} rule in @file{fjalar.am} checks that the
+two declarations agree.
 @item $INV/fjalar/valgrind/coregrind/pub_core_threadstate.h
-The declaration of the extra shadow space
-@item $INV/fjalar/valgrind/include/pub_tool_libcbase.h
-Add VG_ version of strnlen
-@item $INV/fjalar/valgrind/include/pub_tool_libcfile.h
-Add VG_ version of mkdir and fcntl
-@item $INV/fjalar/valgrind/include/pub_tool_machine.h
-Add get and set functions for additional machine registers
+Declare the extra shadow area, @code{vex_extra_shadow}, which holds a
+4-byte DynComp tag for each guest-state byte.  It must directly follow
+@code{vex_shadow2}.
+@item $INV/fjalar/valgrind/drd/tests/swapcontext.c
+@itemx $INV/fjalar/valgrind/helgrind/tests/tc17_sembar.c
+@itemx $INV/fjalar/valgrind/none/tests/bug234814.c
+Fix the build with GCC 15.  These are backports of upstream fixes, so
+take upstream's version when merging a release that has them.
+@item $INV/fjalar/valgrind/fjalar/mc_main.c
+@itemx $INV/fjalar/valgrind/fjalar/mc_translate.c
+@itemx $INV/fjalar/valgrind/fjalar/memcheck.h
+@xref{Memcheck modifications}.
 @item $INV/fjalar/valgrind/Makefile.am
-Add fjalar to the list of tools; add files to clean-local target
-@item $INV/fjalar/valgrind/none/tests/Makefile.am
-Add @nospellcheck{coregrind/libcoregrind-amd64-linux.a to libvex} tests
+Add fjalar to the list of tools
 @item $INV/fjalar/valgrind/tests/check_headers_and_includes
-Add fjalar to @nospellcheck{tool_dirs and inst to dirs_to_ignore}
-@item $INV/fjalar/valgrind/VEX/priv/guest_amd64_helpers.c
-Add additional general purpose registers to the guest state
-@item $INV/fjalar/valgrind/VEX/priv/guest_x86_helpers.c
-Add additional general purpose registers to the guest state
-@item $INV/fjalar/valgrind/VEX/priv/host_amd64_defs.c
-Add function name to debug dump of call instruction
+Add fjalar to @nospellcheck{tool_dirs, and inst} (where Fjalar installs
+Valgrind) to @nospellcheck{dirs_to_ignore}
 @item $INV/fjalar/valgrind/VEX/priv/host_generic_reg_alloc2.c
-Modify memory calculation using the shadow size
-@item $INV/fjalar/valgrind/VEX/pub/libvex.h
-Add additional general purpose registers to the guest state
-@item $INV/fjalar/valgrind/VEX/pub/libvex_ir.h
-Add additional general purpose registers to the guest state
+@itemx $INV/fjalar/valgrind/VEX/priv/host_generic_reg_alloc3.c
+Count @code{vex_extra_shadow} in the spill offset.  Version 3 is the
+default register allocator.
 @end table
 
 
 @node Memcheck modifications
 @appendix Memcheck modifications
 
-The modifications made to Memcheck are more organizational in nature.
-A few functions from @file{mc_main.c} and @file{mc_translate.c} have been made
-non-static. An extra header has also been created and filled with their
-signatures for use by Fjalar.  Several changes to remove compile warnings
-for use of function name as variable.
+Fjalar code that uses static functions of @file{mc_main.c} or
+@file{mc_translate.c} is in a file that each of them includes, and
+@file{mc_fjalar.h} and @file{mc_translate.h} declare that code for the
+rest of Fjalar.  Elsewhere, @file{mc_main.c} and @file{mc_translate.c}
+have mostly one-line hooks that call Fjalar.  In each of the two files,
+a Fjalar header comment and @code{#include}s of Fjalar's headers follow
+upstream's license comment.
 
-Other modifications include:
+The modifications are:
 
 @table @asis
 @item $INV/fjalar/valgrind/fjalar/mc_main.c
-Run-time arguments and versioning information for Kvasir to replace
-the default Memcheck ones
+An @code{#include} of
+@file{fjalar_mc_main.h}, which defines the functions that Fjalar adds to
+Memcheck (@file{mc_fjalar.h} declares them).  Those functions call
+static functions of @file{mc_main.c}, such as @code{set_vabits2},
+@code{set_sec_vbits8}, @code{get_vabits2},
+@code{is_mem_defined}, and @code{is_mem_addressable}, so the
+@code{#include} must follow the definitions of those functions.
+Calls to Fjalar at Memcheck's entry points:  @code{mc_pre_clo_init},
+@code{mc_process_cmd_line_options}, @code{mc_print_usage},
+@code{mc_post_clo_init}, and @code{mc_fini}, which returns after it
+calls @code{fjalar_finish}, so that Fjalar skips Memcheck's end-of-run
+reports.  (Fjalar does not change Memcheck's details, such as its name and
+version, in @code{mc_pre_clo_init}; instead, @code{fjalar_pre_clo_init} in
+@file{fjalar_main.c} and each tool's @code{fjalar_tool_pre_clo_init}
+override them.)  The definition of @code{kvasir_with_dyncomp}, and
+DynComp calls, guarded by it, that clear, allocate, or copy the tags of
+the bytes whose state changes:  in @code{MC_(make_mem_noaccess)} and
+@code{MC_(make_mem_defined)}, in
+@code{make_aligned_word32_noaccess} and
+@code{make_aligned_word64_noaccess}, and in
+@code{MC_(copy_address_range_state)}, which saves the original length in
+@code{orig_size} for the call.  A @code{CHECK_SP} call in each of the
+@code{mc_new_mem_stack_@var{N}} and @code{mc_new_mem_stack_@var{N}_w_ECU}
+functions, and a @code{CHECK_SP_SLOW} call in @code{mc_new_mem_stack} and
+@code{mc_new_mem_stack_w_ECU}.  @code{DEBUG} calls, which (like
+upstream's) expand to nothing unless a developer uncomments the
+@code{VG_(printf)} in the definition of @code{DEBUG}, in
+@code{make_aligned_word64_undefined}, @code{make_aligned_word64_noaccess},
+@code{mc_new_mem_stack_8}, @code{mc_die_mem_stack_8},
+@code{mc_new_mem_stack_16}, @code{mc_die_mem_stack}, @code{mc_LOADV64},
+@code{mc_STOREV64}, and @code{mc_STOREV32}.  A
+@code{#pragma GCC diagnostic ignored "-Wshadow"}, because Memcheck's
+local variables and parameters named @code{line} and @code{str} shadow
+enumerators that @file{dwarf.h} declares.
 @item $INV/fjalar/valgrind/fjalar/mc_translate.c
-In Memcheck's instrumentation block, duplicate each case for DynComp.
+In @code{MC_(instrument)}, calls to @code{begin_instrument_DC},
+@code{instrument_stmt_DC} (after Memcheck instruments each statement),
+and @code{end_instrument_DC}, which @file{kvasir/dyncomp_translate.c}
+defines; calls to @code{handle_possible_entry} and
+@code{handle_possible_exit}, which detect function entries and exits; and
+calls to @code{fjalar_print_registers} in @file{fjalar_main.c}, which
+prints registers, at the start of each superblock and at each
+instruction.  Those calls, like Memcheck's own tracing of the IR
+(through @code{mce.trace}) and its printing of each statement of the
+superblock that it instruments, run when @code{verboze} is true; Fjalar initializes
+@code{verboze} to @code{fjalar_debug && fjalar_print_IR} instead of
+@code{0||False}, so @option{--fjalar-debug} and @option{--fjalar-print-ir}
+together turn them on.  (Kvasir turns them on only when execution
+reaches the program's entry point, unless @option{--dyncomp-trace-startup}
+is given.  Memcheck's printing of the instrumented statements is guarded
+by @code{0 && verboze}, so it stays off.)
+An early return in @code{complainIfUndefined}, because Fjalar does not
+check definedness.  Also, a @code{DC} kind of @code{TempKind}, for DynComp's temporaries,
+and an @code{#include} of @file{fjalar_mc_translate.h}, which defines
+the functions through which the rest of Fjalar uses Memcheck's
+instrumenter (@file{mc_translate.h} declares them).  Those functions
+use @code{MCEnv} and static functions of @file{mc_translate.c}, such as
+@code{stmt}, @code{newTemp}, and @code{shadowTypeV}, so the
+@code{#include} must follow the definitions of those.
+@file{mc_translate.h} repeats the @code{IRAtom} typedef and the
+IR-building macros (such as @code{binop}, @code{mkU32}, and
+@code{mkexpr}) of @file{mc_translate.c}, which DynComp uses; if the
+Valgrind developers change them, change @file{mc_translate.h} to match.
+@item $INV/fjalar/valgrind/fjalar/memcheck.h
+Include @file{pub_tool_clreq.h} instead of @file{valgrind.h}, as
+@file{tests/check_headers_and_includes} requires of a file in a tool
+directory.
 @end table
 
 

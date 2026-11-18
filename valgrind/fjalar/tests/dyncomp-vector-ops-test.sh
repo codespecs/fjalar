@@ -24,24 +24,9 @@ if [ ! -x "${valgrind}" ]; then
   exit 2
 fi
 
-# Fails in continuous integration (GitHub Actions sets CI, and Azure Pipelines
-# sets TF_BUILD), and otherwise skips this test, because this CPU cannot run
-# it.  Failing in continuous integration ensures that a change of machines
-# that makes this test vacuous does not go unnoticed.  $1 is the reason.
-unsuitable_cpu() {
-  if [ -n "${CI:-}" ] || [ -n "${TF_BUILD:-}" ]; then
-    echo "$0: FAILED: $1" >&2
-    exit 1
-  fi
-  echo "$0: SKIPPED: $1" >&2
-  exit 0
-}
+. "${test_dir}/environment-checks.sh"
 
-for feature in avx2 fma f16c; do
-  if ! grep -qw "${feature}" /proc/cpuinfo; then
-    unsuitable_cpu "the CPU does not support ${feature}"
-  fi
-done
+require_cpu_flags "$0" avx2 fma f16c
 
 output_dir="$(mktemp -d)"
 trap 'rm -rf "${output_dir}"' EXIT

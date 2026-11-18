@@ -81,6 +81,9 @@ typedef struct _location_list
   unsigned long end;
   enum dwarf_location_atom atom; //Location Expression.
   long long atom_offset;
+  // The number of operations in the location expression.  atom and
+  // atom_offset describe the last one.
+  unsigned int num_ops;
   struct _location_list *next;
 } location_list;
 
@@ -293,7 +296,6 @@ typedef struct
   */
 
   unsigned long frame_pc;
-  unsigned long comp_pc;  /* Top of the current compilation unit */
   unsigned long start_pc; /* Location of the function in memory */
   unsigned long end_pc;   /* Location of the highest address of an
                              instruction in the function */
@@ -336,9 +338,16 @@ typedef struct
   // Fjalar cannot read or DW_OP_stack_value, or contains a DW_OP_piece that
   // is not the last operation or that has size 0, or contains more than
   // MAX_DWARF_OPS operations.  Fjalar cannot read such a location.  A
-  // location list does not set this flag:  like a missing location, it
-  // leaves the location unknown, so heuristics may supply it.
+  // location list sets this flag if no entry that Fjalar can read covers
+  // the function's entry point (see useLocationListEntry).
   char location_has_unsupported_op;
+
+  // True if the location is a location list, whose offset in .debug_loc
+  // (its key in loc_list_map) is location_list_offset.
+  // extractOneFormalParameterVar uses the list's entry for the function's
+  // entry point.
+  char has_location_list;
+  unsigned long location_list_offset;
 
   // If the location expression ends with DW_OP_piece, the size of that
   // piece; otherwise 0.  Fjalar can read the location only if the piece is
@@ -458,6 +467,7 @@ typedef struct
 extern dwarf_entry* dwarf_entry_array;
 extern compile_unit** comp_unit_info;
 extern unsigned long dwarf_entry_array_size;
+extern unsigned long num_unsupported_version_comp_units;
 extern location_list *debug_loc_list;
 
 unsigned int hashString(const char* str);
@@ -568,6 +578,7 @@ char harvest_producer(dwarf_entry* e, const char* str);
 char harvest_formal_param_location_unsupported(dwarf_entry* e);
 char harvest_formal_param_location_piece(dwarf_entry* e, unsigned long size);
 char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom atom, long value);
+char harvest_formal_param_location_list(dwarf_entry* e, unsigned long offset);
 char harvest_data_member_location(dwarf_entry* e, unsigned long value);
 char harvest_string(dwarf_entry* e, unsigned long attr, const char* str);
 char harvest_external_flag_value(dwarf_entry *e, unsigned long value);
@@ -583,8 +594,12 @@ char harvest_specification_value(dwarf_entry* e, unsigned long value);
 char harvest_abstract_origin_value(dwarf_entry* e, unsigned long value);
 char harvest_accessibility(dwarf_entry* e, char a);
 char harvest_location_list_entry(location_list* ll, unsigned long offset);
+location_list* find_location_list_entry(unsigned long offset, unsigned long pc);
 char harvest_debug_frame_entry(debug_frame* df);
 char harvest_frame_base(dwarf_entry* e, enum dwarf_location_atom a, long offset);
+void frame_base_of_location_expression(location_list* ll,
+                                       enum dwarf_location_atom* atom, long* offset);
+char harvest_frame_base_expression(dwarf_entry* e, location_list* ll);
 char harvest_decl_file(dwarf_entry* e, unsigned long value);
 char harvest_stmt_list(dwarf_entry* e, unsigned long value);
 char harvest_file_name_table(unsigned long debug_line_offset, XArray* table);

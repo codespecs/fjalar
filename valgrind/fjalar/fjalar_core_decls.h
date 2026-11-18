@@ -14,7 +14,7 @@
 /* fjalar_core_decls.h:
 
 Declarations of the few Valgrind core (non-tool) entities that Fjalar
-uses.  Fjalar code (e.g., mc_main.c and typedata.c) includes this file
+uses.  Fjalar code (e.g., fjalar_mc_main.h and typedata.c) includes this file
 to call those entities.  Tool files must not include coregrind/pub_core_*.h (see
 tests/check_headers_and_includes), so these are copied here instead.
 The build checks that the copies agree with the originals (see the
@@ -32,10 +32,34 @@ fjalar_core_decls.stamp rule in Makefile.am).
 // owns, which VG_(am_is_valid_for_client) rejects.
 extern Bool VG_(am_is_valid_for_valgrind)(Addr start, SizeT len, UInt prot);
 
+// From coregrind/pub_core_libcfile.h.
+// Kvasir uses this to keep the pipe to gzip from leaking into the
+// processes that the client starts.
+extern Int VG_(fcntl)   ( Int fd, Int cmd, Addr arg );
+
+// From coregrind/pub_core_machine.h.
+// enter_function uses the frame pointer when a function's debugging
+// information gives no frame base.
+extern Addr VG_(get_FP) ( ThreadId tid );
+
+// From coregrind/pub_core_machine.h, which declares it for Fjalar.
+// Returns the address of the DynComp tag of the guest-state byte at
+// offset.  Each guest-state byte has a 4-byte tag in vex_extra_shadow,
+// which a tool cannot reach.
+extern UInt* VG_(get_tag_ptr_for_guest_offset) ( ThreadId tid, UInt offset );
+
 // From coregrind/pub_core_mallocfree.h.
 // Used to release the demanglers' results, which are allocated in the
 // VG_AR_DEMANGLE arena.  ArenaId is a typedef for Int.
 extern void VG_(arena_free)(Int arena, void* ptr);
 #define VG_AR_DEMANGLE 3
+
+// From coregrind/pub_core_syscall.h.
+// mkdir in my_libc.c uses this, because Valgrind gives tools no function
+// that creates a directory.
+extern SysRes VG_(do_syscall) ( UWord sysno,
+                                RegWord, RegWord, RegWord,
+                                RegWord, RegWord, RegWord,
+                                RegWord, RegWord );
 
 #endif /* FJALAR_CORE_DECLS_H */

@@ -33,14 +33,6 @@
 
 #define _(String) (String)
 
-#define PARAMS(args) args
-#define VPARAMS(args) args
-#define VA_START(VA_LIST, VAR) va_start(VA_LIST, VAR)
-
-#define VA_OPEN(AP, VAR) { va_list AP; va_start(AP, VAR); { struct Qdmy
-#define VA_CLOSE(AP) } va_end(AP); }
-#define VA_FIXEDARG(AP, TYPE, NAME) struct Qdmy
-
 /* alloca.h */
 extern void *alloca (size_t __size);
 #define alloca(size)   __builtin_alloca (size)
@@ -193,6 +185,7 @@ long ftell(FILE *stream);
 /* stdlib.h */
 
 // rename from abort to avoid conflict with coregrind::abort (markro)
+__attribute__ ((__noreturn__))
 void my_abort(void);
 
 long int strtol(const char *nptr, char **endptr, int base);
@@ -208,15 +201,8 @@ const char* my_strerror(int errnum);
 
 int mkfifo(const char *fn, __mode_t mode);
 
-/* bfd/bfd-in.h */
+/* sys/stat.h */
 
-#include "pub_tool_basics.h"
-#include "pub_tool_libcbase.h"
-/* Return TRUE if the start of STR matches PREFIX, FALSE otherwise.  */
-static inline bool
-startswith (const char *str, const char *prefix)
-{
-  return VG_(strncmp) (str, prefix, VG_(strlen) (prefix)) == 0;
-}
+int mkdir(const char *path, __mode_t mode);
 
 #endif /* MY_LIBC_H */

@@ -8,6 +8,4 @@
 #   <fjalar>/check-regtest.sh --log regtest-rocky-10.log --update
 
 memcheck/tests/origin6-fp (stderr)
-none/tests/libvex_test (stderr)
-none/tests/libvexmultiarch_test (stderr)
 none/tests/scripts/bug231357 (stdout)

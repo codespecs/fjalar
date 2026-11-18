@@ -20,9 +20,9 @@ m4_define([v_micro_ver], [0])
 m4_define([v_suffix_ver], [])
 m4_define([v_rel_date], ["26 Apr 2024"])
 m4_define([v_version],
-     m4_if(v_suffix_ver, [],
-       [v_major_ver.v_minor_ver.v_micro_ver],
-       [v_major_ver.v_minor_ver.v_micro_ver.v_suffix_ver]))
+	  m4_if(v_suffix_ver, [],
+		[v_major_ver.v_minor_ver.v_micro_ver],
+		[v_major_ver.v_minor_ver.v_micro_ver.v_suffix_ver]))
 AC_INIT([Valgrind],[v_version],[valgrind-users@lists.sourceforge.net])
 
 # For valgrind.h

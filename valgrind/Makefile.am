@@ -1,7 +1,7 @@
 
 AUTOMAKE_OPTIONS = 1.10
 
-include $(top_srcdir)/Makefile.all.am
+include $(top_srcdir)/Makefile.all.am 
 
 TOOLS = \
 		memcheck \
@@ -36,7 +36,6 @@ SUBDIRS = \
 	mpi \
 	solaris \
 	docs
-
 DIST_SUBDIRS  = $(SUBDIRS)
 
 SUPP_FILES = \
@@ -139,9 +138,6 @@ all-local: default.supp include/vgversion.h
 
 clean-local:
 	rm -rf $(inplacedir) include/vgversion.h
-	rm -f config.guess
-	rm -f config.sub
-	rm -f Makefile.in
 
 # Need config.h in the installed tree, since some files depend on it
 pkginclude_HEADERS = config.h
@@ -151,3 +147,4 @@ include/vgversion.h:
 	$(top_srcdir)/auxprogs/make_or_upd_vgversion_h $(top_srcdir)
 
 .PHONY: include/vgversion.h
+

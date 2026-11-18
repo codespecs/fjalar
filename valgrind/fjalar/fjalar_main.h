@@ -80,6 +80,10 @@
 void handle_possible_entry(MCEnv* mce, Addr64 addr, IRSB* sb_orig);
 void handle_possible_exit(MCEnv* mce, IRJumpKind jk);
 
+// Print a blank line, then a line with the instruction pointer, stack
+// pointer, frame pointer, and xAX register of the running thread, in hex.
+void fjalar_print_registers(void);
+
 // The master location_list. This is explained in typedata.h
 extern struct genhashtable* loc_list_map;
 
@@ -124,10 +128,13 @@ static __inline__ FunctionExecutionState* fnStackPop(ThreadId tid) {
   return &(FunctionExecutionStateStack[tid][fn_stack_first_free_index[tid]]);
 }
 
-// Returns the top element of the stack
+// Returns the top element of the stack, or NULL if the stack is empty
 static __inline__ FunctionExecutionState* fnStackTop(ThreadId tid) {
   tl_assert(tid != VG_INVALID_THREADID);
   tl_assert(fn_stack_first_free_index[tid] >= 0);
+  if (fn_stack_first_free_index[tid] == 0) {
+    return NULL;
+  }
   return &(FunctionExecutionStateStack[tid][fn_stack_first_free_index[tid] - 1]);
 }
 

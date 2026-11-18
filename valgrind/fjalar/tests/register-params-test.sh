@@ -23,18 +23,7 @@ fi
 output_dir="$(mktemp -d)"
 trap 'rm -rf "${output_dir}"' EXIT
 
-# Fails in continuous integration (GitHub Actions sets CI, and Azure Pipelines
-# sets TF_BUILD), and otherwise skips this test, because this compiler cannot
-# run it.  Failing in continuous integration ensures that a compiler change
-# that makes this test vacuous does not go unnoticed.  $1 is the reason.
-unsuitable_compiler() {
-  if [ -n "${CI:-}" ] || [ -n "${TF_BUILD:-}" ]; then
-    echo "$0: FAILED: $1" >&2
-    exit 1
-  fi
-  echo "$0: SKIPPED: $1" >&2
-  exit 0
-}
+. "${test_dir}/environment-checks.sh"
 
 # Fjalar does not read DWARF 5, and it recognizes a function's entry point
 # only at the address in the debugging information, so the executable must not
@@ -85,7 +74,7 @@ if ! rewrite_location v 2 \
        "\t.byte\t0x35\t# DW_OP_lit5\n\t.byte\t0x9f\t# DW_OP_stack_value" \
        < "${output_dir}/stack-params-c.s" > "${output_dir}/stack-params-l.s"
 then
-  unsuitable_compiler "could not rewrite the locations of v, c, and l"
+  unsuitable_environment "$0" "could not rewrite the locations of v, c, and l"
 fi
 
 # Renames formal parameter $1, which has 3 characters, to $2, which has 1
@@ -116,7 +105,7 @@ if ! append_piece w__ w 8 < "${output_dir}/stack-params-l.s" \
        > "${output_dir}/stack-params-w.s" \
     || ! append_piece p__ p 4 < "${output_dir}/stack-params-w.s" \
        > "${output_dir}/stack-params-patched.s"; then
-  unsuitable_compiler "could not append DW_OP_piece to the locations of w and p"
+  unsuitable_environment "$0" "could not append DW_OP_piece to the locations of w and p"
 fi
 gcc -no-pie -o "${output_dir}/register-params" \
     "${output_dir}/register-params.o" "${output_dir}/stack-params-patched.s"
@@ -141,7 +130,7 @@ if readelf --debug-dump=info "${output_dir}/register-params" \
            END { end_param(); exit !bad }'; then
   readelf --debug-dump=info "${output_dir}/register-params" \
     | grep -A8 DW_TAG_formal_parameter >&2
-  unsuitable_compiler "gcc did not put every formal parameter in a register"
+  unsuitable_environment "$0" "gcc did not put every formal parameter in a register"
 fi
 
 # A formal parameter in a register occupies no stack slot, even if Fjalar

@@ -42,6 +42,10 @@
 // For VG_(arena_free), to release the demanglers' results.
 #include "fjalar_core_decls.h"
 
+// Defined in dwarf.c and declared in bucomm.h, which typedata.c cannot
+// include
+void *xcalloc (size_t, size_t);
+
 // Most of the following information is taken from "DWARF Debugging
 // Information Format Version 4". Published by the DWARF Debugging
 // Information Format Committee and may be found at http://www.dwarfstd.org.
@@ -126,6 +130,10 @@ static unsigned long comp_unit_info_idx = 0;
 // The size of this array
 unsigned long dwarf_entry_array_size = 0;
 
+// The number of compilation units that dwarf.c skips because Fjalar does not
+// read their DWARF version
+unsigned long num_unsupported_version_comp_units = 0;
+
 // Global hash table containing a mapping between
 // Location list offsets and a linked list representing
 // the location list
@@ -134,9 +142,6 @@ struct genhashtable* loc_list_map = 0;
 // Linked list representing debug_frame
 debug_frame* debug_frame_HEAD = 0;
 debug_frame* debug_frame_TAIL = 0;
-
-// Base of the current compilation unit
-unsigned int comp_unit_base = 0;
 
 // Target program producer info
 bool clang_c_producer = false;
@@ -1235,6 +1240,20 @@ char harvest_formal_param_location_unsupported(dwarf_entry* e)
   return 1;
 }
 
+// If e is a formal parameter, records that its location is the location
+// list at the given offset in .debug_loc.  Returns 1 if e is a formal
+// parameter, 0 otherwise.
+char harvest_formal_param_location_list(dwarf_entry* e, unsigned long offset)
+{
+  formal_parameter* paramPtr = formal_parameter_of(e);
+  if (paramPtr == 0)
+    return 0;
+
+  paramPtr->has_location_list = 1;
+  paramPtr->location_list_offset = offset;
+  return 1;
+}
+
 // If e is a formal parameter, records that its location expression ends
 // with "DW_OP_piece size" (sets location_piece_size).
 // extractOneFormalParameterVar omits the parameter unless the piece is the
@@ -1352,17 +1371,6 @@ char harvest_address_value(dwarf_entry* e, unsigned long attr,
           if (value == 0) {
               ((function*)e->entry_ptr)->is_inline = 1;
           }
-          ((function*)e->entry_ptr)->comp_pc = comp_unit_base;
-#if 0
-          FJALAR_DPRINTF("Harvest: start_pc: %lx  comp_pc: %lx  name: %s %s\n",
-                         ((function*)e->entry_ptr)->start_pc,
-                         ((function*)e->entry_ptr)->comp_pc,
-                         ((function*)e->entry_ptr)->name,
-                         ((function*)e->entry_ptr)->mangled_name);
-#endif
-          return 1;
-      } else if (tag_is_compile_unit(tag)) {
-          comp_unit_base = value;
           return 1;
       }
     } else if (tag_is_function(tag) && attr == DW_AT_high_pc) {
@@ -3047,8 +3055,9 @@ Effects: Initializes sets up dwarf_entry_array to hold num_entries components
 */
 void initialize_dwarf_entry_array(unsigned long num_entries)
 {
-  // use calloc to blank everything upon initialization
-  dwarf_entry_array = VG_(calloc)("typedata.c: initialize_dwarf_entry_array", num_entries, sizeof *dwarf_entry_array);
+  // use calloc to blank everything upon initialization.  xcalloc, unlike
+  // VG_(calloc), permits num_entries to be 0.
+  dwarf_entry_array = xcalloc(num_entries, sizeof *dwarf_entry_array);
 
   // Also initialize typedef_names_map at this time
   typedef_names_map = genallocatehashtable(0,
@@ -3063,7 +3072,8 @@ Effects: Initializes and sets up an array of the dwarf entries for all compile u
 */
 void initialize_compile_unit_array(unsigned long num_entries)
 {
-  comp_unit_info = VG_(calloc)("typedata.c: initialize_compile_unit_info", num_entries, sizeof *comp_unit_info);
+  // xcalloc, unlike VG_(calloc), permits num_entries to be 0.
+  comp_unit_info = xcalloc(num_entries, sizeof *comp_unit_info);
 } 
 
 
@@ -3362,6 +3372,52 @@ char harvest_frame_base(dwarf_entry *e, enum dwarf_location_atom a, long offset)
   return 0;
 }
 
+// Sets *atom and *offset to the frame base that the location expression
+// described by ll computes, in the form of FunctionEntry's frame_base_atom
+// and frame_base_offset.  Sets *atom to 0 if Fjalar cannot use the
+// expression.
+void frame_base_of_location_expression(location_list* ll,
+                                       enum dwarf_location_atom* atom, long* offset)
+{
+  if (ll->atom == DW_OP_deref) {
+    // (comment added 2013)
+    // It turns out it might not be just the contents of a register.  Some
+    // 32bit x86 code does some tricky stack alignment and has to save a
+    // pointer to the original stack frame.  This means we get passed a
+    // DW_OP_deref instead of a DW_OP_breg.  The tricky bit is we don't
+    // want to go back to that address because it probably won't be equal
+    // to the local frame pointer due to the stack alignment.  So the HACK
+    // is to just assume the frame base is just above the saved frame
+    // pointer and the return address, as is normal:  EBP+8 on x86 and
+    // RBP+16 on amd64.  (markro)
+    *atom = DW_OP_breg0 + DWARF_FP_REG;
+    *offset = 2 * sizeof(Addr);
+  } else if (ll->num_ops == 1) {
+    *atom = ll->atom;
+    *offset = ll->atom_offset;
+  } else {
+    // ll->atom and ll->atom_offset describe only the last operation.
+    FJALAR_DPRINTF("\tCannot compute frame base from location expression with %u operations\n",
+                   ll->num_ops);
+    *atom = 0;
+    *offset = 0;
+  }
+}
+
+// If e is a function, sets its frame base to the location expression
+// described by ll.
+char harvest_frame_base_expression(dwarf_entry* e, location_list* ll)
+{
+  enum dwarf_location_atom atom;
+  long offset;
+
+  if ((e == 0) || (e->entry_ptr == 0) || !tag_is_function(e->tag_name))
+    return 0;
+
+  frame_base_of_location_expression(ll, &atom, &offset);
+  return harvest_frame_base(e, atom, offset);
+}
+
 char harvest_debug_frame_entry(debug_frame *df){
 
   tl_assert(df);
@@ -3403,6 +3459,19 @@ char harvest_location_list_entry(location_list* ll, unsigned long offset){
   }
 
   return 1;
+}
+
+// Returns the entry of the location list at the given offset in
+// .debug_loc (its key in loc_list_map) whose address range contains pc,
+// or NULL if there is no such entry.
+location_list* find_location_list_entry(unsigned long offset, unsigned long pc)
+{
+  location_list* ll = gengettable(loc_list_map, (void*)offset);
+  while (ll && !((ll->begin <= pc) && (pc < ll->end))) {
+    FJALAR_DPRINTF("\tExamining loc list entry: %lx - %lx - %lx\n", ll->offset, ll->begin, ll->end);
+    ll = ll->next;
+  }
+  return ll;
 }
 
 // Initialize FunctionSymbolTable and VariableSymbolTable:

@@ -5,8 +5,10 @@
 # doc/valgrind-merge.texinfo.
 # Usage: merge-valgrind.sh [CHERRY-PICK-OPTION...]
 # The base of the merge is the commit checked out in $INV/valgrind-old, and
-# the target is the commit checked out in $INV/valgrind-new.  If VOLDTAG or
-# VNEWTAG is set, the script checks that the clone is at that tag.
+# the target is the commit checked out in $INV/valgrind-new.  The script
+# checks that valgrind-old is at tag VOLDTAG, which by default is the release
+# that valgrind/REVISION names, and, if VNEWTAG is set, that valgrind-new is
+# at tag VNEWTAG.
 #
 # The script records Fjalar's HEAD as ref refs/valgrind-merge/fjalar, and
 # creates two commits, which it records as refs
@@ -55,8 +57,15 @@ source "$fjalar/valgrind-common.sh"
 check_toplevel "$fjalar"
 check_toplevel "$INV/valgrind-old"
 check_toplevel "$INV/valgrind-new"
-check_tag "$INV/valgrind-old" VOLDTAG
-check_tag "$INV/valgrind-new" VNEWTAG
+# Until the merge is committed, valgrind/REVISION names the release that
+# Fjalar is based on, which is the base of the merge.
+if [ -n "$VOLDTAG" ]; then
+  check_tag "$INV/valgrind-old" "$VOLDTAG" "the value of VOLDTAG"
+else
+  oldtag=$(cd "$fjalar" && valgrind_release_tag)
+  check_tag "$INV/valgrind-old" "$oldtag" "the release that valgrind/REVISION names"
+fi
+check_tag "$INV/valgrind-new" "$VNEWTAG" "the value of VNEWTAG"
 
 # The merge uses the committed trees of the upstream clones, so build
 # products in them do no harm, but a change to a tracked file would be
@@ -78,30 +87,12 @@ check_unchanged "$fjalar"
 
 cd "$fjalar"
 
-tmpindex=$(mktemp)
-trap 'rm -f "$tmpindex"' EXIT
-
 # Usage: upstream_commit DIR [PARENT]
 # Prints the name of a new commit, with parent PARENT if it is given, whose
-# tree has the tree of DIR's HEAD at valgrind/, and that tree's memcheck/,
-# without docs/, tests/, and Makefile.am, at valgrind/fjalar/.
-# generate-fjalar-makefile.sh generates Fjalar's version of
-# memcheck/Makefile.am, so the commit omits it.
+# tree is upstream_tree's for DIR.
 upstream_commit() {
   local dir=$1 parent=$2 tree
-  tree=$(git -C "$dir" rev-parse "HEAD^{tree}")
-  # Copy the tree's objects into the Fjalar repository.  "git fetch" would
-  # fail for a shallow clone, and would also copy upstream's history.
-  # "git index-pack" stores them as one pack, rather than as thousands of
-  # loose objects, and prints the pack's name.
-  git -C "$dir" rev-list --objects "$tree" | cut -d' ' -f1 \
-    | git -C "$dir" pack-objects -q --stdout | git index-pack --stdin > /dev/null
-  rm -f "$tmpindex"
-  GIT_INDEX_FILE=$tmpindex git read-tree --prefix=valgrind/ "$tree"
-  GIT_INDEX_FILE=$tmpindex git read-tree --prefix=valgrind/fjalar/ "$tree:memcheck"
-  GIT_INDEX_FILE=$tmpindex git rm -q -r -f --cached --ignore-unmatch -- \
-    valgrind/fjalar/docs valgrind/fjalar/tests valgrind/fjalar/Makefile.am
-  tree=$(GIT_INDEX_FILE=$tmpindex git write-tree)
+  tree=$(upstream_tree "$dir")
   # The commits are only for the merge, so they need no signature.
   git commit-tree --no-gpg-sign "$tree" ${parent:+-p "$parent"} \
     -m "Valgrind $(git -C "$dir" describe --tags --always)"

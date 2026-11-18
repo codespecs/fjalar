@@ -30,6 +30,9 @@
 #include "pub_tool_libcbase.h"
 #include "pub_tool_libcfile.h"
 #include "pub_tool_mallocfree.h"
+#include "pub_tool_vkiscnums.h"  // __NR_mkdir
+
+#include "fjalar_core_decls.h"  // VG_(do_syscall)
 
 #include <limits.h>
 
@@ -1359,6 +1362,18 @@ const char* my_strerror(int errnum)
 /* unistd.h */
 int mkfifo(const char *fn, __mode_t mode) {
   SysRes res = VG_(mknod)(fn, mode|VKI_S_IFIFO, 0);
+  if (sr_isError(res)) {
+    errno = sr_Err(res);
+    return -1;
+  } else {
+    return sr_Res(res);
+  }
+}
+
+/* sys/stat.h */
+int mkdir(const char *path, __mode_t mode) {
+  SysRes res = VG_(do_syscall)(__NR_mkdir, (RegWord)path, mode,
+                               0, 0, 0, 0, 0, 0);
   if (sr_isError(res)) {
     errno = sr_Err(res);
     return -1;

@@ -27,65 +27,14 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-/* mc_include.h
-
-   This file is part of Fjalar, a dynamic analysis framework for C/C++
-   programs.
-
-   Copyright (C) 2007-2026 University of Washington Computer Science & Engineering Department,
-   Programming Languages and Software Engineering Group
-
-   Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
-   Copyright (C) 2008-2009 Robert Rudd (rudd@csail.mit.edu),
-   MIT CSAIL Program Analysis Group
-
-   This program is free software; you can redistribute it and/or
-   modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
-   License, or (at your option) any later version.
-*/
-
-
 #ifndef __MC_INCLUDE_H
 #define __MC_INCLUDE_H
-
-#include "pub_tool_basics.h"
-#include "pub_tool_execontext.h"
-#include "pub_tool_hashtable.h"
-#include "pub_tool_errormgr.h"
-#include "pub_tool_tooliface.h"
-#include "pub_tool_poolalloc.h"
-
-#include "libvex.h"              // for all Vex stuff
 
 #define MC_(str)    VGAPPEND(vgMemCheck_,str)
 
 
 /* This is a private header file for use only within the
    memcheck/ directory. */
-
-// PG - pgbovine - begin
-
-typedef enum {
-   MC_Ok = 5, MC_AddrErr = 6, MC_ValueErr = 7
-} MC_ReadResult;
-
-void set_abit ( Addr a, UChar abit );
-void set_vbyte ( Addr a, UWord vbyte );
-void set_abit_and_vbyte ( Addr a, UWord abit, UWord vbyte );
-
-extern void mc_copy_address_range_state ( Addr src, Addr dst, SizeT len );
-void mc_make_noaccess ( Addr a, SizeT len );
-// Copies the A and V bits and the DynComp tag of the pointer-sized
-// guest register at guestOffset in thread tid's guest state to the
-// sizeof(Addr) bytes of memory at dst.
-void mc_copy_guest_reg_state ( ThreadId tid, Int guestOffset, Addr dst );
-
-extern char mc_are_some_bytes_initialized (Addr a, SizeT len);
-Bool mc_check_writable ( Addr a, SizeT len, Addr* bad_addr );
-MC_ReadResult mc_check_readable ( Addr a, SizeT len, Addr* bad_addr );
-
-// PG - pgbovine - end
 
 /*------------------------------------------------------------*/
 /*--- Tracking the heap                                    ---*/
@@ -554,8 +503,8 @@ void MC_(who_points_at) ( Addr address, SizeT szB);
 // if delta_mode == LCD_Any, prints in buf an empty string
 // otherwise prints a delta in the layout  " (+%'lu)" or " (-%'lu)" 
 extern HChar * MC_(snprintf_delta) (HChar * buf, Int size, 
-                                   SizeT current_val, SizeT old_val, 
-                                   LeakCheckDeltaMode delta_mode);
+                                    SizeT current_val, SizeT old_val, 
+                                    LeakCheckDeltaMode delta_mode);
 
 
 Bool MC_(is_valid_aligned_word)     ( Addr a );
@@ -563,7 +512,7 @@ Bool MC_(is_within_valid_secondary) ( Addr a );
 
 // Prints as user msg a description of the given loss record.
 void MC_(pp_LossRecord)(UInt n_this_record, UInt n_total_records,
-                       LossRecord* l);
+                        LossRecord* l);
                           
 
 /*------------------------------------------------------------*/
@@ -591,9 +540,9 @@ Bool MC_(read_extra_suppression_info) ( Int fd, HChar** buf,
 Bool MC_(error_matches_suppression) ( const Error* err, const Supp* su );
 
 SizeT MC_(get_extra_suppression_info) ( const Error* err,
-                                       /*OUT*/HChar* buf, Int nBuf );
-SizeT MC_(print_extra_suppression_use) ( const Supp* su,
                                         /*OUT*/HChar* buf, Int nBuf );
+SizeT MC_(print_extra_suppression_use) ( const Supp* su,
+                                         /*OUT*/HChar* buf, Int nBuf );
 void MC_(update_extra_suppression_use) ( const Error* err, const Supp* su );
 
 const HChar* MC_(get_error_name) ( const Error* err );
@@ -886,22 +835,6 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                         IRType gWordTy, IRType hWordTy );
 
 IRSB* MC_(final_tidy) ( IRSB* );
-
-#define VGM_BIT_VALID       0
-#define VGM_BIT_INVALID     1
-
-#define VGM_NIBBLE_VALID    0
-#define VGM_NIBBLE_INVALID  0xF
-
-#define VGM_BYTE_VALID      0
-#define VGM_BYTE_INVALID    0xFF
-
-#define VGM_WORD32_VALID    0
-#define VGM_WORD32_INVALID  0xFFFFFFFF
-
-#define VGM_WORD64_VALID    0ULL
-#define VGM_WORD64_INVALID  0xFFFFFFFFFFFFFFFFULL
-
 
 /* Check some assertions to do with the instrumentation machinery. */
 void MC_(do_instrumentation_startup_checks)( void );

@@ -46,7 +46,6 @@ static void updateAllVarTypes(void);
 static void processFunctions(void);
 
 int determineFormalParametersStackByteSize(FunctionEntry* f);
-int determineFormalParametersLowerStackByteSize(FunctionEntry* f);
 int determineVariableByteSize(VariableEntry* var);
 int formalParamByteSize(VariableEntry* varPtr);
 
@@ -367,6 +366,13 @@ static char ignore_function_with_name(char* name, Bool quiet) {
 // UNDONE: should we only check list if C/C++?
 // We check Rust names in typedata.c.
 //
+// Returns true if name is that of a C++ class's virtual function
+// table pointer.
+static Bool is_vtable_pointer_name(const char* name) {
+  return ((0 == VG_(strncmp)(name, "_vptr.", 6)) ||  // gcc
+          (0 == VG_(strncmp)(name, "_vptr$", 6)));   // clang
+}
+
 // Ignores some weirdo C++ variables such as vtable function pointers
 // and friends
 // g++-3.4 seems to create variable names prefixed with '__gnu_cxx'
@@ -382,8 +388,7 @@ static char ignore_variable_with_name(const char* name) {
   }
 
   if (VG_STREQ(name, "__ioinit") ||
-      (0 == VG_(strncmp)(name, "_vptr.", 6)) ||  // gcc
-      (0 == VG_(strncmp)(name, "_vptr$", 6)) ||  // clang
+      is_vtable_pointer_name(name) ||
       (0 == VG_(strncmp)(name, "_ZTI", 4)) ||
       (0 == VG_(strncmp)(name, "_ZTS", 4)) ||
       // libstdc++ stuff (demangled is something like '__gnu_cxx::')
@@ -1680,6 +1685,9 @@ void initializeFunctionTable(void)
   dwarf_entry* cur_entry = 0;
   FunctionEntry* cur_func_entry = 0;
   unsigned long num_functions_added = 0;
+  const char* dwarf_version_hint =
+    "Fjalar reads DWARF versions 2, 3, and 4.  Did you compile your program\n"
+    "with -gdwarf-4 -no-pie?\n";
 
   FJALAR_DPRINTF("ENTER initializeFunctionTable\n");
 
@@ -1714,6 +1722,7 @@ void initializeFunctionTable(void)
           function* dwarfFunctionPtr = (function*)(cur_entry->entry_ptr);
           // This is non-null only if we have successfully demangled a name:
           char* demangled_name = 0;
+          Bool prologueSkipped;
 
           // Remember to use the tool's constructor,
           // constructFunctionEntry(), in order to properly support
@@ -1743,7 +1752,6 @@ void initializeFunctionTable(void)
           }
 
           cur_func_entry->startPC = dwarfFunctionPtr->start_pc;
-          cur_func_entry->cuBase = dwarfFunctionPtr->comp_pc;
           cur_func_entry->endPC = dwarfFunctionPtr->end_pc;
 
           FJALAR_DPRINTF("Frame base exp is: %u + %ld\n", dwarfFunctionPtr->frame_base_expression,
@@ -1758,8 +1766,6 @@ void initializeFunctionTable(void)
                          (void *)cur_func_entry->startPC,
                          cur_func_entry->name,
                          cur_func_entry->mangled_name);
-          FJALAR_DPRINTF("cur_func_entry->cuBase: %p\n",
-                         (void *)cur_func_entry->cuBase);
 
           // This seems to happen with class constructors.  If there
           // is NO C++ mangled name but there is a startPC, then
@@ -1791,6 +1797,15 @@ void initializeFunctionTable(void)
             }
           }
 
+          // extractOneFormalParameterVar uses entryPC.
+          prologueSkipped = gencontains(next_line_addr, (void*)cur_func_entry->startPC);
+          if (prologueSkipped) {
+            cur_func_entry->entryPC = (Addr)
+              gengettable(next_line_addr, (void*)cur_func_entry->startPC);
+          } else {
+            cur_func_entry->entryPC = cur_func_entry->startPC;
+          }
+
           // Extract all formal parameter variables
           extractFormalParameterVars(cur_func_entry, dwarfFunctionPtr);
 
@@ -1807,9 +1822,7 @@ void initializeFunctionTable(void)
 
           // FJALAR_DPRINTF("  call gencontains %p %p\n", next_line_addr, (void*)cur_func_entry->startPC);
 
-          if (gencontains(next_line_addr, (void*)cur_func_entry->startPC)) {
-            cur_func_entry->entryPC = (Addr)
-              gengettable(next_line_addr, (void*)cur_func_entry->startPC);
+          if (prologueSkipped) {
             FJALAR_DPRINTF("Entering %s at 0x%08x instead of 0x%08x\n",
                            cur_func_entry->name, (unsigned int)cur_func_entry->entryPC,
                            (unsigned int)cur_func_entry->startPC);
@@ -1823,7 +1836,6 @@ void initializeFunctionTable(void)
             // Should only be needed when we weren't able to skip the
             // prolog, and so can't rely on the DWARF information to
             // have the correct parameter locations.
-            cur_func_entry->entryPC = cur_func_entry->startPC;
             FJALAR_DPRINTF("Entering %s at 0x%08x \n",
                            cur_func_entry->name, (unsigned int)cur_func_entry->entryPC);
             verifyStackParamWordAlignment(cur_func_entry, 1);
@@ -1835,17 +1847,26 @@ void initializeFunctionTable(void)
           cur_func_entry->formalParamStackByteSize
             = determineFormalParametersStackByteSize(cur_func_entry);
 
-          cur_func_entry->formalParamLowerStackByteSize
-            = determineFormalParametersLowerStackByteSize(cur_func_entry);
-
           num_functions_added++;
         }
     }
 
   if (!num_functions_added) {
-    printf( "\nError - No functions were found, probably due to a lack of debugging information.\n");
-    printf( "Did you compile your program with DWARF2 debugging info?  The option is -gdwarf-2 on gcc.\n");
-    my_abort();
+    if (num_unsupported_version_comp_units) {
+      printf( "\nError - No functions were found, because Fjalar does not read the DWARF\n"
+              "version of the program's debugging information.\n");
+    } else {
+      printf( "\nError - No functions were found, probably due to a lack of debugging information.\n");
+    }
+    printf( "%s", dwarf_version_hint);
+    VG_(exit)(1);
+  }
+
+  if (num_unsupported_version_comp_units) {
+    printf( "\nWarning - Fjalar omits the functions of %lu compilation unit(s), because\n"
+            "Fjalar does not read their DWARF version.\n",
+            num_unsupported_version_comp_units);
+    printf( "%s", dwarf_version_hint);
   }
 
   FJALAR_DPRINTF("EXIT  initializeFunctionTable\n");
@@ -2268,6 +2289,9 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
     for (i = 0; i < collectionPtr->num_member_vars; i++) {
       member* memberPtr = (member*)((collectionPtr->member_vars[i])->entry_ptr);
+      if (memberPtr->name && is_vtable_pointer_name(memberPtr->name)) {
+        t->aggType->hasVtablePointer = True;
+      }
       extractOneVariable(t->aggType->memberVarList,
                          memberPtr->type_ptr,
                          memberPtr->name,
@@ -2502,7 +2526,10 @@ static Bool usesFrameBase(VariableEntry* var)
 // function, the parameters are not guaranteed to be at those
 // locations yet. We have devised our own calculation that
 // word-aligns everything in the caller's stack frame (positive offsets
-// from EBP). We always use this computed value if the DWARF information
+// from EBP):  each formal parameter occupies formalParamByteSize bytes
+// (a pointer, for a C++ reference), rounded up to a multiple of 4
+// bytes.  formalParamFrameOffsetRange and formal_params_stack_end use the
+// same size.  We always use this computed value if the DWARF information
 // didn't provide a location (which can happen for instance if the parameter
 // is unused), or if replace == 1.
 // This code will need a major rewrite to support AMD64.
@@ -2561,7 +2588,7 @@ static void verifyStackParamWordAlignment(FunctionEntry* f, int replace)
         FJALAR_DPRINTF("MODIFY VAR LOCATION! now:\n");
         FJALAR_DPRINTF(" location_type: %u, byteOffset: %x\n", cur_node->var->locationType, (unsigned int)cur_node->var->byteOffset);
       }
-      cur_byteSize = determineVariableByteSize(cur_node->var);
+      cur_byteSize = formalParamByteSize(cur_node->var);
       // WORD ALIGNED!!!
       if (cur_byteSize > 0)
         {
@@ -2701,30 +2728,6 @@ int determineFormalParametersStackByteSize(FunctionEntry* f)
 }
 
 
-// Determines the number of bytes needed below the frame pointer in
-// the stack to hold the values of all function formal parameters for
-// a particular function.
-int determineFormalParametersLowerStackByteSize(FunctionEntry* f)
-{
-  VarNode* cur_node;
-  int totalByteSize = 0;
-
-  if(!f){
-    return 0;
-  }
-
-  for (cur_node = f->formalParameters.first;
-       cur_node != NULL;
-       cur_node = cur_node->next)
-    {
-      int lo, hi;
-      formalParamFrameOffsetRange(cur_node->var, &lo, &hi);
-      totalByteSize = MIN(totalByteSize, lo);
-    }
-  return -totalByteSize;
-}
-
-
 // Returns the number of bytes that the formal parameter's location
 // holds.  A C++ reference is passed as a pointer.
 int formalParamByteSize(VariableEntry* varPtr)
@@ -2789,6 +2792,28 @@ static Bool locationHasAddressOp(VariableEntry* varPtr)
   return False;
 }
 
+// Sets the location of formal parameter paramPtr, whose location is a
+// location list, to the list's entry for address pc.  If no entry covers
+// pc, or if that entry is not a single DW_OP_reg*, DW_OP_breg*, or
+// DW_OP_fbreg operation, marks the location unsupported.  Modifies the
+// DWARF entry paramPtr, so call it at most once per formal parameter.
+static void useLocationListEntry(formal_parameter* paramPtr, Addr pc)
+{
+  location_list* ll = find_location_list_entry(paramPtr->location_list_offset, pc);
+
+  if (ll && (ll->num_ops == 1)) {
+    location_op_kind kind = location_op_kind_of(ll->atom);
+    if ((kind == LOC_OP_REG) || (kind == LOC_OP_BREG) || (kind == LOC_OP_FBREG)) {
+      paramPtr->dwarf_stack[0].atom = ll->atom;
+      paramPtr->dwarf_stack[0].atom_offset = ll->atom_offset;
+      paramPtr->dwarf_stack_size = 1;
+      paramPtr->valid_loc = 1;
+      return;
+    }
+  }
+  paramPtr->location_has_unsupported_op = 1;
+}
+
 // dwarfParamEntry->tag_name == DW_TAG_formal_parameter
 static void extractOneFormalParameterVar(FunctionEntry* f,
                                          dwarf_entry* dwarfParamEntry)
@@ -2834,6 +2859,12 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
                               0,
                               0,0,0,0,0,0,0,1,
                               0);
+
+  // Fjalar reads a formal parameter at function entrance, so it uses the
+  // location list's entry for the entry point.
+  if (paramPtr->has_location_list) {
+    useLocationListEntry(paramPtr, f->entryPC);
+  }
 
   // isInRegister uses the location expression even if Fjalar cannot
   // read the location.

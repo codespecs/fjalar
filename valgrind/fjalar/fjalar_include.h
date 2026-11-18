@@ -237,6 +237,10 @@ struct _AggregateType {
   SimpleList* /* <FunctionEntry> */ constructorList;
   SimpleList* /* <FunctionEntry> */ destructorList;
 
+  // For C++: True if this class has a virtual function table pointer,
+  // which is not in memberVarList
+  Bool hasVtablePointer;
+
   // A list of classes that are the superclasses of this class
   // Every elt is a Superclass* so this is like List<Superclass>
   // (Only non-null if there is at least 1 superclass)
@@ -610,11 +614,6 @@ typedef struct _FunctionEntry {
   Addr startPC;
   Addr endPC;
 
-  // The instruction base of the compile unit. This is necessary because
-  // certain offsets in the debugging information (namely location lists)
-  // are relative to the base of the compilation unit.
-  Addr cuBase;
-
   // The address of the instruction before which we do entry
   // instrumentation for this function. Usually a bit past startPC,
   // since we don't want to look at the parameters until the function
@@ -642,6 +641,7 @@ typedef struct _FunctionEntry {
   // DW_OP_call_frame_cfa frame base calculated from call frames found in .eh_frame section
   // DW_OP_list           frame base calculated from location lists found in .debug_loc section
   // DW_OP_fbreg          frame base = architectural frame pointer
+  // 0                    no frame base that Fjalar can use
   // If frame_base_atom == DW_OP_list, then frame_base_offset is used to search the
   // indicated location list; if frame_base_atom == DW_OP_call_frame_cfa, then the
   // function entry address is used to search the debug frame list;
@@ -686,10 +686,6 @@ typedef struct _FunctionEntry {
   // parameters that are actually pushed onto the stack. This amount of
   // memory is copied so that we can see the pre-states of the parameters at exit.
   int formalParamStackByteSize;
-
-  // Estimate of the amount of stack space allocated below the frame for
-  // the function's formal parameters that are passed in registers.
-  int formalParamLowerStackByteSize;
 
   // GCC 4.0+ Complicates things as it will not use Frame offsets for
   // all formal parameters. If we want to mimic the behavior achieved
@@ -779,6 +775,23 @@ Int dwarf_reg_guest_offset(UInt regNum);
 // dwarf_reg_is_readable in fjalar_dwarf.h).
 Addr read_dwarf_reg(ThreadId tid, UInt regNum);
 
+// Return the current value of a register of thread tid.  xAX is %rax
+// on amd64 and %eax on x86, and so on.
+Addr read_xAX(ThreadId tid);
+Addr read_xDX(ThreadId tid);
+
+// Return the floating-point return value of a function that has just
+// returned in thread tid (the low 64 bits of %xmm0 on amd64, and the
+// top of the x87 FPU stack on x86).
+double read_float_return(ThreadId tid);
+
+#if defined(VGA_amd64)
+// Return the low 64 bits of %xmm1 in thread tid.  A function that
+// returns a small struct may return part of it there; see
+// visitReturnValue.
+double read_float_return2(ThreadId tid);
+#endif
+
 // Returns the name of the register with the given DWARF register
 // number, for debugging output (defined in dwarf.c).
 const HChar* dwarf_reg_name(UInt regNum);
@@ -810,7 +823,10 @@ typedef struct {
 
   Word xAX;     // primary integer return value (%eax, %rax)
   Word xDX;     // secondary integer return value (%edx, %rdx)
-  double FPU;   // floating-point return value (x86 %st(0))
+  double FPU;   // floating-point return value (x86 %st(0), amd64 %xmm0)
+#if defined(VGA_amd64)
+  double FPU2;  // second floating-point return value (amd64 %xmm1)
+#endif
 
   // Unique nonce corresponding to this invocation of the function.
   // Used to differentiate between different calls to the same
@@ -856,6 +872,13 @@ typedef struct {
 
 
   Addr lowSP;
+
+  // The canonical frame address:  the stack pointer at the first
+  // instruction of the function, plus the size of the return address.
+  // It is the stack pointer just before the call instruction (or,
+  // after a tail call, the caller's canonical frame address).  While
+  // the function is live, the stack pointer is below it.
+  Addr CFA;
 } FunctionExecutionState;
 
 

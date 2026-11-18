@@ -134,34 +134,18 @@
 #  define VG_INSTR_PTR        guest_EIP
 #  define VG_STACK_PTR        guest_ESP
 #  define VG_FRAME_PTR        guest_EBP
-#  define VG_INT_RET_REG      guest_EAX
-#  define VG_INT_RET2_REG     guest_EDX
-#  define VG_XCX              guest_ECX
-#  define VG_XBX              guest_EBX
-#  define VG_XSI              guest_ESI
-#  define VG_XDI              guest_EDI
 #elif defined(VGA_amd64)
 #  define VG_INSTR_PTR        guest_RIP
 #  define VG_STACK_PTR        guest_RSP
 #  define VG_FRAME_PTR        guest_RBP
-#  define VG_INT_RET_REG      guest_RAX
-#  define VG_INT_RET2_REG     guest_RDX
-#  define VG_XCX              guest_RCX
-#  define VG_XBX              guest_RBX
-#  define VG_XSI              guest_RSI
-#  define VG_XDI              guest_RDI
 #elif defined(VGA_ppc32)
 #  define VG_INSTR_PTR        guest_CIA
 #  define VG_STACK_PTR        guest_GPR1
 #  define VG_FRAME_PTR        guest_GPR1   // No frame ptr for PPC
-#  define VG_INT_RET_REG      guest_GPR3
-#  define VG_INT_RET2_REG     guest_GPR4
 #elif defined(VGA_ppc64be) || defined(VGA_ppc64le)
 #  define VG_INSTR_PTR        guest_CIA
 #  define VG_STACK_PTR        guest_GPR1
 #  define VG_FRAME_PTR        guest_GPR1   // No frame ptr for PPC
-#  define VG_INT_RET_REG      guest_GPR3
-#  define VG_INT_RET2_REG     guest_GPR4
 #elif defined(VGA_arm)
 #  define VG_INSTR_PTR        guest_R15T
 #  define VG_STACK_PTR        guest_R13
@@ -202,6 +186,9 @@ Addr VG_(get_FP) ( ThreadId tid );
 void VG_(set_IP) ( ThreadId tid, Addr encip );
 void VG_(set_SP) ( ThreadId tid, Addr sp );
 
+// Fjalar:  the address of the DynComp tag of the guest-state byte at offset.
+UInt* VG_(get_tag_ptr_for_guest_offset) ( ThreadId tid, UInt offset );
+
 
 //-------------------------------------------------------------
 // Get hold of the values needed for a stack unwind, for the specified
@@ -221,17 +208,17 @@ void VG_(get_UnwindStartRegs) ( /*OUT*/UnwindStartRegs* regs,
 
    x86:   initially:  call VG_(machine_get_hwcaps)
 
-          then safe to use VG_(machine_get_VexArchInfo)
+          then safe to use VG_(machine_get_VexArchInfo) 
                        and VG_(machine_x86_have_mxcsr)
    -------------
    amd64: initially:  call VG_(machine_get_hwcaps)
 
-          then safe to use VG_(machine_get_VexArchInfo)
+          then safe to use VG_(machine_get_VexArchInfo) 
    -------------
    ppc32: initially:  call VG_(machine_get_hwcaps)
                       call VG_(machine_ppc32_set_clszB)
 
-          then safe to use VG_(machine_get_VexArchInfo)
+          then safe to use VG_(machine_get_VexArchInfo) 
                        and VG_(machine_ppc32_has_FP)
                        and VG_(machine_ppc32_has_VMX)
    -------------
@@ -239,7 +226,7 @@ void VG_(get_UnwindStartRegs) ( /*OUT*/UnwindStartRegs* regs,
                       call VG_(machine_ppc64_set_clszB)
                       call VG_(machine_ppc64_set_scv_support)
 
-          then safe to use VG_(machine_get_VexArchInfo)
+          then safe to use VG_(machine_get_VexArchInfo) 
                        and VG_(machine_ppc64_has_VMX)
    -------------
    arm:   initially:  call VG_(machine_get_hwcaps)
