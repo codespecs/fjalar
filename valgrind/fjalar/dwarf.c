@@ -89,7 +89,7 @@ static const char *regname_internal_by_table_only (unsigned int regno);
 
 static int have_frame_base;
 static int have_call_frame_cfa; // fjalar code
-static int call_frame_cfa_offset; // fjalar code
+static long call_frame_cfa_offset; // fjalar code
 static int need_base_address;
 
 static unsigned int num_debug_info_entries = 0;
@@ -3719,12 +3719,24 @@ read_and_display_attr_value (unsigned long           attribute,
       // around this by having decode_location_expression record the occurrence of a
       // call_frame_cfa and its operand in two global variables:
       // have_call_frame_cfa and call_frame_cfa_offset.
+      // The harvest below accepts only that exact three-operation shape; any other
+      // expression falls through to harvest_frame_base_expression, which reports it
+      // and leaves Fjalar to fall back on the frame pointer register.
+      // A DW_OP_call_frame_cfa is interpreted only for a DW_AT_frame_base; this case
+      // serves several other attributes, whose values Fjalar does not compute from
+      // the CFA.  An expression that is a single DW_OP_call_frame_cfa is harvested
+      // correctly by either path:  the harvest below rejects it, having one operation
+      // rather than three, and harvest_frame_base_expression then records the same
+      // frame base with an offset of zero.
       // If, at some point in the future, we see more complicated location descriptors
       // this will need to be changed and improved.
       if (block_start)
 	{
 	  int need_frame_base;
           location_list* ll = VG_(calloc)("dwarf.c: read_and_display_attr_value", sizeof(location_list), 1);
+
+	  have_call_frame_cfa = 0;
+	  call_frame_cfa_offset = 0;
 
 	  printf ("(");
 	  need_frame_base = decode_location_expression (block_start,
@@ -3736,7 +3748,7 @@ read_and_display_attr_value (unsigned long           attribute,
 							section, pass2, ok_to_harvest, entry, ll);
 	  printf (")");
           if (ok_to_harvest) {
-            if (have_call_frame_cfa) {
+            if (have_call_frame_cfa && ll->num_ops == 3 && ll->atom == DW_OP_plus) {
               harvest_frame_base(entry, DW_OP_call_frame_cfa, call_frame_cfa_offset);
             } else {
               // frame base expression
@@ -4480,8 +4492,6 @@ process_debug_info (struct dwarf_section * section,
 	      need_base_address = 0;
 	      /* Assuming that there is no DW_AT_frame_base.  */
 	      have_frame_base = 0;
-	      have_call_frame_cfa = 0; // fjalar code
-	      call_frame_cfa_offset = 0; // fjalar code
 	      break;
 
             // start of Fjalar code
