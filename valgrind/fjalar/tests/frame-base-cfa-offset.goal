@@ -1,0 +1,4 @@
+..cfa_offset():::ENTER a 5678
+..cfa_offset():::ENTER d 1234
+..cfa_offset():::EXIT0 a 5678
+..cfa_offset():::EXIT0 d 1234
