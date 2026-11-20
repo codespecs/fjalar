@@ -1392,7 +1392,16 @@ decode_location_expression (unsigned char * data,
     {
       op = *data++;
 
-      if(ll) {ll->atom = op; ll->num_ops++;}
+      if(ll) {
+	/* Fjalar records the first two operations for
+	   frame_base_of_location_expression.  */
+	if (ll->num_ops == 0) {
+	  ll->first_atom = op;
+	} else if (ll->num_ops == 1) {
+	  ll->second_atom = op;
+	}
+	ll->atom = op; ll->num_ops++;
+      }
 
       /* An op that Fjalar's evaluator cannot apply, such as an unreadable register,
 	 DW_OP_stack_value, or DW_OP_plus (the evaluator has no operand
@@ -1456,6 +1465,9 @@ decode_location_expression (unsigned char * data,
 	  break;
 	case DW_OP_consts:
 	  READ_SLEB (svalue, data, end);
+	  if (ll && ll->num_ops == 2) { // fjalar code
+	    ll->second_operand = svalue;
+	  }
 	  printf ("DW_OP_consts: %s", dwarf_vmatoa ("d", svalue));
 	  break;
 	case DW_OP_dup:
@@ -3696,7 +3708,6 @@ read_and_display_attr_value (unsigned long           attribute,
     case DW_AT_lower_bound:
     case DW_AT_count:
     case DW_AT_rank:
-    printf("block_start: %p\n", block_start);
       if (block_start)
 	{
 	  int need_frame_base;
@@ -3711,10 +3722,13 @@ read_and_display_attr_value (unsigned long           attribute,
 							cu_offset,
 							section, pass2, ok_to_harvest, entry, ll);
 	  printf (")");
-          if (ok_to_harvest) {
+          // Other attributes of a function, such as DW_AT_static_link,
+          // must not overwrite its frame base.
+          if (ok_to_harvest && attribute == DW_AT_frame_base) {
               // frame base expression
               harvest_frame_base_expression(entry, ll);
           }
+          VG_(free) (ll);
 	  if (need_frame_base && !have_frame_base)
 	    printf (_(" [without DW_AT_frame_base]"));
 	}
@@ -3722,8 +3736,10 @@ read_and_display_attr_value (unsigned long           attribute,
 	       && is_location_list_form (attribute, form, dwarf_version))  // Fjalar
 	{
           if (ok_to_harvest) {
-              // frame base location list
-              harvest_frame_base(entry, DW_OP_list, uvalue);
+              if (attribute == DW_AT_frame_base) {
+                // frame base location list
+                harvest_frame_base(entry, DW_OP_list, uvalue);
+              }
               if (attribute == DW_AT_location)
                 harvest_formal_param_location_list(entry, uvalue);
           }

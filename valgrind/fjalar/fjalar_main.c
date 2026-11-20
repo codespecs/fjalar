@@ -807,7 +807,7 @@ void enter_function(FunctionEntry* f)
       if (f->entryPC >= df->begin && f->entryPC < df->end) {
         FJALAR_DPRINTF("\tFound debug frame with reg %x and offset %lx\n", df->cfa_reg, df->cfa_offset);
         if (dwarf_reg_is_readable(df->cfa_reg)) {
-          frame_ptr = read_dwarf_reg(tid, df->cfa_reg) + df->cfa_offset;
+          frame_ptr = read_dwarf_reg(tid, df->cfa_reg) + df->cfa_offset + frame_base_offset;
         } else {
           FJALAR_DPRINTF("\tCannot compute frame base from CFA register %s\n",
                          dwarf_reg_name(df->cfa_reg));
