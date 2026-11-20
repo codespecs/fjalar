@@ -1,4 +1,16 @@
-..cfa_offset():::ENTER a 5678
-..cfa_offset():::ENTER d 1234
-..cfa_offset():::EXIT0 a 5678
-..cfa_offset():::EXIT0 d 1234
+exprloc-consts-8 frame_base_atom: 9c, frame_base_offset: fffffffffffffff8
+exprloc-consts-8 ..cfa_offset():::ENTER a 5678
+exprloc-consts-8 ..cfa_offset():::ENTER d 1234
+exprloc-consts-8 ..cfa_offset():::EXIT0 a 5678
+exprloc-consts-8 ..cfa_offset():::EXIT0 d 1234
+exprloc-consts16 frame_base_atom: 9c, frame_base_offset: 10
+exprloc-consts16 ..cfa_offset():::ENTER a 5678
+exprloc-consts16 ..cfa_offset():::ENTER d 1234
+exprloc-consts16 ..cfa_offset():::EXIT0 a 5678
+exprloc-consts16 ..cfa_offset():::EXIT0 d 1234
+loclist-consts-8 frame_base_atom: e1, frame_base_offset: 0
+loclist-consts-8 ..cfa_offset():::ENTER abc 5678
+loclist-consts-8 ..cfa_offset():::ENTER de 1234
+loclist-consts-8 ..cfa_offset():::EXIT0 abc 5678
+loclist-consts-8 ..cfa_offset():::EXIT0 de 1234
+exprloc-constu16 frame_base_atom: 0, frame_base_offset: 0

@@ -3376,6 +3376,12 @@ char harvest_frame_base(dwarf_entry *e, enum dwarf_location_atom a, long offset)
 // described by ll computes, in the form of FunctionEntry's frame_base_atom
 // and frame_base_offset.  Sets *atom to 0 if Fjalar cannot use the
 // expression.
+//
+// A DW_AT_frame_base is either an exprloc or a location list.
+// harvest_frame_base_expression passes an exprloc to this function when
+// Fjalar reads the debugging information.  For a location list,
+// enter_function passes the list's entry for the function's entry address
+// when the function is entered.
 void frame_base_of_location_expression(location_list* ll,
                                        enum dwarf_location_atom* atom, long* offset)
 {
@@ -3395,6 +3401,19 @@ void frame_base_of_location_expression(location_list* ll,
   } else if (ll->num_ops == 1) {
     *atom = ll->atom;
     *offset = ll->atom_offset;
+  } else if (ll->num_ops == 3 && ll->first_atom == DW_OP_call_frame_cfa
+             && ll->second_atom == DW_OP_consts && ll->atom == DW_OP_plus) {
+    // The Rust compiler emits (DW_OP_call_frame_cfa; DW_OP_consts N;
+    // DW_OP_plus): the frame base is the CFA plus N.  In the Rust output seen
+    // so far, N is always negative.  That makes sense because the stack grows
+    // downward: the frame base lies below the CFA, within the function's own
+    // frame.
+    //
+    // Apart from one ending in DW_OP_deref, this is the only multi-operation
+    // location expression that Fjalar interprets, because Fjalar has no
+    // general evaluator for DWARF expressions.
+    *atom = DW_OP_call_frame_cfa;
+    *offset = ll->second_operand;
   } else {
     // ll->atom and ll->atom_offset describe only the last operation.
     FJALAR_DPRINTF("\tCannot compute frame base from location expression with %u operations\n",

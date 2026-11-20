@@ -20,10 +20,11 @@
 // Unoptimized, cfa_offset stores its formal parameters in its stack frame,
 // and their locations are offsets from the frame base.
 //
-// The names of the formal parameters are not arbitrary.  The longer frame
-// base expression needs three more bytes than the one GCC emits, and the test
-// pays for them by shortening "abc" to "a" and "de" to "d", so that the size
-// of the debugging information does not change.  Only a name of at most three
+// The names of the formal parameters are not arbitrary.  In the cases where
+// the frame base is an exprloc, the longer frame base expression needs three
+// more bytes than the one GCC emits, and the test pays for them by shortening
+// "abc" to "a" and "de" to "d", so that the size of the debugging information
+// does not change.  Only a name of at most three
 // characters can pay: GCC emits one of those inline in .debug_info, but puts a
 // longer name in .debug_str, where shortening it frees no .debug_info bytes.
 __attribute__((noinline)) int cfa_offset(int abc, int de) {
