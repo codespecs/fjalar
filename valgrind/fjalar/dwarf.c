@@ -1676,9 +1676,9 @@ decode_location_expression (unsigned char * data,
 	case DW_OP_breg30:
 	case DW_OP_breg31:
 	  READ_SLEB (svalue, data, end);
+	  if (ll)
+	    ll->atom_offset = svalue;
 	  if (ok_to_harvest) {
-	    if (ll)
-	      ll->atom_offset = svalue;
 	    harvest_local_var_offset(entry, svalue, (op - DW_OP_breg0));
 	    harvest_formal_param_location_atom(entry, op, svalue);
 	  }
@@ -1694,9 +1694,9 @@ decode_location_expression (unsigned char * data,
 	case DW_OP_fbreg:
 	  need_frame_base = 1;
 	  READ_SLEB (svalue, data, end);
+	  if (ll)
+	    ll->atom_offset = svalue;
 	  if (ok_to_harvest) {
-	    if (ll)
-	      ll->atom_offset = svalue;
 	    harvest_local_var_offset(entry, svalue, -1);
 	    harvest_formal_param_location_atom(entry, op, svalue);
 	  }

@@ -3375,13 +3375,8 @@ char harvest_frame_base(dwarf_entry *e, enum dwarf_location_atom a, long offset)
 // Sets *atom and *offset to the frame base that the location expression
 // described by ll computes, in the form of FunctionEntry's frame_base_atom
 // and frame_base_offset.  Sets *atom to 0 if Fjalar cannot use the
-// expression.
-//
-// A DW_AT_frame_base is either an exprloc or a location list.
-// harvest_frame_base_expression passes an exprloc to this function when
-// Fjalar reads the debugging information.  For a location list,
-// enter_function passes the list's entry for the function's entry address
-// when the function is entered.
+// expression.  ll is one location expression:  an exprloc, or one entry of
+// a location list.
 void frame_base_of_location_expression(location_list* ll,
                                        enum dwarf_location_atom* atom, long* offset)
 {
@@ -3403,11 +3398,16 @@ void frame_base_of_location_expression(location_list* ll,
     *offset = ll->atom_offset;
   } else if (ll->num_ops == 3 && ll->first_atom == DW_OP_call_frame_cfa
              && ll->second_atom == DW_OP_consts && ll->atom == DW_OP_plus) {
-    // The Rust compiler emits (DW_OP_call_frame_cfa; DW_OP_consts N;
-    // DW_OP_plus): the frame base is the CFA plus N.  In the Rust output seen
-    // so far, N is always negative.  That makes sense because the stack grows
-    // downward: the frame base lies below the CFA, within the function's own
-    // frame.
+    // (DW_OP_call_frame_cfa; DW_OP_consts N; DW_OP_plus): the frame base is
+    // the CFA plus N.  LLVM, and therefore the Rust compiler, emits this form
+    // for an x86 function whose frame register is the stack pointer and whose
+    // prolog adjusts the CFA, such as a function without a frame pointer whose
+    // frame is large enough to need stack probes.  (If N would be 0, LLVM
+    // emits a bare DW_OP_call_frame_cfa.)  LLVM always writes N with
+    // DW_OP_consts, never with DW_OP_plus_uconst or DW_OP_minus.  N is the
+    // negation of the sum of the stack size and the size of the return
+    // address, so N is negative:  the frame base lies below the CFA, within
+    // the function's own frame.
     //
     // Apart from one ending in DW_OP_deref, this is the only multi-operation
     // location expression that Fjalar interprets, because Fjalar has no
@@ -3424,7 +3424,7 @@ void frame_base_of_location_expression(location_list* ll,
 }
 
 // If e is a function, sets its frame base to the location expression
-// described by ll.
+// described by ll, which is an exprloc DW_AT_frame_base.
 char harvest_frame_base_expression(dwarf_entry* e, location_list* ll)
 {
   enum dwarf_location_atom atom;

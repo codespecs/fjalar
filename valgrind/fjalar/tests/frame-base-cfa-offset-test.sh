@@ -9,9 +9,11 @@
 # It replaces cfa_offset's frame base with the three-operation form and
 # subtracts N from every DW_OP_fbreg offset, which leaves each variable at the
 # same address.  So Fjalar reads the formal parameters correctly only if it
-# adds the expression's constant to the CFA.  Without that, Fjalar falls back
-# on the frame pointer register, which is 16 bytes below the CFA, and reads
-# the wrong stack slots.
+# adds the expression's constant to the CFA.  Otherwise, Fjalar uses as the
+# frame base either the bare CFA (if it recognizes the expression but omits the
+# constant) or the frame pointer register, which is 16 bytes below the CFA (if
+# it rejects the expression).  Neither matches the shifted DW_OP_fbreg offsets,
+# so Fjalar reads the wrong stack slots.
 #
 # The test runs these cases; each line of the goal file starts with the
 # case's name:

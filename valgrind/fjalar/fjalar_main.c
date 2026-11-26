@@ -786,6 +786,7 @@ void enter_function(FunctionEntry* f)
   frame_base_atom = f->frame_base_atom;
   frame_base_offset = f->frame_base_offset;
   if (frame_base_atom == DW_OP_list) {
+    // Use the location list's entry for the function's entry address.
     location_list* ll = find_location_list_entry(f->frame_base_offset, f->entryPC);
 
     FJALAR_DPRINTF("\tLocation list based function at %lx. offset is %ld\n", (unsigned long)f->entryPC, f->frame_base_offset);
@@ -799,6 +800,7 @@ void enter_function(FunctionEntry* f)
   }
 
   if (frame_base_atom == DW_OP_call_frame_cfa) {
+    Addr cfa = 0;
     // Search the debug_frame list for entryPC. A debug_frame contains information
     // extracted from the CFA data in the .eh_frame section.
     debug_frame *df = debug_frame_HEAD;
@@ -807,15 +809,24 @@ void enter_function(FunctionEntry* f)
       if (f->entryPC >= df->begin && f->entryPC < df->end) {
         FJALAR_DPRINTF("\tFound debug frame with reg %x and offset %lx\n", df->cfa_reg, df->cfa_offset);
         if (dwarf_reg_is_readable(df->cfa_reg)) {
-          frame_ptr = read_dwarf_reg(tid, df->cfa_reg) + df->cfa_offset + frame_base_offset;
+          cfa = read_dwarf_reg(tid, df->cfa_reg) + df->cfa_offset;
         } else {
-          FJALAR_DPRINTF("\tCannot compute frame base from CFA register %s\n",
+          FJALAR_DPRINTF("\tCannot compute CFA from CFA register %s\n",
                          dwarf_reg_name(df->cfa_reg));
         }
         break;
       }
       df = df->next;
     }
+    if (cfa == 0) {
+      // No debug_frame gives a readable CFA at entryPC.  prime_function
+      // recorded the CFA at the function's first instruction, and the CFA
+      // does not change during an invocation.
+      FJALAR_DPRINTF("\tUsing the CFA that prime_function recorded: %p\n",
+                     (void *)primed_CFA);
+      cfa = primed_CFA;
+    }
+    frame_ptr = cfa + frame_base_offset;
   } else if (frame_base_atom != 0) {
     FJALAR_DPRINTF("\tsimple location expression\n");
     // For DW_OP_regN, the offset is 0.
