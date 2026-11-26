@@ -72,8 +72,16 @@ typedef struct
 
 // Entries for individual types
 
-// Struct representing the location list.
-// Representned as a linked list.
+// A location expression, or one entry of a location list.  Entries of one
+// location list are linked through next.
+//
+// A DWARF location expression is a program for a stack machine.  Fjalar has
+// no evaluator for it.  Instead, a location_list summarizes the expression:
+// the number of operations, the first two operations, the last operation
+// and its offset, and the operand of a second operation that is
+// DW_OP_consts.  Code that uses a location_list, such as
+// frame_base_of_location_expression, recognizes the few shapes of
+// expression that Fjalar supports and rejects the rest.
 typedef struct _location_list
 {
   unsigned long offset;
@@ -84,19 +92,15 @@ typedef struct _location_list
   // The number of operations in the location expression.  atom and
   // atom_offset describe the last one.
   unsigned int num_ops;
+  // The first and second operations of the location expression, or 0 if the
+  // expression has fewer operations.
+  enum dwarf_location_atom first_atom;
+  enum dwarf_location_atom second_atom;
+  // The operand of the second operation, if that operation is a DW_OP_consts;
+  // otherwise 0.
+  long second_operand;
   struct _location_list *next;
 } location_list;
-
-// Struct representing a debug_frame block.
-// Represented as a linked list.
-typedef struct _debug_frame
-{
-  unsigned long begin;
-  unsigned long end;
-  unsigned int cfa_reg;
-  unsigned long cfa_offset;
-  struct _debug_frame *next;
-} debug_frame;
 
 
 typedef struct
@@ -302,7 +306,8 @@ typedef struct
   enum dwarf_location_atom frame_base_expression; /* Location of the framebase.
                                                      Is likely to be a register expression
                                                      or the location list */
-  long frame_base_offset; /* Offset from Frame_base_expression that corresponds to the frame_base */
+  long frame_base_offset; /* Same meaning as FunctionEntry's frame_base_offset;
+                             see fjalar_include.h */
   // An entry with is_inline set describes an instance of a function
   // that the compiler has inlined.  The concrete out-of-line instance,
   // if the compiler emitted one, will be a separate entry that has its
@@ -595,7 +600,6 @@ char harvest_abstract_origin_value(dwarf_entry* e, unsigned long value);
 char harvest_accessibility(dwarf_entry* e, char a);
 char harvest_location_list_entry(location_list* ll, unsigned long offset);
 location_list* find_location_list_entry(unsigned long offset, unsigned long pc);
-char harvest_debug_frame_entry(debug_frame* df);
 char harvest_frame_base(dwarf_entry* e, enum dwarf_location_atom a, long offset);
 void frame_base_of_location_expression(location_list* ll,
                                        enum dwarf_location_atom* atom, long* offset);
