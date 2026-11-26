@@ -23314,7 +23314,6 @@ process_elf_binary_data (const HChar* filename)
   do_debug_info++;
   do_debug_lines++;
   do_debug_loc++;
-  do_debug_frames++;
   show_name = true;
   dump_any_debugging = true;
 
@@ -23323,6 +23322,7 @@ process_elf_binary_data (const HChar* filename)
   if (fjalar_debug_dump) {
       do_debug_abbrevs++;
       do_debug_aranges++;
+      do_debug_frames++;
       do_debug_macinfo++;
       do_debug_pubnames++;
       do_debug_str++;

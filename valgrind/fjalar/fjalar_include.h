@@ -638,7 +638,7 @@ typedef struct _FunctionEntry {
 
   enum dwarf_location_atom frame_base_atom;
   // Encoding             Meaning
-  // DW_OP_call_frame_cfa frame base calculated from call frames found in .eh_frame section
+  // DW_OP_call_frame_cfa frame base calculated from the canonical frame address (CFA)
   // DW_OP_list           frame base calculated from location lists found in .debug_loc section
   // DW_OP_fbreg          frame base = architectural frame pointer
   // 0                    no frame base that Fjalar can use
@@ -647,8 +647,8 @@ typedef struct _FunctionEntry {
   //    .debug_loc section.  Fjalar uses the list's entry for the function's
   //    entry address.
   //  * DW_OP_call_frame_cfa: the frame base is the CFA plus
-  //    frame_base_offset.  Fjalar computes the CFA from the debug frame list's
-  //    entry for the function's entry address.
+  //    frame_base_offset.  The CFA is the value of the stack pointer just
+  //    before the call instruction that invoked the function.
   //  * any other nonzero atom: an offset from the register that
   //    frame_base_atom indicates.
   long frame_base_offset;

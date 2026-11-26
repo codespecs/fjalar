@@ -102,17 +102,6 @@ typedef struct _location_list
   struct _location_list *next;
 } location_list;
 
-// Struct representing a debug_frame block.
-// Represented as a linked list.
-typedef struct _debug_frame
-{
-  unsigned long begin;
-  unsigned long end;
-  unsigned int cfa_reg;
-  unsigned long cfa_offset;
-  struct _debug_frame *next;
-} debug_frame;
-
 
 typedef struct
 {
@@ -611,7 +600,6 @@ char harvest_abstract_origin_value(dwarf_entry* e, unsigned long value);
 char harvest_accessibility(dwarf_entry* e, char a);
 char harvest_location_list_entry(location_list* ll, unsigned long offset);
 location_list* find_location_list_entry(unsigned long offset, unsigned long pc);
-char harvest_debug_frame_entry(debug_frame* df);
 char harvest_frame_base(dwarf_entry* e, enum dwarf_location_atom a, long offset);
 void frame_base_of_location_expression(location_list* ll,
                                        enum dwarf_location_atom* atom, long* offset);

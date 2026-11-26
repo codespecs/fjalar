@@ -139,10 +139,6 @@ unsigned long num_unsupported_version_comp_units = 0;
 // the location list
 struct genhashtable* loc_list_map = 0;
 
-// Linked list representing debug_frame
-debug_frame* debug_frame_HEAD = 0;
-debug_frame* debug_frame_TAIL = 0;
-
 // Target program producer info
 bool clang_c_producer = false;
 bool clang_rust_producer = false;
@@ -3436,23 +3432,6 @@ char harvest_frame_base_expression(dwarf_entry* e, location_list* ll)
   frame_base_of_location_expression(ll, &atom, &offset);
   return harvest_frame_base(e, atom, offset);
 }
-
-char harvest_debug_frame_entry(debug_frame *df){
-
-  tl_assert(df);
-  FJALAR_DPRINTF("Attaching debug_frame [%lx...%lx] to the debug_frame list\n", df->begin, df->end);
-
-  if(!debug_frame_TAIL) {
-    debug_frame_HEAD = df;
-    debug_frame_TAIL = df;
-    df->next = NULL;
-  } else {
-    debug_frame_TAIL->next = df;
-    debug_frame_TAIL = df;
-  }
-  return 1;
-}
-
 
 char harvest_location_list_entry(location_list* ll, unsigned long offset){
   location_list *cur_loc = NULL;
