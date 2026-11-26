@@ -21,6 +21,9 @@
 #   exprloc-consts16   an exprloc frame base, N = 16
 #   loclist-consts-8   a location-list frame base, every entry of which is
 #                      rewritten to the expression, N = -8
+#   nocfi-consts-8     like exprloc-consts-8, but the executable has no call
+#                      frame information for cfa_offset, so Fjalar must obtain
+#                      the CFA without it
 #   exprloc-constu16   (DW_OP_call_frame_cfa; DW_OP_constu 16; DW_OP_plus),
 #                      which Fjalar does not interpret.  The test checks only
 #                      that Fjalar records no frame base, not the parameters'
@@ -48,7 +51,7 @@ if [ ! -x "${valgrind}" ]; then
   exit 2
 fi
 
-for tool in gcc readelf; do
+for tool in gcc nm objcopy readelf; do
   if ! command -v "${tool}" > /dev/null; then
     echo "$0: missing prerequisite: ${tool}" >&2
     exit 2
@@ -64,9 +67,14 @@ trap 'rm -rf "${output_dir}"' EXIT
 # at the address in the debugging information, so the executable must not be
 # position-independent.  -gno-variable-location-views keeps location view pairs
 # out of the .debug_loc section.  Strict DWARF 2 has no DW_OP_call_frame_cfa,
-# so GCC describes the frame base as a location list.
+# so GCC describes the frame base as a location list.  Without unwind tables,
+# GCC puts cfa_offset's call frame information only in .debug_frame, which
+# run_case removes.
 gcc -gdwarf-4 -gno-variable-location-views -no-pie -O0 -S -dA \
     -o "${output_dir}/exprloc.s" "${test_dir}/frame-base-cfa-offset.c"
+gcc -gdwarf-4 -gno-variable-location-views -no-pie -O0 -S -dA \
+    -fno-asynchronous-unwind-tables -fno-unwind-tables \
+    -o "${output_dir}/exprloc-nocfi.s" "${test_dir}/frame-base-cfa-offset.c"
 gcc -gdwarf-2 -gstrict-dwarf -no-pie -O0 -S -dA \
     -o "${output_dir}/loclist.s" "${test_dir}/frame-base-cfa-offset.c"
 
@@ -78,9 +86,12 @@ actual="${output_dir}/frame-base-cfa-offset.actual"
 #   $2  "exprloc" or "loclist": the form of cfa_offset's frame base
 #   $3  "consts" or "constu": the operation that pushes the constant
 #   $4  the constant N
+#   $5  optional; "nocfi" to remove the call frame information for cfa_offset
+#       (only for mode "exprloc")
 run_case() {
-  local name="$1" mode="$2" const_op="$3" offset="$4"
+  local name="$1" mode="$2" const_op="$3" offset="$4" cfi="${5:-}"
   local exe="${output_dir}/${name}"
+  local source="${output_dir}/${mode}${cfi:+-${cfi}}.s"
 
   # The frame pointer register is CFA - 16, so with N = -16 the test could not
   # tell the frame base from the fallback.
@@ -174,11 +185,23 @@ run_case() {
                 ", fbreg offsets: " fbreg+0 > "/dev/stderr"
           exit 1
         }
-      }' "${output_dir}/${mode}.s" > "${exe}.s"; then
+      }' "${source}" > "${exe}.s"; then
     unsuitable_environment "$0" "${name}: could not rewrite cfa_offset's frame base"
   fi
 
   gcc -no-pie -o "${exe}" "${exe}.s" "${test_dir}/frame-base-cfa-offset-main.c"
+
+  if [ "${cfi}" = nocfi ]; then
+    objcopy --remove-section=.debug_frame "${exe}"
+    # No frame description entry may start at cfa_offset.
+    local address
+    address="$(nm "${exe}" | awk '$3 == "cfa_offset" { print $1 }')"
+    if [ -z "${address}" ] \
+        || readelf --debug-dump=frames "${exe}" 2>&1 | grep -q "pc=${address}\.\."; then
+      unsuitable_environment "$0" \
+          "${name}: the executable has call frame information for cfa_offset"
+    fi
+  fi
 
   # The rewrite must have produced the expression under test, and readelf must
   # still be able to read the debugging information around it.
@@ -238,6 +261,7 @@ run_case() {
 run_case exprloc-consts-8 exprloc consts -8
 run_case exprloc-consts16 exprloc consts 16
 run_case loclist-consts-8 loclist consts -8
+run_case nocfi-consts-8 exprloc consts -8 nocfi
 run_case exprloc-constu16 exprloc constu 16
 
 if ! diff -u "${test_dir}/frame-base-cfa-offset.goal" "${actual}" >&2; then
