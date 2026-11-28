@@ -1403,7 +1403,7 @@ void fjalar_pre_clo_init()
   VG_(details_name)            ("fjalar");
   /* This next line is automatically updated by the toplevel Daikon
      distribution Makefile; be careful with its formatting -SMcC */
-  VG_(details_version)         ("5.9.1");
+  VG_(details_version)         ("5.9.2");
   VG_(details_description)     ("a tool built upon Fjalar");
   VG_(details_copyright_author)(
      "Copyright (C) 2007-2026, University of Washington CSE PLSE Group");
